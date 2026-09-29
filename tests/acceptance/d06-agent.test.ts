@@ -58,6 +58,7 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.observe',
   'task.pickup',
   'task.handback',
+  'onboarding.step_result',
 ];
 
 /** In `AGENT_SURFACE` and still not the agent's: a person decides (case (j) of the matrix). */
@@ -133,6 +134,43 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     return live;
   }
 
+  /**
+   * A result on a fresh onboarding step the agent has just picked up (C41-A):
+   * a result closes its step, so each body gets its own onboarding.
+   */
+  async function onStep(
+    operationId: string,
+  ): Promise<{ body: Record<string, unknown>; credential?: string }> {
+    await release();
+    const made = await harness.asPerson('record.create', {
+      type: 'client',
+      fields: { name: 'a client the agent works' },
+    });
+    const clientId = (made.body['detail'] as Record<string, unknown>)['recordId'];
+    const started = await harness.asPerson('onboarding.start', {
+      clientId,
+      templateKey: 'standard',
+    });
+    const steps = (started.body['detail'] as Record<string, unknown>)['steps'] as readonly {
+      readonly taskId: string;
+      readonly state: string;
+    }[];
+    const taskId = String(steps.find((one) => one.state === 'ready')?.taskId);
+    const decided = await harness.reserve(
+      { id: taskId } as Parameters<Harness['reserve']>[0],
+      'onboarding_step',
+    );
+    expect(decided.code, 'the decision a step pickup needs').toBe('ok');
+    const reservationId = String(
+      (decided.body['detail'] as Record<string, unknown>)['reservationId'],
+    );
+    track(await harness.asAgent('task.pickup', { reservationId }));
+    const held = live;
+    if (held === undefined) throw new Error('d06-agent: the agent could not pick up the step');
+    const body = { operationId, recordId: taskId, outcome: 'done', result: 'the agent closed it' };
+    return { body, credential: held.credential };
+  }
+
   /** A valid body for one agent operation, and the credential it travels with. */
   async function positive(
     name: CommandName,
@@ -144,6 +182,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       return { body: { operationId, reservationId: await reservation() } };
     }
     if (name === 'task.handback') await release();
+    if (name === 'onboarding.step_result') return await onStep(operationId);
     const held = await ensureLive();
     const credential = held.credential;
     if (name === 'session.capabilities') return { body: { operationId }, credential };

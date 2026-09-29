@@ -198,6 +198,22 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     occurrence_id: randomUUID(),
     outcome: 'activation_off',
   },
+  // New client onboarding (C41-A, 0036): the journey starts none.
+  'public.onboardings': {
+    client_id: randomUUID(),
+    template_key: 'restricted-calls',
+    template_version: 1,
+    started_by_actor_id: randomUUID(),
+  },
+  'public.onboarding_steps': {
+    onboarding_id: randomUUID(),
+    step_key: 'restricted-calls',
+    task_id: randomUUID(),
+    position: 0,
+    phase: 'restricted calls',
+    kind: 'agent',
+    state: 'ready',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

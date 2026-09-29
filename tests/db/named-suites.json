@@ -295,7 +295,8 @@
     "tests/automations/c52a-firing.test.ts",
     "tests/automations/c52a-pins.test.ts",
     "tests/automations/c52a-commands.test.ts",
-    "tests/automations/c52a-authority.test.ts"
+    "tests/automations/c52a-authority.test.ts",
+    "tests/onboarding/c41-a-onboarding.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

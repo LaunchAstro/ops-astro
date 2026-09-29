@@ -89,6 +89,9 @@ export interface IdentWorld {
     mandateId: string;
     /** An automation of bravo's: definition, version, activation (C33). */
     automation: SeededAutomation;
+    /** A client of bravo's and a step of its onboarding (C41-A). */
+    onboardingClientId: string;
+    stepTaskId: string;
   }>;
   /** An automation of alpha's own, so a foreign activation is aimed past its version (C33). */
   readonly ownAutomation: SeededAutomation;
@@ -281,6 +284,27 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
     ),
   };
 
+  // New client onboarding (C41-A): a bravo client, and a step of its onboarding.
+  const bravoClient = need(
+    await person(
+      bravoAdmin,
+      'record.create',
+      { type: 'client', fields: { name: 'a bravo client' } },
+      'bravo',
+    ),
+    'record.create',
+  );
+  const bravoOnboarding = need(
+    await person(
+      bravoAdmin,
+      'onboarding.start',
+      { clientId: String(bravoClient['recordId']), templateKey: 'standard' },
+      'bravo',
+    ),
+    'onboarding.start',
+  );
+  const bravoSteps = bravoOnboarding['steps'] as readonly { readonly taskId: string }[];
+
   return {
     h,
     foreign: {
@@ -294,6 +318,8 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       connectionId: await seedBrokenConnection(world.db.admin, world.bravo, 'a bravo source'),
       ...bravoGraduation,
       automation: await seedAutomation(world.db.admin, world.bravo, bravoAdmin.actorId as string),
+      onboardingClientId: String(bravoClient['recordId']),
+      stepTaskId: String(bravoSteps[0]?.taskId),
     },
     ownAutomation: await seedAutomation(world.db.admin, world.alpha, world.ada.actorId as string),
     otherPicked,

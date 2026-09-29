@@ -52,9 +52,11 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['connection.graduation', {}],
   // The Workflow triggers registry (C33) names no row.
   ['automation.registry', {}],
+  // A new client record (C41-A) names no row.
+  ['record.create', { type: 'client', fields: { name: 'a target-free client' } }],
 ];
 
-/** The twenty-eight identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The thirty identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -74,6 +76,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'activation.roll_back': ['activationId', 'control'],
   'activation.turn_off': ['activationId', 'control'],
   'approval.revoke': ['approvalId', 'control'],
+  'onboarding.start': ['clientId', 'control'],
+  'onboarding.step_result': ['recordId', 'control'],
   'delegation.revoke': ['delegationId', 'control'],
   'task.decide': ['gateId', 'gate'],
   'task.board': ['board', 'board'],

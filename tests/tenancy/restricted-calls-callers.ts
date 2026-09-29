@@ -111,6 +111,8 @@ const UPDATE_COLUMN: Readonly<Record<string, string>> = {
   'public.graduation_classes': 'revision',
   'public.standing_mandates': 'revision',
   'public.activations': 'revision',
+  'public.onboardings': 'revision',
+  'public.onboarding_steps': 'failures',
 };
 
 export function statementFor(table: CatalogueTable, operation: Operation): string {

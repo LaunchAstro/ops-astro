@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The onboarding and its steps (C41-A, migration 0037). Every statement runs
+// The onboarding and its steps (C41-A, migration 0036). Every statement runs
 // in the caller's tenant transaction, so row-level security keeps another
 // business's rows out of every one of them. A step's state moves only here:
 // ready when every step it depends on is done, stopped with the rest when one
@@ -8,6 +8,8 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { isRecordsRefusal } from '../records/refusals.ts';
+import { nextTaskKey, planTaskPlacement } from '../tasks/placement.ts';
 import type { StepKind, TemplateStep } from './template.ts';
 
 export type StepState = 'blocked' | 'ready' | 'done' | 'stopped';
@@ -46,6 +48,47 @@ const stepOf = (row: StepRecord): OnboardingStepRow => ({
   state: row.state,
   failures: row.failures,
 });
+
+/**
+ * One step's task on the client, top level, keyed and ranked the way
+ * `task.create` places one; its party slot is the client.
+ */
+export async function insertStepTask(
+  tx: TenantQuery,
+  task: {
+    readonly taskTypeId: string;
+    readonly stateId: string | undefined;
+    readonly source: string;
+    readonly clientId: string;
+    readonly title: string;
+  },
+): Promise<string> {
+  const placement = await planTaskPlacement(tx, task.taskTypeId, {
+    parentId: null,
+    board: null,
+    boardSection: null,
+    suppliedKeys: [],
+  });
+  if (isRecordsRefusal(placement)) throw new Error('onboarding: a top-level task was not placed');
+  const id = randomUUID();
+  await tx.query(
+    `insert into records (business_id, id, record_type_id, data) values ($1, $2, $3, $4)`,
+    [
+      tx.businessId,
+      id,
+      task.taskTypeId,
+      {
+        title: task.title,
+        client: task.clientId,
+        key: await nextTaskKey(tx, task.taskTypeId),
+        source: task.source,
+        board_rank: placement.boardRank,
+        ...(task.stateId === undefined ? {} : { state: task.stateId }),
+      },
+    ],
+  );
+  return id;
+}
 
 /** Whether this client already has an onboarding; the unique key holds it too. */
 export async function onboardingOfClient(
@@ -142,8 +185,14 @@ export async function lockStepOfTask(
     }
   | undefined
 > {
+  // The step's own task must still be on the onboarding's client: a task
+  // moved to another client is no longer this onboarding's step to close.
   const found = await tx.query<{ readonly onboarding_id: string }>(
-    'select onboarding_id from public.onboarding_steps where business_id = $1 and task_id = $2',
+    `select s.onboarding_id
+       from public.onboarding_steps s
+       join public.onboardings o on o.business_id = s.business_id and o.id = s.onboarding_id
+       join public.records r on r.business_id = s.business_id and r.id = s.task_id
+      where s.business_id = $1 and s.task_id = $2 and r.uuid_7 = o.client_id`,
     [tx.businessId, taskId],
   );
   const onboardingId = found[0]?.onboarding_id;

@@ -22,6 +22,7 @@ import {
 } from './role-case-bodies.ts';
 import { automationsBody } from './role-case-automations.ts';
 import { connectionsBody } from './role-case-connections.ts';
+import { onboardingBody } from './role-case-onboarding.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -32,6 +33,8 @@ export function createPositiveBody(
     if (connections !== undefined) return connections;
     const automations = await automationsBody(declaration.name, context);
     if (automations !== undefined) return automations;
+    const onboarding = await onboardingBody(declaration.name, context);
+    if (onboarding !== undefined) return onboarding;
     const target = async (): Promise<Record<string, unknown>> => {
       const task = await context.freshTask(`a task for ${declaration.name}`);
       return { recordId: task.id, expectedRevision: task.revision };

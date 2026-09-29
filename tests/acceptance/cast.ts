@@ -107,6 +107,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'mandate',
   // Settings ▸ Workflow triggers (C33): `automation:manage` releases a version.
   'automation',
+  // New client onboarding (C41-A): `record:write` makes a client and starts it.
+  'record',
 ];
 
 export async function tokenFor(

@@ -108,6 +108,8 @@ const GRANTS_BY_ROLE = {
     ['mandate', 'manage'],
     // Settings ▸ Workflow triggers (C33): releasing a definition version.
     ['automation', 'manage'],
+    // New client onboarding (C41-A): a client record and its onboarding.
+    ['record', 'write'],
   ],
   member: [
     ['task', 'read'],

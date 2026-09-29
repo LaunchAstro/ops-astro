@@ -58,6 +58,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // changed; the activation names its standing adoption through a column
   // grant (C52-A).
   ['si', 'occurrence_dispatches standing_approval_revocations standing_approvals'],
+  // 0036: an onboarding and its steps are laid out once and moved on by
+  // column grants, never deleted (C41-A).
+  ['siu', 'onboarding_steps onboardings'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(

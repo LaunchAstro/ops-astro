@@ -193,7 +193,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 38 cells: the 16 record-targeted operations, then the 22 with their own operand. */
+  /** The 40 cells: the 16 record-targeted operations, then the 24 with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -304,6 +304,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('approval.revoke', 'approvalId', f.automation.approvalId, (approvalId) => ({
       approvalId,
     }));
+    byAda('onboarding.start', 'clientId', f.onboardingClientId, (clientId) => ({
+      clientId,
+      templateKey: 'standard',
+    }));
+    byAda('onboarding.step_result', 'recordId', f.stepTaskId, (recordId) => ({
+      recordId,
+      outcome: 'done',
+      result: 'a result aimed abroad',
+    }));
     const own = await w.propose('a lineage the timing cells name');
     byAda('task.cancel', 'lineageId', f.proposal.lineageId, (lineageId) => ({
       recordId: own.task.id,
@@ -364,11 +373,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 45 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 47 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(45);
-    expect(names).toHaveLength(45);
+    expect(new Set(names).size, 'distinct operations').toBe(47);
+    expect(names).toHaveLength(47);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

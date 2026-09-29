@@ -455,7 +455,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   // The record type and the step outcome are checked by value in the command.
   'record.create': { type: 'any', fields: 'map' },
   'onboarding.start': { clientId: 'id', templateKey: 'any' },
-  'onboarding.step_result': { recordId: 'id', outcome: 'any', result: 'any' },
+  'onboarding.step_result': { recordId: 'any', outcome: 'any', result: 'any' },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
