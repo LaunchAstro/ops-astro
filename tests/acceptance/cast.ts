@@ -63,7 +63,7 @@ export const ACCEPTANCE_ISSUER = 'http://127.0.0.1:54391';
  * The grants the fixture gives each role. They are not a copy of
  * `GRANTS_BY_ROLE` in the seed: the fixture member holds `task:comment` and not
  * `person:read` or `settings:read`, and the fixture admin holds every action on
- * four collections where the seed names ten pairs. `final-r1-dbtest-cast.test.ts`
+ * five collections where the seed names eleven pairs. `final-r1-dbtest-cast.test.ts`
  * pins that difference and checks the seed's roles against the surface.
  *
  * `noah` is absent on purpose and that absence is the whole of case N2: a
@@ -92,7 +92,13 @@ export const MEMBER_ACTIONS: readonly Action[] = ['read', 'write', 'assign', 'co
  * fixture would have recorded four missing positive controls as product
  * failures. The grant is per collection because the surface says it is.
  */
-export const ADMIN_COLLECTIONS: readonly string[] = ['task', 'person', 'settings', 'preset'];
+export const ADMIN_COLLECTIONS: readonly string[] = [
+  'task',
+  'person',
+  'settings',
+  'preset',
+  'access',
+];
 
 export async function tokenFor(
   subject: string,

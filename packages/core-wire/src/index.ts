@@ -24,6 +24,10 @@ export {
 export type { CommandRefusal } from '../../core-records/src/index.ts';
 // What the reads answer, declared once for the server and every client.
 export type {
+  AccessAgent,
+  AccessPermission,
+  AccessPerson,
+  AccessReadResult,
   AttemptView,
   Capability,
   CapabilitiesResult,

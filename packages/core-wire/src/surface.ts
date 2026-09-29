@@ -79,6 +79,9 @@ export type CommandName =
   // why it takes no grant beyond membership: every pair in it is a pair the
   // caller already holds, so returning them confers nothing.
   | 'session.capabilities'
+  // Settings ▸ Access (C32): Team, Clients and Agents from the one set of
+  // person records, each with what its grants and delegations allow now.
+  | 'access.read'
   // The two settings the model classifies `operation`. A setting that decides
   // who must agree before money moves or before work completes is an authority
   // change wearing configuration's clothes, so it is not reachable through a
@@ -427,6 +430,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // delegation's purpose; before a pickup it is refused like every other
   // operation outside the two (minimum contract 8.2 case 9).
   read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated' }),
+  // `manage` on `access`, the key the Access screen's grants are changed under
+  // (C32): the answer is every person's authority, so reading it is not a
+  // member's everyday read. An agent never holds it.
+  read('access.read', 'access', { action: 'manage' }),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was

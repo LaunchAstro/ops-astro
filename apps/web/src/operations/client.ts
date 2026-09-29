@@ -75,6 +75,8 @@ export const READ_NAMES = [
   // server's `reads/dispatch.ts` asks it, not this list.
   'task.queue',
   'preset.plan',
+  // Settings ▸ Access (C32), under `access:manage` on the server.
+  'access.read',
 ] as const;
 
 /**
