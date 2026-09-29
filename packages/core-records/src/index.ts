@@ -182,3 +182,20 @@ export {
   revokeMandate,
   type MandateFiling,
 } from './mandates/writes.ts';
+export { CLIENT_TYPE_KEY, installClientType } from './tasks/install.ts';
+export {
+  ONBOARDING_TEMPLATES,
+  stepTaskTitle,
+  type OnboardingTemplate,
+  type StepKind,
+  type TemplateStep,
+} from './onboarding/template.ts';
+export {
+  closeStep,
+  failStep,
+  insertOnboarding,
+  lockStepOfTask,
+  onboardingOfClient,
+  type OnboardingStepRow,
+  type StepState,
+} from './onboarding/onboardings.ts';

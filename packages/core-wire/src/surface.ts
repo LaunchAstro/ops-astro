@@ -115,7 +115,13 @@ export type CommandName =
   | 'mandate.file'
   | 'mandate.revoke'
   | 'graduation.promote'
-  | 'graduation.demote';
+  | 'graduation.demote'
+  // New client onboarding (C41-A): the record-create command (a client, for
+  // now), laying a template out as tasks on that client, and the result each
+  // step writes onto its own task.
+  | 'record.create'
+  | 'onboarding.start'
+  | 'onboarding.step_result';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -276,6 +282,7 @@ const SESSION_COLLECTION = 'session';
 const CUSTODY_COLLECTION = 'custody';
 const CONNECTION_COLLECTION = 'connection';
 const MANDATE_COLLECTION = 'mandate';
+const RECORD_COLLECTION = 'record';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -385,6 +392,10 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     expectedRevision: 'any',
   },
   'graduation.demote': { classId: 'id', expectedRevision: 'any' },
+  // The record type and the step outcome are checked by value in the command.
+  'record.create': { type: 'any', fields: 'map' },
+  'onboarding.start': { clientId: 'id', templateKey: 'any' },
+  'onboarding.step_result': { recordId: 'id', outcome: 'any', result: 'any' },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -542,6 +553,31 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: MANDATE_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: ['classId'],
+  }),
+
+  // New client onboarding (C41-A). Creating a client and starting its
+  // onboarding are `record:write` business-wide; the start also asks
+  // `task:write` business-wide, because it lays tasks out. The ticket lets an
+  // agent hold them inside its delegation, but a delegation is narrowed to
+  // one task (0016), so none reaches a business-wide create: both are a
+  // person's until an agent's reach widens. A step's result is `task:write`
+  // on the step's own task, so a holder scoped to one client, or an agent
+  // delegated on that task, writes that step and no other.
+  declare('record.create', 'write', {
+    collection: RECORD_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('onboarding.start', 'write', {
+    collection: RECORD_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['clientId'],
+  }),
+  declare('onboarding.step_result', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId'],
+    agent: 'delegated',
   }),
 
   // The grant manager's authority, which is `manage` on the task family this

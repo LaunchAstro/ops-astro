@@ -323,3 +323,33 @@ export async function installTaskSpine(tx: TenantQuery): Promise<InstalledTaskSp
 
   return { taskTypeId, taskStateTypeId, taskCommentTypeId, stateIds, installed: true };
 }
+
+/** The client record type's key (C41-A). The CRM grows its fields later. */
+export const CLIENT_TYPE_KEY = 'client';
+
+const CLIENT_FIELDS: readonly SpineField[] = [
+  {
+    key: 'name',
+    label: 'Name',
+    valueType: 'text',
+    slot: 'txt_1',
+    writeMode: 'generic',
+    owningOperations: [],
+    escalatingOperation: null,
+    searchable: true,
+  },
+];
+
+/**
+ * The client record type, installed beside the task spine on first use, or
+ * the one already there. Idempotent by the type's key, inside the caller's
+ * transaction, the same way `installTaskSpine` is.
+ */
+export async function installClientType(tx: TenantQuery): Promise<string> {
+  const existing = await findRecordType(tx, CLIENT_TYPE_KEY);
+  if (existing !== undefined) return existing;
+  const slots = await slotTable(tx);
+  const clientTypeId = await createRecordType(tx, CLIENT_TYPE_KEY, 'Client');
+  await createFields(tx, clientTypeId, CLIENT_FIELDS, slots);
+  return clientTypeId;
+}
