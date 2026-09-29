@@ -16,6 +16,7 @@ import type { CommandRequest } from './requests.ts';
 import type { HandlerOutcome } from './outcome.ts';
 import { createTask, updateTask } from './tasks-write.ts';
 import { setState, writeOwnedFields } from './tasks-state.ts';
+import { setScores } from './tasks-scores.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
@@ -54,6 +55,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.set_stage': writeOwned,
   'task.set_party': writeOwned,
   'task.set_audience': writeOwned,
+  'task.set_scores': (tx, context, request) => setScores(tx, context, request.fields),
 
   'task.reparent': (tx, context, request) => reparentTask(tx, context, request.parentId),
   'task.move': (tx, context, request) =>

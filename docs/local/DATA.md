@@ -192,6 +192,9 @@ table exactly:
 | `priority`      | `num_1`              | `task.update`                                |
 | `completed_at`  | `ts_2`               | derived on complete, cleared on reopen       |
 | `stage`         | `txt_5`              | `task.set_stage`                             |
+| `impact`        | `num_3`              | `task.set_scores`                            |
+| `confidence`    | `num_4`              | `task.set_scores`                            |
+| `ease`          | `num_5`              | `task.set_scores`                            |
 | `key`, `source` | `txt_1`, `txt_2`     | system                                       |
 
 There is no `status` column and no second coarse field. Whether a task is done

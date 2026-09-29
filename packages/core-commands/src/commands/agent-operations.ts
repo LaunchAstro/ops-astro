@@ -17,7 +17,7 @@ import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts'
 import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
-import { isFieldMap } from './operands.ts';
+import { invalid, isFieldMap } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import {
@@ -32,11 +32,14 @@ import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
+import { setScores } from './tasks-scores.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import {
   claimedSystemFields,
+  expectedRevisionOf,
   irrelevantIdentifiers,
   lockTask,
+  REVISION_FIXES,
   SYSTEM_OWNED_FIXES,
 } from './prepare.ts';
 import { retainLateHandback } from './agent-late-handback.ts';
@@ -363,6 +366,34 @@ async function serveComment(
   );
 }
 
+async function serveScores(
+  tx: TenantQuery,
+  { request }: AgentCall,
+  _operands: NoOperands,
+  _delegation: Delegation,
+  taskId: string | undefined,
+) {
+  // `authorise` has held the delegation to this task and its `write` action
+  // to the delegating person's live grant. The lock and the revision are the
+  // person envelope's (`prepareCommand`), so the two entries refuse a stale
+  // write in the same words. `fields` is read here, after authority, so an
+  // agent holding nothing is told that before it is told about its body.
+  if (taskId === undefined) return NOT_FOUND();
+  const spine = await readTaskSpine(tx);
+  const target = await lockTask(tx, spine.taskTypeId, taskId);
+  if (target === undefined) return NOT_FOUND();
+  if (expectedRevisionOf(request) !== target.revision) {
+    return refused(refuseCommand('VERSION_STALE', [`revision=${target.revision}`], REVISION_FIXES));
+  }
+  const fields = request['fields'];
+  if (!isFieldMap(fields)) {
+    return refused(
+      invalid('fields', 'Send fields as an object of marks to values, such as { impact }.'),
+    );
+  }
+  return await setScores(tx, { spine, target }, fields);
+}
+
 async function serveHeartbeat(
   tx: TenantQuery,
   { session, request }: AgentCall,
@@ -502,6 +533,16 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       // record (`prepare.ts`, `lockTask`), so this one does too.
       operands: recordIdOperand(() => refuseNotFound()),
       serve: serveComment,
+    }),
+  ],
+  [
+    'task.set_scores',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveScores,
     }),
   ],
   [

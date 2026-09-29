@@ -150,6 +150,8 @@ export function createPositiveBody(
         return { body: { ...(await target()), fields: { stage: 'drafting' } } };
       case 'task.set_audience':
         return { body: { ...(await target()), fields: { client_visible: true } } };
+      case 'task.set_scores':
+        return { body: { ...(await target()), fields: { impact: 7, confidence: 9, ease: 8 } } };
       case 'task.set_party':
         // The party link takes a uuid and nothing in this tree resolves one:
         // the party model is not installed, and `tasks-state.ts` says so where

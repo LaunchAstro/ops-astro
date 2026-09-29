@@ -233,7 +233,7 @@ export async function setState(
 /** Write the fields this command's name owns, and refuse the ones it does not. */
 export async function writeOwnedFields(
   tx: TenantQuery,
-  context: CommandContext,
+  context: Pick<CommandContext, 'spine' | 'target'>,
   command: CommandName,
   fields: FieldValues,
 ): Promise<HandlerOutcome> {
