@@ -3,7 +3,7 @@
 import { expect, it } from 'vitest';
 import { axisTicks, formatTick } from '../../packages/ui/src/kit/charts.tsx';
 
-it('Sol proof, criterion MP-1-5 9: tiny axis ticks retain distinct readable labels', () => {
+it('MP-1-5 tiny axis ticks retain distinct readable labels', () => {
   const ticks = axisTicks(0, 1e-7);
   const labels = ticks.map((tick) => formatTick(tick, ticks));
   expect(new Set(labels).size).toBe(labels.length);

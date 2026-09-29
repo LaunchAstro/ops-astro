@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it } from 'vitest';
 import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
 
-it('Sol proof, criterion MP-1-2 6: dock tabs use licensed icons instead of initials', () => {
+it('MP-1-2 dock tabs use licensed icons instead of initials', () => {
   const html = renderToStaticMarkup(
     <Shell
       face="agency"
