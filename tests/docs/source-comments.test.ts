@@ -30,6 +30,7 @@ const CITATIONS: readonly (readonly [string, RegExp])[] = [
     'a review or proof record',
     /REVIEW-[A-Z]|-PROOFS\b|\bDB-PROOF|\bFG-[A-Z]-\d+|\bCQ-\d+\b|\bTR-[A-Z]+-/u,
   ],
+  ['a lane id', /\bL[1-9]\b/u],
   ['an earlier draft', /t1-draft|\bearlier draft\b|\bthis comment said\b/iu],
 ];
 
@@ -92,6 +93,8 @@ describe('a source comment cites no review round, lane or finding id', () => {
     [' * review round 1, #11). Here it is a malformed body.', 'a review round'],
     [' * Round 3 found two more.', 'a review round'],
     ["// the API lane's to own.", 'a lane'],
+    ["  // chosen a date. L4's `SuccessorRequest` still takes the instant.", 'a lane id'],
+    ['// The runtime surface L3 wires onto the command registry.', 'a lane id'],
     [' * which prefix it was on (L5-PROOFS handback, "Defects" 4).', 'a review or proof record'],
     [' * (REVIEW-AGENT-BOUNDARY d58b869 N1).', 'a review or proof record'],
     ['// Ported from `ops-astro-t1-draft@60f2009 apps/api/app.ts`.', 'an earlier draft'],
@@ -110,6 +113,7 @@ describe('a source comment cites no review round, lane or finding id', () => {
     "/** Dollars as the server's minor units, rounded rather than truncated. */",
     ' * The grant key is business and token together; FNV-1a over it tells one',
     '// A handback names a lease rather than a task.',
+    ' * prove abandonment (case L10), and the restore leaves a record whose parent',
   ])('keeps %s', (comment) => {
     expect(cites(comment)).toBeUndefined();
   });
