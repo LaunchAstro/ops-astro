@@ -13,10 +13,11 @@
 // authority and not authorship decides who owes it, and a decision a person is
 // responsible for is never switched off.
 
-import { grantHolders } from '../authority/grants.ts';
+import { grantHolders } from '../authority/grant-reach.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { withdrawEndedGates } from './clear.ts';
-import { raiseInboxItem, taskAccess } from './items.ts';
+import { taskAccess } from './access.ts';
+import { raiseInboxItem } from './items.ts';
 
 /**
  * A new pending gate. The task's superseded or ended gates have their open

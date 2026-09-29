@@ -15,6 +15,7 @@ import { runCli, serveApi, type ServedApi } from './cli-process-harness.ts';
 
 type Entry = Readonly<Record<string, unknown>>;
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1d inbox operations as processes', () => {
   let world: World;
   let api: ServedApi | undefined;

@@ -28,7 +28,8 @@
 
 import { standsOnShares } from '../identity/login-resolution.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { holdsOnTask, readScopes, type InboxFactKind, type InboxReason } from './items.ts';
+import { holdsOnTask, readScopes } from './access.ts';
+import type { InboxFactKind, InboxReason } from './items.ts';
 
 export interface UnattendedItem {
   readonly id: string;

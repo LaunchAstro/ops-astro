@@ -16,7 +16,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { raiseInboxItem } from '../../packages/core-records/src/index.ts';
 import { DELEGATION_HEADER, pathOf } from '../../packages/core-wire/src/surface.ts';
@@ -28,6 +28,7 @@ const serverUrl = databaseUrlFromEnvironment();
 
 type Entry = Readonly<Record<string, unknown>>;
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1g the inbox names what it points at', () => {
   const w = clearingWorld('i1g');
   let cora: Member;
@@ -134,6 +135,7 @@ describe.skipIf(serverUrl === undefined)('INB-1g the inbox names what it points 
     expect(columns.map((c) => c.column_name)).not.toContain('title');
   });
 
+  // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
   describe('INB-1 isolation over the named inbox', () => {
     it('business to business: neither business’s task names reach the other’s inbox', async () => {
       const alphaCanary = `alpha-canary-${randomUUID()}`;

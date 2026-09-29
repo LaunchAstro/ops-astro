@@ -45,19 +45,22 @@ function server(inbox: readonly InboxEntry[], owed: number) {
   return { client, posted };
 }
 
+// eslint-disable-next-line max-lines-per-function -- one mounted screen, and the cases that share it
 describe('INB-1g the inbox inside Tasks', () => {
   it('INB-1 the inbox lands inside Tasks: the board screen draws the items and the owed count', async () => {
     const api = server([entry({ id: 'a' }), entry({ id: 'b', reason: 'assignment' })], 2);
     const view = await mount(<Projects client={api.client} grantKey="alpha:mia" />);
     await settle();
-    expect(view.find('[data-inbox-count]')?.getAttribute('data-inbox-count')).toBe('2');
+    expect((view.find('[data-inbox-count]') as HTMLElement | null)?.dataset['inboxCount']).toBe(
+      '2',
+    );
     expect(view.all('[data-inbox-item]')).toHaveLength(2);
     expect(view.text()).toContain('You were mentioned');
     expect(view.text()).toContain('Assigned to you');
     expect(api.posted.map((p) => p.path)).toEqual(
       expect.arrayContaining([
-        expect.stringMatching(/\/inbox\/read$/),
-        expect.stringMatching(/\/inbox\/count$/),
+        expect.stringMatching(/\/inbox\/read$/u),
+        expect.stringMatching(/\/inbox\/count$/u),
       ]),
     );
     await view.unmount();
@@ -79,7 +82,7 @@ describe('INB-1g the inbox inside Tasks', () => {
     expect(words('asked')).toContain('Asked');
     expect(words('asked')).not.toContain('Delivered');
     expect(words('accepted')).toContain('Accepted, not yet delivered');
-    expect(words('accepted')).not.toMatch(/(^|\s)Delivered/);
+    expect(words('accepted')).not.toMatch(/(^|\s)Delivered/u);
     expect(words('delivered')).toContain('Delivered');
     expect(words('delivered')).not.toContain('Seen');
     expect(words('seen')).toContain('Delivered');
@@ -104,7 +107,9 @@ describe('INB-1g the inbox inside Tasks', () => {
     const view = await mount(<Inbox client={api.client} grantKey="alpha:mia" />);
     await settle();
     expect(view.find('[data-inbox-item="c"]')?.textContent).toContain('Cleared by Mia Member');
-    expect(view.find('[data-inbox-count]')?.getAttribute('data-inbox-count')).toBe('0');
+    expect((view.find('[data-inbox-count]') as HTMLElement | null)?.dataset['inboxCount']).toBe(
+      '0',
+    );
     await view.unmount();
   });
 
@@ -121,9 +126,11 @@ describe('INB-1g the inbox inside Tasks', () => {
     expect(stamp?.body['itemId']).toBe('o');
     expect(typeof stamp?.body['operationId']).toBe('string');
     expect(went).toHaveLength(1);
-    expect(went[0]).toMatch(/\/task\/T-o$/);
+    expect(went[0]).toMatch(/\/task\/T-o$/u);
     // Nothing on the screen closed it: still waiting and still counted.
-    expect(view.find('[data-inbox-item="o"]')?.getAttribute('data-counted')).toBe('true');
+    expect((view.find('[data-inbox-item="o"]') as HTMLElement | null)?.dataset['counted']).toBe(
+      'true',
+    );
     expect(view.find('[data-inbox-item="o"]')?.textContent).toContain('Waiting for you');
     await view.unmount();
   });

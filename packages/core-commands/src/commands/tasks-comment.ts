@@ -35,7 +35,12 @@
 // is marked dispatched to this caller's own lease: no effect before its
 // dispatch, whichever entry sends it.
 
-import { audienceNotPermitted, raiseMentions, readMentions, writeComment } from '../../../core-records/src/index.ts';
+import {
+  audienceNotPermitted,
+  raiseMentions,
+  readMentions,
+  writeComment,
+} from '../../../core-records/src/index.ts';
 import { acquire } from '../../../core-runtime/src/index.ts';
 import type {
   TenantQuery,

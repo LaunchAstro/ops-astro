@@ -20,7 +20,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { readInboxItems } from '../../packages/core-records/src/index.ts';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { tokenFor as acceptanceToken } from '../acceptance/cast.ts';
 import type { World } from '../acceptance/world.ts';
@@ -30,6 +30,7 @@ import { clearingWorld, decideBody, detailOf, ok, readable } from './inbox-clear
 
 const serverUrl = databaseUrlFromEnvironment();
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1 clearing', () => {
   const w = clearingWorld('inb1c');
 

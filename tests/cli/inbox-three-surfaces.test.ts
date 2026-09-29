@@ -20,6 +20,7 @@ import type { InboxCountResult, InboxReadResult } from '../../packages/core-wire
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { runCli, serveApi, type ServedApi } from './cli-process-harness.ts';
 
+// eslint-disable-next-line max-lines-per-function -- one mounted screen, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1g the owed count on three surfaces', () => {
   let world: World;
   let api: ServedApi | undefined;
@@ -75,6 +76,7 @@ describe.skipIf(serverUrl === undefined)('INB-1g the owed count on three surface
     await world?.close();
   }, 60_000);
 
+  // eslint-disable-next-line max-lines-per-function -- one mounted screen, and the cases that share it
   it('INB-1 only owed items are counted: the count is equal on the working minimum, the API and the command line, and drops on the deciding commit', async () => {
     const created = await post('/task/create', world.mia.token, {
       operationId: randomUUID(),

@@ -98,7 +98,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
-  // 0032: nothing in the journey raises an inbox item yet (INB-1b does).
+  // 0042: nothing in the journey raises an inbox item yet (INB-1b does).
   'public.inbox_items': {
     recipient_person_id: randomUUID(),
     subject_record_id: randomUUID(),

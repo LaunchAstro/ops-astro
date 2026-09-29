@@ -3,14 +3,14 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { raiseInboxItem, readInboxItems } from '../../packages/core-records/src/index.ts';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { enrol, grantTo } from './fixture.ts';
 import { clearingWorld, decideBody, ok } from './inbox-clearing-world.ts';
 
-describe.skipIf(databaseUrlFromEnvironment() === undefined)('Sol INB-1c isolation', () => {
+describe.skipIf(databaseUrlFromEnvironment() === undefined)('INB-1c isolation', () => {
   const w = clearingWorld('solinb1c');
 
-  it('Sol proof, criterion 3: deciding client A does not clear a client B item', async () => {
+  it('deciding client A does not clear a client B item', async () => {
     const clientA = await w.proposed('client A decision', randomUUID());
     const clientBId = randomUUID();
     const clientB = await w.proposed('client B task', clientBId);
