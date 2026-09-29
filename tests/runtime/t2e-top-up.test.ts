@@ -399,6 +399,69 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
     if (revokedBeforeDecision) expect(await maximumOf(plan.taskId)).toBe(MAXIMUM);
   });
 
+  it('Sol proof, criterion 2: a first approval committed before the second takes task locks counts as the first eye', async () => {
+    const plan = await planned(planner);
+    let release!: () => void;
+    let signal!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const firstsRead = new Promise<void>((resolve) => {
+      signal = resolve;
+    });
+    const secondDecision = s.db.app.withBusiness(s.business, async (tx) => {
+      const intercepted: TenantQuery = {
+        businessId: tx.businessId,
+        query: async <Row>(
+          sql: string,
+          parameters?: readonly unknown[],
+        ): Promise<readonly Row[]> => {
+          const answer = await tx.query<Row>(sql, parameters);
+          if (
+            sql.includes('from public.operations o') &&
+            sql.includes("o.command = 'budget.top_up'")
+          ) {
+            expect(answer).toHaveLength(0);
+            signal();
+            await waiting;
+          }
+          return answer;
+        },
+      };
+      return await applyTopUp(intercepted, {
+        taskId: plan.taskId,
+        amountMinor: BigInt(LARGE),
+        fromMaximumMinor: BigInt(MAXIMUM),
+        personId: second.personId,
+        subjects: [
+          { kind: 'person', id: second.personId },
+          { kind: 'actor', id: second.actorId },
+        ],
+        collection: 'billing',
+      });
+    });
+    await firstsRead;
+    const firstConnection = racer(s);
+    try {
+      const first = await executeCommand(
+        firstConnection,
+        s.business,
+        s.decider.presented,
+        'api',
+        topUpBody(plan.taskId, LARGE, MAXIMUM) as never,
+      );
+      expect(appliedDetail(first, 'first top-up')).toMatchObject({
+        state: 'awaiting_second_approver',
+      });
+    } finally {
+      release();
+      await firstConnection.close();
+    }
+    const outcome = await secondDecision;
+    expect(outcome.ok && outcome.value.state).toBe('applied');
+    expect(await maximumOf(plan.taskId)).toBe(MAXIMUM + LARGE);
+  });
+
   it("client to client: a client's own task share and billing grant reach no top-up, on theirs or another client's", async () => {
     const theirs = await planned(planner);
     for (const taskId of [clientTask, theirs.taskId]) {
@@ -449,6 +512,21 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
       memberships: 0,
       taskShares: 1,
     });
+  });
+
+  it('Sol proof, criterion 3: two external clients each hold one distinct task share in this business', async () => {
+    const clients = await rows<{ readonly person_id: string; readonly task_id: string }>(
+      s,
+      `select g.subject_id as person_id, g.scope_id as task_id from public.grants g
+        where g.business_id = $1 and g.subject_kind = 'person' and g.collection = 'task'
+          and g.action = 'read' and g.scope_kind = 'record' and g.revoked_at is null
+          and not exists(select 1 from public.memberships m
+            where m.business_id = g.business_id and m.person_id = g.subject_id and m.active)`,
+      [s.business],
+    );
+    expect(new Set(clients.map((client) => client.person_id)).size).toBe(2);
+    expect(new Set(clients.map((client) => client.task_id)).size).toBe(2);
+    expect(clients).toHaveLength(2);
   });
 
   it("business to business: a top-up moves only its own business's envelope", async () => {
