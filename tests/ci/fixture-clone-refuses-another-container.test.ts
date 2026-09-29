@@ -31,8 +31,8 @@ it.skipIf(serverUrl === undefined || otherUrl === undefined || container === und
     for (const source of sources) hash.update(source).update(readFileSync(source));
     const template = `fixture_${hash.digest('hex').slice(0, 16)}`;
     const target = `fixture_refused_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
-    const server = postgres(serverUrl ?? '', { onnotice: () => undefined });
-    const other = postgres(otherUrl ?? '', { onnotice: () => undefined });
+    const server = postgres(serverUrl ?? '');
+    const other = postgres(otherUrl ?? '');
     const templateUrl = new URL(serverUrl ?? '');
     templateUrl.pathname = `/${template}`;
     const reader = postgres(templateUrl.toString(), { max: 1, idle_timeout: 0 });
