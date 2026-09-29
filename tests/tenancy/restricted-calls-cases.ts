@@ -54,6 +54,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // (C33).
   ['si', 'activation_occurrences automation_definitions definition_versions'],
   ['siu', 'activations'],
+  // 0037: an adoption, a revocation and a dispatch are written once and never
+  // changed; the activation names its standing adoption through a column
+  // grant (C52-A).
+  ['si', 'occurrence_dispatches standing_approval_revocations standing_approvals'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(

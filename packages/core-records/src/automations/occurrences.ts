@@ -63,17 +63,23 @@ export type OccurrenceClaim =
  *
  * A second claim of the same cause, whether a replayed event, a restarted
  * scheduler or a racing one, commits nothing and answers `replayed` with the
- * first occurrence. No run starts here yet: the run is the agent engine's
- * (AW-01), and it starts only on C52-A's standing approval for exactly this
- * version, so every occurrence records why it did not start.
+ * first occurrence. No run starts here: an occurrence on an activation that is
+ * on, under a standing approval that is not revoked (C52-A), is `approved`
+ * and names that approval, and dispatch rechecks it before any run; every
+ * other occurrence records why it will not start one.
  */
 export async function claimOccurrence(
   tx: TenantQuery,
   activationId: string,
   cause: OccurrenceCause,
 ): Promise<OccurrenceClaim> {
-  const found = await tx.query<ActivationDbRow>(
-    `select ${ACTIVATION_COLUMNS} from public.activations where id = $1 for share`,
+  const found = await tx.query<ActivationDbRow & { readonly standing: string | null }>(
+    `select ${ACTIVATION_COLUMNS},
+            (select s.id from public.standing_approvals s
+              where s.id = activations.approval_id
+                and not exists (select 1 from public.standing_approval_revocations r
+                                 where r.approval_id = s.id)) as standing
+       from public.activations where id = $1 for share`,
     [activationId],
   );
   if (found[0] === undefined) return { kind: 'unknown' };
@@ -82,16 +88,19 @@ export async function claimOccurrence(
   if (activation.mode !== (scheduled ? 'scheduled' : 'event')) {
     return { kind: 'not_firing', mode: activation.mode };
   }
-  const outcome: OccurrenceOutcome = activation.enabled ? 'no_standing_approval' : 'activation_off';
+  const standing = found[0].standing;
+  let outcome: OccurrenceOutcome = 'activation_off';
+  if (activation.enabled) outcome = standing === null ? 'no_standing_approval' : 'approved';
+  const approvalId = outcome === 'approved' ? standing : null;
   const dueAt = scheduled ? cause.dueAt : null;
   const eventId = scheduled ? null : cause.eventId;
   const inserted = await tx.query<OccurrenceDbRow>(
     `insert into public.activation_occurrences
-       (business_id, id, activation_id, version_id, due_at, event_id, outcome)
-     values ((select public.app_business_id()), $1, $2, $3, $4, $5, $6)
+       (business_id, id, activation_id, version_id, due_at, event_id, outcome, approval_id)
+     values ((select public.app_business_id()), $1, $2, $3, $4, $5, $6, $7)
      on conflict do nothing
      returning ${OCCURRENCE_COLUMNS}`,
-    [randomUUID(), activation.id, activation.versionId, dueAt, eventId, outcome],
+    [randomUUID(), activation.id, activation.versionId, dueAt, eventId, outcome, approvalId],
   );
   if (inserted[0] !== undefined) return { kind: 'claimed', occurrence: occurrenceOf(inserted[0]) };
   const first = await tx.query<OccurrenceDbRow>(
