@@ -41,7 +41,12 @@ type Definition = {
   services: Record<string, Service>;
   networks: Record<
     string,
-    { name: string; internal?: boolean; driver_opts?: Record<string, string> }
+    {
+      name: string;
+      internal?: boolean;
+      enable_ipv6?: boolean;
+      driver_opts?: Record<string, string>;
+    }
   >;
   volumes: Record<string, { name: string; driver_opts?: Record<string, string> }>;
   [key: string]: unknown;
@@ -106,6 +111,14 @@ const REFUSALS: Row[] = [
           : [`${name}: gateway mode not isolated`],
       ),
     remove: (def) => delete def.networks['staging']!.driver_opts,
+  },
+  {
+    name: "the host's IPv6 bridge address: IPv6 off on the staging network",
+    check: (def) =>
+      Object.entries(def.networks).flatMap(([name, network]) =>
+        network.enable_ipv6 === false ? [] : [`${name}: IPv6 not disabled`],
+      ),
+    remove: (def) => delete def.networks['staging']!.enable_ipv6,
   },
   {
     name: 'every service on internal networks alone: no bridge route out',
@@ -349,7 +362,7 @@ live('S0-1 containment and resource limits, live', () => {
   afterAll(() => {
     compose(['down', '-v', '--timeout', '1']);
     docker(['rm', '-f', '-v', prod]);
-    docker(['network', 'rm', prod]);
+    docker(['network', 'rm', prod, names('dual')]);
     rmSync(scratch, { recursive: true, force: true });
   }, 120_000);
 
@@ -385,14 +398,14 @@ live('S0-1 containment and resource limits, live', () => {
       );
     }
     const format2 =
-      '{{.Internal}} {{index .Options "com.docker.network.bridge.gateway_mode_ipv4"}}';
+      '{{.Internal}} {{index .Options "com.docker.network.bridge.gateway_mode_ipv4"}} {{.EnableIPv6}}';
     const internal = docker(['network', 'inspect', names('staging'), '--format', format2]);
-    expect(internal.out).toBe('true isolated');
+    expect(internal.out).toBe('true isolated false');
   });
 
   it('S0-1 containment: from inside staging, each target is refused', async () => {
     // A service of the machine itself, listening on every address it has.
-    const listener = createServer((socket) => socket.end()).listen(0, '0.0.0.0');
+    const listener = createServer((socket) => socket.end()).listen(0, '::');
     await new Promise<void>((resolve) => {
       listener.once('listening', () => resolve());
     });
@@ -413,11 +426,24 @@ live('S0-1 containment and resource limits, live', () => {
     // Staging's bridge has no gateway: the address one would take is probed anyway.
     expect(ipam(names('staging')).Gateway ?? '').toBe('');
     const bridge = ipam(names('staging')).Subnet.replace(/\.0\/\d+$/u, '.1');
+    // The host's IPv6 bridge address, as an ordinary dual-stack bridge gives it.
+    const dual = docker(['network', 'create', '--ipv6', names('dual')]);
+    expect(dual.status, dual.out).toBe(0);
+    const v6 = (
+      JSON.parse(
+        docker(['network', 'inspect', names('dual'), '--format', '{{json .IPAM.Config}}']).out,
+      ) as { Subnet: string; Gateway?: string }[]
+    ).find((config) => config.Subnet.includes(':'))!.Gateway!;
+    // Staging itself holds no IPv6 address but loopback, so it has no IPv6 route at all.
+    expect(inStaging("awk '{print $6}' /proc/net/if_inet6 2>/dev/null | sort -u").out).toMatch(
+      /^(?:lo)?$/u,
+    );
     const targets: [string, string][] = [
       ["production's socket", `${prodIp}:5432`],
       ["production's port on the host", `host.docker.internal:${prodPort}`],
       ['the container host', `${gateway}:${hostPort}`],
       ["the host's address on staging's own bridge", `${bridge}:${hostPort}`],
+      ["the host's IPv6 bridge address", `${v6}:${hostPort}`],
       ['the metadata address', '169.254.169.254:80'],
       ['a private address, 10/8', '10.0.0.1:80'],
       ['a private address, 172.16/12', '172.16.0.1:80'],
@@ -425,8 +451,9 @@ live('S0-1 containment and resource limits, live', () => {
       ['the internet', '1.1.1.1:443'],
     ];
     const probe = (where: string[], target: string) => {
-      const [host, port] = target.split(':');
-      return docker([...where, 'nc', '-z', '-w', '2', host!, port!]).status;
+      const at = target.lastIndexOf(':');
+      const [host, port] = [target.slice(0, at), target.slice(at + 1)];
+      return docker([...where, 'nc', '-z', '-w', '2', host, port]).status;
     };
     // The probe can see a reachable target: from production's own network it
     // reaches production. Only then does a refusal from staging mean anything.
@@ -441,6 +468,14 @@ live('S0-1 containment and resource limits, live', () => {
           ['run', '--rm', '--network', prod, load().services['db']!.image!],
           `${gateway}:${hostPort}`,
         ),
+      ).toBe(0);
+    if (process.platform === 'linux')
+      expect(
+        probe(
+          ['run', '--rm', '--network', names('dual'), load().services['db']!.image!],
+          `${v6}:${hostPort}`,
+        ),
+        'control: the IPv6 host address is reachable from a dual-stack bridge',
       ).toBe(0);
     for (const [what, target] of targets)
       expect(probe(['exec', `${project}-db`], target), `${what} (${target})`).not.toBe(0);
