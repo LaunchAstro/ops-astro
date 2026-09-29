@@ -1,63 +1,55 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The command parity check and report (API-1). It scans the app's source for
-// every command a screen calls, maps each file to its route through the screen
-// registry's imports, builds the catalogue and holds the API, the CLI and the
-// app to the owning commands. Source files only: no database, no network.
+// The command parity check and report (API-1), from source files only.
 // `--check` exits 1 on any failure; `--json` prints the catalogue.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import {
   COMMAND_SURFACE,
+  PREFIX,
   VIEW_ONLY_EXEMPT,
   buildCatalogue,
   checkParity,
+  pathOf,
   profileOf,
   renderReport,
 } from '../packages/core-wire/src/index.ts';
-import { accepts } from '../apps/cli/client.ts';
+import { createCli } from '../apps/cli/client.ts';
+import { OperationsClient, READ_NAMES } from '../apps/web/src/operations/client.ts';
 
 const WEB = resolve(import.meta.dirname, '..', 'apps', 'web', 'src');
 /** The web surface itself and the address tables: transport, not actions. */
 const NOT_ACTIONS = new Set(['operations/client.ts', 'manifest.ts', 'routes.ts']);
 const APP_SHELL = 'app shell';
 
-/** Every source file under `root`, relative to it. */
 function sources(root) {
   return readdirSync(root, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile() && /\.tsx?$/u.test(entry.name))
     .map((entry) => relative(root, join(entry.parentPath, entry.name)));
 }
 
-/** The relative imports a file makes, resolved to paths relative to `root`. */
 function importsOf(root, file, text) {
   return [...text.matchAll(/from\s+'(\.{1,2}\/[^']+)'/gu)].map((match) =>
     relative(root, resolve(dirname(join(root, file)), match[1])),
   );
 }
 
-/** Command names quoted in `text` whose namespace is one the surface declares. */
+/** Command names quoted in `text`, in any of the three quotes, whose namespace the surface declares. */
 export function commandsIn(text, namespaces) {
-  return [...text.matchAll(/'([a-z]+)\.([a-z_]+)'/gu)]
-    .filter((match) => namespaces.has(match[1]))
-    .map((match) => `${match[1]}.${match[2]}`);
+  // Comments name commands in backticks; only code calls them.
+  const code = text.replaceAll(/\/\*[\s\S]*?\*\//gu, '').replaceAll(/(^|[^:])\/\/.*$/gmu, '$1');
+  return [...code.matchAll(/(['"`])([a-z]+)\.([a-z_]+)\1/gu)]
+    .filter((match) => namespaces.has(match[2]))
+    .map((match) => `${match[2]}.${match[3]}`);
 }
 
-/**
- * Every place the app calls a command. `files` maps a path relative to the
- * web source root to its text, so a test can plant one. A file no route's
- * screen imports is attributed to the app shell.
- */
+/** Every place the app calls a command; a file no route's screen imports is the app shell's. */
 export function scanUses(files, namespaces) {
   const registry = files.get('screen-registry.tsx') ?? '';
-  const imported = new Map(
-    [...registry.matchAll(/import\s+\{\s*(\w+)\s*\}\s+from\s+'\.\/([^']+)'/gu)].map((match) => [
-      match[1],
-      match[2],
-    ]),
-  );
+  const named = registry.matchAll(/import\s+\{\s*(\w+)\s*\}\s+from\s+'\.\/([^']+)'/gu);
+  const imported = new Map(Array.from(named, (match) => [match[1], match[2]]));
   const routeOf = new Map();
   for (const block of registry.split(/\n\s{2}'/u).slice(1)) {
     const route = block.slice(0, block.indexOf("'"));
@@ -83,14 +75,40 @@ export function scanUses(files, namespaces) {
   return uses;
 }
 
-/** What each real surface reaches: the API serves every row, the CLI what it accepts. */
+const SERVED = new Map(COMMAND_SURFACE.map((one) => [pathOf(one.name), profileOf(one)]));
+const ROOT = `${PREFIX.person}b`;
+
+// What a client reaches: each name goes through the real client, which posts
+// before its first await, and is profiled as the endpoint served at the path it
+// sent, so a redirected verb meets that route's grant. Sending nothing reaches nothing.
+function reached(send) {
+  const reach = new Map();
+  for (const { name } of COMMAND_SURFACE) {
+    let path;
+    const record = (sent) => {
+      path = sent;
+      return Promise.resolve(new Response('{}'));
+    };
+    send(name, record).catch(() => null);
+    const profile = path?.startsWith(ROOT) ? SERVED.get(path.slice(ROOT.length)) : undefined;
+    if (profile !== undefined) reach.set(name, profile);
+  }
+  return reach;
+}
+
+const app = (fetch) => new OperationsClient({ origin: '', businessKey: 'b', token: null, fetch });
+
+/** What each real surface reaches, and the grant asked where it lands. */
 export function realSurfaces(uses) {
-  const served = new Map(COMMAND_SURFACE.map((one) => [one.name, profileOf(one)]));
   return {
-    api: served,
-    cli: new Map([...served].filter(([name]) => accepts(name))),
-    // The app's client takes every surface name (`mutate()` and `read()`).
-    web: served,
+    // The API mounts one route per row (`apps/api/app.ts`).
+    api: new Map(COMMAND_SURFACE.map((one) => [one.name, profileOf(one)])),
+    cli: reached((name, transport) =>
+      createCli({ businessKey: 'b', credential: 'unused', transport }).run(name, {}),
+    ),
+    web: reached((name, fetch) =>
+      READ_NAMES.includes(name) ? app(fetch).read(name, {}) : app(fetch).mutate(name, {}),
+    ),
     ui: uses,
     exempt: VIEW_ONLY_EXEMPT,
   };

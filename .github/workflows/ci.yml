@@ -404,4 +404,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: node scripts/command-parity.mjs --check
-      - run: pnpm vitest run tests/commands/api-1-catalogue.test.ts
+      - run: pnpm vitest run tests/commands/api-1-catalogue.test.ts tests/commands/sol-api-1-proof.test.ts
