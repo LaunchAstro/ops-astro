@@ -199,6 +199,19 @@
   color: var(--text);
   background: var(--surface);
 }
+/* The count chip (DS-SIDE-4): square, never capped, the same in both themes. */
+.dock__n {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 17px;
+  height: 16px;
+  padding: 0 2.4px;
+  background: var(--accent);
+  color: var(--on-dark);
+  font-size: 0.625rem;
+  line-height: 16px;
+}
 /* Open is an OUTLINE and a rule, never a fill. */
 .dock__tab[aria-expanded='true'] {
   color: var(--accent);

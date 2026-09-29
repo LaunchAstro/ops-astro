@@ -22,7 +22,10 @@
 //
 // **Only a panel with a body gets a tab (R34).** `route` is required and is a
 // `StaticRouteId`, so a registration names a route `routes.ts` serves at an
-// address with no parameters, and the tab has somewhere to arrive. The draft's
+// address with no parameters, and the tab has somewhere to arrive. The route
+// must also need a session: an authenticated route has a screen that reads the
+// business's records, and a public one such as sign-in reads none, so a
+// registration pointing there draws no tab. The draft's
 // `ai` panel reads conversation records this build does not store, so it has
 // an id and a rank and no registration; the rail grows as the stores land.
 //
@@ -30,7 +33,7 @@
 // reports, so it paints at load rather than after the first open (D-18), and
 // is printed whole: 120 reads "120", never "99+". No count, or zero, no chip.
 
-import type { StaticRouteId } from './routes.ts';
+import { ROUTES, type StaticRouteId } from './routes.ts';
 
 export const PANEL_RANK = Object.freeze([
   'ai',
@@ -85,7 +88,7 @@ export function dockTabs(
 ): readonly PanelTab[] {
   return PANEL_RANK.flatMap((id) => {
     const panel = registry[id];
-    if (panel === undefined) return [];
+    if (panel === undefined || !ROUTES[panel.route].authenticated) return [];
     const count = counts[id] ?? 0;
     return [
       { id, label: panel.label, route: panel.route, count: count > 0 ? String(count) : null },

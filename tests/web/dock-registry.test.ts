@@ -54,7 +54,11 @@ function sources(dir: string): string[] {
 }
 
 function code(file: string): string {
-  return readFileSync(file, 'utf8')
+  return withoutComments(readFileSync(file, 'utf8'));
+}
+
+function withoutComments(text: string): string {
+  return text
     .split('\n')
     .filter((line) => !/^\s*(?:\/\/|\*|\/\*)/u.test(line))
     .join('\n');
@@ -71,6 +75,15 @@ describe('MP-3-1 tab rank one list', () => {
   it('follows the declared list for the registry the application ships', () => {
     const shipped = dockTabs().map((tab) => tab.id);
     expect(shipped).toEqual(PANEL_RANK.filter((id) => PANELS[id] !== undefined));
+  });
+
+  it('spots a second order however it is spelt, and not one in a comment', () => {
+    const declares = (text: string): boolean => SECOND_ORDER.test(withoutComments(text));
+    expect(declares("const o = ['team',\t'ai'];")).toBe(true);
+    expect(declares('const o = [\n  "notes",\n  `marks`,\n];')).toBe(true);
+    expect(declares("x(['clients' ,'todos'])")).toBe(true);
+    expect(declares("// ['team', 'ai']\n * 'notes', 'marks'")).toBe(false);
+    expect(declares("const o = ['team', 'Team label'];")).toBe(false);
   });
 
   it('declares the order in one place: no other source lists two panel ids in a row', () => {

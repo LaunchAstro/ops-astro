@@ -254,6 +254,7 @@ export function App(props: AppProps): ReactElement {
           : dockTabs().map((tab) => ({
               id: tab.id,
               label: tab.label,
+              count: tab.count,
               open: here === pathTo(tab.route),
             }))
       }

@@ -23,6 +23,8 @@ export interface RailEntry {
 export interface DockTab {
   readonly id: string;
   readonly label: string;
+  /** The count chip's text, or null for no chip. */
+  readonly count: string | null;
   readonly open: boolean;
 }
 
@@ -90,7 +92,7 @@ export function Shell(props: ShellProps): ReactElement {
             className="dock__tab"
             type="button"
             aria-expanded={tab.open}
-            aria-label={`${tab.open ? 'Close' : 'Open'} ${tab.label}`}
+            aria-label={`${tab.open ? 'Close' : 'Open'} ${tab.label}${tab.count === null ? '' : `, ${tab.count}`}`}
             onClick={() => {
               props.onDockTab(tab.id);
             }}
@@ -99,6 +101,11 @@ export function Shell(props: ShellProps): ReactElement {
                 with redistribution rights is resolved, rather than an emoji,
                 which the design system forbids outright. */}
             <span aria-hidden="true">{tab.label.slice(0, 1)}</span>
+            {tab.count === null ? null : (
+              <span className="dock__n" aria-hidden="true">
+                {tab.count}
+              </span>
+            )}
           </button>
         ))}
         {props.panel}
