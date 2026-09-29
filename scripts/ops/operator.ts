@@ -35,7 +35,7 @@ import {
   type BusinessId,
   type VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
-import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { createSupabaseVerifier, keySetUrlFor } from '../../apps/api/auth/supabase.ts';
 import { createBusinessResolver } from '../../apps/api/server.ts';
 
 /** The person an operator act runs as, and the business it was checked in. */
@@ -59,7 +59,7 @@ type Environment = Readonly<Record<string, string | undefined>>;
 const KEY = `${OPERATIONS_MANAGE.collection}:${OPERATIONS_MANAGE.action}`;
 /** What an agent or a delegation carries, as the command line names it. */
 const NOT_A_PERSON = ['OPS_ASTRO_AGENT', 'OPS_ASTRO_DELEGATION', 'OPS_ASTRO_DELEGATION_FILE'];
-const CHECKED_WITH = ['DATABASE_URL', 'DATABASE_ADMIN_URL', 'SUPABASE_JWT_SECRET', 'GOTRUE_URL'];
+const CHECKED_WITH = ['DATABASE_URL', 'DATABASE_ADMIN_URL', 'GOTRUE_URL'];
 /** The file in the record folder, one JSON line per act. */
 export const RECORD_FILE = 'deployments.jsonl';
 
@@ -159,10 +159,12 @@ export async function requireOperator(environment: Environment = process.env): P
     };
   }
 
-  const verify = createSupabaseVerifier({
-    secret: env['SUPABASE_JWT_SECRET']!,
-    issuer: env['GOTRUE_URL']!,
-  });
+  // The provider's published key set, as the API checks a sign-in (S0-6b).
+  const keySetUrl = keySetUrlFor(env['SUPABASE_KEY_SET_URL'] ?? '', env['GOTRUE_URL']!);
+  if (keySetUrl === undefined) {
+    return refused('SUPABASE_KEY_SET_URL may name a loopback key set only, for a loopback issuer');
+  }
+  const verify = createSupabaseVerifier({ issuer: env['GOTRUE_URL']!, keySetUrl });
   const bearer = `Bearer ${env['OPS_ASTRO_TOKEN']!}`;
   const request = {
     header: (name: string) => (name.toLowerCase() === 'authorization' ? bearer : undefined),

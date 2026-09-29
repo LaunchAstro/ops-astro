@@ -8,10 +8,10 @@
 // the command is run as the owner runs it, over a fixture artefact store and
 // fixture service-manager output, the way S0-1a's report is tested.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import {
   parseService,
   promote,
@@ -35,6 +35,7 @@ const LINE = 'Tried the task page and the approval queue on staging; both behave
 const CANARY = 'canary-5d1e9a-promotion-secret';
 
 const scratch = mkdtempSync(join(tmpdir(), 's0-1d-'));
+afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 let stores = 0;
 /** An artefact store: one directory per build, each carrying its own stamp. */
 const store = (builds: Record<string, string | null>): string => {

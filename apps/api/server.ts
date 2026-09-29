@@ -59,7 +59,11 @@ import {
   withRuntimeKeys,
 } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
-import { createSupabaseVerifier, type SupabaseVerifierOptions } from './auth/supabase.ts';
+import {
+  createSupabaseVerifier,
+  keySetUrlFor,
+  type SupabaseVerifierOptions,
+} from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import {
@@ -290,9 +294,8 @@ async function main(): Promise<void> {
 
   // A test's stand-in set, for a loopback issuer only: a hosted issuer's
   // tokens are checked against that provider's own published set, always.
-  const named = environment['SUPABASE_KEY_SET_URL'] ?? '';
-  const loopback = /^http:\/\/127\.0\.0\.1:\d+(?:\/|$)/u;
-  if (named !== '' && !(loopback.test(named) && loopback.test(issuer ?? ''))) {
+  const keySetUrl = keySetUrlFor(environment['SUPABASE_KEY_SET_URL'] ?? '', issuer ?? '');
+  if (keySetUrl === undefined) {
     console.error(
       'api: SUPABASE_KEY_SET_URL may name a loopback key set only, for a loopback issuer.',
     );
@@ -333,7 +336,7 @@ async function main(): Promise<void> {
     identity: readIdentity(ROOT),
     database,
     admin,
-    signIn: { issuer: issuer as string, keySetUrl: keySetUrlOf(named, issuer as string) },
+    signIn: { issuer: issuer as string, keySetUrl },
     keys,
     live: { topics },
     ...(alerts === undefined ? {} : { alerts }),
@@ -394,13 +397,6 @@ function alertsFrom(environment: Readonly<Record<string, string | undefined>>): 
     console.error(`api: ${(error as Error).message}`);
     process.exit(1);
   }
-/**
- * The provider's key set, under its own address as GoTrue and a hosted project
- * publish it. `SUPABASE_KEY_SET_URL` stands in for it only where both are on
- * loopback (a test's static set), so it cannot move a hosted check anywhere.
- */
-function keySetUrlOf(named: string, issuer: string): string {
-  return named === '' ? `${issuer.replace(/\/+$/u, '')}/.well-known/jwks.json` : named;
 }
 
 const RETRY =

@@ -74,6 +74,19 @@ export type Verifier = (request: Context['req']) => Promise<Verified | undefined
  * the environment, because what an operator can set, an operator can set by
  * accident. The composition root supplies it once.
  */
+const LOOPBACK = /^http:\/\/127\.0\.0\.1:\d+(?:\/|$)/u;
+
+/**
+ * The provider's key set, under its own address as GoTrue and a hosted project
+ * publish it. `named` (`SUPABASE_KEY_SET_URL`) stands in for it only where both
+ * are on loopback (a test's static set), so it cannot move a hosted check
+ * anywhere: named anywhere else, there is no key set, `undefined`.
+ */
+export function keySetUrlFor(named: string, issuer: string): string | undefined {
+  if (named === '') return `${issuer.replace(/\/+$/u, '')}/.well-known/jwks.json`;
+  return LOOPBACK.test(named) && LOOPBACK.test(issuer) ? named : undefined;
+}
+
 export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifier {
   const verifyToken = createKeySetVerifier({
     keySetUrl: options.keySetUrl,
