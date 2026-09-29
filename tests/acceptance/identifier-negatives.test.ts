@@ -53,6 +53,10 @@ interface Cell {
 
 const NOBODY = 'text nobody should find in an audit row';
 
+/** A time command's body on a task, or on an entry (MP-4-6). */
+const onTask = (extra: Body) => (taskId: string) => ({ taskId, ...extra });
+const onEntry = (extra: Body) => (entryId: string) => ({ entryId, ...extra });
+
 /** An operand in its foreign and fabricated forms. */
 const pair = (
   operand: string,
@@ -270,6 +274,27 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       }
     },
     300_000,
+  );
+
+  it(
+    CASE.time,
+    async () => {
+      // MP-4-6: a task names what is timed and an entry what is noted or
+      // deleted. Bravo's are foreign; each answers as a fabricated one does.
+      const f = w.foreign;
+      const cells: [CommandName, ReturnType<typeof pair>][] = [
+        ['time.start', pair('taskId', f.task.id, onTask({}))],
+        ['time.stop', pair('taskId', f.task.id, onTask({}))],
+        ['time.log', pair('taskId', f.task.id, onTask({ duration: '5', note: NOBODY }))],
+        ['time.set_note', pair('entryId', f.entryId, onEntry({ note: NOBODY }))],
+        ['time.delete', pair('entryId', f.entryId, onEntry({}))],
+      ];
+      for (const [op, { operand, forms }] of cells) {
+        // eslint-disable-next-line no-await-in-loop
+        await refuses(op, operand, ada, 'NOT_FOUND', forms);
+      }
+    },
+    120_000,
   );
 
   it(

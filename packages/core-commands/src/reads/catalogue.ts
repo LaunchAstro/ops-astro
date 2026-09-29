@@ -196,6 +196,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         },
         // The rank's pool is every open task this reader's grants reach.
         { kind: 'grants', subjects: subjectsOf(session) },
+        // A member reads their own time on the task (RS-VAULT-9).
+        session.personId,
       );
       // Not there, or there in another business: one answer, deliberately.
       return task === undefined ? refuseNotFound() : { ok: true, task };

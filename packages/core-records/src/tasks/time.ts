@@ -31,8 +31,6 @@ import { isUuid } from '../tenancy/ids.ts';
 
 export interface TimeEntry {
   readonly id: string;
-  readonly personId: string;
-  readonly personName: string;
   readonly startedAt: string;
   readonly endedAt: string | null;
   readonly minutes: number | null;
@@ -42,11 +40,11 @@ export interface TimeEntry {
 }
 
 export interface TaskTime {
-  /** Live entries, newest first. */
+  /** The reader's own live entries, newest first. */
   readonly entries: readonly TimeEntry[];
   /** The reader's own running timer on this task, or null. */
   readonly running: { readonly entryId: string; readonly startedAt: string } | null;
-  /** The finished entries' minutes, summed. */
+  /** Every person's finished minutes on the task, summed: one number, no names. */
   readonly totalMinutes: number;
 }
 
@@ -202,8 +200,6 @@ export async function deleteTimeEntry(
 
 interface EntryRow {
   readonly id: string;
-  readonly person_id: string;
-  readonly person_name: string | null;
   readonly started_at: Date;
   readonly ended_at: Date | null;
   readonly minutes: number | null;
@@ -212,7 +208,12 @@ interface EntryRow {
   readonly source: 'timer' | 'log';
 }
 
-/** A task's live entries, and which running one is the reader's. */
+/**
+ * A task's time as one person reads it: their own live entries and running
+ * timer, and the task's total (RS-VAULT-9: a person sees their own time,
+ * never a leaderboard). Another person's entries never leave the database;
+ * the total is a sum with no rows behind it.
+ */
 export async function readTaskTime(
   tx: TenantQuery,
   taskId: string,
@@ -220,18 +221,20 @@ export async function readTaskTime(
 ): Promise<TaskTime> {
   if (!isUuid(taskId)) return { entries: [], running: null, totalMinutes: 0 };
   const rows = await tx.query<EntryRow>(
-    `select e.id, e.person_id, p.display_name as person_name, e.started_at, e.ended_at,
-            e.minutes, e.note, e.ad_hoc, e.source
+    `select e.id, e.started_at, e.ended_at, e.minutes, e.note, e.ad_hoc, e.source
        from public.time_entries e
-       left join public.people p on p.business_id = e.business_id and p.id = e.person_id
-      where e.business_id = $1 and e.task_id = $2::uuid and e.deleted_at is null
+      where e.business_id = $1 and e.task_id = $2::uuid and e.person_id = $3
+        and e.deleted_at is null
       order by e.started_at desc, e.id`,
+    [tx.businessId, taskId, readerPersonId],
+  );
+  const total = await tx.query<{ readonly minutes: number }>(
+    `select coalesce(sum(minutes), 0)::int as minutes from public.time_entries
+      where business_id = $1 and task_id = $2::uuid and deleted_at is null`,
     [tx.businessId, taskId],
   );
   const entries = rows.map((row): TimeEntry => ({
     id: row.id,
-    personId: row.person_id,
-    personName: row.person_name ?? '',
     startedAt: row.started_at.toISOString(),
     endedAt: row.ended_at?.toISOString() ?? null,
     minutes: row.minutes,
@@ -239,10 +242,10 @@ export async function readTaskTime(
     adHoc: row.ad_hoc,
     source: row.source,
   }));
-  const mine = entries.find((entry) => entry.endedAt === null && entry.personId === readerPersonId);
+  const mine = entries.find((entry) => entry.endedAt === null);
   return {
     entries,
     running: mine === undefined ? null : { entryId: mine.id, startedAt: mine.startedAt },
-    totalMinutes: entries.reduce((sum, entry) => sum + (entry.minutes ?? 0), 0),
+    totalMinutes: total[0]?.minutes ?? 0,
   };
 }

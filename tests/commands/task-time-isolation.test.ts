@@ -86,7 +86,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-6 isolation: another client', () 
       expect(outcomeOf(answer), body.command).toStrictEqual(NOT_FOUND);
       expect(JSON.stringify(answer)).not.toContain(CANARY);
     }
-    expect(await w.entries(taskB)).toStrictEqual([]);
+    expect(await w.entries(taskB)).toHaveLength(0);
   });
 });
 

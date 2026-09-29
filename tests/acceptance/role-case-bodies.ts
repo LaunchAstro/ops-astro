@@ -111,9 +111,46 @@ async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence:
   return { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
 }
 
+type TimeCommand = 'time.start' | 'time.stop' | 'time.log' | 'time.set_note' | 'time.delete';
+
+/**
+ * The context person's own time (MP-4-6). A person has one running timer, so
+ * the start recipe stops the timer it last started before naming a fresh
+ * task, and the stop recipe starts one for its body to stop.
+ */
+function timeRecipes(context: BodyContext): Readonly<Record<TimeCommand, () => Promise<Prepared>>> {
+  let timed: string | undefined;
+  const fresh = async (): Promise<string> => {
+    if (timed !== undefined) await context.asPerson('time.stop', { taskId: timed });
+    timed = (await context.freshTask('a task the admin times')).id;
+    return timed;
+  };
+  const entry = async (): Promise<string> => {
+    const body = { taskId: context.alphaTaskId, duration: '5' };
+    const logged = await context.asPerson('time.log', body);
+    if (logged.code !== 'ok') throw new Error(`matrix: time.log refused ${logged.code}`);
+    return String((logged.body['detail'] as Record<string, unknown>)['entryId']);
+  };
+  return {
+    'time.start': async () => ({ body: { taskId: await fresh() } }),
+    'time.stop': async () => {
+      const taskId = await fresh();
+      const started = await context.asPerson('time.start', { taskId });
+      if (started.code !== 'ok') throw new Error(`matrix: time.start refused ${started.code}`);
+      return { body: { taskId } };
+    },
+    'time.log': async () => ({
+      body: { taskId: context.alphaTaskId, duration: '1h 30m', note: 'logged by the admin' },
+    }),
+    'time.set_note': async () => ({ body: { entryId: await entry(), note: 'the admin notes it' } }),
+    'time.delete': async () => ({ body: { entryId: await entry() } }),
+  };
+}
+
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration) => Promise<Prepared> {
+  const time = timeRecipes(context);
   // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
   return async function positiveBody(declaration: CommandDeclaration): Promise<Prepared> {
     const target = async (): Promise<Record<string, unknown>> => {
@@ -282,6 +319,12 @@ export function createPositiveBody(
         // The person renews their own lease (ledger line 38, "current lease
         // owner"). The agent's renewal is in the agent journey.
         return { body: await ownLease(context) };
+      case 'time.start':
+      case 'time.stop':
+      case 'time.log':
+      case 'time.set_note':
+      case 'time.delete':
+        return await time[declaration.name]();
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }

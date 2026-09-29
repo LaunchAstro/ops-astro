@@ -99,8 +99,13 @@ export const ADMIN_COLLECTIONS: readonly string[] = ['task', 'person', 'settings
  * access (MP-4-10) asks `access:share`, which the key catalogue gives the owner
  * and administrators; the rest of `access` is not theirs by this fixture, and
  * `ADMIN_COLLECTIONS` also sizes agent delegations, which never hold `share`.
+ * Time tracking (MP-4-6) asks `time:write`, the owner's and administrators'
+ * and a member's where granted; no agent reaches the `time.*` commands yet.
  */
-export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [['access', 'share']];
+export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
+  ['access', 'share'],
+  ['time', 'write'],
+];
 
 export async function tokenFor(
   subject: string,

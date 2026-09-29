@@ -530,6 +530,8 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
             // An agent works one task under its delegation, so the pool its
             // rank is worked out in is that task and no other.
             { kind: 'task' },
+            // An agent is sent no one's time: the time on a task is its people's.
+            null,
           );
         } catch (cause) {
           // Decisions that do not verify are the fault the person read answers

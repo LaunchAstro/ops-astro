@@ -2,7 +2,7 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 16 of the 35. For each of the other 19 this file
+// `recordId`, which reaches 16 of the 40. For each of the other 24 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
@@ -20,6 +20,7 @@ export const CASE = {
   board: 'refuses a board read on a foreign or fabricated board, never an empty success',
   agent: 'refuses the agent alike on foreign, fabricated and in-business operands',
   pickup: 'refuses a pickup alike on a foreign, a fabricated and a claimed reservation',
+  time: 'refuses a foreign and a fabricated task or time entry alike on the time commands',
   targetFree: 'refuses a target a target-free operation has no use for (SC2 reading)',
 } as const;
 
@@ -43,7 +44,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['session.capabilities', {}],
 ];
 
-/** The ten identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The fifteen identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -57,6 +58,11 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.heartbeat': ['leaseId', 'agent'],
   'task.handback': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
+  'time.start': ['taskId', 'time'],
+  'time.stop': ['taskId', 'time'],
+  'time.log': ['taskId', 'time'],
+  'time.set_note': ['entryId', 'time'],
+  'time.delete': ['entryId', 'time'],
 };
 
 /**

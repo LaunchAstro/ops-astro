@@ -24,6 +24,7 @@ import {
   readFieldDefinitions,
   isLive,
   isUuid,
+  readTaskTime,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
@@ -242,6 +243,8 @@ export async function readTaskDetail(
   recordId: string,
   comments: { readonly commentTypeId: string | undefined; readonly internal: boolean },
   rankPool: RankPool,
+  /** The person whose own time is sent (RS-VAULT-9); null sends none, as to an agent. */
+  timeReader: string | null,
 ): Promise<TaskDetail | undefined> {
   // A malformed identifier is not cast and not queried. The cast would raise
   // where the contract promises a refusal, and "that is not a uuid" is an
@@ -274,7 +277,7 @@ export async function readTaskDetail(
     stage: row.stage,
     clientSet: row.client_set,
     steps: await readTaskSteps(tx, taskTypeId, row.id, rankPool),
-    time: null,
+    time: timeReader === null ? null : await readTaskTime(tx, row.id, timeReader),
   };
 }
 
