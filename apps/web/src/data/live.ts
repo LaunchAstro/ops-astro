@@ -77,3 +77,18 @@ export function followLive(
     window.removeEventListener('online', refresh);
   };
 }
+
+// C4 stub: the hub's shape, no behaviour yet.
+export type OpenTopics = (
+  topics: readonly string[],
+  signal: AbortSignal,
+) => Promise<ReadableStream<Uint8Array> | null>;
+
+export interface LiveHub {
+  follow(topic: string, onChange: (change: LiveChange) => void): () => void;
+  readonly downSince: number | null;
+}
+
+export function createLiveHub(_open: OpenTopics, _options: FollowOptions = {}): LiveHub {
+  return { follow: () => () => {}, downSince: null };
+}
