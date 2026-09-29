@@ -323,7 +323,11 @@ function dockProps(input: {
     onDoor: input.navigate,
     onBodyClick: (id, event) => {
       const panel = byId(id);
-      const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+      // A link that is itself a door into the dock is the gesture law's, not a walk.
+      const link =
+        event.target instanceof Element
+          ? event.target.closest('a[href]:not([data-dock-open]):not([data-ask])')
+          : null;
       if (panel === null || link === null || event.defaultPrevented) return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       if (link.getAttribute('target') !== null && link.getAttribute('target') !== '_self') return;

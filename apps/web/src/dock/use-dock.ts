@@ -8,9 +8,18 @@
 // a tenant's close runs once per close even where React runs updaters twice.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { dockTabs, type PanelRegistry } from '../panels.ts';
+import { dockTabs, isPanelId, type PanelRegistry } from '../panels.ts';
 import { grantKeyOf, type Session, type StorageLike } from '../session/token.ts';
-import { closedBy, dockSlot, escape, handledInside, only, type DockState } from './open-set.ts';
+import {
+  closedBy,
+  dockSlot,
+  escape,
+  handledInside,
+  isOwnAddress,
+  only,
+  openByGesture,
+  type DockState,
+} from './open-set.ts';
 
 export interface DockModel {
   readonly state: DockState;
@@ -70,6 +79,33 @@ export function useDock(
       document.removeEventListener('keydown', onKey);
     };
   }, [change]);
+
+  // Every other door into the dock obeys the same law as the tab (MP-3-4): a
+  // row, a route, a badge, a task icon declares `data-dock-open` and may name
+  // the view with `data-dock-place`; the ask seam declares `data-ask` and opens
+  // the assistant. Plain solos, shift stacks, and a target already open stays
+  // open while its view moves. A click another handler took is left alone.
+  useEffect(() => {
+    const onClick = (event: MouseEvent): void => {
+      if (event.defaultPrevented || event.button !== 0) return;
+      const door =
+        event.target instanceof Element
+          ? event.target.closest('[data-dock-open], [data-ask]')
+          : null;
+      if (door === null) return;
+      const id = door.getAttribute('data-dock-open') ?? 'ai';
+      if (!isPanelId(id) || !dockTabs({}, registry).some((tab) => tab.id === id)) return;
+      const place = door.getAttribute('data-dock-place');
+      event.preventDefault();
+      change((state) =>
+        openByGesture(state, id, event.shiftKey, isOwnAddress(place) ? place : undefined),
+      );
+    };
+    document.addEventListener('click', onClick);
+    return () => {
+      document.removeEventListener('click', onClick);
+    };
+  }, [change, registry]);
 
   return { state: current.state, change };
 }
