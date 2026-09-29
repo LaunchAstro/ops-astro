@@ -3,8 +3,8 @@
 // T4b1: the journey command's own Postgres. What it refuses before starting
 // anything (another stack's port, a port in use, an image not already on this
 // machine: it never pulls, spike RN-03), the container it starts from the
-// pinned digest and migrates at this head, and the stop of every process the
-// run wrote down, by pid, never by name.
+// pinned digest and migrates at this head, and the stop of the process groups
+// the run created, never by name and never by a plain pid.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
@@ -105,17 +105,36 @@ export async function startPostgres(options: {
   return { ok: role.ok && migrated.ok, detail };
 }
 
-/** Stop what the run started, by the pids it wrote down; a leading `-` is a process group. */
+/** What a member of one of the journey's own process groups runs. */
+const JOURNEY_COMMANDS = ['tests/journey/run.ts', 'apps/api/server.ts', 'apps/cli/main.ts', 'vite'];
+
+/**
+ * Stop the process groups the run created, and nothing else. An entry `-<pgid>`
+ * is a group the run made (the journey's run, vite); a plain pid in the file
+ * is evidence of what ran and is never signalled, because a pid that exited
+ * forty minutes ago may be another process's now (29 September). A group is
+ * signalled only while it still has a member running one of the journey's own
+ * commands; a group id is not reused while any member lives.
+ */
 export function stopStarted(pidfile: string, say: (line: string) => void): void {
   if (!existsSync(pidfile)) return;
-  for (const line of readFileSync(pidfile, 'utf8').split('\n')) {
-    const pid = Number(line.split(' ')[0]);
-    if (!Number.isInteger(pid) || pid === 0) continue;
+  const table = run('ps', ['-A', '-o', 'pid=,pgid=,command=']).out.split('\n');
+  const members = (group: number): string[] =>
+    table.filter((row) => Number(row.trim().split(/\s+/u)[1]) === group);
+  for (const entry of readFileSync(pidfile, 'utf8').split('\n')) {
+    const id = Number(entry.split(' ')[0]);
+    if (!Number.isInteger(id) || id >= 0) continue;
+    const running = members(-id);
+    if (running.length === 0) continue;
+    if (!running.some((row) => JOURNEY_COMMANDS.some((command) => row.includes(command)))) {
+      say(`not stopped: group ${String(-id)} runs no journey command now (${entry})`);
+      continue;
+    }
     try {
-      process.kill(pid, 'SIGKILL');
-      say(`stopped ${line}`);
+      process.kill(id, 'SIGKILL');
+      say(`stopped ${entry}`);
     } catch {
-      // Already gone: it stopped itself, which is the ordinary case.
+      // Gone between the listing and the signal, which is the ordinary case.
     }
   }
   rmSync(pidfile, { force: true });

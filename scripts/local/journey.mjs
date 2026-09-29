@@ -25,9 +25,10 @@
 //   4. the cases this base cannot run yet, each printed `unrun` with its reason.
 //
 // Any `fail` or `unrun` line fails the command. The database is left for
-// inspection unless `--remove`; the command prints how to remove it. Every
-// process it or its run started is stopped by the pid written down, never by
-// name.
+// inspection unless `--remove`; the command prints how to remove it. What the
+// run started is stopped by the process groups the run created, each checked
+// for a member running a journey command first; never by name, and never by a
+// plain pid, which may belong to another process by then.
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -124,8 +125,11 @@ async function journey() {
       JOURNEY_PIDFILE: pidfile,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
+    // Its own process group: the API and CLI processes it starts join it, so
+    // the command stops the group and never a pid that may be reused.
+    detached: true,
   });
-  appendFileSync(pidfile, `${String(child.pid)} tests/journey/run.ts\n`);
+  appendFileSync(pidfile, `-${String(child.pid)} tests/journey/run.ts (process group)\n`);
   let seen = 0;
   let buffer = '';
   child.stdout.on('data', (chunk) => {
