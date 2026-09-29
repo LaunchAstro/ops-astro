@@ -68,7 +68,11 @@ try {
 
       const narrow = width <= 900;
       const toggle = await page.$eval('.navtoggle', (el) => getComputedStyle(el).display);
-      check(`MP-2-8 hamburger only at 900 and below, ${at}`, narrow ? toggle !== 'none' : toggle === 'none', toggle);
+      check(
+        `MP-2-8 hamburger only at 900 and below, ${at}`,
+        narrow ? toggle !== 'none' : toggle === 'none',
+        toggle,
+      );
 
       if (!narrow) {
         const rail = await page.$eval('.rail', (el) => el.getBoundingClientRect().width);
@@ -76,7 +80,11 @@ try {
           items.map((item) => item.getBoundingClientRect().height),
         );
         check(`MP-2-2 224-wide rail, ${at}`, rail === 224, `${rail}`);
-        check(`MP-2-2 items 36 tall, ${at}`, heights.every((h) => h === 36), heights.join(','));
+        check(
+          `MP-2-2 items 36 tall, ${at}`,
+          heights.every((h) => h === 36),
+          heights.join(','),
+        );
 
         const lit = async () =>
           page.evaluate(() => {
@@ -85,9 +93,15 @@ try {
             return { mark: mark.top, item: item.top, height: mark.height };
           });
         const before = await lit();
-        check(`MP-2-2 railmark on the lit item on load, ${at}`, before.mark === before.item && before.height === 36);
+        check(
+          `MP-2-2 railmark on the lit item on load, ${at}`,
+          before.mark === before.item && before.height === 36,
+        );
         await page.click('.rail__item[href="/clients/"]');
-        const duration = await page.$eval('.railmark', (el) => getComputedStyle(el).transitionDuration);
+        const duration = await page.$eval(
+          '.railmark',
+          (el) => getComputedStyle(el).transitionDuration,
+        );
         await page.waitForTimeout(40);
         const moving = await lit();
         await page.waitForTimeout(400);
@@ -125,7 +139,10 @@ try {
         const drawer = await page.$eval('.rail', (el) => el.getBoundingClientRect().width);
         const want = Math.min(300, width * 0.84);
         check(`MP-2-8 drawer min(300px, 84vw), ${at}`, Math.abs(drawer - want) < 1, `${drawer}`);
-        const scrim = await page.$eval('.navbackdrop', (el) => getComputedStyle(el).backgroundColor);
+        const scrim = await page.$eval(
+          '.navbackdrop',
+          (el) => getComputedStyle(el).backgroundColor,
+        );
         check(`MP-2-8 40% backdrop, ${at}`, /0\.4\)$/u.test(scrim), scrim);
         await page.screenshot({ path: `${SHOTS}/drawer-${width}-${theme}.png` });
         await page.keyboard.press('Escape');
