@@ -27,6 +27,8 @@
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type {
   CapabilitiesResult,
+  InboxCountResult,
+  InboxReadResult,
   PersonListResult,
   PresetPlanResult,
   QueueResult,
@@ -37,7 +39,7 @@ import type {
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { Receipt } from '../../../core-runtime/src/index.ts';
-import type { InboxEntry, UnattendedEntry } from './inbox.ts';
+import type { UnattendedEntry } from './inbox.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -135,6 +137,6 @@ export type ReadResult =
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
-  | { readonly ok: true; readonly inbox: readonly InboxEntry[] }
-  | { readonly ok: true; readonly owed: number }
+  | InboxReadResult
+  | InboxCountResult
   | { readonly ok: true; readonly unattended: readonly UnattendedEntry[] };
