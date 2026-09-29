@@ -139,6 +139,21 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, activation_id, version_id, due_at, outcome)
      select a.business_id, gen_random_uuid(), a.id, a.version_id, now(), 'activation_off'
        from public.activations a where a.business_id = $1 limit 1 returning 1`,
+  // Standing approvals (C52-A): the journey adopts, revokes and dispatches none.
+  'public.standing_approvals': `insert into public.standing_approvals
+       (business_id, id, activation_id, definition_id, version_id, previous_version_id, act, sequence,
+        decided_by_actor_id)
+     select a.business_id, gen_random_uuid(), a.id, a.definition_id, a.version_id, a.version_id,
+            'adopted', a.revision + 1, a.changed_by_actor_id
+       from public.activations a where a.business_id = $1 limit 1 returning 1`,
+  'public.standing_approval_revocations': `insert into public.standing_approval_revocations
+       (business_id, id, approval_id, revoked_by_actor_id)
+     select s.business_id, gen_random_uuid(), s.id, s.decided_by_actor_id
+       from public.standing_approvals s where s.business_id = $1 limit 1 returning 1`,
+  'public.occurrence_dispatches': `insert into public.occurrence_dispatches
+       (business_id, id, occurrence_id, outcome)
+     select o.business_id, gen_random_uuid(), o.id, 'activation_off'
+       from public.activation_occurrences o where o.business_id = $1 limit 1 returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */

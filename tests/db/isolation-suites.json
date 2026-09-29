@@ -12,6 +12,7 @@
     "tests/connections/mp-14-8-signal.test.ts",
     "tests/connections/mp-14-10a-mandates.test.ts",
     "tests/automations/c33-occurrences.test.ts",
-    "tests/automations/c33-authority.test.ts"
+    "tests/automations/c33-authority.test.ts",
+    "tests/automations/c52a-pins.test.ts"
   ]
 }

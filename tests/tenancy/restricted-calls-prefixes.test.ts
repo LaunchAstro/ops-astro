@@ -169,6 +169,24 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     due_at: '2026-09-29T00:00:00Z',
     outcome: 'activation_off',
   },
+  // Standing approvals (C52-A, 0037): the journey adopts, revokes and dispatches none.
+  'public.standing_approvals': {
+    activation_id: randomUUID(),
+    definition_id: randomUUID(),
+    version_id: randomUUID(),
+    previous_version_id: randomUUID(),
+    act: 'adopted',
+    sequence: 2,
+    decided_by_actor_id: randomUUID(),
+  },
+  'public.standing_approval_revocations': {
+    approval_id: randomUUID(),
+    revoked_by_actor_id: randomUUID(),
+  },
+  'public.occurrence_dispatches': {
+    occurrence_id: randomUUID(),
+    outcome: 'activation_off',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;
