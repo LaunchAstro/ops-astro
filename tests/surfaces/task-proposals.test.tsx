@@ -9,7 +9,7 @@
 // a version beside the task without moving the task's own revision; and
 // `task.decide` compares the `versionId` it is given against the live one under
 // the locks, so a decision made from a page that has gone stale is
-// `VERSION_SUPERSEDED` rather than a decision about something nobody read.
+// `PROPOSAL_SUPERSEDED` rather than a decision about something nobody read.
 //
 // Four rules are held here, and each is a thing the screen could get wrong in a
 // way no type would catch.
@@ -31,7 +31,7 @@
 // clock-comparing screen could get right.
 //
 // **A refusal is the server's word, and the page rereads afterwards.** Both
-// `VERSION_SUPERSEDED` and `GATE_ALREADY_DECIDED` are quoted as they arrived and
+// `PROPOSAL_SUPERSEDED` and `GATE_ALREADY_DECIDED` are quoted as they arrived and
 // followed by a fresh `task.read`, because the whole reason the decision was
 // refused is that this page is no longer describing the record.
 
@@ -421,7 +421,7 @@ describe('the propose form', () => {
 describe('the propose form', () => {
   it('quotes the server code when a proposal is refused and writes nothing', async () => {
     const { client, proposed } = server({
-      refusePropose: { code: 'PROPOSAL_OUT_OF_SCOPE', status: 403 },
+      refusePropose: { code: 'PROPOSAL_SCOPE_EXCEEDED', status: 422 },
     });
     const page = await mount(screenFor(client));
     await tick();
@@ -432,7 +432,7 @@ describe('the propose form', () => {
     await tick();
 
     expect(proposed).toHaveLength(1);
-    expect(page.find('[data-propose="refusal"]')?.textContent).toContain('PROPOSAL_OUT_OF_SCOPE');
+    expect(page.find('[data-propose="refusal"]')?.textContent).toContain('PROPOSAL_SCOPE_EXCEEDED');
     // The refusal did not invent a version to show for it.
     expect(page.find('[data-version-id="v-3333"]')).toBeNull();
 
@@ -548,9 +548,9 @@ describe('the exact-version decision control', () => {
     await page.unmount();
   });
 
-  it('quotes VERSION_SUPERSEDED and rereads the task', async () => {
+  it('quotes PROPOSAL_SUPERSEDED and rereads the task', async () => {
     const { client, reads } = server({
-      refuseDecide: { code: 'VERSION_SUPERSEDED', status: 409 },
+      refuseDecide: { code: 'PROPOSAL_SUPERSEDED', status: 409 },
     });
     const page = await mount(screenFor(client));
     await tick();
@@ -559,7 +559,7 @@ describe('the exact-version decision control', () => {
     await page.click('[data-decide="approve"]');
     await tick();
 
-    expect(page.find('[data-decide="refusal"]')?.textContent).toContain('VERSION_SUPERSEDED');
+    expect(page.find('[data-decide="refusal"]')?.textContent).toContain('PROPOSAL_SUPERSEDED');
     // The refusal is the page admitting it was describing a record that had
     // moved, so the page reads it again rather than leaving the stale one up.
     expect(reads.length).toBeGreaterThan(readsBefore);

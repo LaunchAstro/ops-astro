@@ -12,7 +12,7 @@
 //
 // **`versionId` is in the projection because the decision takes it.** The
 // runtime's `decide` compares the version the caller names against the live one
-// and refuses `VERSION_SUPERSEDED` when they differ, which is only a real
+// and refuses `PROPOSAL_SUPERSEDED` when they differ, which is only a real
 // protection if the caller got the identifier from the same read that showed
 // them the evidence. A page that offered "approve" without naming a version
 // would be a page that approves whatever arrived last.

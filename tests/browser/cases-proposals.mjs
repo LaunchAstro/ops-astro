@@ -53,7 +53,7 @@
 // no `lineageId`, and `propose` opens a *new* lineage when none is named -- so
 // the second version goes in through the client with the lineage the first one
 // opened. The refusal then has two halves, and they are two rows because they
-// are two different facts. `VERSION_SUPERSEDED` needs a live gate named beside a
+// are two different facts. `PROPOSAL_SUPERSEDED` needs a live gate named beside a
 // version that is not the one it is bound to, and that is a body the screen
 // never builds; it is built here through the client. What the screen can reach
 // on its own is the other half: a page holding a version that has since been
@@ -431,7 +431,7 @@ async function stale(page, task, recordId, first) {
   });
 
   record({
-    case: 'P3 a live gate named with a stale version is refused VERSION_SUPERSEDED',
+    case: 'P3 a live gate named with a stale version is refused PROPOSAL_SUPERSEDED',
     action:
       `proposed version ${String(second.version)} into lineage ${first.lineageId.slice(0, 8)}… ` +
       'through the app’s own client, because the form names no lineage and so can ' +
@@ -442,7 +442,7 @@ async function stale(page, task, recordId, first) {
       `${String(result.refused === true ? result.code : JSON.stringify(result).slice(0, 120))}`,
     ok:
       result.refused === true &&
-      result.code === 'VERSION_SUPERSEDED' &&
+      result.code === 'PROPOSAL_SUPERSEDED' &&
       drawn.versionId === second.versionId &&
       drawn.supersededIds.includes(first.versionId) &&
       drawn.gateState === 'pending',
