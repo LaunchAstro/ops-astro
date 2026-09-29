@@ -108,11 +108,13 @@ export function Perspectives(props: {
 
 /**
  * The Team side's subtask and time sections, as the page reads them. The
- * subtasks and the time log arrive with MP-4-4 and MP-4-6; until then each
- * says it has nothing and points at the panel.
+ * subtask list (MP-4-4, `Subtasks.tsx`) is placed under the heading; the time
+ * log arrives with MP-4-6, and until then says it has nothing and points at
+ * the panel.
  */
 export function TeamWork(props: {
   readonly steps: readonly StepMark[];
+  readonly list?: ReactNode;
   readonly onOpenPanel: ((door: PanelDoor) => void) | undefined;
 }): ReactElement {
   const live = props.steps.filter((step) => !step.retired);
@@ -122,6 +124,7 @@ export function TeamWork(props: {
         <div className="sb__sh">
           <span className="sb__k">Subtasks</span>
         </div>
+        {props.list}
         {live.length === 0 ? <p className="card__sub">No subtasks on this one yet.</p> : null}
         <PanelDoorButton
           door={live.length === 0 ? 'add-first' : 'tick'}
