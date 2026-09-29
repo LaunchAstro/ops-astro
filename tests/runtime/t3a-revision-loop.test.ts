@@ -38,7 +38,7 @@ import {
   type Detail,
   type Schedules,
 } from './schedules-harness.ts';
-import { PRICED, t2dHarness } from './t2d-harness.ts';
+import { cq8World, PRICED, t2dHarness } from './t2d-harness.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -180,7 +180,24 @@ describe.skipIf(serverUrl === undefined)('T3a the revision loop over settled wor
         where business_id = $1 and id = $2`,
       [s.business, w.attemptId],
     );
-    expect(attempt).toStrictEqual([{ state: 'settled', actual: '1800' }]);
+    expect(attempt).toEqual([{ state: 'settled', actual: '1800' }]);
+  });
+
+  it('a restart replayed by its operation identifier opens one lineage and closes one envelope', async () => {
+    const { w, lineageId } = await settledWork();
+    expect(codeOf(await asPerson(s, cancelBody(w.taskId, lineageId)))).toBe('applied');
+    const body = restartBody(w.taskId, lineageId);
+    const first = appliedDetail(await asPerson(s, body), 'task.restart');
+    const again = appliedDetail(await asPerson(s, body), 'task.restart replayed');
+    expect(again['lineageId']).toBe(first['lineageId']);
+    const lineages = await rows<{ readonly n: number }>(
+      s,
+      `select count(*)::int as n from public.proposal_lineages
+        where business_id = $1 and restarts_lineage_id = $2`,
+      [s.business, lineageId],
+    );
+    expect(lineages[0]?.n).toBe(1);
+    expect((await envelopes(w.taskId)).map((one) => one.state)).toStrictEqual(['closed']);
   });
 
   it('a terminal lineage is enforced by the database: no role reopens or rewrites it', async () => {
@@ -307,6 +324,33 @@ describe.skipIf(serverUrl === undefined)('T3a the revision loop over settled wor
       ]) {
         // eslint-disable-next-line no-await-in-loop
         expect(codeOf(await as(elsewhere, 'api', body))).toBe('SCOPE_NOT_GRANTED');
+      }
+      expect(await footprint(w.taskId)).toStrictEqual(before);
+    });
+
+    it("a client shared on this task, and another task's client, are each refused, and nothing moves", async () => {
+      const { w, lineageId } = await settledWork();
+      const other = await work();
+      const world = cq8World(s);
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await grantTo(tx, s.decider, 'share');
+      });
+      const own = await world.client(s.business, s.decider, 't3a-own-client', w.taskId);
+      const foreign = await world.client(s.business, s.decider, 't3a-other-client', other.taskId);
+      const pending = await propose(s, w.taskId, { lineageId, maximumMinor: REVISION });
+      const before = await footprint(w.taskId);
+      for (const who of [own, foreign]) {
+        for (const body of [
+          decideBody(pending, 'approve'),
+          decideBody(pending, 'reject'),
+          cancelBody(w.taskId, lineageId),
+          restartBody(w.taskId, lineageId),
+        ]) {
+          // eslint-disable-next-line no-await-in-loop
+          const result = await as(who, 'api', body);
+          expect(codeOf(result)).not.toBe('applied');
+          if (who === foreign) expect(JSON.stringify(result)).not.toContain(w.taskId);
+        }
       }
       expect(await footprint(w.taskId)).toStrictEqual(before);
     });
