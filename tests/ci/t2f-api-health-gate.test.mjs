@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 
-test('Sol proof, criterion 2: the existing API health test accepts the T2f response', () => {
+test('the existing API health test accepts the T2f response', () => {
   const result = spawnSync(
     'corepack',
     [

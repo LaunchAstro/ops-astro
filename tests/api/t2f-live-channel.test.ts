@@ -303,7 +303,7 @@ describe.skipIf(serverUrl === undefined)(
       expect((await open(mine, outsider)).status).not.toBe(200);
     });
 
-    it('Sol proof, criterion 3: an external shared reader cannot join the internal activity channel', async () => {
+    it('an external shared reader cannot join the internal activity channel', async () => {
       const taskId = await createTask(s, `t2f-external-${randomUUID()}`);
       await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
       const external = await cq8World(s).client(s.business, s.decider, 't2f-external', taskId);

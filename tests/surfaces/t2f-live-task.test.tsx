@@ -188,7 +188,7 @@ describe('T2f the live task page', () => {
     await view.unmount();
   });
 
-  it('Sol proof, criterion 3: a closed stream clears a revoked task despite an unsaved draft', async () => {
+  it('a closed stream clears a revoked task despite an unsaved draft', async () => {
     const api = server();
     const view = await mount(
       <TaskDetailScreen client={client(api.fetch)} grantKey="alpha:mia" taskKey={TASK.id} />,
@@ -238,7 +238,7 @@ describe('T2f floor', () => {
     expect(FLOOR_MS).toBe(30_000);
   });
 
-  it('Sol proof, criterion 2: a live stream does not reread a hidden page', async () => {
+  it('a live stream does not reread a hidden page', async () => {
     let visible = false;
     let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
     const body = new ReadableStream<Uint8Array>({
