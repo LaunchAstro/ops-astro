@@ -358,11 +358,37 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
       );
     const onShared = await raise(taskA);
     const onOther = await raise(taskB);
+    // A staff reviewer on the other task clears it, so the item holds their identity.
+    await inAlpha(async (tx) => {
+      await tx.query(
+        `update public.inbox_items
+            set work_state = 'cleared', closed_at = now(), closed_by_person_id = $3
+          where business_id = $1 and id = $2`,
+        [tx.businessId, onOther, bea],
+      );
+    });
     const read = await inAlpha(async (tx) => await readInboxItems(tx, cleo));
     expect(read.find((item) => item.id === onShared)?.access).toBe('readable');
-    expect(read.find((item) => item.id === onOther)?.access).toBe('withheld');
-    // The canary: the other task's id appears nowhere in the external party's read.
+    const withheld = read.find((item) => item.id === onOther);
+    expect(withheld?.access).toBe('withheld');
+    // Every field a withheld item carries, named: a new identity or pointer
+    // field goes red here until it is placed on the readable side.
+    expect(Object.keys(withheld ?? {}).toSorted()).toStrictEqual([
+      'access',
+      'closedAt',
+      'factKind',
+      'id',
+      'lastDelivery',
+      'owed',
+      'raisedAt',
+      'reason',
+      'recipientPersonId',
+      'seenAt',
+      'workState',
+    ]);
+    // The canaries: the other task's id and its reviewer's id appear nowhere in the read.
     expect(JSON.stringify(read)).not.toContain(taskB);
+    expect(JSON.stringify(read)).not.toContain(bea);
   });
 
   it('crosses no delegation: an agent acting for the recipient lends them no read', async () => {
@@ -419,7 +445,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
       await tx.query('select pg_sleep(0.5)');
       return id;
     });
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 150);
+    });
     const second = inAlpha(async (tx) => await raiseInboxItem(tx, item));
     const [one, two] = await Promise.all([first, second]);
     expect(two).toBe(one);
