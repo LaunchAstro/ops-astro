@@ -113,6 +113,9 @@ const KEY = 'ops-astro.session';
 export const settingsCacheKey = (businessKey: string): string =>
   `ops-astro.settings.${businessKey}`;
 
+/** Where the dock keeps its open set, per business. Sign-out removes it. */
+export const dockKey = (businessKey: string): string => `ops-astro.dock.${businessKey}`;
+
 /**
  * How many times a session has ended in this tab: the session generation.
  *

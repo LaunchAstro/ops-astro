@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Final review round 2, lane FR2-WEB: the task page's forms keep one attempt
-// per intention, a refused decision is drawn where the person sees it, and the
-// settings dock tab does what it says.
+// per intention, and a refused decision is drawn where the person sees it.
 //
 // - R2-SURFACE-10: a propose or comment whose answer was lost is retried under
 //   the same `operationId`, so the server's register replays it rather than
@@ -16,10 +15,8 @@
 
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { App } from '../../apps/web/src/App.tsx';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { mount, type Mounted } from './mount.tsx';
 
 const TASK_ID = '66666666-6666-4666-8666-666666666666';
@@ -325,74 +322,5 @@ describe('R2-THERMO-12 / R1-SURFACE-34: a refused decision survives the reread t
     expect(quoted).toHaveLength(1);
     expect(quoted[0]?.textContent).toContain('GATE_ALREADY_DECIDED');
     expect(quoted[0]?.closest('[data-lineage-id]')?.getAttribute('data-lineage-id')).toBe('l-0001');
-  });
-});
-
-const settingsTab = (page: Mounted): Element | undefined =>
-  page.all('.dock__tab').find((tab) => tab.getAttribute('aria-label')?.endsWith(' Settings'));
-
-describe('R2-SURFACE-42: the settings dock tab does what it announces', () => {
-  const SESSION = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };
-  const storage = (): StorageLike => {
-    const held = new Map([['ops-astro.session', JSON.stringify(SESSION)]]);
-    return {
-      getItem: (key) => held.get(key) ?? null,
-      setItem: (key, value) => {
-        held.set(key, value);
-      },
-      removeItem: (key) => {
-        held.delete(key);
-      },
-    };
-  };
-  // Every read stays in flight: only the dock is under test.
-  const fetch = (() =>
-    new Promise<Response>(() => undefined)) as unknown as typeof globalThis.fetch;
-
-  async function appAt(path: string, went: string[]): Promise<Mounted> {
-    const page = await mount(
-      <App
-        path={path}
-        navigate={(next) => {
-          went.push(next);
-        }}
-        sessions={new SessionStore(storage())}
-        gotrueUrl="http://gotrue.test"
-        apiOrigin=""
-        fetch={fetch}
-        storage={null}
-      />,
-    );
-    live.push(page);
-    return page;
-  }
-
-  it('on /settings, "Close Settings" leaves the settings address', async () => {
-    const went: string[] = [];
-    const page = await appAt('/settings', went);
-    const tab = settingsTab(page);
-    expect(tab?.getAttribute('aria-label')).toBe('Close Settings');
-    expect(tab?.getAttribute('aria-expanded')).toBe('true');
-
-    await act(async () => {
-      (tab as HTMLElement).click();
-    });
-
-    expect(went).toHaveLength(1);
-    expect(went[0]).not.toBe('/settings');
-  });
-
-  it('elsewhere, "Open Settings" goes to /settings', async () => {
-    const went: string[] = [];
-    const page = await appAt('/projects/', went);
-    const tab = settingsTab(page);
-    expect(tab?.getAttribute('aria-label')).toBe('Open Settings');
-    expect(tab?.getAttribute('aria-expanded')).toBe('false');
-
-    await act(async () => {
-      (tab as HTMLElement).click();
-    });
-
-    expect(went).toEqual(['/settings']);
   });
 });

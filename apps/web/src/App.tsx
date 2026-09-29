@@ -15,7 +15,7 @@ import { gateOf, matchRoute, pathTo } from './routes.ts';
 import { NO_CLIENT_GRANTS, canonicalOf, isLegacy, pageAt, type ClientAccess } from './manifest.ts';
 import { ClientRefused, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
-import { PANELS, dockTabs, isPanelId } from './panels.ts';
+import { PANELS, dockTabs, isPanelId, type PanelRegistry } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
@@ -35,6 +35,8 @@ export interface AppProps {
   readonly storage: Storage | null;
   /** Which clients the session may open. None until MP-10-1 supplies client records. */
   readonly clientAccess?: ClientAccess;
+  /** The dock's panels. The shipped registry unless a test hands another. */
+  readonly panels?: PanelRegistry;
 }
 
 export function App(props: AppProps): ReactElement {
@@ -251,7 +253,7 @@ export function App(props: AppProps): ReactElement {
       dock={
         session === null || at?.page.namespace === 'portal'
           ? []
-          : dockTabs().map((tab) => ({
+          : dockTabs({}, props.panels ?? PANELS).map((tab) => ({
               id: tab.id,
               label: tab.label,
               count: tab.count,

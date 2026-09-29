@@ -12,20 +12,13 @@
 // and layout and may not own a session [ui-reference CONTRACT.md:305 rule 3].
 
 import type { ReactElement, ReactNode } from 'react';
+import type { DockTab } from './Dock.tsx';
 
 export interface RailEntry {
   /** Namespace-qualified. Sixteen bare identifiers collide in the corpus. */
   readonly id: string;
   readonly label: string;
   readonly href: string;
-}
-
-export interface DockTab {
-  readonly id: string;
-  readonly label: string;
-  /** The count chip's text, or null for no chip. */
-  readonly count: string | null;
-  readonly open: boolean;
 }
 
 export interface ShellProps {

@@ -55,6 +55,8 @@ export interface PanelRegistration {
   readonly ariaLabel: string;
   /** The route that draws the panel's surface at an address of its own. */
   readonly route: StaticRouteId;
+  /** The tenant's own close. */
+  readonly onClose?: () => void;
 }
 
 export type PanelRegistry = { readonly [Id in PanelId]?: PanelRegistration };
