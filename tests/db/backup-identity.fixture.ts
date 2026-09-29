@@ -5,7 +5,7 @@
 // the identities' names, a made-up key pair, and the logins each suite makes
 // and drops.
 
-import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
 import { afterAll, beforeAll } from 'vitest';
@@ -238,66 +238,6 @@ export function backupStoreHooks(): void {
     }
   });
 }
-
-/** A drill receipt as the store takes it (S0-3d). */
-export type DrillRecord = {
-  readonly outcome: string;
-  readonly stage: string | null;
-  readonly target: string;
-  readonly productionMajor: number;
-  readonly sourceMajor: number | null;
-  readonly targetMajor: number;
-  readonly archiveTakenAt: string;
-  readonly tables: number | null;
-  readonly readAs: string | null;
-  readonly timings: {
-    readonly fetch: number;
-    readonly open: number;
-    readonly start: number;
-    readonly restore: number;
-    readonly check: number;
-  };
-};
-
-export const operator: string = randomUUID();
-
-export const passed: DrillRecord = {
-  outcome: 'passed',
-  stage: null,
-  target: 'throwaway container',
-  productionMajor: 17,
-  sourceMajor: 17,
-  targetMajor: 17,
-  archiveTakenAt: '2026-09-29T02:00:00.000Z',
-  tables: 12,
-  readAs: 'ops_astro_app',
-  timings: { fetch: 10, open: 20, start: 900, restore: 400, check: 30 },
-};
-
-export const failed: DrillRecord = {
-  ...passed,
-  outcome: 'failed',
-  stage: 'restore',
-  sourceMajor: null,
-  tables: null,
-  readAs: null,
-};
-
-export const call = (r: DrillRecord): [string, unknown[]] =>
-  [
-    'select backups.record_drill($1, $2, $3, $4, $5, $6, $7, $8, $9)::text as last',
-    [
-      r.outcome,
-      r.stage,
-      operator,
-      r.archiveTakenAt,
-      r.productionMajor,
-      r.sourceMajor,
-      r.targetMajor,
-      r.tables,
-      r.timings,
-    ],
-  ] as [string, unknown[]];
 
 export const address: string = 'https://heartbeat.example.test/api/push/restore';
 

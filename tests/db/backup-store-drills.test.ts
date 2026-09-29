@@ -26,15 +26,12 @@ import {
   backupStoreHooks,
   hostReach,
   type Reach,
-  operator,
-  passed,
-  failed,
-  call,
   address,
   expire,
   age,
   job,
 } from './backup-identity.fixture.ts';
+import { operator, passed, failed, call } from './backup-drill-records.fixture.ts';
 
 describe.skipIf(serverUrl === undefined)('the backup store', () => {
   backupStoreHooks();

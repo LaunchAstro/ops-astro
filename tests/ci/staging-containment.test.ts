@@ -277,6 +277,70 @@ describe.each([
   });
 });
 
+/** Changes that make some place other than the store's data persistent or unsized; each must fail the disk row. */
+const NOT_THE_STORE: [string, (def: Definition) => void][] = [
+  [
+    'staging’s database made persistent',
+    (def) => {
+      delete def.volumes['ops-astro-staging-pgdata']!.driver_opts;
+    },
+  ],
+  [
+    'the store’s volume on another service',
+    (def) => {
+      def.services['auth']!.volumes = [`${STORE_DATA}:/var/lib/postgresql/data`];
+    },
+  ],
+  [
+    'the store’s volume at another path',
+    (def) => {
+      def.services['backups']!.volumes = [`${STORE_DATA}:/var/lib/other`];
+    },
+  ],
+  [
+    'a second persistent volume on the store',
+    (def) => {
+      def.volumes['ops-astro-staging-extra'] = { name: 'ops-astro-staging-extra' };
+      def.services['backups']!.volumes!.push('ops-astro-staging-extra:/extra');
+    },
+  ],
+  [
+    'another volume in the store’s place',
+    (def) => {
+      def.volumes['ops-astro-staging-backups-data2'] = {
+        name: 'ops-astro-staging-backups-data2',
+      };
+      def.services['backups']!.volumes = def.services['backups']!.volumes!.map((v) =>
+        v.replace(`${STORE_DATA}:`, 'ops-astro-staging-backups-data2:'),
+      );
+    },
+  ],
+  [
+    'the store’s volume bound to a folder on the machine',
+    (def) => {
+      def.volumes[STORE_DATA]!.driver_opts = { type: 'none', o: 'bind', device: '/srv/backups' };
+    },
+  ],
+  [
+    'the store’s volume named as another',
+    (def) => {
+      def.volumes[STORE_DATA]!.name = 'ops-astro-staging-pgdata';
+    },
+  ],
+  [
+    'an unsized tmpfs on the store',
+    (def) => {
+      def.services['backups']!.tmpfs!.push('/scratch');
+    },
+  ],
+  [
+    'a writable root on the store',
+    (def) => {
+      def.services['backups']!.read_only = false;
+    },
+  ],
+];
+
 // The one exception to the disk row is the backup store's data (S0-3,
 // ORCH25-SL01-STORE): it must outlive a restart, so it is bounded by the store
 // itself (`S0-3 store bounded`). Any other persistent or unsized place fails.
@@ -284,70 +348,7 @@ it('S0-1 resource limits: the backup store’s volume is the only persistent pla
   const disk = LIMITS.find((row) => row.name.startsWith('disk:'))!;
   expect(load().services['backups'], 'the store is a service of staging').toBeDefined();
   expect(disk.check(load())).toEqual([]);
-  const store = 'ops-astro-staging-backups-data';
-  const mutations: [string, (def: Definition) => void][] = [
-    [
-      'staging’s database made persistent',
-      (def) => {
-        delete def.volumes['ops-astro-staging-pgdata']!.driver_opts;
-      },
-    ],
-    [
-      'the store’s volume on another service',
-      (def) => {
-        def.services['auth']!.volumes = [`${store}:/var/lib/postgresql/data`];
-      },
-    ],
-    [
-      'the store’s volume at another path',
-      (def) => {
-        def.services['backups']!.volumes = [`${store}:/var/lib/other`];
-      },
-    ],
-    [
-      'a second persistent volume on the store',
-      (def) => {
-        def.volumes['ops-astro-staging-extra'] = { name: 'ops-astro-staging-extra' };
-        def.services['backups']!.volumes!.push('ops-astro-staging-extra:/extra');
-      },
-    ],
-    [
-      'another volume in the store’s place',
-      (def) => {
-        def.volumes['ops-astro-staging-backups-data2'] = {
-          name: 'ops-astro-staging-backups-data2',
-        };
-        def.services['backups']!.volumes = def.services['backups']!.volumes!.map((v) =>
-          v.replace(`${store}:`, 'ops-astro-staging-backups-data2:'),
-        );
-      },
-    ],
-    [
-      'the store’s volume bound to a folder on the machine',
-      (def) => {
-        def.volumes[store]!.driver_opts = { type: 'none', o: 'bind', device: '/srv/backups' };
-      },
-    ],
-    [
-      'the store’s volume named as another',
-      (def) => {
-        def.volumes[store]!.name = 'ops-astro-staging-pgdata';
-      },
-    ],
-    [
-      'an unsized tmpfs on the store',
-      (def) => {
-        def.services['backups']!.tmpfs!.push('/scratch');
-      },
-    ],
-    [
-      'a writable root on the store',
-      (def) => {
-        def.services['backups']!.read_only = false;
-      },
-    ],
-  ];
-  for (const [what, mutate] of mutations) {
+  for (const [what, mutate] of NOT_THE_STORE) {
     const def = load();
     mutate(def);
     expect(disk.check(def), what).not.toEqual([]);
