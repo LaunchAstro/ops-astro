@@ -24,17 +24,20 @@ import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Hono } from 'hono';
 import {
-  raiseIncident,
-  raiseMentions,
   readInboxItems,
-  readMentions,
   type InboxItem,
   type InboxReason,
 } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { replayRecordedTransitions } from '../../packages/core-runtime/src/index.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
-import { insertActor, insertBusiness, insertPerson } from '../identity/fixture.ts';
+import {
+  insertActor,
+  insertBusiness,
+  insertLogin,
+  insertMapping,
+  insertPerson,
+} from '../identity/fixture.ts';
 import { enrol, grantTo, type Member } from './fixture.ts';
 import {
   authorised,
@@ -76,6 +79,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
   let writerToken: string;
   let clientStaff: Member;
   let outsider: string;
+  let paidOutsider: string;
   let clientA: string;
   let bravo: string;
   let bravoDecider: string;
@@ -145,6 +149,19 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       outsider = await insertPerson(tx, 'Olga Outside');
       await insertActor(tx, outsider);
       await grantTo(tx, { ...clientStaff, personId: outsider }, 'read', {
+        kind: 'party',
+        id: clientA,
+      });
+      // A paid client: an outside party a person has given a login.
+      paidOutsider = await insertPerson(tx, 'Pia Paid');
+      const paidActor = await insertActor(tx, paidOutsider);
+      await insertMapping(
+        tx,
+        await insertLogin(tx, `pia-${randomUUID()}`),
+        paidOutsider,
+        paidActor,
+      );
+      await grantTo(tx, { ...clientStaff, personId: paidOutsider }, 'read', {
         kind: 'party',
         id: clientA,
       });
@@ -308,15 +325,41 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
     expect(raising).toMatch(/reason:\s*'incident'/);
   });
 
-  it('raises an incident item for each task:manage holder, and nobody else', async () => {
+  it('raises an incident for each task:manage holder when a cancel quarantines a marked hold', async () => {
     const task = await newTask('incident on me');
-    const incidentId = randomUUID();
     await fixture.db.app.withBusiness(fixture.business, async (tx) => {
       await grantTo(tx, reviewer, 'manage', { kind: 'record', id: task.id });
-      await raiseIncident(tx, { taskId: task.id, incidentId });
     });
+    const proposed = detailOf(ok(await call('task.propose', proposal(task))));
+    const decided = detailOf(
+      ok(
+        await call('task.decide', {
+          gateId: proposed['gateId'],
+          versionId: proposed['versionId'],
+          decision: 'approve',
+          note: 'go',
+        }),
+      ),
+    );
+    const picked = detailOf(
+      ok(
+        await call(
+          'task.pickup',
+          { reservationId: decided['reservationId'], leaseSeconds: 600 },
+          writerToken,
+        ),
+      ),
+    );
+    // An observation arrived for this attempt: what the work did is unknown.
+    await fixture.db.admin.execute(
+      `update public.attempts set observed = true, state = 'quarantined' where id = $1`,
+      [picked['attemptId']],
+    );
+    const cancel = { recordId: task.id, lineageId: proposed['lineageId'], reason: 'stop' };
+    const cancelled = detailOf(ok(await call('task.cancel', cancel)));
+    expect(cancelled['reservations']).toMatchObject([{ state: 'quarantined' }]);
     expect(await open(reviewer.personId, 'incident')).toMatchObject([
-      { subjectRecordId: task.id, factKind: 'record', factId: incidentId, owed: true },
+      { subjectRecordId: task.id, factKind: 'planned_run', factId: proposed['runId'], owed: true },
     ]);
     expect(await open(writer.personId, 'incident')).toStrictEqual([]);
     expect(await open(fixture.member.personId, 'incident')).toStrictEqual([]);
@@ -381,22 +424,15 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       expect(await allItems()).toBe(before);
     });
 
-    it('raises a client comment for an outside party only when the client is paid', async () => {
+    it('raises a client comment in the transition for a paid client, one holding a login', async () => {
       const onA = await newTask('client A visible', clientA);
-      const commentId = detailOf(ok(await comment(onA, [outsider], 'client')))['commentId'];
-      expect(await open(outsider, 'mention')).toStrictEqual([]);
-      await fixture.db.app.withBusiness(fixture.business, async (tx) => {
-        const named = await readMentions(tx, { taskId: onA.id, audience: 'client' }, [outsider]);
-        const raised = { taskId: onA.id, commentId: String(commentId), audience: 'client' };
-        await raiseMentions(
-          tx,
-          { ...raised, authorActorId: writer.actorId, paidClient: true },
-          named,
-        );
-      });
-      expect(await open(outsider, 'client_comment')).toMatchObject([
+      ok(await comment(onA, [paidOutsider], 'client'));
+      expect(await open(paidOutsider, 'client_comment')).toMatchObject([
         { subjectRecordId: onA.id, owed: true, access: 'readable' },
       ]);
+      expect(await open(paidOutsider, 'mention')).toStrictEqual([]);
+      // Named in a team-only comment, the same party is refused like any outsider.
+      expect((await comment(onA, [paidOutsider])).body['code']).toBe('MENTION_NOT_READABLE');
     });
 
     it('Sol proof, criterion 32: an outside party without paid-client status gets no client comment item', async () => {

@@ -12,7 +12,12 @@
 // Neither writes the task record, which is why neither takes an
 // `expectedRevision`.
 
-import { isUuid, raiseDecision, subjectsOf } from '../../../core-records/src/index.ts';
+import {
+  isUuid,
+  raiseDecision,
+  raiseIncident,
+  subjectsOf,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import {
   cancelAndClassify,
@@ -164,6 +169,7 @@ export async function cancelOnTask(
     },
   });
   if (!result.ok) return refused(result.refusal);
+  await raiseIncident(tx, result.value);
   return applied(found.taskId, null, {
     lineageId: found.lineageId,
     state: 'cancelled',

@@ -267,10 +267,7 @@ export async function writeTaskComment(
     body,
     source: on.entryPoint,
   });
-  // No paid-client fact exists in this head (a client is a party id on the
-  // task), so no client counts as paid and an outside party is raised nothing.
-  const raised = { ...task, commentId, authorActorId: on.authorActorId, paidClient: false };
-  await raiseMentions(tx, raised, mentioned);
+  await raiseMentions(tx, { ...task, commentId, authorActorId: on.authorActorId }, mentioned);
 
   return applied(on.target.id, on.target.revision, { commentId });
 }
