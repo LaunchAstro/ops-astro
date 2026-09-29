@@ -365,6 +365,10 @@ body {
   font: var(--type-body);
   letter-spacing: var(--type-body-tracking);
   text-transform: var(--type-body-case);
+  /* The mockup's base rendering: without it every glyph draws a shade heavier. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 /* Faux bold: no 700 face is loaded, so strong text is the medium weight. */
 b,
