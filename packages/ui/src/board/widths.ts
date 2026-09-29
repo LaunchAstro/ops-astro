@@ -49,20 +49,29 @@ export function resizeAt(
   const at = (i: number): number => widths[i] ?? 0;
   const d = Math.round(dx);
   if (d > 0) {
+    // Whole pixels by largest remainder, so the columns give exactly the room
+    // and none gives more than its slack.
     const rights = widths.map((_, i) => i).filter((i) => i > index);
     const slack = rights.map((i) => Math.max(0, at(i) - floor(i)));
     const capacity = slack.reduce((sum, value) => sum + value, 0);
     const room = Math.min(d, capacity);
-    let placed = 0;
+    const exact = slack.map((value) => (capacity > 0 ? (value / capacity) * room : 0));
+    const give = exact.map(Math.floor);
+    let left = room - give.reduce((sum, value) => sum + value, 0);
+    const byRemainder = exact
+      .map((value, k) => ({ k, rest: value - Math.floor(value) }))
+      .toSorted((a, b) => b.rest - a.rest);
+    for (const { k } of byRemainder) {
+      if (left < 1) break;
+      if ((give[k] ?? 0) + 1 <= (slack[k] ?? 0)) {
+        give[k] = (give[k] ?? 0) + 1;
+        left -= 1;
+      }
+    }
     rights.forEach((i, k) => {
-      const give = Math.min(
-        slack[k] ?? 0,
-        Math.round(capacity ? ((slack[k] ?? 0) / capacity) * room : 0),
-      );
-      widths[i] = at(i) - give;
-      placed += give;
+      widths[i] = at(i) - (give[k] ?? 0);
     });
-    widths[index] = at(index) + placed;
+    widths[index] = at(index) + give.reduce((sum, value) => sum + value, 0);
   } else if (d < 0) {
     const give = Math.min(-d, Math.max(0, at(index) - floor(index)));
     widths[index] = at(index) - give;
