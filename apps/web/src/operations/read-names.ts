@@ -47,6 +47,8 @@ export const READ_NAMES = [
   'connection.fleet',
   'connection.signal',
   'connection.graduation',
+  // The Workflow triggers registry (C33).
+  'automation.registry',
 ] as const;
 
 /**

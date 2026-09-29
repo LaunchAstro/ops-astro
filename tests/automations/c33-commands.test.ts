@@ -95,7 +95,7 @@ describe.skipIf(serverUrl === undefined)('C33 registry commands', () => {
       // eslint-disable-next-line no-await-in-loop -- one malformed body at a time
       const answer = await w.release(body);
       expect([answer.status, answer.body['code'], answer.body['names']], field).toStrictEqual([
-        400,
+        422,
         'FIELD_VALUE_INVALID',
         [field],
       ]);
@@ -171,7 +171,7 @@ describe.skipIf(serverUrl === undefined)('C33 registry commands', () => {
       // eslint-disable-next-line no-await-in-loop -- one malformed body at a time
       const answer = await w.activate(versionId, body);
       expect([answer.status, answer.body['code'], answer.body['names']], field).toStrictEqual([
-        400,
+        422,
         'FIELD_VALUE_INVALID',
         [field],
       ]);

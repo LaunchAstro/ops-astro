@@ -94,6 +94,11 @@ vi.mock('../../packages/core-commands/src/commands/mandates.ts', async (original
   promoteClass: recorder('promoteClass'),
   demoteClass: recorder('demoteClass'),
 }));
+vi.mock('../../packages/core-commands/src/commands/automations.ts', async (original) => ({
+  ...(await original<object>()),
+  changeActivationAsPerson: recorder('changeActivationAsPerson'),
+  releaseDefinitionVersion: recorder('releaseDefinitionVersion'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
   proposeOnTask: recorder('proposeOnTask'),
@@ -157,7 +162,9 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.record_outcome': ['recordId', 'attemptId'],
   'budget.top_up': ['recordId'],
   'budget.write_off': ['recordId', 'attemptId'],
+  'activation.change': ['activationId', 'versionId'],
   'connector.repair': ['connectionId'],
+  'definition.release': ['definitionId'],
   'delegation.revoke': [],
   'graduation.demote': ['classId'],
   'graduation.promote': ['classId'],
@@ -185,10 +192,13 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.record_outcome',
   'budget.top_up',
   'budget.write_off',
+  'activation.change',
+  'automation.registry',
   'connection.fleet',
   'connection.graduation',
   'connection.signal',
   'connector.repair',
+  'definition.release',
   'delegation.revoke',
   'graduation.demote',
   'graduation.promote',
@@ -303,6 +313,8 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'mandate.revoke', operationId: 'op', mandateId: 'm' },
   { command: 'graduation.promote', operationId: 'op', classId: 'g' },
   { command: 'graduation.demote', operationId: 'op', classId: 'g' },
+  { command: 'activation.change', operationId: 'op', versionId: 'v' },
+  { command: 'definition.release', operationId: 'op' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -376,6 +388,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'mandate.revoke': ['revokeStandingMandate', 'request'],
   'graduation.promote': ['promoteClass', 'request'],
   'graduation.demote': ['demoteClass', 'request'],
+  'activation.change': ['changeActivationAsPerson', 'request'],
+  'definition.release': ['releaseDefinitionVersion', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -425,7 +439,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same thirty-seven from an expected revision', () => {
+  it('exempts the same forty from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

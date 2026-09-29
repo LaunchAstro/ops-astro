@@ -193,7 +193,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 32 cells: the 16 record-targeted operations, then the 16 with their own operand. */
+  /** The 34 cells: the 16 record-targeted operations, then the 18 with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -275,6 +275,19 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('mandate.revoke', 'mandateId', f.mandateId, (mandateId) => ({ mandateId }));
     byAda('graduation.promote', 'classId', f.classId, (classId) => ({ classId, ...limits }));
     byAda('graduation.demote', 'classId', f.classId, (classId) => ({ classId }));
+    byAda('activation.change', 'versionId', f.automation.versionId, (versionId) => ({
+      versionId,
+      mode: 'manual',
+      enabled: false,
+    }));
+    byAda('definition.release', 'definitionId', f.automation.definitionId, (definitionId) => ({
+      definitionId,
+      contentDigest: 'e'.repeat(64),
+      contentSize: 1,
+      inputs: [],
+      operations: [],
+      modes: ['manual'],
+    }));
     const own = await w.propose('a lineage the timing cells name');
     byAda('task.cancel', 'lineageId', f.proposal.lineageId, (lineageId) => ({
       recordId: own.task.id,
@@ -335,11 +348,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 39 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 41 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(39);
-    expect(names).toHaveLength(39);
+    expect(new Set(names).size, 'distinct operations').toBe(41);
+    expect(names).toHaveLength(41);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
