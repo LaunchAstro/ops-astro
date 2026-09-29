@@ -38,7 +38,7 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up, races', () => {
     await w?.s.db.drop();
   });
 
-  it('Sol proof, criterion 2: a first approval revoked before the second decision commits cannot be counted', async () => {
+  it('a first approval revoked before the second decision commits cannot be counted', async () => {
     const first = await enrol(s.db.app, s.business, 'sol-first');
     const grantId = await s.db.app.withBusiness(
       s.business,
@@ -139,7 +139,7 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up, races', () => {
     if (revokedBeforeDecision) expect(await maximumOf(plan.taskId)).toBe(MAXIMUM);
   });
 
-  it('Sol proof, criterion 2: a first approval committed before the second takes task locks counts as the first eye', async () => {
+  it('a first approval committed before the second takes task locks counts as the first eye', async () => {
     const plan = await planned(planner);
     let release!: () => void;
     let signal!: () => void;

@@ -149,7 +149,7 @@ describe('the top-up control on the task page', () => {
     await page.unmount();
   });
 
-  it('Sol proof, criterion 2: a pending second approval remains visible after the task reread', async () => {
+  it('a pending second approval remains visible after the task reread', async () => {
     let finishReload!: () => void;
     const reloadWait = new Promise<void>((resolve) => {
       finishReload = resolve;

@@ -87,7 +87,7 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up, clients', () => {
     expect(await maximumOf(mine.taskId)).toBe(MAXIMUM + SMALL);
   });
 
-  it('Sol proof, criterion 3: the client-isolation actor has a task share but no business membership', async () => {
+  it('the client-isolation actor has a task share but no business membership', async () => {
     const memberships = await rows<{ readonly id: string }>(
       s,
       `select id from public.memberships
@@ -108,7 +108,7 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up, clients', () => {
     });
   });
 
-  it('Sol proof, criterion 3: two external clients each hold one distinct task share in this business', async () => {
+  it('two external clients each hold one distinct task share in this business', async () => {
     const clients = await rows<{ readonly person_id: string; readonly task_id: string }>(
       s,
       `select g.subject_id as person_id, g.scope_id as task_id from public.grants g
