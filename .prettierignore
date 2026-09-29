@@ -15,3 +15,7 @@ skills-lock.json
 # Sol's review proofs, committed byte-for-byte as the review patch held them
 # so a reader can compare them with the patch. See issue #174.
 tests/runtime/t2d-proof-body-byte-identity.test.ts
+
+# Sol's REV184 and REV184B review proofs, byte-for-byte as the review patches
+# held them, so their byte-identity proof can compare them. See #184.
+tests/ci/sol-review-proof-byte-identity.test.ts
