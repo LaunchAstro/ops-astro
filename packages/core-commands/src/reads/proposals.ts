@@ -57,7 +57,12 @@ import { keyResolver, gateSigningKey } from '../../../core-runtime/src/index.ts'
 import type { KeyResolver, SigningKey } from '../../../core-runtime/src/index.ts';
 import { readVerifiedProjection } from './verified-decisions.ts';
 import { SCOPES, scopesOf, type ScopeRow } from './run-scopes.ts';
-import type { ProposalVersionView, ProposalView } from '../../../core-wire/src/index.ts';
+import { ENVELOPES, ledgerOf, type EnvelopeRow } from './task-ledger.ts';
+import type {
+  ProposalVersionView,
+  ProposalView,
+  TaskLedgerView,
+} from '../../../core-wire/src/index.ts';
 
 /** What each payload format signed, in `DecisionLink`'s names (`signing.ts`). */
 const SIGNED_FIELDS: Readonly<Record<number, readonly string[]>> = {
@@ -101,6 +106,7 @@ interface VersionRow {
 interface ReservationRow {
   readonly lineage_id: string;
   readonly id: string;
+  readonly envelope_id: string;
   readonly state: string;
   readonly held_minor: string;
   readonly actual_minor: string | null;
@@ -169,7 +175,7 @@ const VERSIONS = `select row_number() over (order by lin.created_at desc, lin.id
 
 const RESERVATIONS = `select row_number() over (order by res.created_at, res.id) as ordinal,
             run.lineage_id,
-            res.id, res.state, res.held_minor::text as held_minor,
+            res.id, res.envelope_id, res.state, res.held_minor::text as held_minor,
             res.actual_minor::text as actual_minor, res.classified_cause,
             res.lease_id,
             lease.fence::text as lease_fence, lease.state as lease_state,
@@ -212,11 +218,26 @@ export async function readTaskProposals(
   taskId: string,
   signingKey: KeyResolver | SigningKey | null = configuredKeys(),
 ): Promise<readonly ProposalView[]> {
+  return (await readTaskWork(tx, taskId, signingKey)).proposals;
+}
+
+/** The proposals and the token ledger (MP-6-5) together, from the one statement. */
+export async function readTaskWork(
+  tx: TenantQuery,
+  taskId: string,
+  signingKey: KeyResolver | SigningKey | null = configuredKeys(),
+): Promise<{ readonly proposals: readonly ProposalView[]; readonly ledger: TaskLedgerView }> {
   const snapshot = await readVerifiedProjection(
     tx,
     {
       lineages: LINEAGES,
-      rows: { versions: VERSIONS, reservations: RESERVATIONS, checks: CHECKS, scopes: SCOPES },
+      rows: {
+        versions: VERSIONS,
+        reservations: RESERVATIONS,
+        checks: CHECKS,
+        scopes: SCOPES,
+        envelopes: ENVELOPES,
+      },
       parameter: taskId,
     },
     signingKey,
@@ -226,11 +247,12 @@ export async function readTaskProposals(
   const checks = (snapshot.rows['checks'] ?? []) as readonly CheckRow[];
   const scopes = (snapshot.rows['scopes'] ?? []) as readonly ScopeRow[];
   const decisions = snapshot.decisions;
-  if (versions.length === 0) return [];
+  const ledger = ledgerOf((snapshot.rows['envelopes'] ?? []) as readonly EnvelopeRow[]);
+  if (versions.length === 0) return { proposals: [], ledger };
 
   const lineageIds = [...new Set(versions.map((row) => row.lineage_id))];
 
-  return lineageIds.map((lineageId) => {
+  const proposals = lineageIds.map((lineageId) => {
     const rows = versions.filter((row) => row.lineage_id === lineageId);
     const first = rows[0];
     return {
@@ -257,6 +279,7 @@ export async function readTaskProposals(
         .filter((row) => row.lineage_id === lineageId)
         .map((row) => ({
           id: row.id,
+          envelopeId: row.envelope_id,
           state: row.state,
           heldMinor: Number(row.held_minor),
           actualMinor: row.actual_minor === null ? null : Number(row.actual_minor),
@@ -285,6 +308,7 @@ export async function readTaskProposals(
       scopes: scopesOf(scopes, lineageId),
     };
   });
+  return { proposals, ledger };
 }
 
 function asVersion(row: VersionRow, checks: readonly CheckRow[]): ProposalVersionView {

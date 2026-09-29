@@ -56,6 +56,8 @@ export type {
   QueuedWork,
   QueueResult,
   ReservationView,
+  EnvelopeView,
+  TaskLedgerView,
   SettingsReadResult,
   SessionCapabilities,
   SettingView,

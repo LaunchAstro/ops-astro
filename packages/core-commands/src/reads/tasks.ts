@@ -29,7 +29,7 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
 import type { InternalCommentView } from '../../../core-wire/src/index.ts';
 import { READS } from '../../../core-wire/src/index.ts';
-import { readTaskProposals } from './proposals.ts';
+import { readTaskWork } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
 
 interface TaskRowRead {
@@ -253,7 +253,9 @@ export async function readTaskDetail(
     // catalogue classifies -- it carries the proposal's own payload, which is
     // what the proposer put in it and what the decision was about. An external
     // reader who may see the task may see what somebody proposed doing to it.
-    proposals: await readTaskProposals(tx, row.id),
+    // The token ledger (MP-6-5) comes from the same statement as the proposals,
+    // so the envelope and its per-run rows are one snapshot.
+    ...(await readTaskWork(tx, row.id)),
     capCurrency: await taskCapCurrency(tx, row.id),
   };
 }
