@@ -200,7 +200,7 @@ export async function admitMadeUp(admin: OwnerQuery, confirmed: boolean): Promis
   const signs = await productionSigns(admin, [], confirmed);
   if (signs.length > 0) return signs;
   await guardMadeUp(admin);
-  return [];
+  return productionSigns(admin, [], confirmed);
 }
 
 /**
