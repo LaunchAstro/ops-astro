@@ -38,6 +38,7 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
   'tests/pickup/pickup-replay-restart.test.ts':
     'skips without PICKUP_REPLAY_API_PORT and PICKUP_REPLAY_PG_CONTAINER',
   'tests/acceptance/restart-declared.test.ts': 'pure: restart-harness refusals only',
+  'tests/wayfinder/wf-2-inbox.test.ts': 'held skip until the inbox lands (SL04 U99)',
   'tests/cli/cli-answers.test.ts': 'pure: the CLI against an HTTP stand-in',
   'tests/cli/cli-wire.test.ts': 'pure: the CLI against an HTTP stand-in',
   'tests/support/global-setup.test.ts': 'pure: besideUrl only',
