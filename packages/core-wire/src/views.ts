@@ -231,6 +231,26 @@ export interface ProposalVersionView {
   readonly gate: GateView | null;
   /** The checks the run performed on this version, oldest first (MP-6-1, CS-16.3). */
   readonly checks: readonly CheckView[];
+  /** What the run on this version recorded it knows, oldest revision first (MP-6-2, CS-16.4). */
+  readonly revisions: readonly RevisionView[];
+}
+
+/**
+ * One version of a run's state, written by `run.revise_state` under the run's
+ * worker lease and never changed after. The run's current knowledge is its
+ * newest; an empty `unknowns` is the run claiming there are none.
+ */
+export interface RevisionView {
+  readonly id: string;
+  readonly version: number;
+  /** The run's last contributing step, as the run named it; null when it named none. */
+  readonly step: string | null;
+  readonly valid: readonly { readonly k: string; readonly v: string }[];
+  readonly unknowns: readonly string[];
+  readonly stale: readonly { readonly k: string; readonly why: string }[];
+  /** The lease holder that recorded it: the provenance is the lease, not a claim. */
+  readonly revisedByActorId: string;
+  readonly revisedAt: string;
 }
 
 /** One check a run recorded under its worker lease, against the version it ran on. */

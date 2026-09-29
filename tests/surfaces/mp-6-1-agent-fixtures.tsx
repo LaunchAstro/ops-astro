@@ -32,6 +32,7 @@ export function version(overrides: Partial<Version> = {}): Version {
       payloadDigest: DIGEST,
     },
     checks: [],
+    revisions: [],
     ...overrides,
   };
 }

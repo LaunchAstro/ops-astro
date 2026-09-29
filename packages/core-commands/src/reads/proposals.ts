@@ -337,6 +337,7 @@ function asVersion(row: VersionRow, checks: readonly CheckRow[]): ProposalVersio
         performedByActorId: check.actor_id,
         recordedAt: isoTime(check.created_at),
       })),
+    revisions: [],
   };
 }
 

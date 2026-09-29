@@ -16,6 +16,18 @@ export interface RunCheck {
   readonly recordedAt: string;
 }
 
+/** One version of the run's state (MP-6-2, CS-16.4): what the run recorded it knows. */
+export interface RunRevision {
+  readonly id: string;
+  readonly version: number;
+  readonly step: string | null;
+  readonly valid: readonly { readonly k: string; readonly v: string }[];
+  readonly unknowns: readonly string[];
+  readonly stale: readonly { readonly k: string; readonly why: string }[];
+  readonly revisedByActorId: string;
+  readonly revisedAt: string;
+}
+
 export interface RunGate {
   readonly id: string;
   readonly state: string;
@@ -42,6 +54,8 @@ export interface RunVersion {
   readonly evidence: { readonly digest: string; readonly body: unknown } | null;
   readonly gate: RunGate | null;
   readonly checks: readonly RunCheck[];
+  /** The run's state revisions, oldest first (MP-6-2). Absent from a read made before them, which reads as none. */
+  readonly revisions?: readonly RunRevision[];
 }
 
 export interface RunReservation {
