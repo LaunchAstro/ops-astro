@@ -145,6 +145,14 @@ async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence:
 export async function ownAppliedEffect(
   context: BodyContext,
 ): Promise<{ leaseId: string; fence: number; attemptId: string }> {
+  const { taskId: _taskId, ...applied } = await ownAppliedOnTask(context);
+  return applied;
+}
+
+/** `ownAppliedEffect`, with the task it applied on (T3d1). */
+async function ownAppliedOnTask(
+  context: BodyContext,
+): Promise<{ leaseId: string; fence: number; attemptId: string; taskId: string }> {
   const detail = await ownPickup(context);
   const lease = { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
   const attemptId = String(detail['attemptId']);
@@ -160,7 +168,7 @@ export async function ownAppliedEffect(
     audience: 'internal',
   });
   if (effect.code !== 'ok') throw new Error(`matrix: effect refused ${effect.code}`);
-  return { ...lease, attemptId };
+  return { ...lease, attemptId, taskId };
 }
 
 /**
@@ -169,14 +177,17 @@ export async function ownAppliedEffect(
  * takes (T3d1).
  */
 async function ownUnknownAttempt(context: BodyContext): Promise<Record<string, unknown>> {
-  const applied = await ownAppliedEffect(context);
+  const { taskId, ...applied } = await ownAppliedOnTask(context);
   const observed = await context.asPerson('task.observe', {
     ...applied,
     usage: { item: 'synthetic_comment_long', quantity: 1 },
   });
-  if (observed.code !== 'ok') throw new Error(`matrix: observe refused ${observed.code}`);
-  const detail = observed.body['detail'] as Record<string, unknown>;
-  return { recordId: detail['taskId'], attemptId: applied.attemptId };
+  // T2d answers a cost above the hold BUDGET_UNAVAILABLE and keeps the
+  // attempt held unknown (the refusal retains its writes).
+  if (observed.code !== 'BUDGET_UNAVAILABLE') {
+    throw new Error(`matrix: observe answered ${observed.code}, not the unknown hold`);
+  }
+  return { recordId: taskId, attemptId: applied.attemptId };
 }
 
 export function createPositiveBody(
