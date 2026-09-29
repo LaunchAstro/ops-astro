@@ -3,7 +3,7 @@
 // `S0-6 content policy` in a real browser: the built page, served with an
 // inline script and an outside script planted in it, runs its own bundle and
 // neither plant. The required check reads the policy out of the page
-// (`tests/api/session-cookie.test.ts`); this run is the evidence that a browser
+// (`tests/api/session-cookie-tabs.test.ts`); this run is the evidence that a browser
 // enforces it, because the hosted runners install no browser.
 //
 // Run after `pnpm build`: `node tests/browser/content-policy.mjs`. It serves
