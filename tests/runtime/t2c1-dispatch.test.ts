@@ -316,6 +316,58 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
     expect(await marks(db, work.attemptId)).toMatchObject(UNMARKED);
   });
 
+  it('answers an agent naming a person’s own lease as LEASE_NOT_OWNED, not a fault', async () => {
+    const taskId = await newTask(db.app, fixture.businessId, fixture.decider);
+    const personLease = await db.app.withBusiness(fixture.businessId, async (tx) => {
+      const proposed = await propose(tx, {
+        taskId,
+        collection: TASK_COLLECTION,
+        proposedByActorId: fixture.decider.actorId,
+        subjects: subjectsOf(fixture.decider),
+        purpose: `t2c1_${randomUUID().slice(0, 8)}`,
+        maximumMinor: 2_500,
+        currency: 'AUD',
+        payload: { change: 'a team-only comment' },
+        step: { kind: 'synthetic_comment', payload: {} },
+        expiresAt: new Date(Date.now() + 3_600_000),
+      });
+      if (!proposed.ok) throw new Error('propose refused');
+      const decided = await decide(tx, {
+        gateId: proposed.value.gateId,
+        versionId: proposed.value.versionId,
+        decidedByPersonId: fixture.decider.personId,
+        decidedByActorId: fixture.decider.actorId,
+        subjects: subjectsOf(fixture.decider),
+        collection: TASK_COLLECTION,
+        decision: 'approve',
+        note: 'go',
+        signingKey: TEST_SIGNING_KEY,
+        capId: fixture.capId,
+      });
+      if (!decided.ok || decided.value.decision !== 'approve') throw new Error('decide refused');
+      const picked = await pickup(tx, {
+        claimant: 'person',
+        reservationId: decided.value.reservationId,
+        personId: fixture.decider.personId,
+        actorId: fixture.decider.actorId,
+        authorisedByPersonId: fixture.decider.personId,
+        collection: TASK_COLLECTION,
+        leaseSeconds: 600,
+      });
+      if (!picked.ok) throw new Error(`pickup refused ${picked.refusal.code}`);
+      return picked.value;
+    });
+    const mine = await leased(db.app, fixture);
+    const answer = await run(fixture, {
+      ...mine.request,
+      leaseId: personLease.leaseId,
+      fence: personLease.fence,
+    });
+    expect(answer.ok).toBe(false);
+    if (!answer.ok) expect(answer.refusal.code).toBe('LEASE_NOT_OWNED');
+    expect(await marks(db, personLease.attemptId)).toMatchObject(UNMARKED);
+  });
+
   it('T2 isolation: another business’s lease is not owned and nothing there moves', async () => {
     const theirs = await leased(db.app, other);
     const before = await marks(db, theirs.attemptId);

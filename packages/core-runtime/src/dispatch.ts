@@ -100,7 +100,12 @@ export async function dispatch(
   request: DispatchRequest,
 ): Promise<RuntimeResult<Dispatched>> {
   const found = await discover(tx, request.leaseId);
-  if (found === undefined) return refuseLease('not_owned', NOT_OWNED_FIX);
+  // A lease of the other kind, or under another delegation, is not the caller's:
+  // answered before any lock, in the bytes a fabricated one gets.
+  const presented = request.claimant === 'agent' ? request.delegationId : null;
+  if (found === undefined || found.delegation_id !== presented) {
+    return refuseLease('not_owned', NOT_OWNED_FIX);
+  }
   const subjects: readonly Subject[] =
     request.claimant === 'person'
       ? request.subjects
