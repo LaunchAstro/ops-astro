@@ -3,7 +3,9 @@
 // MP-1-3: a component with no width of its own (the meter fills its host) is
 // drawn on the mockup page at the width the gallery draws it, so the two
 // pictures compare the same shape. Before, the copy sat in a host that shrank
-// to its content, so the meter drew at 0 px and could not be photographed.
+// to its content, so the meter drew at 0 px and could not be photographed;
+// the meter, alone of the units, is made to fill that host, as its own page
+// host fills it.
 
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -97,6 +99,9 @@ afterAll(() => {
 it("MP-1-3 the mockup copy is drawn at the gallery component's width, so the meter is photographed", () => {
   expect(placed.length).toBeGreaterThan(0);
   for (const value of placed) expect(value).toMatchObject({ width: GALLERY_WIDTH });
+  // The meter alone fills its host; a button or chip keeps its own width.
+  const fills = placed.filter((value) => (value as { fills?: boolean }).fills === true);
+  expect(fills).toHaveLength(1);
   expect(summary).toContain('ok MP-1-3 meter@390-light');
   expect(summary).not.toContain('not photographed');
 });
