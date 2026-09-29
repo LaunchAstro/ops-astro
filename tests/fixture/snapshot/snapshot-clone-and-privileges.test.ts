@@ -8,12 +8,22 @@ import { connectAsAdmin } from '../../../packages/core-records/src/tenancy/datab
 import { databaseUrlFromEnvironment } from '../../support/fresh-database.ts';
 
 // What the build makes, as the seeding step sees it: the first case drops
-// only these, never a fixture database another file made at the same time.
-const built = vi.hoisted(() => ({ databases: [] as string[], roles: [] as string[] }));
+// only these, never a fixture database another run made at the same time.
+// A database is held by its oid, which a rename keeps.
+const built = vi.hoisted(() => ({ oids: [] as string[], roles: [] as string[] }));
 
 vi.mock('../generate.ts', () => ({
-  seedFixture: (db: { name: string; loginRole: string; restrictedRole: string }) => {
-    built.databases.push(db.name);
+  seedFixture: async (db: {
+    name: string;
+    loginRole: string;
+    restrictedRole: string;
+    admin: { execute<Row>(text: string, parameters?: readonly unknown[]): Promise<readonly Row[]> };
+  }) => {
+    const rows = await db.admin.execute<{ oid: string }>(
+      'select oid::text oid from pg_database where datname = $1',
+      [db.name],
+    );
+    built.oids.push(...rows.map((row) => row.oid));
     built.roles.push(db.loginRole, db.restrictedRole);
     return { seedMs: 0, heldBack: [] };
   },
@@ -63,10 +73,14 @@ it.skipIf(serverUrl === undefined)(
       expect(await databases()).toContain(clone);
     } finally {
       process.argv = originalArgv;
-      // The build renames its own database to the template, so the template
-      // is this case's only when the build seeded one.
-      const own = [...built.databases, clone];
-      if (built.databases.length > 0) own.push(snapshotTemplate());
+      // The build's own database under whatever name it now has: the
+      // template when its rename won, its first name when another run's
+      // template took that name first, which stays.
+      const renamed = await server.execute<{ datname: string }>(
+        'select datname from pg_database where oid::text = any($1)',
+        [built.oids],
+      );
+      const own = [...renamed.map((row) => row.datname), clone];
       await Promise.all(
         own.map(
           async (name) => await server.execute(`drop database if exists "${name}" with (force)`),
