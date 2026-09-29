@@ -585,15 +585,23 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
         const spine = await readTaskSpine(tx);
         let task: Awaited<ReturnType<typeof readTaskDetail>>;
         try {
-          task = await readTaskDetail(tx, spine.taskTypeId, taskId, {
-            commentTypeId: spine.taskCommentTypeId,
-            // An agent is never an internal reader. It is a delegate working one
-            // task, not a member of the business, so it is shown what an external
-            // reader is shown — the client comments in the fields the catalogue
-            // marks `shared` — and internal notes are absent from its answer
-            // rather than hidden in it (I09).
-            internal: false,
-          });
+          task = await readTaskDetail(
+            tx,
+            spine.taskTypeId,
+            taskId,
+            {
+              commentTypeId: spine.taskCommentTypeId,
+              // An agent is never an internal reader. It is a delegate working one
+              // task, not a member of the business, so it is shown what an external
+              // reader is shown — the client comments in the fields the catalogue
+              // marks `shared` — and internal notes are absent from its answer
+              // rather than hidden in it (I09).
+              internal: false,
+            },
+            // An agent works one task under its delegation, so the pool its
+            // rank is worked out in is that task and no other.
+            { kind: 'task' },
+          );
         } catch (cause) {
           // Decisions that do not verify are the fault the person read answers
           // (`runRead`), not a retryable one: the same body on both prefixes.

@@ -33,6 +33,7 @@ import { READS } from '../../../core-wire/src/index.ts';
 import { readAlerts } from '../../../core-runtime/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
+import { readTaskRank, type RankPool } from './rank.ts';
 
 interface TaskRowRead {
   readonly id: string;
@@ -232,6 +233,7 @@ export async function readTaskDetail(
   taskTypeId: string,
   recordId: string,
   comments: { readonly commentTypeId: string | undefined; readonly internal: boolean },
+  rankPool: RankPool,
 ): Promise<TaskDetail | undefined> {
   // A malformed identifier is not cast and not queried. The cast would raise
   // where the contract promises a refusal, and "that is not a uuid" is an
@@ -259,7 +261,7 @@ export async function readTaskDetail(
     capCurrency: await taskCapCurrency(tx, row.id),
     envelope: envelopeOf(await openEnvelopeOf(tx, row.id)),
     alerts: await readAlerts(tx, row.id),
-    rank: { number: null, score: null, calc: '' },
+    rank: await readTaskRank(tx, taskTypeId, row.id, rankPool),
   };
 }
 

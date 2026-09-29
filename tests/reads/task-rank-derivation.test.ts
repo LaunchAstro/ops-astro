@@ -152,3 +152,9 @@ describe('MP-4-9 half up', () => {
     expect(built.scoreTask(HALF_WAY, NOW).score).toBe(10);
   });
 });
+
+describe('MP-4-9 harness captures', () => {
+  // The width-and-theme harness (MP-1-7) is not on main yet; the rank's
+  // captures at 1480, 900 and 390, light and dark, are taken with it.
+  it.todo('the task page rank and calc line at 1480, 900 and 390, light and dark');
+});

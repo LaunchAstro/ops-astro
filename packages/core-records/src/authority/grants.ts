@@ -124,6 +124,51 @@ export async function effectiveGrants(
 }
 
 /**
+ * The live records of one type these subjects may act on in one collection,
+ * worked out by the one live-grant expression above, inside the query.
+ *
+ * A read that works over many records (the derived rank's pool) filters by
+ * this list rather than reading every record and checking each afterwards, so
+ * a record the subjects hold no grant on never leaves the database. A business
+ * grant reaches every record; a record grant, its one record. A party grant is
+ * not read here, as `checkAuthority` does not read it for a record either, so
+ * the list is exactly the records a single-record check would admit.
+ */
+export async function readableRecordIds(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+  request: {
+    readonly collection: string;
+    readonly action: Action;
+    readonly recordTypeId: string;
+  },
+): Promise<readonly string[]> {
+  const rows = await tx.query<{ readonly id: string }>(
+    `${EFFECTIVE}
+     select r.id
+       from public.records r
+      where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
+        and exists (
+          select 1 from effective e
+           where e.collection = $3
+             and e.action = $4
+             and exists (select 1 from unnest($5::text[], $6::uuid[]) as s (kind, id)
+                          where s.kind = e.subject_kind and s.id = e.subject_id)
+             and (e.scope_kind = 'business'
+                  or (e.scope_kind = 'record' and e.scope_id = r.id)))`,
+    [
+      tx.businessId,
+      request.recordTypeId,
+      request.collection,
+      request.action,
+      subjects.map((subject) => subject.kind),
+      subjects.map((subject) => subject.id),
+    ],
+  );
+  return rows.map((row) => row.id);
+}
+
+/**
  * The check a serving operation makes. A denied read says so with a code and a
  * fix; it never comes back as an empty list, because empty and denied are
  * different answers and only one of them is honest here.

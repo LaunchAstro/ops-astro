@@ -36,6 +36,7 @@ export {
 export {
   checkAuthority,
   effectiveGrants,
+  readableRecordIds,
   revokeGrant,
   subjectsOf,
   type Action,
