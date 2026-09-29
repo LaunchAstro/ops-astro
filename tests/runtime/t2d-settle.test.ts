@@ -26,23 +26,16 @@ import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
   appliedDetail,
-  approve,
   asAgent,
-  asPerson,
   capCommitted,
   codeOf,
   createTask,
-  freshPurpose,
   handbackBody,
   openSchedules,
-  pickup,
-  proposeBody,
-  revisionOf,
   rows,
-  type Detail,
   type Schedules,
 } from './schedules-harness.ts';
-import { cq8World } from './cq-8-world.ts';
+import { cq8World, OVER, PRICED, t2dHarness } from './t2d-harness.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -50,112 +43,10 @@ if (serverUrl === undefined) {
   console.warn('runtime/t2d-settle: DATABASE_URL is unset, so nothing below ran.');
 }
 
-/** The estimated maximum the proposal asks a person to hold. */
-const MAXIMUM = 2_500;
-const PRICED = { item: 'synthetic_comment', quantity: 1 };
-const OVER = { item: 'synthetic_comment_long', quantity: 1 };
-
-interface Work {
-  readonly taskId: string;
-  readonly proposal: Detail;
-  readonly decision: Detail;
-  readonly picked: Detail;
-  readonly credential: string;
-  readonly attemptId: string;
-}
-
 describe.skipIf(serverUrl === undefined)('T2d settlement at the observed cost', () => {
   let s: Schedules;
 
-  async function work(): Promise<Work> {
-    const taskId = await createTask(s, `t2d ${randomUUID()}`);
-    const body = {
-      ...proposeBody(taskId, await revisionOf(s, taskId), {
-        purpose: freshPurpose(),
-        maximumMinor: MAXIMUM,
-      }),
-      step: { kind: 'synthetic_comment', payload: {} },
-    };
-    const proposal = appliedDetail(await asPerson(s, body), 'task.propose');
-    const decision = await approve(s, proposal);
-    const picked = await pickup(s, decision['reservationId']);
-    return {
-      taskId,
-      proposal,
-      decision,
-      picked,
-      credential: String(picked['credential']),
-      attemptId: String(picked['attemptId']),
-    };
-  }
-
-  const held = async (w: Work, body: Readonly<Record<string, unknown>>) =>
-    await asAgent(
-      s,
-      {
-        operationId: randomUUID(),
-        leaseId: w.picked['leaseId'],
-        fence: w.picked['fence'],
-        ...body,
-      },
-      w.credential,
-    );
-
-  const dispatched = async (w: Work) => {
-    appliedDetail(await held(w, { command: 'task.dispatch' }), 'task.dispatch');
-  };
-
-  const applied = async (w: Work) => {
-    await dispatched(w);
-    appliedDetail(
-      await asAgent(
-        s,
-        {
-          command: 'task.comment',
-          operationId: effectOperationId(w.attemptId),
-          recordId: w.taskId,
-          body: 'The synthetic change, applied once. Nothing left the app.',
-          audience: 'internal',
-        },
-        w.credential,
-      ),
-      'task.comment',
-    );
-  };
-
-  const observeOf = async (w: Work, extra: Readonly<Record<string, unknown>> = {}) =>
-    await held(w, { command: 'task.observe', attemptId: w.attemptId, ...extra });
-
-  const money = async (w: Work) =>
-    (
-      await rows<Record<string, unknown>>(
-        s,
-        `select res.state, res.held_minor::text as held, res.actual_minor::text as actual,
-                att.state as attempt_state, att.outcome, att.actual_minor::text as attempt_actual,
-                att.observed, env.held_minor::text as envelope_held,
-                env.actual_minor::text as envelope_actual
-           from public.reservations res
-           join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
-           join public.task_envelopes env on env.business_id = res.business_id and env.id = att.envelope_id
-          where res.business_id = $1 and res.id = $2`,
-        [s.business, w.decision['reservationId']],
-      )
-    )[0];
-
-  const receiptOf = async (attemptId: string, who: Member = s.decider) =>
-    await executeRead(s.db.app, s.business, who.presented, {
-      read: 'task.receipt',
-      attemptId,
-    } as never);
-
-  const auditsOf = async (outcome: string) =>
-    await rows<{ readonly refusal_code: string | null; readonly attempted: unknown }>(
-      s,
-      `select refusal_code, attempted from public.audit_events
-        where business_id = $1 and command = 'task.observe' and outcome = $2
-        order by occurred_at`,
-      [s.business, outcome],
-    );
+  const { work, dispatched, applied, observeOf, money, receiptOf, auditsOf } = t2dHarness(() => s);
 
   beforeAll(async () => {
     s = await openSchedules('t2d', 1_000_000);
