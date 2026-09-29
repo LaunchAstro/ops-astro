@@ -22,11 +22,11 @@
 // drawn with the kit's existing section and button classes.
 
 import { useState, type ReactElement } from 'react';
-import { COMMAND_SURFACE } from '../../../../packages/core-wire/src/index.ts';
 import type { MapViewResult } from '../../../../packages/core-wire/src/index.ts';
-import type { OperationsClient, WireRefusal } from '../operations/client.ts';
+import type { OperationsClient } from '../operations/client.ts';
 import { useRead } from '../data/use-read.ts';
 import { useCommand } from '../records/use-command.ts';
+import { needsKey } from '../records/needs-key.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { MapViews } from './map/Views.tsx';
 import {
@@ -42,18 +42,6 @@ export interface MapScreenProps {
   readonly grantKey: string;
   /** The map's key (or its identifier), as the address carries it. */
   readonly mapKey: string;
-}
-
-// Codes about who may act. A grant refusal does not name the key it looked
-// for, so the page names the one the command it sent is declared with, as the
-// CLI's refusal line does (`apps/cli/render.ts`).
-const AUTHORITY = /GRANT|PERMIT|DELEGATION|AUTH|AGENT/u;
-
-function needs(command: MapCommand, refusal: WireRefusal | undefined): string | null {
-  const row = COMMAND_SURFACE.find((one) => one.name === command);
-  return row !== undefined && refusal !== undefined && AUTHORITY.test(refusal.code)
-    ? `You need ${row.collection}:${row.action} to change this map.`
-    : null;
 }
 
 /** The page's writes: one at a time, each followed by a reread unless refused. */
@@ -91,7 +79,7 @@ export function MapScreen(props: MapScreenProps): ReactElement {
       {command.failure === null ? null : (
         <p className="field__error" role="alert" data-map-failure="">
           {command.failure.because}{' '}
-          {needs(sent, 'refusal' in command.failure ? command.failure.refusal : undefined)}
+          {needsKey(sent, 'refusal' in command.failure ? command.failure.refusal : undefined)}
         </p>
       )}
       <RecordState state={state} subject="map" onRetry={reload}>

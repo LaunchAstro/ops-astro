@@ -205,7 +205,7 @@ pnpm cli map frontier <id>
   key, title and type; `brief` keeps the counts and the keys.
 - `task context` (API-4, `task.context`, _work this ticket_) is everything a
   ticket depends on in one call and one statement: the ticket, its map's
-  Destination and Decisions so far, its blockers and what it blocks, its
+  Destination, owner (at `standard` and `full`) and Decisions so far, its blockers and what it blocks, its
   acceptance checks (the `- [ ]` and `- [x]` lines of its description, as
   written), its linked documents (none yet: they join with WF-8's Docs pages)
   and its recent thread. It reads the live tables the write changed, so it is

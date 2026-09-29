@@ -120,7 +120,7 @@ describe.skipIf(serverUrl === undefined)('WF-5 ticket detail', () => {
     await page.click('button[data-resolve-save]');
     await until(
       page,
-      () => page.find('button[data-resolve]') === null && page.find('[data-ticket-panel]') !== null,
+      () => (page.find('[data-ticket-panel]')?.textContent ?? '').includes('Resolved:'),
       'the reread',
     );
     expect(await resolved(b)).toBe('resolve form gist');
@@ -157,7 +157,7 @@ describe.skipIf(serverUrl === undefined)('WF-5 ticket detail', () => {
     await resolve(page, 'audited answer', 'audited gist');
     await until(
       page,
-      () => page.find('[data-ticket-panel]') !== null && page.find('button[data-resolve]') === null,
+      () => (page.find('[data-ticket-panel]')?.textContent ?? '').includes('Resolved:'),
       'the resolve',
     );
     const writes = (await w.audit())

@@ -87,6 +87,7 @@ import type {
   TaskReadResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import { TicketPanel } from './task/Ticket.tsx';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { ConflictNotice, MovedNotice, TaskHeader, UnsavedBar } from './task/Notices.tsx';
 
@@ -523,6 +524,13 @@ function Loaded(props: LoadedProps): ReactElement {
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
       <TaskHeader task={task} />
+
+      <TicketPanel
+        client={props.client}
+        grantKey={props.grantKey}
+        recordId={task.id}
+        onChanged={props.onChanged}
+      />
 
       {because === null ? null : (
         <p className="field__error" role="alert" data-voice="input-wrong">
