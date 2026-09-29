@@ -237,6 +237,65 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
   // so a panel drawing a screen adds that screen's reads, as the page would.
   // What the dock itself does, a press, a close, Escape, Close all, adds no
   // audit event and asks the server nothing.
+  // MP-3-4 isolation: the same crossings through a programmatic door, a row
+  // or badge naming the view it opens. The door is followed; what it names is
+  // read under the clicker's own session, and the server refuses it.
+  async function throughDoor(
+    session: Session,
+  ): Promise<{ page: Mounted; reads: readonly Heard[]; heard: readonly Heard[] }> {
+    const heard: Heard[] = [];
+    const page = await signedIn(session, memory(), heard);
+    const door = document.createElement('button');
+    door.setAttribute('data-dock-open', 'todos');
+    door.setAttribute('data-dock-place', `/task/${taskOne}`);
+    (page.find('.content') as HTMLElement).append(door);
+    await act(async () => {
+      door.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await quiet(heard);
+    return { page, reads: readsOf(heard), heard };
+  }
+
+  it('MP-3-4 isolation: its own reader follows the door to the canary', async () => {
+    const { page, reads } = await throughDoor({
+      token: await tokenFor(clientOne.presented.subject),
+      businessKey: 'alpha',
+      email: 'one@example.test',
+    });
+    expect(page.find('[data-panel-id="todos"]')?.textContent).toContain(canary);
+    expect(reads.map((each) => each.status)).toContain(200);
+  });
+
+  it('MP-3-4 isolation: another client, another business and a delegated agent are refused', async () => {
+    const sessions: readonly Session[] = [
+      {
+        token: await tokenFor(clientTwo.presented.subject),
+        businessKey: 'alpha',
+        email: 'two@example.test',
+      },
+      { token: await tokenFor(both.presented.subject), businessKey: 'bravo', email: 'both@example.test' },
+      {
+        token: await tokenFor(fixture.agent.subject),
+        businessKey: 'alpha',
+        email: 'agent@example.test',
+      },
+    ];
+    for (const session of sessions) {
+      // eslint-disable-next-line no-await-in-loop -- one mounted application at a time
+      const { page, reads, heard } = await throughDoor(session);
+      // A person route that does not know the caller ends the session before
+      // the door can open anything; otherwise the door opened and was refused.
+      if (heard.some((each) => each.status === 401)) {
+        expect(page.all('.dpanel'), session.email).toHaveLength(0);
+      } else {
+        expect(page.all('.dpanel').length, session.email).toBe(1);
+        expect(reads.length, session.email).toBeGreaterThan(0);
+      }
+      for (const read of reads) expect([401, 403, 404], session.email).toContain(read.status);
+      expect(page.text(), session.email).not.toContain(canary);
+    }
+  });
+
   it('MP-3-1 no audit: the dock adds no audit event of its own', async () => {
     const events = async (): Promise<readonly Record<string, unknown>[]> =>
       await fixture.db.admin.execute<Record<string, unknown>>(

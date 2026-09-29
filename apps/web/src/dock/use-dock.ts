@@ -7,7 +7,13 @@
 // A change is computed from the value in hand, not inside a state updater, so
 // a tenant's close runs once per close even where React runs updaters twice.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { dockTabs, isPanelId, type PanelRegistry } from '../panels.ts';
 import { grantKeyOf, type Session, type StorageLike } from '../session/token.ts';
 import {
@@ -24,6 +30,8 @@ import {
 export interface DockModel {
   readonly state: DockState;
   readonly change: (next: (state: DockState) => DockState) => void;
+  /** Every click inside the application, for the doors into the dock. */
+  readonly onDoor: (event: ReactMouseEvent<HTMLElement>) => void;
 }
 
 export function useDock(
@@ -85,8 +93,9 @@ export function useDock(
   // the view with `data-dock-place`; the ask seam declares `data-ask` and opens
   // the assistant. Plain solos, shift stacks, and a target already open stays
   // open while its view moves. A click another handler took is left alone.
-  useEffect(() => {
-    const onClick = (event: MouseEvent): void => {
+  // Heard on the application's own root, so a door answers to its own dock.
+  const onDoor = useCallback(
+    (event: ReactMouseEvent<HTMLElement>): void => {
       if (event.defaultPrevented || event.button !== 0) return;
       const door =
         event.target instanceof Element
@@ -100,12 +109,9 @@ export function useDock(
       change((state) =>
         openByGesture(state, id, event.shiftKey, isOwnAddress(place) ? place : undefined),
       );
-    };
-    document.addEventListener('click', onClick);
-    return () => {
-      document.removeEventListener('click', onClick);
-    };
-  }, [change, registry]);
+    },
+    [change, registry],
+  );
 
-  return { state: current.state, change };
+  return { state: current.state, change, onDoor };
 }

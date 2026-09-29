@@ -11,7 +11,7 @@
 // current face belong to `apps/web`, because `packages/ui` owns visual controls
 // and layout and may not own a session [ui-reference CONTRACT.md:305 rule 3].
 
-import type { ReactElement, ReactNode } from 'react';
+import type { MouseEvent, ReactElement, ReactNode } from 'react';
 import { Dock, type DockProps } from './Dock.tsx';
 
 export interface RailEntry {
@@ -30,12 +30,15 @@ export interface ShellProps {
   readonly meta?: ReactNode;
   /** The dock, or null where there is none: signed out, and on the client face (R17). */
   readonly dock: DockProps | null;
+  /** Every click inside the shell, heard after its target's own handlers. */
+  readonly onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   readonly children: ReactNode;
 }
 
 export function Shell(props: ShellProps): ReactElement {
   return (
-    <div className="shell" data-face={props.face}>
+    // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- heard, not handled: each door is a button or a link
+    <div className="shell" data-face={props.face} onClick={props.onClick}>
       <nav className="rail" aria-label="Sections">
         <div className="rail__brand">
           {/* The wordmark is a mask over an SVG in the pinned estate. No asset

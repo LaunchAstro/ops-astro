@@ -248,6 +248,7 @@ export function App(props: AppProps): ReactElement {
           </span>
         )
       }
+      onClick={dock.onDoor}
       // The client face has no dock (R17), and nobody signed out has one.
       dock={
         session === null || at?.page.namespace === 'portal'
