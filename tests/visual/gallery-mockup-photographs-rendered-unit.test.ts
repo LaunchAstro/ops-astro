@@ -34,7 +34,7 @@ vi.mock('./capture.ts', () => ({
   MOCKUP_ORIGIN: 'http://mockup.invalid',
   openSide: () => Promise.resolve({ context: { close: () => Promise.resolve() } }),
   load: (_side: unknown, _packet: unknown, url: string) => {
-    const gallery = url.startsWith('http://app.invalid');
+    const gallery = new URL(url).origin === 'http://app.invalid';
     let unit = '';
     return Promise.resolve({
       evaluate: (fn: { name: string }, value?: string) => {
