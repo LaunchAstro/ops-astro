@@ -22,6 +22,7 @@ import {
   receipts,
   archiveIds,
   backupStoreHooks,
+  hostReach,
 } from './backup-identity.fixture.ts';
 
 describe.skipIf(serverUrl === undefined)('the backup store', () => {
@@ -84,6 +85,7 @@ function backupScheduledCases1() {
     const ok = await runBackup({
       dump: async () => Buffer.from('PGDMP made-up nightly'),
       storeUrl: backupLogin.url,
+      reach: hostReach,
       publicKey: keys.publicKey,
     });
     expect(ok).toMatchObject({ event: 'backup run', outcome: 'recorded' });
@@ -97,6 +99,7 @@ function backupScheduledCases1() {
         throw new Error(`pg_dump: password ${canary} rejected for ${backupLogin.url}`);
       },
       storeUrl: backupLogin.url,
+      reach: hostReach,
       publicKey: keys.publicKey,
     });
     expect(failed).toMatchObject({ event: 'backup run', outcome: 'failed', stage: 'dump' });
@@ -107,6 +110,7 @@ function backupScheduledCases1() {
     const refusedStore = await runBackup({
       dump: async () => Buffer.from('PGDMP'),
       storeUrl: retentionLogin.url,
+      reach: hostReach,
       publicKey: keys.publicKey,
     });
     expect(refusedStore).toMatchObject({ outcome: 'failed', stage: 'store' });
@@ -195,7 +199,7 @@ function backupRetentionCases2() {
       expect(await archiveIds()).toStrictEqual([...inWindow, old?.id].toSorted());
 
       const { expireBackups } = await job();
-      const receipt = await expireBackups({ storeUrl: retentionLogin.url });
+      const receipt = await expireBackups({ storeUrl: retentionLogin.url, reach: hostReach });
       expect(receipt).toMatchObject({ event: 'backup expired', outcome: 'recorded', count: 1 });
       expect(await archiveIds()).toStrictEqual(inWindow.toSorted());
       const expired = (await receipts()).filter((r) => r.action === 'backup expired');

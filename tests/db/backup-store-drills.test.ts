@@ -24,6 +24,8 @@ import {
   retentionLogin,
   restoreLogin,
   backupStoreHooks,
+  hostReach,
+  type Reach,
   operator,
   passed,
   failed,
@@ -54,9 +56,14 @@ function drillReceiptCases1() {
   it('a failed drill before any passed one is recorded, and names no last tested restore', async () => {
     const path = '../../scripts/ops/restore-drill.mjs';
     const { recordDrill } = (await import(/* @vite-ignore */ path)) as {
-      recordDrill: (url: string, who: string, r: Record<string, unknown>) => Promise<unknown>;
+      recordDrill: (
+        url: string,
+        who: string,
+        r: Record<string, unknown>,
+        reach: Reach,
+      ) => Promise<unknown>;
     };
-    expect(await recordDrill(restoreLogin.url, operator, failed)).toBeNull();
+    expect(await recordDrill(restoreLogin.url, operator, failed, hostReach)).toBeNull();
     const [row] = await store.admin.execute<{ n: number }>(
       `select count(*)::int as n from backups.drills where outcome = 'failed'`,
     );
@@ -168,6 +175,7 @@ function drillReceiptCases4() {
         const receipt = (await drillModule.drillAsOperator({
           gate,
           storeUrl: restoreLogin.url,
+          reach: hostReach,
           drill: async () => ({
             event: 'restore drill',
             at: new Date().toISOString(),
@@ -269,6 +277,7 @@ function restoreStalenessCases2() {
     const ok = await runBackup({
       dump: async () => Buffer.from('PGDMP made-up nightly'),
       storeUrl: backupLogin.url,
+      reach: hostReach,
       publicKey: keys.publicKey,
       heartbeat: beat,
       send,
@@ -279,6 +288,7 @@ function restoreStalenessCases2() {
         throw new Error('no');
       },
       storeUrl: backupLogin.url,
+      reach: hostReach,
       publicKey: keys.publicKey,
       heartbeat: beat,
       send,

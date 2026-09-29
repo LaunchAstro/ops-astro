@@ -16,6 +16,9 @@ import {
   type EmptyDatabase,
 } from '../support/fresh-database.ts';
 
+/** How the job and the drill reach the store: a login and a script in, what psql prints out. */
+export type Reach = (url: string, script: string) => Promise<string>;
+
 /** The job as the machine runs it; loaded per test so a missing job fails its own tests only. */
 export const job = async (): Promise<{
   runBackup: (options: {
@@ -24,9 +27,11 @@ export const job = async (): Promise<{
     publicKey?: string;
     heartbeat?: string;
     send?: (address: string | undefined) => Promise<string>;
+    reach?: Reach;
   }) => Promise<Record<string, unknown>>;
   expireBackups: (options: {
     storeUrl: string;
+    reach?: Reach;
     restoreHeartbeat?: string;
     send?: (address: string | undefined) => Promise<string>;
   }) => Promise<Record<string, unknown>>;
@@ -53,7 +58,7 @@ export const keys: { publicKey: string; privateKey: string } = generateKeyPairSy
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 });
 export const drill = async (): Promise<{
-  fetchLatest: (storeUrl: string) => Promise<{ takenAt: string; body: Buffer }>;
+  fetchLatest: (storeUrl: string, reach?: Reach) => Promise<{ takenAt: string; body: Buffer }>;
   restoreDrill: (options: {
     fetchArchive: () => Promise<{ takenAt: string; body: Buffer }>;
     privateKey: string;
@@ -102,6 +107,25 @@ export async function loginIn(
   url.username = name;
   url.password = password;
   return { url: url.toString(), name };
+}
+
+/**
+ * The store reached from the machine, for the policy suites here. It runs the
+ * same scripts the job and the drill send through psql on staging's network
+ * (scripts/ops/backup-store-reach.mjs) over one session, and answers what
+ * `psql -At` prints: each row's one value, a line each.
+ */
+export async function hostReach(url: string, script: string): Promise<string> {
+  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  try {
+    const results = (await sql.unsafe(script)) as unknown as Record<string, unknown>[][];
+    return results
+      .flat()
+      .map((row) => String(Object.values(row)[0] ?? ''))
+      .join('\n');
+  } finally {
+    await sql.end();
+  }
 }
 
 /** One session, so `set role` and `begin` hold for every statement after them. */
@@ -281,6 +305,7 @@ export const expire = async (sent: string[]): Promise<Record<string, unknown>> =
     await job()
   ).expireBackups({
     storeUrl: retentionLogin.url,
+    reach: hostReach,
     restoreHeartbeat: address,
     send: (to: string | undefined) => {
       sent.push(to ?? '');
