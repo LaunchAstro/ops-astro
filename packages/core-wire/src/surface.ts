@@ -205,10 +205,8 @@ export interface CommandDeclaration {
    * also `before-pickup`, when it holds nothing yet (minimum contract 8.2).
    */
   readonly agent: 'never' | 'delegated' | 'before-pickup';
-  /** A two-part authority's keys (API-1). The envelope asks only `action`; the handler checks the rest. */
-  readonly authority?: readonly string[];
-  /** A rule every path holds, carried onto the catalogue row as written. */
-  readonly rule?: string;
+  readonly authority?: readonly string[]; // two-part keys (API-1); the handler checks past `action`
+  readonly rule?: string; // a hold every path keeps, carried onto the catalogue row (API-1)
 }
 
 /**
@@ -341,9 +339,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.assign', 'assign'),
   declare('task.triage', 'write'),
   declare('task.set_stage', 'write'),
-  // S0-5 adds the refusal; the catalogue carries the rule from here (API-1).
   declare('task.set_party', 'share', {
-    rule: 'once the task has content: refused CLIENT_LOCKED (409), writes nothing, on every path',
+    rule: 'once the task has content: refused CLIENT_LOCKED (409), writes nothing, on every path (S0-5)',
   }),
   declare('task.set_audience', 'share'),
   declare('task.reparent', 'write', { serialise: TASK_PLACEMENT_LOCK }),

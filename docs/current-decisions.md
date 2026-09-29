@@ -102,12 +102,11 @@ Pull requests stay under 250 commits, with no ruleset change. Identifier
 resolution stays, tested, for its named callers MP-8-6 and C48; API-1's
 command catalogue replaces capability-map discovery, which was not ported.
 
-**Amended 29 September 2026** (API-1). The command catalogue,
-`packages/core-wire/src/catalogue.ts`, answers what the first slice's
-capability-map discovery answered: which commands a principal may call, and
-through which surface. That discovery is replaced by the catalogue, not ported.
-`node scripts/command-parity.mjs` prints the parity report, and the required
-check `command parity` runs it with `--check` on every pull request.
+**Amended 29 September 2026** (API-1). `packages/core-wire/src/catalogue.ts`
+answers what the first slice's capability-map discovery answered: which
+commands a principal may call, and through which surface. That discovery is
+replaced by the catalogue, not ported. The required check `command parity`
+runs `node scripts/command-parity.mjs --check`.
 
 No external engineer review, legal opinion, security assessment, hosted enforcement,
 mailbox delivery, or service deployment is certified here. A public technical

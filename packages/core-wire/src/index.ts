@@ -18,5 +18,4 @@ export {
 // The one refusal shape, for the clients that parse it off the wire. Type-only,
 // so no records code reaches a bundle.
 export type { CommandRefusal } from '../../core-records/src/index.ts';
-// The command catalogue and its parity check (API-1).
-export * from './catalogue.ts';
+export * from './catalogue.ts'; // the command catalogue and its parity check (API-1)
