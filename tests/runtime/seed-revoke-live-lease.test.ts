@@ -14,8 +14,8 @@
 // The seed runs its whole body on import, so it runs here as its own process:
 // a copy of scripts/local-seed.mjs under a temporary root, with packages/ and
 // node_modules linked, so every `.local/` file it writes lands in that root.
-// No SUPABASE_JWT_SECRET is passed, so it never calls an auth service, and
-// GOTRUE_URL names a dead local port in case it tried.
+// No local signing key exists under that root, so it never calls an auth
+// service, and GOTRUE_URL names a dead local port in case it tried.
 
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -128,6 +128,9 @@ describe.skipIf(serverUrl === undefined)('the seed and a live lease', () => {
     mkdirSync(join(root, '.local'));
     copyFileSync(join(repo, 'scripts/local-seed.mjs'), join(root, 'scripts/local-seed.mjs'));
     symlinkSync(join(repo, 'scripts/ops'), join(root, 'scripts/ops'));
+    mkdirSync(join(root, 'scripts/local'));
+    const signer = 'scripts/local/signing-key.mjs';
+    copyFileSync(join(repo, signer), join(root, signer));
     symlinkSync(join(repo, 'packages'), join(root, 'packages'));
     symlinkSync(join(repo, 'node_modules'), join(root, 'node_modules'));
 

@@ -16,17 +16,16 @@
 // resolver is driven through a substitute owner connection.
 
 import { describe, expect, it } from 'vitest';
-import { sign } from 'hono/jwt';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { signBearer, signForged, TEST_KID, testSignIn } from '../support/sign-in.ts';
 import { createBusinessResolver } from '../../apps/api/server.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 
-const SECRET = 'a-local-test-secret-for-final-r1-api-sign';
 const GOTRUE = { aud: 'authenticated', iss: 'http://127.0.0.1:54391' };
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const BRAVO = '33333333-3333-4333-8333-333333333333';
@@ -44,7 +43,7 @@ const unreachable: Database = {
 function build() {
   return createApi({
     database: unreachable,
-    verify: createSupabaseVerifier({ secret: SECRET, issuer: GOTRUE.iss }),
+    verify: createSupabaseVerifier(testSignIn(GOTRUE.iss)),
     resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
     executeCommand,
     executeRead,
@@ -74,8 +73,8 @@ const b64url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('
 
 describe('only a verified signature can be reported as expired', () => {
   for (const [prefix, path] of PREFIXES) {
-    it(`${prefix} prefix: a past-exp bearer signed with another secret is AUTH_UNKNOWN_LOGIN`, async () => {
-      const forged = await sign({ sub: MIA, exp: past() }, 'another-secret', 'HS256');
+    it(`${prefix} prefix: a past-exp bearer signed with another key is AUTH_UNKNOWN_LOGIN`, async () => {
+      const forged = await signForged({ ...GOTRUE, sub: MIA, exp: past() });
       expect(await codeFor(path, forged)).toStrictEqual({
         status: 401,
         code: 'AUTH_UNKNOWN_LOGIN',
@@ -83,7 +82,7 @@ describe('only a verified signature can be reported as expired', () => {
     });
 
     it(`${prefix} prefix: a past-exp bearer with its signature replaced is AUTH_UNKNOWN_LOGIN`, async () => {
-      const genuine = await sign({ ...GOTRUE, sub: MIA, exp: past() }, SECRET, 'HS256');
+      const genuine = await signBearer({ ...GOTRUE, sub: MIA, exp: past() });
       const garbled = `${genuine.slice(0, genuine.lastIndexOf('.'))}.AAAA`;
       expect(await codeFor(path, garbled)).toStrictEqual({
         status: 401,
@@ -92,7 +91,8 @@ describe('only a verified signature can be reported as expired', () => {
     });
 
     it(`${prefix} prefix: the reviewer's unsigned schedule (exp 1, signature AAAA) is AUTH_UNKNOWN_LOGIN`, async () => {
-      const token = `${b64url({ alg: 'HS256', typ: 'JWT' })}.${b64url({ sub: 'x', exp: 1 })}.AAAA`;
+      const header = b64url({ alg: 'ES256', typ: 'JWT', kid: TEST_KID });
+      const token = `${header}.${b64url({ sub: 'x', exp: 1 })}.AAAA`;
       expect(await codeFor(path, token)).toStrictEqual({
         status: 401,
         code: 'AUTH_UNKNOWN_LOGIN',
@@ -100,7 +100,7 @@ describe('only a verified signature can be reported as expired', () => {
     });
 
     it(`${prefix} prefix: a past-exp bearer this deployment signed stays AUTH_SESSION_EXPIRED`, async () => {
-      const expired = await sign({ ...GOTRUE, sub: MIA, exp: past() }, SECRET, 'HS256');
+      const expired = await signBearer({ ...GOTRUE, sub: MIA, exp: past() });
       expect(await codeFor(path, expired)).toStrictEqual({
         status: 401,
         code: 'AUTH_SESSION_EXPIRED',

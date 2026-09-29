@@ -12,7 +12,6 @@
 // passing quietly and taking a proof with it.
 
 import { randomUUID } from 'node:crypto';
-import { sign } from 'hono/jwt';
 import type { FreshDatabase } from '../support/fresh-database.ts';
 import {
   insertActor,
@@ -25,6 +24,7 @@ import { grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
 import type { BusinessId, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
+import { signBearer } from '../support/sign-in.ts';
 
 /**
  * What a seeded person is, and what a seeded agent is.
@@ -52,9 +52,6 @@ export interface AgentIdentity {
   readonly actorId: string;
   readonly token: string;
 }
-
-/** The deployment secret for this suite. Local, disposable, never a real one. */
-export const ACCEPTANCE_SECRET = 'l5-acceptance-secret-not-any-running-deployment';
 
 /** The issuer the acceptance tokens carry, as GoTrue stamps its own URL. */
 export const ACCEPTANCE_ISSUER = 'http://127.0.0.1:54391';
@@ -106,17 +103,13 @@ export async function tokenFor(
   options: { readonly expiresIn?: number } = {},
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  return await sign(
-    {
-      sub: subject,
-      aud: 'authenticated',
-      iss: ACCEPTANCE_ISSUER,
-      role: 'authenticated',
-      exp: now + (options.expiresIn ?? 3600),
-    },
-    ACCEPTANCE_SECRET,
-    'HS256',
-  );
+  return await signBearer({
+    sub: subject,
+    aud: 'authenticated',
+    iss: ACCEPTANCE_ISSUER,
+    role: 'authenticated',
+    exp: now + (options.expiresIn ?? 3600),
+  });
 }
 
 export async function enrolCaller(

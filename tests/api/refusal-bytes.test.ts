@@ -16,10 +16,10 @@
 // makes would be drawn to a person as an outage.
 
 import { describe, expect, it } from 'vitest';
-import { sign } from 'hono/jwt';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { signBearer, testSignIn } from '../support/sign-in.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import {
@@ -29,7 +29,6 @@ import {
 } from '../../apps/web/src/operations/client.ts';
 import { describeRefusal } from '../../apps/web/src/records/submit.ts';
 
-const SECRET = 'a-local-test-secret-that-is-not-the-running-one';
 const ISSUER = 'http://127.0.0.1:54391';
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const MIA = '22222222-2222-4222-8222-222222222222';
@@ -58,7 +57,7 @@ const stubDatabase = (): Database =>
 
 const api = createApi({
   database: stubDatabase(),
-  verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
+  verify: createSupabaseVerifier(testSignIn(ISSUER)),
   resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
   executeCommand,
   executeRead,
@@ -84,17 +83,13 @@ const client = (token: string | null): OperationsClient =>
   });
 
 const tokenFor = async (subject: string): Promise<string> =>
-  await sign(
-    {
-      sub: subject,
-      aud: 'authenticated',
-      iss: ISSUER,
-      role: 'authenticated',
-      exp: Math.floor(Date.now() / 1000) + 600,
-    },
-    SECRET,
-    'HS256',
-  );
+  await signBearer({
+    sub: subject,
+    aud: 'authenticated',
+    iss: ISSUER,
+    role: 'authenticated',
+    exp: Math.floor(Date.now() / 1000) + 600,
+  });
 
 describe('a refusal crossing the boundary into the browser client', () => {
   it('is read as a refusal, not as the API being unavailable', async () => {

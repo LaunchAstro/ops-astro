@@ -17,7 +17,8 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
-import { ACCEPTANCE_ISSUER, ACCEPTANCE_SECRET, serverUrl, type World } from './world.ts';
+import { ACCEPTANCE_ISSUER, serverUrl, type World } from './world.ts';
+import { sharedKeySetUrl } from '../support/sign-in.ts';
 
 export const API_PORT_VARIABLE = 'L5_RESTART_API_PORT';
 
@@ -86,7 +87,7 @@ export async function startApi(
       API_PORT: port,
       DATABASE_URL: world.db.appUrl,
       DATABASE_ADMIN_URL: admin.toString(),
-      SUPABASE_JWT_SECRET: ACCEPTANCE_SECRET,
+      SUPABASE_KEY_SET_URL: await sharedKeySetUrl(),
       GOTRUE_URL: ACCEPTANCE_ISSUER,
       GATE_SIGNING_KEY_ID: process.env['GATE_SIGNING_KEY_ID'] ?? '',
       GATE_SIGNING_SECRET: process.env['GATE_SIGNING_SECRET'] ?? '',
