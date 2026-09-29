@@ -41,6 +41,7 @@ import {
   insertPerson,
 } from '../identity/fixture.ts';
 import { enrol, grantTo, type Member } from './fixture.ts';
+import { readable } from './inbox-clearing-world.ts';
 import {
   authorised,
   BUSINESS_KEY,
@@ -177,9 +178,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
     for (const holder of [fixture.member.personId, reviewer.personId]) {
       // oxlint-disable-next-line no-await-in-loop
       const items = await open(holder, 'decision');
-      expect(items.filter((i) => i.subjectRecordId === task.id)).toMatchObject([
-        { factKind: 'gate', factId: gateId, owed: true, closedByPersonId: null },
-      ]);
+      expect(
+        items.filter((i) => readable(i)).filter((i) => i.subjectRecordId === task.id),
+      ).toMatchObject([{ factKind: 'gate', factId: gateId, owed: true, closedByPersonId: null }]);
     }
     expect(await open(writer.personId, 'decision')).toStrictEqual([]);
     const inBravo = await fixture.db.app.withBusiness(bravo, async (tx) => [
@@ -195,7 +196,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
     const second = detailOf(
       ok(await call('task.propose', proposal(task, String(first['lineageId'])))),
     );
-    const onTask = (await itemsOf(reviewer.personId)).filter((i) => i.subjectRecordId === task.id);
+    const onTask = (await itemsOf(reviewer.personId))
+      .filter((i) => readable(i))
+      .filter((i) => i.subjectRecordId === task.id);
     expect(onTask.map((i) => [i.factId, i.workState, i.closedByPersonId])).toStrictEqual([
       [first['gateId'], 'withdrawn', null],
       [second['gateId'], 'open', null],
@@ -253,21 +256,21 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       step: { kind: 'compose', payload: {} },
     });
     expect(
-      (await open(fixture.member.personId, 'run_finished')).filter(
-        (i) => i.subjectRecordId === done.task.id,
-      ),
+      (await open(fixture.member.personId, 'run_finished'))
+        .filter((i) => readable(i))
+        .filter((i) => i.subjectRecordId === done.task.id),
     ).toMatchObject([{ factKind: 'planned_run', factId: done.runId, owed: false }]);
     expect(await open(writer.personId, 'run_finished')).toStrictEqual([]);
     // The successor the handback wrote is a decision like any other.
-    expect((await open(reviewer.personId, 'decision')).map((i) => i.factId)).toContain(
-      done.settled['successorGateId'],
-    );
+    expect(
+      (await open(reviewer.personId, 'decision')).filter((i) => readable(i)).map((i) => i.factId),
+    ).toContain(done.settled['successorGateId']);
 
     const failed = await settle('failed');
     expect(
-      (await open(fixture.member.personId, 'waiting_run')).filter(
-        (i) => i.subjectRecordId === failed.task.id,
-      ),
+      (await open(fixture.member.personId, 'waiting_run'))
+        .filter((i) => readable(i))
+        .filter((i) => i.subjectRecordId === failed.task.id),
     ).toMatchObject([{ factKind: 'planned_run', factId: failed.runId, owed: true }]);
   });
 
@@ -285,16 +288,20 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       );
     const rev = await assign(writer.personId, task.rev);
     const forWriter = await open(writer.personId, 'assignment');
-    expect(forWriter.filter((i) => i.subjectRecordId === task.id)).toMatchObject([
-      { factKind: 'record', factId: task.id },
-    ]);
+    expect(
+      forWriter.filter((i) => readable(i)).filter((i) => i.subjectRecordId === task.id),
+    ).toMatchObject([{ factKind: 'record', factId: task.id }]);
     expect(await open(reviewer.personId, 'assignment')).toStrictEqual([]);
     const rev2 = await assign(reviewer.personId, rev);
     expect(
-      (await open(writer.personId, 'assignment')).filter((i) => i.subjectRecordId === task.id),
+      (await open(writer.personId, 'assignment'))
+        .filter((i) => readable(i))
+        .filter((i) => i.subjectRecordId === task.id),
     ).toStrictEqual([]);
     expect(
-      (await open(reviewer.personId, 'assignment')).filter((i) => i.subjectRecordId === task.id),
+      (await open(reviewer.personId, 'assignment'))
+        .filter((i) => readable(i))
+        .filter((i) => i.subjectRecordId === task.id),
     ).toHaveLength(1);
     await assign(fixture.member.personId, rev2);
     expect(await open(fixture.member.personId, 'assignment')).toStrictEqual([]);
@@ -382,7 +389,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       const written = ok(await comment(task, [reviewer.personId, fixture.member.personId]));
       const commentId = detailOf(written)['commentId'];
       expect(
-        (await open(reviewer.personId, 'mention')).filter((i) => i.subjectRecordId === task.id),
+        (await open(reviewer.personId, 'mention'))
+          .filter((i) => readable(i))
+          .filter((i) => i.subjectRecordId === task.id),
       ).toMatchObject([{ factKind: 'record', factId: commentId }]);
       expect(await open(fixture.member.personId, 'mention')).toStrictEqual([]);
     });
@@ -427,9 +436,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       const task = await newTask('client A free contact', clientA);
       ok(await comment(task, [freeWithLogin], 'client'));
       expect(
-        (await open(freeWithLogin, 'client_comment')).filter(
-          (item) => item.subjectRecordId === task.id,
-        ),
+        (await open(freeWithLogin, 'client_comment'))
+          .filter((i) => readable(i))
+          .filter((item) => item.subjectRecordId === task.id),
       ).toStrictEqual([]);
     });
 
@@ -437,7 +446,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       const onA = await newTask('client A without paid status', clientA);
       ok(await comment(onA, [outsider], 'client'));
       expect(
-        (await open(outsider, 'client_comment')).filter((i) => i.subjectRecordId === onA.id),
+        (await open(outsider, 'client_comment'))
+          .filter((i) => readable(i))
+          .filter((i) => i.subjectRecordId === onA.id),
       ).toStrictEqual([]);
     });
 
