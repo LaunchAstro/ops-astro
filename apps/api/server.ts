@@ -46,6 +46,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
 import { createApi, type LiveOptions, type ReadExecutor } from './app.ts';
+import type { Alerts } from './alerts/sink.ts';
 import {
   executeAgentCommand,
   describeFault,
@@ -164,6 +165,7 @@ export interface ApiConfig {
   readonly identity?: ServedIdentity;
   /** The live task channel, started by `main`; absent, the event route is not mounted. */
   readonly live?: LiveOptions;
+  readonly alerts?: Alerts;
 }
 
 export interface ComposedApi {
