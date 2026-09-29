@@ -17,6 +17,7 @@ import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { drawScreen } from './screen-registry.tsx';
+import { AssistantView } from './views/assistant.tsx';
 
 export interface AppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
@@ -51,6 +52,8 @@ export function App(props: AppProps): ReactElement {
   // Why the board was reached instead of the address that was held. Drawn on
   // the board and nowhere else, and gone when this session is.
   const [notice, setNotice] = useState<string | null>(null);
+  // The Agent drawer (MP-7-11): open over the page, never an address.
+  const [agentOpen, setAgentOpen] = useState(false);
 
   const onSignedIn = useCallback(
     (next: Session) => {
@@ -206,16 +209,33 @@ export function App(props: AppProps): ReactElement {
           : PANELS.map((panel) => ({
               id: panel.id,
               label: panel.label,
-              open: panel.route !== null && here === pathTo(panel.route),
+              open: panel.route === null ? agentOpen : here === pathTo(panel.route),
             }))
       }
       onDockTab={(id) => {
         const panel = PANELS.find((entry) => entry.id === id);
-        if (panel?.route == null) return;
+        if (panel === undefined) return;
+        if (panel.route === null) {
+          setAgentOpen((open) => !open);
+          return;
+        }
         const target = pathTo(panel.route);
         props.navigate(here === target ? pathTo('agency:projects-board') : target);
       }}
       seated={false}
+      panel={
+        agentOpen && session !== null && match !== null ? (
+          <AssistantView
+            client={client}
+            route={match.id}
+            here={here}
+            entry={null}
+            onClose={() => {
+              setAgentOpen(false);
+            }}
+          />
+        ) : undefined
+      }
     >
       {content}
     </Shell>
