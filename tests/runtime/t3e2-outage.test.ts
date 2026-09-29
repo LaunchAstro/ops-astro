@@ -12,7 +12,9 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { executeRead } from '../../packages/core-commands/src/index.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { reconcileUnknown } from '../../packages/core-runtime/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
+import { openBilling } from './t3d1-harness.ts';
 import {
   appliedDetail,
   approve,
@@ -175,5 +177,61 @@ describe.skipIf(url === undefined)('T3e2: one report per outage', { timeout: 180
     expect(JSON.stringify(seen)).not.toContain(one?.taskId);
     const idle = await enrol(s.db.app, s.business, 't3e2-idle');
     expect(await queueOf(s, idle)).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
+  });
+
+  it('Sol proof, criterion 2: an outage reports a marked run as back after absence proof resumes it', async () => {
+    await openBilling(s);
+    const w = await work(s);
+    appliedDetail(
+      await asPerson(s, {
+        command: 'budget.top_up',
+        operationId: randomUUID(),
+        recordId: w.taskId,
+        amountMinor: 2_500,
+        fromMaximumMinor: 2_500,
+      }),
+      'budget.top_up',
+    );
+    appliedDetail(
+      await asAgent(
+        s,
+        {
+          command: 'task.dispatch',
+          operationId: randomUUID(),
+          leaseId: w.picked['leaseId'],
+          fence: w.picked['fence'],
+        },
+        w.credential,
+      ),
+      'task.dispatch',
+    );
+    await dropped(s, w, 'connection_lost');
+    const before = await rows<{ reactivated: boolean }>(
+      s,
+      'select reactivated from public.outage_runs where business_id = $1 and attempt_id = $2',
+      [s.business, w.picked['attemptId']],
+    );
+    expect(before).toMatchObject([{ reactivated: false }]);
+
+    const proved = await s.db.app.withBusiness(
+      s.business,
+      async (tx) => await reconcileUnknown(tx, async () => false),
+    );
+    expect(proved).toMatchObject([{ answer: 'absent' }]);
+    const newAttempt = await rows<{ id: string }>(
+      s,
+      `select att.id from public.attempts att
+         join public.reservations res on res.business_id = att.business_id and res.id = att.reservation_id
+         join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+        where att.business_id = $1 and run.task_id = $2 and att.state = 'reserved'`,
+      [s.business, w.taskId],
+    );
+    expect(newAttempt).toHaveLength(1);
+    const after = await rows<{ reactivated: boolean }>(
+      s,
+      'select reactivated from public.outage_runs where business_id = $1 and attempt_id = $2',
+      [s.business, w.picked['attemptId']],
+    );
+    expect(after).toMatchObject([{ reactivated: true }]);
   });
 });
