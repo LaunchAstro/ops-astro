@@ -10,7 +10,7 @@ import { build, preview } from 'vite';
 import { expect, it } from 'vitest';
 
 const git = (...args: string[]): string => execFileSync('git', args, { encoding: 'utf8' }).trim();
-const anchor = '7ad6d39c610ad2c232820ca425c070bae154b457';
+const anchor = '7bda387397357209f686709c7a94b297c10fcd9b';
 const testPath = 'tests/surfaces/mp-1-2-fonts-icons-brand.test.tsx';
 const cssPath = 'packages/ui/src/styles/0-fonts.css';
 const fontFile = 'funnel-sans-latin-wght-normal.woff2';
