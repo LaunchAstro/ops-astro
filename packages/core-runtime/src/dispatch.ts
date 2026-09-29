@@ -11,7 +11,10 @@
 // seen (`recheck_inside_dispatch`). Each moved fact is refused with its own
 // code, in `EFFECT_TIME_FACTS` order, and nothing is written. The order puts
 // the cause before its consequence: a revocation and a supersession both end
-// the lease too, and the answer names what moved first.
+// the lease too, and the answer names what moved first. An agent's authority
+// is its delegation too: revoked, settled or past its expiry at the locked
+// instant is `AUTHORITY_LOST`, the answer an agent's lapsed lease also gets,
+// since pickup mints the two to end together.
 //
 // **Only a replayable or reconcilable effect is dispatched.** Each effect
 // operation declares its `reconcile_mode` by step kind; one that declares
@@ -89,7 +92,8 @@ interface Found {
 interface Facts {
   readonly approved: boolean;
   readonly covered: boolean;
-  readonly delegation_revoked: boolean;
+  /** Unrevoked, unsettled and unexpired at the locked instant; true for a person's lease. */
+  readonly delegation_live: boolean;
   readonly attempt_id: string;
   readonly step_kind: string;
   readonly dispatched_at: Date | null;
@@ -139,7 +143,7 @@ export async function dispatch(
     return refuseLease(fenced, NOT_OWNED_FIX);
   }
 
-  const facts = await readFacts(tx, found, request.leaseId);
+  const facts = await readFacts(tx, found, request.leaseId, lockedAt);
   for (const fact of EFFECT_TIME_FACTS) {
     // Sequential and in order: the first moved fact is the answer.
     // eslint-disable-next-line no-await-in-loop
@@ -190,12 +194,18 @@ async function discover(tx: TenantQuery, leaseId: string): Promise<Found | undef
 }
 
 /** Re-read, under the locks: the approval, the committed hold, and the step. */
-async function readFacts(tx: TenantQuery, found: Found, leaseId: string): Promise<Facts> {
+async function readFacts(
+  tx: TenantQuery,
+  found: Found,
+  leaseId: string,
+  lockedAt: string,
+): Promise<Facts> {
   const rows = await tx.query<Facts>(
     `select (g.state = 'approved' and ver.superseded_at is null and lin.state = 'live') as approved,
             (res.state = 'held' and res.lease_id = $3 and res.held_minor >= att.estimated_minor
               and att.state = 'dispatched' and att.lease_id = $3) as covered,
-            coalesce(d.revoked_at is not null, false) as delegation_revoked,
+            (d.id is null or (d.revoked_at is null and d.settled_at is null
+              and d.expires_at > $7::timestamptz)) as delegation_live,
             att.id as attempt_id, step.kind as step_kind, step.dispatched_at
        from public.reservations res
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
@@ -212,6 +222,7 @@ async function readFacts(tx: TenantQuery, found: Found, leaseId: string): Promis
       found.gate_id,
       found.lineage_id,
       found.delegation_id,
+      lockedAt,
     ],
   );
   const facts = rows[0];
@@ -235,7 +246,7 @@ async function recheck(fact: EffectTimeFact, on: Recheck): Promise<RuntimeResult
     case 'authority': {
       const task = { collection: on.request.collection, taskId: on.found.task_id };
       const live =
-        !on.facts.delegation_revoked &&
+        on.facts.delegation_live &&
         (on.request.claimant === 'person'
           ? await personWriteLive(
               on.tx,

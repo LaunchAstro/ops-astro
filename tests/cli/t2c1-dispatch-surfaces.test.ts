@@ -16,15 +16,22 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
+import { createWorld, serverUrl, tokenFor, type World } from '../acceptance/world.ts';
+import { insertActor, insertLogin, insertMapping, insertPerson } from '../identity/fixture.ts';
+import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { runCli, serveApi, type Run, type ServedApi } from './cli-process-harness.ts';
 
 interface Lease {
+  readonly taskId: string;
   readonly leaseId: string;
   readonly fence: number;
   readonly reservationId: string;
   readonly credential?: string;
 }
+
+/** An answer with its lease id blanked, to compare with a fabricated lease's. */
+const shape = (answer: { status: number; body: Record<string, unknown> }, id: string): string =>
+  JSON.stringify(answer).replaceAll(id, 'LEASE');
 
 function detailOf(run: Run): Record<string, unknown> {
   const detail = run.json?.['detail'];
@@ -101,6 +108,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 task.dispatch on every surface', 
     expect(pickup.code, pickup.stdout).toBe(0);
     const held = detailOf(pickup);
     return {
+      taskId: String(task.json?.['recordId']),
       leaseId: String(held['leaseId']),
       fence: Number(held['fence']),
       reservationId,
@@ -120,15 +128,15 @@ describe.skipIf(serverUrl === undefined)('T2c1 task.dispatch on every surface', 
         : as(world.agent.token, { OPS_ASTRO_AGENT: '1', OPS_ASTRO_DELEGATION: lease.credential }),
     );
 
-  const httpDispatch = async (lease: Lease, operationId = randomUUID()) => {
-    const agent = lease.credential !== undefined;
+  const httpDispatch = async (lease: Lease, operationId = randomUUID(), bearer?: string) => {
+    const agent = lease.credential !== undefined && bearer === undefined;
     const response = await fetch(
       `${(api as ServedApi).origin}${agent ? '/api/a/b/' : '/api/b/'}alpha/task/dispatch`,
       {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          authorization: `Bearer ${agent ? world.agent.token : world.ada.token}`,
+          authorization: `Bearer ${bearer ?? (agent ? world.agent.token : world.ada.token)}`,
           ...(agent ? { 'x-agent-delegation': lease.credential as string } : {}),
         },
         body: JSON.stringify({ operationId, leaseId: lease.leaseId, fence: lease.fence }),
@@ -210,4 +218,53 @@ describe.skipIf(serverUrl === undefined)('T2c1 task.dispatch on every surface', 
       expect(await marked(lease)).toBe(false);
     }
   }, 120_000);
+  /** A client outside the business: a login and a person, standing on the one task Ada shares. */
+  async function client(taskId: string): Promise<string> {
+    const subject = `t2c1-client-${randomUUID()}`;
+    await world.db.app.withBusiness(world.alpha, async (tx) => {
+      const personId = await insertPerson(tx, 'a client');
+      await insertActor(tx, personId);
+      await insertMapping(tx, await insertLogin(tx, subject), personId, String(world.ada.actorId));
+      const sharer = { personId: String(world.ada.personId), actorId: String(world.ada.actorId) };
+      const shared = await shareRecord(tx, sharer, {
+        collection: 'task',
+        recordId: taskId,
+        personId,
+      });
+      if (!shared.ok) throw new Error(`share refused ${shared.refusal.code}`);
+    });
+    return await tokenFor(subject);
+  }
+
+  it('T2 isolation: client to client, task.dispatch', async () => {
+    // Ada's own lease on the task she shares with one client; another client stands on another task.
+    const lease = await picked('synthetic_comment', 'person');
+    const other = await picked('synthetic_comment', 'person');
+    const own = await client(lease.taskId);
+    const stranger = await client(other.taskId);
+    for (const token of [own, stranger]) {
+      const made = randomUUID();
+      // eslint-disable-next-line no-await-in-loop
+      const answer = await httpDispatch(lease, randomUUID(), token);
+      // eslint-disable-next-line no-await-in-loop
+      const invented = await httpDispatch({ ...lease, leaseId: made }, randomUUID(), token);
+      expect(answer.status, JSON.stringify(answer.body)).not.toBe(200);
+      expect(answer.body['refused'] ?? answer.body['code']).toBeTruthy();
+      expect(shape(answer, lease.leaseId)).toBe(shape(invented, made));
+    }
+    expect(await marked(lease)).toBe(false);
+    expect(await marked(other)).toBe(false);
+  }, 120_000);
+
+  it('T2 isolation: person to person, task.dispatch', async () => {
+    // Mia holds write across the business, and Ada's lease is still not hers to dispatch.
+    const lease = await picked('synthetic_comment', 'person');
+    const made = randomUUID();
+    const answer = await httpDispatch(lease, randomUUID(), world.mia.token);
+    const invented = await httpDispatch({ ...lease, leaseId: made }, randomUUID(), world.mia.token);
+    expect(answer.status, JSON.stringify(answer.body)).toBe(403);
+    expect(answer.body).toMatchObject({ refused: true, code: 'LEASE_NOT_OWNED' });
+    expect(shape(answer, lease.leaseId)).toBe(shape(invented, made));
+    expect(await marked(lease)).toBe(false);
+  }, 60_000);
 });

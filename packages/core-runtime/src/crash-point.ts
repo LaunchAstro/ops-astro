@@ -19,9 +19,12 @@ export type CrashPointName = (typeof CRASH_POINTS)[number];
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
-const AFTER_COMMIT: Readonly<Record<string, CrashPointName>> = {
-  'task.decide': 'reservation_committed',
-  'task.dispatch': 'dispatch_committed',
+/** Each point's command, and what its committed answer must show for the point to be reached. */
+const AFTER_COMMIT: Readonly<Record<string, { point: CrashPointName; shows: string }>> = {
+  // A rejection or a request for changes commits no reservation, so only an
+  // approval's answer, which names the reservation it held, reaches this point.
+  'task.decide': { point: 'reservation_committed', shows: 'reservationId' },
+  'task.dispatch': { point: 'dispatch_committed', shows: 'attemptId' },
 };
 
 /** Why this environment may not run, or `undefined` when the seam is unset or allowed. */
@@ -49,12 +52,14 @@ export async function crashPoint(name: CrashPointName, env: Environment): Promis
   });
 }
 
-/** The point after a command's commit, when it applied and has one. */
+/** The point after a command's commit, when its answer (`undefined` if refused) shows it. */
 export async function crashPointAfterCommit(
   command: string,
-  applied: boolean,
+  detail: Readonly<Record<string, unknown>> | undefined,
   env: Environment,
 ): Promise<void> {
-  const point = Object.hasOwn(AFTER_COMMIT, command) ? AFTER_COMMIT[command] : undefined;
-  if (applied && point !== undefined) await crashPoint(point, env);
+  const after = Object.hasOwn(AFTER_COMMIT, command) ? AFTER_COMMIT[command] : undefined;
+  if (after !== undefined && detail !== undefined && Object.hasOwn(detail, after.shows)) {
+    await crashPoint(after.point, env);
+  }
 }
