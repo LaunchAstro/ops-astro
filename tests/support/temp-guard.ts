@@ -16,28 +16,31 @@
 // makes under the temp folder before this setup runs (`_tmpDir`, next to its
 // `clearTmpDir`, which removes only the per-project one). Nothing else removes
 // it, so the teardown does.
+//
+// Corepack's `pnpm` shim turns on Node's compile cache, which by default lives
+// in the temp folder as `node-compile-cache`. The run turns it off rather than
+// excusing that name, so a folder of that name a test makes still counts.
 
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TestProject } from 'vitest/node';
 
-// Node's compile cache, which Corepack's `pnpm` shim turns on, lives in the
-// temp folder by default. It is one shared cache, not a leftover, so it does
-// not count; it is removed with the run's folder all the same.
-const CACHES = new Set(['node-compile-cache']);
-
 export default function setup(project: TestProject): () => void {
   const vitestCache: unknown = Reflect.get(project.vitest, '_tmpDir');
-  const previous = process.env['TMPDIR'];
+  const previous = {
+    TMPDIR: process.env['TMPDIR'],
+    cache: process.env['NODE_DISABLE_COMPILE_CACHE'],
+  };
   const run = mkdtempSync(join(tmpdir(), 'ops-astro-test-run-'));
   process.env['TMPDIR'] = run;
+  process.env['NODE_DISABLE_COMPILE_CACHE'] = '1';
   return () => {
-    const left = readdirSync(run).filter((entry) => !CACHES.has(entry));
+    const left = readdirSync(run);
     rmSync(run, { recursive: true, force: true });
     if (typeof vitestCache === 'string') rmSync(vitestCache, { recursive: true, force: true });
-    if (previous === undefined) delete process.env['TMPDIR'];
-    else process.env['TMPDIR'] = previous;
+    restore('TMPDIR', previous.TMPDIR);
+    restore('NODE_DISABLE_COMPILE_CACHE', previous.cache);
     if (left.length > 0) {
       const entries = left.length === 1 ? 'entry' : 'entries';
       throw new Error(
@@ -46,4 +49,9 @@ export default function setup(project: TestProject): () => void {
       );
     }
   };
+}
+
+function restore(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
 }
