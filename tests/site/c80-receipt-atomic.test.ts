@@ -13,7 +13,7 @@ import { c80World, type C80World } from './c80-world.ts';
 import {
   recordObservedResult,
   type ObservedResult,
-} from '../../packages/core-records/src/site/live-corrections.ts';
+} from '../../packages/core-records/src/site/correction-receipts.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined)

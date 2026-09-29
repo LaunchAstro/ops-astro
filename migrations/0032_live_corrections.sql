@@ -93,6 +93,38 @@ create policy authority_live_corrections on public.live_corrections
 
 grant select, insert, update on public.live_corrections to ops_astro_app;
 
+-- What a request pinned stays pinned: an approval names this row's version,
+-- and a version whose target, word, digests or seam could change after the
+-- decision would be an approval of something else. Only the state, the
+-- decision and the revision move. Invoker: raising needs no privilege.
+create or replace function public.live_corrections_pinned()
+  returns trigger
+  language plpgsql
+  security invoker
+  set search_path = pg_catalog, public
+as $$
+begin
+  if (new.business_id, new.id, new.party_id, new.task_id, new.requested_by_actor_id,
+      new.requested_by_person_id, new.delegation_id, new.target_path, new.word,
+      new.replacement, new.page_url, new.pre_image_digest, new.base_revision, new.seam,
+      new.version_id, new.version_digest, new.created_at)
+     is distinct from
+     (old.business_id, old.id, old.party_id, old.task_id, old.requested_by_actor_id,
+      old.requested_by_person_id, old.delegation_id, old.target_path, old.word,
+      old.replacement, old.page_url, old.pre_image_digest, old.base_revision, old.seam,
+      old.version_id, old.version_digest, old.created_at) then
+    raise exception 'live_corrections_pinned: correction % keeps what it pinned', old.id;
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.live_corrections_pinned() from public;
+
+create trigger live_corrections_pinned
+  before update on public.live_corrections
+  for each row execute function public.live_corrections_pinned();
+
 -- Receipt L's observations of one publish or revert, written by the system
 -- under the worker lease in the transaction that records the observed result.
 -- Append only: a receipt is evidence, and evidence that can be rewritten is not.

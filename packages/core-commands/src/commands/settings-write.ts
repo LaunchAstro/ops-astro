@@ -34,7 +34,12 @@
 // name these settings predate the column, so a caller that has not learnt to
 // send one still writes and is still handed the revision the row is now at.
 
-import { isSettingRevisionStale, writeBusinessSetting } from '../../../core-records/src/index.ts';
+import {
+  isActiveMember,
+  isSettingRevisionStale,
+  isUuid,
+  writeBusinessSetting,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand } from './refusal.ts';
@@ -44,6 +49,7 @@ import { applied, refused, type HandlerOutcome } from './outcome.ts';
 const KEY_OF: Readonly<Record<string, string>> = {
   'settings.set_four_eyes_threshold': 'four_eyes_threshold',
   'settings.set_client_sign_off': 'client_sign_off_required',
+  'settings.set_live_correction_approver': 'live_correction_approver',
 };
 
 const THRESHOLD_FIXES: readonly string[] = [
@@ -52,6 +58,10 @@ const THRESHOLD_FIXES: readonly string[] = [
 ];
 
 const SIGN_OFF_FIXES: readonly string[] = ['Send value as true or false.'];
+
+const APPROVER_FIXES: readonly string[] = [
+  'Send value as the person id of an active member of this business, or null.',
+];
 
 const ABSENT_FIXES: readonly string[] = [
   'This business has no row for that setting yet.',
@@ -99,8 +109,15 @@ export async function setBusinessSetting(
   // serialises by the type it is given, and an `unknown` that is really a
   // string reaches the column as the JSON string "500", which no comparison
   // reads and the check constraint correctly refuses.
-  let writable: number | boolean | null;
-  if (command === 'settings.set_four_eyes_threshold') {
+  let writable: number | boolean | string | null;
+  if (command === 'settings.set_live_correction_approver') {
+    // A named member or nobody. Checked here, in the writing transaction, so
+    // a person id from another business or a departed member is refused
+    // rather than stored as an approver no approval could ever match.
+    if (value === null) writable = null;
+    else if (isUuid(value) && (await isActiveMember(tx, value))) writable = value;
+    else return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], APPROVER_FIXES));
+  } else if (command === 'settings.set_four_eyes_threshold') {
     if (value === null) writable = null;
     else if (typeof value === 'number' && Number.isFinite(value) && value >= 0) writable = value;
     else return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], THRESHOLD_FIXES));

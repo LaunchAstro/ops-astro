@@ -504,12 +504,13 @@ than as an answer about the preset. D05 says so, and the test counts
 landed contracts read without having. `records/business-settings.ts` produces
 the named rows:
 
-| Key                        | Default             | Write mode  | Why                                                              |
-| -------------------------- | ------------------- | ----------- | ---------------------------------------------------------------- |
-| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                        |
-| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                     |
-| `retention_window_days`    | `30`                | `generic`   | policy an administrator sets; read by `task.purge` as its window |
-| `conversation_window_days` | `30`                | `generic`   | policy an administrator sets                                     |
+| Key                        | Default             | Write mode  | Why                                                               |
+| -------------------------- | ------------------- | ----------- | ----------------------------------------------------------------- |
+| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                         |
+| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                      |
+| `live_correction_approver` | `null` = no one     | `operation` | names the one staff account that approves a live correction (C80) |
+| `retention_window_days`    | `30`                | `generic`   | policy an administrator sets; read by `task.purge` as its window  |
+| `conversation_window_days` | `30`                | `generic`   | policy an administrator sets                                      |
 
 The classification matters here, not the values. A setting that decides
 whether a second approver is needed changes authority, the same category the
