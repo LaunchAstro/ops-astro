@@ -44,6 +44,8 @@ export type {
   PresetPlanResult,
   ProposalVersionView,
   ProposalView,
+  RunScopeView,
+  CoveringGrantView,
   QueuedWork,
   QueueResult,
   ReservationView,

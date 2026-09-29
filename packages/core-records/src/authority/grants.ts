@@ -97,6 +97,14 @@ const EFFECTIVE = `
   )`;
 
 /**
+ * The same expression for a read that must take grants in its own statement,
+ * so what it shows and the rows beside it are one snapshot (MP-6-4's scope
+ * stamp). It opens `with recursive effective as (...)`; the reader follows it
+ * with its own select over `effective`.
+ */
+export const EFFECTIVE_GRANTS_CTE: string = EFFECTIVE;
+
+/**
  * Where the caller holds this collection and action right now: the whole
  * business, or the records its record-scoped grants name. A list read hands
  * both to its own query, so the rows it returns are filtered by the caller's
