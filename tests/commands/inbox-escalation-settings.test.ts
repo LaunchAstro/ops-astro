@@ -193,8 +193,17 @@ describe.skipIf(serverUrl === undefined)('INB-1e escalation parked and settings'
     it('a refused setting leaves every item where it was', async () => {
       const proposed = await w.proposed('still owed');
       const before = await w.itemsOnFact(proposed.gateId);
-      await setChannel(w.reviewerToken, { channel: 'in_app', category: 'decision', mode: 'off' });
-      await setChannel(w.reviewerToken, { channel: 'email', category: 'decision', mode: 'off' });
+      for (const channel of ['in_app', 'email']) {
+        // oxlint-disable-next-line no-await-in-loop
+        const answer = await setChannel(w.reviewerToken, {
+          channel,
+          category: 'decision',
+          mode: 'off',
+        });
+        expect(answer.status, channel).toBe(422);
+        expect(answer.body['code'], channel).toBe('FIELD_VALUE_INVALID');
+        expect(answer.body['names'], channel).toStrictEqual(['category']);
+      }
       expect(await w.itemsOnFact(proposed.gateId)).toStrictEqual(before);
       expect(before.every((row) => row.work_state === 'open')).toBe(true);
     });
