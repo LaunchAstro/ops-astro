@@ -64,6 +64,8 @@ import {
   describeRecovered,
   parseRecoveryScope,
   recoverDeployment,
+  startSweeper,
+  sweepDeployment,
   RECOVERY_SCOPE_SETTING,
 } from './recovery-entry.ts';
 
@@ -346,7 +348,19 @@ async function main(): Promise<void> {
     console.log('api: reads mounted');
   });
 
+  // T3b: the sweep, the reconciliation pass's lease-expiry phase, beside
+  // start-time recovery and over the same businesses, as system work on an
+  // interval once the port is bound (T3.md:28). Not an agent route: nothing
+  // on the wire reaches it (RN-10).
+  const sweeper = startSweeper(
+    async () =>
+      await withRuntimeKeys(keys, async () => {
+        return await sweepDeployment(database, resolveBusiness, scope.keys);
+      }),
+  );
+
   const stop = (): void => {
+    sweeper.stop();
     void Promise.allSettled([database.close(), admin.close()]).then(() => process.exit(0));
   };
   process.on('SIGINT', stop);

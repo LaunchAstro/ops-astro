@@ -29,8 +29,11 @@
 // which is the bound. A committed business stays committed, and the classifier
 // finds nothing left to do there next time.
 
-import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
-import { replayRecordedTransitions } from '../../packages/core-runtime/src/index.ts';
+import type { BusinessId, Database, TenantQuery } from '../../packages/core-records/src/index.ts';
+import {
+  replayRecordedTransitions,
+  sweepExpiredLeases,
+} from '../../packages/core-runtime/src/index.ts';
 import type { Classification } from '../../packages/core-runtime/src/index.ts';
 
 /** The setting's name, in the environment or `.local/recovery.env`. */
@@ -105,6 +108,43 @@ export async function recoverDeployment(
   resolveBusiness: (businessKey: string) => Promise<string | undefined>,
   keys: readonly string[],
 ): Promise<RecoveryOutcome> {
+  return await eachBusiness(
+    database,
+    resolveBusiness,
+    keys,
+    'restart recovery',
+    async (tx) => await replayRecordedTransitions(tx),
+  );
+}
+
+/**
+ * T3b: the sweep, the reconciliation pass's lease-expiry phase, over the same
+ * configured businesses, each in its own transaction on the tenancy
+ * connection, as system work. `server.ts` runs it on an interval once the port
+ * is bound. A business that fails rolls back alone and is named; the next pass
+ * sweeps it again, which is the bound.
+ */
+export async function sweepDeployment(
+  database: Database,
+  resolveBusiness: (businessKey: string) => Promise<string | undefined>,
+  keys: readonly string[],
+): Promise<RecoveryOutcome> {
+  return await eachBusiness(
+    database,
+    resolveBusiness,
+    keys,
+    'sweep',
+    async (tx) => await sweepExpiredLeases(tx),
+  );
+}
+
+async function eachBusiness(
+  database: Database,
+  resolveBusiness: (businessKey: string) => Promise<string | undefined>,
+  keys: readonly string[],
+  pass: string,
+  run: (tx: TenantQuery) => Promise<readonly Classification[]>,
+): Promise<RecoveryOutcome> {
   const targets: { key: string; businessId: BusinessId }[] = [];
   for (const key of keys) {
     // One key at a time, on the resolver's single connection.
@@ -127,16 +167,13 @@ export async function recoverDeployment(
       // Sequential by design: one tenant's transaction commits or rolls back
       // before the next one opens.
       // eslint-disable-next-line no-await-in-loop
-      const classified = await database.withBusiness(
-        target.businessId,
-        async (tx) => await replayRecordedTransitions(tx),
-      );
+      const classified = await database.withBusiness(target.businessId, run);
       businesses.push({ ...target, classified });
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : 'unknown';
       return {
         ok: false,
-        problem: `restart recovery for business ${JSON.stringify(target.key)} rolled back: ${reason}`,
+        problem: `${pass} for business ${JSON.stringify(target.key)} rolled back: ${reason}`,
       };
     }
   }
@@ -150,13 +187,45 @@ export function describeRecovered(business: RecoveredBusiness): string {
   return `restart recovery: ${business.key} committed, ${String(business.classified.length)} classified, ${String(released)} released, ${String(quarantined)} quarantined`;
 }
 
-/** T3b: the sweep over the configured businesses. Not built on this commit. */
-export async function sweepDeployment(
-  database: Database,
-  resolveBusiness: (businessKey: string) => Promise<string | undefined>,
-  keys: readonly string[],
-): Promise<RecoveryOutcome> {
-  throw new Error(
-    `sweepDeployment: not built (${String(keys.length)}, ${typeof database}, ${typeof resolveBusiness})`,
+/** How often the API sweeps, in milliseconds: a lease's shortest window is minutes, not seconds. */
+export const SWEEP_INTERVAL_MS = 60_000;
+
+/**
+ * Run `pass` every `everyMs`, one pass at a time: a pass still running when
+ * the next is due is skipped rather than stacked. A pass that fails is logged
+ * with its problem and the next one runs anyway. `stop` ends the interval.
+ */
+export function startSweeper(
+  pass: () => Promise<RecoveryOutcome>,
+  everyMs: number = SWEEP_INTERVAL_MS,
+): { readonly stop: () => void } {
+  let running = false;
+  const once = async (): Promise<void> => {
+    try {
+      const outcome = await pass();
+      if (outcome.ok) for (const business of outcome.businesses) describeSwept(business);
+      else console.error(`api: ${outcome.problem}`);
+    } catch (cause) {
+      console.error(`api: sweep failed: ${cause instanceof Error ? cause.message : 'unknown'}`);
+    } finally {
+      running = false;
+    }
+  };
+  const timer = setInterval(() => {
+    if (running) return;
+    running = true;
+    void once();
+  }, everyMs);
+  timer.unref();
+  return { stop: () => clearInterval(timer) };
+}
+
+/** One line per business the sweep changed, after its transaction committed. */
+function describeSwept(business: RecoveredBusiness): void {
+  if (business.classified.length === 0) return;
+  const released = business.classified.filter((one) => one.released).length;
+  const unknown = business.classified.filter((one) => one.state === 'liability_unknown').length;
+  console.log(
+    `sweep: ${business.key} committed, ${String(released)} released, ${String(unknown)} held as unknown liabilities`,
   );
 }

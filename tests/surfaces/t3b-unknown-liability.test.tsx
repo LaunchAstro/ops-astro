@@ -103,7 +103,7 @@ describe('the unknown liability on the task page', () => {
     expect(unknown?.textContent).not.toMatch(/spent/iu);
 
     const settled = page.all('[data-reservations="list"] [data-reservation-id]');
-    expect(settled.map((node) => node.getAttribute('data-reservation-id'))).toStrictEqual([
+    expect(settled.map((node) => (node as HTMLElement).dataset['reservationId'])).toStrictEqual([
       'r-settled',
     ]);
     expect(page.find('[data-reservations="list"]')?.textContent).not.toMatch(/unknown/iu);

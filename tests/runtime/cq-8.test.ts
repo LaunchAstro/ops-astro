@@ -61,12 +61,14 @@ describe('CQ-8 runtime structure', () => {
     expect(named).toContain('handback');
   });
 
-  it('CQ-8 function size: recovery is split into the classifier, lease retirement and authority loss, none over 600 lines', () => {
+  it('CQ-8 function size: recovery is split into the classifier, lease retirement, authority loss and the sweep, none over 600 lines', () => {
     const parts = sourceFiles(join(RUNTIME, 'recovery'));
     expect(parts.map((file) => relative(RUNTIME, file)).toSorted()).toEqual([
       'recovery/authority-loss.ts',
       'recovery/classifier.ts',
       'recovery/lease-retirement.ts',
+      // T3b: the reconciliation pass's lease-expiry phase.
+      'recovery/sweep.ts',
     ]);
     for (const file of [...parts, join(RUNTIME, 'recovery.ts')]) {
       expect(readFileSync(file, 'utf8').split('\n').length, file).toBeLessThanOrEqual(600);

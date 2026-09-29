@@ -26,7 +26,7 @@ export type NonclaimableCause =
 export interface Classification {
   readonly reservationId: string;
   readonly released: boolean;
-  readonly state: 'abandoned' | 'held' | 'quarantined';
+  readonly state: 'abandoned' | 'held' | 'quarantined' | 'liability_unknown';
   /** Why it was left alone, when it was. A classification with no reason is a guess. */
   readonly reason: string;
 }
@@ -62,6 +62,7 @@ export async function classifyUnderLocks(
     readonly envelope_id: string;
     readonly held_minor: string;
     readonly attempt_id: string;
+    readonly attempt_state: string;
     readonly marked: boolean;
     readonly lease_state: string | null;
     readonly lineage_state: string;
@@ -71,7 +72,8 @@ export async function classifyUnderLocks(
     readonly delegation_revoked: boolean;
   }>(
     `select res.state, res.envelope_id, res.held_minor::text as held_minor,
-            att.id as attempt_id, (att.dispatch_marker or att.observed) as marked,
+            att.id as attempt_id, att.state as attempt_state,
+            (att.dispatch_marker or att.observed) as marked,
             l.state as lease_state, lin.state as lineage_state, lin.id as lineage_id,
             (ver.superseded_at is not null) as superseded,
             l.delegation_id, coalesce(d.revoked_at is not null, false) as delegation_revoked
@@ -129,6 +131,28 @@ export async function classifyUnderLocks(
           )
         )[0]?.revoked === true
       : false;
+
+  // T3b, the owning-state rule (spike RN-05). A marked attempt in its owning
+  // state, `dispatched`, may have acted and nobody has proved what it cost:
+  // the attempt is held `liability_unknown` and the reservation keeps its whole
+  // hold, without asking the operation register. Held so already, it is the
+  // same answer and nothing is written. Only a legacy marked row, which 0014
+  // kept `quarantined`, is quarantined, so the two never meet.
+  if (row.marked && row.attempt_state !== 'quarantined') {
+    if (row.attempt_state === 'dispatched') {
+      await tx.query(
+        `update public.attempts set state = 'liability_unknown'
+          where business_id = $1 and id = $2 and state = 'dispatched'`,
+        [tx.businessId, row.attempt_id],
+      );
+    }
+    return {
+      reservationId: request.reservationId,
+      released: false,
+      state: 'liability_unknown',
+      reason: `the step was dispatched and never confirmed; its full hold is kept as an unknown liability under ${request.cause} until a person records its outcome`,
+    };
+  }
 
   if (row.marked) {
     await tx.query(
@@ -348,6 +372,12 @@ export async function discoverEligible(
       where res.business_id = $1
         and res.state = 'held'
         and ($2::uuid is null or lin.id = $2::uuid)
+        -- T3b. A step held as an unknown liability waits for a person; the
+        -- replay has nothing to add to it and does not rediscover it.
+        and not exists (select 1 from public.attempts unknown_att
+                         where unknown_att.business_id = res.business_id
+                           and unknown_att.reservation_id = res.id
+                           and unknown_att.state = 'liability_unknown')
         and (lin.state in ('rejected', 'cancelled')
              or ver.superseded_at is not null
              -- F4. A revocation that committed without its classification:

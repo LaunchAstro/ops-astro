@@ -114,6 +114,17 @@ module.exports = {
       to: { path: '^tests/' },
     },
     {
+      name: 'fixture-reporter-is-test-only',
+      severity: 'error',
+      comment:
+        'T3b: the second, independent barrier. The declining usage reporter drives ' +
+        'liability_unknown in tests, so it is named on its own: only a module under tests/ ' +
+        'may import it, and relaxing the rule above does not open it. ' +
+        'tests/runtime/t3b-shipped-graph.test.ts deletes that rule and plants the import.',
+      from: { pathNot: '^tests/' },
+      to: { path: '^tests/support/declining-reporter\\.ts$' },
+    },
+    {
       name: 'no-unresolvable',
       severity: 'error',
       comment: 'An import that does not resolve is a module that was never read.',
