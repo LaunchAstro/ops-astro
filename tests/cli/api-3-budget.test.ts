@@ -27,6 +27,7 @@ describe.skipIf(serverUrl === undefined)('API-3 budgets', () => {
   let w: CliWorld;
   let cli: Caller;
   let tickets: string[] = [];
+  let fixtureMap = '';
   const report: string[] = [];
 
   beforeAll(async () => {
@@ -41,6 +42,7 @@ describe.skipIf(serverUrl === undefined)('API-3 budgets', () => {
       }),
       'map',
     ).id;
+    fixtureMap = map;
     tickets = [];
     for (let at = 0; at < TICKETS; at += 1) {
       const ticket = must(
@@ -158,5 +160,13 @@ describe.skipIf(serverUrl === undefined)('API-3 budgets', () => {
     const p95 = counts.toSorted((a, b) => a - b)[Math.ceil(counts.length * 0.95) - 1] ?? 0;
     report.push(`standard task read, p95: ${String(p95)} (target under 800)`);
     expect(p95).toBeLessThan(800);
+  });
+
+  it('API-4 budget: map status is under 1,000 tokens for the 40-ticket fixture map', async () => {
+    const answer = await cli.run('map', 'status', fixtureMap);
+    expect(answer.exit, answer.out).toBe(0);
+    const tokens = countTokens(answer.out);
+    report.push(`map status, standard: ${String(tokens)} (target under 1,000)`);
+    expect(tokens).toBeLessThan(1_000);
   });
 });
