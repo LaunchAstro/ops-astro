@@ -263,9 +263,9 @@ describe.skipIf(serverUrl === undefined).each([
       expect(await reservationState(built.db, reservationId)).toBe(before);
     });
 
-    // T2d: 0033 lifts the first rule with the owner's acceptance (27 September
+    // T2d: 0034 lifts the first rule with the owner's acceptance (27 September
     // 2026), so at the head a positive actual within the hold commits.
-    it('commits a positive actual once 0033 has lifted the first rule', async () => {
+    it('commits a positive actual once 0034 has lifted the first rule', async () => {
       const { reservationId } = await heldReservation(built.db.app, fixture);
       await settle(500)(reservationId);
       expect(await reservationState(built.db, reservationId)).toBe('actual 5000 500');

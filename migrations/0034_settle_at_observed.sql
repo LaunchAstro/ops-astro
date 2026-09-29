@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0033 settlement at the observed cost (T2d). 0026 refused every `actual`
+-- 0034 settlement at the observed cost (T2d). 0026 refused every `actual`
 -- reservation "in this head", and said the head that settles real usage lifts
 -- it in a migration somebody reviews. This is that head: observe prices the
 -- worker's reported usage from the synthetic price book and settles the hold

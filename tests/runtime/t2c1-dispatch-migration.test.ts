@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// T2c1, migration 0032: the three constraint changes that let a step be
+// T2c1, migration 0033: the three constraint changes that let a step be
 // marked dispatched (spike RN-05).
 //
 // As the application role: a step marked dispatched with no attempt named, a
 // step naming an attempt that carries no marker or belongs to another step,
 // and a marker outside its owning states are all refused; the owning writes,
 // marker first and then the step's reference, commit. The known states admit
-// `settled` and `liability_unknown`. On a database seeded at 0031 through the
+// `settled` and `liability_unknown`. On a database seeded at 0032 through the
 // runtime and upgraded, every existing row is unchanged, and the two tables'
 // constraints read the same as on a fresh database. The worker role holds
 // nothing on either table, new columns included.
@@ -45,7 +45,8 @@ if (serverUrl === undefined) {
 }
 
 const onDisk = readMigrations('migrations');
-const THROUGH_0031 = (version: string): boolean => version.slice(0, 4) <= '0031';
+// Through T2a's 0032 run_events, which the runtime that seeds below writes to.
+const THROUGH_0032 = (version: string): boolean => version.slice(0, 4) <= '0032';
 
 /** One approved and picked-up piece of work; `handedBack` settles it too. */
 async function work(
@@ -132,7 +133,7 @@ async function constraints(db: EmptyDatabase): Promise<unknown> {
   );
 }
 
-describe.skipIf(serverUrl === undefined)('0032 the dispatch mark', () => {
+describe.skipIf(serverUrl === undefined)('0033 the dispatch mark', () => {
   let fresh: EmptyDatabase;
   let upgraded: EmptyDatabase;
   let fixture: RuntimeFixture;
@@ -147,7 +148,7 @@ describe.skipIf(serverUrl === undefined)('0032 the dispatch mark', () => {
     upgraded = await createEmptyDatabase({ part: 't2c1migup' });
     await applyMigrations(
       upgraded.admin,
-      onDisk.filter((m) => THROUGH_0031(m.version)),
+      onDisk.filter((m) => THROUGH_0032(m.version)),
     );
     const seed = await buildFixture(upgraded.app, 't2c1-seed');
     await work(upgraded.app, seed, false);
