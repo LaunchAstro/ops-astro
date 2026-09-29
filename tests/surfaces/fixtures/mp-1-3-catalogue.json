@@ -1,5 +1,5 @@
 {
-  "source": "docs/design-system/CATALOGUE.md in the roadmap: every DS-PRIM id in the index that is not retired (DS-PRIM-8, radio) or folded (DS-PRIM-12, by DR-31), and the composites U04 owns (docs/build-units.md, U04 row)",
+  "source": "docs/design-system/CATALOGUE.md in the roadmap: every DS-PRIM id in the index that is not retired (DS-PRIM-8, radio) or folded (DS-PRIM-12, by DR-31), and the composites U04 owns (docs/build-units.md, U04 row) and the charts U05 owns (MP-1-5: DS-COMP-27, 28, 29 and 40)",
   "primitives": [
     "DS-PRIM-1",
     "DS-PRIM-2",
@@ -33,6 +33,15 @@
     "DS-PRIM-32",
     "DS-PRIM-33"
   ],
-  "composites": ["DS-COMP-7", "DS-COMP-8", "DS-COMP-13", "DS-COMP-26"],
+  "composites": [
+    "DS-COMP-7",
+    "DS-COMP-8",
+    "DS-COMP-13",
+    "DS-COMP-26",
+    "DS-COMP-27",
+    "DS-COMP-28",
+    "DS-COMP-29",
+    "DS-COMP-40"
+  ],
   "retired": ["DS-PRIM-8", "DS-PRIM-12"]
 }
