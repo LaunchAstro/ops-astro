@@ -99,6 +99,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'preset',
   // `budget.top_up` asks `decide` on `billing` (T2e), as the seed's admin holds it.
   'billing',
+  // Custody (C31): `custody:manage` is the owner's and administrators'.
+  'custody',
 ];
 
 export async function tokenFor(

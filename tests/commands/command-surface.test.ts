@@ -75,19 +75,24 @@ describe('the surface as a table', () => {
     // about the caller rather than about the business's records. `grant` and
     // `delegation` are the revocation controls': the path names the row a
     // revocation writes, and the authority it asks is still on tasks.
+    // `secret` is custody's (C31): the path names the row, the grant is
+    // `custody:manage`.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget)\/[a-z_]+$/u.test(path),
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret)\/[a-z_]+$/u.test(
+          path,
+        ),
       ),
     ).toBe(true);
   });
 });
 
 describe('the surface as a table', () => {
-  it('declares the nine reads as reads, and everything else as a write', () => {
+  it('declares the ten reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
       'person.list',
       'preset.plan',
+      'secret.list',
       'session.capabilities',
       'settings.read',
       'task.board',

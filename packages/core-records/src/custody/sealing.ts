@@ -38,7 +38,7 @@ export interface Sealed {
 }
 
 const INFO = Buffer.from('ops-astro custody v1');
-const KEY_ID_SHAPE = /^[A-Za-z0-9._-]{1,64}$/u;
+const KEY_ID_SHAPE = /^[A-Za-z0-9._@/-]{1,64}$/u;
 
 /** The raw 32-byte X25519 public key, as the environment carries it (base64url). */
 function importPublic(raw: string): KeyObject {

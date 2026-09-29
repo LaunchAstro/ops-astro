@@ -33,6 +33,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'person_logins person_merges'],
   ['siud', 'record_links record_types record_unique_values'],
   ['siud', 'records'],
+  // 0032: custody's select is a column grant that leaves out the sealed
+  // columns. A count is admitted and a sealed column is refused, which
+  // `tests/custody/c31-credentials.test.ts` proves by name (C31).
+  ['siu', 'custody_secrets'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(

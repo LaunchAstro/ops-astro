@@ -283,7 +283,8 @@
     "tests/runtime/t3f-lease-edges.test.ts",
     "tests/api/t3f-races.test.ts",
     "tests/fixture/fixture-shape.test.ts",
-    "tests/fixture/snapshot-clone-and-privileges.test.ts"
+    "tests/fixture/snapshot-clone-and-privileges.test.ts",
+    "tests/custody/c31-credentials.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

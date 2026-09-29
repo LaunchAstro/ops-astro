@@ -98,6 +98,10 @@ const GRANTS_BY_ROLE = {
     // A top-up is a money decision on `billing` (T2e, the permission
     // catalogue's `billing:decide`): the owner and administrators hold it.
     ['billing', 'decide'],
+    // Custody (C31): the key catalogue gives `custody:manage` to the owner and
+    // administrators, never an agent. Without it no seeded identity could set
+    // or clear a key on Settings ▸ Keys.
+    ['custody', 'manage'],
   ],
   member: [
     ['task', 'read'],

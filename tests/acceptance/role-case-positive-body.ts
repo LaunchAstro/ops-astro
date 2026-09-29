@@ -165,6 +165,20 @@ export function createPositiveBody(
             reason: 'The matrix writes its own unknown hold off.',
           },
         };
+      // Custody (C31): the admin lists, sets a key and clears one it set.
+      case 'secret.list':
+        return { body: {} };
+      case 'secret.set':
+        return { body: { name: 'matrix.key', value: `matrix-${randomUUID()}` } };
+      case 'secret.clear': {
+        const set = await context.asPerson('secret.set', {
+          name: `matrix.clear-${randomUUID().slice(0, 8)}`,
+          value: `matrix-${randomUUID()}`,
+        });
+        return {
+          body: { secretId: String((set.body['detail'] as Record<string, unknown>)['secretId']) },
+        };
+      }
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');

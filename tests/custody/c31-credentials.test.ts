@@ -11,7 +11,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { enrol, grantTo, type Member } from '../commands/fixture.ts';
+import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { authorised, post, tokenFor, type Answer } from '../api/fixture.ts';
@@ -116,6 +116,7 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
       await grantTo(tx, clientHolder, 'manage', { kind: 'party', id: clientA }, false, 'custody');
     });
     const bravo = await insertBusiness(db.app, 'bravo');
+    await installSpine(db.app, bravo);
     bravoAdmin = await enrol(db.app, bravo, 'bravoadmin');
     await db.app.withBusiness(bravo, async (tx) => {
       await grantTo(tx, bravoAdmin, 'manage', { kind: 'business', id: null }, false, 'custody');
@@ -221,6 +222,12 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
     const clearing = await as(bravoAdmin, 'secret.clear', { secretId }, 'bravo');
     expect(clearing.status).toBe(404);
     expect(clearing.body['code']).toBe('NOT_FOUND');
+    const fabricated = await as(bravoAdmin, 'secret.clear', { secretId: randomUUID() }, 'bravo');
+    const malformed = await as(bravoAdmin, 'secret.clear', { secretId: 'not-a-uuid' }, 'bravo');
+    for (const other of [fabricated, malformed]) {
+      expect(other.status).toBe(clearing.status);
+      expect(other.body).toStrictEqual(clearing.body);
+    }
     expect((await list(admin)).find((one) => one.id === secretId)?.state).toBe('set');
   });
 
@@ -289,6 +296,7 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
       { name: 'ok.name', value: 42 },
       { name: 'ok.name', value: '' },
       { name: 'ok.name', value: `${CANARY}-x`.padEnd(9_000, 'x') },
+      { name: 'ok.name', value: `${CANARY}-y`, clientId: 'not-a-uuid' },
     ]) {
       // eslint-disable-next-line no-await-in-loop -- one body at a time
       const answer = await as(admin, 'secret.set', body);

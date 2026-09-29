@@ -80,6 +80,10 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // T3e2: the journey drops nothing, so one report and one of its runs.
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
+  // A cleared secret: the row with no sealed value, which is a whole row.
+  'public.custody_secrets': `insert into public.custody_secrets
+       (business_id, id, name, scope_kind, scope_id)
+     values ($1, gen_random_uuid(), 'restricted-calls.seed', 'business', null) returning 1`,
 };
 
 /**
