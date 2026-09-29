@@ -12,51 +12,12 @@
 // and the addresses of the API and the identity provider are supplied here and
 // nowhere else, so every module below can be driven by a test without one.
 
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@launchastro/ui';
 import './styles/6-slice.css';
-import { App } from './App.tsx';
+import { Root } from './root.tsx';
 import { SessionStore, tabStorage } from './session/token.ts';
-
-/**
- * The address, as state.
- *
- * `pushState` plus a `popstate` listener rather than a router package: none is
- * named in `docs/platform-construction.md`, the registry in `routes.ts` is what
- * the application resolves through, and a hard reload of a task address has to
- * land on that address (B5) — which is a server rewrite, not a router feature.
- */
-function Root(): React.ReactElement {
-  const [path, setPath] = useState(addressOf(window.location));
-  useEffect(() => {
-    const onPop = (): void => {
-      setPath(addressOf(window.location));
-    };
-    window.addEventListener('popstate', onPop);
-    return () => {
-      window.removeEventListener('popstate', onPop);
-    };
-  }, []);
-  const navigate = (next: string): void => {
-    window.history.pushState(null, '', next);
-    setPath(next);
-  };
-  return (
-    <App
-      path={path}
-      navigate={navigate}
-      sessions={sessions}
-      gotrueUrl={GOTRUE_URL}
-      apiOrigin={API_ORIGIN}
-      fetch={window.fetch.bind(window)}
-      storage={storage}
-    />
-  );
-}
-
-/** The whole address: a legacy one carries its client and tab in the query and hash. */
-const addressOf = (at: Location): string => `${at.pathname}${at.search}${at.hash}`;
 
 const GOTRUE_URL =
   (import.meta.env['VITE_GOTRUE_URL'] as string | undefined) ?? 'http://127.0.0.1:54391';
@@ -71,7 +32,14 @@ const host = document.getElementById('app');
 if (host !== null) {
   createRoot(host).render(
     <StrictMode>
-      <Root />
+      <Root
+        window={window}
+        sessions={sessions}
+        gotrueUrl={GOTRUE_URL}
+        apiOrigin={API_ORIGIN}
+        fetch={window.fetch.bind(window)}
+        storage={storage}
+      />
     </StrictMode>,
   );
 }

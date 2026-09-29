@@ -10,7 +10,8 @@
 // — the words and tones a state may print — and not as a source of rows.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { AppStrip, Shell } from '@launchastro/ui';
+import { AppStrip, Shell, type StripSteps } from '@launchastro/ui';
+import { FaceProvider } from './face.tsx';
 import { gateOf, matchRoute, pathTo } from './routes.ts';
 import { NO_CLIENT_GRANTS, canonicalOf, isLegacy, pageAt, type ClientAccess } from './manifest.ts';
 import {
@@ -31,7 +32,10 @@ import { drawScreen } from './screen-registry.tsx';
 export interface AppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
   readonly path: string;
-  readonly navigate: (path: string) => void;
+  /** `replace` corrects the address of the page already open, adding no history entry. */
+  readonly navigate: (path: string, options?: { readonly replace?: boolean }) => void;
+  /** The tab's Back and Forward, when the entry owns a history (MP-2-5). */
+  readonly steps?: StripSteps;
   readonly sessions: SessionStore;
   /** Where the identity provider is. Injected so a test never needs a network. */
   readonly gotrueUrl: string;
@@ -59,7 +63,7 @@ export function App(props: AppProps): ReactElement {
     (props.path === '/' ? (session === null ? pathTo('agency:sign-in') : DASHBOARD) : props.path);
   const navigate = props.navigate;
   useEffect(() => {
-    if (here !== props.path) navigate(here);
+    if (here !== props.path) navigate(here, { replace: true });
   }, [here, props.path, navigate]);
 
   // The narrow drawer (MP-2-8) is open or not here, and any change of address
@@ -248,7 +252,21 @@ export function App(props: AppProps): ReactElement {
       face={face}
       rail={rail}
       here={bare}
-      strip={<AppStrip face={face} client={identity} />}
+      strip={
+        <AppStrip
+          face={face}
+          client={identity}
+          {...(props.steps === undefined ? {} : { steps: props.steps })}
+          onFace={
+            identity === null || at?.client == null
+              ? null
+              : (next) => {
+                  const slug = at.client ?? '';
+                  navigate(next === 'client' ? `/portal/${slug}/` : `/clients/${slug}/`);
+                }
+          }
+        />
+      }
       tabs={tabs}
       freshness={online ? null : 'offline'}
       nav={{ open: navOpen, onToggle: setNavOpen }}
@@ -288,7 +306,7 @@ export function App(props: AppProps): ReactElement {
       }}
       seated={false}
     >
-      {content}
+      <FaceProvider face={face}>{content}</FaceProvider>
     </Shell>
   );
 }
