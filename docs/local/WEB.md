@@ -244,9 +244,16 @@ internal reader's comment, with every field present. A shared comment is a
 `CommentView`, whose fields are the catalogue's to choose, so the shared view
 draws each one only when it arrived as text.
 
-The form is `form#task-comment`: a required `textarea#comment-body`, a
-`select#comment-audience` (internal or client) and a `select#comment-kind`, with
-`button[data-comment="post"]`. Posting goes through `task.comment` with the
+The conversation is three tabs (`Comments.tsx`, MP-4-5): Internal and Client
+with their counts, and All activity with none, opening on Internal (R41). Each
+reads in time order, and only the chosen tab's thread is drawn. The tab is the
+audience: the form is `form#task-comment`, a required `textarea#comment-body`
+and `button[data-comment="post"]`, and it posts a `note` to `internal` from
+Internal and a `client` message to `client` from Client. On All the box is
+disabled and `p[data-comment="pick"]` says to pick Internal or Client. Enter
+sends; Shift and Enter is a new line. The tab is held above the read with the
+unsent text, so a reread or a post keeps it. The reply door ("Reply in the task
+panel") sits under the form. Posting goes through `task.comment` with the
 revision the page holds. That command writes a record beside the task and
 leaves the task's own revision alone, so nothing else on the page goes stale
 because somebody said something.
@@ -274,10 +281,10 @@ refused `VERSION_STALE` rereads the task, keeps the text, quotes the refusal in
 `[data-comment="stale"]` or `[data-propose="stale"]` and says to send it again;
 the next press carries the new revision.
 
-Keyboard: the textarea, the two selects and the button are ordinary controls in
-document order after the details form, each with a `label` bound by `htmlFor`.
-Tabbing from the box reaches `comment-body -> comment-audience -> comment-kind
--> post` and nothing is reachable only by mouse. Photographed at 1480, 900 and
+Keyboard: the tab strip is one stop whose arrow keys move between the three
+tabs; then the textarea (with its `label` bound by `htmlFor`), the button and
+the reply door, in document order. Nothing is reachable only by mouse. Before
+MP-4-5 the box was photographed at 1480, 900 and
 390 on 2026-09-23 with no horizontal overflow at any of the three. The
 captures are held with the build run's evidence, not in the tree. The
 dark-theme gap recorded below is this page's too: there is no dark build to
@@ -687,12 +694,13 @@ places this build does not yet reach it.
   projection", served by `packages/core-commands/src/reads/proposals.ts`). So this
   is the web not drawing them yet and not the database failing to hold them, and
   the panel registry stays empty until there is a screen for a tab to open.
-- Subtasks are not built. Comments are, and the task page draws them. The
-  mockup's tabbed Internal / Client / All activity conversation is not built:
-  the comments are one list with each row's audience on it, and history stays
-  its own section below.
-- **`system` is not offered as a comment kind.** The API takes `note`, `client`
-  and `system`; the form offers the first two. A system comment is one the
+- Subtasks are not built. Comments are, in the tabbed Internal / Client / All
+  activity conversation; replies, edits, deletes and the Answered, Seen and
+  Not acknowledged signals are not built yet, and history stays its own
+  section below.
+- **`system` is never offered as a comment kind.** The API takes `note`,
+  `client` and `system`; the form offers no kind at all, because the tab
+  decides it. A system comment is one the
   product writes about itself, and a box letting a person post one by hand makes
   every system note on a task unreliable evidence of anything.
 - **The exact-revision path is proved only where the read sends a revision.**

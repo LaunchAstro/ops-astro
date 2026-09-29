@@ -154,16 +154,6 @@ async function typeInto(host: HTMLElement, selector: string, value: string): Pro
   });
 }
 
-async function choose(host: HTMLElement, selector: string, value: string): Promise<void> {
-  const field = host.querySelector(selector) as HTMLSelectElement | null;
-  if (field === null) throw new Error(`nothing matches ${selector}`);
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set;
-  await act(async () => {
-    setter?.call(field, value);
-    field.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-}
-
 describe('comments on the task page', () => {
   it('draws what the read carried, in posted order, with the audience on each', async () => {
     const api = server();
@@ -183,7 +173,8 @@ describe('comments on the task page', () => {
     await tick();
 
     await typeInto(page.host, '#comment-body', 'A second note, typed by a person.');
-    await choose(page.host, '#comment-audience', 'client');
+    // The tab is the audience (MP-4-5): Client posts a client message.
+    await page.click('#conversation-tab-client');
     await page.click('[data-comment="post"]');
     await tick();
 
@@ -196,6 +187,8 @@ describe('comments on the task page', () => {
     expect(typeof api.posted[0]?.['operationId']).toBe('string');
     expect(api.posted[0]?.['expectedRevision']).toBe(4);
 
+    // All activity shows both audiences (MP-4-5).
+    await page.click('#conversation-tab-all');
     const rows = page.all('[data-comment-id]');
     expect(rows).toHaveLength(2);
     expect(page.text()).toContain('A second note, typed by a person.');

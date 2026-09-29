@@ -26,17 +26,27 @@
 // which the stale path below handles. Changing the text, the audience or the
 // kind is a different comment and gets a new one.
 //
+// **The conversation is three tabs** (MP-4-5, DT-14, DT-21): Internal and
+// Client with their counts, and All activity with none. It opens on Internal
+// on the page and the panel alike (R41). The tab is the audience: Internal
+// posts a note the business reads, Client a client message the client reads,
+// and on All the box is closed with a line saying to pick one, so nothing is
+// posted to an audience nobody chose. There is no kind to choose, so the
+// `system` kind a product writes about itself is never offered. Each tab reads
+// in time order. Enter sends; Shift and Enter is a new line.
+//
 // **What the person typed is held above the read** (`TaskDetail.tsx`), with
 // the attempt, because every reread of the task remounts this box. A comment
 // refused `VERSION_STALE` rereads the task, keeps the text, and quotes the
 // refusal, so the next press goes out against the revision the page now shows.
 // `task.comment` leaves the revision alone, so there is nothing to merge.
 
-import { useRef, type ReactElement } from 'react';
-import { PaneEmpty } from '@launchastro/ui';
+import { useRef, type KeyboardEvent, type ReactElement } from 'react';
+import { CountBadge, PaneEmpty, TabPanel, TabStrip } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommand } from '../../records/use-command.ts';
+import { PanelDoorButton, type PanelDoor } from './Perspectives.tsx';
 
 export interface CommentsProps {
   readonly client: OperationsClient;
@@ -52,6 +62,8 @@ export interface CommentsProps {
   readonly refusal: string | null;
   readonly onRefused: (because: string) => void;
   readonly onPosted: () => void;
+  /** The dock task panel's opener, for the reply door (MP-4-8 wires it). */
+  readonly onOpenPanel?: ((door: PanelDoor) => void) | undefined;
   /** The unsent comment, held above the read so a reread keeps it. Null is an empty box. */
   readonly draft: CommentDraft | null;
   readonly onDraft: (next: CommentDraft | null) => void;
@@ -60,8 +72,8 @@ export interface CommentsProps {
 /** An unsent comment: the words, the attempt whose outcome is unknown, and a stale refusal. */
 export interface CommentDraft {
   readonly body: string;
-  readonly audience: string;
-  readonly kind: string;
+  /** The tab showing, which is also the audience a post goes to. */
+  readonly tab: ConversationTab;
   readonly pending: PendingComment | null;
   /** The server's `VERSION_STALE`, quoted across the reread it caused. */
   readonly stale: string | null;
@@ -69,30 +81,18 @@ export interface CommentDraft {
 
 const EMPTY: CommentDraft = {
   body: '',
-  audience: 'internal',
-  kind: 'note',
+  tab: 'internal',
   pending: null,
   stale: null,
 };
 
-/** The two audiences the model has. Who may read it, which is not what it is. */
-const AUDIENCES: readonly { readonly value: string; readonly label: string }[] = [
-  { value: 'internal', label: 'Internal — the business only' },
-  { value: 'client', label: 'Client — the client may read it' },
-];
+export type ConversationTab = 'internal' | 'client' | 'all';
 
-/**
- * The kinds this screen offers a person.
- *
- * The API accepts a third, `system`. It is not offered here: a system comment
- * is one the product writes about itself, and a box letting a person post one
- * by hand would make every system note on a task unreliable evidence of
- * anything. The gap is recorded in `docs/local/WEB.md` rather than closed.
- */
-const KINDS: readonly { readonly value: string; readonly label: string }[] = [
-  { value: 'note', label: 'Note' },
-  { value: 'client', label: 'Client message' },
-];
+/** What a post from each writable tab is: who may read it, and what it is. */
+const POSTS: Readonly<Record<'internal' | 'client', { audience: string; kind: string }>> = {
+  internal: { audience: 'internal', kind: 'note' },
+  client: { audience: 'client', kind: 'client' },
+};
 
 /** A comment whose outcome is not known, held so the retry is the same attempt. */
 export interface PendingComment {
@@ -106,7 +106,8 @@ export interface PendingComment {
 
 export function Comments(props: CommentsProps): ReactElement {
   const current = props.draft ?? EMPTY;
-  const { body, audience, kind, pending } = current;
+  const { body, tab, pending } = current;
+  const { audience, kind } = POSTS[tab === 'client' ? 'client' : 'internal'];
   const put = (next: Partial<CommentDraft>): void => {
     props.onDraft({ ...current, ...next });
   };
@@ -123,7 +124,8 @@ export function Comments(props: CommentsProps): ReactElement {
   const command = useCommand();
   const busy = command.busy;
   const closed = command.closed || props.refusal !== null;
-  const locked = busy || closed;
+  // On All nobody has said who may read a post, so there is nothing to post.
+  const locked = busy || closed || tab === 'all';
   const because = command.because ?? props.refusal;
   const run = command.run;
   const form = useRef<HTMLFormElement>(null);
@@ -163,8 +165,9 @@ export function Comments(props: CommentsProps): ReactElement {
           return;
         }
         // Emptied because it has been stored, and the list is reread rather
-        // than appended to: what is on the screen is what the server has.
-        props.onDraft(null);
+        // than appended to: what is on the screen is what the server has. The
+        // tab stays where the person posted from.
+        props.onDraft({ ...EMPTY, tab });
         props.onPosted();
       },
     );
@@ -177,7 +180,13 @@ export function Comments(props: CommentsProps): ReactElement {
         <span className="sbact__meta">{props.comments.length} on this task</span>
       </div>
 
-      <CommentThread comments={props.comments} />
+      <Conversation
+        comments={props.comments}
+        tab={tab}
+        onTab={(next) => {
+          put({ tab: next });
+        }}
+      />
 
       {because === null ? null : (
         <p className="field__error" role="alert" data-comment="refusal">
@@ -209,7 +218,12 @@ export function Comments(props: CommentsProps): ReactElement {
           post();
         }}
       >
-        <CommentFields audience={audience} body={body} kind={kind} locked={locked} onPut={put} />
+        <CommentBody body={body} locked={locked} onPut={put} onSend={post} />
+        {tab === 'all' ? (
+          <p className="card__sub" data-comment="pick">
+            Pick Internal or Client to post, so it is clear who may read it.
+          </p>
+        ) : null}
         <button className="btn btn--primary" type="submit" data-comment="post" disabled={locked}>
           {busy ? 'Posting…' : 'Post comment'}
         </button>
@@ -219,14 +233,74 @@ export function Comments(props: CommentsProps): ReactElement {
           </p>
         )}
       </form>
+      <PanelDoorButton door="reply" onOpenPanel={props.onOpenPanel} />
     </section>
   );
 }
 
+const TAB_WORDS: Readonly<Record<ConversationTab, { label: string; empty: string }>> = {
+  internal: { label: 'Internal', empty: 'No internal notes on this task yet.' },
+  client: { label: 'Client', empty: 'Nothing has been said to the client on this task yet.' },
+  all: { label: 'All activity', empty: 'Nothing has been said on this task yet.' },
+};
+
+const TABS: readonly ConversationTab[] = ['internal', 'client', 'all'];
+
+/** The comments a tab shows, oldest first whatever order they arrived in. */
+function shownOn(
+  tab: ConversationTab,
+  comments: CommentsProps['comments'],
+): CommentsProps['comments'] {
+  const on = tab === 'all' ? comments : comments.filter((comment) => comment.audience === tab);
+  return on.toSorted((a, b) => Date.parse(a.posted_at) - Date.parse(b.posted_at));
+}
+
+/** The three tabs, and the chosen tab's thread. */
+function Conversation(props: {
+  readonly comments: CommentsProps['comments'];
+  readonly tab: ConversationTab;
+  readonly onTab: (next: ConversationTab) => void;
+}): ReactElement {
+  const count = (tab: 'internal' | 'client'): number =>
+    props.comments.filter((comment) => comment.audience === tab).length;
+  return (
+    <>
+      <TabStrip
+        name="conversation"
+        label="Who each part of the conversation is with"
+        selected={props.tab}
+        onSelect={(next) => {
+          props.onTab(TABS.find((tab) => tab === next) ?? 'internal');
+        }}
+        tabs={TABS.map((tab) => ({
+          id: tab,
+          label: TAB_WORDS[tab].label,
+          badge:
+            tab === 'all' ? null : (
+              <CountBadge count={count(tab)} title={`${count(tab)} on this task`} />
+            ),
+        }))}
+      />
+      {TABS.map((tab) => (
+        <TabPanel name="conversation" tab={tab} selected={props.tab} key={tab}>
+          {/* Only the chosen tab draws its thread: a comment on both Internal
+              and All would otherwise be in the page twice. */}
+          {tab === props.tab ? (
+            <CommentThread comments={shownOn(tab, props.comments)} empty={TAB_WORDS[tab].empty} />
+          ) : null}
+        </TabPanel>
+      ))}
+    </>
+  );
+}
+
 /** The comments on the task, oldest first, each with who may read it. */
-function CommentThread(props: { readonly comments: CommentsProps['comments'] }): ReactElement {
+function CommentThread(props: {
+  readonly comments: CommentsProps['comments'];
+  readonly empty: string;
+}): ReactElement {
   return props.comments.length === 0 ? (
-    <PaneEmpty say="Nothing has been said about this one yet." />
+    <PaneEmpty say={props.empty} />
   ) : (
     <div className="thread" data-comments="list">
       {props.comments.map((comment) => (
@@ -254,73 +328,36 @@ function CommentThread(props: { readonly comments: CommentsProps['comments'] }):
   );
 }
 
-/** What a comment says, who may read it and what kind it is. */
-function CommentFields(props: {
+/** What a comment says. Enter sends it; Shift and Enter starts a new line. */
+function CommentBody(props: {
   readonly body: string;
-  readonly audience: string;
-  readonly kind: string;
   readonly locked: boolean;
   readonly onPut: (next: Partial<CommentDraft>) => void;
+  readonly onSend: () => void;
 }): ReactElement {
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    props.onSend();
+  };
   return (
-    <>
-      <div className="field">
-        <label className="tf__k" htmlFor="comment-body">
-          Say something
-        </label>
-        <textarea
-          id="comment-body"
-          className="input"
-          rows={3}
-          required
-          disabled={props.locked}
-          value={props.body}
-          onChange={(event) => {
-            props.onPut({ body: event.target.value });
-          }}
-        />
-      </div>
-      <div className="field">
-        <label className="tf__k" htmlFor="comment-audience">
-          Who may read it
-        </label>
-        <select
-          id="comment-audience"
-          className="input"
-          disabled={props.locked}
-          value={props.audience}
-          onChange={(event) => {
-            props.onPut({ audience: event.target.value });
-          }}
-        >
-          {AUDIENCES.map((choice) => (
-            <option key={choice.value} value={choice.value}>
-              {choice.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="field">
-        <label className="tf__k" htmlFor="comment-kind">
-          What it is
-        </label>
-        <select
-          id="comment-kind"
-          className="input"
-          disabled={props.locked}
-          value={props.kind}
-          onChange={(event) => {
-            props.onPut({ kind: event.target.value });
-          }}
-        >
-          {KINDS.map((choice) => (
-            <option key={choice.value} value={choice.value}>
-              {choice.label}
-            </option>
-          ))}
-        </select>
-      </div>
-    </>
+    <div className="field">
+      <label className="tf__k" htmlFor="comment-body">
+        Say something
+      </label>
+      <textarea
+        id="comment-body"
+        className="input"
+        rows={3}
+        required
+        disabled={props.locked}
+        value={props.body}
+        onKeyDown={onKeyDown}
+        onChange={(event) => {
+          props.onPut({ body: event.target.value });
+        }}
+      />
+    </div>
   );
 }
 
