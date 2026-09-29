@@ -29,6 +29,12 @@ export interface BrokerRoute {
   readonly credentialKind: CredentialKind;
   /** The installation whose credential this is. */
   readonly installation: string;
+  /**
+   * The calls in flight on this route across every business of the
+   * installation, at most; a business with work in flight holds no more than
+   * its share of it (AW-01's fair share).
+   */
+  readonly ceiling: number;
 }
 
 /**

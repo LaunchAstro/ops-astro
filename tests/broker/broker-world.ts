@@ -45,6 +45,7 @@ export const CLOUD: BrokerRoute = {
   credentialRef: 'replay_key',
   credentialKind: 'api_key',
   installation: 'here',
+  ceiling: 1_000,
 };
 
 export const LOCAL: BrokerRoute = { ...CLOUD, key: 'on_premises', reach: 'local' };

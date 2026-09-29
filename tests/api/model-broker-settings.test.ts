@@ -22,6 +22,7 @@ const COMPLETE = {
       credentialRef: 'replay_key',
       credentialKind: 'replay',
       installation: 'here',
+      ceiling: 4,
     },
   ]),
   MODEL_BROKER_INSTALLATION: 'here',
@@ -49,7 +50,7 @@ it('a complete configuration is the broker', () => {
       destinations: [{ key: 'replay', origin: 'http://127.0.0.1:9' }],
     },
     installation: 'here',
-    routes: [{ key: 'replay', reach: 'cloud', provider: 'replay' }],
+    routes: [{ key: 'replay', reach: 'cloud', provider: 'replay', ceiling: 4 }],
   });
 });
 
@@ -93,5 +94,19 @@ it('a malformed setting is named and its value never shown', () => {
     expect(problem).toContain(setting);
     expect(problem).not.toContain(CANARY);
     expect(problem.toLowerCase()).not.toContain(CANARY.toLowerCase());
+  }
+});
+
+it("a route declares its installation's ceiling, a whole number of at least one", () => {
+  const [complete] = JSON.parse(COMPLETE.MODEL_BROKER_ROUTES) as Record<string, unknown>[];
+  const { ceiling: _ceiling, ...without } = complete ?? {};
+  const wrong = [0, -1, 1.5, '4', null, Number.MAX_SAFE_INTEGER + 1];
+  for (const route of [
+    without,
+    ...wrong.map((ceiling) => Object.assign({}, complete, { ceiling })),
+  ]) {
+    expect(problemOf({ ...COMPLETE, MODEL_BROKER_ROUTES: JSON.stringify([route]) })).toContain(
+      'MODEL_BROKER_ROUTES',
+    );
   }
 });
