@@ -12,6 +12,7 @@ import {
   type CSSProperties,
   type ReactElement,
   type ReactNode,
+  type Ref,
 } from 'react';
 import { useMark } from './mark.ts';
 
@@ -179,6 +180,10 @@ export function AppStrip(props: {
   readonly steps?: StripSteps;
   /** The switch, inside a client only; pressing the face already on does nothing. */
   readonly onFace?: ((face: Face) => void) | null;
+  /** Opens search (C1); without it the agency face draws search disabled (R29). */
+  readonly onSearch?: (() => void) | null;
+  /** Where focus returns when search closes. */
+  readonly searchRef?: Ref<HTMLButtonElement>;
   readonly children?: ReactNode;
 }): ReactElement {
   const agency = props.face === 'agency';
@@ -211,7 +216,18 @@ export function AppStrip(props: {
           <span className="clienthdr__tag">{agency ? 'Agency view' : 'Client portal'}</span>
         </div>
       )}
-      {agency ? (
+      {agency && props.onSearch != null ? (
+        <button
+          className="appbar__search"
+          type="button"
+          ref={props.searchRef}
+          aria-keyshortcuts="Meta+K Control+K"
+          onClick={props.onSearch}
+        >
+          <span>Search…</span>
+          <kbd className="appbar__key">⌘K</kbd>
+        </button>
+      ) : agency ? (
         <div className="appbar__search" aria-disabled="true" title="Search is not built yet">
           <span>Search…</span>
           <kbd className="appbar__key">⌘K</kbd>

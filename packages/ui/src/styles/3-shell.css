@@ -796,3 +796,79 @@
   padding: var(--s-3) var(--s-5) 0;
   border-bottom: 1px solid var(--border);
 }
+
+/* -- Search (C1): a modal palette over a scrim, one field, the hits the
+      scoped service answered. ------------------------------------------- */
+button.appbar__search {
+  font: inherit;
+  text-align: left;
+  opacity: 1;
+  cursor: text;
+}
+button.appbar__search:hover {
+  border-color: color-mix(in oklch, var(--on-dark) 22%, transparent);
+}
+.palette__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: var(--scrim);
+}
+.palette {
+  position: fixed;
+  top: 12vh;
+  left: 50%;
+  z-index: 91;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100vw - 2rem));
+  max-height: 70vh;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  box-shadow: var(--shadow-overlay);
+  transform: translateX(-50%);
+}
+.palette__field {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--s-4);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1rem;
+}
+.palette__field:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.palette__list {
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.palette__hit {
+  display: flex;
+  gap: var(--s-3);
+  padding: 0.6rem var(--s-4);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.palette__hit[aria-selected='true'],
+.palette__hit:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.palette__key {
+  flex: none;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+.palette__none {
+  margin: 0;
+  padding: var(--s-4);
+  color: var(--text-2);
+}
