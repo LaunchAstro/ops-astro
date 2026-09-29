@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import postgres from 'postgres';
 import { plainAlert, type AlertKind, type Where } from './catalogue.ts';
 import { createDetector, type SecuritySignal } from './detect.ts';
 
@@ -101,19 +102,22 @@ function text(read: () => unknown): string {
   }
 }
 
-// A database state (SQLSTATE) or a system error the runtime names; nothing code or a message can fill.
+// A database state is logged only from the driver's own error, which carries the
+// server's SQLSTATE; a system code only from this fixed list. Any other code,
+// whatever its shape, was set by code or a message and could hold anything.
 const SQLSTATE = /^[0-9A-Z]{5}$/u;
 const SYSTEM = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EPIPE']);
 SYSTEM.add('EHOSTUNREACH').add('EAI_AGAIN').add('ENOMEM').add('EMFILE');
 
 /**
- * What the API's own log may say of a fault: its database state or system
- * code, else a standard error class, else `unknown`. Never a custom name, a
- * message or a constraint, which a planted value could fill.
+ * What the API's own log may say of a fault: the database's state from a
+ * `PostgresError`, a listed system code, else a standard error class, else
+ * `unknown`. Never a custom name, a message or a constraint.
  */
 export function faultCode(cause: unknown): string {
   const code = text(() => (cause as { code?: unknown } | undefined)?.code);
-  if (SQLSTATE.test(code) || SYSTEM.has(code)) return code;
+  if (cause instanceof postgres.PostgresError && SQLSTATE.test(code)) return code;
+  if (SYSTEM.has(code)) return code;
   const name = cause instanceof Error ? text(() => cause.name) : '';
   return STANDARD.has(name) ? name : 'unknown';
 }
