@@ -77,7 +77,7 @@
 // gate, so the controls close on it rather than inviting that refusal.
 
 import type { ReactElement } from 'react';
-import { PaneEmpty } from '@launchastro/ui';
+import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
   ProposalVersionView as ProposalVersion,
@@ -148,7 +148,7 @@ export function Proposals(props: ProposalsProps): ReactElement {
         </p>
       ) : props.proposals.length === 0 ? (
         <div data-proposals="none">
-          <PaneEmpty say="Nothing has been proposed on this one yet." />
+          <Empty look="inline" title="Nothing has been proposed on this one yet." />
         </div>
       ) : (
         <div className="stack" data-proposals="list">
