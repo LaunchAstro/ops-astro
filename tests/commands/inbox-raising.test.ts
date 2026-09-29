@@ -8,7 +8,9 @@
 // The reasons CS-16.8 names, each raised once: a decision for every person who
 // holds decide on the task; a finished run (owed nothing) and a failed run
 // waiting on its launcher, to the person who authorised the lease; an
-// assignment; a mention; and a client-visible comment naming an outside party.
+// assignment; a mention; and an incident. A client comment waits on a stored
+// paid-client entitlement, which this head lacks, so an outside party is
+// raised nothing, login or not.
 // A superseding proposal withdraws its predecessor's items and raises new ones.
 // A refused transition raises none, and a recovery pass raises none.
 //
@@ -79,7 +81,6 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
   let writerToken: string;
   let clientStaff: Member;
   let outsider: string;
-  let paidOutsider: string;
   let clientA: string;
   let bravo: string;
   let bravoDecider: string;
@@ -149,19 +150,6 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       outsider = await insertPerson(tx, 'Olga Outside');
       await insertActor(tx, outsider);
       await grantTo(tx, { ...clientStaff, personId: outsider }, 'read', {
-        kind: 'party',
-        id: clientA,
-      });
-      // A paid client: an outside party a person has given a login.
-      paidOutsider = await insertPerson(tx, 'Pia Paid');
-      const paidActor = await insertActor(tx, paidOutsider);
-      await insertMapping(
-        tx,
-        await insertLogin(tx, `pia-${randomUUID()}`),
-        paidOutsider,
-        paidActor,
-      );
-      await grantTo(tx, { ...clientStaff, personId: paidOutsider }, 'read', {
         kind: 'party',
         id: clientA,
       });
@@ -424,15 +412,25 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       expect(await allItems()).toBe(before);
     });
 
-    it('raises a client comment in the transition for a paid client, one holding a login', async () => {
-      const onA = await newTask('client A visible', clientA);
-      ok(await comment(onA, [paidOutsider], 'client'));
-      expect(await open(paidOutsider, 'client_comment')).toMatchObject([
-        { subjectRecordId: onA.id, owed: true, access: 'readable' },
-      ]);
-      expect(await open(paidOutsider, 'mention')).toStrictEqual([]);
-      // Named in a team-only comment, the same party is refused like any outsider.
-      expect((await comment(onA, [paidOutsider])).body['code']).toBe('MENTION_NOT_READABLE');
+    it('Sol proof, criterion 32: a login without paid-client status does not raise a client comment', async () => {
+      const freeWithLogin = await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+        const personId = await insertPerson(tx, 'Free portal contact');
+        const actorId = await insertActor(tx, personId);
+        const loginId = await insertLogin(tx, `free-${randomUUID()}`);
+        await insertMapping(tx, loginId, personId, actorId);
+        await grantTo(tx, { ...clientStaff, personId }, 'read', {
+          kind: 'party',
+          id: clientA,
+        });
+        return personId;
+      });
+      const task = await newTask('client A free contact', clientA);
+      ok(await comment(task, [freeWithLogin], 'client'));
+      expect(
+        (await open(freeWithLogin, 'client_comment')).filter(
+          (item) => item.subjectRecordId === task.id,
+        ),
+      ).toStrictEqual([]);
     });
 
     it('Sol proof, criterion 32: an outside party without paid-client status gets no client comment item', async () => {
