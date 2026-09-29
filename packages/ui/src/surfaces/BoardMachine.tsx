@@ -70,6 +70,14 @@ export interface BoardMachineProps<Row> {
   readonly widths?: ColumnWidths | null;
   /** Told the widths to keep whenever a drag, an arrow step, a reset or an undo changes them. */
   readonly onWidths?: (widths: ColumnWidths | null) => void;
+  /** When the newest record in scope changed (MP-5-7, P-07); null or absent draws no stamp. */
+  readonly changedAt?: string | null;
+  /** The time the stamp counts from; the clock when absent. */
+  readonly now?: Date;
+  /** The page's title-row slot the command bar is drawn into (MP-5-7, B-04). */
+  readonly bar?: HTMLElement | null;
+  /** Another panel is showing: the board and its bar are withdrawn (D-03). */
+  readonly hidden?: boolean;
 }
 
 const STACK_TIP = ' · shift-click to add it to what is already on';
