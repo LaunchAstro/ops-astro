@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { expect, it } from 'vitest';
+
+it('MP-1-2 the required check keeps the history the forward-pair proof reads', () => {
+  const root = fileURLToPath(new URL('../..', import.meta.url));
+  const workflow = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
+  const start = workflow.indexOf('\n  check:\n');
+  const end = workflow.indexOf('\n  database-gate:', start);
+  const checkJob = workflow.slice(start, end);
+  expect(checkJob).toContain('run: pnpm check');
+  const checkout = checkJob.split('- uses: actions/checkout@')[1]?.split('\n      - ')[0] ?? '';
+
+  const scratch = mkdtempSync(join(tmpdir(), 'mp-1-2-checkout-'));
+  try {
+    const clone = spawnSync(
+      'git',
+      [
+        'clone',
+        '--quiet',
+        '--no-local',
+        ...(/fetch-depth:\s*0/u.test(checkout) ? [] : ['--depth=1']),
+        pathToFileURL(root).href,
+        join(scratch, 'repo'),
+      ],
+      { encoding: 'utf8' },
+    );
+    expect(clone.status, clone.stderr).toBe(0);
+    const history = spawnSync(
+      'git',
+      [
+        '-C',
+        join(scratch, 'repo'),
+        'rev-list',
+        '--reverse',
+        '7ad6d39c610ad2c232820ca425c070bae154b457..HEAD',
+      ],
+      { encoding: 'utf8' },
+    );
+    expect(history.status, history.stderr).toBe(0);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
