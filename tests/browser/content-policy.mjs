@@ -11,10 +11,10 @@
 
 import { readFileSync } from 'node:fs';
 import { createServer, get } from 'node:http';
-import { extname, join } from 'node:path';
+import { extname, resolve as resolvePath, sep } from 'node:path';
 import { chromium } from 'playwright';
 
-const DIST = join(import.meta.dirname, '../../apps/web/dist');
+const DIST = resolvePath(import.meta.dirname, '../../apps/web/dist');
 const PLANTED = [
   '<script>window.plantedInline = true;</script>',
   '<script src="OUTSIDE/planted.js"></script>',
@@ -35,8 +35,13 @@ const OUTSIDE = `http://127.0.0.1:${String(outside.address().port)}`;
 
 const server = createServer((request, response) => {
   const path = request.url === '/' ? '/index.html' : (request.url ?? '/');
+  const file = resolvePath(DIST, `.${path}`);
+  if (!file.startsWith(`${DIST}${sep}`)) {
+    response.writeHead(404).end();
+    return;
+  }
   try {
-    let body = readFileSync(join(DIST, path));
+    let body = readFileSync(file);
     if (path === '/index.html') {
       body = Buffer.from(
         String(body).replace(
