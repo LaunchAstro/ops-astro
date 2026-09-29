@@ -114,12 +114,30 @@ const bites = (id: string): Ran => {
   return ran({ cases: names.map((name) => ({ name: `${name}: the case`, passed: false })) });
 };
 
+/** A T4 part's file run unmutated: each planted-mutation case passed under its named invariant. */
+const caught = (id: string, passed = true): Ran => {
+  const part = PARTS.find((one) => one.id === id);
+  const [invariant] = part?.invariants ?? [];
+  return ran({
+    red: false,
+    detail: '0 of 4 cases failed',
+    cases: (part?.planted ?? []).map((name) => ({ name: `${String(invariant)} ${name}`, passed })),
+  });
+};
+
+/** The split's T4e row: T4-N4 reverts every T2 and T3 part; T4a to T4d are test tooling. */
+const TOOLING = new Set(['T4a', 'T4b1', 'T4b2', 'T4c', 'T4d']);
+
 /** One passing line for every mutation the whole run must hold. */
 const everyLine = (): CaseLine[] => [
   classify('T4-N1', ran({})),
   classify('T4-N2', ran({})),
   ...['a', 'b', 'c'].map((one) => classify(`T4-N3 ${one}`, ran({}))),
-  ...PARTS.map((part) => classify(`T4-N4 ${part.id} reverted`, bites(part.id))),
+  ...PARTS.map((part) =>
+    TOOLING.has(part.id)
+      ? classify(`T4-P ${part.id} planted`, caught(part.id))
+      : classify(`T4-N4 ${part.id} reverted`, bites(part.id)),
+  ),
 ];
 
 describe('every_invariant_bites: the verdict', () => {
@@ -172,11 +190,60 @@ describe('every_invariant_bites: the whole run', () => {
     expect(whole.detail).toContain('T4-N4 T3f');
     expect(whole.detail).not.toContain('T4-N1');
     const short = everyInvariantBites(
-      everyLine().filter((line) => !line.case.startsWith('T4-N4 T4d')),
+      everyLine().filter((line) => !line.case.startsWith('T4-P T4d')),
     );
     expect(short.status).toBe('fail');
-    expect(short.detail).toContain('missing: T4-N4 T4d');
+    expect(short.detail).toContain('missing: T4-P T4d');
     expect(everyInvariantBites([]).status).toBe('fail');
+  });
+
+  it('holds T4-N4 for every T2 and T3 part and T4-P for every T4 part, and no other way round', () => {
+    const reverted = everyLine().map((line) =>
+      line.case.startsWith('T4-P T4a') ? classify('T4-N4 T4a reverted', bites('T4a')) : line,
+    );
+    const whole = everyInvariantBites(reverted);
+    expect(whole.status).toBe('fail');
+    expect(whole.detail).toContain('missing: T4-P T4a');
+    const noT3f = everyLine().filter((line) => !line.case.startsWith('T4-N4 T3f'));
+    expect(everyInvariantBites(noT3f).detail).toContain('missing: T4-N4 T3f');
+  });
+});
+
+describe('every_invariant_bites: T4a to T4d, each by its own planted mutation', () => {
+  it('names each T4 part’s planted-mutation cases, found in its own file; no T2 or T3 part has one', () => {
+    for (const part of PARTS) {
+      if (!TOOLING.has(part.id)) {
+        expect(part.planted, part.id).toBeUndefined();
+        continue;
+      }
+      expect(part.planted?.length, part.id).toBeGreaterThan(0);
+      const texts = part.files.map((file) => readFileSync(resolve(ROOT, file), 'utf8'));
+      for (const name of part.planted ?? []) {
+        expect(
+          texts.some((text) => text.includes(`'${name}'`)),
+          `${part.id} ${name}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('passes a T4 part when each planted case ran and passed under its named invariant, saying which', () => {
+    const line = classify('T4-P T4b2 planted', caught('T4b2'));
+    expect(line.status, line.detail).toBe('pass');
+    expect(line.detail).toContain('a fixture selector planted in the built script fails');
+  });
+
+  it('fails a T4 part whose planted case failed, did not run, or ran outside its invariant', () => {
+    expect(classify('T4-P T4c planted', caught('T4c', false)).status).toBe('fail');
+    const silent = classify('T4-P T4c planted', ran({ red: false, cases: [] }));
+    expect(silent.status).toBe('fail');
+    expect(silent.detail).toContain('fails a control shifted by two pixels');
+    const planted = (PARTS.find((one) => one.id === 'T4a')?.planted ?? []).map((name) => ({
+      name: `another suite ${name}`,
+      passed: true,
+    }));
+    expect(classify('T4-P T4a planted', ran({ red: false, cases: planted })).status).toBe('fail');
+    expect(classify('T4-P T4a planted', ran({ red: false, executed: 0 })).status).toBe('fail');
   });
 });
 
