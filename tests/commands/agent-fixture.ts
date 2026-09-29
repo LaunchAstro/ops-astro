@@ -42,6 +42,8 @@ export interface AgentWorld {
   readonly db: FreshDatabase;
   readonly business: BusinessId;
   readonly agentActorId: string;
+  /** The agent's own login, for a case that signs its bearer (`tests/api/fixture.ts` `tokenFor`). */
+  readonly agentSubject: () => string;
   asPerson(member: Member, body: Body): Promise<CommandResult>;
   asAgent(body: Body, credential?: string): Promise<CommandResult>;
   /** A person holding read, write, decide and comment on tasks, each a grant of its own. */
@@ -122,6 +124,7 @@ export async function agentWorld(part: string, key: string): Promise<AgentWorld>
     db,
     business,
     agentActorId,
+    agentSubject: () => agent.subject,
     asPerson,
     asAgent,
     async decider(name) {
