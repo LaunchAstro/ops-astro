@@ -2,10 +2,10 @@
 --
 -- 0034 the backup identity (ticket S0-3, line C1; TR-SEC-8, TR-SECPIR4-3).
 --
--- The scheduled backup reads the whole database once, as one consistent
--- snapshot, and does nothing else here. pg_dump reads with row security off
--- and fails on any table a policy would filter, so the role reads past row
--- security; what keeps it to reading is that it is granted select and nothing
+-- The scheduled backup reads the product's schemas and the auth server's,
+-- once, as one consistent snapshot, and does nothing else here. pg_dump reads
+-- with row security off and fails on any table a policy would filter, so the
+-- role reads past row security; what keeps it to reading is that it is granted select and nothing
 -- more. It owns nothing, may not log in, and holds no function privilege: the
 -- product revokes execute from PUBLIC on each of its functions, and nothing is
 -- granted here. TEMPORARY is already revoked from PUBLIC (0031).
@@ -41,11 +41,23 @@ grant usage on schema public, ops to ops_astro_backup;
 grant select on all tables in schema public, ops to ops_astro_backup;
 grant select on all sequences in schema public, ops to ops_astro_backup;
 
--- Tables a later migration adds are read too, and only read. Default
--- privileges belong to the role that runs the migrations, which is the role
--- that creates every table.
-alter default privileges in schema public, ops grant select on tables to ops_astro_backup;
-alter default privileges in schema public, ops grant select on sequences to ops_astro_backup;
+-- What is made later is read too, and only read: a later migration's tables,
+-- and the auth server's `auth` schema, which the auth server makes itself on
+-- first start as the same owner that runs these migrations
+-- (scripts/local/auth-up.sh:147; staging's runbook does the same). Default
+-- privileges belong to that owner and reach every schema it makes in this
+-- database. An `auth` schema made before this migration is granted here.
+alter default privileges grant usage on schemas to ops_astro_backup;
+alter default privileges grant select on tables to ops_astro_backup;
+alter default privileges grant select on sequences to ops_astro_backup;
+
+do $$ begin
+  if exists (select 1 from pg_namespace where nspname = 'auth') then
+    grant usage on schema auth to ops_astro_backup;
+    grant select on all tables in schema auth to ops_astro_backup;
+    grant select on all sequences in schema auth to ops_astro_backup;
+  end if;
+end $$;
 
 comment on role ops_astro_backup is
   'Backup identity. Reads every table in one consistent snapshot, past row security; '

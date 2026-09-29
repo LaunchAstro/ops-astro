@@ -9,15 +9,12 @@
 --
 -- after the migrations have made `ops_astro_backup` on the same server.
 --
--- Two identities, each held apart by the server rather than by the job:
---   ops_astro_backup            adds a backup: insert of the dump's bytes only.
---                               It cannot list, count, read, change or delete one,
---                               or choose when it was taken.
---   ops_astro_backup_retention  sees each backup's id and time, never its bytes,
---                               and deletes only a backup past the window.
--- Every add and every delete leaves a receipt, written by the store itself.
--- A receipt holds the action, the backup's id, time and size, and who did it:
--- no bytes, no fingerprint.
+-- Two identities, held apart by the server rather than by the job.
+-- `ops_astro_backup` inserts a dump's bytes and nothing else: no list, count,
+-- read, change or delete, and not the time it was taken.
+-- `ops_astro_backup_retention` sees ids and times, never bytes, and deletes
+-- only past the window. The store writes a receipt for every add and delete:
+-- action, id, time, size and login; no bytes, no fingerprint.
 --
 -- The retention window is one row, `backups.settings`, here and nowhere else.
 
