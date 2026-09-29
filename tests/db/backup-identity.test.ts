@@ -18,7 +18,7 @@
 // only the sealed artefact, and the restore identity reads the newest one only
 // through the store's own function, each read leaving a receipt. The seal and
 // the drill's half are in tests/ci/restore-drill.test.ts.
-import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -55,11 +55,20 @@ const keys = generateKeyPairSync('rsa', {
 });
 const drill = async (): Promise<{
   fetchLatest: (storeUrl: string) => Promise<{ takenAt: string; body: Buffer }>;
+  restoreDrill: (options: {
+    fetchArchive: () => Promise<{ takenAt: string; body: Buffer }>;
+    privateKey: string;
+    scope: { business: string; client: string; person: string };
+    docker: (args: string[], input?: Buffer) => Promise<{ code: number; stdout: string }>;
+  }) => Promise<{ outcome: string; stage?: string }>;
 }> => {
   const path = '../../scripts/ops/restore-drill.mjs';
   return await import(/* @vite-ignore */ path);
 };
-const seal = async (): Promise<{ openArchive: (sealed: Buffer, privateKey: string) => Buffer }> => {
+const seal = async (): Promise<{
+  openArchive: (sealed: Buffer, privateKey: string) => Buffer;
+  sealArchive: (dump: Buffer, publicKey: string) => Buffer;
+}> => {
   const path = '../../scripts/ops/archive-seal.mjs';
   return await import(/* @vite-ignore */ path);
 };
@@ -310,6 +319,74 @@ describe.skipIf(serverUrl === undefined)('S0-3 identity scope', () => {
     );
     expect(grants?.privileges).toStrictEqual(['SELECT']);
     await db.admin.execute('drop table public.s03b_later');
+  });
+
+  it('Sol proof, criterion 4: a same-business ungranted client and person fail the drill', async () => {
+    const business = randomUUID();
+    const owner = randomUUID();
+    const ownClient = randomUUID();
+    const otherClient = randomUUID();
+    const otherPerson = randomUUID();
+    await db.admin.execute(
+      `insert into public.businesses (business_id, id, key, name)
+       values ($1, $1, 'sol-s03c', 'Sol S0-3c')`,
+      [business],
+    );
+    await db.admin.execute(
+      `insert into public.people (business_id, id, display_name)
+       values ($1, $2, 'owner'), ($1, $3, 'own client'),
+              ($1, $4, 'other client'), ($1, $5, 'other person')`,
+      [business, owner, ownClient, otherClient, otherPerson],
+    );
+    const url = new URL(serverUrl ?? '');
+    url.pathname = `/${db.name}`;
+    const sealed = (await seal()).sealArchive(Buffer.from('PGDMP drill proof'), keys.publicKey);
+    const { restoreDrill } = await drill();
+    let scopedRead = '';
+    const run = async (args: string[]): Promise<{ code: number; stdout: string }> => {
+      if (args.includes('pg_isready')) return { code: 0, stdout: '' };
+      if (args.includes('pg_restore')) {
+        return {
+          code: 0,
+          stdout: args.includes('--list')
+            ? 'Dumped from database version: 17\n1; 0 0 TABLE DATA public businesses postgres\n'
+            : '',
+        };
+      }
+      if (args.includes('psql')) {
+        if (args.join(' ').includes('server_version_num')) return { code: 0, stdout: '170000' };
+        if (args.join(' ').includes('select (select string_agg')) {
+          const commands = args.flatMap((arg, index) => (arg === '-c' ? [args[index + 1]] : []));
+          const sql = postgres(url.toString(), { max: 1 });
+          try {
+            for (const command of commands.slice(0, -1)) {
+              // oxlint-disable-next-line no-await-in-loop
+              await sql.unsafe(command ?? '');
+            }
+            const rows = await sql.unsafe(commands.at(-1) ?? '').values();
+            scopedRead = (rows[0] ?? []).join('|');
+            return { code: 0, stdout: scopedRead };
+          } finally {
+            await sql.end();
+          }
+        }
+      }
+      return { code: 0, stdout: '' };
+    };
+    for (const scope of [
+      { business, person: owner, client: otherClient },
+      { business, person: otherPerson, client: ownClient },
+    ]) {
+      // oxlint-disable-next-line no-await-in-loop
+      const record = await restoreDrill({
+        fetchArchive: async () => ({ takenAt: new Date().toISOString(), body: sealed }),
+        privateKey: keys.privateKey,
+        scope,
+        docker: run,
+      });
+      expect(scopedRead).toMatch(/\|1\|2$/u);
+      expect.soft(record).toMatchObject({ outcome: 'failed', stage: 'check' });
+    }
   });
 });
 
