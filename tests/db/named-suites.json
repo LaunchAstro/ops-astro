@@ -79,6 +79,7 @@
   ],
   "invariant": [
     "tests/ci/staging-no-production-data.test.ts",
+    "tests/ci/staging-no-production-data-guard.test.ts",
     "tests/tenancy/pooled-crossover.test.ts",
     "tests/tenancy/migration-prefixes.test.ts",
     "tests/identity/agent-delegation.test.ts",
@@ -223,6 +224,7 @@
     "tests/tenancy/migration-runner-guard.test.ts",
     "tests/ci/operator-only.test.ts",
     "tests/ci/service-stop.test.ts",
+    "tests/ci/service-stop-gated.test.ts",
     "tests/ci/upgrade-drill.test.ts",
     "tests/db/backup-identity.test.ts",
     "tests/db/backup-identity-grants.test.ts",
