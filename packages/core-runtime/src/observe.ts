@@ -38,7 +38,8 @@ export interface AppliedEffect {
 
 export type ObserveRequest = DispatchRequest & {
   readonly attemptId: string;
-  readonly effect: AppliedEffect | undefined;
+  /** Asked under the locks, so an effect committing meanwhile is seen (Sol review 2 on #124). */
+  readonly effect: () => Promise<AppliedEffect | undefined>;
   /** What the step used, as the worker's reporter says it; the book prices it. */
   readonly usage: unknown;
   /** The worker's word that the step failed: settles its cost with no effect. */
@@ -86,7 +87,7 @@ export async function observe(
       'Nothing was observed and no money moved. A released hold is settled by its classifier.',
     );
   }
-  const effect = request.effect;
+  const effect = await request.effect();
   const applied = state.marked && effect !== undefined && effect.taskId === found.task_id;
   const failed = state.marked && effect === undefined && request.outcome === 'failed';
   if (!applied && !failed) {
