@@ -40,7 +40,10 @@ type Body = Readonly<Record<string, unknown>>;
 
 /** A pickup's answer: the handles an agent operand names. */
 export type Picked = Readonly<
-  Record<'taskId' | 'leaseId' | 'delegationId' | 'credential' | 'reservationId', string>
+  Record<
+    'taskId' | 'leaseId' | 'delegationId' | 'credential' | 'reservationId' | 'attemptId',
+    string
+  >
 > & { readonly fence: number };
 /** A proposal's handles. */
 export type Proposed = Readonly<
@@ -202,6 +205,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       delegationId: text('delegationId'),
       credential: text('credential'),
       reservationId,
+      attemptId: text('attemptId'),
     } satisfies Picked;
   }
 

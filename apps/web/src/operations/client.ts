@@ -76,6 +76,8 @@ export const READ_NAMES = [
   // server's `reads/dispatch.ts` asks it, not this list.
   'task.queue',
   'preset.plan',
+  // What an observed effect came from (T2c2); the task page draws it in T2g.
+  'task.receipt',
 ] as const;
 
 /**

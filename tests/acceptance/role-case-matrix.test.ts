@@ -32,7 +32,11 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { COMMAND_SURFACE, pathOf } from '../../packages/core-wire/src/surface.ts';
+import {
+  COMMAND_SURFACE,
+  effectOperationId,
+  pathOf,
+} from '../../packages/core-wire/src/surface.ts';
 import {
   AGENT_SURFACE,
   BEFORE_PICKUP,
@@ -250,7 +254,13 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // three independent bodies: the member picks up approved work as
     // themselves, renews that lease, dispatches its step and hands it back. It is driven once per
     // member, when the first of the three comes up in the surface's order.
-    const personWork = new Set(['task.pickup', 'task.heartbeat', 'task.dispatch', 'task.handback']);
+    const personWork = new Set([
+      'task.pickup',
+      'task.heartbeat',
+      'task.dispatch',
+      'task.observe',
+      'task.handback',
+    ]);
     const drivenFor = new Set<string>();
     const pairOf = (name: string): string => {
       const declaration = COMMAND_SURFACE.find((each) => each.name === name);
@@ -279,6 +289,30 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       if (grants.has(pairOf('task.dispatch'))) {
         const marked = await harness.asPerson('task.dispatch', own, 'alpha', caller);
         observe(caller.name, 'e-member-positive', 'task.dispatch', marked, SUCCESS);
+      }
+      if (grants.has(pairOf('task.observe')) && grants.has(pairOf('task.comment'))) {
+        // The effect on the member's own dispatched step, then its observation (T2c2).
+        const attemptId = String(lease['attemptId']);
+        const read = await harness.asPerson(
+          'task.read',
+          { recordId: lease['taskId'] },
+          'alpha',
+          caller,
+        );
+        await harness.asPerson(
+          'task.comment',
+          {
+            operationId: effectOperationId(attemptId),
+            recordId: lease['taskId'],
+            expectedRevision: (read.body['task'] as { revision: number } | undefined)?.revision,
+            body: 'the member’s synthetic effect',
+            audience: 'internal',
+          },
+          'alpha',
+          caller,
+        );
+        const seen = await harness.asPerson('task.observe', { ...own, attemptId }, 'alpha', caller);
+        observe(caller.name, 'e-member-positive', 'task.observe', seen, SUCCESS);
       }
       if (grants.has(pairOf('task.handback'))) {
         const settled = await harness.asPerson(
@@ -517,14 +551,17 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(
         declaration.name,
-        declaration.name === 'task.heartbeat' || declaration.name === 'task.dispatch'
-          ? // A heartbeat or a dispatch, like a handback, names its task through the lease
+        ['task.heartbeat', 'task.dispatch', 'task.observe'].includes(declaration.name)
+          ? // A heartbeat, a dispatch or an observe, like a handback, names its task through the lease
             // and never through a stray `recordId` (final review R1 #23), so
             // the sibling is reached by its own lease.
             {
               ...harness.probeBody(declaration),
               leaseId: siblingLease['leaseId'],
               fence: siblingLease['fence'],
+              ...(declaration.name === 'task.observe'
+                ? { attemptId: siblingLease['attemptId'] }
+                : {}),
             }
           : { ...harness.probeBody(declaration), recordId: sibling.id },
         credential,

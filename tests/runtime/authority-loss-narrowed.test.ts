@@ -102,6 +102,7 @@ describe.skipIf(serverUrl === undefined)('R-B: authority loss answers DELEGATION
       leaseId: String(detail['leaseId']),
       fence: Number(detail['fence']),
       delegationId: String(detail['delegationId']),
+      attemptId: String(detail['attemptId']),
       credential: String(detail['credential']),
       reservationId,
     };
