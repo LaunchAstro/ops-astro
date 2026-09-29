@@ -91,6 +91,8 @@ export interface TaskDetail extends TaskSummary {
   readonly envelope: TaskEnvelope | null;
   /** The task's alerts, newest first (T2h). The detail is the team's, and so are they. */
   readonly alerts: readonly TaskAlert[];
+  /** The derived rank and its calc line (R70, MP-4-9). Worked out at read, never stored. */
+  readonly rank: RankView;
 }
 
 /** One alert as `task.read` and `task.queue` carry it (`core-runtime/src/alerts.ts`). */
@@ -111,6 +113,20 @@ export interface TaskEnvelope {
   readonly maximumMinor: number;
   readonly heldMinor: number;
   readonly actualMinor: number;
+}
+
+/**
+ * A task's derived rank as its reader is shown it (R70, MP-4-9).
+ *
+ * `number` is the task's place among the open tasks this reader may read, or
+ * null when the task is not ranked; `score` is null exactly then. `calc` is the
+ * line drawn under the rank, worked out on the server so every surface shows the
+ * same words, and it names nothing but this task's own marks and modifiers.
+ */
+export interface RankView {
+  readonly number: number | null;
+  readonly score: number | null;
+  readonly calc: string;
 }
 
 /**

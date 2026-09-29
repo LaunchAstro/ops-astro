@@ -259,6 +259,7 @@ export async function readTaskDetail(
     capCurrency: await taskCapCurrency(tx, row.id),
     envelope: envelopeOf(await openEnvelopeOf(tx, row.id)),
     alerts: await readAlerts(tx, row.id),
+    rank: { number: null, score: null, calc: '' },
   };
 }
 

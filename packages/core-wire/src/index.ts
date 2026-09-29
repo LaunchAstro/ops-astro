@@ -47,6 +47,7 @@ export type {
   ProposalView,
   QueuedWork,
   QueueResult,
+  RankView,
   ReceiptResult,
   ReservationView,
   SettingsReadResult,
