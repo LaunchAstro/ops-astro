@@ -14,35 +14,81 @@
 // gate would catch, because opening the panel is the act that would make the
 // seam appear.
 //
-// The working slice registers one panel, `settings`, and it is a navigation
-// entry rather than a drawer: `route` names the route that draws the surface,
-// and the dock tab goes there. The draft registers a second, `ai`, whose
-// surface reads conversation records this build does not store; that one stays
-// unregistered, because a dock tab that opens onto nothing is worse than no
-// tab at all.
+// **The rail's order is one declared list, and nothing else orders it.** A
+// registration is keyed by its id and carries no rank, so the order it was
+// written in cannot leak onto the rail. The list is DR-59's, top to bottom,
+// with the mockup's ids (`dock.js` `ORDER` runs bottom to top), and the working
+// slice's `settings` after it.
 //
-// **A registration with a route the router does not serve is the failure this
-// registry has to avoid.** `route` is a `StaticRouteId`, so a registration can
-// only name a route `routes.ts` serves at an address with no parameters, and
-// the tab has somewhere to arrive.
+// **Only a panel with a body gets a tab (R34).** `route` is required and is a
+// `StaticRouteId`, so a registration names a route `routes.ts` serves at an
+// address with no parameters, and the tab has somewhere to arrive. The draft's
+// `ai` panel reads conversation records this build does not store, so it has
+// an id and a rank and no registration; the rail grows as the stores land.
+//
+// **A count chip is derived as the tab is built**, from the count its store
+// reports, so it paints at load rather than after the first open (D-18), and
+// is printed whole: 120 reads "120", never "99+". No count, or zero, no chip.
 
 import type { StaticRouteId } from './routes.ts';
 
+export const PANEL_RANK = Object.freeze([
+  'ai',
+  'notifs',
+  'team',
+  'clients',
+  'todos',
+  'task',
+  'marks',
+  'notes',
+  'settings',
+] as const);
+
+export type PanelId = (typeof PANEL_RANK)[number];
+
 export interface PanelRegistration {
-  /** Frozen. The label above it is not. */
-  readonly id: string;
   readonly label: string;
   /** Announced on the panel element itself. */
   readonly ariaLabel: string;
-  /** The route that draws the same surface at an address of its own, if any. */
-  readonly route: StaticRouteId | null;
+  /** The route that draws the panel's surface at an address of its own. */
+  readonly route: StaticRouteId;
 }
 
-export const PANELS: readonly PanelRegistration[] = [
-  {
-    id: 'settings',
+export type PanelRegistry = { readonly [Id in PanelId]?: PanelRegistration };
+
+export interface PanelTab {
+  readonly id: PanelId;
+  readonly label: string;
+  readonly route: StaticRouteId;
+  /** The chip's text, or null when there is nothing to count. */
+  readonly count: string | null;
+}
+
+export const PANELS: PanelRegistry = {
+  settings: {
     label: 'Settings',
     ariaLabel: 'Business settings',
     route: 'agency:settings',
   },
-];
+};
+
+const IDS: ReadonlySet<string> = new Set(PANEL_RANK);
+
+/** Parses an id arriving from outside the type system, such as a stored open set. */
+export function isPanelId(value: string): value is PanelId {
+  return IDS.has(value);
+}
+
+export function dockTabs(
+  counts: { readonly [Id in PanelId]?: number } = {},
+  registry: PanelRegistry = PANELS,
+): readonly PanelTab[] {
+  return PANEL_RANK.flatMap((id) => {
+    const panel = registry[id];
+    if (panel === undefined) return [];
+    const count = counts[id] ?? 0;
+    return [
+      { id, label: panel.label, route: panel.route, count: count > 0 ? String(count) : null },
+    ];
+  });
+}
