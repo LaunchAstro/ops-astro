@@ -95,6 +95,9 @@ const GRANTS_BY_ROLE = {
     // stays `manage` above; this is the half that lets a screen show the
     // four-eyes band instead of guessing at it.
     ['settings', 'read'],
+    // Settings ▸ Access (C32): the owner and administrators hold
+    // `access:manage` on install (the key catalogue's default holders).
+    ['access', 'manage'],
   ],
   member: [
     ['task', 'read'],
