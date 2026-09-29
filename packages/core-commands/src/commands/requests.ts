@@ -24,6 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { ConversationRequest } from './requests-conversation.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -54,7 +55,7 @@ export function hasIdentity(request: UncheckedRequest): request is IdentifiedReq
 
 // Type aliases rather than interfaces, so each member of the union is also an
 // `UncheckedRequest`: a parsed request is still the body it was parsed from.
-type Envelope = {
+export type Envelope = {
   /** The repeat-request identity. Required on every command in the surface. */
   readonly operationId: string;
 };
@@ -273,28 +274,7 @@ export type CommandRequest =
       readonly outcome: string;
       readonly note?: string | null;
     } & Envelope)
-  | ({
-      readonly command: 'conversation.start';
-      readonly body: unknown;
-      readonly title?: unknown;
-      readonly subject?: unknown;
-      readonly scope?: unknown;
-    } & Envelope)
-  | ({
-      readonly command: 'conversation.message';
-      readonly conversationId: unknown;
-      readonly body: unknown;
-    } & Envelope)
-  | ({
-      readonly command: 'conversation.rename';
-      readonly conversationId: unknown;
-      readonly title: unknown;
-    } & Envelope)
-  | ({
-      readonly command: 'conversation.set_scope';
-      readonly conversationId: unknown;
-      readonly page: unknown;
-    } & Envelope);
+  | ConversationRequest;
 
 /**
  * The part of a request the register compares, which is everything except the

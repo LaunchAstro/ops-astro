@@ -39,6 +39,22 @@ if (serverUrl === undefined) {
   console.warn('command surface: DATABASE_URL is unset, so nothing below ran, nothing is proved.');
 }
 
+/** The surface's reads, sorted: every other declaration is a write. */
+const DECLARED_READS = [
+  'conversation.list',
+  'conversation.read',
+  'gate.pending',
+  'person.list',
+  'preset.plan',
+  'session.capabilities',
+  'settings.read',
+  'task.board',
+  'task.execution',
+  'task.queue',
+  'task.read',
+  'task.receipt',
+];
+
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
     expect([...CONTRACT_NINE].toSorted()).toStrictEqual([
@@ -90,20 +106,7 @@ describe('the surface as a table', () => {
 
 describe('the surface as a table', () => {
   it('declares the twelve reads as reads, and everything else as a write', () => {
-    expect([...READS].toSorted()).toStrictEqual([
-      'conversation.list',
-      'conversation.read',
-      'gate.pending',
-      'person.list',
-      'preset.plan',
-      'session.capabilities',
-      'settings.read',
-      'task.board',
-      'task.execution',
-      'task.queue',
-      'task.read',
-      'task.receipt',
-    ]);
+    expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
       // A read has nothing to be stale against. It does not always take the
