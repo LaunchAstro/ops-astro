@@ -44,7 +44,7 @@ import {
   readEnvFile,
 } from '../../packages/core-records/src/index.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
-import { createApi, type ReadExecutor } from './app.ts';
+import { createApi, type LiveOptions, type ReadExecutor } from './app.ts';
 import {
   executeAgentCommand,
   describeFault,
@@ -157,6 +157,7 @@ export interface ApiConfig {
   readonly executeRead?: ReadExecutor;
   /** Read once at process start (`identity.ts`); absent, the identity route is not mounted. */
   readonly identity?: ServedIdentity;
+  readonly live?: LiveOptions;
 }
 
 export interface ComposedApi {

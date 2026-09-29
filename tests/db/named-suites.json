@@ -84,6 +84,7 @@
   "invariant": [
     "tests/runtime/run-progress-read.test.ts",
     "tests/api/t2b-worker.test.ts",
+    "tests/api/t2f-live-channel.test.ts",
     "tests/runtime/t2c1-dispatch.test.ts",
     "tests/runtime/t2c1-dispatch-migration.test.ts",
     "tests/runtime/t2c2-effect.test.ts",
