@@ -33,7 +33,7 @@ import { issueGrant, revokeGrant } from '../packages/core-records/src/authority/
 import { shareRecord } from '../packages/core-records/src/authority/shares.ts';
 import { ensureCredentialKeyFile } from '../packages/core-records/src/authority/credential-keys.ts';
 import { declarationOf } from '../packages/core-wire/src/surface.ts';
-import { productionSigns } from './ops/made-up-only.ts';
+import { markMadeUp, productionSigns } from './ops/made-up-only.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const usersFile = `${root}.local/synthetic-users.json`;
@@ -421,10 +421,11 @@ if (!adminUrl || !appUrl) {
 // Staging holds made-up data only (S0-1). A database showing what a restored
 // production backup brings is refused here, before a row or a file is written.
 const admin = connectAsAdmin(adminUrl, { source: 'seed' });
-const signs = await productionSigns(admin, Object.values(BUSINESS_KEYS));
+const confirmed = process.env['LOCAL_SEED_MADE_UP'] === 'confirm';
+const signs = await productionSigns(admin, Object.values(BUSINESS_KEYS), confirmed);
 if (signs.length > 0) {
   console.error(`local-seed: REFUSED, this looks like a production backup: ${signs.join('; ')}.`);
-  console.error('local-seed: staging and local databases hold made-up data only.');
+  console.error('local-seed: made-up data only; LOCAL_SEED_MADE_UP=confirm marks a made-up one.');
   await admin.close();
   process.exit(1);
 }
@@ -753,6 +754,7 @@ try {
     businessIds[tag] = await businessIdFor(admin, key);
     console.log(`local-seed: business ${key} ${businessIds[tag]}`);
   }
+  await markMadeUp(admin, Object.values(businessIds));
 
   for (const tag of Object.keys(BUSINESS_KEYS)) {
     // oxlint-disable-next-line no-await-in-loop

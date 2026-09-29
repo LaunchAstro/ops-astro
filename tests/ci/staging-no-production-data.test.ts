@@ -13,7 +13,7 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { productionSigns, type OwnerQuery } from '../../scripts/ops/made-up-only.ts';
+import { markMadeUp, productionSigns, type OwnerQuery } from '../../scripts/ops/made-up-only.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const SEED = new URL('../../scripts/local-seed.mjs', import.meta.url).pathname;
@@ -60,12 +60,19 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
   const reset = async (): Promise<void> => {
     await db.admin.execute('delete from public.businesses');
     await db.admin.execute('delete from auth.users');
-  };
-  const business = (key: string): Promise<unknown> =>
-    db.admin.execute(
-      'insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $3)',
-      [randomUUID(), key, `${key} Pty Ltd`],
+    const [unmark] = await db.admin.execute<{ statement: string }>(
+      "select format('comment on database %I is null', current_database()) as statement",
     );
+    await db.admin.execute(unmark!.statement);
+  };
+  const business = async (key: string): Promise<string> => {
+    const id = randomUUID();
+    await db.admin.execute(
+      'insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $3)',
+      [id, key, `${key} Pty Ltd`],
+    );
+    return id;
+  };
   const address = (email: string): Promise<unknown> =>
     db.admin.execute('insert into auth.users (id, email) values ($1, $2)', [randomUUID(), email]);
   const seed = () => {
@@ -88,7 +95,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     const result = seed();
     expect(result.status, result.out).toBe(1);
     expect(result.out).toMatch(/local-seed: REFUSED.*production backup/u);
-    expect(result.out).toMatch(/1 business the seed does not make/u);
+    expect(result.out).toMatch(/it holds businesses and carries no made-up mark/u);
     expect(result.out).not.toContain('harbour-freight-canary');
     expect(result.out).not.toMatch(/local-seed: business /u);
     expect(await keys()).toEqual(['harbour-freight-canary']);
@@ -101,7 +108,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     await address('owner.canary@example.net');
     const result = seed();
     expect(result.status, result.out).toBe(1);
-    expect(result.out).toMatch(/1 sign-in address that is not a made-up one/u);
+    expect(result.out).toMatch(/it holds a sign-in that is not a made-up address/u);
     expect(result.out).not.toContain('owner.canary');
     expect(result.out).not.toContain(new URL(db.appUrl).password);
     expect(await keys()).toEqual(['alpha']);
@@ -109,8 +116,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
 
   it('S0-1 no production data: made-up data passes the check', async () => {
     await reset();
-    await business('alpha');
-    await business('bravo');
+    await markMadeUp(db.admin, [await business('alpha'), await business('bravo')]);
     await address('ada@alpha.local');
     expect(await productionSigns(db.admin, MADE_UP)).toEqual([]);
     await db.admin.execute('drop table auth.users');
@@ -120,11 +126,25 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     // A phone-only sign-in has no address, and the seed never makes one.
     await db.admin.execute('insert into auth.users (id, email) values ($1, null)', [randomUUID()]);
     expect(await productionSigns(db.admin, MADE_UP)).toEqual([
-      '1 sign-in address that is not a made-up one',
+      'it holds a sign-in that is not a made-up address',
     ]);
     await address('someone@example.com');
     await business('charlie');
     expect(await productionSigns(db.admin, MADE_UP)).toHaveLength(2);
+  });
+
+  it('S0-1 no production data: a person confirms an unmarked made-up database once', async () => {
+    await reset();
+    await business('alpha');
+    await business('bravo');
+    expect(await productionSigns(db.admin, MADE_UP)).toEqual([
+      'it holds businesses and carries no made-up mark',
+    ]);
+    expect(await productionSigns(db.admin, MADE_UP, true)).toEqual([]);
+    await business('harbour-freight-canary');
+    expect(await productionSigns(db.admin, MADE_UP, true)).toEqual([
+      'it holds a business the seed does not make',
+    ]);
   });
 
   it('Sol proof, criterion 9: a backup with an allowed business key and production content is refused', async () => {
