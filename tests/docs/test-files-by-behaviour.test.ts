@@ -21,9 +21,11 @@ const tracked = (...paths: string[]): string[] =>
     .split('\n')
     .filter(Boolean);
 
-/** A file name that files a test by the review round that found a defect. */
-const ROUND_NAME =
-  /final-r\d|review-fix|(?:^|[-_/])(?:f?r\d+|round-?\d+)(?:[-_.]|$)|(?:^|\/)sol-/iu;
+/**
+ * A file name that files a test by the review round that found a defect. A
+ * bare `r4` is the contract's rule R4, as `i10` is I10, and is kept.
+ */
+const ROUND_NAME = /final-r\d|review-fix|(?:^|[-_/])(?:fr\d+|round-?\d+)(?:[-_.]|$)|(?:^|\/)sol-/iu;
 
 /** A review id in a test title, each with an example of what it refuses. */
 const REVIEW_IDS: readonly (readonly [string, RegExp])[] = [
@@ -64,7 +66,8 @@ describe('test files named by what they prove', () => {
     ['tests/ci/review-evidence-cases.sh', false],
     ['tests/runtime/successor-bounds-edge.test.ts', false],
     ['tests/api/cq-7.test.ts', false],
-  ])('reads %s as named by a review round: %s', (file, round) => {
+    ['tests/browser/r4-shared-page.mjs', false],
+  ])('reads %s as filed by when it was found: %s', (file, round) => {
     expect(ROUND_NAME.test(file)).toBe(round);
   });
 
@@ -144,6 +147,10 @@ const NO_PRODUCT_IMPORTER_YET = new Map([
   [
     'packages/core-records/src/authority/index.ts',
     'the authority contract: the names a consumer may import, pinned in one place',
+  ],
+  [
+    'packages/core-records/src/tenancy/privileges.ts',
+    "the tenancy wrapper's default-deny conformance check, part of that protected component",
   ],
   [
     'packages/core-records/src/records/views.ts',

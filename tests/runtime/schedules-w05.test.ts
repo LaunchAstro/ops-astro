@@ -16,7 +16,7 @@
 // `task.decide` takes before the cap, and then the holder lets go.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import {
   approve,

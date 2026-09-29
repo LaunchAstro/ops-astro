@@ -7,7 +7,7 @@
 // answers a held total that only the row can supply (thermo NB5).
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
   appliedDetail,
   asAgent,

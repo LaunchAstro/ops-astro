@@ -22,7 +22,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { validateView } from '../../packages/core-records/src/records/views.ts';
 import type { FieldDefinition } from '../../packages/core-records/src/records/fields.ts';
 import { isRecordsRefusal } from '../../packages/core-records/src/records/refusals.ts';

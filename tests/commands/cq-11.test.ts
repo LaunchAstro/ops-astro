@@ -22,7 +22,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { COMMAND_SURFACE, declarationOf } from '../../packages/core-wire/src/surface.ts';
 import { usage } from '../../apps/cli/client.ts';
 import { insertBusiness } from '../identity/fixture.ts';

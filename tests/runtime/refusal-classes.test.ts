@@ -37,7 +37,7 @@ describe('isRuntimeRefusal', () => {
     }
   });
 
-  it('Sol proof, criterion 9: an identity refusal is not a runtime refusal', () => {
+  it('an identity refusal is not a runtime refusal', () => {
     expect(isRuntimeRefusal(refusalOf('AUTH_UNKNOWN_LOGIN'))).toBe(false);
   });
 });
