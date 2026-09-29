@@ -31,7 +31,7 @@
 // the agent's.
 
 import { randomUUID } from 'node:crypto';
-import { mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
+import { mintDelegation, pairsOf, refuseCommand } from '../../core-records/src/index.ts';
 import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import { leaseReason, nextFence, personWriteLive } from './lease-ownership.ts';
@@ -488,6 +488,9 @@ async function fenceLiveLease(
   return null;
 }
 
+/** The run collection: `run:write` is owner and administrators', grantable to members (ORCH25-SL12B-RUN). */
+const RUN_COLLECTION = 'run';
+
 /**
  * Authorise the claimant, under the locks (T3 lines 62-64). A person: their
  * own live grants on this task, and nobody else's -- not the approver's, and
@@ -546,13 +549,26 @@ async function authoriseClaimant(
       };
     }
   }
+  // `run:write`, the run's own record of what it did (CS-16.4), where the
+  // delegating person holds it at the locked instant, and never otherwise: a
+  // person without it cannot delegate it, and the task's pairs still mint.
+  // Only the one pair: a delegation stores exactly what was checked, so a
+  // `run:read` the person gains later is not carried (0034).
+  const run = await checkAuthorityAt(
+    tx,
+    [{ kind: 'person', id: request.authorisedByPersonId }],
+    { collection: RUN_COLLECTION, action: 'write', scope: { kind: 'business', id: null } },
+    lockedAt,
+  );
   const minted = await mintDelegation(tx, {
     agentActorId: request.agentActorId,
     delegatePersonId: request.authorisedByPersonId,
     mintedByActorId: request.mintedByActorId,
     purpose: found.purpose,
-    collections: [request.collection],
-    actions: [...actions],
+    pairs: [
+      ...pairsOf([request.collection], actions),
+      ...(run.ok ? [{ collection: RUN_COLLECTION, action: 'write' as const }] : []),
+    ],
     expiresAt,
     purposeScope: { kind: 'record', id: found.task_id },
   });

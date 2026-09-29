@@ -96,15 +96,24 @@ mints it with the lease's `expiresAt`; `mintDelegation` stores it as given).
 Between the two the agent is narrowed, not ended. There is no path that widens
 it, because there is no stored permission to widen.
 
-`delegations_never_decide` in 0008 is the same rule as a constraint: a
+A delegation stores exactly the (collection, action) pairs checked against
+its person at mint, as `collection:action` texts in `delegations.pairs`
+(0034), and never a product of collections and actions. The call-time check is
+one lookup of the exact pair (`carries`). So a delegation minted with
+`task:read`, `task:comment`, `task:write` and `run:write` does not carry
+`run:read`, even once its person holds it: nobody checked that pair. Pickup
+adds `run:write` only where the delegating person holds it at the locked
+instant, and a person without it still delegates the task's pairs. The pairs
+are fixed at mint (`delegations_pairs_are_fixed`).
+
+`delegations_pairs_never_decide` (0034) is the same rule as a constraint: a
 delegation carrying `decide` cannot be written at all. `authority/index.ts`
 exports no decide path either, so I07 is held three times: by the schema, by
 the check order, and by what the module does not offer. On an ordinary insert
-the constraint Postgres reports is `delegations_actions_known`
-(`0008:188`), because `decide` is not among the known delegation actions;
-`delegations_never_decide` (`0008:186`) is the named second barrier behind it
-(`tests/db/decision-never-delegated.test.ts` shows each). The migration stays
-as it is.
+the constraint Postgres reports is `delegations_pairs_known`, because
+`decide` is not among the known delegation actions;
+`delegations_pairs_never_decide` is the named second barrier behind it
+(`tests/db/decision-never-delegated.test.ts` shows each).
 
 ## The interfaces L3 consumes
 
@@ -369,7 +378,7 @@ fields and client-audience comments only".
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
   user (`:661-691`, run at `:821-829`). It gets a login and an acting identity,
-  and no membership and no business grant (`:116-119`, `:268-270`). The seed
+  and no membership and no business grant (`:121-124`, `:273-275`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
   (`:702-722`, `:856-866`).

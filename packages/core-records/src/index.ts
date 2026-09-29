@@ -19,9 +19,11 @@ export {
 } from './authority/credential-keys.ts';
 export { readEnvFile } from './env-file.ts';
 export {
+  carries,
   checkDelegatedAuthority,
   digestOf,
   mintDelegation,
+  pairsOf,
   resolveDelegation,
   resolveHistoricalDelegation,
   resolveLiveById,
@@ -29,6 +31,7 @@ export {
   resolveSettledByLease,
   revokeDelegation,
   settleDelegation,
+  type DelegatedPair,
   type Delegation,
   type DelegationRefusalCode,
   type MintedDelegation,

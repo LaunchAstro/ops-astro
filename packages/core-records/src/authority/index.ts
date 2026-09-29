@@ -34,13 +34,16 @@ export {
 } from './grants.ts';
 
 export {
+  carries,
   checkDelegatedAuthority,
   digestOf,
   mintDelegation,
+  pairsOf,
   resolveDelegation,
   revokeDelegation,
   settleDelegation,
   type DelegableAction,
+  type DelegatedPair,
   type Delegation,
   type DelegationDecision,
   type DelegationRefusalCode,

@@ -4,7 +4,8 @@
 //
 // A delegation is a recorded authorisation, not a permission set. It names an
 // agent, the person whose authority it draws on, a purpose, and the
-// collections and actions that purpose reaches. It carries no grant of its
+// (collection, action) pairs that purpose reaches, exactly the pairs checked
+// against the person when it was minted. It carries no grant of its
 // own, so there is nothing here to go stale (transaction contract,
 // delegation).
 //
@@ -64,6 +65,56 @@ export type DelegationDecision<T> =
 export type DelegableAction = Exclude<Action, 'decide'>;
 
 /**
+ * One collection and one action a delegation carries.
+ *
+ * A delegation stores exactly the pairs checked at mint, never a product of
+ * collections and actions (0034). A product would read as covering every
+ * pairing, so a purpose minted for `run:write` beside the task's three actions
+ * would cover `run:read` the moment its person gained it: nobody checked that
+ * pair, and the call-time grant check alone would let it through.
+ */
+export interface DelegatedPair {
+  readonly collection: string;
+  readonly action: DelegableAction;
+}
+
+/** A pair asked for at mint, where `decide` can still arrive and be refused. */
+export interface RequestedPair {
+  readonly collection: string;
+  readonly action: Action;
+}
+
+/** Every collection by every action: what a purpose reaching whole collections asks for. */
+export function pairsOf(
+  collections: readonly string[],
+  actions: readonly Action[],
+): readonly RequestedPair[] {
+  return collections.flatMap((collection) => actions.map((action) => ({ collection, action })));
+}
+
+/** Whether `delegation` carries this collection and action. */
+export function carries(
+  delegation: Pick<Delegation, 'pairs'>,
+  collection: string,
+  action: Action,
+): boolean {
+  return delegation.pairs.some((pair) => pair.collection === collection && pair.action === action);
+}
+
+/** The stored form, `collection:action`; a collection key never holds a colon (0034). */
+function encodePair(pair: RequestedPair): string {
+  return `${pair.collection}:${pair.action}`;
+}
+
+function decodePair(stored: string): DelegatedPair {
+  const at = stored.indexOf(':');
+  return {
+    collection: stored.slice(0, at),
+    action: stored.slice(at + 1) as DelegableAction,
+  };
+}
+
+/**
  * The one resource a delegation was minted for.
  *
  * `record` only, and mandatory. R5 is "R1's delegated agent, purpose-scoped to
@@ -83,8 +134,8 @@ export interface Delegation {
   readonly delegatePersonId: string;
   readonly mintedByActorId: string;
   readonly purpose: string;
-  readonly collections: readonly string[];
-  readonly actions: readonly DelegableAction[];
+  /** Exactly what was checked at mint, in the order it was checked. */
+  readonly pairs: readonly DelegatedPair[];
   /** The task this delegation is for. Every call is intersected with it. */
   readonly purposeScope: PurposeScope;
   readonly expiresAt: Date;
@@ -96,8 +147,8 @@ export interface MintRequest {
   /** The authorising person's acting identity, not the requesting agent's. */
   readonly mintedByActorId: string;
   readonly purpose: string;
-  readonly collections: readonly string[];
-  readonly actions: readonly Action[];
+  /** Each checked against the person's live grants, and stored as asked. */
+  readonly pairs: readonly RequestedPair[];
   /** The picked-up task's record id. Mandatory: there is no unscoped purpose. */
   readonly purposeScope: PurposeScope;
   readonly expiresAt: Date;
@@ -120,8 +171,7 @@ interface DelegationRow {
   readonly delegate_person_id: string;
   readonly minted_by_actor_id: string;
   readonly purpose: string;
-  readonly collections: readonly string[];
-  readonly actions: readonly DelegableAction[];
+  readonly pairs: readonly string[];
   readonly purpose_scope_kind: 'record';
   readonly purpose_scope_id: string;
   readonly expires_at: Date;
@@ -134,8 +184,7 @@ const DELEGATION_COLUMNS = [
   'delegate_person_id',
   'minted_by_actor_id',
   'purpose',
-  'collections',
-  'actions',
+  'pairs',
   'purpose_scope_kind',
   'purpose_scope_id',
   'expires_at',
@@ -169,8 +218,7 @@ function delegationOf(row: DelegationRow): Delegation {
     delegatePersonId: row.delegate_person_id,
     mintedByActorId: row.minted_by_actor_id,
     purpose: row.purpose,
-    collections: row.collections,
-    actions: row.actions,
+    pairs: row.pairs.map(decodePair),
     purposeScope: { kind: row.purpose_scope_kind, id: row.purpose_scope_id },
     expiresAt: row.expires_at,
   };
@@ -195,7 +243,7 @@ export async function mintDelegation(
   // The command layer answers `DEPENDENCY_NOT_LANDED` before it gets here;
   // reaching this line without a key is a fault in whoever called it.
   if (!keys.ok) throw new Error(`delegations: no delegation credential key: ${keys.problem}`);
-  if (request.actions.includes('decide')) {
+  if (request.pairs.some((pair) => pair.action === 'decide')) {
     return refuse(
       'DELEGATION_EXCLUDES_DECISION',
       'a delegation never carries decide',
@@ -204,25 +252,25 @@ export async function mintDelegation(
   }
 
   const person = [{ kind: 'person', id: request.delegatePersonId }] as const;
-  for (const collection of request.collections) {
-    for (const action of request.actions) {
-      // Sequential on purpose: one transaction, one connection, and a refusal
-      // that names the first pair the person does not hold.
-      // oxlint-disable-next-line no-await-in-loop
-      const held = await effectiveGrants(tx, person, {
-        collection,
-        action,
-        scope: { kind: 'business', id: null },
-      });
-      if (held.length === 0) {
-        return refuse(
-          'DELEGATION_WIDENS',
-          `the delegating person holds no live ${action} grant on ${collection}`,
-          'narrow the purpose, or grant the person that authority first',
-        );
-      }
+  for (const { collection, action } of request.pairs) {
+    // Sequential on purpose: one transaction, one connection, and a refusal
+    // that names the first pair the person does not hold.
+    // oxlint-disable-next-line no-await-in-loop
+    const held = await effectiveGrants(tx, person, {
+      collection,
+      action,
+      scope: { kind: 'business', id: null },
+    });
+    if (held.length === 0) {
+      return refuse(
+        'DELEGATION_WIDENS',
+        `the delegating person holds no live ${action} grant on ${collection}`,
+        'narrow the purpose, or grant the person that authority first',
+      );
     }
   }
+  // Exactly the pairs just checked, once each, in the order they were asked.
+  const pairs = [...new Set(request.pairs.map(encodePair))];
 
   // The one-live-per-purpose guard, read inside the serving transaction.
   //
@@ -290,9 +338,9 @@ export async function mintDelegation(
   const rows = await tx.query<DelegationRow>(
     `insert into public.delegations
        (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
-        collections, actions, purpose_scope_kind, purpose_scope_id, credential_hash, expires_at,
+        pairs, purpose_scope_kind, purpose_scope_id, credential_hash, expires_at,
         credential_scheme, credential_key_id)
-     values ($1, $12, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $13, $14)
+     values ($1, $11, $2, $3, $4, $5, $6, $7, $8, $9, $10, $12, $13)
      on conflict (business_id, agent_actor_id, purpose)
        where revoked_at is null and settled_at is null do nothing
      returning ${delegationColumns()}`,
@@ -302,8 +350,7 @@ export async function mintDelegation(
       request.delegatePersonId,
       request.mintedByActorId,
       request.purpose,
-      request.collections,
-      request.actions,
+      pairs,
       request.purposeScope.kind,
       request.purposeScope.id,
       digestOf(credential),
@@ -531,17 +578,12 @@ export async function checkDelegatedAuthority(
       DECISION_FIX,
     );
   }
-  if (!delegation.collections.includes(request.collection)) {
+  // One lookup of the exact pair. A delegation holding `task:write` and
+  // `run:write` does not carry `run:read`, whatever its person holds now.
+  if (!carries(delegation, request.collection, request.action)) {
     return refuse(
       'DELEGATION_OUT_OF_PURPOSE',
-      `the purpose ${delegation.purpose} does not reach ${request.collection}`,
-      'ask the authorising person for a delegation whose purpose covers it',
-    );
-  }
-  if (!delegation.actions.includes(request.action as DelegableAction)) {
-    return refuse(
-      'DELEGATION_OUT_OF_PURPOSE',
-      `the purpose ${delegation.purpose} does not carry ${request.action}`,
+      `the purpose ${delegation.purpose} does not carry ${request.action} on ${request.collection}`,
       'ask the authorising person for a delegation whose purpose covers it',
     );
   }

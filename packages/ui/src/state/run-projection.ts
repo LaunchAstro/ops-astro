@@ -61,8 +61,7 @@ export interface RunScope {
     readonly id: string;
     readonly purpose: string;
     readonly scope: { readonly kind: string; readonly id: string };
-    readonly collections: readonly string[];
-    readonly actions: readonly string[];
+    readonly pairs: readonly { readonly collection: string; readonly action: string }[];
     readonly expiresAt: string;
     readonly state: string;
     readonly delegatePersonId: string;

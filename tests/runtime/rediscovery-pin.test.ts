@@ -268,7 +268,9 @@ const HELD_BY_DELEGATION = 'select res.id as reservation_id, res.envelope_id #22
 // The replay's statement text changed only in a SQL comment: CQ-9 dropped a
 // finding label from `-- F4. A revocation that committed ...` in classifier.ts.
 const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #296c97f7';
-const DEPENDENTS = 'with recursive revoked as ( select g.id, g.subje #c53e3eae';
+// 0034: the dependents read a delegation's claim pair in `pairs`, not the
+// product of `collections` and `actions`; the order and locks are unchanged.
+const DEPENDENTS = 'with recursive revoked as ( select g.id, g.subje #3a6ab70e';
 
 /**
  * Taken at 21c99a0, before the move, and unchanged by it. Two changes since,

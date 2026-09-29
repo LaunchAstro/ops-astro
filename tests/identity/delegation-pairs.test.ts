@@ -25,7 +25,8 @@ import { createControls, type Controls } from '../api/controls-fixture.ts';
 import { pickedUpOn, type PickedUp } from '../api/mp-6-1-checks-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-const TASK_PAIRS = ['task:comment', 'task:read', 'task:write'];
+/** As pickup asks for them, and so as they are stored. */
+const TASK_PAIRS = ['task:read', 'task:comment', 'task:write'];
 
 // eslint-disable-next-line max-lines-per-function -- one business, two pickups either side of a grant
 describe.skipIf(serverUrl === undefined)('delegation pairs', () => {
@@ -84,8 +85,8 @@ describe.skipIf(serverUrl === undefined)('delegation pairs', () => {
   }
 
   it('delegation stores the pairs checked', async () => {
-    expect(await storedPairs(after)).toStrictEqual(['run:write', ...TASK_PAIRS]);
-    expect(await reached(after)).toStrictEqual(['run:write', ...TASK_PAIRS]);
+    expect(await storedPairs(after)).toStrictEqual([...TASK_PAIRS, 'run:write']);
+    expect(await reached(after)).toStrictEqual([...TASK_PAIRS, 'run:write'].toSorted());
     expect(await callOn(after, 'run', 'write')).toBe('ok');
   });
 
@@ -103,7 +104,7 @@ describe.skipIf(serverUrl === undefined)('delegation pairs', () => {
   it('person without run:write cannot delegate it', async () => {
     // The pickup was not refused: the task's pairs minted without it.
     expect(await storedPairs(before)).toStrictEqual(TASK_PAIRS);
-    expect(await reached(before)).toStrictEqual(TASK_PAIRS);
+    expect(await reached(before)).toStrictEqual(TASK_PAIRS.toSorted());
   });
 
   it('a pair is fixed at mint', async () => {
@@ -120,5 +121,19 @@ describe.skipIf(serverUrl === undefined)('delegation pairs', () => {
     });
     await expect(widened).rejects.toThrow(/fixed at mint/u);
     expect(await storedPairs(before)).toStrictEqual(TASK_PAIRS);
+  });
+
+  it('a manager of the task revokes a delegation carrying run:write', async () => {
+    // The manager holds `task:manage` and `run:write`, never `run:manage`.
+    // Revoking ends the agent's claim on the task, and `run:write` rides on
+    // that claim: a pair the delegation carries beside it never makes the
+    // agent harder to stop.
+    const [row] = await c.fixture.db.admin.execute<{ readonly id: string }>(
+      `select delegation_id as id from public.leases where id = $1`,
+      [after.leaseId],
+    );
+    const revoked = await c.asPerson('delegation.revoke', { delegationId: row?.id });
+    expect(revoked.status).toBe(200);
+    expect(await callOn(after, 'run', 'write').catch(() => 'not live')).toBe('not live');
   });
 });

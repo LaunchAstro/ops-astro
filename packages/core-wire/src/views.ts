@@ -267,8 +267,8 @@ export interface RunScopeView {
     readonly purpose: string;
     /** The one resource the delegation was minted for (the one-task ceiling). */
     readonly scope: { readonly kind: string; readonly id: string };
-    readonly collections: readonly string[];
-    readonly actions: readonly string[];
+    /** Exactly the (collection, action) pairs checked at mint. */
+    readonly pairs: readonly { readonly collection: string; readonly action: string }[];
     readonly grantedAt: string;
     readonly expiresAt: string;
     /** `live`, or why it no longer is: `expired`, `revoked` or `settled`. */

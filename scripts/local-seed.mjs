@@ -100,6 +100,11 @@ const GRANTS_BY_ROLE = {
     // `conversation:read`, the read-any grant, is seeded to nobody: it is given
     // to a named person on purpose, never held by a role on install.
     ['conversation', 'write'],
+    // The run's own record of what it did (CS-16.4): `run:write` is the owner
+    // and administrators' on install, and grantable to members (the permission
+    // key catalogue, CAPABILITY-SLICES.md:82). An agent carries it only
+    // inside a delegation from a person who holds it (ORCH25-SL12B-RUN).
+    ['run', 'write'],
   ],
   member: [
     ['task', 'read'],
@@ -315,7 +320,8 @@ async function leasesResting(tx, grantId) {
         and ((l.delegation_id is not null and d.revoked_at is null and d.settled_at is null
               and exists (select 1 from revoked r
                            where r.subject_kind = 'person' and r.subject_id = l.authorised_by_person_id
-                             and r.action = 'write' and r.collection = any(d.collections)))
+                             and r.action = 'write' and r.collection = $3
+                             and ($3 || ':write') = any(d.pairs)))
           or (l.delegation_id is null
               and exists (select 1 from revoked r
                            where r.action = 'write' and r.collection = $3

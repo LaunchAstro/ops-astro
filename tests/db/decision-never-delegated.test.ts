@@ -5,17 +5,19 @@
 //
 // The code refuses a delegated decision before it reaches a table
 // (`authority/delegations.ts`, `DELEGATION_EXCLUDES_DECISION`). These cases
-// hold the two barriers behind it, written directly as the application role
-// so no code path stands in front of them: `delegations_never_decide`
-// (0008_agent_authority.sql:186) on insert and on update, and
+// hold the barriers behind it, written directly as the application role so no
+// code path stands in front of them: `delegations_pairs_never_decide`
+// (0034_delegation_pairs.sql) on insert and on update, and
 // `gate_decisions.decided_by_person_id not null` (0012_runtime_decisions.sql:36).
 // A valid delegation written the same way is the control, so the refusals are
 // about `decide` and the missing person, not about the shape of the row.
 //
-// `delegations_actions_known` (0008:188) also leaves `decide` out, and sorts
-// first, so it is the constraint an ordinary write reports. The third case
-// lifts it inside a transaction that ends in the refusal, which is the only
-// way to show `delegations_never_decide` holding on its own.
+// `delegations_pairs_known` (0034) also leaves `decide` out, and sorts first,
+// so it is the constraint an ordinary insert reports; an ordinary update meets
+// `delegations_pairs_are_fixed` before either, because no pair changes after
+// mint. The third case lifts both inside a transaction that ends in the
+// refusal, which is the only way to show `delegations_pairs_never_decide`
+// holding on its own.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -63,14 +65,14 @@ describe.skipIf(serverUrl === undefined)('a decision is never delegated, in the 
   const insertDelegation = async (
     tx: TenantQuery,
     purpose: string,
-    actions: readonly string[],
+    pairs: readonly string[],
   ): Promise<string> => {
     const id = randomUUID();
     await tx.query(
       `insert into public.delegations
          (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
-          collections, actions, credential_hash, expires_at, purpose_scope_kind, purpose_scope_id)
-       values ($1, $2, $3, $4, $5, $6, array['task'], $7::text[], $8,
+          pairs, credential_hash, expires_at, purpose_scope_kind, purpose_scope_id)
+       values ($1, $2, $3, $4, $5, $6, $7::text[], $8,
                now() + interval '1 hour', 'record', $9)`,
       [
         tx.businessId,
@@ -79,7 +81,7 @@ describe.skipIf(serverUrl === undefined)('a decision is never delegated, in the 
         person,
         personActor,
         purpose,
-        [...actions],
+        [...pairs],
         HEX64,
         randomUUID(),
       ],
@@ -98,63 +100,63 @@ describe.skipIf(serverUrl === undefined)('a decision is never delegated, in the 
   it('writes a delegation that does not decide: the control', async () => {
     const id = await db.app.withBusiness(
       business,
-      async (tx) => await insertDelegation(tx, 'control_read_write', ['read', 'write']),
+      async (tx) => await insertDelegation(tx, 'control_read_write', ['task:read', 'task:write']),
     );
     expect(id).toMatch(/^[0-9a-f-]{36}$/u);
     expect(await delegationsFor('control_read_write')).toBe(1);
   });
 
   it('refuses decide written as the application role, by insert and by update', async () => {
-    // Two checks refuse `decide` here: `delegations_never_decide` and
-    // `delegations_actions_known`, whose list leaves `decide` out. Postgres
+    // Two checks refuse `decide` here: `delegations_pairs_never_decide` and
+    // `delegations_pairs_known`, whose pattern leaves `decide` out. Postgres
     // evaluates check constraints in name order, so the one it reports is
-    // `delegations_actions_known`. The next case holds `never_decide` alone.
+    // `delegations_pairs_known`. The next case holds `never_decide` alone.
     const inserted = await sqlRefusal(
       db.app.withBusiness(
         business,
-        async (tx) => await insertDelegation(tx, 'insert_decide', ['read', 'decide']),
+        async (tx) => await insertDelegation(tx, 'insert_decide', ['task:read', 'task:decide']),
       ),
     );
     expect(inserted).toStrictEqual({
       code: '23514',
-      constraint: 'delegations_actions_known',
+      constraint: 'delegations_pairs_known',
       column: null,
     });
     expect(await delegationsFor('insert_decide')).toBe(0);
 
     const id = await db.app.withBusiness(
       business,
-      async (tx) => await insertDelegation(tx, 'update_decide', ['read']),
+      async (tx) => await insertDelegation(tx, 'update_decide', ['task:read']),
     );
     const updated = await sqlRefusal(
       db.app.withBusiness(business, async (tx) => {
         await tx.query(
-          `update public.delegations set actions = array_append(actions, 'decide')
+          `update public.delegations set pairs = array_append(pairs, 'task:decide')
             where business_id = $1 and id = $2`,
           [tx.businessId, id],
         );
       }),
     );
-    expect(updated).toStrictEqual({
-      code: '23514',
-      constraint: 'delegations_actions_known',
-      column: null,
-    });
-    const rows = await db.admin.execute<{ readonly actions: readonly string[] }>(
-      `select actions from public.delegations where id = $1`,
+    // The trigger that fixes the pairs at mint answers first, with no constraint name.
+    expect(updated).toStrictEqual({ code: '23514', constraint: null, column: null });
+    const rows = await db.admin.execute<{ readonly pairs: readonly string[] }>(
+      `select pairs from public.delegations where id = $1`,
       [id],
     );
-    expect(rows.map((row) => row.actions)).toStrictEqual([['read']]);
+    expect(rows.map((row) => row.pairs)).toStrictEqual([['task:read']]);
   });
 
-  it('refuses decide on delegations_never_decide alone, by insert and by update', async () => {
-    // The owner lifts `delegations_actions_known` inside one transaction, the
-    // statements run as the application role, and the transaction ends in the
-    // refusal, so the lifted check comes back with it.
+  it('refuses decide on delegations_pairs_never_decide alone, by insert and by update', async () => {
+    // The owner lifts `delegations_pairs_known` and the fixed-at-mint trigger
+    // inside one transaction, the statements run as the application role, and
+    // the transaction ends in the refusal, so both come back with it.
     const alone = async (statement: string, parameters: readonly unknown[]) =>
       await sqlRefusal(
         db.admin.transaction(async (execute) => {
-          await execute(`alter table public.delegations drop constraint delegations_actions_known`);
+          await execute(`alter table public.delegations drop constraint delegations_pairs_known`);
+          await execute(
+            `alter table public.delegations disable trigger delegations_pairs_are_fixed`,
+          );
           await execute(`set local role ops_astro_app`);
           await execute(`select set_config('app.business_id', $1, true)`, [business]);
           await execute(statement, parameters);
@@ -164,48 +166,48 @@ describe.skipIf(serverUrl === undefined)('a decision is never delegated, in the 
     const inserted = await alone(
       `insert into public.delegations
          (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
-          collections, actions, credential_hash, expires_at, purpose_scope_kind, purpose_scope_id)
-       values ($1, $2, $3, $4, $5, 'alone_decide', array['task'], array['read', 'decide'], $6,
+          pairs, credential_hash, expires_at, purpose_scope_kind, purpose_scope_id)
+       values ($1, $2, $3, $4, $5, 'alone_decide', array['task:read', 'task:decide'], $6,
                now() + interval '1 hour', 'record', $7)`,
       [business, randomUUID(), agentActor, person, personActor, HEX64, randomUUID()],
     );
     expect(inserted).toStrictEqual({
       code: '23514',
-      constraint: 'delegations_never_decide',
+      constraint: 'delegations_pairs_never_decide',
       column: null,
     });
     expect(await delegationsFor('alone_decide')).toBe(0);
 
     const id = await db.app.withBusiness(
       business,
-      async (tx) => await insertDelegation(tx, 'alone_update', ['read']),
+      async (tx) => await insertDelegation(tx, 'alone_update', ['task:read']),
     );
     const updated = await alone(
-      `update public.delegations set actions = array_append(actions, 'decide')
+      `update public.delegations set pairs = array_append(pairs, 'task:decide')
         where business_id = $1 and id = $2`,
       [business, id],
     );
     expect(updated).toStrictEqual({
       code: '23514',
-      constraint: 'delegations_never_decide',
+      constraint: 'delegations_pairs_never_decide',
       column: null,
     });
 
     const checks = await db.admin.execute<{ readonly conname: string }>(
       `select conname from pg_constraint
         where conrelid = 'public.delegations'::regclass
-          and conname in ('delegations_actions_known', 'delegations_never_decide')
+          and conname in ('delegations_pairs_known', 'delegations_pairs_never_decide')
         order by conname`,
     );
     expect(checks.map((row) => row.conname)).toStrictEqual([
-      'delegations_actions_known',
-      'delegations_never_decide',
+      'delegations_pairs_known',
+      'delegations_pairs_never_decide',
     ]);
-    const rows = await db.admin.execute<{ readonly actions: readonly string[] }>(
-      `select actions from public.delegations where id = $1`,
+    const rows = await db.admin.execute<{ readonly pairs: readonly string[] }>(
+      `select pairs from public.delegations where id = $1`,
       [id],
     );
-    expect(rows.map((row) => row.actions)).toStrictEqual([['read']]);
+    expect(rows.map((row) => row.pairs)).toStrictEqual([['task:read']]);
   });
 
   it('refuses a gate decision with no deciding person, on the column and before any key', async () => {

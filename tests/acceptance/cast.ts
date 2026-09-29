@@ -93,6 +93,7 @@ export const MEMBER_ACTIONS: readonly Action[] = ['read', 'write', 'assign', 'co
  * failures. The grant is per collection because the surface says it is.
  * `conversation` is AW-03's: the seeded admin holds `conversation:write`, so
  * the fixture's does too (and, being a fixture, every other action on it).
+ * `run` likewise: the seeded admin holds `run:write` (ORCH25-SL12B-RUN).
  */
 export const ADMIN_COLLECTIONS: readonly string[] = [
   'task',
@@ -100,6 +101,7 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'settings',
   'preset',
   'conversation',
+  'run',
 ];
 
 export async function tokenFor(

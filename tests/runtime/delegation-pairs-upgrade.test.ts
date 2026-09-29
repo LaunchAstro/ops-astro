@@ -134,6 +134,8 @@ describe.skipIf(serverUrl === undefined)(
         }
         revokedId = (await write(REVOKED_SHAPE, true)).id;
       });
+      // The runner refuses while this database has other sessions; seeding opened one.
+      await db.closeSessions();
       const migration = await migrate(db.admin, 'migrations');
       expect(migration.applied).toContain(PAIRS);
     }, 120_000);

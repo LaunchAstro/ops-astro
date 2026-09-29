@@ -6,7 +6,7 @@
 // A run's scope is the delegation the broker minted when the agent picked the
 // work up, named on the lease (R71). `task.read` carries it per lease, read in
 // the proposals' one snapshot: the purpose, the one record it was minted for,
-// its collections and actions, its term and state, the person whose grants are
+// exactly the pairs checked at mint, its term and state, the person whose grants are
 // its ceiling, and the grants of theirs it draws on now. Nothing a person edits
 // on the task reaches it (R76).
 
@@ -24,8 +24,7 @@ interface Scope {
     readonly id: string;
     readonly purpose: string;
     readonly scope: { readonly kind: string; readonly id: string };
-    readonly collections: readonly string[];
-    readonly actions: readonly string[];
+    readonly pairs: readonly { readonly collection: string; readonly action: string }[];
     readonly grantedAt: string;
     readonly expiresAt: string;
     readonly state: string;
@@ -57,7 +56,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-4 scope stamp', () => {
 
   async function stored(leaseId: string) {
     const rows = await c.fixture.db.admin.execute<Record<string, unknown>>(
-      `select lease.acquired_at, d.id, d.purpose, d.collections, d.actions, d.expires_at,
+      `select lease.acquired_at, d.id, d.purpose, d.pairs, d.expires_at,
               d.delegate_person_id, d.purpose_scope_id
          from public.leases lease
          join public.delegations d on d.business_id = lease.business_id and d.id = lease.delegation_id
@@ -75,7 +74,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-4 scope stamp', () => {
     expect(scope?.delegation?.purpose).toBe('scoped_work');
     expect(scope?.delegation?.scope).toStrictEqual({ kind: 'record', id: work.taskId });
     expect(scope?.delegation?.state).toBe('live');
-    expect(scope?.delegation?.actions).not.toContain('decide');
+    expect(scope?.delegation?.pairs.map((pair) => pair.action)).not.toContain('decide');
   });
 
   it('MP-6-4 the snapshot line', async () => {
@@ -87,20 +86,21 @@ describe.skipIf(serverUrl === undefined)('MP-6-4 scope stamp', () => {
   it('MP-6-4 the granted scope facts', async () => {
     const [scope] = await scopesOf(work.taskId);
     const row = await stored(work.leaseId);
-    expect(scope?.delegation?.collections).toStrictEqual(row['collections']);
-    expect(scope?.delegation?.actions).toStrictEqual(row['actions']);
+    expect(
+      scope?.delegation?.pairs.map((pair) => `${pair.collection}:${pair.action}`),
+    ).toStrictEqual(row['pairs']);
     expect(scope?.delegation?.expiresAt).toBe(new Date(row['expires_at'] as Date).toISOString());
     expect(scope?.delegation?.delegatePersonId).toBe(c.manager.personId);
     // The grants it draws on: the person's live grants reaching this task, each
-    // matching one of its collections and actions.
+    // matching one of its pairs.
     const grants = scope?.delegation?.grants ?? [];
     expect(grants.length).toBeGreaterThan(0);
     const held = await c.fixture.db.admin.execute<{ readonly id: string }>(
       `select id from public.grants
         where subject_kind = 'person' and subject_id = $1 and revoked_at is null
-          and collection = any ($2::text[]) and action = any ($3::text[])
-          and (scope_kind = 'business' or scope_id = $4)`,
-      [c.manager.personId, row['collections'], row['actions'], work.taskId],
+          and (collection || ':' || action) = any ($2::text[])
+          and (scope_kind = 'business' or scope_id = $3)`,
+      [c.manager.personId, row['pairs'], work.taskId],
     );
     expect(grants.map((grant) => grant.id).toSorted()).toStrictEqual(
       held.map((grant) => grant.id).toSorted(),

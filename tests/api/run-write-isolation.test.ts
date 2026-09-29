@@ -13,8 +13,9 @@
 // The crossings: another business (A's agent and credential at Bravo's
 // address); another client in the same business (A's delegation asked for
 // `run:write` on client two's task); and another person's work under a live
-// delegation (a second agent, authorised by a person who holds no `run:write`,
-// working task B). That person cannot delegate what they do not hold.
+// delegation (a second agent working task B, which a person who holds no
+// `run:write` approved: the approver is the delegating person, read from the
+// decision by pickup). That person cannot delegate what they do not hold.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -68,8 +69,9 @@ describe.skipIf(serverUrl === undefined)('run:write isolation', () => {
     const { db, business } = c.fixture;
     await db.app.withBusiness(business, async (tx) => {
       await grantTo(tx, c.manager, 'write', undefined, false, 'run');
-      // What pickup asks of the task, and no run grant at all.
+      // What approving and pickup ask of the task, and no run grant at all.
       await grantTo(tx, world.writer, 'comment');
+      await grantTo(tx, world.writer, 'decide');
     });
 
     workA = await pickedUpOn(c, 'run_client_one');
@@ -90,7 +92,18 @@ describe.skipIf(serverUrl === undefined)('run:write isolation', () => {
     const task = await c.createTask('client two');
     taskB = task.id;
     const proposal = await c.propose(task.id, task.revision, 'run_client_two');
-    const reservationId = await c.approve(proposal);
+    const decided = await c.asPerson(
+      'task.decide',
+      {
+        gateId: proposal['gateId'],
+        versionId: proposal['versionId'],
+        decision: 'approve',
+        note: 'approved by a person without run:write',
+      },
+      world.writer,
+    );
+    expect(decided.status).toBe(200);
+    const reservationId = detailOf(decided)['reservationId'];
     const picked = await post(
       c.api,
       agentPath('task.pickup'),

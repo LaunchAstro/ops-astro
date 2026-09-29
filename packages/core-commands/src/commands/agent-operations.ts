@@ -292,8 +292,8 @@ export async function parseOperands<O extends object>(
  * What an agent may do under the delegation its credential resolved to, right
  * now. `authorise` has resolved it and checked its purpose is still reached.
  *
- * The pairs are the intersection root ruling 5 names: each collection and
- * action the delegation's purpose carries, kept only while the delegating
+ * The pairs are the intersection root ruling 5 names: each pair the
+ * delegation's purpose carries (exactly those checked at mint), kept only while the delegating
  * person's effective grants still cover it on the purpose record
  * (`checkDelegatedAuthority`, the same check a call makes). So a person who
  * keeps `read` and loses `write` to expiry leaves an agent told `read` and
@@ -307,17 +307,15 @@ export async function capabilitiesOf(
   held: Delegation,
 ): Promise<AgentCapabilities> {
   const grants: Capability[] = [];
-  for (const collection of held.collections) {
-    for (const action of held.actions) {
-      // Sequential: one transaction, one connection.
-      // oxlint-disable-next-line no-await-in-loop
-      const reach = await checkDelegatedAuthority(tx, held, {
-        collection,
-        action,
-        scope: held.purposeScope,
-      });
-      if (reach.ok) grants.push({ collection, action });
-    }
+  for (const { collection, action } of held.pairs) {
+    // Sequential: one transaction, one connection.
+    // oxlint-disable-next-line no-await-in-loop
+    const reach = await checkDelegatedAuthority(tx, held, {
+      collection,
+      action,
+      scope: held.purposeScope,
+    });
+    if (reach.ok) grants.push({ collection, action });
   }
   return {
     agentActorId: session.actorId,

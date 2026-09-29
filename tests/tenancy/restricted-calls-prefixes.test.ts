@@ -126,6 +126,15 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;
 
+/** A delegation row with its pairs also written as 0008's two lists. */
+function withProductShape(row: Record<string, unknown>): Record<string, unknown> {
+  const pairs = (row['pairs'] as readonly string[] | undefined) ?? [];
+  const part = (index: number): string[] => [
+    ...new Set(pairs.map((pair) => pair.split(':')[index] ?? '')),
+  ];
+  return { ...row, collections: part(0), actions: part(1) };
+}
+
 /**
  * Own rows per tenant table but `businesses`, from a world walked through the
  * journey. Several per table, because an earlier prefix can carry a narrower
@@ -152,6 +161,10 @@ async function referenceRows(): Promise<Reference> {
         );
       }
     }
+    // Before 0034 a delegation held `collections` and `actions`, not `pairs`.
+    // Each row carries both shapes, and a prefix inserts the columns it has.
+    const delegations = rows.get('public.delegations') ?? [];
+    rows.set('public.delegations', delegations.map(withProductShape));
     return rows;
   } finally {
     await world.close();

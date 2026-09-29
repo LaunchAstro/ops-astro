@@ -6,8 +6,8 @@
 // **The scope is the lease's delegation, never the task's fields.** The broker
 // sets `leases.delegation_id` when the agent picks the work up (R71: an
 // explicit link, so the stamp names the grant), and the delegation carries the
-// purpose, the one resource it was minted for, and the collections and actions
-// it may use. Nothing a person edits on the task is read here, so relabelling
+// purpose, the one resource it was minted for, and exactly the (collection,
+// action) pairs checked at mint (0034). Nothing a person edits on the task is read here, so relabelling
 // the task cannot widen or even redraw what the run was allowed (R76).
 //
 // **The grants shown are the ones the delegation draws on now.** A delegation
@@ -29,8 +29,7 @@ export interface ScopeRow {
   readonly purpose: string | null;
   readonly purpose_scope_kind: string | null;
   readonly purpose_scope_id: string | null;
-  readonly collections: readonly string[] | null;
-  readonly actions: readonly string[] | null;
+  readonly pairs: readonly string[] | null;
   readonly granted_at: string | null;
   readonly delegation_expires_at: string | null;
   readonly delegation_state: string | null;
@@ -55,8 +54,7 @@ export const SCOPES: string = `select row_number() over (order by lease.acquired
             d.purpose,
             d.purpose_scope_kind,
             d.purpose_scope_id,
-            d.collections,
-            d.actions,
+            d.pairs,
             d.granted_at,
             d.expires_at as delegation_expires_at,
             case when d.id is null then null
@@ -81,8 +79,7 @@ export const SCOPES: string = `select row_number() over (order by lease.acquired
           where e.business_id = lease.business_id
             and e.subject_kind = 'person'
             and e.subject_id = d.delegate_person_id
-            and e.collection = any (d.collections)
-            and e.action = any (d.actions)
+            and (e.collection || ':' || e.action) = any (d.pairs)
             and (e.scope_kind = 'business'
                  or (e.scope_kind = 'record' and e.scope_id = lease.task_id))
        ) covering on d.id is not null
@@ -103,8 +100,10 @@ export function scopesOf(rows: readonly ScopeRow[], lineageId: string): readonly
               id: row.delegation_id,
               purpose: row.purpose ?? '',
               scope: { kind: row.purpose_scope_kind ?? '', id: row.purpose_scope_id ?? '' },
-              collections: row.collections ?? [],
-              actions: row.actions ?? [],
+              pairs: (row.pairs ?? []).map((pair) => {
+                const at = pair.indexOf(':');
+                return { collection: pair.slice(0, at), action: pair.slice(at + 1) };
+              }),
               grantedAt: isoTime(row.granted_at),
               expiresAt: isoTime(row.delegation_expires_at),
               state: row.delegation_state ?? 'unknown',

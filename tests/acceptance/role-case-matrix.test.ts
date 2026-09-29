@@ -471,11 +471,14 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         // EX-35 (root ruling 5): the current intersection of the pickup's
         // purpose and the delegating person's effective grants on the task,
         // never the pre-pickup pair and never a pair outside the purpose. The
-        // person here holds what the purpose carries, so it is all of it.
+        // person here holds what the purpose carries, so it is all of it:
+        // the task's three pairs, and `run:write`, which pickup adds because
+        // the approving administrator holds it (ORCH25-SL12B-RUN).
         const reported = (after['grants'] as readonly { collection: string; action: string }[])
           .map((one) => `${one.collection}:${one.action}`)
           .toSorted();
         expect(reported, declaration.name).toStrictEqual([
+          'run:write',
           'task:comment',
           'task:read',
           'task:write',

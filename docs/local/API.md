@@ -963,7 +963,7 @@ Each lineage carries `scopes`: what each lease its runs took was allowed to
 touch, oldest first (MP-6-4, CS-6.1). A scope is the lease's own delegation,
 the one the broker set at pickup (R71), so nothing a person edits on the task
 reaches it (R76): its `purpose`, the one resource it was minted for (`scope`),
-its `collections` and `actions`, `grantedAt`, `expiresAt`, a `state` of
+its `pairs` (each `{ collection, action }`, exactly those checked at mint), `grantedAt`, `expiresAt`, a `state` of
 `live`, `expired`, `revoked` or `settled`, the `delegatePersonId` whose grants
 are its ceiling, and `grants`, the live grants of that person it draws on now:
 business-wide ones and ones on this task's record, never a grant on another

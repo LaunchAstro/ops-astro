@@ -84,7 +84,7 @@ export async function authorise<O extends object>(
   // cannot use.
   if (operation.authority === 'purpose') {
     const reach = await checkDelegatedAuthority(tx, delegation, {
-      collection: delegation.collections[0] ?? 'task',
+      collection: delegation.pairs.find((pair) => pair.action === 'read')?.collection ?? 'task',
       action: 'read',
       scope: delegation.purposeScope,
     });

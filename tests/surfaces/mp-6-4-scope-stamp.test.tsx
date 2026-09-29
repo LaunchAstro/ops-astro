@@ -23,8 +23,11 @@ function scope(overrides: Partial<NonNullable<RunScope['delegation']>> = {}): Ru
       id: 'deleg-1',
       purpose: 'draft_the_reply',
       scope: { kind: 'record', id: TASK },
-      collections: ['task'],
-      actions: ['read', 'comment', 'write'],
+      pairs: [
+        { collection: 'task', action: 'read' },
+        { collection: 'task', action: 'comment' },
+        { collection: 'task', action: 'write' },
+      ],
       expiresAt: '2026-09-29T10:00:00.000Z',
       state: 'live',
       delegatePersonId: 'p-ada',
@@ -84,17 +87,45 @@ describe('MP-6-4 scope stamp', () => {
       page.find(`[data-scope-fact="${name}"] .sb__state`)?.textContent ?? '';
     expect(fact('write')).toBe('Granted for this run.');
     expect(fact('grant')).toBe('Delegation deleg-1 from person p-ada');
-    expect(fact('constraints')).toContain('Reaches task on this task only.');
+    expect(fact('constraints')).toContain('Reaches task (read, comment, write) on this task only.');
     expect(fact('constraints')).toContain('Never wider than person p-ada’s own live grants.');
     expect(fact('constraints')).toContain('Until 2026-09-29T10:00:00.000Z.');
 
     const narrow = await pane({
-      lineages: [lineage({ scopes: [scope({ actions: ['read'], state: 'revoked' })] })],
+      lineages: [
+        lineage({
+          scopes: [scope({ pairs: [{ collection: 'task', action: 'read' }], state: 'revoked' })],
+        }),
+      ],
     });
     const narrowFact = (name: string): string =>
       narrow.find(`[data-scope-fact="${name}"] .sb__state`)?.textContent ?? '';
     expect(narrowFact('write')).toBe('None. This run can read and stage, and cannot publish.');
     expect(narrowFact('constraints')).toContain('No longer live: revoked.');
+  });
+
+  it('MP-6-4 run:write is named beside the task, never folded into its clearance', async () => {
+    // Out of the model's order on purpose: the stamp orders them itself.
+    const page = await pane({
+      lineages: [
+        lineage({
+          scopes: [
+            scope({
+              pairs: [
+                { collection: 'run', action: 'write' },
+                { collection: 'task', action: 'comment' },
+                { collection: 'task', action: 'read' },
+                { collection: 'task', action: 'write' },
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(page.find('[data-scope-part="clearance"]')?.textContent).toBe('read · comment · write');
+    expect(page.find('[data-scope-fact="constraints"] .sb__state')?.textContent).toContain(
+      'Reaches task (read, comment, write) and run (write) on this task only.',
+    );
   });
 
   it('MP-6-4 the newest lease is the stamp, and no lease is no scope', async () => {

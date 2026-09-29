@@ -840,10 +840,20 @@ same thing as in the rulings table below.
   no reason field), nothing of the receipt and no state change. The credentialed
   replay returns the stored receipt.
 - **Decision never delegated, in the schema:**
-  `tests/db/decision-never-delegated.test.ts`. On an ordinary write that names
-  `decide`, `delegations_actions_known` (`0008:188`) is the constraint Postgres
-  reports; `delegations_never_decide` (`0008:186`) is the named second barrier
-  and is shown refusing alone. `gate_decisions.decided_by_person_id` is not
+  `tests/db/decision-never-delegated.test.ts`. On an ordinary insert that names
+  `decide`, `delegations_pairs_known` (0034) is the constraint Postgres
+  reports; `delegations_pairs_never_decide` (0034) is the named second barrier
+  and is shown refusing alone. An ordinary update meets
+  `delegations_pairs_are_fixed` first: no pair changes after mint.
+- **Exact delegation pairs and `run:write`:**
+  `tests/identity/delegation-pairs.test.ts`,
+  `tests/runtime/delegation-pairs-upgrade.test.ts` and
+  `tests/api/run-write-isolation.test.ts`. A delegation stores exactly the
+  pairs checked at mint; pickup adds `run:write` only where the delegating
+  person (the approver) holds it at the locked instant; a `run:read` or
+  `run:comment` they gain later is refused `DELEGATION_OUT_OF_PURPOSE`; rows
+  in 0008's product shape migrate to their exact pairs and answer every
+  collection and action as before. `gate_decisions.decided_by_person_id` is not
   null (`0012:36`).
 
 ## Tenancy wrapper mutations and decision-chain negatives

@@ -80,6 +80,7 @@ function AgentScope(
       <ScopeFacts
         delegation={stamp.delegation}
         reach={stamp.reach}
+        reaches={stamp.reaches}
         writes={stamp.writes}
         nameOf={props.nameOf}
       />
@@ -134,6 +135,7 @@ function SnapshotLine(props: {
 function ScopeFacts(props: {
   readonly delegation: Delegation;
   readonly reach: string;
+  readonly reaches: string;
   readonly writes: boolean;
   readonly nameOf: ScopeProps['nameOf'];
 }): ReactElement {
@@ -157,7 +159,7 @@ function ScopeFacts(props: {
       <div className="sout__row" data-scope-fact="constraints">
         <span className="tf__k">Constraints</span>
         <span className="sb__state">
-          {`Reaches ${delegation.collections.join(', ')} on ${props.reach}. `}
+          {`Reaches ${props.reaches} on ${props.reach}. `}
           {`Never wider than ${props.nameOf(delegation.delegatePersonId)}’s own live grants. `}
           {delegation.state === 'live'
             ? `Until ${delegation.expiresAt}.`

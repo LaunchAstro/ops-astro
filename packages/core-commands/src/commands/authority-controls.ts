@@ -126,7 +126,9 @@ interface Dependent {
  * under (`surface.ts`), and the one person pickup, renewal and handback each
  * re-read under their locks (T3 line 66: the person uses "the same work/lease
  * contract"). An agent's lease draws on its delegating person, because a
- * delegation's ceiling is that person's own grants (`checkDelegatedAuthority`).
+ * delegation's ceiling is that person's own grants (`checkDelegatedAuthority`),
+ * and on the claim's pair alone: a delegation's other pairs (`run:write`) are
+ * not what the claim rests on, and losing one narrows the call that needs it.
  * A person's own lease draws on the holder's person and actor subjects, the
  * two `subjectsOf` gives their session. A candidate is not yet a loss: the
  * holder may have write through another grant, which is re-read under the locks.
@@ -142,14 +144,15 @@ async function dependents(tx: TenantQuery, grantId: string): Promise<readonly De
         where c.business_id = $1
      )
      select l.id as lease_id, l.delegation_id, l.authorised_by_person_id as person_id,
-            null::uuid as actor_id, l.task_id, d.collections
+            null::uuid as actor_id, l.task_id, array[$3::text] as collections
        from public.leases l
        join public.delegations d on d.business_id = l.business_id and d.id = l.delegation_id
       where l.business_id = $1 and l.state = 'live'
         and d.revoked_at is null and d.settled_at is null
         and exists (select 1 from revoked r
                      where r.subject_kind = 'person' and r.subject_id = l.authorised_by_person_id
-                       and r.action = 'write' and r.collection = any(d.collections))
+                       and r.action = 'write' and r.collection = $3
+                       and ($3 || ':write') = any(d.pairs))
      union all
      select l.id as lease_id, null::uuid, a.person_id, l.holder_actor_id, l.task_id,
             array[$3::text]
@@ -283,8 +286,7 @@ export async function revokeDelegationAsManager(
   if (typeof delegationId !== 'string') return absent('delegationId');
   if (!isUuid(delegationId)) return NOT_FOUND;
   const rows = await tx.query<{
-    readonly collections: readonly string[];
-    readonly actions: readonly Action[];
+    readonly pairs: readonly string[];
     readonly purpose_scope_kind: Scope['kind'];
     readonly purpose_scope_id: string | null;
   }>(
@@ -293,18 +295,26 @@ export async function revokeDelegationAsManager(
     // here and then taking those would be the backwards acquisition the
     // contract forbids. These columns are written once at mint; whether the
     // row is still live is read again under the complete set below.
-    `select collections, actions, purpose_scope_kind, purpose_scope_id
+    `select pairs, purpose_scope_kind, purpose_scope_id
        from public.delegations where business_id = $1 and id = $2`,
     [tx.businessId, delegationId],
   );
   const delegation = rows[0];
   if (delegation === undefined) return NOT_FOUND;
   const scope: Scope = { kind: delegation.purpose_scope_kind, id: delegation.purpose_scope_id };
-  for (const collection of delegation.collections) {
-    for (const action of delegation.actions) {
-      // eslint-disable-next-line no-await-in-loop -- a handful of pairs, each one decisive
-      if (!(await withinCeiling(tx, context, collection, action, scope))) return OUTSIDE_CEILING;
-    }
+  // The claim's pairs: revoking ends the agent's claim on its task, and a pair
+  // it carries beside them (`run:write`) rides on that claim. Judged on every
+  // pair, a manager of the task who does not manage runs could not stop an
+  // agent that holds one; removing authority never needs the rest.
+  // A delegation carrying none of the claim's pairs is judged on nothing, so
+  // it is outside every ceiling rather than inside all of them.
+  const claim = claimCollection();
+  const judged = delegation.pairs.filter((pair) => pair.startsWith(`${claim}:`));
+  if (judged.length === 0) return OUTSIDE_CEILING;
+  for (const pair of judged) {
+    const action = pair.slice(claim.length + 1) as Action;
+    // eslint-disable-next-line no-await-in-loop -- a handful of pairs, each one decisive
+    if (!(await withinCeiling(tx, context, claim, action, scope))) return OUTSIDE_CEILING;
   }
 
   const loss = await classifyAuthorityLoss(tx, {
