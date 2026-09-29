@@ -241,3 +241,28 @@ describe.skipIf(serverUrl === undefined)('MP-4-6 time:write refused', () => {
     ]);
   });
 });
+
+describe.skipIf(serverUrl === undefined)(
+  'MP-4-6 hostile operands are refused, never a fault',
+  () => {
+    it('a task or entry that is not an identifier, a number, or absent is refused by name', async () => {
+      const bodies = [
+        { command: 'time.start', taskId: 'not-a-task' },
+        { command: 'time.start', taskId: 5 },
+        { command: 'time.stop' },
+        { command: 'time.log', taskId: null, duration: '5' },
+        { command: 'time.set_note', entryId: 'x', note: 'n' },
+        { command: 'time.delete', entryId: 7 },
+        { command: 'time.set_note', entryId: randomUUID(), note: 'nul \u0000 here' },
+      ];
+      for (const body of bodies) {
+        // eslint-disable-next-line no-await-in-loop -- each refusal checked on its own
+        const answer = await run(w.ada, body);
+        expect(codeOf(answer), JSON.stringify(body)).not.toBe('not-a-refusal');
+        expect(['NOT_FOUND', 'COMMAND_BODY_INVALID', 'FIELD_VALUE_INVALID']).toContain(
+          codeOf(answer),
+        );
+      }
+    });
+  },
+);
