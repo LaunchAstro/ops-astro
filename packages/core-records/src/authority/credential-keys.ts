@@ -35,9 +35,10 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHmac, randomBytes } from 'node:crypto';
-import { existsSync, linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, linkSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readEnvFile } from '../env-file.ts';
 
 /** The scheme a derivable delegation records. Frozen with the encoding below. */
 export const DERIVED_SCHEME = 'hmac-sha256-v1';
@@ -158,10 +159,8 @@ export function parseCredentialKeys(
 }
 
 function readKeyFile(file: string): CredentialKeysDecision {
-  const text = readFileSync(file, 'utf8');
-  const value = (name: string): string | undefined =>
-    new RegExp(`^${name}=(.*)$`, 'mu').exec(text)?.[1]?.trim();
-  const decision = parseCredentialKeys(value(ACTIVE_KEY_VARIABLE), value(KEYRING_VARIABLE));
+  const settings = readEnvFile(file, { required: true });
+  const decision = parseCredentialKeys(settings[ACTIVE_KEY_VARIABLE], settings[KEYRING_VARIABLE]);
   return decision.ok ? decision : { ok: false, problem: `${file}: ${decision.problem}` };
 }
 

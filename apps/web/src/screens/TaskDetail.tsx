@@ -79,17 +79,21 @@
 // else to fill it. Refresh and the denied state are shared by both, so a
 // revoked share empties the page the same way a revoked grant does.
 
-import { useRef, useState, type FormEvent, type ReactElement } from 'react';
-import { Spill } from '@launchastro/ui';
-import type { CallResult, OperationsClient } from '../operations/client.ts';
-import type { PersonListResult, TaskDetail as Task, TaskReadResult } from '../operations/shapes.ts';
+import { useRef, useState, type FormEvent, type ReactElement, type RefObject } from 'react';
+import type { CallResult, OperationsClient, WireRefusal } from '../operations/client.ts';
+import type {
+  InternalTaskDetail as Task,
+  PersonListResult,
+  TaskReadResult,
+} from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
-import { Proposals, type DecisionNote, type ProposeDraft } from '../views/proposals.tsx';
+import { Proposals, type DecisionNote } from '../views/proposals.tsx';
+import { ConflictNotice, MovedNotice, TaskHeader, UnsavedBar } from './task/Notices.tsx';
+
+import type { ProposeDraft } from '../views/propose-form.tsx';
 import { RecordState } from '../views/record-state.tsx';
-import { drawTaskState } from '../views/task-state.ts';
-import { describeRefusal, submitEdit } from '../records/submit.ts';
+import { submitEdit } from '../records/submit.ts';
 import { useCommand } from '../records/use-command.ts';
-import { pathTo } from '../routes.ts';
 import { SharedTaskDetail } from './SharedTaskDetail.tsx';
 import { Comments, type CommentDraft } from './task/Comments.tsx';
 import { DetailsForm } from './task/DetailsForm.tsx';
@@ -111,7 +115,7 @@ interface DraftBase {
 
 /** An unsaved title and due date, and everything needed to settle it safely. */
 interface Draft {
-  /** Grant and task together: a draft belongs to one task under one grant. */
+  /** Capability and task together: a draft belongs to one task under one grant. */
   readonly identity: string;
   /**
    * Bumped by every keystroke. A save settles the generation it submitted and
@@ -299,39 +303,27 @@ function useHeld<T>(
   return [value, set];
 }
 
-interface LoadedProps {
-  readonly client: OperationsClient;
-  readonly grantKey: string;
-  readonly task: Task;
-  /** The unsaved edit, or nothing. Its presence is what "dirty" means. */
-  readonly draft: Draft | null;
-  /** What the server said about the last decision, or nothing. */
-  readonly note: DecisionNote | null;
-  readonly onDecided: (note: DecisionNote | null) => void;
-  /** This reader's refused comment, held above the read so a reread keeps it. */
-  readonly commentRefusal: string | null;
-  readonly onCommentRefused: (because: string) => void;
-  /** This reader's refused proposal, held the same way. */
-  readonly proposeRefusal: string | null;
-  readonly onProposeRefused: (because: string) => void;
-  /** The last stale lifecycle or assignee press, quoted across its reread. */
-  readonly moved: string | null;
-  readonly onMoved: (because: string | null) => void;
-  /** The unsent comment and proposal, held so a reread keeps what was typed. */
-  readonly commentDraft: CommentDraft | null;
-  readonly onCommentDraft: (next: CommentDraft | null) => void;
-  readonly proposeDraft: ProposeDraft | null;
-  readonly onProposeDraft: (next: ProposeDraft | null) => void;
-  /** Record, or forget, the draft save whose outcome is unknown. */
-  readonly onAttempt: (attempt: SaveAttempt | null) => void;
-  readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;
-  readonly onSaved: (generation: number) => void;
-  readonly onDiscard: () => void;
-  readonly onChanged: () => void;
+/** What the task page's writes hand back to the page that draws them. */
+interface TaskWrites {
+  readonly busy: boolean;
+  readonly because: string | null;
+  readonly conflict: WireRefusal | null;
+  readonly fields: RefObject<HTMLFormElement | null>;
+  readonly lifecycle: (command: LifecycleCommand) => void;
+  readonly onAssign: (personId: string) => void;
+  readonly onFields: (event: FormEvent<HTMLFormElement>) => void;
 }
 
-function Loaded(props: LoadedProps): ReactElement {
+/**
+ * Every write the task page makes: the lifecycle, the assignee and the
+ * details form, through one command state.
+ */
+function useTaskWrites(
+  props: LoadedProps,
+  edit: { readonly title: string; readonly due: string; readonly base: DraftBase },
+): TaskWrites {
   const { client, task } = props;
+  const { title, due, base } = edit;
   // `conflict`: somebody else moved the record on while this edit was being
   // made. The draft stays on the screen (it is the person's work) and the
   // screen asks them to resolve it rather than resending against a revision
@@ -351,39 +343,6 @@ function Loaded(props: LoadedProps): ReactElement {
   // The details form itself, so the resolve bar's Save can ask it whether the
   // edit it is about to send is a legal one.
   const fields = useRef<HTMLFormElement>(null);
-  const saved = { title: task.title, due: task.due === null ? '' : task.due.slice(0, 10) };
-  const [title, setTitle] = useState(props.draft?.title ?? saved.title);
-  const [due, setDue] = useState(props.draft?.due ?? saved.due);
-
-  // Where this edit began. An existing draft keeps its own starting point; a
-  // first keystroke takes the record as it stands right now.
-  const base: DraftBase = props.draft?.base ?? {
-    revision: task.revision,
-    title: saved.title,
-    due: saved.due,
-  };
-  const dirty = props.draft !== null;
-
-  /** Every keystroke lands in both places: this form, and the draft above it. */
-  const edit = (next: { title?: string; due?: string }): void => {
-    const nextTitle = next.title ?? title;
-    const nextDue = next.due ?? due;
-    setTitle(nextTitle);
-    setDue(nextDue);
-    // Typed back to where it started is not an unsaved edit. Holding a draft
-    // there would lock the other controls for no reason a person could see.
-    props.onDraft(
-      nextTitle === base.title && nextDue === base.due ? null : { title: nextTitle, due: nextDue },
-      base,
-    );
-  };
-
-  const people = useRead<PersonListResult>({
-    grantKey: props.grantKey,
-    run: () => client.read<PersonListResult>('person.list', {}),
-    isEmpty: (value) => value.persons.length === 0,
-    deps: [],
-  });
 
   /** One place every write lands, so every refusal is shown the same way. */
   const run = (
@@ -485,24 +444,85 @@ function Loaded(props: LoadedProps): ReactElement {
     );
   };
 
+  return { busy, because, conflict, fields, lifecycle, onAssign, onFields };
+}
+
+interface LoadedProps {
+  readonly client: OperationsClient;
+  readonly grantKey: string;
+  readonly task: Task;
+  /** The unsaved edit, or nothing. Its presence is what "dirty" means. */
+  readonly draft: Draft | null;
+  /** What the server said about the last decision, or nothing. */
+  readonly note: DecisionNote | null;
+  readonly onDecided: (note: DecisionNote | null) => void;
+  /** This reader's refused comment, held above the read so a reread keeps it. */
+  readonly commentRefusal: string | null;
+  readonly onCommentRefused: (because: string) => void;
+  /** This reader's refused proposal, held the same way. */
+  readonly proposeRefusal: string | null;
+  readonly onProposeRefused: (because: string) => void;
+  /** The last stale lifecycle or assignee press, quoted across its reread. */
+  readonly moved: string | null;
+  readonly onMoved: (because: string | null) => void;
+  /** The unsent comment and proposal, held so a reread keeps what was typed. */
+  readonly commentDraft: CommentDraft | null;
+  readonly onCommentDraft: (next: CommentDraft | null) => void;
+  readonly proposeDraft: ProposeDraft | null;
+  readonly onProposeDraft: (next: ProposeDraft | null) => void;
+  /** Record, or forget, the draft save whose outcome is unknown. */
+  readonly onAttempt: (attempt: SaveAttempt | null) => void;
+  readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;
+  readonly onSaved: (generation: number) => void;
+  readonly onDiscard: () => void;
+  readonly onChanged: () => void;
+}
+
+function Loaded(props: LoadedProps): ReactElement {
+  const { client, task } = props;
+  const saved = { title: task.title ?? '', due: task.due === null ? '' : task.due.slice(0, 10) };
+  const [title, setTitle] = useState(props.draft?.title ?? saved.title);
+  const [due, setDue] = useState(props.draft?.due ?? saved.due);
+
+  // Where this edit began. An existing draft keeps its own starting point; a
+  // first keystroke takes the record as it stands right now.
+  const base: DraftBase = props.draft?.base ?? {
+    revision: task.revision,
+    title: saved.title,
+    due: saved.due,
+  };
+  const dirty = props.draft !== null;
+
+  /** Every keystroke lands in both places: this form, and the draft above it. */
+  const edit = (next: { title?: string; due?: string }): void => {
+    const nextTitle = next.title ?? title;
+    const nextDue = next.due ?? due;
+    setTitle(nextTitle);
+    setDue(nextDue);
+    // Typed back to where it started is not an unsaved edit. Holding a draft
+    // there would lock the other controls for no reason a person could see.
+    props.onDraft(
+      nextTitle === base.title && nextDue === base.due ? null : { title: nextTitle, due: nextDue },
+      base,
+    );
+  };
+
+  const { busy, because, conflict, fields, lifecycle, onAssign, onFields } = useTaskWrites(props, {
+    title,
+    due,
+    base,
+  });
+
+  const people = useRead<PersonListResult>({
+    grantKey: props.grantKey,
+    run: () => client.read<PersonListResult>('person.list', {}),
+    isEmpty: (value) => value.persons.length === 0,
+    deps: [],
+  });
+
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
-      <header className="tpr">
-        <div className="tpr__crumb">
-          <a className="sb__addr" href={pathTo('agency:projects-board')}>
-            Projects
-          </a>
-          <span aria-hidden="true">›</span>
-          <span>No board</span>
-          <span className="sbact__meta">· {task.key}</span>
-          <Spill state={drawTaskState(task.state)} />
-        </div>
-        <h2 className="tpr__title">{task.title}</h2>
-        <div className="card__sub">
-          Revision {task.revision} ·{' '}
-          {task.completedAt === null ? 'not completed' : `completed ${task.completedAt}`}
-        </div>
-      </header>
+      <TaskHeader task={task} />
 
       {because === null ? null : (
         <p className="field__error" role="alert" data-voice="input-wrong">
@@ -510,67 +530,17 @@ function Loaded(props: LoadedProps): ReactElement {
         </p>
       )}
 
-      {props.moved === null ? null : (
-        <section className="sb__sect" role="alert" data-conflict="moved">
-          <p className="field__error">{props.moved}</p>
-          <p className="card__sub">
-            Somebody else moved this task on first, so nothing you pressed was stored. It has been
-            read again: press it again if it still applies.
-          </p>
-        </section>
-      )}
+      <MovedNotice because={props.moved} />
 
-      {conflict === null ? null : (
-        <section className="sb__sect" role="alert" data-conflict="version">
-          <div className="sb__sh">
-            <span className="sb__k">Somebody else changed this task</span>
-          </div>
-          <p className="field__error">{describeRefusal(conflict)}</p>
-          <p className="card__sub">
-            Your edit was made against revision {base.revision}. Copy anything you want to keep,
-            then read the task again and make the change on top of theirs.
-          </p>
-          <ul className="card__sub" data-conflict="unsaved">
-            <li>Title: {title}</li>
-            <li>Due date: {due === '' ? 'none' : due}</li>
-          </ul>
-          <button className="btn" type="button" data-conflict="reload" onClick={props.onDiscard}>
-            Read it again and start from theirs
-          </button>
-        </section>
-      )}
+      <ConflictNotice
+        conflict={conflict}
+        base={base.revision}
+        title={title}
+        due={due}
+        onDiscard={props.onDiscard}
+      />
 
-      {!dirty ? null : (
-        <section className="sb__sect" data-draft-resolve="choice">
-          <div className="sb__sh">
-            <span className="sb__k">Unsaved changes</span>
-          </div>
-          <p className="card__sub">
-            The title or due date has been edited and not saved. Assigning, changing the state and
-            refreshing are unavailable until this is settled — nothing here is merged for you.
-          </p>
-          <div className="btnrow">
-            <button
-              className="btn btn--primary"
-              type="submit"
-              form="task-fields"
-              data-draft-resolve="save"
-              disabled={busy}
-            >
-              Save changes
-            </button>
-            <button
-              className="btn"
-              type="button"
-              data-draft-resolve="discard"
-              disabled={busy}
-              onClick={props.onDiscard}
-            >
-              Discard changes
-            </button>
-          </div>
-        </section>
-      )}
+      <UnsavedBar dirty={dirty} busy={busy} onDiscard={props.onDiscard} />
 
       <Lifecycle
         disabled={busy || dirty}
@@ -608,6 +578,7 @@ function Loaded(props: LoadedProps): ReactElement {
       />
 
       <Proposals
+        capCurrency={task.capCurrency}
         client={client}
         note={props.note}
         onChanged={props.onChanged}

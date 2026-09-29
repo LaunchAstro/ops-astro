@@ -3,11 +3,14 @@
 // `task.comment`: one comment on one task, written through the comment record
 // type L2 installs.
 //
-// It was one of the five `refuseUnlanded` routes, waiting on "a comment record
-// type, which no part of the split owns". L2 owns it now (`tasks/comments.ts`),
-// so this is the whole of what was missing: the envelope already required the
-// identity, checked the `comment` grant, locked the task and wrote the audit
-// event, and none of that is repeated here.
+// The envelope has already required the identity, checked the `comment`
+// grant, locked the task and written the audit event, and none of that is
+// repeated here.
+//
+// **A business with no comment type.** One seeded before the comment record
+// type was installed has a task spine and no `task_comment` type. A comment
+// there is refused `DEPENDENCY_NOT_LANDED`, naming the command and the record
+// type: a missing record type is not a fault in the caller's request.
 //
 // **What this handler decides, and what it does not.** It decides that the
 // audience and the kind are values the model has, because a comment addressed
@@ -36,7 +39,6 @@ import type { CommandContext, TaskRow } from './context.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-import { refuseUnlanded } from './pending.ts';
 import { refuseUnstorable, storableText } from './values.ts';
 
 const AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['internal', 'client']);
@@ -56,6 +58,11 @@ const TYPE_FIXES: readonly string[] = [
 ];
 
 const BODY_FIXES: readonly string[] = ['Send a body with something in it.'];
+
+const NO_COMMENT_TYPE_FIXES: readonly string[] = [
+  'This business has no comment record type installed, so it cannot hold a comment.',
+  'It is not a permission problem and retrying will not change it.',
+];
 
 export async function commentOnTask(
   tx: TenantQuery,
@@ -122,7 +129,15 @@ export async function writeTaskComment(
 ): Promise<HandlerOutcome> {
   if (on.target.deleted_at !== null) return refused(refuseNotFound());
   const commentTypeId = on.commentTypeId;
-  if (commentTypeId === undefined) return refuseUnlanded(on.declaration);
+  if (commentTypeId === undefined) {
+    return refused(
+      refuseCommand(
+        'DEPENDENCY_NOT_LANDED',
+        [on.declaration.name, 'task_comment'],
+        NO_COMMENT_TYPE_FIXES,
+      ),
+    );
+  }
 
   if (typeof body !== 'string' || body.trim() === '') {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['body'], BODY_FIXES));

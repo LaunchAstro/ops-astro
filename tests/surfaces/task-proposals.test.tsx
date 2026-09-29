@@ -196,6 +196,8 @@ function server(options: ServerOptions = {}) {
     history: [],
     comments: [],
     proposals: options.empty === true ? [] : [lineage],
+    // The task cap's currency, which the propose form offers (CQ-7).
+    capCurrency: 'AUD',
   };
   if (options.withoutProjection === true) delete task['proposals'];
 

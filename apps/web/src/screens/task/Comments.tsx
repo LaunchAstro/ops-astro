@@ -35,7 +35,7 @@
 import { useRef, type ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
-import type { InternalTaskComment } from '../../operations/shapes.ts';
+import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommand } from '../../records/use-command.ts';
 
 export interface CommentsProps {
@@ -44,7 +44,7 @@ export interface CommentsProps {
    * An internal reader's comments, every field present. The shared projection
    * is drawn by `SharedTaskDetail.tsx`, which never mounts this box.
    */
-  readonly comments: readonly InternalTaskComment[];
+  readonly comments: readonly InternalCommentView[];
   readonly recordId: string;
   /** The revision the comment is written against. `task.comment` does not move it. */
   readonly revision: number;
@@ -177,33 +177,7 @@ export function Comments(props: CommentsProps): ReactElement {
         <span className="sbact__meta">{props.comments.length} on this task</span>
       </div>
 
-      {props.comments.length === 0 ? (
-        <PaneEmpty say="Nothing has been said about this one yet." />
-      ) : (
-        <div className="thread" data-comments="list">
-          {props.comments.map((comment) => (
-            <article
-              className={`msg msg--${comment.audience}`}
-              data-comment-id={comment.id}
-              data-audience={comment.audience}
-              key={comment.id}
-            >
-              <div className="sbact__meta">
-                {/* The audience is drawn on every comment, because "who may
-                    read this" is the one thing a person writing the next one
-                    needs to know and the one thing a colour cannot say. */}
-                <span className="sb__state" data-comment-audience={comment.audience}>
-                  {audienceWord(comment.audience)}
-                </span>
-                <span> · {comment.comment_type}</span>
-                <span> · {comment.author}</span>
-                <span> · {comment.posted_at}</span>
-              </div>
-              <p className="card__body">{comment.body}</p>
-            </article>
-          ))}
-        </div>
-      )}
+      <CommentThread comments={props.comments} />
 
       {because === null ? null : (
         <p className="field__error" role="alert" data-comment="refusal">
@@ -235,62 +209,7 @@ export function Comments(props: CommentsProps): ReactElement {
           post();
         }}
       >
-        <div className="field">
-          <label className="tf__k" htmlFor="comment-body">
-            Say something
-          </label>
-          <textarea
-            id="comment-body"
-            className="input"
-            rows={3}
-            required
-            disabled={locked}
-            value={body}
-            onChange={(event) => {
-              put({ body: event.target.value });
-            }}
-          />
-        </div>
-        <div className="field">
-          <label className="tf__k" htmlFor="comment-audience">
-            Who may read it
-          </label>
-          <select
-            id="comment-audience"
-            className="input"
-            disabled={locked}
-            value={audience}
-            onChange={(event) => {
-              put({ audience: event.target.value });
-            }}
-          >
-            {AUDIENCES.map((choice) => (
-              <option key={choice.value} value={choice.value}>
-                {choice.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label className="tf__k" htmlFor="comment-kind">
-            What it is
-          </label>
-          <select
-            id="comment-kind"
-            className="input"
-            disabled={locked}
-            value={kind}
-            onChange={(event) => {
-              put({ kind: event.target.value });
-            }}
-          >
-            {KINDS.map((choice) => (
-              <option key={choice.value} value={choice.value}>
-                {choice.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <CommentFields audience={audience} body={body} kind={kind} locked={locked} onPut={put} />
         <button className="btn btn--primary" type="submit" data-comment="post" disabled={locked}>
           {busy ? 'Posting…' : 'Post comment'}
         </button>
@@ -301,6 +220,107 @@ export function Comments(props: CommentsProps): ReactElement {
         )}
       </form>
     </section>
+  );
+}
+
+/** The comments on the task, oldest first, each with who may read it. */
+function CommentThread(props: { readonly comments: CommentsProps['comments'] }): ReactElement {
+  return props.comments.length === 0 ? (
+    <PaneEmpty say="Nothing has been said about this one yet." />
+  ) : (
+    <div className="thread" data-comments="list">
+      {props.comments.map((comment) => (
+        <article
+          className={`msg msg--${comment.audience}`}
+          data-comment-id={comment.id}
+          data-audience={comment.audience}
+          key={comment.id}
+        >
+          <div className="sbact__meta">
+            {/* The audience is drawn on every comment, because "who may
+                read this" is the one thing a person writing the next one
+                needs to know and the one thing a colour cannot say. */}
+            <span className="sb__state" data-comment-audience={comment.audience}>
+              {audienceWord(comment.audience)}
+            </span>
+            <span> · {comment.comment_type}</span>
+            <span> · {comment.author}</span>
+            <span> · {comment.posted_at}</span>
+          </div>
+          <p className="card__body">{comment.body}</p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+/** What a comment says, who may read it and what kind it is. */
+function CommentFields(props: {
+  readonly body: string;
+  readonly audience: string;
+  readonly kind: string;
+  readonly locked: boolean;
+  readonly onPut: (next: Partial<CommentDraft>) => void;
+}): ReactElement {
+  return (
+    <>
+      <div className="field">
+        <label className="tf__k" htmlFor="comment-body">
+          Say something
+        </label>
+        <textarea
+          id="comment-body"
+          className="input"
+          rows={3}
+          required
+          disabled={props.locked}
+          value={props.body}
+          onChange={(event) => {
+            props.onPut({ body: event.target.value });
+          }}
+        />
+      </div>
+      <div className="field">
+        <label className="tf__k" htmlFor="comment-audience">
+          Who may read it
+        </label>
+        <select
+          id="comment-audience"
+          className="input"
+          disabled={props.locked}
+          value={props.audience}
+          onChange={(event) => {
+            props.onPut({ audience: event.target.value });
+          }}
+        >
+          {AUDIENCES.map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label className="tf__k" htmlFor="comment-kind">
+          What it is
+        </label>
+        <select
+          id="comment-kind"
+          className="input"
+          disabled={props.locked}
+          value={props.kind}
+          onChange={(event) => {
+            props.onPut({ kind: event.target.value });
+          }}
+        >
+          {KINDS.map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </>
   );
 }
 

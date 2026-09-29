@@ -117,6 +117,8 @@ function server(options: ServerOptions = {}) {
     history: [],
     comments: [],
     proposals: (options.lineages ?? []).map(lineageOf),
+    // The task cap's currency, which the propose form offers (CQ-7).
+    capCurrency: 'AUD',
   };
   const sent: Record<string, Record<string, unknown>[]> = {};
   let minted = 0;

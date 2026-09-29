@@ -17,6 +17,7 @@ export {
   withCredentialKeys,
   type CredentialKeysDecision,
 } from './authority/credential-keys.ts';
+export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
   digestOf,
@@ -106,6 +107,7 @@ export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.t
 export { TASK_STATE_TYPE_KEY, type MachineCategory } from './tasks/states.ts';
 export { purgeTrashedRecords, restoreBatch, trashSubtree } from './tasks/trash.ts';
 export {
+  advisoryLock,
   connect,
   connectAsAdmin,
   isBusinessId,

@@ -14,4 +14,5 @@ export { describeFault, executeCommand } from './commands/envelope.ts';
 export { isCommandRefusal, refuseCommand, type CommandRefusal } from './commands/refusal.ts';
 export { type CommandRequest } from './commands/requests.ts';
 export { executeRead } from './reads/execute.ts';
+export { isReadName } from './reads/catalogue.ts';
 export { type ReadRequest } from './reads/requests.ts';

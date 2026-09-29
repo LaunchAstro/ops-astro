@@ -7,7 +7,12 @@
 // (thermo review b483399, H2).
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { heartbeat, MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
+import {
+  heartbeat,
+  leaseReason,
+  MAXIMUM_RENEWAL_SECONDS,
+  NOT_OWNED_FIX,
+} from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
 import { refuseCommand } from './refusal.ts';
@@ -118,15 +123,12 @@ export async function heartbeatOwnLease(
 
 // A malformed lease id is answered in the bytes the runtime gives a well-formed
 // one that names nothing (root ruling 2), before it reaches a uuid parameter:
-// the refusal `handback` gives a lease it cannot find (`core-runtime/src/handback.ts`),
-// and `heartbeat`'s own (`core-runtime/src/heartbeat.ts`).
-export const NO_SUCH_LEASE: readonly string[] = [
-  'no such lease in this business',
-  'Hand back the lease this claim was issued.',
-];
+// the one lease wording (`core-runtime/src/lease-ownership.ts`), with each
+// operation's own next step.
+export const NO_SUCH_LEASE: readonly string[] = [leaseReason('not_owned'), NOT_OWNED_FIX.handback];
 const NOT_THIS_CALLERS_LEASE: readonly string[] = [
-  "the named lease is not this caller's at the presented fence",
-  'Renew the lease this pickup issued, at the fence it handed back.',
+  leaseReason('not_owned'),
+  NOT_OWNED_FIX.heartbeat,
 ];
 
 /** The agent renews its own lease, under the delegation its credential resolved to. */

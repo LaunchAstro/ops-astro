@@ -20,10 +20,10 @@
 
 import type { ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
-import type { SharedTask } from '../operations/shapes.ts';
+import type { SharedTaskView } from '../../../../packages/core-wire/src/index.ts';
 
 export interface SharedTaskDetailProps {
-  readonly task: SharedTask;
+  readonly task: SharedTaskView;
 }
 
 export function SharedTaskDetail(props: SharedTaskDetailProps): ReactElement {
@@ -59,7 +59,7 @@ export function SharedTaskDetail(props: SharedTaskDetailProps): ReactElement {
 }
 
 /** The client comments the projection carried, oldest first, and nothing to write with. */
-function SharedComments(props: { readonly comments: SharedTask['comments'] }): ReactElement {
+function SharedComments(props: { readonly comments: SharedTaskView['comments'] }): ReactElement {
   return (
     <section className="sb__sect" data-comments="section">
       <div className="sb__sh">
@@ -70,19 +70,26 @@ function SharedComments(props: { readonly comments: SharedTask['comments'] }): R
         <PaneEmpty say="Nothing on this task has been shared with you yet." />
       ) : (
         <div className="thread" data-comments="list">
-          {props.comments.map((comment) => (
-            <article
-              className={`msg msg--${comment.audience ?? 'unknown'}`}
-              data-comment-id={comment.id}
-              data-audience={comment.audience ?? 'unknown'}
-              key={comment.id}
-            >
-              <div className="sbact__meta">
-                {comment.posted_at === undefined ? null : <span>{comment.posted_at}</span>}
-              </div>
-              <p className="card__body">{comment.body ?? ''}</p>
-            </article>
-          ))}
+          {props.comments.map((comment) => {
+            // The projection's fields are the catalogue's to choose, so each one
+            // is drawn only when it arrived as text.
+            const id = text(comment['id']) ?? '';
+            const audience = text(comment['audience']) ?? 'unknown';
+            const postedAt = text(comment['posted_at']);
+            return (
+              <article
+                className={`msg msg--${audience}`}
+                data-comment-id={id}
+                data-audience={audience}
+                key={id}
+              >
+                <div className="sbact__meta">
+                  {postedAt === undefined ? null : <span>{postedAt}</span>}
+                </div>
+                <p className="card__body">{text(comment['body']) ?? ''}</p>
+              </article>
+            );
+          })}
         </div>
       )}
     </section>
@@ -95,4 +102,9 @@ function valueWord(value: unknown): string {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return JSON.stringify(value);
+}
+
+/** A shared field as text, or nothing when it did not arrive as text. */
+function text(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
 }

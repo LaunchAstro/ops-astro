@@ -33,6 +33,7 @@ import { issueGrant, revokeGrant } from '../packages/core-records/src/authority/
 import { shareRecord } from '../packages/core-records/src/authority/shares.ts';
 import { ensureCredentialKeyFile } from '../packages/core-records/src/authority/credential-keys.ts';
 import { declarationOf } from '../packages/core-wire/src/surface.ts';
+import { readEnvFile } from '../packages/core-records/src/env-file.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const usersFile = `${root}.local/synthetic-users.json`;
@@ -40,14 +41,7 @@ const agentsFile = `${root}.local/synthetic-agents.json`;
 const gateFile = `${root}.local/gate.env`;
 
 function fromEnvFile(name) {
-  if (process.env[name]) return process.env[name];
-  const file = `${root}.local/db.env`;
-  if (!existsSync(file)) return undefined;
-  for (const line of readFileSync(file, 'utf8').split('\n')) {
-    const match = new RegExp(`^${name}=(.+)$`, 'u').exec(line.trim());
-    if (match) return match[1];
-  }
-  return undefined;
+  return process.env[name] || readEnvFile(`${root}.local/db.env`)[name] || undefined;
 }
 
 /**
@@ -477,12 +471,8 @@ function readAgents() {
  * table the application role can read.
  */
 function ensureGateKey() {
-  if (existsSync(gateFile)) {
-    const text = readFileSync(gateFile, 'utf8');
-    const id = /^GATE_SIGNING_KEY_ID=(.+)$/mu.exec(text)?.[1];
-    const secret = /^GATE_SIGNING_SECRET=(.+)$/mu.exec(text)?.[1];
-    if (id && secret) return { id, secret, fresh: false };
-  }
+  const { GATE_SIGNING_KEY_ID: heldId, GATE_SIGNING_SECRET: heldSecret } = readEnvFile(gateFile);
+  if (heldId && heldSecret) return { id: heldId, secret: heldSecret, fresh: false };
   const id = 'local/gate-decisions@1';
   const secret = randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', '');
   writeFileSync(
@@ -649,14 +639,7 @@ function authAdmin() {
 }
 
 function readAuthEnv(name) {
-  if (process.env[name]) return process.env[name];
-  const file = `${root}.local/auth.env`;
-  if (!existsSync(file)) return undefined;
-  for (const line of readFileSync(file, 'utf8').split('\n')) {
-    const match = new RegExp(`^${name}=(.+)$`, 'u').exec(line.trim());
-    if (match) return match[1];
-  }
-  return undefined;
+  return process.env[name] || readEnvFile(`${root}.local/auth.env`)[name] || undefined;
 }
 
 /**

@@ -20,26 +20,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const LOCAL = join(ROOT, '.local');
-
-function readEnvFile(file) {
-  const values = {};
-  let text;
-  try {
-    text = readFileSync(file, 'utf8');
-  } catch {
-    return values;
-  }
-  for (const line of text.split('\n')) {
-    const trimmed = line.trim();
-    if (trimmed === '' || trimmed.startsWith('#')) continue;
-    const at = trimmed.indexOf('=');
-    if (at !== -1) values[trimmed.slice(0, at)] = trimmed.slice(at + 1);
-  }
-  return values;
-}
 
 const ENV = {
   ...readEnvFile(join(LOCAL, 'db.env')),

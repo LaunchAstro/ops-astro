@@ -23,10 +23,8 @@ import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import {
-  type ProposalView,
-  readTaskProposals,
-} from '../../packages/core-commands/src/reads/proposals.ts';
+import { readTaskProposals } from '../../packages/core-commands/src/reads/proposals.ts';
+import type { ProposalView } from '../../packages/core-wire/src/views.ts';
 import { connect, type TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   bearer,

@@ -10,7 +10,7 @@
 // still current.
 
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
@@ -226,12 +226,8 @@ describe.skipIf(serverUrl === undefined)('a pickup whose response was lost', () 
   it('never writes the token or the key bytes anywhere it can be read (group 6)', async () => {
     const picked = await world.pickUp(approver, 'lost_scanned');
     await world.asAgent('task.pickup', picked.body);
-    const keyring = /^DELEGATION_CREDENTIAL_KEYS=(.*)$/mu.exec(
-      readFileSync(LOCAL_KEY_FILE, 'utf8'),
-    );
-    const keyBytes = (keyring?.[1] ?? '')
-      .split(',')
-      .map((entry) => entry.slice(entry.indexOf(':') + 1));
+    const keyring = readEnvFile(LOCAL_KEY_FILE, { required: true })['DELEGATION_CREDENTIAL_KEYS'];
+    const keyBytes = (keyring ?? '').split(',').map((entry) => entry.slice(entry.indexOf(':') + 1));
     expect(keyBytes.length).toBeGreaterThan(0);
 
     const dump = async (table: string): Promise<string> =>

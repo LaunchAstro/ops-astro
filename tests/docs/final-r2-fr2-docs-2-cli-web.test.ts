@@ -110,8 +110,8 @@ describe('WEB.md on the task page (R2-SURFACE-10, R2-THERMO-12, R2-SURFACE-41)',
     const markers: readonly [string, string][] = [
       ['apps/web/src/screens/task/Comments.tsx', 'data-comment="unresolved"'],
       ['apps/web/src/screens/task/Comments.tsx', 'data-comment="stale"'],
-      ['apps/web/src/views/proposals.tsx', 'data-propose="unresolved"'],
-      ['apps/web/src/views/proposals.tsx', 'data-propose="stale"'],
+      ['apps/web/src/views/propose-form.tsx', 'data-propose="unresolved"'],
+      ['apps/web/src/views/propose-form.tsx', 'data-propose="stale"'],
     ];
     for (const [file, marker] of markers) {
       expect(read(file), `${file} ${marker}`).toContain(marker);

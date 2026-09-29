@@ -5,10 +5,11 @@
 // (THERMO-RECHECK NA5).
 
 import type { AgentSession } from '../../../core-records/src/index.ts';
-import type { CommandDeclaration, CommandName } from '../../../core-wire/src/index.ts';
+import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
+import type { UncheckedRequest } from './requests.ts';
 
 /**
- * What an agent sends.
+ * What an agent sends: the person prefix's own unchecked request.
  *
  * The credential is **not** in it. It arrives beside the request the way the
  * bearer token does, because it is a credential rather than a field: a payload
@@ -16,11 +17,7 @@ import type { CommandDeclaration, CommandName } from '../../../core-wire/src/ind
  * authority would be a body that could be logged, replayed into a register row
  * and compared by a digest.
  */
-export interface AgentRequest {
-  readonly command: CommandName;
-  readonly operationId: string;
-  readonly [field: string]: unknown;
-}
+export type AgentRequest = UncheckedRequest;
 
 /** One agent call: who is calling, under what credential, asking what. */
 export interface AgentCall {
@@ -54,7 +51,11 @@ export interface PickupOperands extends LeaseOperands {
 
 /** What `task.handback` reads by type before any authority. */
 export interface HandbackOperands {
+  /** The lease named. One that is not a string names no lease, and is sent as `''`. */
+  readonly leaseId: string;
   readonly outcome: string;
   readonly fence: number;
   readonly report?: Readonly<Record<string, unknown>>;
+  /** Present when the body carried it; any other value was refused. */
+  readonly actualMinor?: null;
 }

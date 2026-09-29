@@ -128,7 +128,10 @@ tab's `storage` reaches `App` as a prop from `main.tsx`.
 The task page is `TaskDetailScreen` and `Loaded` in
 `apps/web/src/screens/TaskDetail.tsx`. The parts it draws live beside it in
 `apps/web/src/screens/task/`: `Comments.tsx`, `DetailsForm.tsx`,
-`Lifecycle.tsx` (the state buttons and the assignee select) and `History.tsx`.
+`Lifecycle.tsx` (the state buttons and the assignee select), `History.tsx` and
+`Notices.tsx` (the heading and the notices above the controls). The server can
+send a task with no title, and the board and the heading draw it as "Untitled
+task" (`views/task-title.ts`) rather than as an empty line.
 
 `/task/:key` for an external party (R4) draws `SharedTaskDetail` from
 `task.read`'s `sharedTask` answer: the shared fields under their server keys and
@@ -139,7 +142,8 @@ state as a revoked grant.
 
 ### How a write settles
 
-Every write on the task page, in the proposals view (`views/proposals.tsx`) and
+Every write on the task page, in the proposals view (`views/proposals.tsx` and
+the two files beside it) and
 on the board goes through `useCommand` in `apps/web/src/records/use-command.ts`.
 It sorts the answer once into one of five kinds:
 
@@ -172,7 +176,7 @@ the revision a reread shows would be refused `OPERATION_ID_REUSED`; resending
 the first revision is why a reread cannot break the replay. If the attempt never
 arrived and the task has moved on since, the retry is answered `VERSION_STALE`
 for that old revision and takes the stale path (`PendingComment` in
-`Comments.tsx`, `PendingProposal` in `views/proposals.tsx`). Any edit, or any
+`Comments.tsx`, `PendingProposal` in `views/propose-form.tsx`). Any edit, or any
 answer from the server, starts a new attempt. While that attempt is held they
 say so
 (`[data-propose="unresolved"]`, `[data-comment="unresolved"]`). A save of the
@@ -192,9 +196,10 @@ confirmed write is in `confirmed.ts`.
 `/task/:key` draws them through `Comments` (`screens/task/Comments.tsx`). Each
 one is an `article[data-comment-id]` carrying `data-audience`, with the audience
 printed in words above the body. Who may read a comment is the one thing the
-person writing the next comment needs to know, and a colour cannot say it. `InternalTaskComment` (`operations/shapes.ts`) is the internal
-reader's comment, with every field present. `TaskComment` is optional past `id`,
-because the shared projection sends only the fields the catalogue marks shared.
+person writing the next comment needs to know, and a colour cannot say it. `InternalCommentView` (`core-wire/src/views.ts`, the server's own type) is the
+internal reader's comment, with every field present. A shared comment is a
+`CommentView`, whose fields are the catalogue's to choose, so the shared view
+draws each one only when it arrived as text.
 
 The form is `form#task-comment`: a required `textarea#comment-body`, a
 `select#comment-audience` (internal or client) and a `select#comment-kind`, with
@@ -271,10 +276,11 @@ the whole task. There is no path from any of the three to sample data.
 
 **The propose form** (`form#task-propose`) sends `task.propose` with the task's
 own `recordId` and the revision the page is holding, the purpose, the ceiling and
-the currency. The currency is AUD only, the currency the seeded cap is kept in
-(`scripts/local-seed.mjs`), because `task.decide` refuses a version in any
-other with `CAP_BINDING_MISMATCH` (`CURRENCIES` in `views/proposals.tsx`).
-Sending the cap's currency from a read is later work. The amount is typed in dollars and converted to the server's minor
+the currency. The currency is the task cap's own, read from the server as
+`capCurrency` on `task.read`, because `task.decide` refuses a version in any
+other with `CAP_BINDING_MISMATCH` (`ProposeFields` in `views/propose-form.tsx`).
+With no cap there is no currency to offer, so the form says so
+(`[data-propose="no-cap"]`) and does not send. The amount is typed in dollars and converted to the server's minor
 units once, in the client, because three places that each convert are three
 places that can disagree. A refusal is quoted with the server's own code in
 `[data-propose="refusal"]`. On success the form clears and the task is read again,

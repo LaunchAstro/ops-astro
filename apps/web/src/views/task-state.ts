@@ -11,7 +11,7 @@
 // round trip through a word whose only use was its tone.
 
 import type { DrawnState } from '@launchastro/ui';
-import type { TaskState } from '../operations/shapes.ts';
+import type { TaskStateView } from '../../../../packages/core-wire/src/index.ts';
 
 const TONE_BY_CATEGORY: Readonly<Record<string, DrawnState['tone']>> = {
   unstarted: 'wait',
@@ -21,7 +21,7 @@ const TONE_BY_CATEGORY: Readonly<Record<string, DrawnState['tone']>> = {
   cancelled: 'bad',
 };
 
-export function drawTaskState(state: TaskState | null): DrawnState {
+export function drawTaskState(state: TaskStateView | null): DrawnState {
   // A task with no state is an incomplete record, not a crash and not a
   // blank cell. It says so, in the vocabulary the projection already has for
   // a word it cannot place, and the row stays on the screen.

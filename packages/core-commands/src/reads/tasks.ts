@@ -27,8 +27,10 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
+import type { InternalCommentView } from '../../../core-wire/src/index.ts';
 import { READS } from '../../../core-wire/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
+import { taskCapCurrency } from './task-cap.ts';
 
 interface TaskRowRead {
   readonly id: string;
@@ -208,14 +210,16 @@ async function commentsFor(
   if (!internal) {
     return externalCommentProjection(comments, await readFieldDefinitions(tx, commentTypeId));
   }
-  return comments.map((comment) => ({
+  // The times as the ISO strings they are sent as, so the type this builds is
+  // the one a client parses (`views.ts`).
+  return comments.map((comment): InternalCommentView => ({
     id: comment.id,
     audience: comment.audience,
     author: comment.authorActorId,
     body: comment.body,
     comment_type: comment.commentType,
-    posted_at: comment.postedAt,
-    edited_at: comment.editedAt,
+    posted_at: comment.postedAt.toISOString(),
+    edited_at: comment.editedAt?.toISOString() ?? null,
     source: comment.source,
   }));
 }
@@ -250,6 +254,7 @@ export async function readTaskDetail(
     // what the proposer put in it and what the decision was about. An external
     // reader who may see the task may see what somebody proposed doing to it.
     proposals: await readTaskProposals(tx, row.id),
+    capCurrency: await taskCapCurrency(tx, row.id),
   };
 }
 

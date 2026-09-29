@@ -103,8 +103,12 @@ const CODE: readonly (readonly [string, string, Claim])[] = [
   [`${C}/tasks-state.ts`, '', 'const REASON_LIMIT = 500;'],
   [`${C}/tasks-state.ts`, 'setState', /'started' && current\?\.machineCategory === 'completed'/u],
   [`${C}/tasks-state.ts`, 'setState', "reason.trim() === ''"],
-  [`${R}/recovery.ts`, 'cancelAndClassify', /checkAuthorityAt\([\s\S]{0,400}'SCOPE_NOT_GRANTED'/u],
-  [`${R}/decide.ts`, 'decide', 'if (live[0] === undefined) return gateNotFound();'],
+  [
+    `${R}/recovery/lease-retirement.ts`,
+    'cancelAndClassify',
+    /checkAuthorityAt\([\s\S]{0,400}'SCOPE_NOT_GRANTED'/u,
+  ],
+  [`${R}/decide.ts`, 'recheckWork', 'if (live[0] === undefined) return gateNotFound();'],
   [`${R}/decide.ts`, 'decide', 'gateId: presented.gateId.toLowerCase()'],
   [`${C}/tasks-controls.ts`, 'lineageOnTask', 'recordId.toLowerCase()'],
   [`${C}/tasks-write.ts`, '', "PLACED_BY_OPERAND: readonly string[] = ['board', 'board_section']"],
@@ -195,7 +199,7 @@ describe('API.md lines derived from the code', () => {
   });
 
   it('gives sharedTask the keys SharedTaskView declares', () => {
-    const requests = read('packages/core-commands/src/reads/requests.ts');
+    const requests = read('packages/core-wire/src/views.ts');
     const view = requests.slice(requests.indexOf('export interface SharedTaskView'));
     const keys = [...view.slice(0, view.indexOf('\n}')).matchAll(/^ {2}readonly (\w+)/gmu)].map(
       (m) => m[1] ?? '',

@@ -22,31 +22,8 @@
 // invite a client to decide the same question for itself.
 
 import { readBusinessSettings } from '../../../core-records/src/index.ts';
-import type { TenantQuery, SettingValueType } from '../../../core-records/src/index.ts';
-
-/**
- * One setting, projected.
- *
- * `updatedAt` is an ISO string rather than a `Date` because every other time
- * on this surface is (`TaskSummary.due`, `HistoryEntry.at`): one read handing
- * back a `Date` and the next a string is the difference a client discovers in
- * production.
- */
-export interface SettingView {
-  readonly key: string;
-  readonly value: number | boolean | string | null;
-  /** `numeric`, `boolean` or `text`, as the row declares it. */
-  readonly valueType: SettingValueType;
-  readonly updatedAt: string;
-  /** Null until a command has written it. Nobody owns a shipped default. */
-  readonly updatedByActorId: string | null;
-  /**
-   * What a write names to say which value it is replacing. Starts at 1, and a
-   * command that sends a number the row has moved past is refused
-   * `VERSION_STALE` rather than having its value merged over the winner's.
-   */
-  readonly revision: number;
-}
+import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { SettingView } from '../../../core-wire/src/index.ts';
 
 /**
  * Every setting this business holds, ordered by key.

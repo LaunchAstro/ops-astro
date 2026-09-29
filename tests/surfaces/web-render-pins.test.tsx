@@ -78,6 +78,8 @@ function taskWith(gate: { readonly state: string; readonly expired: boolean }) {
         posted_at: '2026-09-22T02:00:00.000Z',
       },
     ],
+    // The task cap's currency, which the propose form offers (CQ-7).
+    capCurrency: 'AUD',
     proposals: [
       {
         lineageId: 'l-1',

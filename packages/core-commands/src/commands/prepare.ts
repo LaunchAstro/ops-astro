@@ -37,13 +37,19 @@
 // targets no record is checked against the business, and a target field that
 // its declaration has no use for is refused rather than ignored.
 
-import { checkAuthority, subjectsOf, isUuid } from '../../../core-records/src/index.ts';
+import {
+  advisoryLock,
+  checkAuthority,
+  subjectsOf,
+  isUuid,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
-import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
-import type { CommandRequest } from './requests.ts';
+import { declarationOf, type CommandDeclaration } from '../../../core-wire/src/index.ts';
+import type { CommandRequest, UncheckedRequest } from './requests.ts';
+import { IDENTIFIER_FIELDS, parseRequest, refuseUndescribed } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 
 export const REVISION_FIXES: readonly string[] = [
@@ -60,8 +66,8 @@ const EXTERNAL_FIXES: readonly string[] = [
 ];
 
 /** The revision a targeted request named, or nothing. Absent on the untargeted ones. */
-export function expectedRevisionOf(request: CommandRequest): number | undefined {
-  return 'expectedRevision' in request ? request.expectedRevision : undefined;
+export function expectedRevisionOf(request: UncheckedRequest): number | undefined {
+  return typeof request['expectedRevision'] === 'number' ? request['expectedRevision'] : undefined;
 }
 
 /**
@@ -194,7 +200,7 @@ export async function claimedSystemFields(
  */
 async function refuseSystemOwnedFields(
   tx: TenantQuery,
-  request: CommandRequest,
+  request: UncheckedRequest,
 ): Promise<Refused | undefined> {
   const claimed = await claimedSystemFields(tx, request);
   if (claimed === undefined) return undefined;
@@ -205,32 +211,6 @@ async function refuseSystemOwnedFields(
 }
 
 /**
- * The fields of a request that name a record. Each one is cast to `uuid`
- * somewhere downstream — the authority check casts the scope, the rank query
- * casts an array of neighbours — and a cast raises rather than refusing. A
- * review found `recordId: 'not-a-uuid'` arriving as a fault with the chain
- * recording `failed`, where the contract promises a typed refusal.
- *
- * The list is explicit rather than derived from the field names, so a request
- * type that grows an identifier has to be added here rather than being
- * silently covered or silently missed.
- */
-const IDENTIFIER_FIELDS: readonly string[] = [
-  'recordId',
-  'parentId',
-  'batchId',
-  'afterId',
-  'beforeId',
-  'board',
-  'boardSection',
-  'gateId',
-  'versionId',
-  'lineageId',
-  'reservationId',
-  'leaseId',
-];
-
-/**
  * `NOT_FOUND`, and not a code that says "malformed".
  *
  * An identifier that cannot exist and an identifier that does not exist are
@@ -238,10 +218,10 @@ const IDENTIFIER_FIELDS: readonly string[] = [
  * of their guesses were well formed.
  */
 function refuseMalformedIdentifier(
-  request: CommandRequest,
+  request: UncheckedRequest,
   declaration: CommandDeclaration,
 ): Refused | undefined {
-  const named = request as unknown as Record<string, unknown>;
+  const named = request;
   const malformed = shapedHere(declaration).filter((field) => {
     const value = named[field];
     return typeof value === 'string' && !isUuid(value);
@@ -283,11 +263,8 @@ const FREE_OPERANDS: readonly string[] = [
  * authorised and before the target is read, so the handler never reaches the
  * insert that would raise on it.
  */
-function refuseUnstorableOperands(request: CommandRequest): Refused | undefined {
-  const unstorable = unstorableOperands(
-    request as unknown as Record<string, unknown>,
-    FREE_OPERANDS,
-  );
+function refuseUnstorableOperands(request: UncheckedRequest): Refused | undefined {
+  const unstorable = unstorableOperands(request, FREE_OPERANDS);
   if (unstorable.length === 0) return undefined;
   return refused(refuseUnstorable(unstorable));
 }
@@ -325,12 +302,12 @@ const TYPED_IDENTIFIER_FIXES: readonly string[] = [
 ];
 
 function refuseMistypedIdentifier(
-  request: CommandRequest,
+  request: UncheckedRequest,
   declaration: CommandDeclaration,
 ): Refused | undefined {
   const typed = TYPED_IDENTIFIERS[declaration.name];
   if (typed === undefined) return undefined;
-  const named = request as unknown as Record<string, unknown>;
+  const named = request;
   const mistyped = [
     ...(typed.optional ?? []).filter(
       (field) =>
@@ -372,13 +349,13 @@ export function irrelevantIdentifiers(
  * the server quietly drops is a body the caller believes was honoured.
  */
 function refuseIrrelevantTarget(
-  request: CommandRequest,
+  request: UncheckedRequest,
   declaration: CommandDeclaration,
 ): Refused | undefined {
   // `untargetedIdentifiers` is absent exactly on a targeted row (`surface.ts`).
   const allowed = declaration.untargetedIdentifiers;
   if (allowed === undefined) return undefined;
-  const irrelevant = irrelevantIdentifiers(request as unknown as Record<string, unknown>, allowed);
+  const irrelevant = irrelevantIdentifiers(request, allowed);
   if (irrelevant.length === 0) return undefined;
   return refused(refuseCommand('COMMAND_BODY_INVALID', irrelevant, BODY_FIXES));
 }
@@ -410,10 +387,10 @@ type ScopeLookup = readonly [
  */
 async function firstScope(
   tx: TenantQuery,
-  request: CommandRequest,
+  request: UncheckedRequest,
   lookups: readonly ScopeLookup[],
 ): Promise<Scope> {
-  const named = request as unknown as Record<string, unknown>;
+  const named = request;
   for (const [field, find] of lookups) {
     const id = named[field];
     if (!isUuid(id)) continue;
@@ -469,11 +446,11 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
  * drops is a field the caller believes was honoured.
  */
 function refuseOtherTarget(
-  request: CommandRequest,
+  request: UncheckedRequest,
   declaration: CommandDeclaration,
 ): Refused | undefined {
   if (declaration.authorisedOn !== 'target') return undefined;
-  const named = request as unknown as Record<string, unknown>;
+  const named = request;
   const own = TARGET_LOOKUPS[declaration.name]?.[0];
   const other = Object.values(TARGET_LOOKUPS)
     .map(([field]) => field)
@@ -523,13 +500,13 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
 const SCOPE_OF: Readonly<
   Record<
     CommandDeclaration['authorisedOn'],
-    (tx: TenantQuery, request: CommandRequest, declaration: CommandDeclaration) => Promise<Scope>
+    (tx: TenantQuery, request: UncheckedRequest, declaration: CommandDeclaration) => Promise<Scope>
   >
 > = {
   record: (_tx, request) =>
     Promise.resolve(
-      'recordId' in request && typeof request.recordId === 'string'
-        ? { kind: 'record', id: request.recordId }
+      typeof request['recordId'] === 'string'
+        ? { kind: 'record', id: request['recordId'] }
         : BUSINESS,
     ),
   business: () => Promise.resolve(BUSINESS),
@@ -545,9 +522,9 @@ export async function prepareCommand(
   tx: TenantQuery,
   session: Session,
   entryPoint: EntryPoint,
-  request: CommandRequest,
+  request: UncheckedRequest,
   declaration: CommandDeclaration,
-): Promise<CommandContext | Refused> {
+): Promise<(CommandContext & { readonly request: CommandRequest }) | Refused> {
   const spoofed = await refuseSystemOwnedFields(tx, request);
   if (spoofed !== undefined) return spoofed;
   const malformed = refuseMalformedIdentifier(request, declaration);
@@ -564,8 +541,7 @@ export async function prepareCommand(
   // against that task, a business command against the business, whatever
   // identifiers its body happens to carry, and a `target` command is left to
   // its handler, which asks the resolved row's own ceiling.
-  const recordId =
-    'recordId' in request && typeof request.recordId === 'string' ? request.recordId : undefined;
+  const recordId = typeof request['recordId'] === 'string' ? request['recordId'] : undefined;
   // R4 before any grant row. A session with no membership stands on a read
   // share, and whatever else a row may say it holds, it writes nothing but a
   // client-audience comment (minimum contract 8.1 R4; the audience is
@@ -580,12 +556,25 @@ export async function prepareCommand(
     scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
   });
   if (!authorised.ok) return refused(authorised.refusal);
+  // A field the row does not describe, after authority as on the agent prefix:
+  // a caller without the right is told that first (R4, `external-party`).
+  // Against the row itself: a replay prepares with the target left out, and
+  // the revision the first call sent is still a field this row takes.
+  const undescribed = refuseUndescribed(request, declarationOf(declaration.name));
+  if (undescribed !== undefined) return refused(undescribed);
   // The operands' own shape, after authority as every handler's operand
   // refusal is, so a caller holding nothing is told `SCOPE_NOT_GRANTED` and
   // nothing about its body; before the target is read or locked.
-  const mistyped =
-    refuseMistypedIdentifier(request, declaration) ?? refuseUnstorableOperands(request);
+  // The body against its row's operands, once, after authority as every
+  // operand check on this prefix has always come: the typed request the
+  // command is handed, or the refusal naming what did not match, which a
+  // missing target answers first when it is not an identifier's.
+  const mistyped = refuseMistypedIdentifier(request, declaration);
   if (mistyped !== undefined) return mistyped;
+  const parsed = parseRequest(request, declaration);
+  if ('refusal' in parsed && !parsed.afterTarget) return refused(parsed.refusal);
+  const unstorable = refuseUnstorableOperands(request);
+  if (unstorable !== undefined) return unstorable;
 
   let target: TaskRow | undefined;
   if (declaration.targetsExistingRecord) {
@@ -620,7 +609,8 @@ export async function prepareCommand(
     }
   }
 
-  return { session, declaration, entryPoint, spine, target };
+  if ('refusal' in parsed) return refused(parsed.refusal);
+  return { session, declaration, entryPoint, spine, target, request: parsed.request };
 }
 
 /**
@@ -638,9 +628,7 @@ const TENANT_PREDICATE = 'business_id = $1';
 
 /** The per-business lock a declaration's `serialise` names, to the end of the transaction. */
 export async function serialiseOn(tx: TenantQuery, key: string): Promise<void> {
-  await tx.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-    `${key}:${tx.businessId}`,
-  ]);
+  await advisoryLock(tx, `${key}:${tx.businessId}`);
 }
 
 /**

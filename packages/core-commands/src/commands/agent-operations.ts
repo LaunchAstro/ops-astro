@@ -13,7 +13,8 @@ import { READ_CATALOGUE } from '../reads/catalogue.ts';
 import { READ_BODY_FIXES, ReadIntegrityFault } from '../reads/dispatch.ts';
 import { DecisionIntegrityError } from '../reads/verified-decisions.ts';
 import { readTaskDetail } from '../reads/tasks.ts';
-import { businessKeyOf, type AgentCapabilities, type Capability } from '../reads/capabilities.ts';
+import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts';
+import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { isFieldMap } from './operands.ts';
@@ -205,7 +206,10 @@ function handbackOperands(request: AgentRequest): HandbackOperands | Refused {
   if (typeof outcome !== 'string') return refuseOutcome(outcome);
   const fence = request['fence'];
   if (typeof fence !== 'number') return refuseFence(fence);
-  let operands: HandbackOperands = { outcome, fence };
+  // A lease id that is not a string names no lease, and the handler answers
+  // it as one that does not exist.
+  const leaseId = typeof request['leaseId'] === 'string' ? request['leaseId'] : '';
+  let operands: HandbackOperands = { leaseId, outcome, fence };
   if ('report' in request) {
     const report = request['report'];
     if (!isFieldMap(report)) return refuseReport(report);
@@ -226,6 +230,7 @@ function handbackOperands(request: AgentRequest): HandbackOperands | Refused {
   if ('actualMinor' in request) {
     const actualMinor = request['actualMinor'];
     if (actualMinor !== null && actualMinor !== undefined) return refuseActualMinor(actualMinor);
+    operands = { ...operands, actualMinor: null };
   }
   return operands;
 }
@@ -422,16 +427,10 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
         await handbackLease(
           tx,
           {
-            // A lease id that is not a string names no lease, and the handler
-            // answers it as one that does not exist.
-            leaseId: typeof request['leaseId'] === 'string' ? request['leaseId'] : '',
+            leaseId: operands.leaseId,
             fence: operands.fence,
             outcome: operands.outcome,
-            // Carried through rather than dropped here, so that sending a number
-            // is the refusal `handbackLease` spells out instead of a silence.
-            ...('actualMinor' in request
-              ? { actualMinor: request['actualMinor'] as number | null }
-              : {}),
+            ...(operands.actualMinor === undefined ? {} : { actualMinor: operands.actualMinor }),
             ...(operands.report === undefined ? {} : { report: operands.report }),
             // The successor, untouched and unread. Whether the body is a shape
             // at all is `handbackLease`'s question, and a key checked here would

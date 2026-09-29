@@ -105,6 +105,8 @@ function server(options: ServerOptions = {}) {
     history: [],
     comments: [] as Record<string, unknown>[],
     proposals: [] as ReturnType<typeof lineage>[],
+    // The task cap's currency, which the propose form offers (CQ-7).
+    capCurrency: 'AUD',
   };
   const sent: Record<string, Record<string, unknown>[]> = {};
   const answers: Record<string, string[]> = {};

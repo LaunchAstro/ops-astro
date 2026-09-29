@@ -8,7 +8,10 @@
 // unsaved, and the page decides that; these only draw it.
 
 import type { ReactElement } from 'react';
-import type { PersonListResult, TaskDetail as Task } from '../../operations/shapes.ts';
+import type {
+  InternalTaskDetail as Task,
+  PersonListResult,
+} from '../../../../../packages/core-wire/src/index.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
 import { RecordState } from '../../views/record-state.tsx';
 

@@ -4,7 +4,7 @@
 
 import type { ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
-import type { TaskDetail as Task } from '../../operations/shapes.ts';
+import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
 
 export function History(props: { readonly history: Task['history'] }): ReactElement {
   return (

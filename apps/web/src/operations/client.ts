@@ -98,37 +98,6 @@ export type ReadName = OnSurface<typeof READ_NAMES>[number];
  */
 export type NotARead<Name extends CommandName> = [Name] extends [ReadName] ? never : Name;
 
-/** One approved, held, unpicked piece of work, as `task.queue` answers it. */
-export interface QueueEntryWire {
-  readonly reservationId: string;
-  readonly taskId: string;
-  readonly runId: string;
-  readonly versionId: string;
-  readonly lineageId: string;
-  readonly purpose: string;
-  readonly heldMinor: number;
-}
-
-/** `task.queue`'s answer. An empty queue is `[]` beside `ok`, never a refusal. */
-export interface QueueRead {
-  readonly ok: true;
-  readonly queue: readonly QueueEntryWire[];
-}
-
-/**
- * `preset.plan`'s answer: a dry-run plan that installs and approves nothing.
- * The actions are the planner's own words and this client does not interpret
- * them, so they stay records rather than a union this file would have to track.
- */
-export interface PresetPlanRead {
-  readonly ok: true;
-  readonly plan: {
-    readonly recordTypeId: string;
-    readonly presetKey: string;
-    readonly actions: readonly Readonly<Record<string, unknown>>[];
-  };
-}
-
 /** What a mutation returns when it worked: a durable handle and a new revision. */
 export interface CommandOutcome {
   readonly recordId: string;

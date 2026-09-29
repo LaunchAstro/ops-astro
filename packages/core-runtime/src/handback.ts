@@ -35,10 +35,20 @@ import { settleDelegation } from '../../core-records/src/index.ts';
 import type { TenantQuery, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import { capCommitted, exceeds } from './budget.ts';
-import { acquire } from './locks.ts';
+import {
+  fenceCause,
+  holdsLease,
+  leaseVerdict,
+  LEASE_FIXES,
+  personWriteLive,
+  refuseLease,
+  readLease,
+  type LeaseCause,
+} from './lease-ownership.ts';
+import { acquire, type LockSet } from './locks.ts';
 import { only, RuntimeInvariantError } from './only.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
-import { checkAuthorityAt, classifyUnderLocks, endLease, type Classification } from './recovery.ts';
+import { classifyUnderLocks, endLease, type Classification } from './recovery.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -127,10 +137,14 @@ export interface StaleVerdict {
   readonly fix: string;
 }
 
+function staleVerdict(cause: LeaseCause): StaleVerdict {
+  return leaseVerdict(cause, LEASE_FIXES.handback[cause]) as StaleVerdict;
+}
+
 /**
  * The lease's rungs of the fence ladder, as a pure reading of the lease row
- * `handback` has under its locks. The four causes are asked in this order and
- * the first that holds is the answer; `null` is the current holder of a live
+ * `handback` has under its locks (`lease-ownership.ts`, `fenceCause`). The
+ * first rung that fails is the answer; `null` is the current holder of a live
  * lease. Asked before the binding is read, so a stale fence is refused without
  * the binding query or its discovery-changed recheck ever running.
  */
@@ -143,35 +157,8 @@ export function fenceVerdict(
   },
   request: { readonly leaseId: string; readonly fence: number },
 ): StaleVerdict | null {
-  if (Number(lease.fence) !== request.fence) {
-    return {
-      code: 'LEASE_NOT_OWNED',
-      reason: `lease ${request.leaseId} holds fence ${lease.fence}, and fence ${request.fence} was presented`,
-      fix: 'Read the fence from the pickup that issued the lease. The report is retained, not settled.',
-    };
-  }
-  if (Number(lease.fence) < Number(lease.current_fence)) {
-    return {
-      code: 'LEASE_NOT_OWNED',
-      reason: `fence ${request.fence} has been superseded by ${lease.current_fence} on this task`,
-      fix: 'The replacement owns the work. This report is retained, not settled.',
-    };
-  }
-  if (lease.state !== 'live') {
-    return {
-      code: 'LEASE_EXPIRED',
-      reason: `lease ${request.leaseId} is ${lease.state}`,
-      fix: 'A settled or expired lease cannot settle work. The report is retained; pick the work up again.',
-    };
-  }
-  if (lease.expired) {
-    return {
-      code: 'LEASE_EXPIRED',
-      reason: `lease ${request.leaseId} expired before this handback`,
-      fix: 'Pick the work up again under a new lease and a new fence. The report is retained.',
-    };
-  }
-  return null;
+  const cause = fenceCause(lease, request.fence);
+  return cause === null ? null : staleVerdict(cause);
 }
 
 /**
@@ -184,140 +171,40 @@ export function bindingVerdict(binding: {
   readonly superseded: boolean;
   readonly lineage_state: string;
 }): StaleVerdict | null {
-  if (binding.superseded || binding.lineage_state !== 'live') {
-    return {
-      code: 'LEASE_NOT_OWNED',
-      reason: binding.superseded
-        ? `the version ${binding.version_id} this lease worked has been superseded, so its work cannot settle`
-        : `the lineage this lease worked is ${binding.lineage_state}, so its work cannot settle`,
-      fix: 'The report is retained, not accepted. Work the current version under a new pickup.',
-    };
-  }
+  if (binding.superseded) return staleVerdict('version_superseded');
+  if (binding.lineage_state !== 'live') return staleVerdict('lineage_ended');
   return null;
+}
+
+/** What discovery found behind the lease, before any lock. */
+interface Discovered {
+  readonly id: string;
+  readonly task_id: string;
+  readonly run_id: string;
+  readonly reservation_id: string;
+  readonly delegation_id: string | null;
+  readonly envelope_id: string;
+  readonly lineage_id: string;
+  readonly cap_id: string;
 }
 
 export async function handback(
   tx: TenantQuery,
   request: HandbackRequest,
 ): Promise<RuntimeResult<HandedBack>> {
-  const discovered = await tx.query<{
-    readonly id: string;
-    readonly task_id: string;
-    readonly run_id: string;
-    readonly reservation_id: string;
-    readonly delegation_id: string | null;
-    readonly envelope_id: string;
-    readonly lineage_id: string;
-    readonly cap_id: string;
-  }>(
-    `select l.id, l.task_id, l.run_id, l.reservation_id, l.delegation_id,
-            res.envelope_id, run.lineage_id, env.cap_id
-       from public.leases l
-       join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
-       join public.task_envelopes env on env.business_id = l.business_id and env.id = res.envelope_id
-       join public.planned_runs run on run.business_id = l.business_id and run.id = l.run_id
-      where l.business_id = $1 and l.id = $2`,
-    [tx.businessId, request.leaseId],
-  );
-  const found = discovered[0];
-  if (found === undefined) {
-    return refuse(
-      'LEASE_NOT_OWNED',
-      // Constant: the presented id is not echoed (root ruling 2).
-      'no such lease in this business',
-      'Hand back the lease this claim was issued.',
-    );
-  }
-
-  // T4 names "proposal-lineage coordination and affected gate rows" in the set.
-  // A successor supersedes whatever is still pending on this lineage, so those
-  // gate rows are affected rows and they are discovered here, before the locks,
-  // rather than met by an update inside them.
-  const pending = await tx.query<{ readonly id: string }>(
-    `select g.id from public.gates g
-       join public.proposal_versions v on v.business_id = g.business_id and v.id = g.version_id
-      where g.business_id = $1 and v.lineage_id = $2 and g.state = 'pending'`,
-    [tx.businessId, found.lineage_id],
-  );
-
-  // The complete set. The envelope is locked even though the ordinary handback
-  // does not change the cap — "it must lock that envelope even when it need
-  // not lock an unchanged cap" (T4). The cap is locked too, because the
-  // classifier's release reads the cap's committed total.
-  const locks = await acquire(tx, [
-    { lockClass: 'cap', id: found.cap_id },
-    { lockClass: 'envelope', id: found.envelope_id },
-    { lockClass: 'task', id: found.task_id },
-    { lockClass: 'run', id: found.run_id },
-    { lockClass: 'lineage', id: found.lineage_id },
-    ...pending.map((row) => ({ lockClass: 'gate' as const, id: row.id })),
-    { lockClass: 'lease', id: request.leaseId },
-    ...(found.delegation_id === null
-      ? []
-      : [{ lockClass: 'delegation' as const, id: found.delegation_id }]),
-    { lockClass: 'reservation', id: found.reservation_id },
-  ]);
+  const found = await discover(tx, request.leaseId);
+  // The same answer as a lease that is somebody else's: the presented id is
+  // not echoed and existence is not told apart (root ruling 2).
+  if (found === undefined) return refuseLease('not_owned', LEASE_FIXES.handback.not_owned);
+  const locks = await lockHandback(tx, request.leaseId, found);
 
   // Sol 6 RUNTIME-1 (9ddfa09): `now()` is when this transaction began, and a
   // handback that waited on these locks past the lease's expiry would still
   // see the lease live and settle work an expired lease cannot settle. The
   // expiry is judged on the clock read here, after the locks.
   const lockedAt = await lockedInstant(tx);
-
-  const leases = await tx.query<{
-    readonly state: string;
-    readonly fence: string;
-    readonly expired: boolean;
-    readonly current_fence: string;
-    readonly holder_actor_id: string;
-  }>(
-    `select l.state, l.fence::text as fence, (l.expires_at <= $3::timestamptz) as expired,
-            l.holder_actor_id,
-            (select max(fence) from public.leases
-              where business_id = l.business_id and task_id = l.task_id)::text as current_fence
-       from public.leases l where l.business_id = $1 and l.id = $2`,
-    [tx.businessId, request.leaseId, lockedAt],
-  );
-  const lease = only(leases, 'handback: the lease locked above');
-
-  // EX-01. Ownership before anything is written, retained reports included: a
-  // caller that never held this lease has no work of its own on it to keep.
-  // A person never settles an agent's lease or another person's, and an agent
-  // never settles a person's.
-  const holder = request.holder;
-  if (holder !== undefined) {
-    const personLease = found.delegation_id === null;
-    if (
-      lease.holder_actor_id !== holder.actorId ||
-      personLease !== (holder.claimant === 'person')
-    ) {
-      return refuse(
-        'LEASE_NOT_OWNED',
-        "the named lease is not this caller's",
-        'Hand back the lease your own pickup was issued.',
-      );
-    }
-    if (holder.claimant === 'person') {
-      // At the locked instant (final review R2-RUNTIME-4).
-      const held = await checkAuthorityAt(
-        tx,
-        holder.subjects,
-        {
-          collection: holder.collection,
-          action: 'write',
-          scope: { kind: 'record', id: found.task_id },
-        },
-        lockedAt,
-      );
-      if (!held.ok) {
-        return refuse(
-          'SCOPE_NOT_GRANTED',
-          `no live grant of yours covers work on task ${found.task_id} any more`,
-          'A lease is handed back under current rights. Ask a manager for write on this task.',
-        );
-      }
-    }
-  }
+  const owned = await recheckOwner(tx, request, found, lockedAt);
+  if (!owned.ok) return owned;
 
   /**
    * R4. A stale holder's work was still really done, and T4 keeps it: the
@@ -325,34 +212,113 @@ export async function handback(
    * row records which refusal retained it, so a reader can tell a retained
    * report from a settlement without joining anything.
    */
-  const refuseRetained = async (verdict: StaleVerdict): Promise<RuntimeResult<never>> => {
-    await insertReport(tx, {
-      id: randomUUID(),
-      leaseId: request.leaseId,
-      reservationId: found.reservation_id,
-      runId: found.run_id,
-      fence: request.fence,
-      outcome: request.outcome,
-      refusalCode: verdict.code,
-      report: request.report,
-    });
-    return refuse(verdict.code, verdict.reason, verdict.fix);
-  };
+  const stale = owned.value ?? (await recheckBinding(tx, request.leaseId, found));
+  if (stale !== null) {
+    await insertReport(tx, reportOf(request, found, randomUUID(), stale.code));
+    return refuse(stale.code, stale.reason, stale.fix);
+  }
 
-  // The fence check, before anything else is written. Three distinct causes,
-  // each with its own code, because a caller told the wrong one retries
-  // wrongly. Nothing below changes the task, the gate, the current lease or
-  // any money; the retained report is append-only evidence.
-  const fenced = fenceVerdict(lease, request);
-  if (fenced !== null) return refuseRetained(fenced);
+  const preflight = await preflightSettlement(tx, request, found);
+  if (preflight !== null) return preflight;
+  const settled = await settle(tx, request, found, locks);
+  const written = await writeSuccessor(tx, request.successor, found, locks);
+  if (written !== null && !written.ok) return written;
+  return await answer(tx, request, found, settled, written?.value ?? null);
+}
 
-  // F3. The lease is live and fenced, and that is still not enough: the work
-  // it holds is bound to one reservation and one approved version, and T4
-  // re-reads "every parent link, active proposal version ... and reservation
-  // eligibility after all locks are held". A version a person has superseded,
-  // or a lineage that is no longer live, is work nobody may settle, and its
-  // successor would supersede the newer proposal from stale work. The report
-  // is retained unaccepted and nothing else is written.
+/** Find: the lease and every row its settlement touches, acquiring nothing. */
+async function discover(tx: TenantQuery, leaseId: string): Promise<Discovered | undefined> {
+  const discovered = await tx.query<Discovered>(
+    `select l.id, l.task_id, l.run_id, l.reservation_id, l.delegation_id,
+            res.envelope_id, run.lineage_id, env.cap_id
+       from public.leases l
+       join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
+       join public.task_envelopes env on env.business_id = l.business_id and env.id = res.envelope_id
+       join public.planned_runs run on run.business_id = l.business_id and run.id = l.run_id
+      where l.business_id = $1 and l.id = $2`,
+    [tx.businessId, leaseId],
+  );
+  return discovered[0];
+}
+
+/**
+ * Lock: the complete set. The envelope is locked even though the ordinary
+ * handback does not change the cap -- "it must lock that envelope even when it
+ * need not lock an unchanged cap" (T4). The cap is locked too, because the
+ * classifier's release reads the cap's committed total. T4 names
+ * "proposal-lineage coordination and affected gate rows" in the set: a
+ * successor supersedes whatever is still pending on this lineage, so those
+ * gate rows are discovered here, before the locks, rather than met by an
+ * update inside them.
+ */
+async function lockHandback(tx: TenantQuery, leaseId: string, found: Discovered): Promise<LockSet> {
+  const pending = await tx.query<{ readonly id: string }>(
+    `select g.id from public.gates g
+       join public.proposal_versions v on v.business_id = g.business_id and v.id = g.version_id
+      where g.business_id = $1 and v.lineage_id = $2 and g.state = 'pending'`,
+    [tx.businessId, found.lineage_id],
+  );
+  return await acquire(tx, [
+    { lockClass: 'cap', id: found.cap_id },
+    { lockClass: 'envelope', id: found.envelope_id },
+    { lockClass: 'task', id: found.task_id },
+    { lockClass: 'run', id: found.run_id },
+    { lockClass: 'lineage', id: found.lineage_id },
+    ...pending.map((row) => ({ lockClass: 'gate' as const, id: row.id })),
+    { lockClass: 'lease', id: leaseId },
+    ...(found.delegation_id === null
+      ? []
+      : [{ lockClass: 'delegation' as const, id: found.delegation_id }]),
+    { lockClass: 'reservation', id: found.reservation_id },
+  ]);
+}
+
+/**
+ * Re-check the owner, under the locks. EX-01: ownership before anything is
+ * written, retained reports included, since a caller that never held this
+ * lease has no work of its own on it to keep. A person never settles an
+ * agent's lease or another person's, and an agent never settles a person's.
+ * Then the fence ladder, whose failure is a stale holder's retained report
+ * rather than a bare refusal: `ok` with the verdict to retain under, or `null`
+ * for a current, live lease.
+ */
+async function recheckOwner(
+  tx: TenantQuery,
+  request: HandbackRequest,
+  found: Discovered,
+  lockedAt: string,
+): Promise<RuntimeResult<StaleVerdict | null>> {
+  const lease = only(
+    [await readLease(tx, request.leaseId, lockedAt)].filter((row) => row !== undefined),
+    'handback: the lease locked above',
+  );
+  const holder = request.holder;
+  if (holder !== undefined) {
+    if (!holdsLease(lease, holder)) return refuseLease('not_owned', LEASE_FIXES.handback.not_owned);
+    if (
+      holder.claimant === 'person' &&
+      !(await personWriteLive(tx, holder, found.task_id, lockedAt))
+    )
+      return refuseLease('authority_lost', LEASE_FIXES.handback.authority_lost);
+  }
+  // The fence check, before anything else is written. Distinct causes, each
+  // with its own code, because a caller told the wrong one retries wrongly.
+  return { ok: true, value: fenceVerdict(lease, request) };
+}
+
+/**
+ * Re-check the binding (F3). The lease is live and fenced, and that is still
+ * not enough: the work it holds is bound to one reservation and one approved
+ * version, and T4 re-reads "every parent link, active proposal version ... and
+ * reservation eligibility after all locks are held". A version a person has
+ * superseded, or a lineage that is no longer live, is work nobody may settle,
+ * and its successor would supersede the newer proposal from stale work.
+ */
+async function recheckBinding(
+  tx: TenantQuery,
+  leaseId: string,
+  found: Discovered,
+): Promise<StaleVerdict | null> {
   const bound = await tx.query<{
     readonly lease_reservation: string;
     readonly version_id: string;
@@ -368,7 +334,7 @@ export async function handback(
        join public.proposal_versions ver on ver.business_id = res.business_id and ver.id = res.version_id
        join public.proposal_lineages lin on lin.business_id = ver.business_id and lin.id = ver.lineage_id
       where l.business_id = $1 and l.id = $2`,
-    [tx.businessId, request.leaseId],
+    [tx.businessId, leaseId],
   );
   const binding = bound[0];
   if (
@@ -380,14 +346,23 @@ export async function handback(
       'handback: the lease binding changed under discovery; roll back and rediscover rather than extending the lock set',
     );
   }
-  const unbound = bindingVerdict(binding);
-  if (unbound !== null) return refuseRetained(unbound);
+  return bindingVerdict(binding);
+}
 
-  // R6. This head exports no dispatch, no worker and no provider adapter, so a
-  // reported cost -- including zero -- is a number nothing observed. Settling
-  // on it would write expenditure the accepted first-head boundary says cannot
-  // exist, and a fabricated zero is exactly the "fake zero-cost settlement" T5
-  // names. Refused before the first write; the hold stays whole.
+/**
+ * Refusals that must come before the first write. R6: this head exports no
+ * dispatch, no worker and no provider adapter, so a reported cost -- including
+ * zero -- is a number nothing observed, and settling on it is the "fake
+ * zero-cost settlement" T5 names. R4, the successor half: bounded under the
+ * locks, so an out-of-bounds successor costs the caller a refusal rather than a
+ * settlement it then has to undo. Reached only past the fence checks, which is
+ * what makes "a stale fence cannot hand back" also mean it cannot propose.
+ */
+async function preflightSettlement(
+  tx: TenantQuery,
+  request: HandbackRequest,
+  found: Discovered,
+): Promise<RuntimeResult<never> | null> {
   if (request.actualMinor !== null) {
     return refuse(
       'ACTUAL_EXPENDITURE_UNSUPPORTED',
@@ -395,55 +370,76 @@ export async function handback(
       'Hand back with a null actual. Settling real provider usage belongs to the later authorised, evidence-backed accounting path.',
     );
   }
+  return request.successor === undefined ? null : await withinBounds(tx, request.successor, found);
+}
 
-  // R4, the successor half. Bounded under the locks and before the first write,
-  // so an out-of-bounds successor costs the caller a refusal rather than a
-  // settlement it then has to undo. Reached only past the fence checks above,
-  // which is what makes "a stale fence cannot hand back" also mean a stale
-  // fence cannot propose: those paths retain their report and return.
-  const successor = request.successor;
-  if (successor !== undefined) {
-    const bounded = await withinBounds(tx, successor, found);
-    if (bounded !== null) return bounded;
-  }
-
-  const attempts = await tx.query<{ readonly id: string; readonly marked: boolean }>(
-    `select id, (dispatch_marker or observed) as marked from public.attempts
-      where business_id = $1 and reservation_id = $2`,
-    [tx.businessId, found.reservation_id],
-  );
-  const attempt = only(attempts, "handback: the reservation's attempt");
-
-  // R4. The work, retained. It commits with the settlement below or with
-  // neither of them, which is what makes it the handback's evidence rather
-  // than a note somebody wrote near it.
-  const reportId = randomUUID();
-  await insertReport(tx, {
-    id: reportId,
+/** The retained or settling report row this handback writes. */
+function reportOf(
+  request: HandbackRequest,
+  found: Discovered,
+  id: string,
+  refusalCode: StaleVerdict['code'] | null,
+): Parameters<typeof insertReport>[1] {
+  return {
+    id,
     leaseId: request.leaseId,
     reservationId: found.reservation_id,
     runId: found.run_id,
     fence: request.fence,
     outcome: request.outcome,
-    refusalCode: null,
+    refusalCode,
     report: request.report,
-  });
+  };
+}
 
-  // Live and fenced under the lease lock (`fenceVerdict` above), so the guard
-  // in `endLease` changes nothing here.
+interface Settled {
+  readonly reportId: string;
+  readonly attemptId: string;
+  readonly classification: Classification;
+}
+
+/**
+ * Write the settlement. The report commits with it or with nothing, which is
+ * what makes it the handback's evidence rather than a note somebody wrote
+ * near it (R4).
+ *
+ * R7. The marker is read under the locks and decides whether the attempt's
+ * disposition may move at all. `attempts_marked_is_quarantined` (0014:82-85)
+ * requires a marked or observed attempt to sit in `quarantined`, so writing
+ * `handed_back` over it would abort the transaction before the classifier
+ * could run. A marked attempt is left to the classifier, which quarantines it
+ * and keeps the full hold for the recorded reconciliation owner.
+ *
+ * No cost and nothing observed, because R6 refused every other case. The
+ * classifier decides, under the locks this transaction already holds, whether
+ * the hold may be abandoned. No audit row is written here: `audit_events` is
+ * the command envelope's, which owns the actor, the operation identity and the
+ * chain.
+ */
+async function settle(
+  tx: TenantQuery,
+  request: HandbackRequest,
+  found: Discovered,
+  locks: LockSet,
+): Promise<Settled> {
+  const attempt = only(
+    await tx.query<{ readonly id: string; readonly marked: boolean }>(
+      `select id, (dispatch_marker or observed) as marked from public.attempts
+        where business_id = $1 and reservation_id = $2`,
+      [tx.businessId, found.reservation_id],
+    ),
+    "handback: the reservation's attempt",
+  );
+  const reportId = randomUUID();
+  await insertReport(tx, reportOf(request, found, reportId, null));
+
+  // Live and fenced under the lease lock, so the guard in `endLease` changes nothing here.
   await endLease(tx, request.leaseId, 'released');
   if (found.delegation_id !== null) await settleDelegation(tx, found.delegation_id);
   await tx.query(
     `update public.planned_runs set state = 'handed_back' where business_id = $1 and id = $2`,
     [tx.businessId, found.run_id],
   );
-  // R7. The marker is read under the locks and decides whether the attempt's
-  // disposition may move at all. `attempts_marked_is_quarantined` (0014:82-85)
-  // requires a marked or observed attempt to sit in `quarantined`, so writing
-  // `handed_back` over it aborts the transaction before the classifier can run
-  // and the documented quarantine result becomes unreachable. A marked attempt
-  // is therefore left to the classifier, which quarantines it and keeps the
-  // full hold for the recorded reconciliation owner.
   if (!attempt.marked) {
     await tx.query(
       `update public.attempts set state = 'handed_back', outcome = $3
@@ -451,82 +447,78 @@ export async function handback(
       [tx.businessId, attempt.id, request.outcome],
     );
   }
+  const classification = await classifyUnderLocks(
+    tx,
+    { reservationId: found.reservation_id, cause: 'handback_completed', causeId: request.leaseId },
+    locks,
+  );
+  return { reportId, attemptId: attempt.id, classification };
+}
 
-  // No cost and nothing observed, because R6 refused every other case above.
-  // The classifier decides, under the locks this transaction already holds,
-  // whether the hold may be abandoned -- and a marked attempt keeps its full
-  // hold as quarantined instead. The settlement branch that used to sit here
-  // is gone rather than guarded: a branch that can only ever write a number
-  // nothing observed is not a branch this head should be able to reach.
-  const classification: Classification = await classifyUnderLocks(
+type Successor = {
+  readonly versionId: string;
+  readonly gateId: string;
+  readonly runId: string;
+  readonly stepId: string;
+};
+
+/**
+ * The successor, in this transaction, through the lock-aware writer and under
+ * the locks taken above. After the settlement on purpose: the classification
+ * is what makes the old attempt nonclaimable, and the successor is the work
+ * somebody may now approve instead. Neither is committable without the other.
+ */
+async function writeSuccessor(
+  tx: TenantQuery,
+  successor: SuccessorRequest | undefined,
+  found: Discovered,
+  locks: LockSet,
+): Promise<RuntimeResult<Successor> | null> {
+  if (successor === undefined) return null;
+  return await writeProposal(
     tx,
     {
-      reservationId: found.reservation_id,
-      cause: 'handback_completed',
-      causeId: request.leaseId,
+      taskId: found.task_id,
+      lineageId: found.lineage_id,
+      envelopeId: found.envelope_id,
+      capId: found.cap_id,
+      proposedByActorId: successor.proposedByActorId,
+      purpose: successor.purpose,
+      maximumMinor: successor.maximumMinor,
+      currency: successor.currency,
+      payload: successor.payload,
+      step: successor.step,
+      expiresAt: successor.expiresAt,
     },
     locks,
   );
-  const reservationState: HandedBack['reservationState'] = classification.state;
+}
 
-  // No audit row is written here. `audit_events` is written through L3's
-  // command envelope, which owns the actor, the operation identity and the
-  // chain; a second writer reaching into that table from this package would be
-  // a second shape of the same trail, and the first attempt at it aborted the
-  // whole handback transaction on a column that does not exist. The handback's
-  // own durable facts are the released lease, the settled delegation, the
-  // attempt outcome and the reservation's disposition above. Named in the
-  // handback as an interface L3 supplies.
-
-  // The successor, in this transaction, through the lock-aware writer and under
-  // the locks taken above. After the settlement on purpose: the classification
-  // is what makes the old attempt nonclaimable, and the successor is the work
-  // somebody may now approve instead. Neither is committable without the other.
-  let written: {
-    readonly versionId: string;
-    readonly gateId: string;
-    readonly runId: string;
-    readonly stepId: string;
-  } | null = null;
-  if (successor !== undefined) {
-    const proposal = await writeProposal(
-      tx,
-      {
-        taskId: found.task_id,
-        lineageId: found.lineage_id,
-        envelopeId: found.envelope_id,
-        capId: found.cap_id,
-        proposedByActorId: successor.proposedByActorId,
-        purpose: successor.purpose,
-        maximumMinor: successor.maximumMinor,
-        currency: successor.currency,
-        payload: successor.payload,
-        step: successor.step,
-        expiresAt: successor.expiresAt,
-      },
-      locks,
-    );
-    if (!proposal.ok) return proposal;
-    written = proposal.value;
-  }
-
-  const envelopes = await tx.query<{ readonly held_minor: string; readonly actual_minor: string }>(
-    `select held_minor::text as held_minor, actual_minor::text as actual_minor
-       from public.task_envelopes where business_id = $1 and id = $2`,
-    [tx.businessId, found.envelope_id],
+/** The durable handles, and the envelope's totals as the settlement left them. */
+async function answer(
+  tx: TenantQuery,
+  request: HandbackRequest,
+  found: Discovered,
+  settled: Settled,
+  written: Successor | null,
+): Promise<RuntimeResult<HandedBack>> {
+  const envelope = only(
+    await tx.query<{ readonly held_minor: string; readonly actual_minor: string }>(
+      `select held_minor::text as held_minor, actual_minor::text as actual_minor
+         from public.task_envelopes where business_id = $1 and id = $2`,
+      [tx.businessId, found.envelope_id],
+    ),
+    'handback: the envelope locked above',
   );
-
-  const envelope = only(envelopes, 'handback: the envelope locked above');
-
   return {
     ok: true,
     value: {
       leaseId: request.leaseId,
-      reportId,
+      reportId: settled.reportId,
       reservationId: found.reservation_id,
-      attemptId: attempt.id,
-      reservationState,
-      classification,
+      attemptId: settled.attemptId,
+      reservationState: settled.classification.state,
+      classification: settled.classification,
       envelopeHeldMinor: Number(envelope.held_minor),
       envelopeActualMinor: Number(envelope.actual_minor),
       successorVersionId: written?.versionId ?? null,

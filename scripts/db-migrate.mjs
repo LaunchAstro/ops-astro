@@ -18,8 +18,8 @@
 // this script offers no way round that: no flag, no environment variable. The
 // supported upgrade is the API and GoTrue stopped, this, then both started.
 
-import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { readEnvFile } from '../packages/core-records/src/env-file.ts';
 import { connectAsAdmin } from '../packages/core-records/src/tenancy/database.ts';
 import {
   MigrationRefused,
@@ -32,14 +32,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 /** `.local/db.env` is what `scripts/local/db-up.sh` writes. The environment wins. */
 function adminUrl() {
   if (process.env.DATABASE_ADMIN_URL) return process.env.DATABASE_ADMIN_URL;
-  const file = `${root}.local/db.env`;
-  if (existsSync(file)) {
-    for (const line of readFileSync(file, 'utf8').split('\n')) {
-      const match = /^DATABASE_ADMIN_URL=(.+)$/u.exec(line.trim());
-      if (match) return match[1];
-    }
-  }
-  return undefined;
+  return readEnvFile(`${root}.local/db.env`).DATABASE_ADMIN_URL || undefined;
 }
 
 const url = adminUrl();

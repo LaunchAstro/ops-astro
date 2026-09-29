@@ -22,7 +22,7 @@
 // Run: WEB_URL=... API_URL=... SHOT_DIR=... node tests/browser/i10-open-page.mjs
 
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { chromium } from 'playwright';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
@@ -52,12 +52,11 @@ const taskDenial = (page) => page.locator('[data-outcome="denied"]', { hasText: 
 
 /** GoTrue's address, from the same gitignored file the API reads. */
 function gotrueUrl() {
-  if (process.env.GOTRUE_URL) return process.env.GOTRUE_URL;
-  for (const line of readFileSync(`${root}.local/auth.env`, 'utf8').split('\n')) {
-    const match = /^GOTRUE_URL=(.+)$/u.exec(line.trim());
-    if (match) return match[1];
-  }
-  return 'http://127.0.0.1:54391';
+  return (
+    process.env.GOTRUE_URL ||
+    readEnvFile(`${root}.local/auth.env`, { required: true }).GOTRUE_URL ||
+    'http://127.0.0.1:54391'
+  );
 }
 
 /** A real sign-in: GoTrue's password grant, the one the web's form makes. */

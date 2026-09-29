@@ -42,11 +42,14 @@ describe('API.md task.comment row (R2-AUTHORITY-37)', () => {
     const source = read('packages/core-commands/src/commands/tasks-comment.ts');
     const codes = codesIn(bodyOf(source, 'writeTaskComment'));
     expect(codes).toEqual(
-      expect.arrayContaining(['AUDIENCE_NOT_PERMITTED', 'FIELD_VALUE_INVALID']),
+      expect.arrayContaining([
+        'AUDIENCE_NOT_PERMITTED',
+        'FIELD_VALUE_INVALID',
+        'DEPENDENCY_NOT_LANDED',
+      ]),
     );
-    // The two helpers it calls answer these.
+    // The helper it calls answers this one.
     expect(source).toContain('refuseNotFound()');
-    expect(source).toContain('refuseUnlanded(on.declaration)');
     const row = apiRow('task.comment', '/task/comment');
     for (const code of [...codes, 'NOT_FOUND', 'DEPENDENCY_NOT_LANDED']) {
       expect(row, code).toContain(`\`${code}\``);

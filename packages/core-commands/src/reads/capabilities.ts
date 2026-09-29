@@ -29,28 +29,7 @@ import { effectiveGrants, subjectsOf } from '../../../core-records/src/index.ts'
 import type { TenantQuery, Session, Action, ScopeKind } from '../../../core-records/src/index.ts';
 import { declarationOf } from '../../../core-wire/src/index.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
-
-/** One thing the caller may do, as the grant model spells it. */
-export interface Capability {
-  readonly collection: string;
-  readonly action: Action;
-}
-
-/**
- * The person answer, flattened onto the read result rather than nested.
- *
- * The three fields sit beside `ok` on the wire -- `{ ok: true, personId,
- * businessKey, grants }` -- because that is the shape the surfaces are being
- * written against, and a nested `capabilities` object would have made every
- * client reach through one more level for three fields.
- */
-export interface SessionCapabilities {
-  readonly personId: string;
-  /** The business's key, which is what a path and a screen both name it by. */
-  readonly businessKey: string;
-  /** Distinct pairs, sorted. A pair held at two scopes appears once. */
-  readonly grants: readonly Capability[];
-}
+import type { Capability, SessionCapabilities } from '../../../core-wire/src/index.ts';
 
 /**
  * The agent half of the same question.
