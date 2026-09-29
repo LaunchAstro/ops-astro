@@ -285,7 +285,8 @@
     "tests/fixture/fixture-shape.test.ts",
     "tests/fixture/snapshot-clone-and-privileges.test.ts",
     "tests/custody/c31-credentials.test.ts",
-    "tests/connections/mp-14-7a-fleet.test.ts"
+    "tests/connections/mp-14-7a-fleet.test.ts",
+    "tests/connections/mp-14-8-signal.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

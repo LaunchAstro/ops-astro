@@ -906,6 +906,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `secret.clear`                     | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `connection.fleet`                 | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `connector.repair`                 | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `connection.signal`                | `readConnectionSignal` (`reads/signal.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
@@ -1478,3 +1479,24 @@ build only reads them.
 
 The custody field is a reference: the secret's id and whether custody holds a
 value, never any part of one.
+
+## Grants, tripwires and the night round (MP-14-8)
+
+Connections & signal sections 006 to 008, one read on `connection:read`, never
+an agent. Each list is filtered in its statement by the scopes the caller holds
+the key at. A business-wide reader sees every row; a client-scoped reader sees
+only the rows bound to one of their clients (a grant whose task carries that
+client, a tripwire or a night round step naming it), never a fleet row. Every
+count is derived from the rows beside it, and the roster counts only the live
+grants the caller can see.
+
+A grant is a delegation. Its client is its purpose task's party link; its
+`redemptions` are the applied calls its agent made on that task while it held
+it, less the pickup that minted it. Nothing records what each call reached.
+Tripwires and night round steps are written by the checks and the round
+itself (`tripwires`, `night_round_steps`, migration 0034); the application
+role only reads them.
+
+| Operation           | Route                | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------- | -------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.signal` | `/connection/signal` | `{}` | `{ ok: true, leases: [{ id, agentId, purpose, collections, access: 'read' \| 'exec', client: { id, label } \| null, grantedAt, expiresAt, endedAt, revocationCause, state: 'live' \| 'ran_out' \| 'taken_back', redemptions }], leaseCounts: { live, ranOut, takenBack, liveExec }, tripwires: [...], tripwireCounts: { armed, cannotBeArmed }, nightRound: { roundOn, steps: [{ id, at, tone, what, who, say, cite }], notClean } \| null, roster: [{ agentId, active, liveGrants }] }`; `SCOPE_NOT_GRANTED` 403 |

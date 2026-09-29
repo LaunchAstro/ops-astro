@@ -9,7 +9,7 @@
 // records every call, so the cases can prove the sections send nothing.
 
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { ConnectionsScreen } from '../../apps/web/src/screens/Connections.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import type {
@@ -127,6 +127,8 @@ function signalBody(grants: readonly GrantView[], badSteps = 1): ConnectionSigna
 const LIVE_ONLY = [grant('live', 'live', 37), grant('fleetx', 'live', 300)];
 const ALL = [...LIVE_ONLY, grant('unused', 'ran_out', -60), grant('fleet-taken', 'taken_back', 90)];
 
+const opened: Mounted[] = [];
+
 async function open(
   signal: ConnectionSignalResult,
 ): Promise<{ readonly page: Mounted; readonly sent: string[] }> {
@@ -148,9 +150,19 @@ async function open(
   }) as typeof globalThis.fetch;
   const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
   const page = await mount(<ConnectionsScreen client={client} now={() => NOW} />);
+  opened.push(page);
   await tick();
   return { page, sent };
 }
+
+// A case that fails before its own unmount leaves its page behind; take it
+// down here so the next case starts on an empty document.
+afterEach(async () => {
+  for (const page of opened.splice(0)) {
+    // eslint-disable-next-line no-await-in-loop -- one page at a time
+    if (page.host.isConnected) await page.unmount();
+  }
+});
 
 const text = (page: Mounted, selector: string): string => page.all(selector)[0]?.textContent ?? '';
 
