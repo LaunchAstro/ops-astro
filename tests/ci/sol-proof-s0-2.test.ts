@@ -133,3 +133,50 @@ it('Sol proof, criterion 10: repeated agent cross-business refusals raise a burs
   await alerts.settled();
   expect(events.map((event) => event.tags['alert'])).toEqual(['cross-scope-burst']);
 });
+
+it('Sol proof, criterion 10: an agent queue download contributes to the volume alert', async () => {
+  const events: SinkEvent[] = [];
+  const alerts = createAlerts({
+    where: 'staging',
+    root: ROOT,
+    send: (event) => {
+      events.push(event);
+      return Promise.resolve();
+    },
+  });
+  const queue = Array.from({ length: 5000 }, (_, index) => ({
+    reservationId: `reservation-${index}`,
+    taskId: `task-${index}`,
+    runId: `run-${index}`,
+    versionId: `version-${index}`,
+    lineageId: `lineage-${index}`,
+    purpose: 'approved work',
+    heldMinor: 0,
+  }));
+  const unused = (() => Promise.resolve({ code: 'ok' })) as unknown as CommandExecutor;
+  const api = createApi({
+    database: {} as Database,
+    verify: () => Promise.resolve({ provider: 'test', subject: 'agent-one' }),
+    resolveBusiness: () => Promise.resolve('business-id'),
+    executeRead: unused as unknown as ReadExecutor,
+    executeCommand: unused,
+    executeAgentCommand: (() =>
+      Promise.resolve({
+        command: 'task.queue',
+        recordId: null,
+        revision: null,
+        detail: { queue },
+      })) as AgentExecutor,
+    observe: alerts.observe,
+  });
+  const response = await api.fetch(
+    new Request(`http://api.test${PREFIX.agent}alpha${pathOf('task.queue')}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    }),
+  );
+  expect(response.status).toBe(200);
+  await alerts.settled();
+  expect(events.map((event) => event.tags['alert'])).toEqual(['export-volume']);
+});
