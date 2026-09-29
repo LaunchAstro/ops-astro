@@ -209,11 +209,35 @@ describe.skipIf(serverUrl === undefined)('MP-2-11a the one preference store', ()
     expect(await auditCount(ada.actorId)).toBe(before + 1);
   });
 
+  it('Sol proof, criterion 19: reading own preferences adds no audit event', async () => {
+    const countReads = async (): Promise<number> => {
+      const [row] = await fixture.db.admin.execute<{ n: string }>(
+        `select count(*)::text as n from public.audit_events
+          where actor_id = $1 and command = 'preference.read'`,
+        [ada.actorId],
+      );
+      return Number(row?.n);
+    };
+    const before = await countReads();
+    await read(adaToken);
+    expect(await countReads()).toBe(before);
+  });
+
   it('MP-2-11a a person holding no grant saves their own key and is refused the read', async () => {
     const bare = await enrol(fixture.db.app, fixture.business, 'Bea Bare');
     const token = await tokenFor(bare.presented.subject);
     expect((await save('appearance', 'dark', token)).status).toBe(200);
+    const readAudits = async (): Promise<number> => {
+      const [row] = await fixture.db.admin.execute<{ n: string }>(
+        `select count(*)::text as n from public.audit_events
+          where actor_id = $1 and command = 'preference.read' and outcome = 'refused'`,
+        [bare.actorId],
+      );
+      return Number(row?.n);
+    };
+    // A refused read is audited: only a successful one is not (CS-2.8).
     expect((await call('preference.read', {}, token)).body['code']).toBe('SCOPE_NOT_GRANTED');
+    expect(await readAudits()).toBe(1);
     expect(await rowsOf(bare.personId)).toStrictEqual([{ key: 'appearance', value: 'dark' }]);
   });
 

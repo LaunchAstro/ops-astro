@@ -1344,6 +1344,11 @@ excludes the reads, because a history is what happened _to_ the task.
 `settings.read` and `session.capabilities` carry a null subject: neither is
 about one record, and naming one would make "who read this record" false.
 
+One pair is the exception: a person's own preferences are saved and read
+without an audit event (CS-2.8, MP-2-11a). A successful `preference.save` or
+`preference.read` writes none, and a refused one is audited like any other.
+The surface row's `audited: false` says so; nothing else skips the chain.
+
 ## Open items
 
 Named so they are not read as settled:
