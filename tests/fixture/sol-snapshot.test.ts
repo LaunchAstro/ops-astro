@@ -23,13 +23,17 @@ it.skipIf(serverUrl === undefined)(
   async () => {
     const server = connectAsAdmin(serverUrl ?? '', { source: 'harness' });
     const databases = async () =>
-      (await server.execute<{ datname: string }>(
-        "select datname from pg_database where datname like 'fixture\\_%' or datname like 't1_fixture\\_%'",
-      )).map((row) => row.datname);
+      (
+        await server.execute<{ datname: string }>(
+          "select datname from pg_database where datname like 'fixture\\_%' or datname like 't1_fixture\\_%'",
+        )
+      ).map((row) => row.datname);
     const roles = async () =>
-      (await server.execute<{ rolname: string }>(
-        "select rolname from pg_roles where rolname like 't1_fixture_%'",
-      )).map((row) => row.rolname);
+      (
+        await server.execute<{ rolname: string }>(
+          "select rolname from pg_roles where rolname like 't1_fixture_%'",
+        )
+      ).map((row) => row.rolname);
     const beforeDatabases = await databases();
     const beforeRoles = await roles();
     try {

@@ -22,7 +22,18 @@ import type {
   CommandResult,
 } from '../../packages/core-commands/src/commands/register-store.ts';
 import { approveBody, handbackBody, proposeBody } from '../runtime/schedules-harness.ts';
-import { agentOf, client, grantOn, refused, tenant, type Seedable, type Tenant } from './cast.ts';
+import {
+  agentOf,
+  client,
+  grantOn,
+  presetFields,
+  refused,
+  tenant,
+  type Seedable,
+  type Tenant,
+} from './cast.ts';
+import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
+import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import type { FixtureShape } from './shape.ts';
 
 type Detail = Readonly<Record<string, unknown>>;
@@ -33,6 +44,18 @@ export interface FixtureReport {
   readonly slots: { readonly assigned: number; readonly total: number };
   readonly people: { readonly alpha: readonly string[]; readonly bravo: readonly string[] };
   readonly seedMs: number;
+  /** Who the isolation cases read as: a client sees its own shared task only. */
+  readonly callers: {
+    readonly alpha: BusinessId;
+    readonly bravo: BusinessId;
+    readonly bravoLead: VerifiedSubject;
+    readonly r4: VerifiedSubject;
+    readonly clients: readonly {
+      readonly business: BusinessId;
+      readonly presented: VerifiedSubject;
+      readonly task: string;
+    }[];
+  };
   /** SPEC 10.1 rows this base cannot reach through a command (see `shape.ts`). */
   readonly heldBack: readonly string[];
 }
@@ -177,6 +200,7 @@ export async function seedFixture(db: Seedable, shape: FixtureShape): Promise<Fi
   process.env['GATE_SIGNING_SECRET'] ??= randomUUID();
   const alpha = await tenant(db, 'alpha', shape.peopleA);
   const bravo = await tenant(db, 'bravo', 1);
+  await presetFields(db, alpha, shape.taskSlots);
   const tree = await seedTasks(db, alpha, shape);
   const bravoTasks: string[] = [];
   for (let i = 0; i < shape.tasksB; i += 1)
@@ -187,9 +211,15 @@ export async function seedFixture(db: Seedable, shape: FixtureShape): Promise<Fi
   await onTask(db, alpha, tree.root, { command: 'task.trash' });
   const recordGrantTask = tree.rest.at(-1) ?? refused('grant', 'NO_TASK');
   await grantOn(db, alpha, alpha.members[3] ?? refused('grant', 'NO_R4'), recordGrantTask);
+  const clients: FixtureReport['callers']['clients'][number][] = [];
   for (let c = 0; c < shape.clientsPerBusiness; c += 1) {
-    await client(db, alpha, c + 1, tree.rest[c] ?? refused('client', 'NO_TASK'));
-    await client(db, bravo, c + 1, bravoTasks[c] ?? refused('client', 'NO_TASK'));
+    for (const [t, tasks] of [
+      [alpha, tree.rest],
+      [bravo, bravoTasks],
+    ] as const) {
+      const task = tasks[c] ?? refused('client', 'NO_TASK');
+      clients.push({ business: t.id, presented: await client(db, t, c + 1, task), task });
+    }
   }
   const [slots] = await db.admin.execute<{ assigned: string; total: string }>(
     `select (select count(distinct f.slot) from public.field_defs f join public.record_types t
@@ -203,6 +233,13 @@ export async function seedFixture(db: Seedable, shape: FixtureShape): Promise<Fi
     recordGrantTask,
     slots: { assigned: Number(slots?.assigned), total: Number(slots?.total) },
     people: { alpha: alpha.people, bravo: bravo.people },
+    callers: {
+      alpha: alpha.id,
+      bravo: bravo.id,
+      bravoLead: bravo.lead.presented,
+      r4: alpha.members[3]?.presented ?? refused('callers', 'NO_R4'),
+      clients,
+    },
     seedMs: Math.round(performance.now() - started),
     heldBack: ['1,200 steps', '6,000 run events', 'one run held at 1,500 events'],
   };

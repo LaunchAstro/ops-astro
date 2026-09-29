@@ -13,6 +13,7 @@ import type { Action } from '../../packages/core-records/src/authority/grants.ts
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
+import { planPresetSync } from '../../packages/core-records/src/records/preset-plan.ts';
 import {
   insertActor,
   insertBusiness,
@@ -90,19 +91,63 @@ export async function grantOn(
   });
 }
 
+/**
+ * Preset fields on the task type until it assigns `slots` slots (SPEC 10.1:
+ * 24 of 38). No command applies a preset, so the slots come from the
+ * product's own planner and the rows go in as the spine's do.
+ */
+export async function presetFields(db: Seedable, t: Tenant, slots: number): Promise<void> {
+  await db.app.withBusiness(t.id, async (tx) => {
+    const [held] = await tx.query<{ n: string; type: string }>(
+      `select count(f.slot)::text n, t.id type from public.record_types t
+         left join public.field_defs f on f.business_id = t.business_id
+          and f.record_type_id = t.id and f.slot is not null
+        where t.business_id = $1 and t.key = 'task' group by t.id`,
+      [t.id],
+    );
+    const fields = Array.from({ length: slots - Number(held?.n) }, (_, n) => ({
+      key: `fixture_${String(n + 1)}`,
+      label: `Fixture ${String(n + 1)}`,
+      valueType: n % 2 === 0 ? ('text' as const) : ('boolean' as const),
+      writeMode: 'generic',
+      visibilityClass: 'internal',
+    }));
+    const request = { recordTypeKey: 'task', presetKey: 'fixture', fields };
+    const plan = await planPresetSync(tx, t.lead, request);
+    if (!plan.ok) refused('preset plan', plan.refusal.code);
+    for (const [n, step] of plan.value.actions.entries()) {
+      const field = fields[n];
+      if (step.action !== 'create_field' || field === undefined) refused('preset', step.action);
+      await tx.query(
+        `insert into public.field_defs (business_id, id, record_type_id, key, label, value_type,
+           slot, write_mode, visibility_class, origin)
+         values ($1, $2, $3, $4, $5, $6, $7, 'generic', 'internal', 'preset')`,
+        [t.id, randomUUID(), held?.type, field.key, field.label, field.valueType, step.slot],
+      );
+    }
+  });
+}
+
 /** A client of this business, outside it, shown one task. */
-export async function client(db: Seedable, t: Tenant, n: number, recordId: string): Promise<void> {
+export async function client(
+  db: Seedable,
+  t: Tenant,
+  n: number,
+  recordId: string,
+): Promise<VerifiedSubject> {
   const key = `${t.key}-client-${String(n)}`;
+  const subject = `${key}-${randomUUID()}`;
   await db.app.withBusiness(t.id, async (tx) => {
     const personId = await insertPerson(tx, key);
     await insertActor(tx, personId);
-    const loginId = await insertLogin(tx, `${key}-${randomUUID()}`);
+    const loginId = await insertLogin(tx, subject);
     await insertMapping(tx, loginId, personId, t.lead.actorId);
     const sharer = { personId: t.lead.personId, actorId: t.lead.actorId };
     const shared = await shareRecord(tx, sharer, { collection: 'task', recordId, personId });
     if (!shared.ok) refused('share', shared.refusal.code);
     t.people.push(personId);
   });
+  return { provider: 'supabase', subject };
 }
 
 /** The agent the runs are picked up by, linked by the business's lead. */

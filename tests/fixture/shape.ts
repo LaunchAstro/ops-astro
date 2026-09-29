@@ -4,10 +4,12 @@
 // as data. Test tooling, never shipped. The generator takes any shape, so a
 // suite can seed this one at a small scale and the snapshot build the full.
 //
-// Two dimensions of the table are held back, and the report says so: the
-// SPEC's 1,200 steps and 6,000 run events with one run at 1,500 need a run
-// with many attempts, which no command reaches at this base. Each run here is
-// one pickup and one hand-back, so its events are what T2a writes for that.
+// The run rows are held back, and the report says so. Through the commands a
+// proposal version plans exactly one step (`proposal-writer.ts`, ordinal 1),
+// and T2a writes two events per pickup and hand-back; a failed hand-back
+// settles the hold and a restart opens a new lineage. So events never exceed
+// twice the steps, and the SPEC's 1,200 steps, 6,000 events and one run at
+// 1,500 cannot be reached without writing rows no command wrote.
 
 export interface FixtureShape {
   /** Task records in A and B, subtasks and trashed ones included. */
@@ -17,6 +19,8 @@ export interface FixtureShape {
   readonly peopleA: number;
   readonly clientsPerBusiness: number;
   readonly sections: number;
+  /** Slots the task type assigns, spine and preset fields together; the rest stay null. */
+  readonly taskSlots: number;
   /** Records with a parent, and of those, records whose parent has one. */
   readonly withParent: number;
   readonly withGrandparent: number;
@@ -41,6 +45,7 @@ export const FIXTURE_SHAPE: FixtureShape = {
   peopleA: 6,
   clientsPerBusiness: 2,
   sections: 3,
+  taskSlots: 24,
   withParent: 600,
   withGrandparent: 60,
   comments: 20_000,
