@@ -223,17 +223,24 @@ export function isInternalReader(roleKey: string | null): boolean {
   return roleKey !== null && INTERNAL_ROLES.has(roleKey);
 }
 
+/**
+ * Who is reading the comments: an internal reader, whose own rows are marked
+ * by their actor, or anyone else, who gets the shared projection.
+ */
+export type CommentReader =
+  { readonly internal: true; readonly actorId: string } | { readonly internal: false };
+
 async function commentsFor(
   tx: TenantQuery,
   commentTypeId: string | undefined,
   taskId: string,
-  internal: boolean,
+  reader: CommentReader,
 ): Promise<readonly Readonly<Record<string, unknown>>[]> {
   // A business with no comment type has no comments, which is an empty list
   // and not a fault: the task detail is still the task detail.
   if (commentTypeId === undefined) return [];
   const comments = await readTaskComments(tx, commentTypeId, taskId);
-  if (!internal) {
+  if (!reader.internal) {
     return externalCommentProjection(comments, await readFieldDefinitions(tx, commentTypeId));
   }
   // The times as the ISO strings they are sent as, so the type this builds is
@@ -250,6 +257,7 @@ async function commentsFor(
     source: comment.source,
     parent: comment.parentId,
     signal: signals.get(comment.id) ?? null,
+    own: comment.authorActorId === reader.actorId,
   }));
 }
 
@@ -258,7 +266,7 @@ export async function readTaskDetail(
   tx: TenantQuery,
   taskTypeId: string,
   recordId: string,
-  comments: { readonly commentTypeId: string | undefined; readonly internal: boolean },
+  comments: { readonly commentTypeId: string | undefined } & CommentReader,
   rankPool: RankPool,
 ): Promise<TaskDetail | undefined> {
   // A malformed identifier is not cast and not queried. The cast would raise
@@ -278,7 +286,7 @@ export async function readTaskDetail(
     description: row.description,
     agentBrief: row.agent_brief,
     history: await historyOf(tx, row.id, comments.internal),
-    comments: await commentsFor(tx, comments.commentTypeId, row.id, comments.internal),
+    comments: await commentsFor(tx, comments.commentTypeId, row.id, comments),
     // The proposals go to every reader of the detail, internal or external,
     // because the projection carries no comment body and no field value the
     // catalogue classifies -- it carries the proposal's own payload, which is
@@ -350,7 +358,7 @@ export async function readSharedTask(
     // `revision` is `bigint`, which this driver hands back as a string.
     revision: Number(row['revision']),
     fields,
-    comments: await commentsFor(tx, commentTypeId, recordId, false),
+    comments: await commentsFor(tx, commentTypeId, recordId, { internal: false }),
   };
 }
 
