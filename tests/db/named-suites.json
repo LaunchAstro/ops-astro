@@ -268,6 +268,7 @@
     "tests/runtime/o3-held-recheck.test.ts",
     "tests/runtime/successor-bounds-edge.test.ts",
     "tests/ci/operator-only.test.ts",
+    "tests/ci/service-stop.test.ts",
     "tests/runtime/storage-backstop-migrations.test.ts",
     "tests/runtime/cap-ceiling-fails-closed.test.ts",
     "tests/tenancy/temporary-tables.test.ts",
