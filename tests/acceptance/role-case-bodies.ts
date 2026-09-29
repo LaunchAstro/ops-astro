@@ -205,6 +205,7 @@ export function createPositiveBody(
         // own-lease handback is case (h), `k-handback` rows.
         return { body: { ...(await ownLease(context)), outcome: 'completed' } };
       case 'task.read':
+      case 'task.context':
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
         return { body: { board: null } };

@@ -74,9 +74,10 @@ const INJECTED_BOUNDS = 3;
 /** The operations that name no identifier, from the list the matrix and SC2 case share. */
 const TARGET_FREE: ReadonlySet<CommandName> = new Set(TARGET_FREE_BODIES.map(([op]) => op));
 
-/** The reads that name one record by `recordId`: the task, and a map's two views. */
+/** The reads that name one record by `recordId`: the task, its bundle, and a map's views. */
 const RECORD_READS: ReadonlySet<CommandName> = new Set([
   'task.read',
+  'task.context',
   'map.view',
   'map.frontier',
   'map.status',
@@ -200,7 +201,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 37 cells: the 26 record-targeted operations, then the 11 with their own operand. */
+  /** The 38 cells: the 27 record-targeted operations, then the 11 with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -304,11 +305,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 37 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 38 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(37);
-    expect(names).toHaveLength(37);
+    expect(new Set(names).size, 'distinct operations').toBe(38);
+    expect(names).toHaveLength(38);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

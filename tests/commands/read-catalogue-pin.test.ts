@@ -33,6 +33,7 @@ const PINNED_SHAPE = {
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
   'settings.read': { spine: false, subject: false, authority: 'declared' },
   'task.board': { spine: true, subject: false, authority: 'declared' },
+  'task.context': { spine: true, subject: true, authority: 'declared' },
   'task.queue': { spine: false, subject: false, authority: 'declared' },
   'task.read': { spine: true, subject: true, authority: 'declared' },
 };
@@ -46,6 +47,7 @@ const PINNED_IDENTIFIERS = {
   'session.capabilities': [],
   'settings.read': [],
   'task.board': ['board'],
+  'task.context': ['recordId'],
   'task.queue': [],
   'task.read': ['recordId'],
 };
@@ -55,6 +57,7 @@ const PINNED_OUTSIDER_NOT_FOUND = [
   'map.status',
   'map.view',
   'task.board',
+  'task.context',
   'task.read',
 ];
 
@@ -81,6 +84,11 @@ const MAP_ID = {
   code: 'FIELD_VALUE_INVALID',
   names: ['recordId'],
   fixes: ['Send recordId as the map’s identifier or its key.'],
+};
+const TICKET_ID = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['recordId'],
+  fixes: ['Send recordId as the ticket’s identifier or its key.'],
 };
 const BOARD = {
   code: 'FIELD_VALUE_INVALID',
@@ -130,6 +138,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'map.view': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
   'map.frontier': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
   'map.status': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
+  'task.context': BODIES.map(([label]) => (label === 'recordId string' ? null : TICKET_ID)),
   'task.queue': BODIES.map(() => null),
   'person.list': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
@@ -145,7 +154,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same ten reads (API-4 added map.status)', () => {
+  it('names the same eleven reads (API-4 added map.status and task.context)', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

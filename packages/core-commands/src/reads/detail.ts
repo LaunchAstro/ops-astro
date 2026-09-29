@@ -67,7 +67,7 @@ export interface Blockers {
  * (`reads/dispatch.ts`): read on the task at its record scope, or at the scope
  * of the map it is a ticket of (W12); a business-wide grant answers both.
  */
-async function mayRead(
+export async function mayRead(
   tx: TenantQuery,
   subjects: readonly Subject[],
   id: string,

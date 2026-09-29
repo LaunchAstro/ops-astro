@@ -211,9 +211,10 @@ export async function createHarness(part: string): Promise<Harness> {
    * uniform across the table would have measured that refusal rather than the
    * authority one the case is about.
    */
-  /** The reads that name one record: the task, and a map's two views (WF-1, WF-2). */
+  /** The reads that name one record: the task, its bundle, and a map's views (WF-1, WF-2, API-4). */
   const RECORD_READS: ReadonlySet<string> = new Set([
     'task.read',
+    'task.context',
     'map.view',
     'map.frontier',
     'map.status',

@@ -113,7 +113,8 @@ export type CommandName =
   | 'task.resolve'
   | 'task.close_out_of_scope'
   | 'map.frontier'
-  | 'map.status';
+  | 'map.status'
+  | 'task.context';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -554,6 +555,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
   // API-4: the frontier, the fog and the counts, one query on the read models.
   read('map.status', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // API-4: work this ticket, the whole bundle in one call and one statement.
+  read('task.context', TASK_COLLECTION, { authorisedOn: 'record' }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));

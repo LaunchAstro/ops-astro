@@ -37,6 +37,7 @@ import type {
   MapViewResult,
   MapFrontierResult,
   MapStatusResult,
+  TicketContextResult,
 } from '../../../core-wire/src/index.ts';
 import type { Detail, Paging } from './detail.ts';
 
@@ -103,6 +104,8 @@ export interface ReadOperands {
   readonly 'map.frontier': { readonly recordId: string };
   /** A map's frontier, fog and counts in one call, at a detail level (API-4). */
   readonly 'map.status': { readonly recordId: string; readonly detail?: Detail };
+  /** Work this ticket: the ticket and all it depends on, in one call, at a detail level (API-4). */
+  readonly 'task.context': { readonly recordId: string; readonly detail?: Detail };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -140,4 +143,5 @@ export type ReadResult =
   | CapabilitiesResult
   | MapViewResult
   | MapFrontierResult
-  | MapStatusResult;
+  | MapStatusResult
+  | TicketContextResult;

@@ -107,7 +107,9 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     const targeted = COMMAND_SURFACE.filter(
       (declaration) =>
         declaration.targetsExistingRecord ||
-        ['task.read', 'map.view', 'map.frontier', 'map.status'].includes(declaration.name),
+        ['task.read', 'task.context', 'map.view', 'map.frontier', 'map.status'].includes(
+          declaration.name,
+        ),
     );
     expect(targeted.length).toBeGreaterThan(0);
     for (const declaration of targeted) {

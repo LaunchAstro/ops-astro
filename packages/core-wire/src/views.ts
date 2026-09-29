@@ -425,6 +425,33 @@ export interface MapStatus {
   readonly fog: readonly Readonly<{ id: string; text?: string }>[];
 }
 
+type Part = Readonly<Record<string, unknown>>;
+
+/**
+ * Work this ticket (API-4): the ticket and everything it depends on, at a
+ * detail level. A part the reader may not read is absent and counted under
+ * `withheld`, never silently dropped.
+ */
+export interface TicketContext {
+  readonly ticket: Part;
+  readonly map?: Part & { readonly decisions: readonly Part[] };
+  readonly blockedBy: readonly Part[];
+  readonly blocks: readonly Part[];
+  /** The checklist lines of the description, as written. */
+  readonly acceptance: readonly string[];
+  /** Linked documents by title and link; none until WF-8 gives them a home (TR-A2-7). */
+  readonly documents: readonly Readonly<{ title: string; link: string }>[];
+  readonly thread: readonly Part[];
+  readonly threadCount: number;
+  readonly withheld?: Readonly<Partial<Record<'map' | 'blockedBy' | 'blocks', number>>>;
+}
+
+export interface TicketContextResult {
+  readonly ok: true;
+  readonly detail: 'brief' | 'standard' | 'full';
+  readonly context: TicketContext;
+}
+
 export interface MapStatusResult {
   readonly ok: true;
   readonly detail: 'brief' | 'standard' | 'full';

@@ -174,6 +174,7 @@ pnpm cli task update <id> --revision n [--title <t>] [--description <d>]
 pnpm cli task link <id> --revision n --blocked-by <id,id>
 pnpm cli task comment <id> --revision n --text <t> [--audience internal|client]
 pnpm cli task resolve <id> --revision n --answer <a> --gist <one line>
+pnpm cli task context <id> [--detail brief|standard|full]
 pnpm cli map view <id>
 pnpm cli map status <id> [--detail brief|standard|full]
 pnpm cli map frontier <id>
@@ -202,5 +203,17 @@ pnpm cli map frontier <id>
   one call, from one query on the map's read models, so it is current after
   any write. `full` carries every id; `standard` names a frontier ticket by
   key, title and type; `brief` keeps the counts and the keys.
-- _Work this ticket_ (`context`) and _changes since_ join with the rest of
-  API-4.
+- `task context` (API-4, `task.context`, _work this ticket_) is everything a
+  ticket depends on in one call and one statement: the ticket, its map's
+  Destination and Decisions so far, its blockers and what it blocks, its
+  acceptance checks (the `- [ ]` and `- [x]` lines of its description, as
+  written), its linked documents (none yet: they join with WF-8's Docs pages)
+  and its recent thread. It reads the live tables the write changed, so it is
+  current after any write. A part the reader may not read is left out and
+  counted under `withheld` (`map`, `blockedBy`, `blocks`), never listed. `full`
+  carries every id and the whole thread; `standard` keeps the ticket's own id
+  (writes take it), names the tickets around it by key and title, and carries
+  the latest five comments; `brief` is names and state and no thread bodies.
+  Internal readers only; an agent reaches it once its credential is narrowed
+  from a person's grants (API-2).
+- _Changes since_ joins with the live change record (C4).
