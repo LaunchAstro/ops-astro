@@ -10,6 +10,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { parseSync } from 'vite';
 import { describe, expect, it } from 'vitest';
 
 const root = new URL('../../', import.meta.url);
@@ -28,49 +29,68 @@ const CITATIONS: readonly (readonly [string, RegExp])[] = [
   ['a lane', /\blanes?\b/iu],
   [
     'a review or proof record',
-    /REVIEW-[A-Z]|-PROOFS\b|\bDB-PROOF|\bFG-[A-Z]-\d+|\bCQ-\d+\b|\bTR-[A-Z]+-/u,
+    /REVIEW-[A-Z]|-(?:PROOFS|AUDIT|SEAM|GENERATED)\b|\bDB-PROOF|\bFG-[A-Z]-\d+|\bCQ-\d+\b|\bTR-[A-Z]+-/u,
   ],
   ['a lane id', /\bL[1-9]\b/u],
+  ['a numbered finding', /(?<![\w-])F[1-9](?![\w-])/u],
   ['an earlier draft', /t1-draft|\bearlier draft\b|\bthis comment said\b/iu],
+  [
+    'a story of earlier handling',
+    /\bused to\b|\bwas once\b|\bthat way until\b|\bcame off\b|\bleft this list\b|\bthe old handler\b|\bis what found\b/iu,
+  ],
 ];
 
 /** Which citation a comment makes, or undefined. */
 const cites = (comment: string): string | undefined =>
   CITATIONS.find(([, pattern]) => pattern.test(comment))?.[0];
 
+type CommentLine = { readonly line: number; readonly comment: string };
+
+const LANGS = { ts: 'ts', mts: 'ts', tsx: 'tsx', js: 'js', mjs: 'js' } as const;
+
 /**
- * The comment text on each line of `text`, with its line number: a `//`
- * comment, a line inside or opening a block comment (`/*` in TypeScript and
- * CSS, `{/*` in JSX), an HTML comment, or a SQL `--` line inside a query
- * string. Code before a trailing `//` is not read, so a string that happens to
- * hold a word in the set is not a comment.
+ * Every comment in `text`, one entry per source line it covers. A script's
+ * comments come from the parser (vite's `parseSync`, which is oxc), so a
+ * `//` or `/*` inside a string, a template or a regex is never read, and a
+ * comment after code, with or without a space, always is. Two kinds the
+ * parser does not report are read by pattern: a SQL `--` line, which sits
+ * inside a query template, and an HTML comment. A stylesheet's comments are
+ * its block comments. `errors` is what the parser could not read.
  */
-function commentLines(text: string): { readonly line: number; readonly comment: string }[] {
-  const found: { line: number; comment: string }[] = [];
-  let inBlock = false;
-  for (const [index, line] of text.split('\n').entries()) {
-    let comment: string | undefined;
-    if (inBlock) {
-      comment = line;
-      if (line.includes('*/')) inBlock = false;
-    } else if (/^\s*\/\//u.test(line)) {
-      comment = line;
-    } else if (/^\s*--\s/u.test(line)) {
-      comment = line;
-    } else if (/^\s*\{?\/\*/u.test(line)) {
-      comment = line;
-      if (!line.includes('*/')) inBlock = true;
-    } else if (/\s\/\/\s/u.test(line)) {
-      comment = line.slice(line.search(/\s\/\/\s/u));
-    } else if (/\/\*.*\*\//u.test(line)) {
-      comment = line.slice(line.indexOf('/*'));
-    } else if (line.includes('<!--')) {
-      comment = line.slice(line.indexOf('<!--'));
+function readComments(
+  text: string,
+  file = 'source.tsx',
+): { readonly lines: CommentLine[]; readonly errors: readonly unknown[] } {
+  const extension = file.slice(file.lastIndexOf('.') + 1);
+  const spans: (readonly [number, number])[] = [];
+  let errors: readonly unknown[] = [];
+  if (extension in LANGS) {
+    const parsed = parseSync(file, text, { lang: LANGS[extension as keyof typeof LANGS] });
+    errors = parsed.errors;
+    for (const { start, end } of parsed.comments) spans.push([start, end]);
+    for (const sql of text.matchAll(/^[ \t]*--\s.*$/gmu)) {
+      spans.push([sql.index, sql.index + sql[0].length]);
     }
-    if (comment !== undefined) found.push({ line: index + 1, comment });
+  } else {
+    for (const block of text.matchAll(/\/\*[\s\S]*?\*\//gu)) {
+      spans.push([block.index, block.index + block[0].length]);
+    }
   }
-  return found;
+  for (const html of text.matchAll(/<!--[\s\S]*?-->/gu)) {
+    spans.push([html.index, html.index + html[0].length]);
+  }
+  const lines = spans.flatMap(([start, end]) => {
+    const first = text.slice(0, start).split('\n').length;
+    return text
+      .slice(start, end)
+      .split('\n')
+      .map((comment, offset) => ({ line: first + offset, comment }));
+  });
+  return { lines: lines.toSorted((a, b) => a.line - b.line), errors };
 }
+
+/** The comment text on each line of `text`, with its line number. */
+const commentLines = (text: string, file?: string): CommentLine[] => readComments(text, file).lines;
 
 describe('a source comment cites no review round, lane or finding id', () => {
   it.each([
@@ -99,6 +119,20 @@ describe('a source comment cites no review round, lane or finding id', () => {
     [' * (REVIEW-AGENT-BOUNDARY d58b869 N1).', 'a review or proof record'],
     ['// Ported from `ops-astro-t1-draft@60f2009 apps/api/app.ts`.', 'an earlier draft'],
     ['   * This comment said it wrote none.', 'an earlier draft'],
+    [
+      '  // left its lease live, because the old handler wrote only the timestamp.',
+      'a story of earlier handling',
+    ],
+    [
+      ' * It was once derived, then written by hand, because a test comparing the two',
+      'a story of earlier handling',
+    ],
+    [
+      '  // F4. A revocation is also one of the recorded authority-loss transitions.',
+      'a numbered finding',
+    ],
+    [' * on the work whose claim it was (IDENT-AUDIT red 3).', 'a review or proof record'],
+    ['    // the answer to a question it never put (I14-SEAM U1).', 'a review or proof record'],
   ])('refuses %s', (comment, citation) => {
     expect(cites(comment)).toBe(citation);
   });
@@ -114,25 +148,36 @@ describe('a source comment cites no review round, lane or finding id', () => {
     ' * The grant key is business and token together; FNV-1a over it tells one',
     '// A handback names a lease rather than a task.',
     ' * prove abandonment (case L10), and the restore leaves a record whose parent',
+    '  // Page size is bounded, not optional (E19:363), and the evidence renderer is G07.',
+    '  /** The old lease is fenced out by the new fence rather than deleted. */',
   ])('keeps %s', (comment) => {
     expect(cites(comment)).toBeUndefined();
   });
 
-  it('reads line, block, JSX, trailing and SQL comments, and not code', () => {
+  it('reads line, block, JSX, trailing and SQL comments, and not strings or regexes', () => {
     const source = [
-      "const lane = 'lane'; // the row's own key",
-      '/**',
+      "const lane = 'lane';// the row's own key",
+      'const n = 1; /*',
       ' * a thermo review',
       ' */',
-      '{/* Sol 6 */}',
-      'plain text after the block has closed',
-      "fetch('https://example.test/a//b');",
-      '  sql`select id from tasks',
-      '       -- a trashed task is not handed out',
-      '       where deleted_at is null`; i--;',
+      'const view = <div>{/* Sol 6 */}</div>;',
+      "const url = 'https://example.test/a//b /* a string */';",
+      'const query = sql`select id from tasks',
+      '  -- a trashed task is not handed out',
+      '  where deleted_at is null`;',
+      'const pattern = /\\/\\//u;',
     ].join('\n');
-    expect(commentLines(source).map(({ line }) => line)).toEqual([1, 2, 3, 4, 5, 9]);
-    expect(commentLines(source)[0]?.comment).toBe(" // the row's own key");
+    const { lines, errors } = readComments(source);
+    expect(errors).toEqual([]);
+    expect(lines.map(({ line }) => line)).toEqual([1, 2, 3, 4, 5, 8]);
+    expect(lines[0]?.comment).toBe("// the row's own key");
+  });
+
+  it('reads stylesheet and HTML comments across lines', () => {
+    const css = 'a { color: red; } /* first line\n R2-RUNTIME-4 */';
+    expect(commentLines(css, 'x.css').map(({ line }) => line)).toEqual([1, 2]);
+    const html = '<p>x</p>\n<!--\nlane L4\n-->';
+    expect(commentLines(html, 'x.html').map(({ line }) => line)).toEqual([2, 3, 4]);
   });
 
   it('holds over every comment in packages/ and apps/', () => {
@@ -144,12 +189,16 @@ describe('a source comment cites no review round, lane or finding id', () => {
       .filter((file) => /\.(?:ts|tsx|mts|mjs|js|css|html)$/u.test(file));
     expect(files.length).toBeGreaterThan(100);
     const found: string[] = [];
+    const unread: string[] = [];
     for (const file of files) {
-      for (const { line, comment } of commentLines(readFileSync(new URL(file, root), 'utf8'))) {
+      const { lines, errors } = readComments(readFileSync(new URL(file, root), 'utf8'), file);
+      if (errors.length > 0) unread.push(file);
+      for (const { line, comment } of lines) {
         const citation = cites(comment);
         if (citation !== undefined) found.push(`${file}:${line} ${citation}: ${comment.trim()}`);
       }
     }
+    expect(unread).toEqual([]);
     expect(found).toEqual([]);
   });
 
