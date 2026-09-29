@@ -139,7 +139,12 @@ export function Decide(props: DecideProps): ReactElement {
  * because the reservation the approval created is the server's, not this
  * screen's guess at what an approval does.
  */
-function settled(settlement: Settlement, props: DecideProps): void {
+export function settled(
+  settlement: Settlement,
+  props: Pick<DecideProps, 'onDecided' | 'onChanged' | 'lineageId'> & {
+    readonly gate: { readonly id: string };
+  },
+): void {
   if (settlement.kind === 'ok') {
     props.onDecided(null);
     props.onChanged();

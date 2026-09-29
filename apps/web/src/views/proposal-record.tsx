@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // What a proposal lineage has on record: its decision chain as stored, the
-// money its approvals set aside, and the two ways this view prints a number
-// or a stored value. `proposals.tsx` holds the section and says why each
+// money its approvals set aside, the lineage's own reject on its header (T3a),
+// and the two ways this view prints a number or a stored value. `proposals.tsx` holds the section and says why each
 // part draws what it draws.
 
 import type { ReactElement } from 'react';
 import { drawRunState } from '@launchastro/ui';
+import type { OperationsClient } from '../operations/client.ts';
+import { useCommand } from '../records/use-command.ts';
 import type {
   DecisionLink as ProposalDecision,
+  ProposalView as ProposalLineage,
   ReservationView as ProposalReservation,
 } from '../../../../packages/core-wire/src/index.ts';
+import { lapsed, settled, type DecisionNote } from './gate-controls.tsx';
 
 export function Chain(props: {
   readonly decisions: readonly ProposalDecision[];
@@ -147,6 +151,61 @@ function ReservationRow(props: { readonly reservation: ProposalReservation }): R
         </span>
       )}
     </div>
+  );
+}
+
+/** The lineage's header props that its reject reads (`proposals.tsx` passes its own). */
+interface RejectProps {
+  readonly client: OperationsClient;
+  readonly lineage: ProposalLineage;
+  readonly note: DecisionNote | null;
+  readonly onDecided: (note: DecisionNote | null) => void;
+  readonly onChanged: () => void;
+}
+
+/**
+ * "Reject this proposal" (T3a, package 2 item 4): the lineage's own action on
+ * its header, outside the gate card, and on offer whenever the lineage is live
+ * and its newest version's gate is open, the revision bound included. It is
+ * `task.decide`'s reject on that gate and version, at parity with the API and
+ * the command line; the server decides under its locks, and a reject there
+ * ends the lineage for good. A terminal lineage draws none.
+ */
+export function RejectProposal(props: RejectProps): ReactElement | null {
+  const { busy, run } = useCommand();
+  const { lineage } = props;
+  const head = lineage.versions[0];
+  const gate = head?.gate ?? null;
+  if (lineage.state !== 'live' || head === undefined || gate === null) return null;
+  if (gate.state !== 'pending' || lapsed(gate) || props.note?.closed === true) return null;
+  const reject = (): void => {
+    if (busy) return;
+    props.onDecided(null);
+    run(
+      () =>
+        props.client.mutate('task.decide', {
+          gateId: gate.id,
+          versionId: head.versionId,
+          decision: 'reject',
+          note: 'Rejected from the task page.',
+        }),
+      (settlement) => {
+        settled(settlement, { ...props, gate, lineageId: lineage.lineageId });
+      },
+    );
+  };
+  return (
+    <button
+      className="btn"
+      data-lineage-action="reject"
+      data-reject-gate={gate.id}
+      data-reject-version={head.versionId}
+      disabled={busy}
+      onClick={reject}
+      type="button"
+    >
+      Reject this proposal
+    </button>
   );
 }
 

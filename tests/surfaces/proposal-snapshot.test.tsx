@@ -220,6 +220,7 @@ describe.skipIf(serverUrl === undefined)('decision controls from one coherent re
     expect(approve?.getAttribute('data-version-id')).toBe(open.versionId);
     expect(offered.find('[data-decide="request_changes"]')?.hasAttribute('disabled')).toBe(false);
     expect(offered.find('[data-decide="reject"]')).toBeNull();
+    expect(offered.find('[data-lineage-action="reject"]')?.hasAttribute('disabled')).toBe(false);
     expect(offered.find('[data-decide="closed"]')).toBeNull();
     await offered.unmount();
   }, 120_000);

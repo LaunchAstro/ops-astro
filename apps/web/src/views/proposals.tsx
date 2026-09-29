@@ -85,7 +85,7 @@ import type {
   TaskEnvelope,
 } from '../../../../packages/core-wire/src/index.ts';
 import { Decide, lapsed, type DecisionNote } from './gate-controls.tsx';
-import { Chain, money, Reservations, stored } from './proposal-record.tsx';
+import { Chain, money, RejectProposal, Reservations, stored } from './proposal-record.tsx';
 import { Propose, TopUp, type ProposeDraft, type TopUpNote } from './propose-form.tsx';
 
 export type { DecisionNote } from './gate-controls.tsx';
@@ -216,6 +216,7 @@ function Lineage(props: LineageProps): ReactElement {
         <span className="sb__k">Lineage</span>
         <span className="sb__state">{lineage.state}</span>
         <span className="sbact__meta">{lineage.lineageId}</span>
+        <RejectProposal {...props} />
       </div>
       {props.noteAt === 'lineage' && props.note?.lineageId === lineage.lineageId ? (
         <Refusal note={props.note} />
