@@ -18,7 +18,10 @@ test('Sol proof, criterion 3: outage isolation tests two clients with one grant 
   const scopedMembers = [
     ...suite.matchAll(/grantTo\(tx,\s*(\w+),\s*'read',\s*\{\s*kind:\s*'record'/gu),
   ].map((match) => match[1]);
-  assert.ok(scopedMembers.length >= 2, 'the outage suite must give two people separate record grants');
+  assert.ok(
+    scopedMembers.length >= 2,
+    'the outage suite must give two people separate record grants',
+  );
   for (const name of scopedMembers) {
     assert.match(suite, new RegExp(`queueOf\\(s, ${name}\\)`), `the suite must read as ${name}`);
   }
