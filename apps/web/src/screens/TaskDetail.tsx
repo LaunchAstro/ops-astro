@@ -619,6 +619,7 @@ function Loaded(props: LoadedProps): ReactElement {
         proposeRefusal={props.proposeRefusal}
         proposeDraft={props.proposeDraft}
         onProposeDraft={props.onProposeDraft}
+        persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
         proposals={task.proposals}
         recordId={task.id}
         revision={task.revision}

@@ -32,7 +32,7 @@
 // rejected or sent-back gate by its outcome even if `expired` arrived true.
 //
 // **A refused decision is quoted and the page is read again.** A refusal like
-// `VERSION_SUPERSEDED` is the server saying this page is no longer describing
+// `PROPOSAL_SUPERSEDED` is the server saying this page is no longer describing
 // the record, so the answer to it is a fresh read rather than a retry. The
 // refusal text is held above the read (`TaskDetail.tsx`) because the reread
 // unmounts everything below it, and a message that vanished with the thing it
@@ -76,7 +76,7 @@
 // on it with `LINEAGE_TERMINAL`. The lineage state is in the same answer as the
 // gate, so the controls close on it rather than inviting that refusal.
 
-import { type FormEvent, type ReactElement } from 'react';
+import { useState, type FormEvent, type ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
@@ -84,6 +84,7 @@ import type {
   ProposalLineage,
   ProposalReservation,
   ProposalVersion,
+  TaskPerson,
 } from '../operations/shapes.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
 
@@ -126,6 +127,8 @@ export interface ProposalsProps {
   readonly proposeDraft: ProposeDraft | null;
   readonly onProposeDraft: (next: ProposeDraft | null) => void;
   readonly onChanged: () => void;
+  /** Who an escalation may name, from `person.list`; the server checks the role. */
+  readonly persons?: readonly TaskPerson[];
 }
 
 /**
@@ -168,6 +171,7 @@ export function Proposals(props: ProposalsProps): ReactElement {
               noteAt={at}
               onChanged={props.onChanged}
               onDecided={props.onDecided}
+              persons={props.persons ?? []}
             />
           ))}
         </div>
@@ -194,6 +198,7 @@ interface LineageProps {
   readonly noteAt: NoteAt | null;
   readonly onDecided: (note: DecisionNote | null) => void;
   readonly onChanged: () => void;
+  readonly persons: readonly TaskPerson[];
 }
 
 function Lineage(props: LineageProps): ReactElement {
@@ -226,6 +231,7 @@ function Lineage(props: LineageProps): ReactElement {
           note={props.note}
           onChanged={props.onChanged}
           onDecided={props.onDecided}
+          persons={props.persons}
           version={version}
         />
       ))}
@@ -292,6 +298,7 @@ interface VersionProps {
   readonly note: DecisionNote | null;
   readonly onDecided: (note: DecisionNote | null) => void;
   readonly onChanged: () => void;
+  readonly persons: readonly TaskPerson[];
 }
 
 function Version(props: VersionProps): ReactElement {
@@ -382,6 +389,7 @@ function Version(props: VersionProps): ReactElement {
           note={props.note}
           onChanged={props.onChanged}
           onDecided={props.onDecided}
+          persons={props.persons}
           stale={stale}
           versionId={version.versionId}
         />
@@ -410,11 +418,13 @@ interface DecideProps {
   readonly onChanged: () => void;
   /** The gate's version is not the lineage's newest, so approve is disabled. */
   readonly stale: boolean;
+  readonly persons: readonly TaskPerson[];
 }
 
 function Decide(props: DecideProps): ReactElement {
   const { gate } = props;
   const { busy, run } = useCommand();
+  const [recipient, setRecipient] = useState('');
   const closed = props.note?.closed === true;
   // Whether the note is about this gate, which picks the wording below. The
   // note's own text is drawn by `Version`, under the gate it names.
@@ -432,7 +442,7 @@ function Decide(props: DecideProps): ReactElement {
           ? null
           : `This lineage is ${props.lineageState}, and a lineage that has ended is not decided again. An authorised restart opens a new one.`;
 
-  const decide = (decision: 'approve' | 'request_changes'): void => {
+  const decide = (decision: 'approve' | 'request_changes' | 'escalate'): void => {
     if (busy || closed) return;
     props.onDecided(null);
     run(
@@ -446,6 +456,7 @@ function Decide(props: DecideProps): ReactElement {
           versionId: props.versionId,
           decision,
           note: `Decided from the task page (${decision}).`,
+          ...(decision === 'escalate' ? { recipientPersonId: recipient } : {}),
         }),
       (settlement) => {
         settled(settlement, props);
@@ -485,6 +496,40 @@ function Decide(props: DecideProps): ReactElement {
           >
             {busy ? 'Deciding…' : 'Approve this version'}
           </button>
+          {/* Escalate (T3a) only at the bound, where a third round is refused.
+              New behaviour with no drawing behind it (specification 13.2). */}
+          {gate.round >= 3 ? (
+            <div data-escalate="form" data-ui-reference="none">
+              <select
+                aria-label="Escalate to"
+                data-escalate="recipient"
+                disabled={busy}
+                onChange={(event) => {
+                  setRecipient(event.target.value);
+                }}
+                value={recipient}
+              >
+                <option value="">Choose who decides it</option>
+                {props.persons.map((person) => (
+                  <option key={person.personId} value={person.personId}>
+                    {person.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn"
+                data-decide="escalate"
+                data-gate-id={gate.id}
+                disabled={busy || recipient === ''}
+                onClick={() => {
+                  if (recipient !== '') decide('escalate');
+                }}
+                type="button"
+              >
+                Escalate
+              </button>
+            </div>
+          ) : null}
           <p className="card__sub" data-gate="notice">
             This demonstration changes nothing outside the app: its one effect is a team-only
             comment on this task.
