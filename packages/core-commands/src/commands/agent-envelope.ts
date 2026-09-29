@@ -73,6 +73,7 @@ import { writeAuditEvent } from './audit.ts';
 import {
   AGENT_OPERATIONS,
   isOperandRefusal,
+  type AgentOperation,
   parseOperands,
   type TypedOperation,
 } from './agent-operations.ts';
@@ -111,6 +112,30 @@ export async function executeAgentCommand(
   credential: string | undefined,
   request: AgentRequest,
 ): Promise<CommandResult> {
+  const operation = AGENT_OPERATIONS.get(request.command);
+  return await executeAgentOperation(
+    database,
+    businessId,
+    presented,
+    credential,
+    request,
+    operation,
+  );
+}
+
+/**
+ * The agent entry with the row its caller supplies. `model.call`'s broker
+ * executor (`model-call.ts`) passes its own row, whose serve holds the money;
+ * everything else about the call is this entry's, unchanged.
+ */
+export async function executeAgentOperation(
+  database: Database,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+  credential: string | undefined,
+  request: AgentRequest,
+  operation: AgentOperation | undefined,
+): Promise<CommandResult> {
   // One bounded retry, `retryOnce` in `envelope.ts`, which the person entry
   // takes too, on its shared predicate (`isRetryableViolation`). It admits a lost
   // identity claim: a same-operationId retry in flight behind its original
@@ -131,7 +156,7 @@ export async function executeAgentCommand(
         // that exists for exactly this case (AUTHORITY.md, "every attempt at
         // the door").
         if ('refused' in session) return asCallerVisible(session);
-        return await runAgentCommand(tx, { session, credential, request });
+        return await runAgentCommand(tx, { session, credential, request }, operation);
       }),
   );
 }
@@ -169,9 +194,9 @@ async function runAgentCommand(
     readonly credential: string | undefined;
     readonly request: AgentRequest;
   },
+  operation: AgentOperation | undefined,
 ): Promise<CommandResult> {
   const { session, credential, request } = presented;
-  const operation = AGENT_OPERATIONS.get(request.command);
   if (operation === undefined) {
     const outside = refuseCommand(
       'DELEGATION_EXCLUDES_OPERATION',

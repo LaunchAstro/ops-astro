@@ -40,6 +40,7 @@ import {
   SYSTEM_OWNED_FIXES,
 } from './prepare.ts';
 import { retainLateHandback } from './agent-late-handback.ts';
+import { modelCallOperands, type ModelCallOperands } from './model-call-operands.ts';
 import type {
   AgentCall,
   AgentRequest,
@@ -386,6 +387,29 @@ async function serveHeartbeat(
  * Every operation an agent may reach, in the order `AGENT_SURFACE` lists them.
  * `task.decide` is here to be refused by name (`decideAsAgent`), never served.
  */
+/**
+ * `model.call`, over the serve its entry supplies. The broker's executor
+ * (`model-call.ts`) serves it with the reservation; this table serves it
+ * where the deployment configured no broker, and says so.
+ */
+export function modelCallRow(
+  serve: (tx: TenantQuery, call: AgentCall, operands: ModelCallOperands) => Promise<HandlerOutcome>,
+): AgentOperation {
+  return row({
+    authority: 'record',
+    subjectTask: 'lease',
+    replay: 'reauthorise',
+    operands: modelCallOperands,
+    // The lease's task was checked under the delegation; the broker checks
+    // the lease, the delegation and the reservation again under their locks.
+    serve: async (tx, call, operands) => await serve(tx, call, operands),
+  });
+}
+
+const NO_BROKER_FIXES: readonly string[] = [
+  'This deployment has no credential broker configured, so it makes no model call.',
+];
+
 export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Map<
   CommandName,
   AgentOperation
@@ -510,6 +534,14 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       replay: 'reauthorise',
       operands: NONE,
     }),
+  ],
+  [
+    'model.call',
+    modelCallRow(() =>
+      Promise.resolve(
+        refused(refuseCommand('DEPENDENCY_NOT_LANDED', ['model.call'], NO_BROKER_FIXES)),
+      ),
+    ),
   ],
   [
     'session.capabilities',

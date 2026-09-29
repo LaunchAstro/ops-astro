@@ -266,7 +266,13 @@ export function createApi(options: ApiOptions): Hono {
       // operation run. `operationId` is passed as the JSON carried it, absent
       // included: the envelope asks `typeof` itself and refuses anything that
       // is not a string, so the rule lives in one place.
-      const result = await agentExecutor(
+      // `model.call` goes to the broker's executor where the deployment has
+      // one; otherwise the agent envelope answers that it has not landed.
+      const execute =
+        declaration.name === 'model.call' && options.executeModelCall !== undefined
+          ? options.executeModelCall
+          : agentExecutor;
+      const result = await execute(
         options.database,
         businessId,
         presented,

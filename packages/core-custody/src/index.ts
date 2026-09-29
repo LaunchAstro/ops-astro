@@ -28,6 +28,8 @@ export {
   callModel,
   promptCopyRegistered,
   registerPromptCopy,
+  reserveModelCall,
+  sendReservedCall,
   sweepModelCalls,
   type AuditNote,
   type Broker,
@@ -38,4 +40,6 @@ export {
   type ModelCallRequest,
   type ModelCallResult,
   type ProviderAdapter,
+  type Reservation,
+  type ReservedCall,
 } from './broker.ts';

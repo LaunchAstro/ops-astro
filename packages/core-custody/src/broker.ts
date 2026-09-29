@@ -2,7 +2,9 @@
 //
 // The broker's model call (AW-01): the only way a priced model call is made.
 //
-// Three transactions and one send, in this order:
+// Three transactions and one send, in this order. The first can be the
+// caller's own (`reserveModelCall`): the `model.call` command commits the
+// hold with its register row, so one operation id holds once.
 //
 // 1. Reserve. Under the lease, delegation and reservation row locks (the
 //    contract's order), verify the six facts against rows: the business (the
@@ -322,105 +324,109 @@ export async function promptCopyRegistered(tx: TenantQuery, callId: string): Pro
   return rows.length === 1;
 }
 
-interface Reserved {
+/** A held call, not yet sent: what the reserving transaction hands the send. */
+export interface ReservedCall {
   readonly callId: string;
   readonly operation: ModelOperation;
   readonly route: BrokerRoute;
   readonly reservedMinor: number;
 }
 
-async function reserve(
-  database: Database,
-  businessId: BusinessId,
+export type Reservation =
+  | { readonly ok: true; readonly reserved: ReservedCall }
+  | Extract<ModelCallResult, { code: BrokerRefusal }>;
+
+/**
+ * Step 1 in the caller's transaction, so the command layer commits the hold,
+ * the copy registration and its own register row as one: a repeat of the
+ * operation finds the row, and two at once cannot both hold. A refusal with a
+ * `callId` wrote its step; one without wrote nothing.
+ */
+export async function reserveModelCall(
+  tx: TenantQuery,
   caller: ModelCaller,
   request: ModelCallRequest,
   broker: Broker,
-): Promise<
-  | { readonly ok: true; readonly reserved: Reserved }
-  | Extract<ModelCallResult, { code: BrokerRefusal }>
-> {
-  return await database.withBusiness(businessId, async (tx) => {
-    const checked = await lockFacts(tx, caller, request, false);
-    if (!checked.ok) return { ok: false, code: checked.code, callId: null };
-    const { facts } = checked;
-    const operation = broker.operations.get(request.operation);
-    const refused = async (
-      code: BrokerRefusal,
-      words?: string,
-    ): Promise<Extract<ModelCallResult, { code: BrokerRefusal }>> => ({
-      ok: false,
-      code,
-      callId: await recordRefusal(tx, facts, request.operation, code, broker),
-      ...(words === undefined ? {} : { words }),
-    });
-    if (operation === undefined) return await refused('OPERATION_NOT_CATALOGUED');
-    if (operation.nothingHappened === 'not_reconcilable')
-      return await refused('EFFECT_NOT_RECONCILABLE');
-    const choice = eligibleRoutes(
-      operation.fields,
-      request.fields,
-      broker.routes.filter((route) => route.provider === operation.provider),
-    );
-    if (!choice.ok) return await refused('LOCAL_MODEL_REQUIRED', LOCAL_MODEL_REQUIRED_WORDS);
-    const route = broker.routes.find((candidate) =>
-      choice.routes.some((eligible) => eligible.key === candidate.key),
-    );
-    if (route === undefined)
-      return await refused('LOCAL_MODEL_REQUIRED', LOCAL_MODEL_REQUIRED_WORDS);
-    const carry = mayCarry(route.credentialKind, {
-      unattended: caller.attendedByPersonId === null,
-      sessionPersonId: caller.attendedByPersonId,
-      workForPersonId: facts.workForPersonId,
-      tenantInstallation: broker.installation,
-      credentialInstallation: route.installation,
-    });
-    if (!carry.ok) return await refused(carry.code);
-    // The durable ceiling: in-flight calls are rows, counted under one lock per operation.
-    await tx.query(`select pg_advisory_xact_lock(hashtext($1), hashtext($2))`, [
-      `model_call:${tx.businessId}`,
-      operation.key,
-    ]);
-    const [flight] = await tx.query<{ n: string }>(
-      `select count(*)::text as n from public.model_calls
-        where business_id = $1 and operation_key = $2 and state = 'dispatched'`,
-      [tx.businessId, operation.key],
-    );
-    if (Number(flight?.n ?? 0) >= operation.concurrency) {
-      return { ok: false, code: 'RATE_LIMITED', callId: null, retryAfterSeconds: WAIT_SECONDS };
-    }
-    const room = facts.heldMinor - (await committedMinor(tx, facts.reservationId));
-    if (operation.maximumMinor > room) return await refused('BUDGET_UNAVAILABLE');
-    const callId = randomUUID();
-    await tx.query(
-      `insert into public.model_calls
-         (business_id, id, run_id, step_id, lease_id, version_id, reservation_id, delegation_id,
-          operation_key, state, reserved_minor)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'reserved', $10)`,
-      [
-        tx.businessId,
-        callId,
-        facts.runId,
-        facts.stepId,
-        facts.leaseId,
-        facts.versionId,
-        facts.reservationId,
-        facts.delegationId,
-        operation.key,
-        operation.maximumMinor,
-      ],
-    );
-    await registerPromptCopy(tx, callId);
-    return {
-      ok: true,
-      reserved: { callId, operation, route, reservedMinor: operation.maximumMinor },
-    };
+): Promise<Reservation> {
+  const checked = await lockFacts(tx, caller, request, false);
+  if (!checked.ok) return { ok: false, code: checked.code, callId: null };
+  const { facts } = checked;
+  const operation = broker.operations.get(request.operation);
+  const refused = async (
+    code: BrokerRefusal,
+    words?: string,
+  ): Promise<Extract<ModelCallResult, { code: BrokerRefusal }>> => ({
+    ok: false,
+    code,
+    callId: await recordRefusal(tx, facts, request.operation, code, broker),
+    ...(words === undefined ? {} : { words }),
   });
+  if (operation === undefined) return await refused('OPERATION_NOT_CATALOGUED');
+  if (operation.nothingHappened === 'not_reconcilable')
+    return await refused('EFFECT_NOT_RECONCILABLE');
+  const choice = eligibleRoutes(
+    operation.fields,
+    request.fields,
+    broker.routes.filter((route) => route.provider === operation.provider),
+  );
+  if (!choice.ok) return await refused('LOCAL_MODEL_REQUIRED', LOCAL_MODEL_REQUIRED_WORDS);
+  const route = broker.routes.find((candidate) =>
+    choice.routes.some((eligible) => eligible.key === candidate.key),
+  );
+  if (route === undefined) return await refused('LOCAL_MODEL_REQUIRED', LOCAL_MODEL_REQUIRED_WORDS);
+  const carry = mayCarry(route.credentialKind, {
+    unattended: caller.attendedByPersonId === null,
+    sessionPersonId: caller.attendedByPersonId,
+    workForPersonId: facts.workForPersonId,
+    tenantInstallation: broker.installation,
+    credentialInstallation: route.installation,
+  });
+  if (!carry.ok) return await refused(carry.code);
+  // The durable ceiling: in-flight calls are rows, counted under one lock per operation.
+  await tx.query(`select pg_advisory_xact_lock(hashtext($1), hashtext($2))`, [
+    `model_call:${tx.businessId}`,
+    operation.key,
+  ]);
+  const [flight] = await tx.query<{ n: string }>(
+    `select count(*)::text as n from public.model_calls
+      where business_id = $1 and operation_key = $2 and state = 'dispatched'`,
+    [tx.businessId, operation.key],
+  );
+  if (Number(flight?.n ?? 0) >= operation.concurrency) {
+    return { ok: false, code: 'RATE_LIMITED', callId: null, retryAfterSeconds: WAIT_SECONDS };
+  }
+  const room = facts.heldMinor - (await committedMinor(tx, facts.reservationId));
+  if (operation.maximumMinor > room) return await refused('BUDGET_UNAVAILABLE');
+  const callId = randomUUID();
+  await tx.query(
+    `insert into public.model_calls
+       (business_id, id, run_id, step_id, lease_id, version_id, reservation_id, delegation_id,
+        operation_key, state, reserved_minor)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'reserved', $10)`,
+    [
+      tx.businessId,
+      callId,
+      facts.runId,
+      facts.stepId,
+      facts.leaseId,
+      facts.versionId,
+      facts.reservationId,
+      facts.delegationId,
+      operation.key,
+      operation.maximumMinor,
+    ],
+  );
+  await registerPromptCopy(tx, callId);
+  return {
+    ok: true,
+    reserved: { callId, operation, route, reservedMinor: operation.maximumMinor },
+  };
 }
 
 async function markStarted(
   database: Database,
   businessId: BusinessId,
-  reserved: Reserved,
+  reserved: ReservedCall,
 ): Promise<boolean> {
   return await database.withBusiness(businessId, async (tx) => {
     if (!(await promptCopyRegistered(tx, reserved.callId))) return false;
@@ -464,7 +470,7 @@ async function settle(
   businessId: BusinessId,
   caller: ModelCaller,
   request: ModelCallRequest,
-  reserved: Reserved,
+  reserved: ReservedCall,
   settlement: Settlement,
   broker: Broker,
 ): Promise<ModelCallResult> {
@@ -580,9 +586,23 @@ export async function callModel(
   request: ModelCallRequest,
   broker: Broker,
 ): Promise<ModelCallResult> {
-  const reserving = await reserve(database, businessId, caller, request, broker);
+  const reserving = await database.withBusiness(
+    businessId,
+    async (tx) => await reserveModelCall(tx, caller, request, broker),
+  );
   if (!reserving.ok) return reserving;
-  const { reserved } = reserving;
+  return await sendReservedCall(database, businessId, caller, request, reserving.reserved, broker);
+}
+
+/** Steps 2 to 4, after the hold has committed: start, send through custody, settle. */
+export async function sendReservedCall(
+  database: Database,
+  businessId: BusinessId,
+  caller: ModelCaller,
+  request: ModelCallRequest,
+  reserved: ReservedCall,
+  broker: Broker,
+): Promise<ModelCallResult> {
   if (!(await markStarted(database, businessId, reserved))) {
     return { ok: false, code: 'COPY_NOT_REGISTERED', callId: reserved.callId };
   }
