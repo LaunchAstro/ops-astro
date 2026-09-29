@@ -30,7 +30,12 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { insertActor, insertBusiness, insertPerson } from '../identity/fixture.ts';
+import {
+  insertActor,
+  insertAgentActor,
+  insertBusiness,
+  insertPerson,
+} from '../identity/fixture.ts';
 import { createTask } from '../tasks/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -282,6 +287,105 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
     });
     const read = await inAlpha(async (tx) => await readInboxItems(tx, ada));
     expect(read.find((candidate) => candidate.id === item)?.lastDelivery).toBe('accepted');
+  });
+
+  it('separates an external client: a share reaches its own task, and a canary id never shows', async () => {
+    const [cleo, cleoActor] = await inAlpha(async (tx) => {
+      const person = await insertPerson(tx, 'Cleo, an outside client');
+      return [person, await insertActor(tx, person)] as const;
+    });
+    await inAlpha(async (tx) => {
+      const shared = await issueGrant(tx, [], {
+        subject: { kind: 'person', id: cleo },
+        scope: { kind: 'record', id: taskA },
+        collection: 'task',
+        action: 'read',
+        parentGrantId: null,
+        grantedByActorId: cleoActor,
+      });
+      if (!shared.ok) throw new Error('share refused');
+    });
+    const raise = async (subject: string): Promise<string> =>
+      await inAlpha(
+        async (tx) =>
+          await raiseInboxItem(tx, {
+            recipientPersonId: cleo,
+            subjectRecordId: subject,
+            reason: 'client_comment',
+            fact: { kind: 'record', id: subject },
+          }),
+      );
+    const onShared = await raise(taskA);
+    const onOther = await raise(taskB);
+    const read = await inAlpha(async (tx) => await readInboxItems(tx, cleo));
+    expect(read.find((item) => item.id === onShared)?.access).toBe('readable');
+    expect(read.find((item) => item.id === onOther)?.access).toBe('withheld');
+    // The canary: the other task's id appears nowhere in the external party's read.
+    expect(JSON.stringify(read)).not.toContain(taskB);
+  });
+
+  it('crosses no delegation: an agent acting for the recipient lends them no read', async () => {
+    const task = await inAlpha(async (tx) => {
+      const spine = await installTaskSpine(tx);
+      return await createTask(tx, spine, { title: 'the agent may read this', parentId: null });
+    });
+    await inAlpha(async (tx) => {
+      const agent = await insertAgentActor(tx);
+      await tx.query(
+        `insert into public.delegations
+           (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
+            collections, actions, credential_hash, expires_at, purpose_scope_kind, purpose_scope_id)
+         values ($1, gen_random_uuid(), $2, $3, $4, 'inbox_crossing', array['task'], array['read'],
+                 $5, now() + interval '1 hour', 'record', $6)`,
+        [tx.businessId, agent, ada, adaActor, 'a'.repeat(64), task],
+      );
+      const granted = await issueGrant(tx, [], {
+        subject: { kind: 'actor', id: agent },
+        scope: { kind: 'record', id: task },
+        collection: 'task',
+        action: 'read',
+        parentGrantId: null,
+        grantedByActorId: adaActor,
+      });
+      if (!granted.ok) throw new Error('agent grant refused');
+    });
+    const item = await inAlpha(
+      async (tx) =>
+        await raiseInboxItem(tx, {
+          recipientPersonId: ada,
+          subjectRecordId: task,
+          reason: 'waiting_run',
+          fact: { kind: 'record', id: task },
+        }),
+    );
+    const read = await inAlpha(async (tx) => await readInboxItems(tx, ada));
+    const withheld = read.find((candidate) => candidate.id === item);
+    expect(withheld?.access).toBe('withheld');
+    expect(JSON.stringify(withheld)).not.toContain(task);
+  });
+
+  it('raises once when two transitions raise the same item at the same time', async () => {
+    const item = {
+      recipientPersonId: bea,
+      subjectRecordId: taskA,
+      reason: 'assignment',
+      fact: { kind: 'record', id: randomUUID() },
+    } as const;
+    // The first holds its uncommitted insert open; the second waits on the
+    // one-open index, then finds the committed item rather than raising another.
+    const first = inAlpha(async (tx) => {
+      const id = await raiseInboxItem(tx, item);
+      await tx.query('select pg_sleep(0.5)');
+      return id;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const second = inAlpha(async (tx) => await raiseInboxItem(tx, item));
+    const [one, two] = await Promise.all([first, second]);
+    expect(two).toBe(one);
+    const rows = await db.admin.execute('select id from public.inbox_items where fact_id = $1', [
+      item.fact.id,
+    ]);
+    expect(rows.length).toBe(1);
   });
 
   it('separates person from person: a read is the recipient own, and so is attention', async () => {
