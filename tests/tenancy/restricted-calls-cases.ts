@@ -35,6 +35,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'handback_reports operations'],
   // 0032: a run's checks, append only as handback_reports is (MP-6-1).
   ['si', 'run_checks'],
+  // 0035: a run's state revisions, append only (MP-6-2).
+  ['si', 'run_state_revisions'],
   // 0033 (AW-03): a conversation, its body (deleted only by the purge, never
   // edited) and its wrap-ups (append only, never purged).
   ['siu', 'conversations'],

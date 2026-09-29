@@ -55,6 +55,7 @@ import {
 /** The seeds written with foreign keys off: their rows may name ids that key nothing. */
 const REPLICA_SEEDS: ReadonlySet<string> = new Set([
   'public.run_checks',
+  'public.run_state_revisions',
   'public.conversations',
   'public.conversation_messages',
   'public.conversation_wrap_ups',
@@ -120,6 +121,28 @@ const UNREACHED: Readonly<Record<string, string>> = {
             coalesce(w.lease_id, gen_random_uuid()), coalesce(w.attempt_id, gen_random_uuid()),
             coalesce(w.actor_id, gen_random_uuid()), coalesce(w.fence, 1),
             'restricted calls seed', 'passed'
+       from (select 1) one
+       left join lateral (
+         select l.task_id, run.id as run_id, run.version_id, l.id as lease_id,
+                att.id as attempt_id, l.holder_actor_id as actor_id, l.fence
+           from public.leases l
+           join public.reservations res on res.business_id = l.business_id and res.lease_id = l.id
+           join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+           join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
+          where l.business_id = $1
+          order by l.id limit 1) w on true
+     returning 1`,
+  // The journey revises no state (MP-6-2): one revision per business against
+  // its own lease, run, version and attempt where it has one, as `reviseState`
+  // writes it; Bravo's names ids that key nothing, with foreign keys off.
+  'public.run_state_revisions': `insert into public.run_state_revisions
+       (business_id, id, task_id, run_id, version_id, lease_id, attempt_id, actor_id,
+        fence, revision, valid, unknowns, stale)
+     select $1, gen_random_uuid(), coalesce(w.task_id, gen_random_uuid()),
+            coalesce(w.run_id, gen_random_uuid()), coalesce(w.version_id, gen_random_uuid()),
+            coalesce(w.lease_id, gen_random_uuid()), coalesce(w.attempt_id, gen_random_uuid()),
+            coalesce(w.actor_id, gen_random_uuid()), coalesce(w.fence, 1), 1,
+            '[]'::jsonb, '[]'::jsonb, '[]'::jsonb
        from (select 1) one
        left join lateral (
          select l.task_id, run.id as run_id, run.version_id, l.id as lease_id,

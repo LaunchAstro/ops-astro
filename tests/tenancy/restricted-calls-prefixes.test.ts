@@ -100,6 +100,20 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     name: 'restricted calls seed',
     outcome: 'passed',
   },
+  // The journey revises no state (MP-6-2); written with foreign keys off.
+  'public.run_state_revisions': {
+    task_id: randomUUID(),
+    run_id: randomUUID(),
+    version_id: randomUUID(),
+    lease_id: randomUUID(),
+    attempt_id: randomUUID(),
+    actor_id: randomUUID(),
+    fence: 1,
+    revision: 1,
+    valid: [],
+    unknowns: [],
+    stale: [],
+  },
   // The journey holds no conversation (AW-03).
   'public.conversations': {
     owner_actor_id: randomUUID(),
