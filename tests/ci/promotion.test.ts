@@ -9,6 +9,7 @@
 // fixture service-manager output, the way S0-1a's report is tested.
 import { spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -290,5 +291,62 @@ describe('S0-1 promotion migrates stopped app', () => {
       expect(calls).toEqual([]);
     }
     expect(existsSync(join(scratch, 'current'))).toBe(false);
+  });
+});
+
+describe('Sol review proofs', () => {
+  it('Sol proof, criterion 14: a saved stopped report cannot bypass a live running API', () => {
+    const bin = join(scratch, 'sol-live-manager-bin');
+    mkdirSync(bin, { recursive: true });
+    const dockerCommand = join(bin, 'docker');
+    writeFileSync(
+      dockerCommand,
+      `#!/bin/sh\nif [ "$1" = ps ]; then echo live-api-id; exit 0; fi\nif [ "$1" = inspect ]; then printf '%s\\n' '[{"Name":"/prod-api","State":{"Running":true},"HostConfig":{}}]'; exit 0; fi\nexit 2\n`,
+    );
+    chmodSync(dockerCommand, 0o755);
+    const launchctlCommand = join(bin, 'launchctl');
+    writeFileSync(
+      launchctlCommand,
+      `#!/bin/sh\nprintf 'PID\\tStatus\\tLabel\\n-\\t0\\torg.example.prod-auth\\n'\n`,
+    );
+    chmodSync(launchctlCommand, 0o755);
+    const docker = fixture(
+      'sol-false-stopped-docker.json',
+      JSON.stringify([{ Name: '/prod-api', State: { Running: false }, HostConfig: {} }]),
+    );
+    const launchd = fixture(
+      'sol-false-stopped-launchctl.txt',
+      'PID\tStatus\tLabel\n-\t0\torg.example.prod-auth\n',
+    );
+    const current = join(scratch, 'sol-running-current');
+    symlinkSync(join(scratch, 'previous-build'), current);
+    const result = run(
+      [
+        '--version',
+        STAGED,
+        '--artefacts',
+        STORE(),
+        '--line',
+        LINE,
+        '--api',
+        'docker:prod-api',
+        '--auth',
+        'launchd:org.example.prod-auth',
+        '--current',
+        current,
+        '--docker-inspect',
+        docker,
+        '--launchctl',
+        launchd,
+      ],
+      {
+        PATH: `${bin}:${process.env['PATH'] ?? ''}`,
+        DATABASE_ADMIN_URL: 'postgres://nobody@127.0.0.1:1/never',
+      },
+    );
+    expect(result.status).toBe(1);
+    expect(result.out).toMatch(/running|fixture|saved report/iu);
+    expect(result.out).not.toMatch(/db-migrate|ECONNREFUSED/iu);
+    expect(readlinkSync(current)).toBe(join(scratch, 'previous-build'));
   });
 });
