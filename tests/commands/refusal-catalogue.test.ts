@@ -99,13 +99,11 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['FOUR_EYES_REQUIRED', 409, 'caller'],
   ['BUDGET_UNAVAILABLE', 409, 'caller'],
   ['BUDGET_EXHAUSTED', 402, 'caller'],
-  ['VERSION_SUPERSEDED', 409, 'caller'],
   ['EVIDENCE_MISMATCH', 409, 'caller'],
   ['GATE_NOT_FOUND', 404, 'caller'],
   ['GATE_EXPIRED', 410, 'caller'],
   ['LINEAGE_TERMINAL', 409, 'caller'],
   ['CHANGE_ROUNDS_EXHAUSTED', 409, 'caller'],
-  ['PROPOSAL_OUT_OF_SCOPE', 403, 'caller'],
   ['RESERVATION_NOT_CLAIMABLE', 409, 'caller'],
   ['LINEAGE_NOT_ON_TASK', 409, 'caller'],
   ['CAP_BINDING_MISMATCH', 409, 'caller'],
@@ -139,12 +137,12 @@ const RUNTIME = [
   'LEASE_NOT_OWNED',
   'LINEAGE_NOT_ON_TASK',
   'LINEAGE_TERMINAL',
-  'PROPOSAL_OUT_OF_SCOPE',
+  'PROPOSAL_SCOPE_EXCEEDED',
+  'PROPOSAL_SUPERSEDED',
   'RESERVATION_NOT_CLAIMABLE',
   'SCOPE_NOT_GRANTED',
   'SUCCESSOR_OUT_OF_BOUNDS',
   'TRANSITION_NOT_PERMITTED',
-  'VERSION_SUPERSEDED',
 ];
 
 describe('the refusal catalogue', () => {

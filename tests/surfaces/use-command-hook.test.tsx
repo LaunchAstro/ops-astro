@@ -105,10 +105,10 @@ describe('useCommand', () => {
   });
 
   it('has no conflict for any other refusal, and stays open', async () => {
-    const page = await mount(<Probe replies={[refusal('PROPOSAL_OUT_OF_SCOPE')]} />);
+    const page = await mount(<Probe replies={[refusal('PROPOSAL_SCOPE_EXCEEDED')]} />);
     await page.click('[data-press]');
     expect(state(page)).toMatchObject({ closed: 'false', locked: 'false', conflict: '' });
-    expect(state(page).because).toContain('PROPOSAL_OUT_OF_SCOPE');
+    expect(state(page).because).toContain('PROPOSAL_SCOPE_EXCEEDED');
     await page.unmount();
   });
 });

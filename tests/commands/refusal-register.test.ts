@@ -104,8 +104,8 @@ describe('the refusal register', () => {
       // between approval and pickup (`tests/commands/final-r1-fr1-agent-delegation-widens.test.ts`).
       'EVIDENCE_MISMATCH',
       'LEASE_EXPIRED',
-      'PROPOSAL_SCOPE_EXCEEDED',
-      'PROPOSAL_SUPERSEDED',
+      // `PROPOSAL_SCOPE_EXCEEDED` and `PROPOSAL_SUPERSEDED` came off with T3a,
+      // which moved `propose` and `decide` onto them (`t3a-escalate.test.ts`).
       'TASK_NOT_PICKABLE',
       'WRONG_BUSINESS',
     ]);

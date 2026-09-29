@@ -239,7 +239,7 @@ describe.skipIf(serverUrl === undefined)('propose and decide through the command
       note: 'deciding what I read a moment ago',
     });
     expect(isCommandRefusal(outcome)).toBe(true);
-    expect(isCommandRefusal(outcome) ? outcome.code : '').toBe('VERSION_SUPERSEDED');
+    expect(isCommandRefusal(outcome) ? outcome.code : '').toBe('PROPOSAL_SUPERSEDED');
 
     // Nothing the handler touched survived the refusal. A refusal that still
     // moved a total would pass the assertion above and fail these four.
@@ -253,7 +253,7 @@ describe.skipIf(serverUrl === undefined)('propose and decide through the command
     const events = await auditFor(operationId);
     expect(events).toHaveLength(1);
     expect(events[0]?.outcome).toBe('refused');
-    expect(events[0]?.refusal_code).toBe('VERSION_SUPERSEDED');
+    expect(events[0]?.refusal_code).toBe('PROPOSAL_SUPERSEDED');
   });
 
   it('records the loser of a decision race as a refused attempt (G03)', async () => {

@@ -291,7 +291,7 @@ describe('R2-THERMO-12 / R1-SURFACE-34: a refused decision survives the reread t
     before[1] as LineageSpec,
   ];
 
-  for (const code of ['GATE_ALREADY_DECIDED', 'VERSION_SUPERSEDED']) {
+  for (const code of ['GATE_ALREADY_DECIDED', 'PROPOSAL_SUPERSEDED']) {
     it(`quotes ${code} once, under the superseded gate in l-0001, and nowhere in l-0002`, async () => {
       const { client } = server({ lineages: before, decide: { code, after: superseded } });
       const page = await open(client);

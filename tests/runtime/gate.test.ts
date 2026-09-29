@@ -231,7 +231,8 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
 
     expect(refused.ok).toBe(false);
     if (refused.ok) throw new Error('unreachable');
-    expect(refused.refusal.code).toBe('GATE_ALREADY_DECIDED');
+    // T3a: a superseded version's gate answers PROPOSAL_SUPERSEDED (T2-N2).
+    expect(refused.refusal.code).toBe('PROPOSAL_SUPERSEDED');
 
     // And nothing was reserved by the refusal.
     await database.app.withBusiness(fixture.businessId, async (tx) => {

@@ -57,12 +57,12 @@ describe('the runtime refusal codes L3 registers', () => {
     // which is the diff that list exists to produce.
     for (const code of [
       'GATE_ALREADY_DECIDED',
-      'VERSION_SUPERSEDED',
+      'PROPOSAL_SUPERSEDED',
       'LEASE_NOT_OWNED',
       'RESERVATION_NOT_CLAIMABLE',
       'GATE_NOT_FOUND',
       'LINEAGE_TERMINAL',
-      'PROPOSAL_OUT_OF_SCOPE',
+      'PROPOSAL_SCOPE_EXCEEDED',
       'AUTH_NO_AGENT_IDENTITY',
       'AUTH_SESSION_EXPIRED',
       'DELEGATION_OUT_OF_PURPOSE',

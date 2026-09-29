@@ -14,7 +14,7 @@
 // `task.decide` takes `gateId` and `versionId`. A gate that is not this
 // business's answers `NOT_FOUND` from the command layer. The caller's own
 // gate, named with a version that is not its version, reaches the runtime's
-// comparison under the locks, whose VERSION_SUPERSEDED reason once named the
+// comparison under the locks, whose PROPOSAL_SUPERSEDED reason once named the
 // presented version; it now names only the gate and the version it carries.
 //
 // Each call goes through the real HTTP route, as ada in alpha, naming either
@@ -204,7 +204,7 @@ describe.skipIf(serverUrl === undefined)(
 
     it('task.decide on the caller’s own gate echoes neither a foreign nor a fabricated version id', async () => {
       // The gate is found, so this reaches the runtime's version comparison
-      // under the locks (`decide.ts`, VERSION_SUPERSEDED), which once named the
+      // under the locks (`decide.ts`, PROPOSAL_SUPERSEDED), which once named the
       // presented version in its reason.
       const foreign = await proposedBy(world.bea);
       const own = await proposedBy(world.ada);

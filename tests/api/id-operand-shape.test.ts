@@ -285,13 +285,13 @@ describe.skipIf(serverUrl === undefined)('id operand shape (TC:11, root ruling 2
         body: (gateId) => ({ gateId, versionId: own.versionId, ...decision }),
       },
       {
-        // A fabricated version on a real gate is VERSION_SUPERSEDED; a malformed one
+        // A fabricated version on a real gate is PROPOSAL_SUPERSEDED; a malformed one
         // meets the generic NOT_FOUND in `commands/prepare.ts` first. Typed, not a
         // fault, and handed back (ID-OPERANDS unfinished 2).
         op: 'task.decide',
         operand: 'versionId',
         by: ada,
-        code: 'VERSION_SUPERSEDED',
+        code: 'PROPOSAL_SUPERSEDED',
         apart: { empty: 'NOT_FOUND', 'not a uuid': 'NOT_FOUND' },
         body: (versionId) => ({ gateId: own.gateId, versionId, ...decision }),
       },
