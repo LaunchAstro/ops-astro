@@ -26,6 +26,7 @@ import {
   replayAdapter,
   replayCostMinor,
 } from '../../packages/core-connectors/src/index.ts';
+import { statusOf } from '../../packages/core-records/src/index.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/index.ts';
 import { openCustodyWorld, type CustodyWorld } from '../custody/custody-world.ts';
 import {
@@ -187,11 +188,15 @@ describe.skipIf(serverUrl === undefined)('AW-01 model.call through the boundary'
   it('AW-01 model.call caller from the envelope', async () => {
     const work = await liveWork(s, 'the body names no caller', 2_000);
     const seen = world.provider.seen.length;
-    for (const claimed of [{ actorId: randomUUID() }, { attendedByPersonId: randomUUID() }]) {
+    const claims = [
+      [{ actorId: randomUUID() }, 'FIELD_NOT_WRITABLE'],
+      [{ attendedByPersonId: randomUUID() }, 'COMMAND_BODY_INVALID'],
+    ] as const;
+    for (const [claimed, code] of claims) {
       // eslint-disable-next-line no-await-in-loop
       const answer = await asAgent(work, await bodyFor(work, claimed));
-      expect(answer.status).toBe(422);
-      expect(answer.body['code']).toBe('FIELD_NOT_WRITABLE');
+      expect(answer.body['code']).toBe(code);
+      expect(answer.status).toBe(statusOf(code));
     }
     expect(world.provider.seen.length).toBe(seen);
     expect(await callsOn(work)).toEqual([]);
