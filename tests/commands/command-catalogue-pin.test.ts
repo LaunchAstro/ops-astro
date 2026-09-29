@@ -24,7 +24,10 @@
 // third is MP-4-10's `task.set_adhoc`, the same shape as the second. The
 // fourth is MP-4-10's Client access, `task.share_with_client` and
 // `task.revoke_client_share`: two writes an agent never reaches, one row each
-// in the tables that list every write.
+// in the tables that list every write. The fifth is MP-4-5's author-only
+// `task.edit_comment` and `task.delete_comment`, two writes an agent reaches
+// inside its delegation, one row each in the tables that list every write or
+// every agent operation, and `task.comment` handing on its `parentId`.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -92,6 +95,12 @@ vi.mock('../../packages/core-commands/src/commands/tasks-trash.ts', async (origi
 vi.mock('../../packages/core-commands/src/commands/tasks-comment.ts', async (original) => ({
   ...(await original<object>()),
   commentOnTask: recorder('commentOnTask'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-comment-edit.ts', async (original) => ({
+  ...(await original<object>()),
+  changeFrom: () => 'change',
+  editTaskComment: recorder('editTaskComment'),
+  deleteTaskComment: recorder('deleteTaskComment'),
 }));
 vi.mock('../../packages/core-commands/src/commands/settings-write.ts', async (original) => ({
   ...(await original<object>()),
@@ -177,6 +186,8 @@ const PINNED_AGENT_SURFACE = [
   'session.capabilities',
   'task.comment',
   'task.decide',
+  'task.delete_comment',
+  'task.edit_comment',
   'task.handback',
   'task.heartbeat',
   'task.pickup',
@@ -201,7 +212,16 @@ const REQUESTS: readonly CommandRequest[] = [
     body: 'b-comment',
     audience: 'a-comment',
     commentType: 't-comment',
+    parentId: 'p-comment',
   },
+  {
+    command: 'task.edit_comment',
+    operationId: 'op',
+    recordId: 'r',
+    commentId: 'c-edit',
+    body: 'b-edit',
+  },
+  { command: 'task.delete_comment', operationId: 'op', recordId: 'r', commentId: 'c-delete' },
   {
     command: 'task.propose',
     operationId: 'op',
@@ -263,7 +283,9 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.update': ['updateTask', 'request'],
   'task.complete': ['setState', 'completed'],
   'task.reopen': ['setState', 'unstarted', 'why-reopen'],
-  'task.comment': ['commentOnTask', 'b-comment', 'a-comment', 't-comment'],
+  'task.comment': ['commentOnTask', 'b-comment', 'a-comment', 't-comment', 'p-comment'],
+  'task.edit_comment': ['editTaskComment', 'c-edit', 'b-edit'],
+  'task.delete_comment': ['deleteTaskComment', 'c-delete'],
   'task.propose': ['proposeOnTask', 'request'],
   'task.decide': ['decideOnGate', 'request'],
   'task.pickup': ['pickupAsPerson', 'request'],
@@ -346,7 +368,7 @@ describe('the per-command tables at 06ab232', () => {
     );
   });
 
-  it('lets an agent reach the same ten, two of them before a pickup', () => {
+  it('lets an agent reach the same twelve, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

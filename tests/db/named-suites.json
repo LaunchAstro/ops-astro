@@ -81,7 +81,8 @@
     "MP-4-2 (SL08) names task-facts: the stage and the client mark on task.read for the facts band, each the task's own record, and its three crossings (another business's task not found with its stage absent; another client's task in the same business refused with its stage absent; an agent under a live delegation reads its own task's facts and none of another's).",
     "MP-4-3 (SL08) names task-perspectives: the Team and Agent counts worked out from one task's own task.read (an open gate on another task is never counted) and its three crossings (another business's task not found with its title absent; another client's task in the same business refused, its gate never counted and its proposal's canary never sent to a reader of client A's task; an agent under a live delegation counts its own task and reads nothing of another).",
     "MP-4-16 (SL08) names task-history-trail: the history on task.read is the task's own changes, filtered by its own address (another task's writer never appears), and its three crossings (another business's task not found with no history sent; another client's task in the same business refused and its writer never shown to a reader of client A's task; an agent under a live delegation reads nothing of another task's history).",
-    "MP-4-5 (SL08) names task-conversation: a comment is task:comment's (a reader without it writes nothing) and joins the audit chain as applied; an agent comments to Internal only (a Client comment refused AUDIENCE_NOT_PERMITTED, nothing written); and a client message reaches only that task's client, the internal note and its count never reaching a client session and another client's task refused with its words absent (TR-S-B2-16)."
+    "MP-4-5 (SL08) names task-conversation: a comment is task:comment's (a reader without it writes nothing) and joins the audit chain as applied; an agent comments to Internal only (a Client comment refused AUDIENCE_NOT_PERMITTED, nothing written); and a client message reaches only that task's client, the internal note and its count never reaching a client session and another client's task refused with its words absent (TR-S-B2-16).",
+    "MP-4-5 server step (SL08) names task-conversation-replies and task-conversation-signals over conversation-support: a reply sits one level deep on a top-level message on the same task and in its audience (a reply to a reply, another task's, another business's or a malformed parent refused, nothing written); authors edit and delete their own messages and replies only (a colleague refused SCOPE_NOT_GRANTED, a reader without task:comment refused, nothing changed); each of task.comment with a parent, task.edit_comment and task.delete_comment joins the audit chain as applied; the owed, answered and not_acknowledged signals derived at read, a team reply clearing an owed client message and a general message not; the three crossings for the new commands (another business, another client's comment through this client's task, an agent under a live delegation editing only its own comment on its own task); an @ naming a person with no grant leaves its words in the one comment row and nowhere else; and the thread at three detail levels in one statement each, a reader outside given the client messages alone."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -235,7 +236,9 @@
     "tests/reads/task-facts.test.ts",
     "tests/reads/task-perspectives.test.ts",
     "tests/reads/task-history-trail.test.ts",
-    "tests/commands/task-conversation.test.ts"
+    "tests/commands/task-conversation.test.ts",
+    "tests/commands/task-conversation-replies.test.ts",
+    "tests/commands/task-conversation-signals.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
