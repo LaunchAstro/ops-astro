@@ -211,6 +211,8 @@ export interface GateView {
    */
   readonly expired: boolean;
   readonly payloadDigest: string;
+  /** When the gate was raised: for a handed-back version, the moment the run reached review (MP-6-2). */
+  readonly raisedAt: string;
 }
 
 export interface ProposalVersionView {
@@ -223,6 +225,8 @@ export interface ProposalVersionView {
   readonly payload: unknown;
   readonly supersededAt: string | null;
   readonly runId: string | null;
+  /** When the first lease on this version's run was taken; null while none has been (MP-6-2). */
+  readonly runStartedAt: string | null;
   readonly evidence: EvidenceView | null;
   readonly gate: GateView | null;
   /** The checks the run performed on this version, oldest first (MP-6-1, CS-16.3). */

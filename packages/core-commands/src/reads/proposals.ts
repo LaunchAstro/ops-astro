@@ -95,6 +95,8 @@ interface VersionRow {
   readonly gate_state: string | null;
   readonly gate_round: number | null;
   readonly gate_expires_at: string | null;
+  readonly gate_raised_at: string | null;
+  readonly run_started_at: string | null;
   readonly gate_expired: boolean | null;
 }
 
@@ -146,6 +148,10 @@ const VERSIONS = `select row_number() over (order by lin.created_at desc, lin.id
             ver.payload,
             ver.superseded_at,
             run.id                as run_id,
+            (select min(lease.acquired_at)
+               from public.leases lease
+              where lease.business_id = run.business_id and lease.run_id = run.id)
+                                  as run_started_at,
             pack.id               as evidence_pack_id,
             pack.renderer         as evidence_renderer,
             pack.rendered_digest  as evidence_digest,
@@ -155,6 +161,7 @@ const VERSIONS = `select row_number() over (order by lin.created_at desc, lin.id
                  then 'expired' else g.state end as gate_state,
             g.round               as gate_round,
             g.expires_at          as gate_expires_at,
+            g.created_at          as gate_raised_at,
             (g.state = 'pending' and g.expires_at <= now()) as gate_expired
        from public.proposal_lineages lin
        join public.proposal_versions ver
@@ -298,6 +305,7 @@ function asVersion(row: VersionRow, checks: readonly CheckRow[]): ProposalVersio
     payload: row.payload,
     supersededAt: row.superseded_at === null ? null : isoTime(row.superseded_at),
     runId: row.run_id,
+    runStartedAt: row.run_started_at === null ? null : isoTime(row.run_started_at),
     evidence:
       row.evidence_pack_id === null
         ? null
@@ -317,6 +325,7 @@ function asVersion(row: VersionRow, checks: readonly CheckRow[]): ProposalVersio
             expiresAt: isoTime(row.gate_expires_at),
             expired: row.gate_expired ?? false,
             payloadDigest: row.payload_digest,
+            raisedAt: isoTime(row.gate_raised_at),
           },
     checks: checks
       .filter((check) => check.version_id === row.version_id)

@@ -953,6 +953,12 @@ Each version carries `checks`: the checks its run recorded through
 the lease holder as `performedByActorId` (MP-6-1, CS-16.3; `run_checks`,
 migration 0032). They are read in the same snapshot as the rest.
 
+Each version carries `runStartedAt`, when the first lease on its run was
+taken (null before any), and its gate carries `raisedAt`, when the gate was
+raised (MP-6-2). The Agent page's "to the gate" is the time from the run's
+start to the latest gate raised after it, both stored facts from the same
+snapshot; a gate raised before the run started is the approval to start it.
+
 Each lineage carries `scopes`: what each lease its runs took was allowed to
 touch, oldest first (MP-6-4, CS-6.1). A scope is the lease's own delegation,
 the one the broker set at pickup (R71), so nothing a person edits on the task
@@ -996,8 +1002,9 @@ proposals: {
     payload: unknown;
     supersededAt: string | null;
     runId: string | null;
+    runStartedAt: string | null;       // the run's first lease (MP-6-2)
     evidence: { id; renderer; digest; body } | null;
-    gate: { id; state; round; expiresAt; expired; payloadDigest } | null;
+    gate: { id; state; round; expiresAt; expired; payloadDigest; raisedAt } | null;
   }[];
   decisions: {                         // the chain as stored, oldest first
     id; seq; decision; round; decidedByPersonId; decidedAt;
