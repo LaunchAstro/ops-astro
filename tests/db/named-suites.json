@@ -214,7 +214,8 @@
     "tests/runtime/final-r2-dbtest-upgrade-guards.test.ts",
     "tests/tenancy/final-r6-runner-guard.test.ts",
     "tests/db/inbox-records.test.ts",
-    "tests/commands/inbox-raising.test.ts"
+    "tests/commands/inbox-raising.test.ts",
+    "tests/commands/inbox-clearing.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
