@@ -18,4 +18,4 @@ docs/design-system
 
 # A reviewer's proof test, committed byte-for-byte as it arrived (printed at
 # the default width); the review names it by its bytes.
-tests/surfaces/sol-mp-1-5-funnel.test.ts
+tests/surfaces/funnel-visible-at-phone-width.test.ts
