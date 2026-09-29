@@ -200,7 +200,7 @@ function compare(before, after) {
 async function drill({ url, from, directory }) {
   const all = readMigrations(directory);
   const at = all.findIndex((m) => m.version === from || m.version.startsWith(`${from}_`));
-  if (at === -1) throw new Refused(`no migration ${from} in ${directory}`);
+  if (at === -1) throw new Refused(`no migration ${from} among the ${all.length} read`);
   if (at === all.length - 1)
     throw new Refused(`${all[at].version} is the head: nothing to upgrade`);
   const start = all[at].version;
@@ -208,6 +208,12 @@ async function drill({ url, from, directory }) {
 
   const db = await createEmptyDatabase({ serverUrl: url, part: 'drill' });
   try {
+    // Row security would hide rows from the snapshot and the drill would pass
+    // over what it could not see, so the owner must be above it.
+    const [owner] = await db.admin.execute(
+      `select rolsuper or rolbypassrls as above from pg_roles where rolname = current_user`,
+    );
+    if (owner?.above !== true) throw new Refused('the owner role is subject to row security');
     await applyMigrations(db.admin, all.slice(0, at + 1));
     await seed(db.app);
     // The application stopped: the seed's pool is closed and holds no session.
