@@ -266,6 +266,8 @@ export async function readTaskDetail(
     adHoc: row.ad_hoc === true,
     clientAccess: (await outsideHolders(tx, row.id)).length > 0,
     board: await readBoardCrumb(tx, taskTypeId, row.board_id, rankPool),
+    stage: null,
+    clientSet: false,
   };
 }
 

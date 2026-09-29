@@ -73,6 +73,8 @@ export const task = (over: Readonly<Record<string, unknown>> = {}) => ({
   adHoc: false,
   clientAccess: false,
   board: { readable: true, title: 'Website Projects' },
+  stage: null,
+  clientSet: false,
   ...over,
 });
 

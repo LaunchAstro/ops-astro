@@ -103,6 +103,13 @@ export interface TaskDetail extends TaskSummary {
    * reader who may read that board; anyone else is told there is one.
    */
   readonly board: BoardCrumb | null;
+  /** The task's stage as stored (`task.set_stage`), or null when it has none. */
+  readonly stage: string | null;
+  /**
+   * Whether the task is put under a client (`task.set_party`). The facts band
+   * says so; the client's name waits on the client model.
+   */
+  readonly clientSet: boolean;
 }
 
 /** A task's board as the crumb draws it: its title, or that it is withheld. */
