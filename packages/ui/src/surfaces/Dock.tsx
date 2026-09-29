@@ -33,8 +33,17 @@ export interface DockPanel {
   readonly body: ReactNode;
 }
 
+export interface DockLayout {
+  readonly mode: 'rest' | 'seated' | 'floating' | 'sheet';
+  readonly panelWidth: number;
+}
+
 export interface DockProps {
   readonly tabs: readonly DockTab[];
+  /** MP-3-2 stub. */
+  readonly layout?: DockLayout;
+  readonly onResize?: (width: number) => void;
+  readonly onResizeEnd?: (width: number) => void;
   /** The open panels, in the order they are drawn. */
   readonly panels: readonly DockPanel[];
   readonly onTab: (id: string, shift: boolean) => void;
