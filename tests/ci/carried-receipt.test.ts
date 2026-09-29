@@ -55,65 +55,9 @@ const saved = (text: string): string => {
 };
 
 function keptCases() {
-  it('the carried receipt is printed and kept, says it ran on a carried archive, and names no last tested restore', async () => {
-    const { file } = await carriedFile();
-    const operator = randomUUID();
-    const gate = gateOf(operator);
-    const { drillAsOperator, RECEIPT_FIELDS } = await drillModule();
-    const receipt = await drillAsOperator({
-      gate,
-      archiveFile: file,
-      privateKey: keys.privateKey,
-      scope,
-      drill: async (options: { fetchArchive: () => Promise<unknown> }) => {
-        await options.fetchArchive();
-        return { event: 'restore drill', at: new Date().toISOString(), ...PASSED };
-      },
-      reach: noStore,
-    });
-    expect(Object.keys(receipt).toSorted()).toStrictEqual([...RECEIPT_FIELDS].toSorted());
-    // Off the machine it is not a passed drill: the store checks the archive when it is recorded.
-    const held = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as { sha256: string };
-    expect(receipt).toMatchObject({
-      outcome: 'pending',
-      ranOn: 'carried archive',
-      lastTestedRestore: null,
-      operator,
-    });
-    const kept = readFileSync(join(gate.records, 'deployments.jsonl'), 'utf8').trim().split('\n');
-    expect(kept.map((line) => JSON.parse(line) as Receipt)).toStrictEqual([receipt]);
-    // Criterion 14: the digest is in neither the printed receipt nor its log.
-    expect(`${JSON.stringify(receipt)}${kept.join('')}`).not.toContain(held.sha256);
-    // The kept line is what --record takes back on the machine that runs staging.
-    const own = { personId: operator, business: 'made-up' };
-    expect((await carried()).readCarriedReceipt(saved(`${kept[0]}\n`), own)).toStrictEqual(receipt);
-  });
+  keptCases1();
 
-  it('the restore challenge a drill read back is kept beside the archive, mode 600, and never printed or logged', async () => {
-    const { file } = await carriedFile();
-    const gate = gateOf();
-    const challenge = randomBytes(32).toString('hex');
-    const { drillAsOperator } = await drillModule();
-    const receipt = await drillAsOperator({
-      gate,
-      archiveFile: file,
-      privateKey: keys.privateKey,
-      scope,
-      drill: async (options: { fetchArchive: () => Promise<unknown> }) => {
-        await options.fetchArchive();
-        const result = { event: 'restore drill', at: new Date().toISOString(), ...PASSED };
-        // As restoreDrill keeps it: off the record's own fields.
-        return Object.defineProperty(result, 'challenge', { value: challenge, enumerable: false });
-      },
-      reach: noStore,
-    });
-    expect(receipt['outcome']).toBe('pending');
-    expect(readFileSync(`${file}.challenge`, 'utf8')).toBe(`${challenge}\n`);
-    expect(statSync(`${file}.challenge`).mode & 0o777).toBe(0o600);
-    const log = readFileSync(join(gate.records, 'deployments.jsonl'), 'utf8');
-    expect(`${JSON.stringify(receipt)}${log}`).not.toContain(challenge);
-    expect((await carried()).readChallenge(file)).toBe(challenge);
-  });
+  keptCases2();
 }
 
 function refusedCases() {
@@ -158,5 +102,69 @@ function refusedCases() {
     for (const [what, text] of Object.entries(hostile)) {
       expect(() => readCarriedReceipt(saved(text), own), what).toThrow(NAMES_NOTHING);
     }
+  });
+}
+
+function keptCases1() {
+  it('the carried receipt is printed and kept, says it ran on a carried archive, and names no last tested restore', async () => {
+    const { file } = await carriedFile();
+    const operator = randomUUID();
+    const gate = gateOf(operator);
+    const { drillAsOperator, RECEIPT_FIELDS } = await drillModule();
+    const receipt = await drillAsOperator({
+      gate,
+      archiveFile: file,
+      privateKey: keys.privateKey,
+      scope,
+      drill: async (options: { fetchArchive: () => Promise<unknown> }) => {
+        await options.fetchArchive();
+        return { event: 'restore drill', at: new Date().toISOString(), ...PASSED };
+      },
+      reach: noStore,
+    });
+    expect(Object.keys(receipt).toSorted()).toStrictEqual([...RECEIPT_FIELDS].toSorted());
+    // Off the machine it is not a passed drill: the store checks the archive when it is recorded.
+    const held = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as { sha256: string };
+    expect(receipt).toMatchObject({
+      outcome: 'pending',
+      ranOn: 'carried archive',
+      lastTestedRestore: null,
+      operator,
+    });
+    const kept = readFileSync(join(gate.records, 'deployments.jsonl'), 'utf8').trim().split('\n');
+    expect(kept.map((line) => JSON.parse(line) as Receipt)).toStrictEqual([receipt]);
+    // Criterion 14: the digest is in neither the printed receipt nor its log.
+    expect(`${JSON.stringify(receipt)}${kept.join('')}`).not.toContain(held.sha256);
+    // The kept line is what --record takes back on the machine that runs staging.
+    const own = { personId: operator, business: 'made-up' };
+    expect((await carried()).readCarriedReceipt(saved(`${kept[0]}\n`), own)).toStrictEqual(receipt);
+  });
+}
+
+function keptCases2() {
+  it('the restore challenge a drill read back is kept beside the archive, mode 600, and never printed or logged', async () => {
+    const { file } = await carriedFile();
+    const gate = gateOf();
+    const challenge = randomBytes(32).toString('hex');
+    const { drillAsOperator } = await drillModule();
+    const receipt = await drillAsOperator({
+      gate,
+      archiveFile: file,
+      privateKey: keys.privateKey,
+      scope,
+      drill: async (options: { fetchArchive: () => Promise<unknown> }) => {
+        await options.fetchArchive();
+        const result = { event: 'restore drill', at: new Date().toISOString(), ...PASSED };
+        // As restoreDrill keeps it: off the record's own fields.
+        return Object.defineProperty(result, 'challenge', { value: challenge, enumerable: false });
+      },
+      reach: noStore,
+    });
+    expect(receipt['outcome']).toBe('pending');
+    expect(readFileSync(`${file}.challenge`, 'utf8')).toBe(`${challenge}\n`);
+    expect(statSync(`${file}.challenge`).mode & 0o777).toBe(0o600);
+    const log = readFileSync(join(gate.records, 'deployments.jsonl'), 'utf8');
+    expect(`${JSON.stringify(receipt)}${log}`).not.toContain(challenge);
+    expect((await carried()).readChallenge(file)).toBe(challenge);
   });
 }

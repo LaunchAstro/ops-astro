@@ -118,6 +118,13 @@ async function fetchedTakenAt(): Promise<string> {
   }
 }
 
+/** The receipts written since the `before`th, as action and archive. */
+const readsSince = async (before: number): Promise<unknown[]> =>
+  (await receipts()).slice(before).map(({ action, archive_id }) => ({ action, archive_id }));
+/** `count` logged reads of the archive `id`. */
+const readsOf = (count: number, id: string | undefined): unknown[] =>
+  Array.from({ length: count }, () => ({ action: 'backup read', archive_id: id }));
+
 function backupEncryptionCases3() {
   it('lets the restore identity read the newest backup only through the store, logging each read', async () => {
     const [newest] = await store.admin.execute<{ id: string; taken_at: Date; parts: number }>(
@@ -125,13 +132,9 @@ function backupEncryptionCases3() {
     );
     const before = (await receipts()).length;
     expect(await fetchedTakenAt()).toBe(newest?.taken_at.toISOString());
-    const logged = await receipts();
     // The header's read, then one for each part it handed out (REV158S2 criterion 12).
     const reads = 1 + (newest?.parts ?? 0);
-    expect(logged.length).toBe(before + reads);
-    for (const read of logged.slice(before)) {
-      expect(read).toMatchObject({ action: 'backup read', archive_id: newest?.id });
-    }
+    expect(await readsSince(before)).toStrictEqual(readsOf(reads, newest?.id));
     const [actor] = await store.admin.execute<{ actor: string }>(
       'select actor from backups.receipts order by id desc limit 1',
     );

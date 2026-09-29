@@ -48,6 +48,14 @@ const pending = (operator: string, business: string): Record<string, unknown> =>
 });
 
 describe('S0-3e carried receipt hygiene', () => {
+  hygieneCases1();
+
+  hygieneCases2();
+
+  hygieneCases3();
+});
+
+function hygieneCases1() {
   it('another business receipt cannot be recorded under this business', async () => {
     const operator = randomUUID();
     const gate = gateOf(operator);
@@ -63,7 +71,9 @@ describe('S0-3e carried receipt hygiene', () => {
     ).rejects.toThrow();
     expect(readdirSync(gate.records)).toStrictEqual([]);
   });
+}
 
+function hygieneCases2() {
   it('a carried drill receipt and its log contain no archive fingerprint', async () => {
     const { file } = await carriedFile();
     const gate = gateOf();
@@ -95,7 +105,9 @@ describe('S0-3e carried receipt hygiene', () => {
       held.sha256,
     );
   });
+}
 
+function hygieneCases3() {
   it('a planted secret in a carried receipt never reaches a log or response', async () => {
     const operator = randomUUID();
     const gate = gateOf(operator);
@@ -118,4 +130,4 @@ describe('S0-3e carried receipt hygiene', () => {
     }
     expect(output).not.toContain(CANARY);
   });
-});
+}

@@ -199,20 +199,25 @@ export function readCarried(file, into) {
     closeSync(fd);
     if (copy !== undefined) closeSync(copy);
   }
-  return { archiveId: held.archiveId, takenAt: held.takenAt, sha256: held.sha256, bytes: held.bytes };
+  return {
+    archiveId: held.archiveId,
+    takenAt: held.takenAt,
+    sha256: held.sha256,
+    bytes: held.bytes,
+  };
 }
 
 const isInteger = (v) => Number.isInteger(v);
 const orNull = (test) => (v) => v === null || test(v);
 const isTime = (v) => typeof v === 'string' && ISO.test(v);
-const STAGES = ['scope', 'fetch', 'open', 'start', 'target', 'restore', 'check'];
+const STAGES = new Set(['scope', 'fetch', 'open', 'start', 'target', 'restore', 'check']);
 const TIMED = new Set(['fetch', 'open', 'start', 'restore', 'check']);
 
 /** Each field's one shape: a carried drill writes nothing else, and nothing is echoed. */
 const RECEIPT_SHAPE = {
   action: (v) => v === 'restore drill recorded',
   outcome: (v) => v === 'pending' || v === 'failed',
-  stage: (v) => v === null || STAGES.includes(v),
+  stage: (v) => v === null || STAGES.has(v),
   at: isTime,
   target: (v) => v === 'throwaway container',
   productionMajor: isInteger,

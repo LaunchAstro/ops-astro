@@ -69,7 +69,9 @@ export async function recordCarriedDrill(
   reach = stagingReach,
 ) {
   const types = ['text', 'text', 'uuid', 'timestamptz', 'integer', 'integer', 'integer', 'integer'];
-  const casts = [...types, 'jsonb', 'text', 'text', 'uuid'].map((type, i) => `nullif($${i + 1}, '')::${type}`);
+  const casts = [...types, 'jsonb', 'text', 'text', 'uuid'].map(
+    (type, i) => `nullif($${i + 1}, '')::${type}`,
+  );
   const at = await reach(
     storeUrl,
     `set role ${RESTORE_ROLE};\n` +

@@ -152,7 +152,8 @@ export function value(v, type) {
  */
 export function bound(sql, params) {
   const args = params.map((v) => {
-    const text = v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+    const text =
+      v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
     if (/['\\\n\r]/u.test(text)) throw new Error('a bound value is not of its fixed shape');
     return `'${text}'`;
   });

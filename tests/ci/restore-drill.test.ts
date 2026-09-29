@@ -600,8 +600,10 @@ function drillScopeCases3() {
       outcome: 'passed',
     });
     for (const scope of [
-      { business: A.business, person: A.person, client: A2.client }, // the other pair's client
-      { business: A.business, person: A2.person, client: A.client }, // the other pair's person
+      // the other pair's client
+      { business: A.business, person: A.person, client: A2.client },
+      // the other pair's person
+      { business: A.business, person: A2.person, client: A.client },
       { business: A.business, person: A.person, client: A2.revoked }, // a revoked grant
       { business: A.business, person: A2.outsider, client: A.client }, // a grant but no membership
       { business: A.business, person: A.person, client: A2.derived }, // its granter's grant revoked
@@ -718,7 +720,10 @@ async function carriedRestore(
   try {
     const file = join(dir, 'archive.sealed');
     const path = '../../scripts/ops/carried-archive.mjs';
-    const { writeCarried } = (await import(/* @vite-ignore */ path)) as Carried;
+    const { writeCarried } = (await import(
+      /* @vite-ignore */
+      path
+    )) as Carried;
     await writeCarried(file, (into) => {
       writeFileSync(into, sealed, { mode: 0o600, flag: 'wx' });
       const sha256 = createHash('sha256').update(sealed).digest('hex');
@@ -732,7 +737,10 @@ async function carriedRestore(
       recordSignIn: () => Promise.resolve(),
     };
     const drill = '../../scripts/ops/restore-drill.mjs';
-    const { drillAsOperator } = (await import(/* @vite-ignore */ drill)) as AsOperator;
+    const { drillAsOperator } = (await import(
+      /* @vite-ignore */
+      drill
+    )) as AsOperator;
     // The real drill: Docker, the throwaway container, pg_restore and the check.
     const receipt = await drillAsOperator({
       gate,

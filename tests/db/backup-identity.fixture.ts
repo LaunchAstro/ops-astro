@@ -143,7 +143,7 @@ export async function hostReach(
       /^([\s\S]*\n)?([^\n]*) \\bind((?: '[^']*')*) \\g\n?$/u.exec(text) ?? [];
     if (before.trim() !== '') await sql.unsafe(before);
     const values = [...args.matchAll(/'([^']*)'/gu)].map(([, v]) => v ?? '');
-    const results = [await sql.unsafe(statement, values)].flat(1) as Record<string, unknown>[][];
+    const results = [await sql.unsafe(statement, values)].flat() as Record<string, unknown>[][];
     printed = results
       .flat()
       .map((row) => String(Object.values(row)[0] ?? ''))
