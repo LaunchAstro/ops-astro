@@ -17,10 +17,11 @@
 // and its password is reset to the one recorded here so a reseed after a
 // forgotten file still signs in.
 
-import { createHmac, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { localServiceToken } from './signing-key.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const LOCAL = join(ROOT, '.local');
@@ -101,39 +102,6 @@ function readEnv(file) {
   return values;
 }
 
-const base64url = (input) =>
-  Buffer.from(input)
-    .toString('base64')
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replaceAll('=', '');
-
-/**
- * A service-role token for the admin API, signed with the same secret the API
- * verifies user tokens with. It lives for five minutes and never leaves this
- * process.
- */
-function serviceToken(secret) {
-  const now = Math.floor(Date.now() / 1000);
-  const header = base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const payload = base64url(
-    JSON.stringify({
-      role: 'service_role',
-      aud: 'authenticated',
-      iss: 'ops-astro-local-seed',
-      iat: now,
-      exp: now + 300,
-    }),
-  );
-  const signature = createHmac('sha256', secret)
-    .update(`${header}.${payload}`)
-    .digest('base64')
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replaceAll('=', '');
-  return `${header}.${payload}.${signature}`;
-}
-
 async function call(url, token, method, body) {
   const response = await fetch(url, {
     method,
@@ -164,13 +132,12 @@ async function findByEmail(gotrue, token, email) {
 async function main() {
   const env = { ...readEnv(join(LOCAL, 'auth.env')), ...process.env };
   const gotrue = env.GOTRUE_URL ?? 'http://127.0.0.1:54391';
-  const secret = env.SUPABASE_JWT_SECRET;
-  if (secret === undefined || secret === '') {
-    console.error('BLOCKER: SUPABASE_JWT_SECRET is not set. Run scripts/local/auth-up.sh first.');
+  // Signed with the local auth server's own key: there is no shared secret.
+  const token = await localServiceToken(ROOT);
+  if (token === undefined) {
+    console.error('BLOCKER: no local signing key. Run scripts/local/auth-up.sh first.');
     process.exit(1);
   }
-
-  const token = serviceToken(secret);
   const seeded = [];
 
   for (const person of PEOPLE) {

@@ -103,40 +103,51 @@ fi
 docker exec "${PG_CONTAINER}" psql -U postgres -d "${PG_DATABASE}" -v ON_ERROR_STOP=1 \
   -c 'create schema if not exists auth' >/dev/null
 
-# ------------------------------------------------------------- the JWT secret
-# Generated once and then kept, because regenerating it would invalidate every
-# token the slice has already issued and every seeded session.
-if [ -f "${LOCAL}/auth.env" ]; then
-  # shellcheck disable=SC1091
-  . "${LOCAL}/auth.env"
-else
-  SUPABASE_JWT_SECRET="$(openssl rand -hex 32)"
-  cat > "${LOCAL}/auth.env" <<ENV
-# Written by scripts/local/auth-up.sh. Local only, gitignored.
-SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
-GOTRUE_URL=http://127.0.0.1:${AUTH_PORT}
-ENV
-  echo "auth-up: wrote ${LOCAL}/auth.env"
+# ------------------------------------------------------------ the signing key
+# GoTrue signs ES256 with a key generated once and kept: a new one would end
+# every session already issued. It is owner-only and never in auth.env, which
+# the API reads: the API fetches the public half from GoTrue instead (LF-4).
+KEY_FILE="${LOCAL}/auth-signing-key.json"
+if [ ! -s "${KEY_FILE}" ]; then
+  (umask 077 && node "${ROOT}/scripts/local/signing-key.mjs" > "${KEY_FILE}.tmp")
+  [ -s "${KEY_FILE}.tmp" ] || { echo "BLOCKER: no signing key was generated" >&2; exit 1; }
+  mv "${KEY_FILE}.tmp" "${KEY_FILE}"
+  echo "auth-up: wrote ${KEY_FILE}"
 fi
-# shellcheck disable=SC1091
-. "${LOCAL}/auth.env"
+GOTRUE_JWT_KEYS="$(cat "${KEY_FILE}")"
+KEY_LABEL="$(shasum -a 256 "${KEY_FILE}" | cut -c1-16)"
+
+# Rewritten every run, so an auth.env from before the switch-over loses the
+# shared secret it held.
+GOTRUE_URL="http://127.0.0.1:${AUTH_PORT}"
+cat > "${LOCAL}/auth.env" <<ENV
+# Written by scripts/local/auth-up.sh. Local only, gitignored.
+GOTRUE_URL=${GOTRUE_URL}
+ENV
 
 # ------------------------------------------------------------------- the auth
-# GoTrue must stamp GOTRUE_URL as `iss`, so a container that does not is replaced.
-if running "${AUTH_CONTAINER}" && ! docker inspect "${AUTH_CONTAINER}" | grep -qF "GOTRUE_JWT_ISSUER=${GOTRUE_URL}\""; then
+# GoTrue must stamp GOTRUE_URL as `iss` and sign with this key, so a container
+# that does not (one from before the switch-over included) is replaced.
+signs_with_key() {
+  [ "$(docker inspect -f '{{index .Config.Labels "ops-astro.signing-key"}}' "$1" 2>/dev/null)" = "${KEY_LABEL}" ]
+}
+if running "${AUTH_CONTAINER}" && { ! docker inspect "${AUTH_CONTAINER}" | grep -qF "GOTRUE_JWT_ISSUER=${GOTRUE_URL}\"" || ! signs_with_key "${AUTH_CONTAINER}"; }; then
   docker rm -f "${AUTH_CONTAINER}" >/dev/null
 fi
 if running "${AUTH_CONTAINER}"; then
   echo "auth-up: ${AUTH_CONTAINER} already running"
 else
   if exists "${AUTH_CONTAINER}"; then
-    # A stopped container may hold an older secret in its environment, so it is
+    # A stopped container may hold an older key in its environment, so it is
     # replaced rather than started. Its state lives in Postgres, not here.
     docker rm -f "${AUTH_CONTAINER}" >/dev/null
   fi
+  # GoTrue will not start without a JWT secret. It signs with the key above, so
+  # this one is made for the container and kept nowhere.
   docker run -d \
     --name "${AUTH_CONTAINER}" \
     --network "${NETWORK}" \
+    --label "ops-astro.signing-key=${KEY_LABEL}" \
     -p "127.0.0.1:${AUTH_PORT}:9999" \
     -e GOTRUE_API_HOST=0.0.0.0 \
     -e PORT=9999 \
@@ -145,7 +156,8 @@ else
     -e GOTRUE_DB_DRIVER=postgres \
     -e GOTRUE_DB_NAMESPACE=auth \
     -e DATABASE_URL="postgres://postgres:ops_astro_local@${PG_CONTAINER}:5432/${PG_DATABASE}?sslmode=disable&search_path=auth" \
-    -e GOTRUE_JWT_SECRET="${SUPABASE_JWT_SECRET}" \
+    -e GOTRUE_JWT_KEYS="${GOTRUE_JWT_KEYS}" \
+    -e GOTRUE_JWT_SECRET="$(openssl rand -hex 32)" \
     -e GOTRUE_JWT_AUD=authenticated \
     -e GOTRUE_JWT_ISSUER="${GOTRUE_URL}" \
     -e GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated \
