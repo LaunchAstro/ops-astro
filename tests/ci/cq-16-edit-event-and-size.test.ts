@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// CQ-16: a description edit re-runs only `review evidence for this revision`, and the size cap
+// CQ-16: a description edit re-runs only `review evidence for this revision`, and the size report
 // counts non-test code only. Each case is named after a line of the ticket's supporting checklist.
+// Since FU-400 (owner, 29 September 2026) the size is reported, not limited: every case exits 0,
+// and the counting is proven by the report instead.
 
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -192,14 +194,18 @@ describe('CQ-16 size counts code only', () => {
     expect(out).toContain('pr-size:   tests/a.test.ts (300, test)');
   });
 
-  it('CQ-16 size counts code only: 401 code lines fail', () => {
+  it('CQ-16 size counts code only: 401 code lines pass and are reported', () => {
     const { status, out } = sized({ 'src/a.ts': 201, 'src/b.ts': 200, 'tests/b.test.ts': 50 });
-    expect(status).toBe(1);
-    expect(out).toContain('401 changed lines of non-test code is over the 400 line ceiling');
+    expect(status).toBe(0);
+    expect(out).toContain('pr-size: 401 changed lines of non-test code across 2 file(s).');
+    expect(out).toContain('pr-size: the size is reported, not limited; this check never blocks.');
+    expect(out).not.toContain('::error::');
   });
 
-  it('CQ-16 size counts code only: a test file over 400 lines passes', () => {
-    expect(sized({ 'tests/big.test.ts': 600 }).status).toBe(0);
+  it('CQ-16 size counts code only: a test file over 400 lines is not counted', () => {
+    const big = sized({ 'tests/big.test.ts': 600 });
+    expect(big.status).toBe(0);
+    expect(big.out).toContain('pr-size: 0 changed lines of non-test code across 0 file(s).');
     expect(sized({ 'tests/db/named-suites.json': 500, 'src/a.ts': 10 }).status).toBe(0);
     expect(sized({ 'packages/x/src/big.test.ts': 450, 'apps/web/big.spec.tsx': 450 }).status).toBe(
       0,
@@ -207,10 +213,16 @@ describe('CQ-16 size counts code only', () => {
   });
 
   it('CQ-16 size counts code only: fixtures and scripts outside tests/ count', () => {
-    expect(sized({ 'packages/x/fixtures/a.json': 401 }).status).toBe(1);
-    expect(sized({ 'scripts/tests-helper.mjs': 401 }).status).toBe(1);
-    expect(sized({ 'packages/x/tests/a.ts': 401 }).status).toBe(1);
-    expect(sized({ 'src/test.ts': 401 }).status).toBe(1);
+    for (const path of [
+      'packages/x/fixtures/a.json',
+      'scripts/tests-helper.mjs',
+      'packages/x/tests/a.ts',
+      'src/test.ts',
+    ]) {
+      const { status, out } = sized({ [path]: 401 });
+      expect(status).toBe(0);
+      expect(out).toContain('pr-size: 401 changed lines of non-test code across 1 file(s).');
+    }
   });
 
   it('CQ-16 size counts code only: a file moved between code and tests counts unless both sides are tests', () => {
@@ -238,34 +250,45 @@ describe('CQ-16 size counts code only', () => {
       );
     const out = move('src/keep.ts', 'tests/keep.test.ts');
     expect(`${String(out.status)} ${out.out}`).toMatch(
-      /^1 [\s\S]*src\/keep\.ts => tests\/keep\.test\.ts: 500 counted, 0 treated as moved \(500 changed\)/u,
+      /^0 [\s\S]*src\/keep\.ts => tests\/keep\.test\.ts: 500 counted, 0 treated as moved \(500 changed\)/u,
     );
-    expect(move('tests/a.test.ts', 'tests/b.test.ts').status).toBe(0);
-    expect(move('tests/a.test.ts', 'src/a.ts').status).toBe(1);
+    const bothTests = move('tests/a.test.ts', 'tests/b.test.ts');
+    expect(bothTests.status).toBe(0);
+    expect(bothTests.out).toContain('pr-size: 0 changed lines of non-test code across 0 file(s).');
+    const intoCode = move('tests/a.test.ts', 'src/a.ts');
+    expect(intoCode.status).toBe(0);
+    expect(intoCode.out).toContain('tests/a.test.ts => src/a.ts: 500 counted');
   });
 });
 
-describe('CQ-16 waivers unchanged', () => {
-  it('CQ-16 waivers unchanged: either label lifts a non-test overage, as before', () => {
+describe('CQ-16 waivers retired', () => {
+  it('CQ-16 waivers retired: a label changes neither the exit nor the report', () => {
     const over = { 'src/a.ts': 250, 'src/b.ts': 250, 'tests/a.test.ts': 300 };
-    expect(sized(over).status).toBe(1);
-    expect(sized(over, 'size-waiver-coherence').status).toBe(0);
-    expect(sized(over, 'size-waiver-mechanical').status).toBe(0);
+    const bare = sized(over);
+    expect(bare.status).toBe(0);
+    for (const label of ['size-waiver-coherence', 'size-waiver-mechanical']) {
+      const labelled = sized(over, label);
+      expect(labelled.status).toBe(0);
+      // The repositories differ only in their commit hashes, which the report does not print.
+      expect(labelled.out).toBe(bare.out);
+    }
   });
 
-  it('CQ-16 waivers unchanged: no label lifts the per-file cap on a code file', () => {
-    expect(sized({ 'src/huge.ts': 401 }, 'size-waiver-coherence').status).toBe(1);
-    expect(sized({ 'src/huge.ts': 401 }, 'size-waiver-mechanical').status).toBe(1);
+  it('CQ-16 waivers retired: a code file over 400 lines passes and is reported per file', () => {
+    const { status, out } = sized({ 'src/huge.ts': 401 });
+    expect(status).toBe(0);
+    expect(out).toContain('pr-size:   src/huge.ts: 401 counted, 0 treated as moved (401 changed)');
   });
 
-  it('CQ-16 waivers unchanged: a generated file still counts towards the total and skips the per-file cap', () => {
-    expect(sized({ 'pnpm-lock.yaml': 600 }, 'size-waiver-mechanical').status).toBe(0);
-    expect(sized({ 'src/a.ts': 300, 'pnpm-lock.yaml': 200 }).status).toBe(1);
+  it('CQ-16 waivers retired: a generated file still counts towards the total', () => {
+    const { status, out } = sized({ 'src/a.ts': 300, 'pnpm-lock.yaml': 200 });
+    expect(status).toBe(0);
+    expect(out).toContain('pr-size: 500 changed lines of non-test code across 2 file(s).');
   });
 });
 
 describe('CQ-16 contributing says code only', () => {
-  it("CQ-16 contributing says code only: CONTRIBUTING's size rule says the cap counts product code only", () => {
+  it("CQ-16 contributing says code only: CONTRIBUTING's size rule says the report counts product code only", () => {
     const rule = /^## Keep changes reviewable\n\n([\s\S]*?)\n\n/mu.exec(
       read('CONTRIBUTING.md'),
     )?.[1];
@@ -275,6 +298,8 @@ describe('CQ-16 contributing says code only', () => {
     expect(text).toContain('`tests/`');
     expect(text).toContain('`*.test.*`');
     expect(text).toContain('`*.spec.*`');
+    expect(text).toContain('reported, not limited');
+    expect(text).toContain('Nothing is split to meet a size');
   });
 });
 
