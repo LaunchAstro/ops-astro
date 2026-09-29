@@ -694,8 +694,11 @@ places this build does not yet reach it.
   charts measure their width with the browser's resize observer and redraw
   when shown or resized. Line, column and donut charts are one tab stop each;
   the arrow keys walk the points, and hover or focus shows the value. A
-  second quantity gets its own labelled right-hand axis. No page draws a
-  chart yet; the Executive page (MP-14-3) is the first.
+  second quantity gets its own labelled right-hand axis. They take the
+  mockup's paint: a donut's slices ink, accent, lilac, lilac deep, ink muted
+  and ink faint in that order; a sparkline the accent; a score dial's number
+  at the medium weight. No page draws a chart yet; the Executive page
+  (MP-14-3) is the first.
 - Layouts are written for 1480, 900 and 390. Photographed at all three, light
   and dark, on 2026-09-23 with `node tests/browser/keyboard-and-widths.mjs`,
   which writes `width-<w>-<theme>-<page>.png` into `SHOT_DIR`; that run's
