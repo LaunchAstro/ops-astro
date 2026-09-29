@@ -48,7 +48,8 @@ it.skipIf(!serverUrl || !container || process.env['FIXTURE_PROOF_RACE'] !== '1')
       expect(run.stdout + run.stderr).toContain(`database "${template}" already exists`);
       expect(await server`select datname from pg_database where datname = ${template}`).toHaveLength(1);
     } finally {
-      await server.unsafe(`drop database if exists "${template}" with (force)`);
+      const owned = existsSync(marker) && readFileSync(marker, 'utf8') === template;
+      if (owned) await server.unsafe(`drop database if exists "${template}" with (force)`);
       await server.end();
       rmSync(scratch, { recursive: true, force: true });
     }
