@@ -408,13 +408,15 @@ line that is not `pass` fails the command. It then prints the budgets of the
 specification's section 10.2, each measured with a pass or fail beside it and
 never re-set (a missed budget does not fail the command), and writes the
 evidence bundle, `bundle.json` and `bundle.md`: the revision, the environment,
-every case line, the approval the journey applied exactly as the decision row
-holds it, the budgets, the crash points the restart legs recorded and the open
-completion items with their owner. A run with no decision writes no bundle, and
-nothing in it claims acceptance. The database is kept for inspection
-unless `--remove`, and the last line says how to remove it. Evidence goes to
-`.local/journey/<stamp>/` (`cases.jsonl`, the run's stderr). `--only journey`
-skips the restart legs and the named suites, and says so as `unrun`.
+every case line, the approval the journey applied (the digest of the decision
+row's exact payload, its identifiers shown and its note withheld, since a note
+is a person's words and may be a client's), the budgets, the crash points the
+restart legs recorded and the open completion items with their owner. A run
+with no decision writes no bundle, and nothing in it claims acceptance. The
+database is kept for inspection unless `--remove`, and the last line says how
+to remove it. Evidence goes to `.local/journey/<stamp>/` (`cases.jsonl`, the
+run's stderr, `bundle.json`, `bundle.md`). `--only journey` skips the restart
+legs and the named suites, and says so as `unrun`.
 
 `corepack pnpm check` is the blocking gate, not a fifth kind. It runs the
 tooling checks and the test suite together, needs `DATABASE_URL` and

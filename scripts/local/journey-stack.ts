@@ -79,12 +79,12 @@ export async function startPostgres(options: {
   readonly password: string;
   readonly port: string;
   readonly admin: string;
-}): Promise<{ ok: boolean; detail: string; migrateMs: number }> {
+}): Promise<{ ok: boolean; detail: string; migrateMs: number | undefined }> {
   const { container, password, port, admin } = options;
   const publish = `127.0.0.1:${port}:5432`;
   const env = ['-e', `POSTGRES_PASSWORD=${password}`, '-e', 'POSTGRES_DB=journey'];
   const started = run(DOCKER, ['run', '-d', '--name', container, '-p', publish, ...env, IMAGE]);
-  if (!started.ok) return { ok: false, detail: started.out.trim(), migrateMs: 0 };
+  if (!started.ok) return { ok: false, detail: started.out.trim(), migrateMs: undefined };
   const ready = [
     'exec',
     container,
@@ -104,7 +104,8 @@ export async function startPostgres(options: {
   const migrateMs = Math.round(performance.now() - migrating);
   const last = migrated.out.trim().split('\n').at(-1) ?? '';
   const detail = `${container} on 127.0.0.1:${port}; ${role.ok ? last : role.out.trim()}`;
-  return { ok: role.ok && migrated.ok, detail, migrateMs };
+  // Timed only when the migrations applied: a refused or failed run measured nothing.
+  return { ok: role.ok && migrated.ok, detail, migrateMs: migrated.ok ? migrateMs : undefined };
 }
 
 /** What a member of one of the journey's own process groups runs. */
