@@ -5,7 +5,9 @@
 // S0-3 store suites (backup-identity.fixture.ts re-exports it).
 
 import { createHash } from 'node:crypto';
-import type { Client } from './backup-identity.fixture.ts';
+
+/** A session the store suites hold (backup-identity.fixture.ts's Client). */
+type Client = { query: (text: string, values?: unknown[]) => Promise<unknown> };
 
 /** The store's part size (deploy/staging/backup-store.sql). */
 export const PART: number = 4 * 1024 * 1024;

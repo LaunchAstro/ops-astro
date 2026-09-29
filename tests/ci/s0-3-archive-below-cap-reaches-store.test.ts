@@ -4,7 +4,7 @@ import { constants } from 'node:buffer';
 import { describe, expect, it } from 'vitest';
 
 describe('S0-3 store reach', () => {
-  it('Sol proof, criterion 5: an archive below the store cap can reach the store', async () => {
+  it('an archive below the store cap can reach the store', async () => {
     const path = '../../scripts/ops/backup-store-reach.mjs';
     const { value } = (await import(/* @vite-ignore */ path)) as {
       value: (archive: Buffer, type: string) => string;
