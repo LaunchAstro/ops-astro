@@ -86,50 +86,50 @@ export function scanUses(files, namespaces, unparsed = []) {
   return uses;
 }
 
-const ROOT = `${PREFIX.person}b`;
+const [ROOT, AGENT] = [`${PREFIX.person}b`, `${PREFIX.agent}b`];
+const under = (root) => COMMAND_SURFACE.map((one) => root + pathOf(one.name));
 
-// What the real API runs at each path, recorded by stub dependencies, profiled.
+// What the real API runs at each path on both prefixes, recorded by stub executors, profiled.
 async function routedByApi() {
   let ran;
+  const command = async (...args) => ((ran = args[4].command), { recordId: 'r', revision: 1 });
   const api = createApi({
     database: {},
     verify: async () => ({ subject: 'parity' }),
     resolveBusiness: async () => 'business',
     executeRead: async (...args) => ((ran = args[3].read), {}),
-    executeCommand: async (...args) => ((ran = args[4].command), { recordId: 'r', revision: 1 }),
+    executeCommand: command,
+    executeAgentCommand: command,
   });
   const routed = new Map();
-  for (const { name } of COMMAND_SURFACE) {
+  for (const path of [...under(ROOT), ...under(AGENT)]) {
     ran = undefined;
     const init = { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' };
     // eslint-disable-next-line no-await-in-loop -- one route at a time, one recorded name
-    await api.fetch(new Request(`http://parity${ROOT}${pathOf(name)}`, init));
+    await api.fetch(new Request(`http://parity${path}`, init));
     const runs = COMMAND_SURFACE.find((one) => one.name === ran);
-    if (runs !== undefined) routed.set(pathOf(name), profileOf(runs));
+    if (runs !== undefined) routed.set(path, profileOf(runs));
   }
   return routed;
 }
 const ROUTED = await routedByApi();
 
-// What a surface reaches: each name sent through it (the clients post before their first
-// await) is profiled as what the API runs at the path it sent; sending nothing reaches nothing.
+// Each name sent through a surface (clients post before any await) is what the API runs there.
 function reached(send) {
   const reach = new Map();
   for (const { name } of COMMAND_SURFACE) {
     let path;
     send(name, (sent) => ((path = sent), Promise.resolve(new Response('{}')))).catch(() => null);
-    const profile = path?.startsWith(ROOT) ? ROUTED.get(path.slice(ROOT.length)) : undefined;
-    if (profile !== undefined) reach.set(name, profile);
+    if (ROUTED.has(path)) reach.set(name, ROUTED.get(path));
   }
   return reach;
 }
 
 const app = (fetch) => new OperationsClient({ origin: '', businessKey: 'b', token: null, fetch });
-
-/** What each real surface reaches, and the grant asked where it lands. */
 export function realSurfaces(uses) {
   return {
     api: reached((name, post) => post(`${ROOT}${pathOf(name)}`)),
+    agent: reached((name, post) => post(`${AGENT}${pathOf(name)}`)),
     cli: reached((name, transport) =>
       createCli({ businessKey: 'b', credential: 'unused', transport }).run(name, {}),
     ),
