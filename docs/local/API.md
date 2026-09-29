@@ -210,9 +210,11 @@ the task the check was made on (`namedTaskId` in `commands/agent-authority.ts`).
 
 ## Who is calling
 
-`Authorization: Bearer <GoTrue access token>`. The adapter verifies the HS256
-signature and `exp` with `SUPABASE_JWT_SECRET` and takes `sub` as
-`VerifiedSubject { provider: 'supabase', subject }`.
+`Authorization: Bearer <GoTrue access token>`. The adapter verifies the ES256
+signature and `exp` against GoTrue's published key set
+(`<GOTRUE_URL>/.well-known/jwks.json`, or `SUPABASE_KEY_SET_URL`) and takes
+`sub` as `VerifiedSubject { provider: 'supabase', subject }`. The API holds no
+secret that can make a token.
 
 Nothing else reaches identity. Not a body field, not a host or forwarded
 header, not an `apikey`, not a query parameter. A request carrying `actorId` or

@@ -13,20 +13,18 @@
 // what this function reads and the signature is all it reads.
 //
 // **A bad token and a missing token are the same answer.** Forged, unsigned
-// (`alg: none`), signed with a key the provider has not published, for another
-// audience or issuer, missing a `sub`, or absent: all of them return nothing,
-// and the boundary turns nothing into one `AUTH_UNKNOWN_LOGIN`. Distinguishing
-// them tells an unauthenticated caller which of their guesses was closer. The
-// one exception is a bearer whose signature verifies against a published key
-// and whose `exp` has passed: it returns `'expired'`, which the boundary
-// answers `AUTH_SESSION_EXPIRED` (see `Verified`).
+// (`alg: none`), signed with an unpublished key, for another audience or issuer,
+// missing a `sub`, or absent: all of them return nothing, and the boundary turns nothing into one
+// `AUTH_UNKNOWN_LOGIN`. Distinguishing them tells an unauthenticated caller
+// which of their guesses was closer. The one exception is a bearer whose
+// signature verifies against a published key and whose `exp` has passed: it
+// returns `'expired'`, which the boundary answers `AUTH_SESSION_EXPIRED` (see
+// `Verified` and `jwks.ts`).
 //
-// **It verifies; it does not decode.** The key-set verifier (`jwks.ts`) checks
-// the ES256 signature against the provider's published public keys, and `exp`,
-// audience and issuer with it. The API holds nothing that can make a sign-in
-// token (LF-4). There is no path through this file that reads a claim out of an
-// unverified token, which is the failure mode a hand-rolled base64 split
-// invites.
+// **It verifies; it does not decode.** `jwks.ts` checks the ES256 signature,
+// `exp`, audience and issuer against the provider's published keys. There is no
+// path through this file that reads a claim out of an unverified token, which
+// is the failure mode a hand-rolled base64 split invites.
 
 import type { Context } from 'hono';
 import type { VerifiedSubject } from '../../../packages/core-records/src/index.ts';
@@ -91,8 +89,6 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
 
     // ES256 pinned, the key chosen by `kid` from the published set, and only
     // a signature that verified can be reported as expired (`jwks.ts`).
-    // S0-6b red stub: nothing verifies until the next commit.
-    if (token !== '') return undefined;
     const verdict = await verifyToken(token);
     if (verdict.outcome === 'expired') return 'expired';
     if (verdict.outcome === 'refused') return undefined;

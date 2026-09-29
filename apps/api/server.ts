@@ -147,11 +147,7 @@ export interface ApiConfig {
   readonly database: Database;
   /** The owner's connection, used for the business key and `/api/health` only. */
   readonly admin: AdminConnection;
-  /**
-   * Where bearers are checked: the issuer every one must name and the
-   * provider's published key set. Public keys only; the API holds nothing
-   * that can make a sign-in token.
-   */
+  /** The issuer and published key set bearers are checked against: public keys only. */
   readonly signIn: Omit<SupabaseVerifierOptions, 'onRefusal'>;
   /** The signing key and delegation keyring `main` read, never put in `process.env`. */
   readonly keys: RuntimeKeys;
@@ -292,12 +288,15 @@ async function main(): Promise<void> {
   const adminUrl = environment['DATABASE_ADMIN_URL'];
   const issuer = environment['GOTRUE_URL'];
 
+  const named = environment['SUPABASE_KEY_SET_URL'] ?? '';
+  if (named !== '' && !/^http:\/\/127\.0\.0\.1:\d+\//u.test(named)) {
+    console.error('api: SUPABASE_KEY_SET_URL may name a loopback key set only.');
+    process.exit(1);
+  }
   for (const [name, value] of [
     ['DATABASE_URL', databaseUrl],
     ['DATABASE_ADMIN_URL', adminUrl],
     ['GOTRUE_URL', issuer],
-    // S0-6b red stub: still demanded until the next commit.
-    ['SUPABASE_JWT_SECRET', environment['SUPABASE_JWT_SECRET']],
   ] as const) {
     if (value === undefined || value === '') {
       console.error(`api: ${name} is not set. Run scripts/local/db-up.sh and auth-up.sh first.`);
@@ -329,7 +328,7 @@ async function main(): Promise<void> {
     identity: readIdentity(ROOT),
     database,
     admin,
-    signIn: { issuer: issuer as string, keySetUrl: keySetUrlOf(environment, issuer as string) },
+    signIn: { issuer: issuer as string, keySetUrl: keySetUrlOf(named, issuer as string) },
     keys,
     live: { topics },
     ...(alerts === undefined ? {} : { alerts }),
@@ -391,13 +390,11 @@ function alertsFrom(environment: Readonly<Record<string, string | undefined>>): 
     process.exit(1);
   }
 /**
- * The provider's published key set: under its own address, as both the local
- * GoTrue and a hosted project publish it, unless `SUPABASE_KEY_SET_URL` names
- * another. The verifier accepts only TLS or loopback, and only a
- * `/.well-known/jwks.json` path, whichever it is.
+ * The provider's key set, under its own address as GoTrue and a hosted project
+ * publish it. `SUPABASE_KEY_SET_URL` stands in for it on loopback only (a test's
+ * static set), so this setting cannot move the check to another host.
  */
-function keySetUrlOf(environment: Readonly<Record<string, string | undefined>>, issuer: string) {
-  const named = environment['SUPABASE_KEY_SET_URL'] ?? '';
+function keySetUrlOf(named: string, issuer: string): string {
   return named === '' ? `${issuer.replace(/\/+$/u, '')}/.well-known/jwks.json` : named;
 }
 

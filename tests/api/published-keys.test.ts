@@ -18,6 +18,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -28,7 +29,6 @@ import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
-import { freePort } from '../cli/cli-process-harness.ts';
 import {
   serveTestKeySet,
   signBearer,
@@ -53,6 +53,19 @@ const claims = (over: Record<string, unknown> = {}) => ({
   exp: now() + 600,
   ...over,
 });
+
+/** A loopback port nobody holds, by asking the kernel for one. */
+async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  await new Promise<void>((resolve) => {
+    server.close(() => resolve());
+  });
+  return port;
+}
 
 function requestWith(token: string): Context['req'] {
   const header = (name: string) =>
@@ -170,6 +183,18 @@ describe('S0-6 published keys only', () => {
     const answer = await post(started.origin, expired);
     expect(answer.status).toBe(401);
     expect(JSON.parse(answer.text)).toMatchObject({ code: 'AUTH_SESSION_EXPIRED' });
+  });
+
+  it('refuses to start when the key set is named anywhere but loopback', async () => {
+    const elsewhere = await startServer({
+      DATABASE_URL: 'postgres://app:unused@127.0.0.1:1/none',
+      DATABASE_ADMIN_URL: 'postgres://app:unused@127.0.0.1:1/none',
+      GOTRUE_URL: ISSUER,
+      SUPABASE_KEY_SET_URL: 'https://keys.example.test/auth/v1/.well-known/jwks.json',
+    });
+    await elsewhere.stop();
+    expect(elsewhere.output()).toContain('SUPABASE_KEY_SET_URL may name a loopback key set only');
+    expect(elsewhere.output()).not.toContain('api: listening on');
   });
 
   it('the adapter hands over the verified subject and nothing else', async () => {

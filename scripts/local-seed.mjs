@@ -21,7 +21,7 @@
 // API path cannot be demonstrated against them.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { createHmac, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { connect, connectAsAdmin } from '../packages/core-records/src/tenancy/database.ts';
 import { installTaskSpine } from '../packages/core-records/src/tasks/install.ts';
@@ -627,38 +627,15 @@ async function seedAgentUser(auth, agent) {
   return { subject: found?.id ?? agent.subject, reachable: found !== undefined };
 }
 
-/** A short-lived service token for the GoTrue admin API, as auth-seed mints one. */
-const base64url = (input) =>
-  Buffer.from(input)
-    .toString('base64')
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replaceAll('=', '');
-
-function authAdmin() {
-  const secret = fromEnvFile('SUPABASE_JWT_SECRET') ?? readAuthEnv('SUPABASE_JWT_SECRET');
-  if (secret === undefined || secret === '') return undefined;
-  const now = Math.floor(Date.now() / 1000);
-  const header = base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const payload = base64url(
-    JSON.stringify({
-      role: 'service_role',
-      aud: 'authenticated',
-      iss: 'ops-astro-local-seed',
-      iat: now,
-      exp: now + 300,
-    }),
-  );
-  const signature = createHmac('sha256', secret)
-    .update(`${header}.${payload}`)
-    .digest('base64')
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replaceAll('=', '');
-  return {
-    url: readAuthEnv('GOTRUE_URL') ?? 'http://127.0.0.1:54391',
-    token: `${header}.${payload}.${signature}`,
-  };
+/**
+ * The GoTrue admin API and its bearer, signed with the local auth server's own
+ * key as auth-seed's is. Absent when `auth-up.sh` has not run yet.
+ */
+async function authAdmin() {
+  const { localServiceToken } = await import('./local/signing-key.mjs');
+  const token = await localServiceToken(root);
+  if (token === undefined) return undefined;
+  return { url: readAuthEnv('GOTRUE_URL') ?? 'http://127.0.0.1:54391', token };
 }
 
 function readAuthEnv(name) {
@@ -805,7 +782,7 @@ try {
   );
 
   const { agents, fresh: agentsFresh } = readAgents();
-  const auth = authAdmin();
+  const auth = await authAdmin();
   let authReachable = 0;
   for (const agent of agents) {
     // oxlint-disable-next-line no-await-in-loop

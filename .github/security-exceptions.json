@@ -7,7 +7,7 @@
       "matches": [
         "1df0f89d5f9b328e"
       ],
-      "file": "edd43d0cb64a8694",
+      "file": "5cbab63cb7dd2b77",
       "reason": "Local seed script logging its own seed person's address and status.",
       "impact": "None: the format string holds the script's own seed data, not input.",
       "owner": "Nathan Mulligan, maintainer",
