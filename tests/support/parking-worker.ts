@@ -33,6 +33,8 @@ export const PARK_POINTS = {
   'after-reservation': '/task/pickup',
   'after-dispatch-mark': '/task/dispatch',
   'after-effect': '/task/comment',
+  // Sol review 3: the provider start is recorded, and the provider may act.
+  'after-provider-start': '/task/heartbeat',
 } as const;
 
 export type ParkPoint = keyof typeof PARK_POINTS;
@@ -58,9 +60,12 @@ let faulted = false;
 const inner = httpTransport(api);
 let parked = false;
 const transport: Transport = async (path, body, bearer, delegation) => {
-  const sent = path.endsWith('/task/pickup')
-    ? JSON.stringify({ ...(JSON.parse(body) as object), leaseSeconds })
-    : body;
+  // The short lease on the pickup and on the provider-start heartbeat, which
+  // renews like any heartbeat.
+  const sent =
+    path.endsWith('/task/pickup') || path.endsWith('/task/heartbeat')
+      ? JSON.stringify({ ...(JSON.parse(body) as object), leaseSeconds })
+      : body;
   const answer = await inner(path, sent, bearer, delegation);
   if (!parked && parkOn !== undefined && path.endsWith(parkOn) && answer.ok) {
     parked = true;
