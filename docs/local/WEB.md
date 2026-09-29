@@ -673,8 +673,11 @@ places this build does not yet reach it.
   to. Offering to switch back, or carrying more than one interruption, is not
   built. The interruption keeps the business key, which is the word in the URL
   prefix, and never the token.
-- Fonts and icons are not fetched. The redistribution question (#32) is open, so
-  the families are a stack with real fallbacks and the brand is its own words.
+- Fonts, icons and the brand marks are bundled, each with its licence recorded
+  in `packages/ui/assets/licences.json` (MP-1-2): Funnel Display, Funnel Sans
+  and Chivo Mono under the SIL Open Font License, Lucide's icons under ISC,
+  and the project's own wordmark and planet mark. The build copies the record
+  and the licence texts into its output.
 - Layouts are written for 1480, 900 and 390. Photographed at all three, light
   and dark, on 2026-09-23 with `node tests/browser/keyboard-and-widths.mjs`,
   which writes `width-<w>-<theme>-<page>.png` into `SHOT_DIR`; that run's

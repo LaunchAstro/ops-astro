@@ -69,6 +69,9 @@ const port = Number(process.env['WEB_PORT'] ?? '5190');
 
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
+  // The interface's asset licence record and licence texts ship beside the
+  // fonts and icons they cover (MP-1-2), at `/licences.json` and `/licences/`.
+  publicDir: fileURLToPath(new URL('../../packages/ui/assets', import.meta.url)),
   plugins: [react(), moduleGraphManifest()],
   resolve: {
     alias: {

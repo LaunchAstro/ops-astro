@@ -134,7 +134,7 @@ it('MP-1-2 icons from an open-licence set drawn to match', () => {
   expect([...GLYPH_NAMES].toSorted()).toEqual([...mockup.glyphs].toSorted());
   for (const name of GLYPH_NAMES) {
     const html = renderToStaticMarkup(<Icon name={name} />);
-    expect(html, name).toMatch(/^<svg[^>]*\bclass="icon icon--md"/u);
+    expect(html, name).toMatch(/^<svg[^>]*\bclass="[^"]*\bicon icon--md"/u);
     expect(html, name).toContain('stroke-linecap="round"');
     expect(html, name).toContain('aria-hidden="true"');
   }

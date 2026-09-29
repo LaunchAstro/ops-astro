@@ -353,3 +353,26 @@
 .empty--in-dev .empty__title {
   color: var(--text-2);
 }
+
+/* The icon (DS-PRIM-17, MP-1-2). Stroked glyphs in the text's colour, sized by
+   the icon tokens, sitting on the text's middle. */
+.icon {
+  display: inline-block;
+  flex: none;
+  width: var(--icon-md);
+  height: var(--icon-md);
+  vertical-align: middle;
+  color: inherit;
+}
+.icon--xs {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
+.icon--sm {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.icon--lg {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}

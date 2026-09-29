@@ -57,6 +57,27 @@
   gap: 0.4rem;
   padding: 0 var(--s-5);
 }
+/* The brand marks (MP-1-2): masks over the ink, so one file serves both
+   themes. The wordmark is a ceiling rather than a fixed width, because the
+   rail can be narrower than 176px; the aspect ratios are the SVGs' own. */
+.brand {
+  display: block;
+  flex: none;
+  background: currentColor;
+}
+.brand--wordmark {
+  width: min(176px, 100%);
+  aspect-ratio: 566.93 / 57.9;
+  mask: url('../brand/wordmark.svg') no-repeat left center / contain;
+}
+.brand--planet {
+  width: 24px;
+  aspect-ratio: 566.93 / 463.61;
+  mask: url('../brand/planet.svg') no-repeat center / contain;
+}
+.rail__brand .brand {
+  color: var(--text);
+}
 .rail__hub {
   font-size: var(--text-sm);
   text-transform: uppercase;
