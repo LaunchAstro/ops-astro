@@ -10,19 +10,19 @@ export interface Part {
   readonly id: string;
   readonly invariants: readonly string[];
   readonly files: readonly string[];
-  /** What a revert leaves at the head: a path, or a folder ending in `/`. */
-  readonly keep: readonly string[];
+  /** What a revert leaves at the head: a path, or a folder ending in `/`. None for a T4 part. */
+  readonly keep?: readonly string[];
   readonly commits: readonly string[];
   /**
    * A T4 part is test tooling, proven by its own planted-mutation cases (by
    * name, in its files) rather than a revert: the split's T4-N4 reverts every
-   * T2 and T3 part.
+   * T2 and T3 part. See `verdict.ts`.
    */
   readonly planted?: readonly string[];
 }
 
 export const keeps = (part: Part, path: string): boolean =>
-  part.keep.some((one) => (one.endsWith('/') ? path.startsWith(one) : path === one));
+  (part.keep ?? []).some((one) => (one.endsWith('/') ? path.startsWith(one) : path === one));
 
 export const PARTS: readonly Part[] = (
   JSON.parse(readFileSync(join(import.meta.dirname, 'parts.json'), 'utf8')) as {

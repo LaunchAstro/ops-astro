@@ -2,11 +2,12 @@
   "comment": [
     "T4e's catalogue (split section 3.2): each part before T4e, its named invariants, the test files",
     "that carry them and the part's own commits on the merged line (groups A to E, #173 to #180).",
-    "`keep` is what a revert leaves at the head: tests/ for a T2 or T3 part, so its invariant runs",
-    "against the product without the part; a T4 part is test tooling, so only its invariant files stay.",
-    "T3d2's red-first commit is its proof harness (without it nothing runs), so its revert is its fix",
-    "commit, the hard SIGKILL stops, keeping only the proof file and its runner.",
-    "See tests/ci/self-test/mutations.ts."
+    "T4-N4 reverts every T2 and T3 part (split, row T4e): `keep` is what a revert leaves at the head,",
+    "tests/, so its invariant runs against the product without the part. T3d2's red-first commit is",
+    "its proof harness (without it nothing runs), so its revert is its fix commit, the hard SIGKILL",
+    "stops, keeping only the proof file and its runner. T4a to T4d are test tooling: no revert, each",
+    "proven by its own planted-mutation cases, `planted`, run unmutated (a T4-P line).",
+    "See tests/ci/self-test/mutations.ts and verdict.ts."
   ],
   "parts": [
     {
@@ -272,7 +273,7 @@
       "id": "T4a",
       "invariants": ["fixture_shape"],
       "files": ["tests/fixture/fixture-shape.test.ts"],
-      "keep": ["tests/fixture/fixture-shape.test.ts"],
+      "planted": ["refuses a database it already seeded, and writes nothing"],
       "commits": [
         "332f7f05ce41a778bf56dbfa8a4b06ee301459dd",
         "0d2a19ad059b41bcbe74d5d17a76c5281fc4c2e1",
@@ -289,7 +290,10 @@
       "id": "T4b1",
       "invariants": ["journey_twice_same_facts"],
       "files": ["tests/journey/journey-twice.test.ts"],
-      "keep": ["tests/journey/journey-twice.test.ts"],
+      "planted": [
+        "refuses a comparison with either pass missing or empty",
+        "names the fact that differs"
+      ],
       "commits": [
         "c8e3a53d12e316dd01256b05bb43d8432b77c723",
         "2b03849757d645122fc0033e2b34dd0594ac3703",
@@ -309,7 +313,10 @@
       "id": "T4b2",
       "invariants": ["no_fallback_in_bundle"],
       "files": ["tests/ci/no-fallback-in-bundle.test.ts"],
-      "keep": ["tests/ci/no-fallback-in-bundle.test.ts"],
+      "planted": [
+        "a fixture selector planted in the built script fails, naming the file and the selector",
+        "a fixture module recorded in the module graph fails even with its strings minified away"
+      ],
       "commits": [
         "27e2ab1157bd547874564834eb65f5b8f00a29e5",
         "57a8119816428241e6b405a04282deae20f6b121",
@@ -325,7 +332,10 @@
       "id": "T4c",
       "invariants": ["visual_fails_on_drift"],
       "files": ["tests/visual/visual-fails-on-drift.test.ts"],
-      "keep": ["tests/visual/visual-fails-on-drift.test.ts"],
+      "planted": [
+        "fails a control shifted by two pixels, naming the capture",
+        "fails one changed token colour, naming the capture"
+      ],
       "commits": [
         "97f1b1526e12666a063ce5428086afb65a3da5a0",
         "d35817e03f57f614c82113bf1db428e50ed24f7c",
@@ -337,7 +347,7 @@
       "id": "T4d",
       "invariants": ["bundle_names_the_approval"],
       "files": ["tests/journey/bundle.test.ts"],
-      "keep": ["tests/journey/bundle.test.ts"],
+      "planted": ["writes no bundle for a run with no decision in it"],
       "commits": [
         "1096cb741974ab086e81503788ac05de8973c1bf",
         "5c757638343421198a848bacf0a3a4478c24386e",

@@ -433,9 +433,12 @@ must be green, then deletes the newest migration (the migration check must name
 it), declares an operation no handler serves (the isolation matrix must fail),
 adds a route with no screen, a duplicate route id and a changed pinned-mockup
 byte (the route registry check, the typecheck's TS1117 and T4c's mockup pin
-must each fail, told apart by name), and reverts each part before T4e, T2a to
-T4d, and reruns its named invariant, which must go red. The parts, their
-invariants and their commits are catalogued in `tests/ci/self-test/parts.json`.
+must each fail, told apart by name), and reverts each T2 and T3 part, T2a to
+T3f, and reruns its named invariant, which must go red (`T4-N4`). T4a to T4d
+are test tooling: each is proven by its own planted-mutation cases, named on
+its `T4-P` line, which plant the fault and assert the failure. The parts, their
+invariants, their commits and the planted cases are catalogued in
+`tests/ci/self-test/parts.json`.
 A mutation that changed nothing, a run in which nothing executed, and a check
 that stayed green each fail the command by name; the last line,
 `every_invariant_bites`, lists them. The worktree and its branch are removed at

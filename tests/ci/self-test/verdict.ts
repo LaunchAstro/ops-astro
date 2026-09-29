@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // T4e's verdict: when one mutation's run proves its check bites, and when the
-// whole run proves every invariant does (`every_invariant_bites`).
+// whole run proves every invariant does (`every_invariant_bites`). T4-N4
+// reverts every T2 and T3 part (split section 3.2, row T4e); T4a to T4d are
+// test tooling, each proven by its own planted-mutation cases (`T4-P`).
 
 import { PARTS, type CaseLine, type Part, type Ran } from './catalogue.ts';
 
@@ -24,9 +26,34 @@ function partVerdict(part: Part, ran: Ran): string | undefined {
   return undefined;
 }
 
+/**
+ * For a T4 part (`T4-P <part>`), test tooling that no revert can prove: its
+ * planted-mutation cases plant the fault and assert the failure, so the line
+ * is proven when each one ran and passed under the part's named invariant.
+ */
+function plantedVerdict(part: Part, ran: Ran): string | undefined {
+  const caught = (name: string): boolean =>
+    (ran.cases ?? []).some(
+      (one) =>
+        one.passed &&
+        one.name.includes(name) &&
+        part.invariants.some((invariant) => one.name.includes(invariant)),
+    );
+  const missed = (part.planted ?? []).filter((name) => !caught(name));
+  return missed.length > 0
+    ? `its planted mutation was not caught: ${missed.join('; ')}`
+    : undefined;
+}
+
+/** The line a part must hold: a revert for a T2 or T3 part, its planted cases for a T4 part. */
+export const lineOf = (part: Part): string =>
+  `${part.planted === undefined ? 'T4-N4' : 'T4-P'} ${part.id}`;
+
 const partOf = (name: string): Part | undefined => {
-  const id = /^T4-N4 ([A-Za-z0-9]+)\b/u.exec(name)?.[1];
-  return PARTS.find((part) => part.id === id);
+  const line = /^T4-(?:N4|P) ([A-Za-z0-9]+)\b/u.exec(name);
+  const part = PARTS.find((one) => one.id === line?.[1]);
+  // A part is held only by its own kind of line: a T4 part's revert holds nothing.
+  return part !== undefined && line?.[0] === lineOf(part) ? part : undefined;
 };
 
 export function classify(name: string, ran: Ran): CaseLine {
@@ -37,8 +64,14 @@ export function classify(name: string, ran: Ran): CaseLine {
   });
   if (!ran.applied) return fail('the mutation changed nothing, so it proves nothing');
   if (ran.executed === 0) return fail('nothing ran under the mutation');
-  if (!ran.red) return fail('stayed green under its mutation');
   const part = partOf(name);
+  if (part?.planted !== undefined) {
+    const missed = plantedVerdict(part, ran);
+    if (missed !== undefined) return fail(missed);
+    const said = `${part.invariants.join(', ')}: ${part.planted.join('; ')}`;
+    return { case: name, status: 'pass', detail: `its planted mutation caught: ${said}` };
+  }
+  if (!ran.red) return fail('stayed green under its mutation');
   const why = part === undefined ? undefined : partVerdict(part, ran);
   if (why !== undefined) return fail(why);
   const named = part === undefined ? '' : `${part.invariants.join(', ')} failed; `;
@@ -55,12 +88,15 @@ export function control(name: string, ran: Ran): CaseLine {
   };
 }
 
-/** Every mutation the run must hold a line for: T4-N1, T4-N2, three T4-N3 and each part's T4-N4. */
+/**
+ * Every mutation the run must hold a line for: T4-N1, T4-N2, three T4-N3,
+ * each T2 and T3 part's T4-N4 and each T4 part's T4-P.
+ */
 function missingLines(lines: readonly CaseLine[], parts: readonly Part[]): string[] {
   const count = (prefix: RegExp): number => lines.filter((line) => prefix.test(line.case)).length;
   const missing = parts
     .filter((part) => !lines.some((line) => partOf(line.case)?.id === part.id))
-    .map((part) => `T4-N4 ${part.id}`);
+    .map((part) => lineOf(part));
   if (count(/^T4-N1\b/u) === 0) missing.unshift('T4-N1');
   if (count(/^T4-N2\b/u) === 0) missing.unshift('T4-N2');
   if (count(/^T4-N3\b/u) < 3) missing.unshift('T4-N3 (three checks)');

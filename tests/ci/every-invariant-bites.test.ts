@@ -4,8 +4,8 @@
 // owner's C225 rule). Each named invariant of the slice fails when its part is
 // removed, and the run lists any that stayed green as a failure.
 //
-// The full run reverts every part on a scratch branch and reruns its
-// invariant against the journey command's own Postgres (`pnpm verify:journey
+// The full run reverts every T2 and T3 part on a scratch branch and reruns its
+// invariant, and runs T4a to T4d's planted-mutation cases, against the journey command's own Postgres (`pnpm verify:journey
 // --self-test`, evidence on the pull request); that needs a database and
 // minutes, so it is not repeated here. This file holds what the run stands on:
 // the catalogue names every part before T4e with the split's invariants, each

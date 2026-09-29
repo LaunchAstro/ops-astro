@@ -11,7 +11,9 @@
 //   T4-N2  declares an operation no handler serves: the isolation matrix fails;
 //   T4-N3  a registry entry with no screen, a duplicate route id and a changed
 //          pinned-mockup byte each fail their own check, told apart by name;
-//   T4-N4  reverts each part before T4e and reruns its invariant: it goes red.
+//   T4-N4  reverts each T2 and T3 part and reruns its invariant: it goes red;
+//   T4-P   T4a to T4d, test tooling, each by its own planted-mutation cases,
+//          which plant the fault and assert the failure, run unmutated.
 // Last, `every_invariant_bites` lists every check that did not.
 //
 // Every database the checks create is on the command's own Postgres
@@ -31,6 +33,7 @@ import {
   deleteOneMigration,
   edit,
   everyInvariantBites,
+  lineOf,
   onOwnCluster,
   openScratch,
   revertPart,
@@ -194,7 +197,7 @@ function revertAndRun(scratch: Scratch, part: Part, name: string, keepAdded: boo
 }
 
 function reverts(scratch: Scratch, parts: readonly Part[]): void {
-  for (const part of parts) {
+  for (const part of parts.filter((one) => one.planted === undefined)) {
     const name = `T4-N4 ${part.id} reverted: ${part.invariants.join(', ')}`;
     const whole = revertAndRun(scratch, part, name, false);
     // A file that no longer loads never runs the invariant; unwire the part instead.
@@ -219,6 +222,9 @@ function controls(scratch: Scratch, parts: readonly Part[]): void {
   for (const part of parts) {
     const ran = part.id === 'T3d2' ? proofs(scratch) : summarise(scratch, all, part.files);
     report(control(`control: ${part.id} ${part.invariants.join(', ')}`, ran));
+    if (part.planted !== undefined) {
+      report(classify(`T4-P ${part.id} planted: ${part.planted.join('; ')}`, ran));
+    }
   }
 }
 
@@ -237,7 +243,7 @@ try {
   reverts(scratch, parts);
   for (const part of PARTS.filter((one) => !parts.includes(one))) {
     report({
-      case: `T4-N4 ${part.id}`,
+      case: lineOf(part),
       status: 'fail',
       detail: 'unrun: left out by SELF_TEST_ONLY',
     });

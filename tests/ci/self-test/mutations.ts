@@ -225,7 +225,7 @@ export function revertPart(
 ): { applied: boolean; detail: string } {
   scratch.reset();
   const added = keepAdded ? addedBy(scratch, part) : [];
-  const keep = [...part.keep, ...added];
+  const keep = [...(part.keep ?? []), ...added];
   const kept = (path: string): boolean => keeps(part, path) || added.includes(path);
   const exclude = keep.map((one) => `--exclude=${one.endsWith('/') ? `${one}*` : one}`);
   let restored = 0;
