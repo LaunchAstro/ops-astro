@@ -85,6 +85,9 @@ const SHAPES: {
     // (applyWorkbenchAvailability, truth.js). No mockup page shows the gauge;
     // the panel is held so the gauge is read in the panel that draws it.
     keep: '[data-panel="calls"]',
+    // Drift, not copied (a ruling): the mockup's gauge value is 21 px
+    // (charts.js, gauge), off the one type scale; the kit keeps its 20 px, so
+    // this unit's value mark stays a named FAIL.
     gallery: `${state('DS-COMP-28', 'Gauge with target')} svg`,
   },
   {
@@ -93,6 +96,9 @@ const SHAPES: {
     host: '#chanDonut',
     // The workbench's slices take PAINT's colours in order (channel-workbench, chanDonut).
     call: { kind: 'donut', values: [24, 14, 8], centre: '46', centreLabel: 'Enquiries' },
+    // Drift, not copied (a ruling): the mockup's donut centre is 19 px
+    // (charts.js, donut), off the one type scale; the kit keeps its 20 px, so
+    // this unit's centre mark stays a named FAIL.
     gallery: `${state('DS-COMP-28', 'Donut with centre label')} svg`,
   },
   {

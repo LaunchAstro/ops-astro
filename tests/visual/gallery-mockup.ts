@@ -82,6 +82,8 @@ const UNITS = [
     address: WORKBENCH,
     component: '.meter',
     expect: 'same',
+    // No width of its own: it fills its host on the page, so its copy fills the host here.
+    fills: true,
   },
   {
     ticket: 'MP-1-6',
@@ -89,6 +91,12 @@ const UNITS = [
     address: WORKBENCH,
     component: '.is-mock',
     expect: 'same',
+    // A named FAIL, for three causes. The tile's padding: the mockup pads a
+    // tile only in its row (`.statrow > .stat`), the kit pads the tile itself
+    // (DS-PRIM-24), so the copy drawn outside a row has none. The label's line
+    // height: 1.5 in the mockup, off the one type scale; the kit keeps its
+    // eyebrow's 1.4 (drift, not copied). The word chip: the mockup's sheet has
+    // no rule for the kit's `.mocktag` (its own chip is `.unwired-tag`).
   },
   {
     ticket: 'MP-1-6',
@@ -143,17 +151,20 @@ function markupOf(selector: string): string {
 
 /**
  * Draws the markup at one fixed place above the page, on the page's ground, in
- * a host as wide as the gallery draws the component: a component with no width
- * of its own (the meter) fills it, one with its own width keeps it. Returns its box.
+ * a host as wide as the gallery draws the component: a unit with no width of
+ * its own (`fills`, the meter) fills it, one with its own width keeps it.
+ * Returns its box.
  */
-function place(copy: { markup: string; width: number }): Box {
+function place(copy: { markup: string; width: number; fills: boolean }): Box {
   document.querySelector('#mockup-compare')?.remove();
   const box = document.createElement('div');
   box.id = 'mockup-compare';
   box.style.cssText =
-    'position:fixed;left:8px;top:8px;z-index:2147483647;display:flex;padding:4px;background:var(--bg)';
+    'position:fixed;left:8px;top:8px;z-index:2147483647;display:flex;box-sizing:content-box;padding:4px;background:var(--bg)';
   box.style.width = `${String(copy.width)}px`;
   box.innerHTML = copy.markup;
+  if (copy.fills && box.firstElementChild instanceof HTMLElement)
+    box.firstElementChild.style.flex = '1 1 auto';
   document.body.append(box);
   const drawn = box.getBoundingClientRect();
   return { x: drawn.x, y: drawn.y, width: Math.ceil(drawn.width), height: Math.ceil(drawn.height) };
@@ -167,7 +178,12 @@ const picture = (page: Page): Promise<Buffer> => page.screenshot(SHOT);
 /** A PNG's width in pixels, from its header. */
 const pngWidth = (png: Buffer): number => png.readUInt32BE(16);
 
-/** A picture of the first shown element the selector finds, where it stands. */
+/**
+ * A picture of the first shown element the selector finds, where it stands.
+ * The gallery lays components at fractional heights (the primary button at y 226.89),
+ * so a gallery picture can take one more row of ground than the copy, drawn at
+ * a whole pixel: the named cause of a 1 px taller gallery unit.
+ */
 const unitPicture = (page: Page, selector: string): Promise<Buffer> =>
   page.locator(`${selector}:visible >> nth=0`).screenshot({ ...SHOT, timeout: 10_000 });
 
@@ -185,7 +201,8 @@ async function pictures(
   try {
     const right = await unitPicture(gallery, kit);
     const markup = unit.expect === 'redrawn' ? mockupMarkup : galleryMarkup;
-    await page.evaluate(place, { markup, width: pngWidth(right) });
+    const fills = 'fills' in unit && unit.fills;
+    await page.evaluate(place, { markup, width: pngWidth(right), fills });
     return { left: await unitPicture(page, '#mockup-compare > *'), right };
   } catch (error) {
     return `not photographed (${error instanceof Error ? error.message.split('\n')[0] : 'unknown'})`;
