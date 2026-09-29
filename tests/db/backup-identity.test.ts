@@ -716,6 +716,18 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
         ],
       ] as [string, unknown[]];
 
+    it('a failed drill before any passed one is recorded, and names no last tested restore', async () => {
+      const path = '../../scripts/ops/restore-drill.mjs';
+      const { recordDrill } = (await import(/* @vite-ignore */ path)) as {
+        recordDrill: (url: string, who: string, r: Record<string, unknown>) => Promise<unknown>;
+      };
+      expect(await recordDrill(restoreLogin.url, operator, failed)).toBeNull();
+      const [row] = await store.admin.execute<{ n: number }>(
+        `select count(*)::int as n from backups.drills where outcome = 'failed'`,
+      );
+      expect(row?.n).toBe(1);
+    });
+
     it('only the restore identity records a drill, and a receipt is never changed or removed', async () => {
       for (const [login, role] of [
         [backupLogin, BACKUP],
