@@ -441,6 +441,19 @@ const ROWS = [
     meaning: 'This agent credential is already revoked',
     source: 'API-2',
   },
+  // C32: the client record and Settings ▸ Access.
+  {
+    code: 'CLIENT_NAME_TAKEN',
+    status: 409,
+    meaning: 'This business already has a client of that name',
+    source: 'C32 CS-2.15',
+  },
+  {
+    code: 'ACCESS_LAST_MANAGER',
+    status: 409,
+    meaning: 'It would leave the business with nobody who can change access',
+    source: 'C32 CS-2.15',
+  },
 
   // Delegation and lease, T1's pickup and handback. No table yet.
   {

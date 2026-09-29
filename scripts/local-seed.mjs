@@ -108,6 +108,8 @@ const GRANTS_BY_ROLE = {
     // An agent credential of their own (API-2): the owner and administrators
     // hold `credential:write` on install.
     ['credential', 'write'],
+    // The client record (C32): the owner and administrators make clients.
+    ['record', 'write'],
   ],
   member: [
     ['task', 'read'],

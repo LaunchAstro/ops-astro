@@ -25,6 +25,7 @@ import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
 import { issueCredential, revokeCredential } from './credential-write.ts';
 import { setService } from './overseas-write.ts';
 import { setClass } from './data-class-write.ts';
+import { createClientRecord, grantOnAccess } from './access-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
@@ -32,7 +33,11 @@ import { dispatchOwnLease } from './tasks-dispatch.ts';
 import { observeOwnLease } from './tasks-observe.ts';
 import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
-import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
+import {
+  revokeDelegationAsManager,
+  revokeGrantAsManager,
+  revokeGrantOnAccess,
+} from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
@@ -106,6 +111,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,
 
+  'client.create': createClientRecord,
+  'access.grant': grantOnAccess,
+  'access.revoke': (tx, context, request) => revokeGrantOnAccess(tx, context, request.grantId),
   'grant.revoke': (tx, context, request) => revokeGrantAsManager(tx, context, request.grantId),
   'delegation.revoke': (tx, context, request) =>
     revokeDelegationAsManager(tx, context, request.delegationId),

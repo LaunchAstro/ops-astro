@@ -1291,11 +1291,11 @@ case (g) carries the rows. The server declares the two answers as
 (`packages/core-wire/src/views.ts`), and the web imports that type
 rather than keeping a copy; the two are told apart by the key.
 
-| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                   | Refusals it can answer                                                                                  |
-| ---------------------- | ----------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                             | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                             |
-| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                  | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
-| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents }`: each person `{ personId, name, permissions: [{ collection, action, scope }] }`, each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403     |
+| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                       | Refusals it can answer                                                                                  |
+| ---------------------- | ----------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                 | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                             |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                      | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
+| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords }` (`clientRecords`: every client `{ clientId, name }`): each person `{ personId, name, permissions: [{ collection, action, scope }] }`, each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403     |
 
 `settings.read` takes `read` on `settings` while the two settings commands take
 `manage` on the same collection. The asymmetry is deliberate. A setting is a
@@ -1572,6 +1572,42 @@ drafted, each `{ service, receives, where, trainsOnIt, contract }`, in the
 register's order, and `dataClasses`: the data-class register's classes in use
 when it was drafted, each `{ dataClass, purpose, disclosures, retention,
 deletion }`, in the register's order.
+
+### The client record and grants on Settings ▸ Access (C32)
+
+`client.create` takes `{ operationId, name }` under `record:write`, never an
+agent's, and answers `{ clientId }`. `name` is 1 to 200 characters, trimmed; a
+name the business already has in any letter case is `CLIENT_NAME_TAKEN` 409. A
+client is never renamed or deleted here.
+
+`client.list` (`/client/list`, `{}`) answers `{ ok: true, clients: [{ clientId,
+name }] }`: the clients the caller's live grants reach, asked inside the
+query. A grant of any key over the whole business reaches every client; a grant
+over one client reaches that client and no other, and the answer never counts
+the rest. A caller holding no live grant is `SCOPE_NOT_GRANTED` 403; one whose
+grants reach no client (a client person on a share) is answered an empty list.
+Never an agent's.
+
+`access.grant` takes `{ operationId, holderId, collection, action, clientId? }`
+under `access:manage`, never an agent's, and answers `{ grantId }`. `holderId`
+is a person of the business with an active membership; `clientId` is a client
+of the business, or absent or null for the whole business. `collection:action`
+must be a key of the permission key catalogue
+(`packages/core-wire/src/permission-keys.ts`); the self-scoped `account`,
+`credential` and `preference` keys are never granted. A malformed or unknown
+field is `FIELD_VALUE_INVALID` 422 naming it; a person or client not of this
+business is `NOT_FOUND` 404 naming `holderId` or `clientId`. The same key and
+scope given again answers the live grant already held.
+
+`access.revoke` takes `{ operationId, grantId }` under `access:manage`, never
+an agent's, and answers `{ grantId, revokedAt, classifiedHolds }` as
+`grant.revoke` does, with the same authority-loss classification. A grant not
+live in this business is `NOT_FOUND` 404. The last business-wide
+`access:manage` of a person who can sign in is `ACCESS_LAST_MANAGER` 409, on
+this route and on `grant.revoke`.
+
+`task.set_party`'s `client` must name a client of this business: another
+business's or a made-up one is `NOT_FOUND` 404 naming `client`.
 
 ### The overseas-services register (C81, SP-25)
 

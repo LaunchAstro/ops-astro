@@ -257,6 +257,7 @@ const FREE_OPERANDS: readonly string[] = [
   'deletion',
   'disclosures',
   'foundBy',
+  'name',
   'note',
   'payload',
   'purpose',

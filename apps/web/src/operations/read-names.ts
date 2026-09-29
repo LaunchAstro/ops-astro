@@ -42,6 +42,7 @@ export const READ_NAMES = [
   'task.receipt',
   // Settings ▸ Access (C32), under `access:manage` on the server.
   'access.read',
+  'client.list',
   // The operations view (C55), under `operations:read` on the server.
   'operations.read',
   // The breach drill's notices (C81), under `privacy:manage` on the server.

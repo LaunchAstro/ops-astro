@@ -12,7 +12,11 @@
 // session set and row security holds the same line underneath it, so a person
 // of another business is not filtered out -- they are not visible to filter.
 
-import { heldPermissions, standsOnShares } from '../../../core-records/src/index.ts';
+import {
+  heldPermissions,
+  listAllClients,
+  standsOnShares,
+} from '../../../core-records/src/index.ts';
 import type { HeldPermission, TenantQuery } from '../../../core-records/src/index.ts';
 import type {
   AccessAgent,
@@ -105,6 +109,7 @@ export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult
     team: team.map((person) => withPreview(person)),
     clients: clients.map((row) => withPreview({ personId: row.id, name: row.display_name })),
     agents: delegations.map((row) => agentOf(row, held)),
+    clientRecords: await listAllClients(tx),
   };
 }
 

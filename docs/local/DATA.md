@@ -527,6 +527,17 @@ The application may select, insert and update; nothing deletes a row. The
 table is tenancy-keyed with the restrictive policy. The audit chain and the
 operation register hold a digest and the version's id, never the words.
 
+## Clients (0036, C32)
+
+`clients` holds one row per client of the business: its `name` (1 to 200
+characters, trimmed, one per business in any letter case, `clients_one_name`)
+and who made it and when. It is the party a party-scoped grant names in
+`grants.scope_id` and a task names in its `client` link (`records.uuid_7`).
+Neither carries a foreign key to it, so `access.grant` and `task.set_party`
+check a client is of this business before writing its id. The application may
+select and insert; nothing updates or deletes a row. Tenancy-keyed with the
+restrictive policy.
+
 ## Overseas-services register (0035, C81)
 
 `overseas_services` holds one row per outside service that receives personal

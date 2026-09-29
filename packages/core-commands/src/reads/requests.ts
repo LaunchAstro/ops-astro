@@ -29,6 +29,7 @@ import type { BreachNoticeOperands } from './operations.ts';
 import type {
   AccessReadResult,
   BreachNoticesResult,
+  ClientListResult,
   CapabilitiesResult,
   OperationsReadResult,
   PersonListResult,
@@ -108,6 +109,7 @@ export interface ReadOperands {
   readonly 'task.receipt': { readonly attemptId: string };
   /** Who may do what here: Team, Clients and Agents with their previews (C32). */
   readonly 'access.read': NoOperands;
+  readonly 'client.list': NoOperands;
   /** What needs the operator's eye: privacy incidents first (C55). */
   readonly 'operations.read': NoOperands;
   /**
@@ -142,5 +144,6 @@ export type ReadResult =
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
   | AccessReadResult
+  | ClientListResult
   | OperationsReadResult
   | BreachNoticesResult;
