@@ -199,4 +199,64 @@ describe('T2g the run on the task page', () => {
     expect(page.find('[data-receipt-attempt="a-1"] button')).toBeNull();
     await page.unmount();
   });
+
+  it('Sol proof, criterion 2: the task page reaches a run event after the first execution page', async () => {
+    const cursors: unknown[] = [];
+    const fetch = (async (url: string | URL, init?: RequestInit) => {
+      const at = String(url);
+      if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
+      if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
+      if (at.endsWith('/task/receipt')) return RECEIPT.clone();
+      if (at.endsWith('/task/execution')) {
+        const body: unknown = JSON.parse(String(init?.body ?? '{}'));
+        const cursor =
+          typeof body === 'object' && body !== null && 'cursor' in body ? body.cursor : undefined;
+        cursors.push(cursor);
+        if (cursor === 200) {
+          return json({
+            ok: true,
+            execution: {
+              outcome: 'ready',
+              taskId: TASK.id,
+              sourceRevision: 201,
+              complete: true,
+              next: null,
+              runs: [run('r-1', 'done')],
+              events: [event(201, 'r-1', 'handed_back')],
+            },
+          });
+        }
+        return json({
+          ok: true,
+          execution: {
+            outcome: 'ready',
+            taskId: TASK.id,
+            sourceRevision: 201,
+            complete: false,
+            next: 200,
+            runs: [run('r-1', 'running')],
+            events: Array.from({ length: 200 }, (_, index) => event(index + 1, 'r-1', 'claimed')),
+          },
+        });
+      }
+      return json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404);
+    }) as typeof globalThis.fetch;
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      token: 'a-token',
+      fetch,
+      newOperationId: () => 'operation-1',
+    });
+    const page = await mount(
+      <TaskDetailScreen client={client} grantKey="alpha:ada" taskKey="TSK-31" />,
+    );
+    await tick();
+    try {
+      expect(cursors).toContain(200);
+      expect(page.find('[data-run-id="r-1"] [data-event-kind="handed_back"]')).not.toBeNull();
+    } finally {
+      await page.unmount();
+    }
+  });
 });
