@@ -1534,6 +1534,291 @@
   text-transform: var(--type-chip-case);
 }
 
+/* -- Charts (MP-1-5: DS-COMP-27, 28, 29 and 40). Hand-drawn SVG. Colour
+      comes from a tone through currentColor, so no chart names a colour and
+      every one follows the theme; text is set by the type scale. ---------- */
+.chart {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+}
+.chart__frame {
+  position: relative;
+  width: 100%;
+}
+.chart--radial .chart__frame {
+  width: max-content;
+}
+.chart svg,
+.spark {
+  display: block;
+  overflow: visible;
+}
+[data-tone='accent'] {
+  color: var(--accent);
+}
+[data-tone='ink'] {
+  color: var(--text);
+}
+[data-tone='muted'] {
+  color: var(--text-muted);
+}
+[data-tone='info'] {
+  color: var(--info);
+}
+[data-tone='ok'] {
+  color: var(--success);
+}
+[data-tone='warn'] {
+  color: var(--warning);
+}
+[data-tone='bad'] {
+  color: var(--danger);
+}
+.chart__plot {
+  fill: none;
+}
+.chart__grid {
+  stroke: currentColor;
+  opacity: 0.09;
+}
+/* Axis labels in mono 10 at 45%. */
+.chart__axis {
+  fill: currentColor;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  opacity: 0.45;
+}
+.chart__axis-title {
+  fill: currentColor;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  opacity: 0.7;
+}
+.chart__line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.spark .chart__line {
+  stroke-width: 1.5;
+}
+.chart__area {
+  fill: currentColor;
+  opacity: 0.1;
+}
+.spark .chart__area {
+  opacity: 0.09;
+}
+.chart__dot,
+.chart__end {
+  fill: currentColor;
+}
+.chart__bar {
+  fill: currentColor;
+  opacity: 0.9;
+}
+.is-active > .chart__bar {
+  opacity: 1;
+}
+.chart__cursor {
+  stroke: currentColor;
+  stroke-dasharray: 2 3;
+  opacity: 0.35;
+}
+/* The hover and focus targets: invisible, with a ring when the keyboard is on one. */
+.chart__hit {
+  fill: transparent;
+  outline: none;
+}
+/* The keyboard's ring is the cursor line, drawn solid while a point has focus. */
+.chart__frame:has(.chart__hit:focus-visible) .chart__cursor {
+  stroke: var(--accent);
+  stroke-dasharray: none;
+  stroke-width: 1.5;
+  opacity: 1;
+}
+.chart__slice {
+  fill: currentColor;
+  opacity: 0.92;
+  outline: none;
+}
+.chart__slice:hover,
+.chart__slice:focus-visible {
+  opacity: 1;
+  stroke: var(--text);
+  stroke-width: 1.5;
+}
+.chart__tip {
+  position: absolute;
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  max-width: 260px;
+  padding: 0.5rem 0.7rem;
+  transform: translate(-50%, calc(-100% - 8px));
+  background: var(--void);
+  color: var(--on-dark);
+  pointer-events: none;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+.chart__tip-title {
+  color: var(--on-dark-muted);
+}
+.chart__tip-value {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.chart__centre {
+  fill: currentColor;
+  font: var(--type-heading);
+  letter-spacing: var(--type-heading-tracking);
+  text-transform: var(--type-heading-case);
+}
+.chart__centre-label {
+  fill: currentColor;
+  opacity: 0.5;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+}
+.chart__track {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 9;
+  opacity: 0.12;
+}
+.chart__arc {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 9;
+}
+.chart__target {
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+.chart__value {
+  fill: currentColor;
+  font: var(--type-heading);
+  letter-spacing: var(--type-heading-tracking);
+  text-transform: var(--type-heading-case);
+}
+.dials {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-5) var(--s-6);
+}
+/* The score dial: the ring takes the band's colour (0 to 49, 50 to 89, 90 up). */
+.dial {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+}
+.dial.is-ok {
+  color: var(--success);
+}
+.dial.is-warn {
+  color: var(--warning);
+}
+.dial.is-bad {
+  color: var(--danger);
+}
+.dial .chart__track {
+  stroke-width: 6;
+  opacity: 0.15;
+}
+.chart__ring {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 6;
+}
+.dial__score {
+  fill: currentColor;
+  font: var(--type-num-md);
+  letter-spacing: var(--type-num-md-tracking);
+  text-transform: var(--type-num-md-case);
+}
+.dial__label {
+  color: var(--text-muted);
+  text-align: center;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+/* The funnel (DS-COMP-40), to true scale: each stage as wide as its count. */
+.funnel {
+  display: grid;
+}
+.funnel__step {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr) 16rem;
+  gap: var(--s-4);
+  align-items: center;
+  min-height: 3rem;
+  padding: 0 var(--s-4);
+}
+.funnel__label {
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
+}
+.funnel__shape {
+  align-self: stretch;
+  display: flex;
+}
+.funnel__bg {
+  width: var(--w);
+  background: var(--accent);
+  opacity: var(--depth);
+}
+/* The shape look fuses the stages: a centred trapezoid from this width to the next. */
+.funnel--shape .funnel__bg {
+  width: 100%;
+  clip-path: polygon(
+    calc(50% - var(--w) / 2) 0,
+    calc(50% + var(--w) / 2) 0,
+    calc(50% + var(--next) / 2) 100%,
+    calc(50% - var(--next) / 2) 100%
+  );
+}
+.funnel__val {
+  display: flex;
+  gap: var(--s-3);
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.funnel__pct,
+.funnel__foot {
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.funnel__foot {
+  margin: var(--s-3) 0 0;
+  padding: 0 var(--s-4);
+}
+@media (width <= 640px) {
+  .funnel__step {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .funnel__shape {
+    display: none;
+  }
+}
+
 /* -- The component gallery page (MP-1-3). -------------------------------- */
 .gallery {
   display: grid;
