@@ -125,6 +125,11 @@ const EFFECT_FIXES: readonly string[] = [
  * The refusal an effect identity earns, or `undefined`: the one effect is a
  * team-only comment, on an attempt marked dispatched to the author's own lease
  * on this task. Any other identity is an ordinary comment and passes.
+ *
+ * T2d: the attempt must still be `dispatched`. Once observe has settled it, or
+ * held it as an unknown liability, its outcome is recorded and a late effect
+ * would contradict it (Sol review 1 on #124, criterion 2). A retried effect is
+ * unaffected: the register replays it before this runs.
  */
 async function effectRefusal(
   tx: TenantQuery,
@@ -143,7 +148,8 @@ async function effectRefusal(
   const rows = await tx.query(
     `select 1 from public.attempts att
        join public.leases l on l.business_id = att.business_id and l.id = att.lease_id
-      where att.business_id = $1 and att.id = $2 and att.dispatch_marker and l.task_id = $3
+      where att.business_id = $1 and att.id = $2 and att.dispatch_marker
+        and att.state = 'dispatched' and l.task_id = $3
         and l.holder_actor_id = $4 and l.delegation_id is not distinct from $5::uuid`,
     [tx.businessId, attemptId, on.target.id, on.authorActorId, on.delegationId],
   );
