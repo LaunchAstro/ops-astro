@@ -18,6 +18,7 @@ import { createTask, updateTask } from './tasks-write.ts';
 import { setState, writeOwnedFields } from './tasks-state.ts';
 import { setScores } from './tasks-scores.ts';
 import { setAdHoc } from './tasks-adhoc.ts';
+import { setParty } from './tasks-party.ts';
 import { revokeClientShare, shareWithClient } from './tasks-client-access.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
@@ -55,7 +56,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.assign': writeOwned,
   'task.triage': writeOwned,
   'task.set_stage': writeOwned,
-  'task.set_party': writeOwned,
+  'task.set_party': (tx, context, request) => setParty(tx, context, request.fields),
   'task.set_audience': writeOwned,
   'task.set_scores': (tx, context, request) => setScores(tx, context, request.fields),
   'task.set_adhoc': (tx, context, request) => setAdHoc(tx, context, request.fields),
@@ -105,9 +106,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
 function writeOwned(
   tx: TenantQuery,
   context: CommandContext,
-  request: RequestOf<
-    'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_party' | 'task.set_audience'
-  >,
+  request: RequestOf<'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_audience'>,
 ): Promise<HandlerOutcome> {
   return writeOwnedFields(tx, context, request.command, request.fields);
 }

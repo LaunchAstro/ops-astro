@@ -109,6 +109,7 @@ function server(options: ServerOptions = {}) {
     clientAccess: false,
     stage: null,
     clientSet: false,
+    steps: [],
     comments: [] as Record<string, unknown>[],
     proposals: [] as ReturnType<typeof lineage>[],
     // The task cap's currency, which the propose form offers (CQ-7).

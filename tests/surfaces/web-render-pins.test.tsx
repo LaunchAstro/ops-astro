@@ -74,6 +74,7 @@ function taskWith(gate: { readonly state: string; readonly expired: boolean }) {
     clientAccess: false,
     stage: null,
     clientSet: false,
+    steps: [],
     comments: [
       {
         id: 'c-1',

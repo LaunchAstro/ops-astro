@@ -43,6 +43,7 @@ import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { refuseCreateOperands, refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { clientOf } from './tasks-party.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
 
@@ -183,6 +184,10 @@ export async function createTask(
   }
   const stateId = named?.id ?? initialStateId(context.spine.states);
 
+  // A subtask carries its parent's client (MP-4-4): the placement above has
+  // already found the parent live in this business.
+  const client = parentId === null ? null : await clientOf(tx, context.spine.taskTypeId, parentId);
+
   const id = randomUUID();
   const data: Record<string, unknown> = {
     ...request.fields,
@@ -194,6 +199,7 @@ export async function createTask(
     ...(placement.board === null ? {} : { board: placement.board }),
     ...(placement.boardSection === null ? {} : { board_section: placement.boardSection }),
     ...(parentId === null ? {} : { parent: parentId }),
+    ...(client === null ? {} : { client }),
   };
 
   const rows = await tx.query<{ readonly revision: string; readonly key: string }>(
