@@ -49,6 +49,28 @@ export interface RunReservation {
   readonly attempt: { readonly state: string } | null;
 }
 
+/** What a run was allowed to touch: its lease's delegation, set by the broker (MP-6-4). */
+export interface RunScope {
+  readonly leaseId: string;
+  readonly acquiredAt: string;
+  readonly delegation: {
+    readonly id: string;
+    readonly purpose: string;
+    readonly scope: { readonly kind: string; readonly id: string };
+    readonly collections: readonly string[];
+    readonly actions: readonly string[];
+    readonly expiresAt: string;
+    readonly state: string;
+    readonly delegatePersonId: string;
+    readonly grants: readonly {
+      readonly id: string;
+      readonly collection: string;
+      readonly action: string;
+      readonly scopeKind: string;
+    }[];
+  } | null;
+}
+
 export interface RunLineage {
   readonly lineageId: string;
   readonly state: string;
@@ -60,4 +82,6 @@ export interface RunLineage {
     readonly decidedAt: string;
   }[];
   readonly reservations: readonly RunReservation[];
+  /** Oldest lease first. Absent from a read made before MP-6-4, which reads as none. */
+  readonly scopes?: readonly RunScope[];
 }

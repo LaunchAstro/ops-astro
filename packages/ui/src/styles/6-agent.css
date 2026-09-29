@@ -335,3 +335,41 @@
   gap: var(--s-2);
   flex-wrap: wrap;
 }
+
+/* The scope stamp (MP-6-4, DS-TASK-3; mockup app.css:8814-8820): read-only,
+   mono parts, the clearance as an outlined chip that keeps its accent in dark. */
+.mstamp {
+  display: grid;
+  gap: 0.3rem;
+  padding: var(--s-3) 0 0;
+}
+.mstamp__v {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--text-2);
+}
+.mstamp__lock {
+  inline-size: 0.6rem;
+  block-size: 0.5rem;
+  border: 1.5px solid var(--ink-faint);
+  border-radius: 2px;
+}
+.mstamp__p {
+  color: var(--text-2);
+}
+.mstamp__x {
+  color: var(--ink-faint);
+}
+.mstamp__chip {
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+.mstamp__say {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--ink-faint);
+}

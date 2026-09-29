@@ -16,7 +16,9 @@ import type { RunLineage } from '../state/run-projection.ts';
 import { Attempts } from './agent/attempts.tsx';
 import { Gate, type GateDecision, type GateRef } from './agent/gate.tsx';
 import { ProposalHeader, Summary, Workflow } from './agent/header.tsx';
+import { Scope } from './agent/scope.tsx';
 import { StagedOutput } from './agent/staged.tsx';
+import { scopeStamp } from '../state/agent-scope.ts';
 
 export type { GateDecision } from './agent/gate.tsx';
 
@@ -36,6 +38,8 @@ export interface AgentPaneProps {
   readonly onDecide: (gate: GateRef, decision: GateDecision) => void;
   readonly onReject: (gate: GateRef) => void;
   readonly onCancel: (lineageId: string) => void;
+  /** The access ledger's address for one grant, or null while the ledger has no screen. */
+  readonly ledgerHref: ((grantId: string) => string) | null;
 }
 
 export function AgentPane(props: AgentPaneProps): ReactElement {
@@ -63,9 +67,7 @@ export function AgentPane(props: AgentPaneProps): ReactElement {
 
 function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement {
   const { shown } = props;
-  const decisions =
-    (props.lineages ?? []).find((lineage) => lineage.lineageId === shown.lineageId)?.decisions ??
-    [];
+  const lineage = (props.lineages ?? []).find((each) => each.lineageId === shown.lineageId);
   return (
     <>
       <ProposalHeader
@@ -85,6 +87,12 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
           {shown.head.runId ?? 'not planned'}
         </span>
       </div>
+      <Scope
+        stamp={scopeStamp(lineage)}
+        head={shown.head}
+        nameOf={props.nameOf}
+        ledgerHref={props.ledgerHref}
+      />
       <Summary story={shown} />
       <Workflow jobs={shown.jobs} open={props.jobListOpen} onToggle={props.onJobList} />
       <StagedOutput story={shown} />
@@ -93,7 +101,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
         effect={props.effect}
         busy={props.busy}
         nameOf={props.nameOf}
-        decisions={decisions}
+        decisions={lineage?.decisions ?? []}
         onDecide={props.onDecide}
       />
     </>
