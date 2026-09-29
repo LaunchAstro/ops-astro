@@ -14,7 +14,9 @@
 //
 // It takes the newest backup from the store (the store logs the read), through
 // psql on staging's network (backup-store-reach.mjs), since the store publishes
-// no port; opens the seal, starts a throwaway container of the production
+// no port, part by part into a sealed file of its own (a folder of its own,
+// mode 600, removed when it ends), so no archive is held whole in memory
+// (REV158S criterion 5); checks the seal over the whole file, then starts a throwaway container of the production
 // major with no network, restores the whole backup into it, checks the result and removes
 // the container. It takes no target: the one database it writes is the one it
 // started, so it cannot reach the managed project or any other server. It
@@ -33,8 +35,8 @@
 // other.
 //
 // The clean-host leg (S0-3e, recovery contract D-3) runs off the machine,
-// where the store has no route: `--export` writes the newest sealed backup and
-// the digest the store recorded into one file (carried-archive.mjs), never the
+// where the store has no route: `--export` writes the newest sealed backup,
+// and beside it the digest the store recorded (carried-archive.mjs), never the
 // key; `--drill --archive <file>` restores that file anywhere, checked against
 // the digest before anything opens it, and its receipt says it ran on a carried
 // archive and is kept and printed, not stored; `--record <file>` takes that
@@ -44,16 +46,19 @@
 // names the stage and nothing else: Docker's, pg_restore's and the server's
 // messages can carry record data, so they are never kept.
 
-import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { EFFECTIVE_GRANTS } from '../../packages/core-records/src/index.ts';
-import { openArchive } from './archive-seal.mjs';
+import { checkSealedFile, openSealedFile } from './archive-seal.mjs';
 import { drillAsOperator as actAsOperator, exportArchive, recordCarried } from './drill-acts.mjs';
+import { docker, must } from './drill-docker.mjs';
 import { requireOperator } from './operator.ts';
 
 export { RECEIPT_FIELDS, recordDrill } from './drill-receipt.mjs';
 export { exportArchive, fetchLatest, recordCarried } from './drill-acts.mjs';
+export { docker } from './drill-docker.mjs';
 
 const APP_ROLE = 'ops_astro_app';
 const ID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u;
@@ -67,30 +72,9 @@ const staging = JSON.parse(
 );
 const PRODUCTION_MAJOR = staging['x-ops-astro'].productionDatabaseMajor;
 
-/** Runs `docker`; stdout comes back as text, stderr is discarded. */
-export function docker(args, input) {
-  return new Promise((resolve) => {
-    const child = spawn('docker', args, { stdio: ['pipe', 'pipe', 'ignore'] });
-    const chunks = [];
-    child.stdout.on('data', (chunk) => chunks.push(chunk));
-    child.stdin.on('error', () => {});
-    child.on('error', () => resolve({ code: 1, stdout: '' }));
-    child.on('close', (code) =>
-      resolve({ code: code ?? 1, stdout: Buffer.concat(chunks).toString() }),
-    );
-    child.stdin.end(input);
-  });
-}
-
-async function must(result) {
-  const { code, stdout } = await result;
-  if (code !== 0) throw new Error('step failed');
-  return stdout;
-}
-
 /**
- * Restores the archive `fetchArchive` returns into a container of `image` and
- * checks it. Returns the drill's record; never throws. `image` defaults to
+ * Restores the archive `fetchArchive(file)` writes into `file` (or answers as
+ * `body`) into a container of `image` and checks it. Returns the drill's record; never throws. `image` defaults to
  * staging's pinned Postgres, the major production gets.
  */
 export async function restoreDrill({
@@ -125,13 +109,23 @@ export async function restoreDrill({
     }
   };
   let started = false;
+  const folder = mkdtempSync(join(tmpdir(), 'ops-astro-drill-'));
+  const sealed = join(folder, 'archive.sealed');
   try {
     if (![scope?.business, scope?.client, scope?.person].every((id) => ID.test(id ?? ''))) {
       throw new Error('scope is not three ids');
     }
-    const archive = await timed('fetch', fetchArchive);
+    const archive = await timed('fetch', async () => {
+      const fetched = await fetchArchive(sealed);
+      if (fetched.body !== undefined)
+        writeFileSync(sealed, fetched.body, { mode: 0o600, flag: 'wx' });
+      return fetched;
+    });
     record.archiveTakenAt = archive.takenAt;
-    const dump = await timed('open', () => openArchive(archive.body, privateKey));
+    // The tag over the whole file first, keeping no plaintext; only then does
+    // any plaintext go anywhere, and only into the container's pg_restore.
+    await timed('open', () => checkSealedFile(sealed, privateKey));
+    const dump = () => openSealedFile(sealed, privateKey);
     await timed('start', async () => {
       started = true;
       // No network and no published port: nothing outside can reach it, and it
@@ -158,12 +152,12 @@ export async function restoreDrill({
       if (record.targetMajor !== PRODUCTION_MAJOR) throw new Error('not the production major');
     });
     const expected = await timed('restore', async () => {
-      const listed = await must(exec(['pg_restore', '--list'], dump));
+      const listed = await must(exec(['pg_restore', '--list'], dump()));
       record.sourceMajor = Number(/Dumped from database version: (\d+)/u.exec(listed)?.[1]);
       // The archive makes its own public schema; the empty one would collide.
       await psql('drop schema public');
       const flags = ['--exit-on-error', '--single-transaction', '--no-owner', '--no-privileges'];
-      await must(exec(['pg_restore', ...flags, ...AS], dump));
+      await must(exec(['pg_restore', ...flags, ...AS], dump()));
       return [...listed.matchAll(/^\d+; \d+ \d+ TABLE DATA (\S+) (\S+) /gmu)].map(
         ([, schema, table]) => `${schema}.${table}`,
       );
@@ -212,6 +206,7 @@ export async function restoreDrill({
   } finally {
     // With its volumes: an image's declared volume outlives `rm -f` alone.
     if (started) await run(['rm', '-f', '-v', name]);
+    rmSync(folder, { recursive: true, force: true });
   }
   return record;
 }
