@@ -29,6 +29,7 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
 import { openEnvelopeOf } from '../../../core-runtime/src/index.ts';
 import { READS } from '../../../core-wire/src/index.ts';
+import { readAlerts } from '../../../core-runtime/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 
 interface TaskRowRead {
@@ -252,6 +253,7 @@ export async function readTaskDetail(
     // reader who may see the task may see what somebody proposed doing to it.
     proposals: await readTaskProposals(tx, row.id),
     envelope: envelopeOf(await openEnvelopeOf(tx, row.id)),
+    alerts: await readAlerts(tx, row.id),
   };
 }
 

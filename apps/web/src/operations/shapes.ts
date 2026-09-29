@@ -245,6 +245,11 @@ export interface TaskDetail extends TaskSummary {
   readonly proposals?: readonly ProposalLineage[];
   /** The open envelope a top-up raises (T2e); absent or null offers no top-up. */
   readonly envelope?: TaskEnvelope | null;
+  /**
+   * The task's alerts, newest first (T2h). Optional for the reason `proposals`
+   * is: an absent key is an answer that did not carry them, not a task with none.
+   */
+  readonly alerts?: readonly TaskAlert[];
 }
 
 export interface TaskEnvelope {
@@ -253,6 +258,16 @@ export interface TaskEnvelope {
   readonly heldMinor: number;
   readonly actualMinor: number;
   readonly currency: string;
+}
+
+/** One alert as `task.read` and `task.queue` carry it (`core-runtime/src/alerts.ts`). */
+export interface TaskAlert {
+  readonly id: string;
+  readonly taskId: string;
+  readonly kind: string;
+  readonly waitingReason: string | null;
+  readonly causeId: string;
+  readonly raisedAt: string;
 }
 
 /**

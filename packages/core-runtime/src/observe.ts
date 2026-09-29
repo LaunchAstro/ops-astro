@@ -140,6 +140,7 @@ async function settlementOf(
   );
   if (cost === undefined) return { state: 'unpriced', heldMinor: Number(heldMinor) };
   return await settleAtObserved(tx, {
+    taskId: found.task_id,
     attemptId: found.attempt_id,
     reservationId: found.reservation_id,
     envelopeId: state.envelope_id,

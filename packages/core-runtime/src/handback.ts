@@ -45,6 +45,7 @@ import {
   readLease,
   type LeaseCause,
 } from './lease-ownership.ts';
+import { raiseAlert, type Raised } from './alerts.ts';
 import { acquire, type LockSet } from './locks.ts';
 import { only, RuntimeInvariantError } from './only.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
@@ -452,7 +453,28 @@ async function settle(
     { reservationId: found.reservation_id, cause: 'handback_completed', causeId: request.leaseId },
     locks,
   );
+  await raiseAlert(tx, {
+    taskId: found.task_id,
+    causeId: attempt.id,
+    raised: handedBack(request, classification),
+  });
   return { reportId, attemptId: attempt.id, classification };
+}
+
+/**
+ * The alert a hand-back raises (T2h): a successor waits on a person to decide
+ * it, and a quarantined hold on a person to reconcile it; otherwise the run
+ * ended as the holder reported. A successor refused later rolls this back with
+ * the rest of the settlement.
+ */
+function handedBack(request: HandbackRequest, classification: Classification): Raised {
+  if (request.successor !== undefined) {
+    return { kind: 'awaiting_person', waitingReason: 'needs_approval' };
+  }
+  if (classification.state === 'quarantined') {
+    return { kind: 'awaiting_person', waitingReason: 'quarantined' };
+  }
+  return { kind: request.outcome === 'failed' ? 'failed' : 'settled' };
 }
 
 type Successor = {

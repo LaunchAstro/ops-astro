@@ -45,6 +45,7 @@
 
 import { PREFIX, pathOf } from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
+import type { TaskAlert } from './shapes.ts';
 
 /**
  * The reads, named here as their own type.
@@ -111,10 +112,14 @@ export interface QueueEntryWire {
   readonly heldMinor: number;
 }
 
-/** `task.queue`'s answer. An empty queue is `[]` beside `ok`, never a refusal. */
+/**
+ * `task.queue`'s answer. An empty queue is `[]` beside `ok`, never a refusal.
+ * `alerts` are the team's (T2h); a reader outside the team is sent none.
+ */
 export interface QueueRead {
   readonly ok: true;
   readonly queue: readonly QueueEntryWire[];
+  readonly alerts: readonly TaskAlert[];
 }
 
 /**

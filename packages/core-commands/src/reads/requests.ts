@@ -29,7 +29,7 @@ import type { ProposalView } from './proposals.ts';
 import type { QueuedWork } from './queue.ts';
 import type { SettingView } from './settings.ts';
 import type { Capability } from './capabilities.ts';
-import type { Receipt } from '../../../core-runtime/src/index.ts';
+import type { Alert, Receipt } from '../../../core-runtime/src/index.ts';
 
 /** The task state a task points at. The machine category is what a board groups on. */
 export interface TaskStateView {
@@ -103,6 +103,8 @@ export interface TaskDetail extends TaskSummary {
     readonly heldMinor: number;
     readonly actualMinor: number;
   } | null;
+  /** The task's alerts, newest first (T2h). The detail is the team's, and so are they. */
+  readonly alerts: readonly Alert[];
 }
 
 /**
@@ -204,7 +206,7 @@ export type ReadResult =
   | { readonly ok: true; readonly sharedTask: SharedTaskView }
   | { readonly ok: true; readonly tasks: readonly TaskSummary[] }
   | { readonly ok: true; readonly persons: readonly PersonView[] }
-  | { readonly ok: true; readonly queue: readonly QueuedWork[] }
+  | { readonly ok: true; readonly queue: readonly QueuedWork[]; readonly alerts: readonly Alert[] }
   | { readonly ok: true; readonly plan: PresetPlan }
   | { readonly ok: true; readonly settings: readonly SettingView[] }
   | { readonly ok: true; readonly receipt: Receipt }

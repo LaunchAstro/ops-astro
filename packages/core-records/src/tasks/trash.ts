@@ -51,6 +51,8 @@ export const RETENTION_CLASS_BY_TABLE: Readonly<Record<string, RetentionClass>> 
   runs: 'runtime',
   steps: 'runtime',
   run_events: 'runtime',
+  // T2h: a record of a transition, kept with the run it describes.
+  alerts: 'runtime',
 };
 
 /**
