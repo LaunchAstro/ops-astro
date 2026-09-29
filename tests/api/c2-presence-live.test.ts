@@ -64,7 +64,12 @@ const teammate = async (): Promise<Member> => {
 
 const open = async (taskIds: readonly string[], who: Member, at = key): Promise<Joined> => {
   const token = await tokenFor(who.presented.subject);
-  const joined = await join(api, at, taskIds.map(topic), token);
+  const joined = await join(
+    api,
+    at,
+    taskIds.map((taskId) => topic(taskId)),
+    token,
+  );
   opened.push(joined);
   return joined;
 };
@@ -201,6 +206,25 @@ async function noAudit(): Promise<void> {
   await Promise.all([mine.stop(), theirs.stop()]);
 }
 
+/** A person under a live delegation is seen while it lives, and gone once it is revoked. */
+async function delegatedPresence(taskId: string, mySeat: string): Promise<void> {
+  const delegate = await enrol(s.db.app, s.business, `c2-del-${randomUUID().slice(0, 8)}`);
+  const parent = await s.db.app.withBusiness(
+    s.business,
+    async (tx) => await delegatedRead(tx, s.decider, delegate, taskId),
+  );
+  const theirs = await open([taskId], delegate);
+  const theirSeat = await seatOf(theirs);
+  expect(names(await seenBy(s.decider, mySeat, taskId))).toEqual([
+    { personId: delegate.personId, state: 'viewing', field: null },
+  ]);
+  await s.db.app.withBusiness(s.business, async (tx) => await revokeGrant(tx, parent));
+  expect((await seenBy(delegate, theirSeat, taskId)).status).not.toBe(200);
+  await within(2_000, () => theirs.heard.some((h) => h.event === 'closed'), 'delegate closed');
+  expect(names(await seenBy(s.decider, mySeat, taskId))).toEqual([]);
+  await theirs.stop();
+}
+
 /** C2 isolation: presence across another business, another client and a person under a delegation */
 async function isolation(): Promise<void> {
   const taskId = await createTask(s, `c2-iso-${randomUUID()}`);
@@ -236,22 +260,8 @@ async function isolation(): Promise<void> {
     ]);
   }
   expect(names(await seenBy(s.decider, mySeat, taskId))).toEqual([]);
-  // A person under a live delegation is seen while it lives, and gone once it is revoked.
-  const delegate = await enrol(s.db.app, s.business, `c2-del-${randomUUID().slice(0, 8)}`);
-  const parent = await s.db.app.withBusiness(
-    s.business,
-    async (tx) => await delegatedRead(tx, s.decider, delegate, taskId),
-  );
-  const theirs = await open([taskId], delegate);
-  const theirSeat = await seatOf(theirs);
-  expect(names(await seenBy(s.decider, mySeat, taskId))).toEqual([
-    { personId: delegate.personId, state: 'viewing', field: null },
-  ]);
-  await s.db.app.withBusiness(s.business, async (tx) => await revokeGrant(tx, parent));
-  expect((await seenBy(delegate, theirSeat, taskId)).status).not.toBe(200);
-  await within(2_000, () => theirs.heard.some((h) => h.event === 'closed'), 'delegate closed');
-  expect(names(await seenBy(s.decider, mySeat, taskId))).toEqual([]);
-  await Promise.all([mine.stop(), theirs.stop()]);
+  await delegatedPresence(taskId, mySeat);
+  await mine.stop();
 }
 
 describe.skipIf(serverUrl === undefined)('C2 presence on the live stream', () => {

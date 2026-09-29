@@ -12,6 +12,10 @@ export const LIVE_CHANNEL = 'ops_astro_live';
 
 export type LiveSignal = 'invalidate' | 'resync';
 
+/** A tab's name for one task's topic, as the stream and the presence routes take it. */
+export const TOPIC: RegExp =
+  /^task:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u;
+
 type Send = (signal: LiveSignal) => void;
 
 export interface LiveTopics {

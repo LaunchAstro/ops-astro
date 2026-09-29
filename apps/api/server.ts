@@ -62,6 +62,7 @@ import {
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
+import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import {
   describeRecovered,
@@ -322,7 +323,7 @@ async function main(): Promise<void> {
     secret: secret as string,
     issuer: issuer as string,
     keys,
-    live: { topics },
+    live: { topics, presence: createLivePresence() },
   });
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is

@@ -26,6 +26,7 @@ import type { BusinessId, Database, VerifiedSubject } from '../../../core-record
 import { asCallerVisible, isCommandRefusal, type CommandRefusal } from '../commands/refusal.ts';
 import type { ReadRequest, ReadResult } from './requests.ts';
 import { admitRead, runRead } from './dispatch.ts';
+import { isInternalReader } from './tasks.ts';
 
 export async function executeRead(
   database: Database,
@@ -71,6 +72,37 @@ export async function admitReads(
       admissions.push(isCommandRefusal(admitted) ? asCallerVisible(admitted) : admitted);
     }
     return admissions;
+  });
+  return isCommandRefusal(outcome) ? asCallerVisible(outcome) : outcome;
+}
+
+/** Who a live-channel caller is, for presence (C2): staff or not, and the name teammates see. */
+export interface Viewer {
+  readonly personId: string;
+  readonly name: string;
+  readonly staff: boolean;
+}
+
+/**
+ * The caller's standing, resolved as a `recheck` resolves it: nothing is
+ * recorded. For presence on a stream already admitted at the door, and for
+ * the presence routes, which show nothing and store nothing (C2).
+ */
+export async function viewerOf(
+  database: Database,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+): Promise<Viewer | CommandRefusal> {
+  const outcome = await withStanding(database, businessId, presented, async (tx, session) => {
+    const [person] = await tx.query<{ readonly display_name: string }>(
+      'select display_name from public.people where business_id = $1 and id = $2',
+      [tx.businessId, session.personId],
+    );
+    return {
+      personId: session.personId,
+      name: person?.display_name ?? '',
+      staff: isInternalReader(session.roleKey),
+    };
   });
   return isCommandRefusal(outcome) ? asCallerVisible(outcome) : outcome;
 }
