@@ -176,36 +176,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
 
   return (
     <div className="stack">
-      {/*
-        Refresh sits outside the read's own region on purpose. Inside it, the
-        loading rendering replaces the controls, so a person waiting on a slow
-        read has nothing to press and the screen can never have two reads in
-        flight. Out here it stays pressable while a read is running, which is
-        what makes the ordering rule observable in the product rather than only
-        in a unit test: press it twice and the answers may come back in either
-        order, and the older one must not win.
-
-        It is disabled while an edit is unsaved. A refresh is the moment a draft
-        and the server's values would have to be reconciled, and this screen
-        does not reconcile them — the person does, with the Save or Discard
-        choice the form is showing them.
-      */}
-      <div className="btnrow">
-        <button
-          className="btn"
-          type="button"
-          data-refresh="task"
-          disabled={held !== null}
-          onClick={reload}
-        >
-          Refresh
-        </button>
-        {held === null ? null : (
-          <span className="sbact__meta" data-draft-resolve="why">
-            Save or discard your unsaved changes before refreshing.
-          </span>
-        )}
-      </div>
+      <RefreshRow held={held !== null} onRefresh={reload} />
       <RecordState state={state} subject="task" onRetry={reload}>
         {(value) =>
           'sharedTask' in value ? (
@@ -293,6 +264,47 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
  * rules the draft follows: it is an answer about one record read under one
  * authority, and it must not outlive either.
  */
+/** The task page's Refresh, and why it waits while an edit is unsaved. */
+function RefreshRow(props: {
+  readonly held: boolean;
+  readonly onRefresh: () => void;
+}): ReactElement {
+  return (
+    <>
+      {/*
+      Refresh sits outside the read's own region on purpose. Inside it, the
+      loading rendering replaces the controls, so a person waiting on a slow
+      read has nothing to press and the screen can never have two reads in
+      flight. Out here it stays pressable while a read is running, which is
+      what makes the ordering rule observable in the product rather than only
+      in a unit test: press it twice and the answers may come back in either
+      order, and the older one must not win.
+  
+      It is disabled while an edit is unsaved. A refresh is the moment a draft
+      and the server's values would have to be reconciled, and this screen
+      does not reconcile them — the person does, with the Save or Discard
+      choice the form is showing them.
+    */}
+      <div className="btnrow">
+        <button
+          className="btn"
+          type="button"
+          data-refresh="task"
+          disabled={props.held}
+          onClick={props.onRefresh}
+        >
+          Refresh
+        </button>
+        {props.held ? (
+          <span className="sbact__meta" data-draft-resolve="why">
+            Save or discard your unsaved changes before refreshing.
+          </span>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
 function useHeld<T>(
   identity: string,
   denied: boolean,
