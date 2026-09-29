@@ -48,11 +48,11 @@ function read(chosen: readonly { unit: string; state: string }[]): Measured[] {
     figure.append(holder);
     const own = (holder.firstElementChild as HTMLElement).getBoundingClientRect().width;
     holder.remove();
-    const content = getComputedStyle(figure);
-    const stateWidth =
-      figure.getBoundingClientRect().width -
-      Number.parseFloat(content.paddingLeft) -
-      Number.parseFloat(content.paddingRight);
+    // An empty block in the state is as wide as the state's content.
+    const probe = document.createElement('div');
+    figure.append(probe);
+    const stateWidth = probe.getBoundingClientRect().width;
+    probe.remove();
     return { unit, state, drawn: component.getBoundingClientRect().width, stateWidth, own };
   });
 }

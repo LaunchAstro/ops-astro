@@ -53,7 +53,7 @@ vi.mock('./capture.ts', () => ({
             sizing: host?.style.boxSizing,
             flex: copy instanceof HTMLElement ? copy.style.flex : '',
           });
-          width = Number.parseFloat(host?.style.width ?? '') || 0;
+          width = (value as { width: number }).width;
           return Promise.resolve({ x: 0, y: 0, width, height: 6 });
         }
         throw new Error(`Unexpected browser evaluation: ${fn.name}`);
