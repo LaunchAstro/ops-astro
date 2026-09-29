@@ -56,7 +56,7 @@ export interface HeartbeatRequest {
   /** The delegation the credential resolved to, never a body field. */
   readonly delegationId: string;
   readonly renewSeconds: number;
-  /** T3e1, Sol review 3: record that the provider is about to be called. */
+  /** T3e1: record that the provider is about to be called. */
   readonly providerStarting?: boolean;
 }
 
@@ -159,7 +159,7 @@ async function recheckOwner(
 }
 
 /**
- * T3e1, Sol review 3 on #154: the worker is about to call its provider, which
+ * T3e1: the worker is about to call its provider, which
  * may act and lose its answer. Recorded once, under the lease lock the sweep
  * and the reconciliation pass also take, and only on this lease's marked,
  * dispatched attempt, so the fact is durable before the call. A worker lost

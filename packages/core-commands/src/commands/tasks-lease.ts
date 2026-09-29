@@ -57,7 +57,7 @@ export interface RenewalFields {
   readonly leaseId: unknown;
   readonly fence: unknown;
   readonly leaseSeconds?: unknown;
-  /** T3e1, Sol review 3: `true` records that the provider is about to be called. */
+  /** T3e1: `true` records that the provider is about to be called. */
   readonly providerStarting?: unknown;
 }
 

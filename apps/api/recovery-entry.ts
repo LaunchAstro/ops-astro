@@ -259,8 +259,8 @@ function describeSwept(business: RecoveredBusiness): void {
  * the worker reached and lost the answer from (a `provider_unavailable` or
  * `connection_lost` drop after the mark, T3e1): that provider may have acted,
  * so the register cannot answer, the whole hold stays, and a person records
- * what happened (Sol review 2 on #154). The same holds for a worker lost
- * after it recorded its provider start (`provider_started_at`, Sol review 3):
+ * what happened. The same holds for a worker lost
+ * after it recorded its provider start (`provider_started_at`):
  * it reached a provider that may have acted. A lost worker with no start
  * recorded never reached one, and its missing comment is still an answer.
  */

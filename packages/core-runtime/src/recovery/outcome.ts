@@ -93,7 +93,7 @@ const replacementLocks = (replacements: readonly Replacement[]): readonly LockRe
   ]);
 
 /**
- * Sol review 1 on #146, criterion 2: `happened` says the work is finished, so
+ * `happened` says the work is finished, so
  * a replacement not yet dispatched is stopped under the outcome's locks: its
  * lease ends, its delegation is revoked and its hold goes back, by amount,
  * under the recorded outcome. It never dispatches.

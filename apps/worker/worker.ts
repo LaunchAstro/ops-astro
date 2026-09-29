@@ -191,15 +191,15 @@ async function effectOnce(
   // A drop whose hand-back answer was lost: send the hand-back again, and
   // never call the provider a second time for this attempt.
   if (held.drop !== undefined) return await handBackDrop(held.drop);
-  // The mark first (Sol review 1 on #154): a provider call may act and then
+  // The mark first: a provider call may act and then
   // lose its answer, so it is made only once the step is marked. A fault is
   // then handed back as a drop, and the step's whole hold stays unknown until
   // a person records what happened (T3d1): the register holds only the
-  // comment, so the pass cannot prove the provider did nothing (Sol review 2).
+  // comment, so the pass cannot prove the provider did nothing.
   // Nothing is released or reserved again on the worker's word.
   const dispatched = await call('task.dispatch', lease);
   if (!('body' in dispatched)) return dispatched;
-  // Sol review 3: the provider start is made durable before the call, so a
+  // The provider start is made durable before the call, so a
   // worker lost after it is known to have reached a provider that may have
   // acted, and its missing comment proves nothing. A lost answer here is a
   // fault, and the provider is not called until the start is recorded.
