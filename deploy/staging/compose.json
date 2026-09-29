@@ -94,7 +94,10 @@
   "networks": {
     "staging": {
       "name": "ops-astro-staging",
-      "internal": true
+      "internal": true,
+      "driver_opts": {
+        "com.docker.network.bridge.gateway_mode_ipv4": "isolated"
+      }
     }
   },
   "volumes": {
