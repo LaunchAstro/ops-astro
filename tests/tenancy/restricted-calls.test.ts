@@ -111,6 +111,8 @@ async function roleClasses(
                  when r.rolname = $1 then 'application group'
                  when pg_has_role(r.rolname, $1, 'member') then 'application login'
                  when r.rolname = $2 then 'worker'
+                 when r.rolname = 'ops_astro_backup' then 'backup'
+                 when r.rolname = 'ops_astro_backup_retention' then 'backup retention'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -179,6 +181,8 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(classes['unclassified'] ?? []).toStrictEqual([]);
     expect(classes['application group']).toStrictEqual([APPLICATION_ROLE]);
     expect(classes['worker']).toStrictEqual(['ops_astro_worker']);
+    // S0-3b: the backup identity reads and is proved in tests/db/backup-identity.test.ts.
+    expect(classes['backup']).toStrictEqual(['ops_astro_backup']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
