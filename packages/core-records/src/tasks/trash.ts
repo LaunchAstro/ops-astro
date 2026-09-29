@@ -51,6 +51,13 @@ export const RETENTION_CLASS_BY_TABLE: Readonly<Record<string, RetentionClass>> 
   runs: 'runtime',
   steps: 'runtime',
   run_events: 'runtime',
+  // AW-02 (skill-migration contract 4.4): the audit copy of a run's
+  // instruction bytes may hold client material, so it retains exactly as the
+  // run records it copies and goes only with them; the pin and the read
+  // ledger it answers for retain alike.
+  bootstrap_bytes: 'runtime',
+  bootstrap_reads: 'runtime',
+  run_definition_pins: 'runtime',
 };
 
 /**
