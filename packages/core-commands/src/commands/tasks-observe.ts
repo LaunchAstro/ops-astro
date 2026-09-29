@@ -4,14 +4,18 @@
 // dispatch refuses them; the operation register is asked whether the effect
 // happened, under the identity derived from the attempt; the runtime
 // (`core-runtime/src/observe.ts`) holds the lease, its token and its hold to
-// the caller under its locks and records the observation.
+// the caller under its locks and records the observation. T2d: the worker's
+// usage report and its word that a step failed ride along, and the runtime
+// settles the hold at the book's price. A cost above the hold is refused, and
+// the refusal keeps the attempt held as an unknown liability, with the
+// observed amount on its audit event.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { leaseReason, observe, type ObserveRequest } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
 import { refuseCommand } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, refusedRetaining, type HandlerOutcome } from './outcome.ts';
 import { personClaimant } from './tasks-claimant.ts';
 import { lookupEffect } from './register-store.ts';
 
@@ -19,12 +23,14 @@ export interface ObserveFields {
   readonly leaseId: unknown;
   readonly fence: unknown;
   readonly attemptId: unknown;
+  readonly usage?: unknown;
+  readonly outcome?: unknown;
 }
 
 /** Who asks: the verified caller, never a body field; an agent under its resolved delegation. */
 type Holder = ObserveRequest extends infer R
   ? R extends unknown
-    ? Omit<R, 'leaseId' | 'fence' | 'attemptId' | 'effect'>
+    ? Omit<R, 'leaseId' | 'fence' | 'attemptId' | 'effect' | 'usage' | 'outcome'>
     : never
   : never;
 
@@ -36,6 +42,16 @@ async function observeAs(
   if (typeof fields.fence !== 'number' || !Number.isSafeInteger(fields.fence)) {
     return refused(
       refuseCommand('FIELD_VALUE_INVALID', ['fence'], ['Send the fence the pickup handed back.']),
+    );
+  }
+  const outcome = fields.outcome ?? 'completed';
+  if (outcome !== 'completed' && outcome !== 'failed') {
+    return refused(
+      refuseCommand(
+        'FIELD_VALUE_INVALID',
+        ['outcome'],
+        ['Send completed or failed, or leave it out.'],
+      ),
     );
   }
   // A malformed lease or token in the bytes a well-formed one naming nothing gets.
@@ -57,9 +73,25 @@ async function observeAs(
     fence: fields.fence,
     attemptId: fields.attemptId,
     effect: await lookupEffect(tx, holder.holderActorId, fields.attemptId),
+    usage: fields.usage,
+    outcome,
   });
   if (!result.ok) return refused(result.refusal);
   const { taskId, ...observed } = result.value;
+  const { settlement } = observed;
+  if (settlement.state === 'liability_unknown') {
+    return refusedRetaining(
+      refuseCommand(
+        'BUDGET_UNAVAILABLE',
+        [],
+        [
+          `the reported cost ${settlement.observedMinor} is more than the ${settlement.heldMinor} held`,
+          'Nothing was settled. The attempt is held at its maximum as an unknown liability until a person records its outcome.',
+        ],
+      ),
+      { observedMinor: settlement.observedMinor },
+    );
+  }
   return applied(taskId, null, observed);
 }
 

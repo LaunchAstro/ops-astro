@@ -193,6 +193,8 @@ export interface ProposalReservation {
   readonly state: string;
   readonly heldMinor: number | null;
   readonly actualMinor: number | null;
+  /** The difference settlement gave back (T2d); absent or `null` until settled. */
+  readonly releasedMinor?: number | null;
   readonly classifiedCause: string | null;
   readonly leaseId?: string | null;
   readonly lease: ProposalLease | null;

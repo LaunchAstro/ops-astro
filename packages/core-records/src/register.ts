@@ -578,10 +578,12 @@ const ROWS = [
     source: 'L4 RUNTIME.md R2',
     runtime: true,
   },
-  // This head dispatches nothing, so it has no observed expenditure to settle
-  // (R6). The body is well formed and the caller is allowed; the field itself is
-  // one this head cannot honestly accept. Retrying with a null actual is the fix,
-  // and no state has to move first, so it is a 422 rather than a 409.
+  // A hand-back never settles spend (R6). Since T2d the observed cost settles
+  // through `task.observe`, priced from the synthetic book, and hand-back keeps
+  // refusing a reported actual: the body is well formed and the caller is
+  // allowed, but the field is one hand-back cannot honestly accept. Retrying
+  // with a null actual is the fix, and no state has to move first, so it is a
+  // 422 rather than a 409.
   {
     code: 'ACTUAL_EXPENDITURE_UNSUPPORTED',
     status: 422,
