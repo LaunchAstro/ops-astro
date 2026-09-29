@@ -33,6 +33,7 @@ describe('bundle_names_the_approval: without a decision', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one world, one pass, the bundle and its scan
 describe.skipIf(serverUrl === undefined)('bundle_names_the_approval', () => {
   let world: World;
   let served: ServedApi;
