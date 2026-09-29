@@ -14,11 +14,11 @@
 // gate would catch, because opening the panel is the act that would make the
 // seam appear.
 //
-// The working slice registers one panel, `settings`, and it is a navigation
-// entry rather than a drawer: `route` names the route that draws the surface,
-// and the dock tab goes there. There is no `ai` panel: its surface reads
-// conversation records this build does not store, and a dock tab that opens
-// onto nothing is worse than no tab at all.
+// Two panels. `settings` is a navigation entry rather than a drawer: `route`
+// names the route that draws the surface, and the dock tab goes there. `ai`
+// is a drawer (MP-7-11): it has no address of its own, `route` is null, and the
+// tab opens it over the page, carrying that page's standing scope only. Its
+// surface reads AW-03's conversation records.
 //
 // **A registration with a route the router does not serve is the failure this
 // registry has to avoid.** `route` is a `StaticRouteId`, so a registration can
@@ -43,5 +43,11 @@ export const PANELS: readonly PanelRegistration[] = [
     label: 'Settings',
     ariaLabel: 'Business settings',
     route: 'agency:settings',
+  },
+  {
+    id: 'ai',
+    label: 'Agent',
+    ariaLabel: 'Agent',
+    route: null,
   },
 ];
