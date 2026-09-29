@@ -261,8 +261,6 @@ describe.skipIf(serverUrl === undefined)('API-3 the agent CLI', () => {
     expect(broken[0]?.broken).toBe('0');
   });
 
-  it.todo('API-3 reads add no audit event (TR-S-B3-1): held, every read is audited under I13');
-
   it('API-3 each call is one HTTP round trip', async () => {
     const id = await create(cli, 'round trips');
     const verbs: string[][] = [
