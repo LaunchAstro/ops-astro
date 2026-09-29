@@ -187,6 +187,33 @@ describe('T2f the live task page', () => {
     expect(view.text()).not.toContain(TASK.title);
     await view.unmount();
   });
+
+  it('Sol proof, criterion 3: a closed stream clears a revoked task despite an unsaved draft', async () => {
+    const api = server();
+    const view = await mount(
+      <TaskDetailScreen client={client(api.fetch)} grantKey="alpha:mia" taskKey={TASK.id} />,
+    );
+    await until(
+      'the task and the stream',
+      () => api.joins.length === 1 && view.find('#task-title') !== null,
+      Date.now() + 2_000,
+    );
+
+    await view.type('#task-title', 'Private unsaved title');
+    api.deny();
+    await act(async () => {
+      api.send('closed');
+      api.close();
+      await pause();
+    });
+    await until(
+      'the denial after close',
+      () => view.find('#task-title') === null,
+      Date.now() + 2_000,
+    );
+    expect(view.text()).not.toContain(TASK.title);
+    await view.unmount();
+  });
 });
 
 describe('T2f floor', () => {
@@ -207,6 +234,33 @@ describe('T2f floor', () => {
     await vi.advanceTimersByTimeAsync(FLOOR_MS * 3);
     expect(changes).toHaveLength(1);
     stop();
+    vi.useRealTimers();
     expect(FLOOR_MS).toBe(30_000);
+  });
+
+  it('Sol proof, criterion 2: a live stream does not reread a hidden page', async () => {
+    let visible = false;
+    let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const body = new ReadableStream<Uint8Array>({
+      start(value) {
+        controller = value;
+      },
+    });
+    const changes: number[] = [];
+    const stop = followLive(
+      () => Promise.resolve(body),
+      () => changes.push(Date.now()),
+      { visible: () => visible },
+    );
+    await pause();
+    await act(async () => {
+      controller?.enqueue(new TextEncoder().encode(`event: invalidate\ndata: ${TASK.id}\n\n`));
+      await pause();
+    });
+    expect(changes).toHaveLength(0);
+    visible = true;
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(changes).toHaveLength(1);
+    stop();
   });
 });
