@@ -55,6 +55,7 @@ const STEPS = [
   ['deps:cases', 'the dependency cruise refuses a cruise that read nothing'],
   ['deps:cruise', 'structural dependency rules'],
   ['db:cases', 'the database gate refuses a skip, a missing suite and an empty run'],
+  ['local:cases', 'the local scripts never reuse a database on another major'],
   ['build', 'build'],
 ];
 

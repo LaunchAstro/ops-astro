@@ -54,6 +54,7 @@
     "deps:cruise": "node scripts/deps-cruise.mjs",
     "deps:cases": "node --test tests/ci/deps-cruise-cases.mjs",
     "db:conformance": "node scripts/db-conformance.mjs",
+    "local:cases": "node --test tests/ci/sol-proof-s0-7-auth-major.test.mjs tests/ci/s0-7-auth-up-cases.mjs",
     "db:cases": "node --test tests/ci/db-conformance-cases.mjs tests/ci/docker-leak-cases.mjs",
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
     "db:up": "bash scripts/local/db-up.sh",
