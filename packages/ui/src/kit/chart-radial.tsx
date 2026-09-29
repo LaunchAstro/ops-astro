@@ -8,10 +8,10 @@ import { Tooltip, usePoints, type Tip } from './chart-frame.tsx';
 import {
   formatValue,
   fraction,
+  paintOf,
   polar,
   scoreBand,
   share,
-  toneOf,
   trim,
   type ChartTone,
   type ChartUnit,
@@ -68,7 +68,8 @@ export function DonutChart(props: {
             <path
               key={arc.slice.label}
               className="chart__slice"
-              data-tone={toneOf(arc.slice.tone, i)}
+              data-tone={arc.slice.tone}
+              data-paint={arc.slice.tone === undefined ? paintOf(i) : undefined}
               d={arc.d}
               {...points.props(i, arc.tip)}
             />
