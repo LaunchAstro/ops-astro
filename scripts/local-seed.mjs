@@ -422,7 +422,9 @@ if (!adminUrl || !appUrl) {
 // production backup brings is refused here, before a row or a file is written.
 const admin = connectAsAdmin(adminUrl, { source: 'seed' });
 const confirmed = process.env['LOCAL_SEED_MADE_UP'] === 'confirm';
-const signs = await productionSigns(admin, Object.values(BUSINESS_KEYS), confirmed);
+const seedPeople = [...CAST, ...(existsSync(usersFile) ? JSON.parse(readFileSync(usersFile)) : [])];
+const names = [...seedPeople.map((member) => member.person), 'Ext Alpha'];
+const signs = await productionSigns(admin, Object.values(BUSINESS_KEYS), confirmed, names);
 if (signs.length > 0) {
   console.error(`local-seed: REFUSED, this looks like a production backup: ${signs.join('; ')}.`);
   console.error('local-seed: made-up data only; LOCAL_SEED_MADE_UP=confirm marks a made-up one.');
@@ -754,7 +756,6 @@ try {
     businessIds[tag] = await businessIdFor(admin, key);
     console.log(`local-seed: business ${key} ${businessIds[tag]}`);
   }
-  await markMadeUp(admin, Object.values(businessIds));
 
   for (const tag of Object.keys(BUSINESS_KEYS)) {
     // oxlint-disable-next-line no-await-in-loop
@@ -877,6 +878,8 @@ try {
       );
     });
   }
+  const made = [...people.values()].map((person) => person.personId);
+  await markMadeUp(admin, Object.values(businessIds), made);
 
   const shareTask = process.env['LOCAL_SEED_SHARE_TASK'];
   if (shareTask) {
