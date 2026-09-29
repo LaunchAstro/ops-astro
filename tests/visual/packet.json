@@ -11,6 +11,14 @@
     "deviceScaleFactor": 1,
     "os": "darwin 25.5.0 arm64"
   },
+  "ciRenderer": {
+    "playwright": "1.63.0",
+    "browser": "chromium-headless-shell",
+    "browserRevision": "1243",
+    "browserBuild": "153.0.8010.12",
+    "deviceScaleFactor": 1,
+    "os": "linux x64"
+  },
   "tolerance": {
     "channel": 1,
     "maxRatio": 0.0002,
