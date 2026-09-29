@@ -72,6 +72,13 @@
 // server's `VERSION_STALE` and the task is read again, and the quote is held
 // here because that reread unmounts the page below the read.
 //
+// **The page shows one side of the task at a time** (MP-4-3,
+// `task/Perspectives.tsx`): Team holds the person's work (the lifecycle, the
+// assignee, the details, subtasks, time, comments and history) and Agent the
+// proposals and their gates. Both panes stay mounted, so a draft typed on one
+// survives a switch, and the side showing is held above the read like the
+// refusals below, so a write's reread does not jump back to Team.
+//
 // **A reader outside the business gets the shared view, not this page with
 // holes in it.** Its `task.read` answers `sharedTask` instead of `task`, and
 // that key alone picks `SharedTaskDetail`: the screen never guesses from a
@@ -92,7 +99,14 @@ import { ConflictNotice, MovedNotice, UnsavedBar } from './task/Notices.tsx';
 import { TaskHeader } from './task/Header.tsx';
 import { TaskFacts } from './task/Facts.tsx';
 import { TaskUnknown } from './task/Absent.tsx';
-import type { PanelDoor } from './task/Perspectives.tsx';
+import {
+  PanelDoorButton,
+  perspectiveCounts,
+  Perspectives,
+  TeamWork,
+  type PanelDoor,
+  type Perspective,
+} from './task/Perspectives.tsx';
 
 import type { ProposeDraft } from '../views/propose-form.tsx';
 import { RecordState } from '../views/record-state.tsx';
@@ -176,6 +190,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [moved, setMoved] = useHeld<string>(identity, denied);
   const [commentDraft, setCommentDraft] = useHeld<CommentDraft>(identity, denied);
   const [proposeDraft, setProposeDraft] = useHeld<ProposeDraft>(identity, denied);
+  const [perspective, setPerspective] = useHeld<Perspective>(identity, denied);
 
   return (
     <div className="stack">
@@ -209,6 +224,9 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                 onCommentDraft={setCommentDraft}
                 proposeDraft={proposeDraft}
                 onProposeDraft={setProposeDraft}
+                perspective={perspective ?? 'team'}
+                onPerspective={setPerspective}
+                onOpenPanel={props.onOpenPanel}
                 onAttempt={(attempt) => {
                   setDraft((current) =>
                     current !== null && current.identity === identity
@@ -493,6 +511,10 @@ interface LoadedProps {
   readonly onCommentDraft: (next: CommentDraft | null) => void;
   readonly proposeDraft: ProposeDraft | null;
   readonly onProposeDraft: (next: ProposeDraft | null) => void;
+  /** Which side of the task this reading shows, held above the read (MP-4-3). */
+  readonly perspective: Perspective;
+  readonly onPerspective: (next: Perspective) => void;
+  readonly onOpenPanel: ((door: PanelDoor) => void) | undefined;
   /** Record, or forget, the draft save whose outcome is unknown. */
   readonly onAttempt: (attempt: SaveAttempt | null) => void;
   readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;
@@ -500,6 +522,9 @@ interface LoadedProps {
   readonly onDiscard: () => void;
   readonly onChanged: () => void;
 }
+
+/** The subtasks the Team side counts: none until the read carries them (MP-4-4). */
+const STEPS: readonly [] = [];
 
 function Loaded(props: LoadedProps): ReactElement {
   const { client, task } = props;
@@ -543,6 +568,14 @@ function Loaded(props: LoadedProps): ReactElement {
     deps: [],
   });
 
+  // No subtasks are carried on the read until MP-4-4, and no staged output
+  // until the agent's output lands: both counts follow the same rule then.
+  const counts = perspectiveCounts({
+    steps: STEPS,
+    proposals: task.proposals ?? [],
+    stagedOutput: false,
+  });
+
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
       <TaskHeader task={task} />
@@ -566,57 +599,71 @@ function Loaded(props: LoadedProps): ReactElement {
 
       <UnsavedBar dirty={dirty} busy={busy} onDiscard={props.onDiscard} />
 
-      <Lifecycle
-        disabled={busy || dirty}
-        completed={task.completedAt !== null}
-        onLifecycle={lifecycle}
-      />
+      <PanelDoorButton door="open" onOpenPanel={props.onOpenPanel} />
 
-      <Assignee
-        people={people.state}
-        onRetry={people.reload}
-        assignee={task.assignee}
-        disabled={busy || dirty}
-        onAssign={onAssign}
-      />
+      <Perspectives
+        counts={counts}
+        selected={props.perspective}
+        onSelect={props.onPerspective}
+        team={
+          <>
+            <Lifecycle
+              disabled={busy || dirty}
+              completed={task.completedAt !== null}
+              onLifecycle={lifecycle}
+            />
 
-      <DetailsForm
-        formRef={fields}
-        busy={busy}
-        title={title}
-        due={due}
-        onEdit={edit}
-        onSubmit={onFields}
-      />
+            <Assignee
+              people={people.state}
+              onRetry={people.reload}
+              assignee={task.assignee}
+              disabled={busy || dirty}
+              onAssign={onAssign}
+            />
 
-      <Comments
-        client={client}
-        comments={task.comments}
-        recordId={task.id}
-        revision={task.revision}
-        refusal={props.commentRefusal}
-        onRefused={props.onCommentRefused}
-        onPosted={props.onChanged}
-        draft={props.commentDraft}
-        onDraft={props.onCommentDraft}
-      />
+            <DetailsForm
+              formRef={fields}
+              busy={busy}
+              title={title}
+              due={due}
+              onEdit={edit}
+              onSubmit={onFields}
+            />
 
-      <Proposals
-        capCurrency={task.capCurrency}
-        client={client}
-        note={props.note}
-        onChanged={props.onChanged}
-        onDecided={props.onDecided}
-        onProposeRefused={props.onProposeRefused}
-        proposeRefusal={props.proposeRefusal}
-        proposeDraft={props.proposeDraft}
-        onProposeDraft={props.onProposeDraft}
-        proposals={task.proposals}
-        recordId={task.id}
-        revision={task.revision}
-      />
+            <TeamWork steps={STEPS} onOpenPanel={props.onOpenPanel} />
 
-      <History history={task.history} />
+            <Comments
+              client={client}
+              comments={task.comments}
+              recordId={task.id}
+              revision={task.revision}
+              refusal={props.commentRefusal}
+              onRefused={props.onCommentRefused}
+              onPosted={props.onChanged}
+              draft={props.commentDraft}
+              onDraft={props.onCommentDraft}
+            />
+
+            <History history={task.history} />
+          </>
+        }
+        agent={
+          <Proposals
+            capCurrency={task.capCurrency}
+            client={client}
+            note={props.note}
+            onChanged={props.onChanged}
+            onDecided={props.onDecided}
+            onProposeRefused={props.onProposeRefused}
+            proposeRefusal={props.proposeRefusal}
+            proposeDraft={props.proposeDraft}
+            onProposeDraft={props.onProposeDraft}
+            proposals={task.proposals}
+            recordId={task.id}
+            revision={task.revision}
+          />
+        }
+      />
     </div>
   );
 }

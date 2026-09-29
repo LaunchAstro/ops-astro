@@ -395,3 +395,29 @@
   font-size: var(--text-overline);
   color: var(--text-muted);
 }
+
+/* The panel doors (TT-06): a centred line of mono text across the pane that
+   sends the edit to the dock task panel. Drawn but not pressable while no
+   panel is there to open, and then it looks inert. */
+.tt__more {
+  display: block;
+  width: 100%;
+  padding: var(--s-2) 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--ink-muted);
+  text-align: center;
+  cursor: pointer;
+}
+.tt__more:hover:not(:disabled) {
+  color: var(--accent);
+}
+.tt__more:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tt__more:disabled {
+  cursor: default;
+}
