@@ -74,7 +74,8 @@
     "FR6-RUNNER names final-r6-runner-guard as an invariant (the migration runner, owner ruling 2026-09-24: with a migration pending, a held application-login session or any other client backend on the database refuses the run, naming each by pid, login, application, address and start, with the ledger and schema unchanged; it applies once they close; an up-to-date database with the application connected passes; a session that connects inside a migration is caught by the check before its commit; db-migrate.mjs refuses and exits 2 with no bypass). The caller suites that seed through their own pools now close them first (EmptyDatabase.closeSessions), with assertions unchanged.",
     "FR8-0031 adds a case to final-r2-dbtest-upgrade-guards: a member of the application group dropped by another session after 0031's role loop has read it, on a fixed schedule (the loop blocks on a row lock the dropping session holds until the drop commits), no longer fails the upgrade, and every surviving member still has TEMPORARY revoked.",
     "C59 adds c59-second-factor (the step-up and its setting through the real preparation, the second factor required once enrolled) and c59-factor-routes (enrolment, verification and removal over in-process Hono against a loopback stand-in provider); the adapter cases in the first need no database but share its file.",
-    "C55 adds c55-operations-view (the privacy incident record under privacy:manage and the operations view under operations:read over in-process Hono: records, refusals per key, three crossings and the canary)"
+    "C55 adds c55-operations-view (the privacy incident record under privacy:manage and the operations view under operations:read over in-process Hono: records, refusals per key, three crossings and the canary)",
+    "C81 adds c81-legal-documents (drafting, exact-version approval and publication under privacy:manage over in-process Hono, the published version unchanged in place, the public read with no sign-in, refusals, three crossings and the canary)"
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -222,7 +223,8 @@
     "tests/reads/effective-permissions.test.ts",
     "tests/identity/c59-second-factor.test.ts",
     "tests/api/c59-factor-routes.test.ts",
-    "tests/operations/c55-operations-view.test.ts"
+    "tests/operations/c55-operations-view.test.ts",
+    "tests/operations/c81-legal-documents.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

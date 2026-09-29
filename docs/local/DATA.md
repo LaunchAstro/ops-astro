@@ -513,3 +513,16 @@ select, insert and update; nothing deletes a row. The table is tenancy-keyed
 with the restrictive policy like every business table, and it is not a
 `records` row, so no share, search or export reaches it. The audit chain and
 the operation register hold a digest and the new row's id, never the words.
+
+## Legal documents (0034, C81)
+
+`legal_document_versions` holds every version of a business's legal documents:
+the document, its `major.minor` label (one per document), the words, and
+`body_digest`, the SHA-256 of the words, set by the database on insert. The
+approval (`approved_at`, by whom, and the digest approved, which must equal
+`body_digest`) and the publication are each set once. A guard refuses any
+change to the drafted columns, and any change or clearing of an approval or a
+publication once set, so a published version's bytes never change in place.
+The application may select, insert and update; nothing deletes a row. The
+table is tenancy-keyed with the restrictive policy. The audit chain and the
+operation register hold a digest and the version's id, never the words.

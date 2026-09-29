@@ -82,6 +82,12 @@ vi.mock('../../packages/core-commands/src/commands/privacy-write.ts', async (ori
   ...(await original<object>()),
   recordIncident: recorder('recordIncident'),
 }));
+vi.mock('../../packages/core-commands/src/commands/legal-write.ts', async (original) => ({
+  ...(await original<object>()),
+  draftVersion: recorder('draftVersion'),
+  approveVersion: recorder('approveVersion'),
+  publishVersion: recorder('publishVersion'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
   proposeOnTask: recorder('proposeOnTask'),
@@ -122,6 +128,9 @@ const PINNED_RUNTIME_SHAPED = {
 const PINNED_UNTARGETED_IDENTIFIERS = {
   'delegation.revoke': [],
   'grant.revoke': [],
+  'legal.approve_version': ['versionId'],
+  'legal.draft_version': [],
+  'legal.publish_version': ['versionId'],
   'privacy.record_incident': [],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
@@ -141,6 +150,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'access.read',
   'delegation.revoke',
   'grant.revoke',
+  'legal.approve_version',
+  'legal.draft_version',
+  'legal.publish_version',
   'operations.read',
   'person.list',
   'preset.plan',
@@ -245,6 +257,9 @@ const REQUESTS: readonly CommandRequest[] = [
     affected: 'a',
     informationKinds: ['other'],
   },
+  { command: 'legal.draft_version', operationId: 'op', document: 'd', version: 'v', body: 'b' },
+  { command: 'legal.approve_version', operationId: 'op', versionId: 'version', digest: 'x' },
+  { command: 'legal.publish_version', operationId: 'op', versionId: 'version' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -294,6 +309,9 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
     undefined,
   ],
   'privacy.record_incident': ['recordIncident', 'request'],
+  'legal.draft_version': ['draftVersion', 'request'],
+  'legal.approve_version': ['approveVersion', 'request'],
+  'legal.publish_version': ['publishVersion', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -338,7 +356,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-four from an expected revision', () => {
+  it('exempts the same twenty-seven from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

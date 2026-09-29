@@ -12,6 +12,7 @@ export {
   DELEGATION_HEADER,
   pathOf,
   PREFIX,
+  PUBLIC_PREFIX,
   READS,
   type CommandDeclaration,
   type CommandName,

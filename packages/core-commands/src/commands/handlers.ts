@@ -21,6 +21,7 @@ import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { setBusinessSetting } from './settings-write.ts';
 import { recordIncident } from './privacy-write.ts';
+import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
@@ -79,6 +80,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'settings.set_money_step_up': setting,
 
   'privacy.record_incident': recordIncident,
+  'legal.draft_version': draftVersion,
+  'legal.approve_version': approveVersion,
+  'legal.publish_version': publishVersion,
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,

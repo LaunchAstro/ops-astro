@@ -96,6 +96,30 @@ async function approvedReservationId(context: BodyContext): Promise<string> {
 }
 
 /** A lease the context's person holds: their own pickup of fresh approved work (EX-01). */
+/** Legal document versions drafted by the matrix, each under a label of its own. */
+let legalDrafts = 0;
+
+/** A fresh breach-runbook version drafted by the admin, `approved` or not (C81). */
+async function legalVersion(
+  context: BodyContext,
+  approved: boolean,
+): Promise<{ versionId: string; digest: string }> {
+  legalDrafts += 1;
+  const drafted = await context.asPerson('legal.draft_version', {
+    document: 'breach-runbook',
+    version: `${String(Math.floor(legalDrafts / 1000) + 1)}.${String(legalDrafts % 1000)}`,
+    body: 'The matrix drafts a made-up runbook.',
+  });
+  if (drafted.code !== 'ok') throw new Error(`matrix: legal draft refused ${drafted.code}`);
+  const detail = drafted.body['detail'] as Record<string, unknown>;
+  const version = { versionId: String(detail['versionId']), digest: String(detail['digest']) };
+  if (approved) {
+    const done = await context.asPerson('legal.approve_version', version);
+    if (done.code !== 'ok') throw new Error(`matrix: legal approval refused ${done.code}`);
+  }
+  return version;
+}
+
 async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence: number }> {
   const picked = await context.asPerson('task.pickup', {
     reservationId: await approvedReservationId(context),
@@ -231,6 +255,19 @@ export function createPositiveBody(
         return { body: { value: true } };
       case 'settings.set_money_step_up':
         return { body: { value: true } };
+      // C81: the admin holds `privacy:manage`, as the owner does.
+      case 'legal.draft_version':
+        return {
+          body: {
+            document: 'breach-runbook',
+            version: `0.${String((legalDrafts += 1))}`,
+            body: 'The matrix drafts a made-up runbook.',
+          },
+        };
+      case 'legal.approve_version':
+        return { body: await legalVersion(context, false) };
+      case 'legal.publish_version':
+        return { body: { versionId: (await legalVersion(context, true)).versionId } };
       case 'privacy.record_incident':
         return {
           body: {

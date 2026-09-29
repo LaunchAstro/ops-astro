@@ -87,6 +87,18 @@ export {
   type PrivacyIncidentFacts,
 } from './operations/privacy-incidents.ts';
 export {
+  LEGAL_DOCUMENTS,
+  PUBLIC_LEGAL_DOCUMENTS,
+  approveLegalVersion,
+  draftLegalVersion,
+  publishLegalVersion,
+  readPublishedLegal,
+  type DraftedVersion,
+  type LegalDocument,
+  type PublishedVersion,
+  type VersionRefusal,
+} from './operations/legal-documents.ts';
+export {
   isSettingRevisionStale,
   readBusinessSetting,
   readBusinessSettings,

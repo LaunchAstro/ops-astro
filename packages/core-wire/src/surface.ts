@@ -95,6 +95,11 @@ export type CommandName =
   | 'settings.set_money_step_up'
   // C55: the breach runbook's day-0 record, `privacy incident recorded`.
   | 'privacy.record_incident'
+  // C81: the legal documents' versions, drafted, approved as those exact
+  // bytes, and published.
+  | 'legal.draft_version'
+  | 'legal.approve_version'
+  | 'legal.publish_version'
   // The support controls the contract ledger requires through owning
   // production interfaces: revocation of an existing grant or delegation,
   // cancellation of a run's lineage, an authorised restart as a new lineage,
@@ -356,6 +361,9 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     affected: 'any',
     informationKinds: 'any',
   },
+  'legal.draft_version': { document: 'any', version: 'any', body: 'any' },
+  'legal.approve_version': { versionId: 'id', digest: 'any' },
+  'legal.publish_version': { versionId: 'id' },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -480,6 +488,24 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),
+  // C81: each step of a legal document's version is `privacy:manage` (the
+  // owner and administrators), never an agent's. Approval and publication
+  // name the version; a foreign or made-up one is NOT_FOUND.
+  declare('legal.draft_version', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('legal.approve_version', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['versionId'],
+  }),
+  declare('legal.publish_version', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['versionId'],
+  }),
 
   // The grant manager's authority, which is `manage` on the task family this
   // head's grants are about, asked of the revoked row's own scope. The
@@ -585,6 +611,13 @@ export function pathOf(name: CommandName): string {
  * agent asking and a person asking cannot be mistaken for each other.
  */
 export const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;
+
+/**
+ * C81: where a business's published legal documents are read with no sign-in,
+ * as `${PUBLIC_PREFIX}<businessKey>/legal/<document>`. Nothing else is served
+ * under it.
+ */
+export const PUBLIC_PREFIX = '/api/public/b/';
 
 /**
  * The header an agent presents its delegation credential in.
