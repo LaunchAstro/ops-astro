@@ -5,6 +5,7 @@
 
 export type * from './types.ts';
 export * from './columns.ts';
+export * from './widths.ts';
 export * from './sort.ts';
 export * from './filters.ts';
 export * from './machine.ts';

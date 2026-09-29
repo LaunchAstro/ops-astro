@@ -133,10 +133,9 @@ export function reduceBoard<Row>(
       if (column?.sortValue === undefined) return state;
       return record(state, `sort ${column.label}`, { ...view, sort: nextSort(view.sort, column) });
     }
-    case 'resize': {
-      if (!action.widths.every((width) => Number.isFinite(width) && width > 0)) return state;
-      return record(state, 'resize columns', { ...view, widths: [...action.widths] });
-    }
+    case 'resize':
+    case 'resetWidths':
+      return state;
     case 'undo': {
       const step = state.history.past.at(-1);
       if (step === undefined) return state;

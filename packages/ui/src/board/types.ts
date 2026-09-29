@@ -46,6 +46,13 @@ export interface Layout {
   readonly tableWidth: number | null;
 }
 
+/**
+ * A person's column widths (MP-5-6), in whole pixels by column key, as they
+ * were when last dragged. They are relative: the layout takes them as shares
+ * of whatever width the card has, floors still honoured.
+ */
+export type ColumnWidths = Readonly<Record<string, number>>;
+
 export type SortDir = 'asc' | 'desc';
 
 export interface SortState {
@@ -86,8 +93,8 @@ export interface Filters {
 export interface BoardView extends Filters {
   readonly sort: SortState | null;
   readonly mode: string | null;
-  /** The person's column shares after a drag (MP-5-6); null is the defaults. */
-  readonly widths: readonly number[] | null;
+  /** The person's column widths after a drag (MP-5-6); null is the defaults. */
+  readonly widths: ColumnWidths | null;
 }
 
 export interface Step {
@@ -125,7 +132,9 @@ export type BoardAction =
   | { readonly type: 'phrase'; readonly text: string }
   | { readonly type: 'take'; readonly facetId: string }
   | { readonly type: 'sort'; readonly key: string }
-  | { readonly type: 'resize'; readonly widths: readonly number[] }
+  /** One finished drag or arrow step on `key`'s grip: the widths it left. */
+  | { readonly type: 'resize'; readonly key: string; readonly widths: ColumnWidths }
+  | { readonly type: 'resetWidths' }
   | { readonly type: 'undo' }
   | { readonly type: 'redo' };
 
