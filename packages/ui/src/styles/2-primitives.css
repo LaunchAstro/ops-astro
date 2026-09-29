@@ -1458,6 +1458,74 @@
   box-shadow: var(--shadow-overlay);
 }
 
+/* -- Not connected, unavailable and freshness (MP-1-6). No hatch and no pink
+      here: pink is for sample data on a demo install only (R56). -- */
+.notconn {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-5);
+  border: 1px dashed var(--border-strong);
+  color: var(--text-2);
+}
+.notconn > p {
+  margin: 0;
+}
+.notconn__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-3);
+}
+.notconn__word {
+  color: var(--text);
+  font-weight: var(--weight-semibold);
+}
+.notconn__source {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.notconn__reason {
+  max-width: 60ch;
+  font-size: var(--text-sm);
+}
+.unavail {
+  display: inline-flex;
+  border-bottom: 0;
+  cursor: not-allowed;
+}
+.freshrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+/* An indicator: the bordered mono look in its one state, no hover, no press. */
+.fresh {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1-5);
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10.88px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: default;
+}
+.fresh__live {
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--success);
+}
+.fresh--offline,
+.fresh--source-behind {
+  color: var(--warning);
+}
+
 /* -- The stamp (DS-PRIM-25): a timestamp or provenance line. ------------- */
 .stamp {
   color: var(--text-muted);

@@ -58,6 +58,7 @@ import {
   Table,
   locate,
 } from './blocks.tsx';
+import { FreshnessMarker, NotConnected, SourceRegion, Unavailable } from './treatments.tsx';
 
 export interface GalleryState {
   readonly label: string;
@@ -65,7 +66,8 @@ export interface GalleryState {
 }
 
 export interface GalleryEntry {
-  readonly id: `DS-PRIM-${number}` | `DS-COMP-${number}` | `DOCK-D26`;
+  /** A catalogue id, or the ticket for a treatment the catalogue has no single id for. */
+  readonly id: `DS-PRIM-${number}` | `DS-COMP-${number}` | 'DOCK-D26' | 'MP-1-6';
   readonly name: string;
   /** Whether the harness hovers and focuses it. */
   readonly interactive: boolean;
@@ -894,7 +896,7 @@ export const GALLERY: readonly GalleryEntry[] = [
     name: 'Loading state',
     interactive: false,
     states: [
-      { label: 'Busy button', render: () => <Button busy="Syncing…">Sync</Button> },
+      { label: 'Busy button', render: () => <Button busy="Saving…">Save</Button> },
       { label: 'Field placeholder', render: () => <Skeleton shape="field" /> },
       {
         label: 'Line and tile',
@@ -958,6 +960,76 @@ export const GALLERY: readonly GalleryEntry[] = [
     name: 'Locate flash',
     interactive: true,
     states: [{ label: 'Press to run once', render: () => <FlashDemo /> }],
+  },
+  {
+    id: 'MP-1-6',
+    name: 'Not connected, unavailable, freshness and sample data',
+    interactive: true,
+    states: [
+      {
+        label: 'Not connected',
+        render: () => (
+          <NotConnected
+            source="Billing source"
+            reason="No billing source is connected for this client, so there are no invoices to show."
+            action={<Unavailable feature="Connecting a billing source" label="Connect" />}
+          />
+        ),
+      },
+      {
+        label: 'Unavailable control',
+        render: () => <Unavailable feature="Exporting invoices" label="Export CSV" />,
+      },
+      {
+        label: 'Unavailable primary',
+        render: () => <Unavailable feature="Online payment" label="Pay now" variant="primary" />,
+      },
+      {
+        label: 'Live',
+        render: () => <FreshnessMarker freshness={{ state: 'live', age: '2 min ago' }} />,
+      },
+      {
+        label: 'Catching up',
+        render: () => <FreshnessMarker freshness={{ state: 'catching-up', lastRead: '10:42' }} />,
+      },
+      {
+        label: 'Offline',
+        render: () => <FreshnessMarker freshness={{ state: 'offline', lastRead: '10:42' }} />,
+      },
+      {
+        label: 'Source behind',
+        render: () => (
+          <FreshnessMarker
+            freshness={{
+              state: 'source-behind',
+              source: 'Search Console',
+              lastGood: '26 Sep, 6:10am',
+              href: '#gallery',
+            }}
+          />
+        ),
+      },
+      {
+        label: 'Frozen',
+        render: () => <FreshnessMarker freshness={{ state: 'frozen', at: 'Saturday 6:10am' }} />,
+      },
+      {
+        label: 'Sample data, demo install only',
+        render: () => (
+          <SourceRegion provenance="mock">
+            <Kpi label="Enquiries" value="31" />
+          </SourceRegion>
+        ),
+      },
+      {
+        label: 'Real data, never marked',
+        render: () => (
+          <SourceRegion provenance="real">
+            <Kpi label="Enquiries" value="29" />
+          </SourceRegion>
+        ),
+      },
+    ],
   },
 ];
 
