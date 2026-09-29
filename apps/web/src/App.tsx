@@ -174,7 +174,13 @@ export function App(props: AppProps): ReactElement {
           />
         );
       case 'screen':
-        return drawScreen(gate.match, { client, grantKey, notice, storage: props.storage });
+        return drawScreen(gate.match, {
+          client,
+          grantKey,
+          notice,
+          storage: props.storage,
+          navigate: props.navigate,
+        });
     }
   })();
 
