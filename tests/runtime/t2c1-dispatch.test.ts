@@ -403,6 +403,16 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
     expect(answer.ok).toBe(false);
     if (!answer.ok) expect(answer.refusal.code).toBe('LEASE_NOT_OWNED');
     expect(await marks(db, theirs.attemptId)).toStrictEqual(before);
+    // Its positive control: the same request in its own business goes through
+    // the dispatch and marks that step, so the refusal above is the ownership
+    // check on a working dispatch, not a dispatch that marks nothing anywhere.
+    const home = await run(other, theirs.request);
+    expect(home.ok, JSON.stringify(home)).toBe(true);
+    expect(await marks(db, theirs.attemptId)).toMatchObject({
+      dispatch_marker: true,
+      dispatch_attempt_id: theirs.attemptId,
+      dispatch_marked: true,
+    });
   });
 
   it('T2 isolation: a dispatch never waits on another business’s step', async () => {
