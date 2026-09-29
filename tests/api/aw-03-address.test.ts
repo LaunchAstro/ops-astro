@@ -23,7 +23,7 @@ import {
   writeWrapUp,
   type PurgeOutcome,
   type WrapUpOutcome,
-} from '../../packages/core-runtime/src/index.ts';
+} from '../../packages/core-commands/src/index.ts';
 import { writeBusinessSetting } from '../../packages/core-records/src/index.ts';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -118,7 +118,9 @@ describe.skipIf(serverUrl === undefined)('AW-03 the conversation outlives its bo
     expect(address).toBe(`/agent/${conversationId}`);
     await w.age(conversationId, 8);
     await w.fixture.db.admin.execute(
-      `update public.records set updated_at = updated_at - interval '8 days' where id = $1`,
+      `update public.records
+          set data = jsonb_set(data, '{completed_at}', to_jsonb((now() - interval '8 days')::text))
+        where id = $1`,
       [taskId],
     );
 
@@ -194,7 +196,9 @@ describe.skipIf(serverUrl === undefined)('AW-03 the conversation outlives its bo
     const { taskId, conversationId } = await heldAndSettled('twice');
     await w.age(conversationId, 8);
     await w.fixture.db.admin.execute(
-      `update public.records set updated_at = updated_at - interval '8 days' where id = $1`,
+      `update public.records
+          set data = jsonb_set(data, '{completed_at}', to_jsonb((now() - interval '8 days')::text))
+        where id = $1`,
       [taskId],
     );
     await wrapUp(conversationId);

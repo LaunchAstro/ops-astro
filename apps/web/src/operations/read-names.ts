@@ -42,6 +42,8 @@ export const READ_NAMES = [
   'task.receipt',
   // The gates waiting on the caller's decision (MP-6-1).
   'gate.pending',
+  // A conversation at its address (AW-03).
+  'conversation.read',
 ] as const;
 
 /**

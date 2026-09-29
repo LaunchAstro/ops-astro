@@ -48,6 +48,11 @@ function recorder(handler: string) {
   };
 }
 
+vi.mock('../../packages/core-commands/src/commands/conversations.ts', async (original) => ({
+  ...(await original<object>()),
+  startConversation: recorder('startConversation'),
+  messageConversation: recorder('messageConversation'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-write.ts', async (original) => ({
   ...(await original<object>()),
   createTask: recorder('createTask'),
@@ -146,6 +151,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.record_outcome': ['recordId', 'attemptId'],
   'budget.top_up': ['recordId'],
   'budget.write_off': ['recordId', 'attemptId'],
+  'conversation.message': ['conversationId'],
+  'conversation.start': [],
   'delegation.revoke': [],
   'grant.revoke': [],
   'settings.set_client_sign_off': [],
@@ -168,6 +175,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.record_outcome',
   'budget.top_up',
   'budget.write_off',
+  'conversation.message',
+  'conversation.read',
+  'conversation.start',
   'delegation.revoke',
   'gate.pending',
   'grant.revoke',
@@ -308,6 +318,8 @@ const REQUESTS: readonly CommandRequest[] = [
     name: 'spelling',
     outcome: 'passed',
   },
+  { command: 'conversation.start', operationId: 'op', body: 'hello', subject: 's' },
+  { command: 'conversation.message', operationId: 'op', conversationId: 'c', body: 'again' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -356,6 +368,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
   'task.check': ['checkOwnLease', 'request'],
+  'conversation.start': ['startConversation', 'request'],
+  'conversation.message': ['messageConversation', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -395,7 +409,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-eight from an expected revision', () => {
+  it('exempts the same thirty-one from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

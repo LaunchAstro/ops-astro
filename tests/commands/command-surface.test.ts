@@ -76,10 +76,11 @@ describe('the surface as a table', () => {
     // `delegation` are the revocation controls': the path names the row a
     // revocation writes, and the authority it asks is still on tasks. `gate`
     // is the awaiting-review read's (MP-6-1): the gates waiting on a decision,
-    // asked with `decide` on tasks.
+    // asked with `decide` on tasks. `conversation` is a person's conversation
+    // with the agent (AW-03), its writes and its read at its address.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate|conversation)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -88,8 +89,9 @@ describe('the surface as a table', () => {
 });
 
 describe('the surface as a table', () => {
-  it('declares the ten reads as reads, and everything else as a write', () => {
+  it('declares the eleven reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
+      'conversation.read',
       'gate.pending',
       'person.list',
       'preset.plan',

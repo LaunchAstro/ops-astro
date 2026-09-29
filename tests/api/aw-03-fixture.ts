@@ -11,6 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
 import { createCli, type CliAnswer } from '../../apps/cli/client.ts';
+import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
   authorised,
@@ -37,7 +38,11 @@ export interface ConversationWorld {
   readonly as: (member: Member, name: string, body: Record<string, unknown>) => Promise<Answer>;
   /** The shipped command line over the in-process app, as `member`. */
   readonly cli: (member: Member, name: string, body: Record<string, unknown>) => Promise<CliAnswer>;
-  /** Move a conversation's last activity back by `days` (the clock, never the operation). */
+  /**
+   * Move a conversation's creation and last activity back by `days`: the clock,
+   * never the operation. Messages keep their times; the database refuses any
+   * edit of one, which is the point.
+   */
   readonly age: (conversationId: string, days: number) => Promise<void>;
   readonly count: (sql: string, parameters: readonly unknown[]) => Promise<number>;
   readonly drop: () => Promise<void>;
@@ -52,6 +57,8 @@ export async function conversationWorld(on: string | Controls): Promise<Conversa
   const owner = fixture.member;
   const colleague = await enrol(fixture.db.app, fixture.business, 'colleague');
   await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+    // The window and the work window the purge reads, at their shipped values.
+    await installBusinessSettings(tx);
     await grantTo(tx, owner, 'write', undefined, false, CONVERSATION);
     await grantTo(tx, colleague, 'write', undefined, false, CONVERSATION);
     await grantTo(tx, colleague, 'read');
@@ -89,12 +96,6 @@ export async function conversationWorld(on: string | Controls): Promise<Conversa
             set last_activity_at = last_activity_at - make_interval(days => $2::int),
                 created_at = created_at - make_interval(days => $2::int)
           where id = $1`,
-        [conversationId, days],
-      );
-      await fixture.db.admin.execute(
-        `update public.conversation_messages
-            set created_at = created_at - make_interval(days => $2::int)
-          where conversation_id = $1`,
         [conversationId, days],
       );
     },

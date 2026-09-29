@@ -534,3 +534,59 @@ export interface ReceiptResult {
       | { readonly state: string; readonly heldMinor: number };
   };
 }
+
+/** A pointer a wrap-up holds: what it names and the address that opens it (AW-03). */
+export interface ConversationPointerView {
+  readonly kind: 'task' | 'run' | 'gate' | 'conversation';
+  readonly id: string;
+  readonly address: string;
+  /** The item's state when the wrap-up was written, where it has one. */
+  readonly state?: string;
+}
+
+/** One of a wrap-up's seven pointer-and-fact contents. */
+export interface WrapUpItemView {
+  readonly key: string;
+  readonly fact: string;
+  readonly pointers: readonly ConversationPointerView[];
+}
+
+export interface WrapUpView {
+  readonly version: number;
+  readonly writtenAt: string;
+  readonly writtenBy: { readonly operation: string; readonly codeRevision: string };
+  readonly definitionVersion: string | null;
+  /** The request, as a marked quotation: the first message, never a transcript. */
+  readonly request: { readonly quotation: string };
+  readonly items: readonly WrapUpItemView[];
+  /** Item 8, what was left open. Empty is "nothing left open". */
+  readonly leftOpen: readonly ConversationPointerView[];
+  readonly leftOpenText: string;
+}
+
+export interface ConversationMessageView {
+  readonly id: string;
+  readonly role: 'person' | 'agent';
+  readonly body: string;
+  readonly createdAt: string;
+}
+
+export interface ConversationReadResult {
+  readonly ok: true;
+  readonly conversation: {
+    readonly id: string;
+    readonly address: string;
+    readonly title: string;
+    readonly subject: string | null;
+    readonly scope: { readonly kind: 'task'; readonly id: string } | null;
+    readonly createdAt: string;
+    readonly lastActivityAt: string;
+    readonly bodyPurgedAt: string | null;
+  };
+  /** The body, or null once it has purged: the address then answers the wrap-up. */
+  readonly messages: readonly ConversationMessageView[] | null;
+  /** The current wrap-up version, or null before the first quiet. */
+  readonly wrapUp: WrapUpView | null;
+  /** Every version, newest first. */
+  readonly wrapUpHistory: readonly { readonly version: number; readonly writtenAt: string }[];
+}

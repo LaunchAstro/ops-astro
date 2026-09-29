@@ -34,6 +34,7 @@ import { readAwaitingReview } from './awaiting-review.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
+import { readConversation } from './conversation.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -162,6 +163,23 @@ const NO_GRANT_AT_ALL = refuseCommand(
 );
 
 export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
+  // AW-03. No collection is asked at the door: the owner reads their own
+  // without the read-any grant, so the rule is the read's own
+  // (`reads/conversation.ts`), and a caller holding nothing is refused there.
+  'conversation.read': {
+    identifiers: ['conversationId'],
+    parse: ({ conversationId }) =>
+      isUuid(conversationId)
+        ? parsed({ conversationId })
+        : rejected('conversationId', 'Send conversationId as the conversation’s identifier.'),
+    spine: false,
+    authority: 'holds-any-grant',
+    // The door asks no grant, so this flag has nothing to answer; the read
+    // itself tells a caller with no membership NOT_FOUND.
+    outsiderNotFound: false,
+    serve: async (tx, session, { conversationId }) =>
+      await readConversation(tx, session, conversationId),
+  },
   'task.read': {
     identifiers: ['recordId'],
     parse: ({ recordId }) =>

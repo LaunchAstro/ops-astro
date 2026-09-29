@@ -91,6 +91,8 @@ export const MEMBER_ACTIONS: readonly Action[] = ['read', 'write', 'assign', 'co
  * refused `SCOPE_NOT_GRANTED` on four declarations, and a matrix built on that
  * fixture would have recorded four missing positive controls as product
  * failures. The grant is per collection because the surface says it is.
+ * `conversation` is AW-03's: the seeded admin holds `conversation:write`, so
+ * the fixture's does too (and, being a fixture, every other action on it).
  */
 export const ADMIN_COLLECTIONS: readonly string[] = [
   'task',
@@ -99,6 +101,7 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'preset',
   // `budget.top_up` asks `decide` on `billing` (T2e), as the seed's admin holds it.
   'billing',
+  'conversation',
 ];
 
 export async function tokenFor(

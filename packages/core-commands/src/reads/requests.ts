@@ -31,6 +31,7 @@ import type {
   PresetPlanResult,
   QueueResult,
   AwaitingReviewResult,
+  ConversationReadResult,
   SettingsReadResult,
   SharedTaskRead,
   TaskBoardResult,
@@ -105,6 +106,11 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /**
+   * A conversation at its address (AW-03): the owner's, or a holder of the
+   * read-any grant's. After the body purges it answers the wrap-up.
+   */
+  readonly 'conversation.read': { readonly conversationId: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -131,4 +137,5 @@ export type ReadResult =
   | SettingsReadResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
-  | CapabilitiesResult;
+  | CapabilitiesResult
+  | ConversationReadResult;

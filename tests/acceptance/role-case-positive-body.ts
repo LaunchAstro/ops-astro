@@ -19,6 +19,7 @@ import {
   ownLease,
   ownAppliedEffect,
   ownUnknownAttempt,
+  ownConversation,
 } from './role-case-bodies.ts';
 
 export function createPositiveBody(
@@ -227,6 +228,14 @@ export function createPositiveBody(
         if (observed.code !== 'ok') throw new Error(`matrix: observe refused ${observed.code}`);
         return { body: { attemptId: applied.attemptId } };
       }
+      // AW-03. The admin holds `conversation:write`, so starts one of their own;
+      // the message and the read name a conversation the admin just started.
+      case 'conversation.start':
+        return { body: { body: 'the admin asks the agent', subject: 'acceptance' } };
+      case 'conversation.message':
+        return { body: { conversationId: await ownConversation(context), body: 'and again' } };
+      case 'conversation.read':
+        return { body: { conversationId: await ownConversation(context) } };
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }

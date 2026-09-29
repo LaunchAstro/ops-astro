@@ -98,6 +98,11 @@ const GRANTS_BY_ROLE = {
     // A top-up is a money decision on `billing` (T2e, the permission
     // catalogue's `billing:decide`): the owner and administrators hold it.
     ['billing', 'decide'],
+    // A person's own conversations with the agent (AW-03): the owner and
+    // administrators hold `conversation:write` (the permission key catalogue).
+    // `conversation:read`, the read-any grant, is seeded to nobody: it is given
+    // to a named person on purpose, never held by a role on install.
+    ['conversation', 'write'],
   ],
   member: [
     ['task', 'read'],
