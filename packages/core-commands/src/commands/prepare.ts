@@ -57,8 +57,12 @@ export const REVISION_FIXES: readonly string[] = [
   'A write against a stale revision is refused, never merged.',
 ];
 
-/** The one write an external party (R4) may reach, and then only in the client audience. */
-const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment']);
+/**
+ * The writes an external party (R4) may reach: a comment, only in the client
+ * audience, and opening their own inbox item (`inbox.seen`, a `self` row whose
+ * handler stamps the caller's own item on a task they can read, and nothing else).
+ */
+const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment', 'inbox.seen']);
 
 const EXTERNAL_FIXES: readonly string[] = [
   'A person without a membership may read what was shared with them and nothing more.',
@@ -561,8 +565,8 @@ export async function prepareCommand(
   const recordId = typeof request['recordId'] === 'string' ? request['recordId'] : undefined;
   // R4 before any grant row. A session with no membership stands on a read
   // share, and whatever else a row may say it holds, it writes nothing but a
-  // client-audience comment (minimum contract 8.1 R4; the audience is
-  // `tasks-comment.ts`'s to narrow).
+  // client-audience comment and the seen stamp on its own inbox item (minimum
+  // contract 8.1 R4; the audience is `tasks-comment.ts`'s to narrow).
   if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
