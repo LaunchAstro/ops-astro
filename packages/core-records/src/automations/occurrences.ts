@@ -14,7 +14,7 @@ import {
   type ActivationMode,
 } from './automations.ts';
 
-export type OccurrenceOutcome = 'started' | 'activation_off' | 'no_standing_approval';
+export type OccurrenceOutcome = 'started' | 'activation_off' | 'no_standing_approval' | 'approved';
 
 export interface OccurrenceRow {
   readonly id: string;

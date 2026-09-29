@@ -210,6 +210,25 @@ export {
   type OccurrenceRow,
 } from './automations/occurrences.ts';
 export {
+  adoptVersion,
+  dispatchOccurrence,
+  listApprovals,
+  previousVersion,
+  readStandingApproval,
+  revokeApproval,
+  turnOffActivation,
+  type AdoptionAct,
+  type AdoptionResult,
+  type Dispatch,
+  type DispatchOutcome,
+  type DispatchRow,
+  type RevokeResult,
+  type RunRequest,
+  type RunStarter,
+  type StandingApprovalRow,
+  type TurnOffResult,
+} from './automations/approvals.ts';
+export {
   listRegistry,
   type Registry,
   type RegistryActivation,
