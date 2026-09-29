@@ -222,6 +222,13 @@ else
   fail "Sol proof, criterion 1: a filename matching a rename cannot hide 500 new lines" \
     "expected per-file refusal for 500 new lines, got status $status: $REPORT"
 fi
+unique_report_names="$(printf '%s\n' "$REPORT" | grep '^pr-size:   ' | sed -E 's/: [0-9]+ counted,.*$//' | sort -u | wc -l | tr -d '[:space:]')"
+if [ "$unique_report_names" = "3" ]; then
+  pass "Sol proof, criterion 4: the report distinguishes a literal path from a rename"
+else
+  fail "Sol proof, criterion 4: the report distinguishes a literal path from a rename" \
+    "three changed files have only $unique_report_names distinct report names: $REPORT"
+fi
 rm -rf "$dir"
 
 # Removing a waiver label must change the result, which is only true if the
