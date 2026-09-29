@@ -255,7 +255,7 @@ none unreachable.
 ## Item 2: the six roles and the nine cases
 
 `role-case-matrix.test.ts` with `role-case-harness.ts`, `role-case-bodies.ts`
-(C81's recipes in `role-case-privacy-bodies.ts`) and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
+(C81's recipes in `role-case-privacy-bodies.ts`, API-2's in `role-case-credential-bodies.ts`) and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
 and the whole matrix is written to `.local/l5-matrix.tsv` as
 `role · case · operation · observed code · observed status · expected · verdict`.
 

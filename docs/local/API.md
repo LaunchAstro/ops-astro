@@ -1557,3 +1557,29 @@ Approving or publishing that version is `LEGAL_DATA_CLASSES_CHANGED` 409 once
 the classes have changed since the draft (draft again). The other documents do
 not read the classes. C62's retention table and the privacy-request workflows
 read the same rows through the records package (`readDataClasses`).
+
+## Agent credentials (API-2)
+
+Two tracked actions on the person prefix only, each under `credential:write`
+and never an agent's (an agent is refused `DELEGATION_EXCLUDES_OPERATION`):
+
+- `credential.issue` (`agent credential issued`) takes
+  `{ operationId, scope, expiresAt, purpose }` and issues a credential of the
+  caller's own. `scope` is 1 to 32 distinct `{ collection, action }` keys, each
+  held by the caller at business scope (otherwise `CREDENTIAL_SCOPE_WIDENS` 403) and never `decide`, `share` or `manage` (`CREDENTIAL_ACTION_EXCLUDED`
+  403). `expiresAt` is an ISO 8601 UTC time after now and at most 90 days out.
+  `purpose` is 1 to 200 characters. Its detail is
+  `{ credentialId, agentActorId, scope, expiresAt, credential }`.
+  `credential` is the secret, in this answer only; the register keeps it null.
+  The same operation replayed by the issuer answers the same secret while the
+  credential is live, and `credential: null` once it is revoked or expired.
+- `credential.revoke` (`agent credential revoked`) takes
+  `{ operationId, credentialId }`. The issuer revokes their own; anyone else
+  needs `access:manage` too. A credential of another business, a made-up one,
+  and another person's without `access:manage` are all `NOT_FOUND` 404; a
+  second revocation is `CREDENTIAL_ALREADY_REVOKED` 409. Its detail is
+  `{ credentialId }`.
+
+A bad field is `FIELD_VALUE_INVALID` 422 naming the field alone; no refusal,
+detail or audit event carries the purpose or the secret. Using a credential on
+the agent route waits on S0-6's bearer scheme.

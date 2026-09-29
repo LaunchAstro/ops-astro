@@ -556,3 +556,16 @@ as a JSON array) and `data_classes_digest` (SHA-256 over their words, in
 order). A privacy-policy version has both, and no other document has either
 (`legal_document_versions_data_classes_policy_only`). The written-once guard
 covers them with the rest of the draft.
+
+## Agent credentials (0037, API-2)
+
+`agent_credentials` holds one row per agent credential: the fresh agent actor
+it is for (`agent_actor_id`, one credential per agent actor), the person and
+actor who issued it, its purpose, its scope as `collection:action` keys (1 to
+32, never decide, share or manage, by `agent_credentials_scope_shape`), the
+SHA-256 of its secret (`credential_hash`), the scheme (`hmac-sha256-v1`) and
+the key id, when it was issued and when it expires (after issue), and the
+revocation (`revoked_at` with `revoked_by_actor_id`, both or neither). The
+secret itself is stored nowhere. A guard keeps every issued column as written
+and lets the revocation be set once. The application may select, insert and
+update; nothing deletes a row. Tenancy-keyed with the restrictive policy.
