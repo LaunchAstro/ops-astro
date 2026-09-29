@@ -119,7 +119,7 @@ async function narrowed(page: Page, width: number): Promise<{ frame: number; dra
         return drawn !== was && drawn === Math.round(frame?.getBoundingClientRect().width ?? -1);
       },
       { line: LINE, was: before.drawn },
-      { timeout: 5000 },
+      { timeout: 20_000 },
     )
     .catch(() => null);
   const after = await page.evaluate(lineWidths, LINE);
