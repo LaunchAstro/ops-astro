@@ -44,4 +44,16 @@ describe('the browser harness names its stack or refuses', () => {
     writeFileSync(lock, '999999');
     expect(load(env).stderr).not.toContain('is held by run pid');
   });
+
+  it('guards the default port of an address that names none', () => {
+    const lock = join(ROOT, '.local', 'ports', '80.lock');
+    mkdirSync(join(ROOT, '.local', 'ports'), { recursive: true });
+    writeFileSync(lock, String(process.pid));
+    try {
+      const env = { WEB_URL: 'http://127.0.0.1', API_URL: 'http://127.0.0.1:65432' };
+      expect(load(env).stderr).toContain(`port 80 is held by run pid ${String(process.pid)}`);
+    } finally {
+      rmSync(lock, { force: true });
+    }
+  });
 });
