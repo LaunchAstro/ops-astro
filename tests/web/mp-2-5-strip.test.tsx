@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { AppStrip } from '../../packages/ui/src/index.ts';
 import { Root } from '../../apps/web/src/root.tsx';
 import { SessionStore } from '../../apps/web/src/session/token.ts';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
@@ -128,11 +129,16 @@ describe('MP-2-5 the client identity shows on client pages', () => {
 });
 
 describe('MP-2-5 search and Start timer ship disabled with a tooltip on the agency side; the portal hides search (R29)', () => {
-  it('draws both disabled with a tooltip naming the feature on the agency face', async () => {
-    const { view } = await open('/projects/');
-    const search = view.find('.appbar .appbar__search');
+  // C1 builds search in this slice, so the application's search is live; the
+  // strip still draws it disabled, naming the feature, wherever no search is
+  // wired, and the timer stays disabled until MP-4-6.
+  it('draws search disabled with a tooltip where none is wired, and the timer disabled', async () => {
+    const strip = await mount(<AppStrip face="agency" client={null} />);
+    const search = strip.find('.appbar__search');
     expect(search?.getAttribute('aria-disabled')).toBe('true');
     expect(search?.getAttribute('title')).toBe('Search is not built yet');
+    await strip.unmount();
+    const { view } = await open('/projects/');
     const timer = view.find('.appbar .appbar__timer') as HTMLButtonElement | null;
     expect(timer?.disabled).toBe(true);
     expect(timer?.getAttribute('title')).toBe('Time tracking is not built yet');

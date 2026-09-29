@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { AppStrip, Shell, type StripSteps } from '@launchastro/ui';
 import { FaceProvider } from './face.tsx';
+import { SearchPalette, useSearchKey } from './search.tsx';
 import { gateOf, matchRoute, pathTo } from './routes.ts';
 import { NO_CLIENT_GRANTS, canonicalOf, isLegacy, pageAt, type ClientAccess } from './manifest.ts';
 import {
@@ -73,6 +74,17 @@ export function App(props: AppProps): ReactElement {
     setNavOpen(false);
   }, [here]);
   const online = useOnline();
+  // Search (C1): open or not is the application's; the strip's box and ⌘K
+  // open it on the agency face only, and closing returns focus to the box.
+  const [searching, setSearching] = useState(false);
+  const searchBox = useRef<HTMLButtonElement | null>(null);
+  const openSearch = useCallback(() => {
+    setSearching(true);
+  }, []);
+  const closeSearch = useCallback(() => {
+    setSearching(false);
+    searchBox.current?.focus();
+  }, []);
 
   // Why the board was reached instead of the address that was held. Drawn on
   // the board and nowhere else, and gone when this session is. The offer is the
@@ -200,6 +212,8 @@ export function App(props: AppProps): ReactElement {
   const tabs = at === null || refused || session === null ? null : tabsFor(at, section);
   const identity = refused ? null : stripClient(at?.client ?? null);
   const face = at?.page.namespace === 'portal' ? 'client' : 'agency';
+  const searchable = session !== null && face === 'agency';
+  useSearchKey(searchable, openSearch);
 
   const signIn = (
     <SignIn
@@ -248,66 +262,80 @@ export function App(props: AppProps): ReactElement {
   })();
 
   return (
-    <Shell
-      face={face}
-      rail={rail}
-      here={bare}
-      strip={
-        <AppStrip
-          face={face}
-          client={identity}
-          {...(props.steps === undefined ? {} : { steps: props.steps })}
-          onFace={
-            identity === null || at?.client == null
-              ? null
-              : (next) => {
-                  const slug = at.client ?? '';
-                  navigate(next === 'client' ? `/portal/${slug}/` : `/clients/${slug}/`);
-                }
-          }
+    <>
+      <Shell
+        face={face}
+        rail={rail}
+        here={bare}
+        strip={
+          <AppStrip
+            face={face}
+            client={identity}
+            {...(props.steps === undefined ? {} : { steps: props.steps })}
+            onSearch={searchable ? openSearch : null}
+            searchRef={searchBox}
+            onFace={
+              identity === null || at?.client == null
+                ? null
+                : (next) => {
+                    const slug = at.client ?? '';
+                    navigate(next === 'client' ? `/portal/${slug}/` : `/clients/${slug}/`);
+                  }
+            }
+          />
+        }
+        tabs={tabs}
+        freshness={online ? null : 'offline'}
+        nav={{ open: navOpen, onToggle: setNavOpen }}
+        onNavigate={navigate}
+        title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
+        meta={
+          session === null ? null : (
+            <span className="topbar__who">
+              {session.email} · {session.businessKey}
+              <button className="btn" type="button" onClick={onSignOut}>
+                Sign out
+              </button>
+            </span>
+          )
+        }
+        // The panel registry is the dock. Each registration names the address
+        // that draws its surface, and the tab navigates there rather than
+        // opening a drawer over the page: the surface has a real address, and an
+        // address a person can quote is worth more than a panel they cannot.
+        // An open tab is announced as "Close", so pressing it leaves the address
+        // for the board rather than pushing the same address again.
+        // The client face has no dock (R17).
+        dock={
+          session === null || at?.page.namespace === 'portal'
+            ? []
+            : PANELS.map((panel) => ({
+                id: panel.id,
+                label: panel.label,
+                open: panel.route !== null && here === pathTo(panel.route),
+              }))
+        }
+        onDockTab={(id) => {
+          const panel = PANELS.find((entry) => entry.id === id);
+          if (panel?.route == null) return;
+          const target = pathTo(panel.route);
+          props.navigate(here === target ? pathTo('agency:projects-board') : target);
+        }}
+        seated={false}
+      >
+        <FaceProvider face={face}>{content}</FaceProvider>
+      </Shell>
+      {searching && searchable ? (
+        <SearchPalette
+          client={client}
+          onOpen={(address) => {
+            setSearching(false);
+            navigate(address);
+          }}
+          onClose={closeSearch}
         />
-      }
-      tabs={tabs}
-      freshness={online ? null : 'offline'}
-      nav={{ open: navOpen, onToggle: setNavOpen }}
-      onNavigate={navigate}
-      title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
-      meta={
-        session === null ? null : (
-          <span className="topbar__who">
-            {session.email} · {session.businessKey}
-            <button className="btn" type="button" onClick={onSignOut}>
-              Sign out
-            </button>
-          </span>
-        )
-      }
-      // The panel registry is the dock. Each registration names the address
-      // that draws its surface, and the tab navigates there rather than
-      // opening a drawer over the page: the surface has a real address, and an
-      // address a person can quote is worth more than a panel they cannot.
-      // An open tab is announced as "Close", so pressing it leaves the address
-      // for the board rather than pushing the same address again.
-      // The client face has no dock (R17).
-      dock={
-        session === null || at?.page.namespace === 'portal'
-          ? []
-          : PANELS.map((panel) => ({
-              id: panel.id,
-              label: panel.label,
-              open: panel.route !== null && here === pathTo(panel.route),
-            }))
-      }
-      onDockTab={(id) => {
-        const panel = PANELS.find((entry) => entry.id === id);
-        if (panel?.route == null) return;
-        const target = pathTo(panel.route);
-        props.navigate(here === target ? pathTo('agency:projects-board') : target);
-      }}
-      seated={false}
-    >
-      <FaceProvider face={face}>{content}</FaceProvider>
-    </Shell>
+      ) : null}
+    </>
   );
 }
 
