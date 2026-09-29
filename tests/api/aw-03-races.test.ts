@@ -158,6 +158,26 @@ describe.skipIf(serverUrl === undefined)('AW-03 races and recovery', () => {
     expect(await messages(conversationId)).toBe(0);
   });
 
+  it('MP-7-11 page scope replaces: a pointer racing the purge waits on the conversation lock and is refused; nothing lands on a purged conversation', async () => {
+    const conversationId = await dueForPurge('pointer-race');
+    const race = await whileHeld(
+      async (tx) => await purgeConversation(tx, { conversationId, operationId: randomUUID() }),
+      async (): Promise<Answer> =>
+        await w.as(w.owner, 'conversation.set_scope', {
+          conversationId,
+          page: { address: '/settings', shows: 'Settings' },
+        }),
+    );
+    expect(race.first).toMatchObject({ ok: true, replayed: false, messagesPurged: 1 });
+    expect((race.racer.body as { code?: string }).code).toBe('TRANSITION_NOT_PERMITTED');
+    expect(
+      await w.count(
+        `select count(*) as n from public.conversations where id = $1 and page_address is not null`,
+        [conversationId],
+      ),
+    ).toBe(0);
+  });
+
   it('AW-03 purge real: a message racing the wrap-up lands after it, and the purge then refuses WRAP_UP_ABSENT and keeps the body', async () => {
     const conversationId = await started(w, w.owner, { body: 'Wrap me while I type.' });
     await w.age(conversationId, 8);
