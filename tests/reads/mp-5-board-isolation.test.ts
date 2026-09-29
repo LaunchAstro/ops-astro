@@ -14,6 +14,10 @@
 // The withheld count (B-22, records-and-authority, 14 September): a member
 // whose grants reach some of the board's rows sees those rows and how many
 // others there are, never which. A client login sees no count at all.
+//
+// U13 (MP-5-7): the funnel's counts and the freshness stamp come only from
+// the rows served, so a newer record in another business or on another
+// client's task moves neither, and no refusal carries a stamp.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -26,8 +30,10 @@ import { shareRecord } from '../../packages/core-records/src/authority/shares.ts
 import { issueGrant, revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { mintDelegation } from '../../packages/core-records/src/index.ts';
 import {
+  funnelMenu,
   initialMachine,
   layoutColumns,
+  rankFacets,
   narrowRows,
   presetCount,
   reduceBoard,
@@ -180,6 +186,7 @@ describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three cros
     expect(intoAlpha.code).toBe('AUTH_NO_MEMBERSHIP');
     expectNoneOf(intoAlpha, ['noahs', 'hidden', 'other']);
     expect(intoAlpha.body).not.toHaveProperty('withheld');
+    expect(intoAlpha.body).not.toHaveProperty('changedAt');
     const own = await read(world.bea, 'bravo');
     expect(own.status).toBe(200);
     expect(own.body['withheld']).toBe(0);
@@ -190,6 +197,7 @@ describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three cros
     expect(board.status).toBe(404);
     expect(board.code).toBe('NOT_FOUND');
     expect(board.body).not.toHaveProperty('withheld');
+    expect(board.body).not.toHaveProperty('changedAt');
     expectNoneOf(board, ['noahs', 'hidden', 'other', 'bravo']);
     const theirs = await read(ext1, 'alpha', 'task.read', { recordId: ids.hidden });
     expect(theirs.status).toBe(404);
@@ -205,6 +213,7 @@ describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three cros
     expect(agent.status).toBe(403);
     expect(agent.code).toBe('DELEGATION_EXCLUDES_OPERATION');
     expect(agent.body).not.toHaveProperty('withheld');
+    expect(agent.body).not.toHaveProperty('changedAt');
     expectNoneOf(agent, ['noahs', 'hidden', 'other', 'bravo']);
 
     return [rowsOf(own), rowsOf(board), rowsOf(agent)];
@@ -364,6 +373,85 @@ describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three cros
       }
     }
   });
+  /** Rewrite a task as it stands, so the trigger stamps it now. */
+  const touch = async (businessId: string, recordId: string): Promise<string> => {
+    await world.db.app.withBusiness(businessId as World['alpha'], (tx) =>
+      tx.query(`update public.records set txt_4 = txt_4 where business_id = $1 and id = $2`, [
+        businessId,
+        recordId,
+      ]),
+    );
+    const rows = await world.db.admin.execute<{ readonly at: Date }>(
+      `select updated_at as at from public.records where id = $1`,
+      [recordId],
+    );
+    const at = rows[0]?.at;
+    if (at === undefined) throw new Error('fixture: touched task not found');
+    return at.toISOString();
+  };
+
+  /** Filters over every canary title, so a count could only come from a row. */
+  const everyTitle: readonly Facet<Row>[] = (Object.keys(TITLES) as (keyof typeof TITLES)[]).map(
+    (key) => ({
+      id: `title:${key}`,
+      kind: 'Title',
+      label: TITLES[key],
+      test: (row: Row) => row.title === TITLES[key],
+    }),
+  );
+
+  it('MP-5-7 counts in scope', async () => {
+    // Noah's task changes first; then another client's task and bravo's, later.
+    const noahs = await touch(world.alpha, ids.noahs);
+    const hidden = await touch(world.alpha, ids.hidden);
+    const bravo = await touch(world.bravo, ids.bravo);
+    expect(hidden > noahs && bravo > hidden).toBe(true);
+
+    // The record-scoped member: his stamp is his own task's; the newer ones
+    // move nothing, and a count over his rows holds only his row.
+    const noah = await read(world.noah);
+    expect(noah.status).toBe(200);
+    expect(noah.body['changedAt']).toBe(noahs);
+    expectNoneOf(noah, ['hidden', 'other', 'bravo']);
+    const counts = Object.fromEntries(
+      rankFacets(rowsOf(noah), everyTitle).map((one) => [one.id, one.count]),
+    );
+    expect(counts).toEqual({
+      'title:noahs': 1,
+      'title:hidden': 0,
+      'title:other': 0,
+      'title:bravo': 0,
+    });
+
+    // A collection-wide reader sees alpha's newest, and never bravo's.
+    const ada = await read(world.ada);
+    expect(ada.body['changedAt']).toBe(hidden);
+    const adaCounts = rankFacets(rowsOf(ada), everyTitle);
+    expect(adaCounts.find((one) => one.id === 'title:bravo')?.count).toBe(0);
+    // Bravo's board is stamped by bravo's task alone.
+    const bea = await read(world.bea, 'bravo');
+    expect(bea.body['changedAt']).toBe(bravo);
+    expectNoneOf(bea, ['noahs', 'hidden', 'other']);
+  });
+
+  it('MP-5-7 isolation', async () => {
+    for (const rows of await crossings()) {
+      const ranked = rankFacets(rows, [...facets(rows), ...everyTitle]);
+      for (const one of ranked) {
+        if (one.id.startsWith('title:')) {
+          const mine = rows.some((row) => row.title === one.label);
+          expect(one.count).toBe(mine ? 1 : 0);
+        }
+      }
+      const menu = funnelMenu(ranked, '', true);
+      const listed = menu.groups.flatMap((group) => group.facets);
+      for (const one of listed.filter((facet) => facet.kind !== 'Title')) {
+        alphaCanaries(one.label);
+      }
+      alphaCanaries(JSON.stringify(rows));
+    }
+  });
+
   it('MP-5-3 withheld board lookups stay in-tenant and grant-first', async () => {
     // A named board Noah cannot read is refused as `task.read` refuses it.
     const unreadable = await read(world.noah, 'alpha', 'task.board', { board: ids.hidden });
