@@ -4,7 +4,7 @@
 // `CommandRequest` kept beside it so `requests.ts` stays under the per-file
 // cap. Every field is `unknown` because the handlers check each one.
 
-import type { Envelope } from './requests.ts';
+import type { Envelope } from './request-envelope.ts';
 
 export type ConversationRequest =
   | ({

@@ -25,6 +25,7 @@
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
 import type { ConversationRequest } from './requests-conversation.ts';
+import type { Envelope } from './request-envelope.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -55,11 +56,6 @@ export function hasIdentity(request: UncheckedRequest): request is IdentifiedReq
 
 // Type aliases rather than interfaces, so each member of the union is also an
 // `UncheckedRequest`: a parsed request is still the body it was parsed from.
-export type Envelope = {
-  /** The repeat-request identity. Required on every command in the surface. */
-  readonly operationId: string;
-};
-
 type Targeted = Envelope & {
   readonly recordId: string;
   readonly expectedRevision?: number;
