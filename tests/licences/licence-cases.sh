@@ -106,10 +106,9 @@ case_is "an unknown licence fails even when spelled like one" 1 '{"Invented-1.0"
 # carries a licence record (licence, source, permitted use) and its digest,
 # and one with no compatible licence is refused and reported, never bundled.
 # assets_case <label> <expected-exit> <assets-json>; the manifest sits beside
-# a four-byte file, font.ttf, and its licence text, OFL.txt.
-printf 'font' > "$TMP/font.ttf"
+# its licence text, OFL.txt. The bytes are pinned by address and digest.
 printf 'licence text' > "$TMP/OFL.txt"
-SHA="$(node -e "process.stdout.write(require('crypto').createHash('sha256').update('font').digest('hex'))")"
+SHA="$(printf 'a%.0s' {1..64})"
 assets_case() {
   local label="$1" expect="$2" json="$3"
   printf '{"assets":%s}' "$json" > "$TMP/assets.json"
@@ -118,18 +117,21 @@ assets_case() {
   actual=$?
   if [ "$actual" = "$expect" ]; then pass "$label"; else fail "$label" "expected exit $expect, got $actual"; fi
 }
-FONT="\"name\":\"F\",\"kind\":\"font\",\"file\":\"font.ttf\",\"sha256\":\"$SHA\",\"licenceFile\":\"OFL.txt\",\"source\":\"https://example.invalid/f\""
+PIN="\"file\":\"font.ttf\",\"url\":\"https://example.invalid/font.ttf\",\"sha256\":\"$SHA\""
+FONT="\"name\":\"F\",\"kind\":\"font\",$PIN,\"licenceFile\":\"OFL.txt\",\"source\":\"https://example.invalid/f\""
 ICON='"name":"I","kind":"icons","licence":"LicenseRef-Vendor","source":"https://example.invalid/i"'
+OK='"licence":"OFL-1.1","permittedUse":"bundle"'
 
-assets_case "a recorded OFL font passes" 0 "[{$FONT,\"licence\":\"OFL-1.1\",\"permittedUse\":\"bundle and redistribute\"}]"
-assets_case "a refused icon set is reported, not an error" 0 "[{$FONT,\"licence\":\"OFL-1.1\",\"permittedUse\":\"bundle\"},{$ICON,\"refused\":\"no redistribution grant\"}]"
+assets_case "a recorded OFL font passes" 0 "[{$FONT,$OK}]"
+assets_case "a refused icon set is reported, not an error" 0 "[{$FONT,$OK},{$ICON,\"refused\":\"no redistribution grant\"}]"
 assets_case "an empty asset list fails" 1 '[]'
 assets_case "a bundled asset with an incompatible licence fails" 1 "[{$FONT,\"licence\":\"LicenseRef-Vendor\",\"permittedUse\":\"bundle\"}]"
-assets_case "a refused asset that is still bundled fails" 1 "[{$FONT,\"licence\":\"OFL-1.1\",\"permittedUse\":\"bundle\",\"refused\":\"no\"}]"
+assets_case "a refused asset that is still bundled fails" 1 "[{$FONT,$OK,\"refused\":\"no\"}]"
 assets_case "a font with no permitted use fails" 1 "[{$FONT,\"licence\":\"OFL-1.1\"}]"
-assets_case "a font with no source fails" 1 "[{\"name\":\"F\",\"kind\":\"font\",\"file\":\"font.ttf\",\"sha256\":\"$SHA\",\"licenceFile\":\"OFL.txt\",\"licence\":\"OFL-1.1\",\"permittedUse\":\"bundle\"}]"
-assets_case "a font whose bytes changed fails" 1 "[{\"name\":\"F\",\"kind\":\"font\",\"file\":\"font.ttf\",\"sha256\":\"$(printf '0%.0s' {1..64})\",\"licenceFile\":\"OFL.txt\",\"source\":\"https://example.invalid/f\",\"licence\":\"OFL-1.1\",\"permittedUse\":\"bundle\"}]"
-assets_case "a font with no licence text beside it fails" 1 "[{\"name\":\"F\",\"kind\":\"font\",\"file\":\"font.ttf\",\"sha256\":\"$SHA\",\"licenceFile\":\"missing.txt\",\"source\":\"https://example.invalid/f\",\"licence\":\"OFL-1.1\",\"permittedUse\":\"bundle\"}]"
+assets_case "a font with no source fails" 1 "[{\"name\":\"F\",\"kind\":\"font\",$PIN,\"licenceFile\":\"OFL.txt\",$OK}]"
+assets_case "a font with no pinned digest fails" 1 "[{$FONT,$OK,\"sha256\":\"\"}]"
+assets_case "a font with no https address fails" 1 "[{$FONT,$OK,\"url\":\"http://example.invalid/font.ttf\"}]"
+assets_case "a font with no licence text beside it fails" 1 "[{$FONT,$OK,\"licenceFile\":\"missing.txt\"}]"
 
 echo
 echo "licence cases: $PASSED passed, $FAILED failed"
