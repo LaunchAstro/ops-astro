@@ -261,6 +261,121 @@
 .appbar[data-face='client'] {
   background: var(--client-brand);
 }
+/* Back and Forward: 26 square, faint until hovered, hidden at 640. */
+.appbar__step {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: color-mix(in oklch, var(--on-dark) 55%, transparent);
+  cursor: pointer;
+}
+.appbar__step:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--on-dark) 10%, transparent);
+  color: var(--on-dark);
+}
+.appbar__step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.appbar__step + .appbar__step {
+  margin-left: calc(var(--s-4) * -1 + 2px);
+}
+/* Search, drawn and disabled until it is built (R29): not focusable. */
+.appbar__search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 90px;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid color-mix(in oklch, var(--on-dark) 12%, transparent);
+  background: color-mix(in oklch, var(--on-dark) 7%, transparent);
+  color: color-mix(in oklch, var(--on-dark) 50%, transparent);
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.appbar__key {
+  margin-left: auto;
+  padding: 0 0.25rem;
+  border: 1px solid color-mix(in oklch, var(--on-dark) 20%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 300;
+}
+.appbar__preview {
+  flex: 1;
+  color: color-mix(in oklch, var(--on-dark) 72%, transparent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-align: right;
+  white-space: nowrap;
+}
+/* The face switch: the strip's dress of the segmented control. */
+.facesw {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid color-mix(in oklch, var(--on-dark) 22%, transparent);
+}
+.facesw button {
+  height: 30px;
+  padding: 0 0.75rem;
+  border: 0;
+  background: none;
+  color: color-mix(in oklch, var(--on-dark) 60%, transparent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 300;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.facesw button[aria-pressed='true'] {
+  background: var(--on-dark);
+  color: var(--app-chrome);
+  cursor: default;
+}
+.appbar__timer {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.35rem;
+  height: 30px;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid color-mix(in oklch, var(--on-dark) 22%, transparent);
+  background: none;
+  color: var(--on-dark);
+  font-size: 13px;
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+@media (width <= 900px) {
+  .appbar {
+    padding-inline: var(--s-3);
+    gap: var(--s-3);
+  }
+  .appbar__search {
+    display: none;
+  }
+}
+@media (width <= 640px) {
+  .appbar__step {
+    display: none;
+  }
+  .appbar__timer .appbar__label {
+    display: none;
+  }
+  .appbar__timer {
+    padding-inline: 0.45rem;
+  }
+}
 .clienthdr {
   display: flex;
   align-items: center;
