@@ -20,8 +20,10 @@
 //
 // **The working slice exports only what its screens mount.** `AgentPane`
 // arrived with MP-6-1, mounted on the task page over the proposals `task.read`
-// stores; an exported component that nothing mounts is an estate to maintain,
-// not a capability.
+// stores; `AssistantPanel` arrived with MP-7-11, mounted as the dock's Agent
+// drawer over AW-03's conversations; its ask sparkle is exported when the
+// first host page mounts it. An exported component that nothing mounts is an
+// estate to maintain, not a capability.
 
 // The package's stylesheets, in their load order: tokens, then primitives, then
 // the shell, then the board, then the task surfaces. They enter through this

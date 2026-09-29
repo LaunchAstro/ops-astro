@@ -18,8 +18,6 @@ import { Asker } from './assistant/asker.tsx';
 import { TabRow } from './assistant/tab-row.tsx';
 import { Transcript } from './assistant/transcript.tsx';
 
-export { AskSparkle, type AskSparkleProps } from './assistant/asker.tsx';
-
 export type AssistantRole = 'user' | 'ai' | 'note' | 'failed';
 
 export interface AssistantCite {
