@@ -505,6 +505,31 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
   });
 
   describe('S0-3 backup encryption', () => {
+    it('Sol proof, criterion 12: a read stays logged after the reader rolls back', async () => {
+      const { runBackup } = await job();
+      const recorded = await runBackup({
+        dump: async () => Buffer.from('PGDMP rollback proof'),
+        storeUrl: backupLogin.url,
+        publicKey: keys.publicKey,
+      });
+      expect(recorded['outcome']).toBe('recorded');
+      const before = (await receipts()).length;
+      const reader = postgres(restoreLogin.url, { max: 1 });
+      try {
+        await expect(
+          reader.begin(async (tx) => {
+            await tx.unsafe(`set local role ${RESTORE}`);
+            const [archive] = await tx`select body from backups.read_latest()`;
+            expect(archive?.['body']).toBeInstanceOf(Buffer);
+            throw new Error('rollback after access');
+          }),
+        ).rejects.toThrow('rollback after access');
+      } finally {
+        await reader.end();
+      }
+      expect((await receipts()).length).toBe(before + 1);
+    });
+
     it('stores only the sealed artefact, and refuses to store a backup it cannot seal', async () => {
       const { runBackup } = await job();
       const dump = Buffer.from(`PGDMP made-up ${randomBytes(6).toString('hex')}`);
