@@ -96,15 +96,11 @@ function readComments(
     for (const { start, end } of parsed.comments) spans.push([start, end]);
     spans.push(...queryComments(parsed.program));
   } else if (STYLES.has(extension)) {
-    for (const block of text.matchAll(/\/\*[\s\S]*?\*\//gu)) {
-      spans.push([block.index, block.index + block[0].length]);
-    }
+    spans.push(...blockComments(text));
   } else {
     errors = [`${file} is not a format this check reads`];
   }
-  for (const html of text.matchAll(/<!--[\s\S]*?-->/gu)) {
-    spans.push([html.index, html.index + html[0].length]);
-  }
+  spans.push(...htmlComments(text));
   const lines = spans.flatMap(([start, end]) => {
     const first = text.slice(0, start).split('\n').length;
     return text
@@ -126,7 +122,7 @@ function passages(lines: readonly CommentLine[]): CommentLine[] {
   for (const { line, comment } of lines) {
     const words = comment
       .replace(/^\s*(?:\/\/+|\/\*+|\*|--|<!--)\s?/u, '')
-      .replace(/\s*(?:\*\/|-->)\s*$/u, '')
+      .replace(/\s*(?:\*\/|--!?>)\s*$/u, '')
       .trim();
     const current = found.at(-1);
     if (current !== undefined && line === previous + 1) current.comment += ` ${words}`;
@@ -134,6 +130,51 @@ function passages(lines: readonly CommentLine[]): CommentLine[] {
     previous = line;
   }
   return found;
+}
+
+/**
+ * A dollar-quote tag as Postgres reads one: `$$`, or `$` and an identifier
+ * (a letter or underscore, then letters, digits or underscores) and `$`. So
+ * `$body1$` opens a quoted value, and `$1` is a parameter, not a tag.
+ */
+const DOLLAR_TAG = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/u;
+
+/** A stylesheet's block comments; one left open runs to the end of the file. */
+function blockComments(text: string): (readonly [number, number])[] {
+  const spans: (readonly [number, number])[] = [];
+  let open = text.indexOf('/*');
+  while (open >= 0) {
+    const close = text.indexOf('*/', open + 2);
+    const end = close < 0 ? text.length : close + 2;
+    spans.push([open, end]);
+    open = text.indexOf('/*', end);
+  }
+  return spans;
+}
+
+/**
+ * HTML comments, ended as the HTML parser ends them: at `-->` or `--!>`,
+ * at once for the abrupt `<!-->` and `<!--->`, and at the end of the text
+ * when one is never closed.
+ */
+function htmlComments(text: string): (readonly [number, number])[] {
+  const spans: (readonly [number, number])[] = [];
+  let open = text.indexOf('<!--');
+  while (open >= 0) {
+    const body = open + 4;
+    let end = text.length;
+    if (text.startsWith('>', body)) end = body + 1;
+    else if (text.startsWith('->', body)) end = body + 2;
+    else {
+      for (const close of ['-->', '--!>']) {
+        const at = text.indexOf(close, body);
+        if (at >= 0) end = Math.min(end, at + close.length);
+      }
+    }
+    spans.push([open, end]);
+    open = text.indexOf('<!--', end);
+  }
+  return spans;
 }
 
 /**
@@ -159,8 +200,8 @@ function sqlComments(sql: string, offset: number): (readonly [number, number])[]
         else at += 1;
       }
       at += 1;
-    } else if (char === '$' && /^\$[A-Za-z_]*\$/u.test(sql.slice(at))) {
-      const tag = /^\$[A-Za-z_]*\$/u.exec(sql.slice(at))?.[0] ?? '$$';
+    } else if (char === '$' && DOLLAR_TAG.test(sql.slice(at))) {
+      const tag = DOLLAR_TAG.exec(sql.slice(at))?.[0] ?? '$$';
       const close = sql.indexOf(tag, at + tag.length);
       at = close < 0 ? sql.length : close + tag.length;
     } else if (sql.startsWith('--', at)) {
@@ -187,7 +228,19 @@ function sqlComments(sql: string, offset: number): (readonly [number, number])[]
 
 /** A string literal's value that reads as a SQL statement. */
 const SQL_STATEMENT =
-  /^\s*(?:select|insert|update|delete|with|set|lock|create|alter|drop|grant|revoke|begin|commit|truncate|comment)\b/iu;
+  /^\s*(?:select|insert|update|delete|merge|with|values|table|set|reset|show|lock|create|alter|drop|grant|revoke|begin|commit|rollback|savepoint|release|truncate|comment|explain|analyze|vacuum|copy|call|do|notify|listen)\b/iu;
+
+/**
+ * Whether a string's value reads as a SQL statement once its comments are
+ * set aside, so a query that opens with a `--` or `/*` comment still counts.
+ */
+function readsAsSql(value: string): boolean {
+  let statement = value;
+  for (const [start, end] of sqlComments(value, 0).toReversed()) {
+    statement = `${statement.slice(0, start)}${' '.repeat(end - start)}${statement.slice(end)}`;
+  }
+  return SQL_STATEMENT.test(statement);
+}
 
 /**
  * SQL comments in a parsed script: every template literal's text (a query
@@ -208,7 +261,7 @@ function queryComments(program: unknown): (readonly [number, number])[] {
       typeof each.value === 'string' &&
       typeof each.raw === 'string' &&
       typeof each.start === 'number' &&
-      SQL_STATEMENT.test(each.value)
+      readsAsSql(each.value)
     ) {
       spans.push(...sqlComments(each.raw.slice(1, -1), each.start + 1));
     }
@@ -332,6 +385,12 @@ describe('a source comment cites no review round, lane or finding id', () => {
     ['a SQL comment after a dollar-quoted body', 'const q = sql`select $$ -- data $$ -- thermo`;'],
     ['a SQL comment after an interpolation', 'const q = sql`select ${columns} -- Sol 6`;'],
     ['a SQL comment in a plain string query', "tx.query('select 1 -- Sol 6');"],
+    ['a leading SQL block comment in a plain string', "tx.query('/* thermo */ select 1');"],
+    [
+      'a SQL comment after a digit-bearing dollar body',
+      'const q = sql`select $b1$ -- data $b1$ -- thermo`;',
+    ],
+    ['a SQL comment after parameter placeholders', 'const q = sql`select $1, $2 -- Sol 6`;'],
   ])('reads %s', (_, source) => {
     const read = passages(commentLines(source));
     expect(read.some(({ comment }) => cites(comment) !== undefined)).toBe(true);
@@ -347,6 +406,10 @@ describe('a source comment cites no review round, lane or finding id', () => {
     ['an escaped quote in a SQL E-string', "const q = sql`select E'it\\'s -- Sol 6'`;"],
     ['a doubled quote in a SQL value', "const q = sql`select 'it''s -- Sol 6'`;"],
     ['a flag in a plain string that is not SQL', "const flag = '--lane L4';"],
+    [
+      'a dollar body whose tag has a digit and an underscore',
+      'const q = sql`select $a_2$ -- Sol 6 $a_2$`;',
+    ],
     ['a citation inside a regex', 'const r = /Sol 6|thermo/u;'],
   ])('does not read %s', (_, source) => {
     expect(commentLines(source)).toEqual([]);
@@ -357,6 +420,18 @@ describe('a source comment cites no review round, lane or finding id', () => {
     expect(commentLines('/* lane L4 */', 'x.cts')).toHaveLength(1);
     expect(readComments('-- Sol 6', 'x.sql').errors).toHaveLength(1);
     expect(readComments('-- Sol 6', 'Makefile').errors).toHaveLength(1);
+  });
+
+  it.each([
+    ['an HTML comment ended by --!>', '<!-- Sol 6 --!>\n<p>text</p>', 'x.html', [1]],
+    ['an HTML comment ended by -->', '<!-- Sol 6 -->\n<p>text</p>', 'x.html', [1]],
+    ['an unterminated HTML comment', '<p>text</p>\n<!-- Sol 6\nmore', 'x.html', [2, 3]],
+    ['an abrupt <!--> and not the text after it', '<!-->\n<p>Sol 6</p>', 'x.html', [1]],
+    ['an abrupt <!---> and not the text after it', '<!--->\n<p>Sol 6</p>', 'x.html', [1]],
+    ['an unterminated stylesheet block', 'a { color: red; }\n/* Sol 6\nmore', 'x.css', [2, 3]],
+    ['an unterminated SQL block', 'const q = sql`select 1\n/* Sol 6\n`;', 'x.ts', [2, 3]],
+  ])('reads %s, and only it', (_, source, file, lines) => {
+    expect(commentLines(source, file).map(({ line }) => line)).toEqual(lines);
   });
 
   it('reads stylesheet and HTML comments across lines', () => {
