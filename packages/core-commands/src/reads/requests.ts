@@ -28,6 +28,7 @@ import type { PresetField } from '../../../core-records/src/index.ts';
 import type {
   CapabilitiesResult,
   PersonListResult,
+  TeamListResult,
   PresetPlanResult,
   QueueResult,
   SettingsReadResult,
@@ -69,6 +70,7 @@ export interface ReadOperands {
    */
   readonly 'task.ledger': { readonly before: string | null; readonly timeZone: string };
   readonly 'person.list': NoOperands;
+  readonly 'team.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
   /**
@@ -131,6 +133,7 @@ export type ReadResult =
   | TaskBoardResult
   | TaskLedgerResult
   | PersonListResult
+  | TeamListResult
   | QueueResult
   | PresetPlanResult
   | SettingsReadResult

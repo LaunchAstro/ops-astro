@@ -386,6 +386,21 @@ export interface TaskLedgerResult {
   readonly earlier: boolean;
 }
 
+/** A teammate on the Team panel's people strip (MP-7-10): no row is available. */
+export interface TeamMemberView {
+  readonly personId: string;
+  readonly name: string;
+  readonly availability: {
+    readonly state: 'available' | 'away';
+    readonly reason: string | null;
+  } | null;
+}
+
+export interface TeamListResult {
+  readonly ok: true;
+  readonly people: readonly TeamMemberView[];
+}
+
 export interface PersonListResult {
   readonly ok: true;
   readonly persons: readonly PersonView[];

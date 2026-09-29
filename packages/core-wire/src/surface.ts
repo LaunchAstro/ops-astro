@@ -68,6 +68,7 @@ export type CommandName =
   // over the applied writes in `audit_events`, never a second record of them.
   | 'task.ledger'
   | 'person.list'
+  | 'team.list'
   // The preset planner. It reads the model and writes nothing at all, so it is
   // a read by the only definition this table has; what makes it unlike the
   // other three is the authority it asks for, which is `manage` on presets
@@ -462,6 +463,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // use for the whole business's trail, so it is not offered one.
   read('task.ledger', TASK_COLLECTION),
   read('person.list', 'person'),
+  // The Team panel's people strip (MP-7-10): staff only, answered to anyone
+  // else as for a thing they cannot see.
+  read('team.list', 'person'),
   // `preset` is what this route is about; the grant it takes is `manage` on
   // the family the request names, which `reads/dispatch.ts` reads off the
   // request and `planPresetSync` checks again from its own mapping.

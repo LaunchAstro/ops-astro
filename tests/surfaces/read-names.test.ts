@@ -45,7 +45,7 @@ describe("the client's read names", () => {
     expect(new Set(READ_NAMES).size).toBe(READ_NAMES.length);
   });
 
-  it('reach all ten declared reads, so none is reachable only as a mutation', () => {
+  it('reach all eleven declared reads, so none is reachable only as a mutation', () => {
     // SPEC-ADJUDICATE (b): the web client reaches `task.queue` and
     // `preset.plan` with the same permissions as the API and the command line.
     // So this is now a rule rather than a statement of the gap: removing either
@@ -54,6 +54,6 @@ describe("the client's read names", () => {
       (name) => !READ_NAMES.some((reached) => reached === name),
     );
     expect(unreached).toEqual([]);
-    expect(READ_NAMES).toHaveLength(10);
+    expect(READ_NAMES).toHaveLength(11);
   });
 });

@@ -48,6 +48,7 @@ import {
   isReadName,
   refuseCommand,
   refuseNotFound,
+  setOwnAvailability,
   viewerOf,
 } from '../../packages/core-commands/src/index.ts';
 import {
@@ -363,6 +364,21 @@ export function createApi(options: ApiOptions): Hono {
       });
     }
   }
+
+  // MP-7-10: the person's own availability, on the person prefix alone (their
+  // own account; no agent holds it), audited with its row.
+  api.post(`${PREFIX.person}:businessKey/account/availability`, async (context) => {
+    const admitted = await admit(options, context, PERSON);
+    if (admitted instanceof Response) return admitted;
+    const { database } = options;
+    const result = await setOwnAvailability(
+      database,
+      admitted.businessId,
+      admitted.presented,
+      admitted.body,
+    );
+    return isCommandRefusal(result) ? refuse(context, result) : context.json(result, 200);
+  });
 
   return api;
 }

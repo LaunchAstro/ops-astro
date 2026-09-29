@@ -98,6 +98,11 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
+  'public.person_availability': {
+    person_id: randomUUID(),
+    state: 'away',
+    reason: 'restricted calls seed',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

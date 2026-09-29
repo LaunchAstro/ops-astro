@@ -43,6 +43,8 @@ export type {
   LedgerDayView,
   LedgerEventView,
   PersonListResult,
+  TeamListResult,
+  TeamMemberView,
   PersonView,
   PresetPlanResult,
   ProposalVersionView,

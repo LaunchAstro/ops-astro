@@ -35,6 +35,7 @@ const PINNED_SHAPE = {
   'task.read': { spine: true, subject: true, authority: 'declared' },
   'task.receipt': { spine: true, subject: true, authority: 'declared' },
   'task.ledger': { spine: true, subject: false, authority: 'declared' },
+  'team.list': { spine: false, subject: false, authority: 'declared' },
 };
 
 const PINNED_IDENTIFIERS = {
@@ -48,14 +49,17 @@ const PINNED_IDENTIFIERS = {
   'task.read': ['recordId'],
   'task.receipt': ['attemptId'],
   'task.ledger': [],
+  'team.list': [],
 };
 
+// MP-7-10: `team.list` is staff only; a client is told NOT_FOUND.
 const PINNED_OUTSIDER_NOT_FOUND = [
   'task.board',
   'task.execution',
   'task.ledger',
   'task.read',
   'task.receipt',
+  'team.list',
 ];
 
 const BODIES: readonly (readonly [string, Readonly<Record<string, unknown>>])[] = [
@@ -125,6 +129,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
     fixes: ['Send attemptId as the observed attempt.'],
   })),
   'task.ledger': BODIES.map(() => LEDGER_ZONE),
+  'team.list': BODIES.map(() => null),
   'preset.plan': [
     plan('recordTypeKey'),
     plan('recordTypeKey'),
@@ -153,7 +158,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same ten reads', () => {
+  it('names the same eleven reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
@@ -161,7 +166,7 @@ describe('the per-read facts at 06ab232', () => {
     expect({ ...READ_IDENTIFIERS }).toStrictEqual(PINNED_IDENTIFIERS);
   });
 
-  it('tells an outsider NOT_FOUND on the same five', () => {
+  it('tells an outsider NOT_FOUND on the same six', () => {
     expect([...OUTSIDER_NOT_FOUND].toSorted()).toStrictEqual(PINNED_OUTSIDER_NOT_FOUND);
   });
 

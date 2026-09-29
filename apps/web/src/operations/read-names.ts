@@ -28,6 +28,7 @@ export const READ_NAMES = [
   'task.read',
   'task.board',
   'person.list',
+  'team.list',
   'settings.read',
   'session.capabilities',
   // The last two reads, which the client reached only through `mutate()` and

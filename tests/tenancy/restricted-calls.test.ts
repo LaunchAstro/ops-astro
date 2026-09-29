@@ -80,6 +80,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // T3e2: the journey drops nothing, so one report and one of its runs.
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
+  // 0037: set by a person in the Team panel (MP-7-10), which the journey never opens.
+  'public.person_availability': `insert into public.person_availability
+       (business_id, person_id, state, reason)
+     select business_id, id, 'away', 'restricted calls seed'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
 };
 
 /**

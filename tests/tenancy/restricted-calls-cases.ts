@@ -30,6 +30,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   // 0036: the live change record, stamped by the writes' own triggers (C4).
   ['siu', 'live_changes'],
+  // 0037: a person's own availability, set by them alone (MP-7-10).
+  ['siu', 'person_availability'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
