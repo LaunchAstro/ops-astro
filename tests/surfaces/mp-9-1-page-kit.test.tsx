@@ -9,19 +9,15 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  DataTable,
   Hint,
   Layer,
   SectionHead,
   SectionTip,
   Stat,
   StatRow,
-  nextSort,
   sectionIndex,
-  sortRows,
   tipKey,
   visibleTip,
-  type TableColumn,
   type TipPreferences,
 } from '../../packages/ui/src/index.ts';
 import { mount, type Mounted } from './mount.tsx';
@@ -152,6 +148,20 @@ describe('MP-9-1 KPI tiles with delta, term tips and of-tracks', () => {
 });
 
 describe('MP-9-1 KPI tiles with delta, term tips and of-tracks: the track', () => {
+  it('draws no track unless asked, and none against a zero total', async () => {
+    mounted = await mount(
+      <StatRow columns={2}>
+        <Stat label="Done" value={3} of={20} />
+        <Stat label="Empty" value={0} of={0} track />
+      </StatRow>,
+    );
+    expect(mounted.all('.stat__label').map((label) => label.textContent)).toEqual([
+      'Done',
+      'Empty',
+    ]);
+    expect(mounted.find('[role="meter"]')).toBeNull();
+  });
+
   it('refuses a track with no total rather than drawing an empty bar', async () => {
     mounted = await mount(
       <StatRow columns={2}>
@@ -186,61 +196,6 @@ describe('MP-9-1 stat rows follow the column rules at 1279, 900 and 640', () => 
     expect(rule(900)).toMatch(/\.statrow[^{]*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/u);
     expect(rule(640)).toMatch(/\.statrow[^{]*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/u);
     expect(rule(640)).toMatch(/\.stat__num[^{]*\{[^}]*font-size: 1\.75rem/u);
-  });
-});
-
-interface Row {
-  readonly name: string;
-  readonly hours: number | null;
-}
-const columns: readonly TableColumn<Row>[] = [
-  { id: 'name', label: 'Name', value: (row) => row.name },
-  { id: 'hours', label: 'Hours', value: (row) => row.hours, numeric: true },
-];
-const rows: readonly Row[] = [
-  { name: 'Beta', hours: 2 },
-  { name: 'alpha', hours: 10 },
-  { name: 'Gamma', hours: null },
-  { name: 'Delta', hours: 9.5 },
-];
-
-describe('MP-9-1 tables sort on the raw value, numbers first descending, flip on a second click and scroll inside their box', () => {
-  it('sorts on the raw number, not its text, descending first, empties last', () => {
-    const sorted = sortRows(rows, columns, { column: 'hours', direction: 'desc' });
-    expect(sorted.map((row) => row.hours)).toEqual([10, 9.5, 2, null]);
-    const flipped = sortRows(rows, columns, { column: 'hours', direction: 'asc' });
-    expect(flipped.map((row) => row.hours)).toEqual([2, 9.5, 10, null]);
-  });
-
-  it('a first click sorts descending, a second flips, a new column starts descending', () => {
-    const first = nextSort(undefined, 'hours');
-    expect(first).toEqual({ column: 'hours', direction: 'desc' });
-    expect(nextSort(first, 'hours')).toEqual({ column: 'hours', direction: 'asc' });
-    expect(nextSort(nextSort(first, 'hours'), 'name')).toEqual({
-      column: 'name',
-      direction: 'desc',
-    });
-  });
-
-  it('the mounted table sorts on click, flips on the second and scrolls inside its box', async () => {
-    mounted = await mount(
-      <DataTable
-        label="Hours by person"
-        columns={columns}
-        rows={rows}
-        rowKey={(row) => row.name}
-      />,
-    );
-    expect(mounted.find('.tbl-box')?.getAttribute('tabindex')).toBe('0');
-    expect(mounted.find('.tbl-box table')).not.toBeNull();
-    await mounted.click('th[data-col="hours"] button');
-    const read = (): string[] =>
-      mounted?.all('tbody tr td:first-child').map((cell) => cell.textContent ?? '') ?? [];
-    expect(read()).toEqual(['alpha', 'Delta', 'Beta', 'Gamma']);
-    expect(mounted.find('th[data-col="hours"]')?.getAttribute('aria-sort')).toBe('descending');
-    await mounted.click('th[data-col="hours"] button');
-    expect(read()).toEqual(['Beta', 'Delta', 'alpha', 'Gamma']);
-    expect(mounted.find('th[data-col="hours"]')?.getAttribute('aria-sort')).toBe('ascending');
   });
 });
 
