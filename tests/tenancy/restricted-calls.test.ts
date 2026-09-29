@@ -75,6 +75,15 @@ const UNREACHED: Readonly<Record<string, string>> = {
        from public.records a
        join public.records b on b.business_id = a.business_id and b.id > a.id
       where a.business_id = $1 order by a.id, b.id limit 1 returning 1`,
+  // 0035: no journey step logs time yet, so one finished entry is written here.
+  'public.time_entries': `insert into public.time_entries
+       (business_id, id, task_id, person_id, actor_id, started_at, ended_at, minutes,
+        ad_hoc, source)
+     select r.business_id, gen_random_uuid(), r.id, p.id, a.id, now(), now(), 1, false, 'log'
+       from public.records r
+       join public.people p on p.business_id = r.business_id
+       join public.actors a on a.business_id = r.business_id
+      where r.business_id = $1 order by r.id, p.id, a.id limit 1 returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */

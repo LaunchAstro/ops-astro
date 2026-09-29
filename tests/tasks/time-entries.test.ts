@@ -182,10 +182,13 @@ describe.skipIf(serverUrl === undefined)('MP-4-6 one running timer per person', 
     );
     expect(both.map((answer) => answer.kind).toSorted()).toStrictEqual(['running', 'started']);
     expect(await running(ada)).toBe(1);
-    for (const name of ['site', 'other']) {
-      // eslint-disable-next-line no-await-in-loop -- one stop at a time
-      await inAlpha(async (tx) => await stopTimer(tx, { taskId: tasks[name] ?? '', ...who(ada) }));
-    }
+    const stopAll = async (tx: TenantQuery) => {
+      for (const name of ['site', 'other']) {
+        // eslint-disable-next-line no-await-in-loop -- one stop at a time
+        await stopTimer(tx, { taskId: tasks[name] ?? '', ...who(ada) });
+      }
+    };
+    await inAlpha(stopAll);
   });
 });
 
