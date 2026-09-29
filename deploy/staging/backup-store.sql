@@ -163,7 +163,10 @@ create table backups.drills (
   actor text not null default session_user,
   check ((outcome = 'passed') = (stage is null)),
   check (outcome = 'failed' or (archive_taken_at is not null and source_major is not null
-    and target_major = production_major and tables > 0))
+    and target_major = production_major and tables > 0)),
+  -- Stage timings in milliseconds, keyed by the drill's timed stages, and nothing else.
+  check (jsonb_typeof(timings) = 'object' and not jsonb_path_exists(timings,
+    '$.keyvalue() ? (!(@.key like_regex "^(fetch|open|start|restore|check)$") || @.value.type() != "number")'))
 );
 create trigger drills_append_only before update or delete or truncate on backups.drills
   for each statement execute function backups.receipts_append_only();
