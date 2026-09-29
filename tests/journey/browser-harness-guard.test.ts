@@ -45,6 +45,16 @@ describe('the browser harness names its stack or refuses', () => {
     expect(load(env).stderr).not.toContain('is held by run pid');
   });
 
+  it('the keyboard and widths pass refuses without WEB_URL too (T4b2)', () => {
+    const run = spawnSync(process.execPath, ['tests/browser/keyboard-and-widths.mjs'], {
+      cwd: ROOT,
+      env: { PATH: process.env['PATH'] ?? '' },
+      encoding: 'utf8',
+    });
+    expect(run.status).not.toBe(0);
+    expect(run.stderr).toContain('keyboard and widths: set WEB_URL; there is no default address');
+  });
+
   it('guards the default port of an address that names none', () => {
     const lock = join(ROOT, '.local', 'ports', '80.lock');
     mkdirSync(join(ROOT, '.local', 'ports'), { recursive: true });
