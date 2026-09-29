@@ -59,7 +59,12 @@ interface Cell {
 }
 
 const READ_NAMES: ReadonlySet<CommandName> = new Set(READS);
-const LEASE_WORK: readonly CommandName[] = ['task.pickup', 'task.handback', 'task.heartbeat'];
+const LEASE_WORK: readonly CommandName[] = [
+  'task.pickup',
+  'task.handback',
+  'task.heartbeat',
+  'task.dispatch',
+];
 
 /** A domain-state digest without `handback_reports`, for I08's retained handback report. */
 const besideReports = (state: Readonly<Record<string, string>>): Record<string, string> =>
@@ -169,6 +174,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         return agentCell(agent, name, { reservationId }, undefined, null);
       }
       case 'task.heartbeat':
+      case 'task.dispatch':
       case 'task.handback': {
         const agent = await freshAgent();
         const p = await pickUpBy(ada, agent, `work for ${name}`);
@@ -220,6 +226,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         return personCell(noah, name, { reservationId }, 'SCOPE_NOT_GRANTED');
       }
       case 'task.heartbeat':
+      case 'task.dispatch':
       case 'task.handback': {
         const lease = await adaLease(`ada's lease noah may not ${name}`);
         const settle = { outcome: 'completed', report: { wrote: 'a refused draft' } };
@@ -248,6 +255,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           'RESERVATION_NOT_CLAIMABLE',
         );
       case 'task.heartbeat':
+      case 'task.dispatch':
       case 'task.handback': {
         const agent = await freshAgent();
         const p = await pickUpBy(w.h.world.ada, agent, `work refused ${name}`);

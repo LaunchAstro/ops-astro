@@ -283,6 +283,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     };
     const byLease: readonly [CommandName, Body][] = [
       ['task.heartbeat', {}],
+      ['task.dispatch', {}],
       ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
     ];
     for (const [op, extra] of byLease) {

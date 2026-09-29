@@ -27,13 +27,17 @@ import { randomUUID } from 'node:crypto';
 import type { CommandDeclaration, CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 
-/** The proposal every case that needs a gate proposes, spelled once. */
+/**
+ * The proposal every case that needs a gate proposes, spelled once. Its step is
+ * the worker's replayable synthetic one, so the work it approves can be
+ * dispatched (T2c1); a kind declaring no reconcile mode is refused there.
+ */
 export const PROPOSAL = {
   purpose: 'draft_the_reply',
   maximumMinor: 3_000,
   currency: 'AUD',
   payload: { instruction: 'draft a reply' },
-  step: { kind: 'compose', payload: {} },
+  step: { kind: 'synthetic_comment', payload: {} },
 } as const;
 
 /** A proposal on `task`, answering with the lineage it opened. */
@@ -265,6 +269,9 @@ export function createPositiveBody(
       case 'task.heartbeat':
         // The person renews their own lease (ledger line 38, "current lease
         // owner"). The agent's renewal is in the agent journey.
+        return { body: await ownLease(context) };
+      case 'task.dispatch':
+        // The person marks their own lease's step dispatched (T2c1).
         return { body: await ownLease(context) };
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);

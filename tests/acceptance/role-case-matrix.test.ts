@@ -250,9 +250,9 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // disagreeing with them. Runs before (f), which takes `mia`'s read away.
     // Person work (EX-01) is a sequence on the member's own lease rather than
     // three independent bodies: the member picks up approved work as
-    // themselves, renews that lease and hands it back. It is driven once per
+    // themselves, renews that lease, dispatches its step and hands it back. It is driven once per
     // member, when the first of the three comes up in the surface's order.
-    const personWork = new Set(['task.pickup', 'task.heartbeat', 'task.handback']);
+    const personWork = new Set(['task.pickup', 'task.heartbeat', 'task.dispatch', 'task.handback']);
     const drivenFor = new Set<string>();
     const pairOf = (name: string): string => {
       const declaration = COMMAND_SURFACE.find((each) => each.name === name);
@@ -277,6 +277,10 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       if (grants.has(pairOf('task.heartbeat'))) {
         const beat = await harness.asPerson('task.heartbeat', own, 'alpha', caller);
         observe(caller.name, 'e-member-positive', 'task.heartbeat', beat, SUCCESS);
+      }
+      if (grants.has(pairOf('task.dispatch'))) {
+        const marked = await harness.asPerson('task.dispatch', own, 'alpha', caller);
+        observe(caller.name, 'e-member-positive', 'task.dispatch', marked, SUCCESS);
       }
       if (grants.has(pairOf('task.handback'))) {
         const settled = await harness.asPerson(
@@ -515,8 +519,8 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(
         declaration.name,
-        declaration.name === 'task.heartbeat'
-          ? // A heartbeat, like a handback, names its task through the lease
+        declaration.name === 'task.heartbeat' || declaration.name === 'task.dispatch'
+          ? // A heartbeat or a dispatch, like a handback, names its task through the lease
             // and never through a stray `recordId` (final review R1 #23), so
             // the sibling is reached by its own lease.
             {
