@@ -59,6 +59,7 @@ export const task = (over: Readonly<Record<string, unknown>> = {}) => ({
   key: 'Proj-Verity-Pacing',
   title: 'Budget pacing fix',
   description: null,
+  agentBrief: null,
   state: { id: 's1', key: 'awaiting', label: 'Awaiting approval', machineCategory: 'started' },
   assignee: null,
   due: null,
