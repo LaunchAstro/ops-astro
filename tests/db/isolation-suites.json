@@ -8,6 +8,7 @@
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
     "tests/wayfinder/wf-1.test.ts",
-    "tests/wayfinder/wf-2.test.ts"
+    "tests/wayfinder/wf-2.test.ts",
+    "tests/cli/api-3-isolation.test.ts"
   ]
 }
