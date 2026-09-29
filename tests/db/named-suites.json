@@ -102,7 +102,8 @@
     "SL07 (U09, MP-5-1 to MP-5-5) adds mp-5-board-isolation (task.board across three crossings with statuses: another business, a client login holding one share, the agent under a live delegation; the withheld count and the scope canary over the board machine).",
     "SL07 (U25, MP-5-8) adds mp-5-8-board-columns (each task.board row reads back the stage and the client mark stored for it, and the crossings into another business and another client's tasks; the rank's cases wait on SL08's U15) and mp-5-8-board-agent (the agent under a live delegation is refused the board with no rank, stage or canary).",
     "SL07 (U25, MP-5-11) adds mp-5-11-board-status-order and mp-5-11-board-agent (each task.board row carries its state record's stored position, a reordered workflow is the next read's order, and the three crossings: another business reordering its workflow never moves a row here, a reader of one client's tasks gets only their positions, the agent under a live delegation is refused with no position or canary).",
-    "SL07 (U25, MP-5-12) adds mp-5-12-board-review (each task.board row says whether its task waits at an open gate for the caller's decision: pending, not expired, inside the caller's decide grant; a decided gate is off the next read; the three crossings: a record-scoped decider flags only its own task, another business's decider is refused, the agent under a live delegation is refused, no flag or canary; every admitted answer names its own caller as `viewer`, never another person)."
+    "SL07 (U25, MP-5-12) adds mp-5-12-board-review (each task.board row says whether its task waits at an open gate for the caller's decision: pending, not expired, inside the caller's decide grant; a decided gate is off the next read; the three crossings: a record-scoped decider flags only its own task, another business's decider is refused, the agent under a live delegation is refused, no flag or canary; every admitted answer names its own caller as `viewer`, never another person).",
+    "SL07 (U25, MP-5-9) adds mp-5-9-board-row (the board row's rename, tick and add subtask through task.update, task.complete / task.reopen and task.create with a parent, each read back with its audit event; a reader without task:write is refused all three with nothing written; the three crossings: a record-scoped writer renames only its own task, another business's writer is refused, the agent under a live delegation is refused a task outside it, no canary)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -293,7 +294,8 @@
     "tests/reads/mp-5-8-board-agent.test.ts",
     "tests/reads/mp-5-11-board-status-order.test.ts",
     "tests/reads/mp-5-11-board-agent.test.ts",
-    "tests/reads/mp-5-12-board-review.test.ts"
+    "tests/reads/mp-5-12-board-review.test.ts",
+    "tests/commands/mp-5-9-board-row.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
