@@ -4,10 +4,11 @@
 // checks the grant, then waits for its locks; a grant that lapses while it
 // waits no longer counts when the answer is decided, and nothing is written.
 
+import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { endAtBudgetStop } from '../../packages/core-runtime/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
-import { racer } from '../runtime/schedules-harness.ts';
+import { asAgent, codeOf, racer } from '../runtime/schedules-harness.ts';
 import { noDatabase, s, useBrokerWorld } from './broker-world.ts';
 import { as, moneyOf, one, stopped, usePeople } from './budget-answers-world.ts';
 
@@ -66,5 +67,18 @@ it('AW-05 a grant that lapses while the answer waits on its locks is refused und
     await holder.close();
     await answerer.close();
   }
+  expect(await moneyOf(runId)).toEqual(before);
+});
+
+it('AW-05 a pickup of a waiting run is refused and moves nothing', async () => {
+  const { work, runId } = await stopped('aw05 pickup while waiting');
+  const before = await moneyOf(runId);
+  const result = await asAgent(s, {
+    command: 'task.pickup',
+    operationId: randomUUID(),
+    reservationId: work.decision['reservationId'],
+    leaseSeconds: 600,
+  });
+  expect(codeOf(result)).toBe('RESERVATION_NOT_CLAIMABLE');
   expect(await moneyOf(runId)).toEqual(before);
 });
