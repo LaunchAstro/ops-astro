@@ -1,16 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Staging holds made-up data only (ticket S0-1), so the seed refuses a database
-// it cannot vouch for, judged first from the database's own mark. An unmarked
-// database is refused on that alone, reading no business's rows and no
-// sign-in. The seed writes the mark, naming by digest the businesses and people
-// it made; a marked database is then refused if it holds any other business or
-// person, a record of a type the seed never installs, or a sign-in outside the
-// seed's reserved `.local` addresses. A mark is always checked: a person's
-// LOCAL_SEED_MADE_UP=confirm applies only to an unmarked database (a new one,
-// or one seeded before the mark), and then holds it to the seed's keys, names
-// and types instead. The questions are yes-or-no, so no refusal carries counts
-// or record content.
+// it cannot vouch for. It decides from metadata the seed itself installed, and
+// never reads a business's, person's, record's or sign-in's row to decide:
+//
+// - The mark: a comment on the database, written by the seed.
+// - The guard: a trigger on every tenant table (each public table with a
+//   `business_id`) and on `auth.users`. A write by the database's owner or a
+//   superuser that the seed did not tag, as a restore or a hand-loaded file
+//   is, lands in the guard's ledger by table name, never by content. So does a
+//   sign-in whose address is not a made-up `.local` one. Writes through the
+//   application's own role are what people typed on staging, and pass.
+// - The watch: an event trigger that guards a table from its creation and
+//   notes a guard switched off (`pg_restore --disable-triggers` does that).
+//   Guards and watch fire in every replication mode.
+//
+// A marked database is refused if its ledger names anything, or any tenant
+// table lacks an enabled guard. An unmarked one is refused unless a person
+// confirms it (LOCAL_SEED_MADE_UP=confirm) and every tenant table has never
+// held a row, judged by its storage size. The guard stops a mistake; the owner
+// can remove it on purpose, as the owner can write the mark by hand.
 import { createHash } from 'node:crypto';
 
 /** The one call this needs from the owner connection. */
@@ -20,67 +29,159 @@ export interface OwnerQuery {
 
 const MARK = 'ops-astro made-up data; businesses: ';
 const PEOPLE = '; people: ';
-const SEED_TYPES = ['task', 'task_state', 'task_comment'];
-const BY_DIGEST = "not (encode(sha256(id::text::bytea), 'hex') = any($1))";
-const ids = (list: string): string[] => list.split(',').filter(Boolean);
+const GUARD = 'ops_astro_made_up_guard';
+const LEDGER = 'ops_astro_made_up.untrusted';
 const digest = (id: string): string => createHash('sha256').update(id).digest('hex');
-const joined = (list: readonly string[]): string => list.map(digest).toSorted().join(',');
+const joined = (list: readonly string[]): string =>
+  list
+    .map((id) => digest(id))
+    .toSorted()
+    .join(',');
 
-async function yes(admin: OwnerQuery, text: string, parameters: unknown[] = []): Promise<boolean> {
-  const [row] = await admin.execute<{ yes: boolean }>(`select (${text}) as yes`, parameters);
+/** Tenant tables and the sign-in table, from the catalogue: names, never rows. */
+const GUARDED = `select c.oid from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where c.relkind = 'r' and ((n.nspname = 'auth' and c.relname = 'users')
+      or (n.nspname = 'public' and exists (select from pg_attribute a
+            where a.attrelid = c.oid and a.attname = 'business_id' and not a.attisdropped)))`;
+
+const SIGNS: Readonly<Record<string, string>> = {
+  'public.businesses': 'it holds a business the seed did not make',
+  'public.people': 'it holds a person the seed did not make',
+  'auth.users': 'it holds a sign-in that is not a made-up address',
+  guard: 'a made-up guard was switched off',
+};
+const RECORD = 'it holds a record the seed cannot vouch for';
+const UNGUARDED = 'a table has no made-up guard';
+
+async function yes(admin: OwnerQuery, text: string): Promise<boolean> {
+  const [row] = await admin.execute<{ yes: boolean }>(`select (${text}) as yes`);
   return row?.yes === true;
 }
 
-async function readMark(admin: OwnerQuery): Promise<[string[], string[]] | undefined> {
+async function marked(admin: OwnerQuery): Promise<boolean> {
   const [row] = await admin.execute<{ mark: string | null }>(
     `select shobj_description(oid, 'pg_database') as mark
        from pg_database where datname = current_database()`,
   );
   const mark = row?.mark;
-  if (typeof mark !== 'string' || !mark.startsWith(MARK) || !mark.includes(PEOPLE))
-    return undefined;
-  const [businesses = '', people = ''] = mark.slice(MARK.length).split(PEOPLE);
-  return [ids(businesses), ids(people)];
+  return typeof mark === 'string' && mark.startsWith(MARK) && mark.includes(PEOPLE);
 }
 
+/**
+ * Why this database may not be seeded, or none. `confirmed` is a person's
+ * LOCAL_SEED_MADE_UP=confirm; it opens only an unmarked database that has never
+ * held a tenant row. The seed's keys and names are no longer matched against
+ * rows, so the second and fourth arguments are accepted and not read.
+ */
 export async function productionSigns(
   admin: OwnerQuery,
-  madeUpBusinesses: readonly string[],
+  _seedKeys: readonly string[] = [],
   confirmed = false,
-  madeUpPeople: readonly string[] = [],
+  _seedNames: readonly string[] = [],
 ): Promise<string[]> {
-  const mark = await readMark(admin);
-  if (mark === undefined && !confirmed) return ['it carries no made-up mark'];
-  const [businesses, people] = mark ?? [[...madeUpBusinesses], [...madeUpPeople]];
-  const [business, person] = mark
-    ? [BY_DIGEST, BY_DIGEST]
-    : ['not (key = any($1))', 'not (display_name = any($1))'];
-  const signs: string[] = [];
-  if (await yes(admin, `exists (select from public.businesses where ${business})`, [businesses]))
-    signs.push('it holds a business the seed did not make');
-  if (await yes(admin, `exists (select from public.people where ${person})`, [people]))
-    signs.push('it holds a person the seed did not make');
-  const types = `exists (select from public.record_types t join public.records r
-    on r.business_id = t.business_id and r.record_type_id = t.id where not (t.key = any($1)))`;
-  if (await yes(admin, types, [SEED_TYPES]))
-    signs.push('it holds a record the seed cannot vouch for');
-  if (
-    (await yes(admin, "to_regclass('auth.users') is not null")) &&
-    (await yes(
-      admin,
-      "exists (select from auth.users where email is null or email not like '%.local')",
-    ))
-  )
-    signs.push('it holds a sign-in that is not a made-up address');
-  return signs;
+  if (await marked(admin)) return guardSigns(admin);
+  if (!confirmed) return ['it carries no made-up mark'];
+  const empty = `coalesce((select bool_and(pg_relation_size(g.oid) = 0) from (${GUARDED}) g), true)`;
+  return (await yes(admin, empty)) ? [] : ['it carries no made-up mark and is not a new database'];
 }
 
-/** Mark the database with the businesses and people the seed made in it. */
+/** A marked database: what its guard's ledger names, and any table left unguarded. */
+async function guardSigns(admin: OwnerQuery): Promise<string[]> {
+  const signs = new Set<string>();
+  if (await yes(admin, `to_regclass('${LEDGER}') is not null`))
+    for (const { relation } of await admin.execute<{ relation?: string }>(
+      `select relation from ${LEDGER} order by relation`,
+    ))
+      signs.add(SIGNS[relation ?? ''] ?? RECORD);
+  else signs.add(UNGUARDED);
+  const covered = `not exists (select from (${GUARDED}) g where not exists (select from pg_trigger t
+      where t.tgrelid = g.oid and t.tgname = '${GUARD}' and t.tgenabled = 'A'))
+    and exists (select from pg_event_trigger where evtname = '${GUARD}' and evtenabled = 'A')`;
+  if (!(await yes(admin, covered))) signs.add(UNGUARDED);
+  return [...signs];
+}
+
+/** The guard and the watch, in order; each statement is safe to run again. */
+const INSTALL = [
+  `create schema if not exists ops_astro_made_up`,
+  `revoke all on schema ops_astro_made_up from public`,
+  `create table if not exists ${LEDGER} (relation text primary key)`,
+  `
+    create or replace function ops_astro_made_up.note(relation text) returns void
+      language sql security definer set search_path = pg_catalog, pg_temp
+      as $$ insert into ${LEDGER} values (relation) on conflict do nothing $$`,
+  // A write is the seed's when it tags its transaction; it is a person's on
+  // staging when it comes through any role that is neither owner nor superuser.
+  `
+    create or replace function ops_astro_made_up.guard() returns trigger
+      language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+    begin
+      if tg_table_schema = 'auth' then
+        if new.email is null or lower(new.email) not like '%.local' then
+          perform ops_astro_made_up.note('auth.users');
+        end if;
+      elsif current_setting('ops_astro.writer', true) is distinct from 'seed'
+        and ((select rolsuper from pg_roles where rolname = session_user)
+          or pg_has_role(session_user,
+               (select datdba from pg_database where datname = current_database()), 'member'))
+      then
+        perform ops_astro_made_up.note(tg_table_schema || '.' || tg_table_name);
+      end if;
+      return null;
+    end $$`,
+  `
+    create or replace function ops_astro_made_up.watch() returns event_trigger
+      language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+    declare
+      command record;
+    begin
+      for command in select * from pg_event_trigger_ddl_commands() loop
+        if command.command_tag = 'CREATE TABLE' then
+          perform ops_astro_made_up.protect(command.objid);
+        elsif command.command_tag = 'ALTER TABLE' and exists (select from pg_trigger
+            where tgrelid = command.objid and tgname = '${GUARD}' and tgenabled <> 'A') then
+          perform ops_astro_made_up.note('guard');
+        end if;
+      end loop;
+    end $$`,
+  // Guards one table if it is a tenant or sign-in table without one. A table
+  // is empty when CREATE TABLE ends; CREATE TABLE AS is another tag, never
+  // guarded here, so its rows are never vouched for.
+  `
+    create or replace function ops_astro_made_up.protect(target oid) returns void
+      language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+    begin
+      if target in (${GUARDED}) and not exists (select from pg_trigger
+          where tgrelid = target and tgname = '${GUARD}') then
+        execute format('create trigger ${GUARD} after insert or update on %s
+          for each row execute function ops_astro_made_up.guard()', target::regclass);
+        execute format('alter table %s enable always trigger ${GUARD}', target::regclass);
+      end if;
+    end $$`,
+  `drop event trigger if exists ${GUARD}`,
+  `create event trigger ${GUARD} on ddl_command_end
+    when tag in ('CREATE TABLE', 'ALTER TABLE') execute function ops_astro_made_up.watch()`,
+  `alter event trigger ${GUARD} enable always`,
+];
+
+/** Install, or refresh, the guard and the watch. It never clears the ledger. */
+export async function guardMadeUp(admin: OwnerQuery): Promise<void> {
+  // In order: each statement builds on the one before.
+  // oxlint-disable-next-line no-await-in-loop
+  for (const statement of INSTALL) await admin.execute(statement);
+  for (const { oid } of await admin.execute<{ oid: number }>(GUARDED))
+    // One table's guard at a time: each is DDL on its own table.
+    // oxlint-disable-next-line no-await-in-loop
+    await admin.execute('select ops_astro_made_up.protect($1)', [oid]);
+}
+
+/** Guard the database, then mark it with the businesses and people the seed made. */
 export async function markMadeUp(
   admin: OwnerQuery,
   businessIds: readonly string[],
   personIds: readonly string[] = [],
 ): Promise<void> {
+  await guardMadeUp(admin);
   const [row] = await admin.execute<{ statement: string }>(
     "select format('comment on database %I is %L', current_database(), $1::text) as statement",
     [`${MARK}${joined(businessIds)}${PEOPLE}${joined(personIds)}`],
@@ -88,3 +189,9 @@ export async function markMadeUp(
   if (row === undefined) throw new Error('made-up-only: no mark statement');
   await admin.execute(row.statement);
 }
+
+/**
+ * A FROM item that tags the statement's transaction as the seed's, so the guard
+ * lets the seed's own write through the owner connection pass.
+ */
+export const SEED_TAG = "(select set_config('ops_astro.writer', 'seed', true)) as seed";

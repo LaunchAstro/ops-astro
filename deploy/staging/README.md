@@ -43,11 +43,20 @@ survive the database container stopping. It holds made-up data only, and the
 runbook migrates and seeds it again after a restart.
 
 Staging's database holds made-up data only (`S0-1 no production data`).
-`scripts/local-seed.mjs` refuses a database with no made-up mark, reading
-nothing else. It marks a database with the businesses and people it made, and
-refuses a marked one holding any other, a record of a type it never installs,
-or a sign-in outside `.local`. A new database, or one seeded before the mark,
-is confirmed once by a person with `LOCAL_SEED_MADE_UP=confirm`.
+`scripts/local-seed.mjs` decides from what it installed itself, never from a
+tenant's rows (`scripts/ops/made-up-only.ts`). Before its first write it puts a
+guard on every tenant table and on `auth.users`, and at the end it marks the
+database. After that, a write by the owner or a superuser that the seed did not
+make, as a restore or a hand-loaded file is, a sign-in outside `.local`, or a
+guard switched off is noted, and the seed refuses the database. Writes through
+the application are what people type on staging, and pass. A new database, whose
+tenant tables have never held a row, is confirmed once by a person with
+`LOCAL_SEED_MADE_UP=confirm`. A marked database that was migrated with a data
+change, or refused for any reason, is started again empty: its container's
+data does not survive a restart.
+
+Backups are never restored into staging: the restore drill takes no target and
+restores only into a throwaway container of its own.
 
 Before staging is prepared, and again after, the owner runs
 `scripts/ops/service-report.mjs` on the machine:
