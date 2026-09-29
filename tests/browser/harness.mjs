@@ -12,7 +12,7 @@
 // so a row already in the database cannot make a case pass.
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 
@@ -22,21 +22,54 @@ export const root = fileURLToPath(new URL('../..', import.meta.url));
 // evidence without first recreating someone else's local folder. `SHOT_DIR`
 // still wins, which is how a run collects its evidence somewhere else.
 export const SHOTS = process.env.SHOT_DIR ?? `${root}.local/evidence/browser`;
-// **The default stays, and it says so out loud.** `pnpm verify:browser` runs
-// `slice-acceptance.mjs` with no `WEB_URL` in the manifest and reaches every
-// case group through this constant, so dropping the default would break the
-// registered run rather than any script that forgot the override -- and the
-// manifest is not this lane's file to edit. Keeping it silent is what let three
-// throwaway probe scripts sign in and create tasks against another worktree's
-// front end on 5190 while their author read the wrong application. So a run
-// that did not choose its own port is told which one it got, on its first line,
-// where a person diagnosing a missing screen will see it.
-const WEB_DEFAULT = 'http://127.0.0.1:5190';
-if (process.env.WEB_URL === undefined) {
-  process.stderr.write(`browser cases: no WEB_URL, using the default ${WEB_DEFAULT}\n`);
+// **No default address (T4b1, spike RN-03).** This file used to fall back to
+// the live demo's 5190 and 8790 when `WEB_URL` or `API_URL` was unset, and
+// said so on stderr; three throwaway probes signed in and created tasks
+// against another worktree's front end that way. A proof that can reach the
+// demo is not a proof about the stack it meant, so both addresses are now
+// required and a run without them is refused before anything starts.
+const missing = ['WEB_URL', 'API_URL'].filter((name) => (process.env[name] ?? '') === '');
+if (missing.length > 0) {
+  throw new Error(`browser cases: set ${missing.join(' and ')}; there is no default address`);
 }
-export const WEB = process.env.WEB_URL ?? WEB_DEFAULT;
-export const API = process.env.API_URL ?? 'http://127.0.0.1:8790';
+export const WEB = process.env.WEB_URL;
+export const API = process.env.API_URL;
+
+/**
+ * The port guard: one browser run per web and API port at a time. Each port
+ * is claimed by a lock file under `.local/ports/` holding this process's pid,
+ * created exclusively; a live holder refuses the run, a dead one's lock is
+ * taken over. The locks go when this process exits.
+ */
+function claimPort(url) {
+  const parsed = new URL(url);
+  const fallback = parsed.protocol === 'https:' ? '443' : '80';
+  const port = parsed.port === '' ? fallback : parsed.port;
+  const lock = `${root}.local/ports/${port}.lock`;
+  mkdirSync(`${root}.local/ports`, { recursive: true });
+  try {
+    writeFileSync(lock, String(process.pid), { flag: 'wx' });
+  } catch {
+    const holder = Number(readFileSync(lock, 'utf8'));
+    if (holder !== process.pid && alive(holder)) {
+      throw new Error(`browser cases: port ${port} is held by run pid ${String(holder)}`);
+    }
+    writeFileSync(lock, String(process.pid));
+  }
+  process.once('exit', () => rmSync(lock, { force: true }));
+}
+
+function alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+claimPort(WEB);
+claimPort(API);
 export const DOCKER = process.env.DOCKER_BIN ?? '/usr/local/bin/docker';
 
 // **What B6 stops.** Case B6 stops a Postgres container and the API process and
