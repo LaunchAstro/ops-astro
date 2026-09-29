@@ -17,7 +17,13 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const UNIT = String.raw`(?:seconds?|secs?|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?)`;
-const FIGURE = String.raw`\d+(?:\.\d+)?\s*${UNIT}\b`;
+const IN_WORDS = String.raw`(?:an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|forty-eight|sixty|ninety|several|a\s+few|a\s+couple\s+of|half\s+an?)`;
+/**
+ * A number and a time unit: digits with any unit, or a number in words with a
+ * whole unit. In words, `second` counts only as `seconds`: "a second operator"
+ * is an ordinal, and "ten seconds" is still a figure.
+ */
+const FIGURE = String.raw`(?:\d+(?:\.\d+)?\s*${UNIT}|\b${IN_WORDS}[\s-]+(?:seconds|minutes?|hours?|days?|weeks?))\b`;
 const RESTORE = String.raw`\b(?:recover(?:y|ies|s|ed|ing)?|restor(?:e|es|ed|ing|ation|ations))\b`;
 
 /**
@@ -27,18 +33,23 @@ const RESTORE = String.raw`\b(?:recover(?:y|ies|s|ed|ing)?|restor(?:e|es|ed|ing|
  * figure, and a false match costs a rewording.
  */
 const RECOVERY_FIGURES: readonly RegExp[] = [
-  new RegExp(String.raw`\b(?:RTO|RPO)\b[^.\n]{0,40}?\d`, 'u'),
-  new RegExp(String.raw`${RESTORE}[^.\n]{0,60}?${FIGURE}`, 'iu'),
-  new RegExp(String.raw`${FIGURE}[^.\n]{0,40}?${RESTORE}`, 'iu'),
+  new RegExp(String.raw`\b(?:RTO|RPO)\b[^.]{0,40}?\d`, 'u'),
+  new RegExp(String.raw`${RESTORE}[^.]{0,60}?${FIGURE}`, 'iu'),
+  new RegExp(String.raw`${FIGURE}[^.]{0,40}?${RESTORE}`, 'iu'),
   new RegExp(String.raw`${FIGURE}\s+(?:of\s+)?(?:data\s+loss|downtime)`, 'iu'),
 ];
 
+/**
+ * Read as sentences, not lines: whitespace, line breaks included, is folded to
+ * one space first, so a figure wrapped onto the next line is still found in
+ * its sentence (Sol review 2, criterion 11).
+ */
 function recoveryFigures(text: string): readonly string[] {
-  const found: string[] = [];
-  for (const line of text.split('\n')) {
-    if (RECOVERY_FIGURES.some((pattern) => pattern.test(line))) found.push(line.trim());
-  }
-  return found;
+  return text
+    .replaceAll(/\s+/gu, ' ')
+    .split(/(?<=[.!?])\s/u)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => RECOVERY_FIGURES.some((pattern) => pattern.test(sentence)));
 }
 
 /** The product's docs and screens: every Markdown file outside dependencies, and the web app. */
@@ -69,6 +80,8 @@ describe('S0-3 no recovery figure', () => {
       'The recovery point is 1 day behind.',
       'Restoration takes 4h.',
       'Plan for 3 hours to restore the database.',
+      'Restores finish in an hour.',
+      'A four-hour restore window.',
     ]) {
       expect(recoveryFigures(planted)).toStrictEqual([planted]);
     }
@@ -79,12 +92,24 @@ describe('S0-3 no recovery figure', () => {
     expect(recoveryFigures(planted)).toStrictEqual([planted]);
   });
 
+  it('Sol proof, criterion 11: written and wrapped recovery times are found', () => {
+    const inWords = 'We can restore the database in four hours.';
+    const wrapped = 'We can restore the database within\n4 hours.';
+    expect([
+      recoveryFigures(inWords).length > 0,
+      recoveryFigures(wrapped).length > 0,
+    ]).toStrictEqual([true, true]);
+  });
+
   it('passes sentences that quote no recovery figure', () => {
     for (const neutral of [
       'Publish no recovery-point or recovery-time figure until a restore has been rehearsed.',
       'Backups are kept for 30 days, the retention window.',
       'The drill restores the nightly dump into a throwaway container.',
       'The session expires after 15 minutes.',
+      'I am restoring the draft.',
+      'A second operator restores from the runbook.',
+      'Recovery is one of the four duties; the rota changes every week.',
     ]) {
       expect(recoveryFigures(neutral)).toStrictEqual([]);
     }
