@@ -43,4 +43,7 @@ export * from './primitives/Tabs.tsx';
 export * from './surfaces/Shell.tsx';
 export * from './surfaces/Board.tsx';
 export * from './surfaces/TaskPage.tsx';
-export * from './page-kit/stubs.tsx';
+export * from './page-kit/tips.tsx';
+export * from './page-kit/section.tsx';
+export * from './page-kit/stats.tsx';
+export * from './page-kit/table.tsx';
