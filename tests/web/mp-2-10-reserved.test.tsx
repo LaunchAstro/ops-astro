@@ -11,7 +11,8 @@
 // oxlint-disable no-await-in-loop
 
 import { describe, expect, it } from 'vitest';
-import { PAGES, SECTIONS, canonicalOf, pageAt } from '../../apps/web/src/manifest.ts';
+import { canonicalOf } from '../../apps/web/src/legacy.ts';
+import { PAGES, SECTIONS, pageAt } from '../../apps/web/src/manifest.ts';
 import { matchRoute } from '../../apps/web/src/routes.ts';
 import { filled, hrefs, open } from './mp-2-1-support.tsx';
 
@@ -69,9 +70,9 @@ describe('MP-2-10 each undesigned address stays out of the navigation, and a typ
 
   it('keeps the page and its ticket on the state for the record, not in its words', async () => {
     const { view } = await open('/inbox/');
-    const state = view.find('[data-outcome="placeholder"]');
-    expect(state?.getAttribute('data-page')).toBe('agency:inbox/inbox');
-    expect(state?.getAttribute('data-ticket')).toBe('MP-7-3');
+    const state = view.find('[data-outcome="placeholder"]') as HTMLElement | null;
+    expect(state?.dataset['page']).toBe('agency:inbox/inbox');
+    expect(state?.dataset['ticket']).toBe('MP-7-3');
     expect(state?.textContent).not.toContain('MP-7-3');
     await view.unmount();
   });

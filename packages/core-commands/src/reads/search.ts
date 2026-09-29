@@ -74,7 +74,7 @@ export async function searchTasks(
       limit ${HIT_LIMIT}`,
     [tx.businessId, target.taskTypeId, wholeBusiness, records, words.join(' & ')],
   );
-  return { ok: true, hits: rows.map(hitOf) };
+  return { ok: true, hits: rows.map((row) => hitOf(row)) };
 }
 
 function hitOf(row: HitRow): SearchHit {

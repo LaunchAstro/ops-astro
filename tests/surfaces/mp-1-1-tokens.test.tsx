@@ -65,6 +65,57 @@ const ALIASES = new Set([
 ]);
 const STATUS_ALIASES = /^--(info|success|warning|danger)-(light|soft)$/u;
 
+// Held on purpose in both themes: the one accent, ink on a dark or accent
+// ground, the dark ground itself, and the fills that do not flip.
+const CONSTANT = new Set([
+  '--accent',
+  '--accent-ink',
+  '--brand',
+  '--btn-hover',
+  '--btn-hover-text',
+  '--on-dark',
+  '--on-dark-muted',
+  '--void',
+  '--client-brand',
+  '--hero-paint',
+  '--scrim',
+  '--accent-wash',
+  '--shadow-overlay',
+  '--info-light',
+  '--success-light',
+  '--warning-light',
+  '--danger-light',
+]);
+const COLOUR_PROPERTY =
+  /^(color|background(-color|-image)?|border(-(top|right|bottom|left|block|inline)(-start|-end)?)?(-color)?|outline(-color)?|box-shadow|fill|stroke|caret-color|accent-color|text-decoration(-color)?|column-rule(-color)?)$/u;
+const SHEETS = [
+  `${styles}2-primitives.css`,
+  `${styles}3-shell.css`,
+  `${styles}4-board.css`,
+  `${styles}5-task.css`,
+  `${root}apps/web/src/styles/6-slice.css`,
+];
+/** What in `css` would draw the same in both themes, or name a token nobody declares. */
+const lightOnly = (sets: ReturnType<typeof resolved>, name: string, css: string): string[] => {
+  const problems: string[] = [];
+  const bare = css.replaceAll(/\/\*[\s\S]*?\*\//gu, '');
+  for (const match of bare.matchAll(/([a-z-]+)\s*:\s*([^;{}]+);/gu)) {
+    const [, property = '', value = ''] = match;
+    if (!COLOUR_PROPERTY.test(property)) continue;
+    const where = `${name} ${property}: ${value.trim()}`;
+    if (/#[0-9a-f]{3,8}\b|\b(rgba?|hsla?|oklch|oklab|lab|lch)\(|\b(white|black)\b/iu.test(value)) {
+      problems.push(`literal colour in ${where}`);
+    }
+    for (const [, token = ''] of value.matchAll(/var\((--[\w-]+)/gu)) {
+      if (sets.light[token] === undefined) problems.push(`undeclared ${token} in ${where}`);
+      else if (sets.light[token] === sets.dark[token] && !CONSTANT.has(token)) {
+        problems.push(`${token} has no dark value, in ${where}`);
+      }
+    }
+  }
+  return problems;
+};
+
 describe('MP-1-1 tokens', () => {
   it('MP-1-1 every token paired', () => {
     const sets = resolved();
@@ -102,7 +153,9 @@ describe('MP-1-1 tokens', () => {
     expect(bitten.status).toBe(1);
     expect(bitten.stderr).toContain('dark --unpaired: declared in dark only');
   });
+});
 
+describe('MP-1-1 tokens, against the baseline and the sheets', () => {
   it('MP-1-1 token diff', () => {
     const clean = run();
     expect(clean.stderr).toBe('');
@@ -132,67 +185,21 @@ describe('MP-1-1 tokens', () => {
 
   it('MP-1-1 no light-only element', () => {
     const sets = resolved();
-    // Held on purpose in both themes: the one accent, ink on a dark or accent
-    // ground, the dark ground itself, and the fills that do not flip.
-    const constant = new Set([
-      '--accent',
-      '--accent-ink',
-      '--brand',
-      '--btn-hover',
-      '--btn-hover-text',
-      '--on-dark',
-      '--on-dark-muted',
-      '--void',
-      '--client-brand',
-      '--hero-paint',
-      '--scrim',
-      '--accent-wash',
-      '--shadow-overlay',
-      '--info-light',
-      '--success-light',
-      '--warning-light',
-      '--danger-light',
-    ]);
-    const colourProperty =
-      /^(color|background(-color|-image)?|border(-(top|right|bottom|left|block|inline)(-start|-end)?)?(-color)?|outline(-color)?|box-shadow|fill|stroke|caret-color|accent-color|text-decoration(-color)?|column-rule(-color)?)$/u;
-    const sheets = [
-      `${styles}2-primitives.css`,
-      `${styles}3-shell.css`,
-      `${styles}4-board.css`,
-      `${styles}5-task.css`,
-      `${root}apps/web/src/styles/6-slice.css`,
-    ];
-    const lightOnly = (name: string, css: string): string[] => {
-      const problems: string[] = [];
-      const bare = css.replaceAll(/\/\*[\s\S]*?\*\//gu, '');
-      for (const match of bare.matchAll(/([a-z-]+)\s*:\s*([^;{}]+);/gu)) {
-        const [, property = '', value = ''] = match;
-        if (!colourProperty.test(property)) continue;
-        const where = `${name} ${property}: ${value.trim()}`;
-        if (
-          /#[0-9a-f]{3,8}\b|\b(rgba?|hsla?|oklch|oklab|lab|lch)\(|\b(white|black)\b/iu.test(value)
-        ) {
-          problems.push(`literal colour in ${where}`);
-        }
-        for (const [, token = ''] of value.matchAll(/var\((--[\w-]+)/gu)) {
-          if (sets.light[token] === undefined) problems.push(`undeclared ${token} in ${where}`);
-          else if (sets.light[token] === sets.dark[token] && !constant.has(token)) {
-            problems.push(`${token} has no dark value, in ${where}`);
-          }
-        }
-      }
-      return problems;
-    };
     // It bites: a literal, a token that never flips and an undeclared one.
     expect(
       lightOnly(
+        sets,
         'planted',
         '.x { background: #fff; color: var(--void-deep); border-color: var(--nope); }',
       ),
     ).toHaveLength(3);
-    expect(sheets.flatMap((sheet) => lightOnly(sheet.slice(root.length), read(sheet)))).toEqual([]);
+    expect(
+      SHEETS.flatMap((sheet) => lightOnly(sets, sheet.slice(root.length), read(sheet))),
+    ).toEqual([]);
   });
+});
 
+describe('MP-1-1 tokens, the dock callout and the captures', () => {
   it('MP-1-1 dock callout edge', () => {
     const sets = resolved();
     const shell = read(`${styles}3-shell.css`).replaceAll(/\/\*[\s\S]*?\*\//gu, '');

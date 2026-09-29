@@ -25,7 +25,7 @@
 // only name a route `routes.ts` serves at an address with no parameters, and
 // the tab has somewhere to arrive.
 
-import type { StaticRouteId } from './routes.ts';
+import { pathTo, type StaticRouteId } from './routes.ts';
 
 export interface PanelRegistration {
   /** Frozen. The label above it is not. */
@@ -45,3 +45,17 @@ export const PANELS: readonly PanelRegistration[] = [
     route: 'agency:settings',
   },
 ];
+
+/**
+ * The dock's tabs at `here`. The panel registry is the dock. Each registration
+ * names the address that draws its surface, and the tab navigates there rather
+ * than opening a drawer over the page: the surface has a real address, and an
+ * address a person can quote is worth more than a panel they cannot. The
+ * client face has no dock (R17).
+ */
+export const dockTabs = (here: string): { id: string; label: string; open: boolean }[] =>
+  PANELS.map((panel) => ({
+    id: panel.id,
+    label: panel.label,
+    open: panel.route !== null && here === pathTo(panel.route),
+  }));

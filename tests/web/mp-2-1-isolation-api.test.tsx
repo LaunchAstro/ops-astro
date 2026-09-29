@@ -47,15 +47,28 @@ async function enrolAs(
   });
 }
 
+const subjects = {
+  both: `both-${randomUUID()}`,
+  alphaOnly: `alpha-only-${randomUUID()}`,
+  bravoOnly: `bravo-only-${randomUUID()}`,
+  bravoNoGrant: `bravo-no-grant-${randomUUID()}`,
+};
+
+/** The held-address offer for `subject`, asked of `api` in-process. */
+async function offerFrom(api: Hono, subject: string, heldIn: string, signedInTo: string) {
+  const through = ((url: string | URL, init?: RequestInit) =>
+    api.fetch(new Request(`http://api.test${String(url)}`, init))) as typeof fetch;
+  return await heldAddressOffer({
+    held: { address: '/task/TSK-1', businessKey: heldIn, code: 'AUTH_SESSION_EXPIRED' },
+    next: { token: await tokenFor(subject), businessKey: signedInTo, email: 'x@example.test' },
+    apiOrigin: '',
+    fetch: through,
+  });
+}
+
 describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
   let fixture: ApiFixture;
   let api: Hono;
-  const subjects = {
-    both: `both-${randomUUID()}`,
-    alphaOnly: `alpha-only-${randomUUID()}`,
-    bravoOnly: `bravo-only-${randomUUID()}`,
-    bravoNoGrant: `bravo-no-grant-${randomUUID()}`,
-  };
 
   beforeAll(async () => {
     fixture = await createApiFixture('mp_2_1_isolation');
@@ -71,17 +84,8 @@ describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
 
   afterAll(async () => await fixture?.drop());
 
-  const through = ((url: string | URL, init?: RequestInit) =>
-    api.fetch(new Request(`http://api.test${String(url)}`, init))) as typeof fetch;
-
-  async function offer(subject: string, heldIn: string, signedInTo: string) {
-    return await heldAddressOffer({
-      held: { address: '/task/TSK-1', businessKey: heldIn, code: 'AUTH_SESSION_EXPIRED' },
-      next: { token: await tokenFor(subject), businessKey: signedInTo, email: 'x@example.test' },
-      apiOrigin: '',
-      fetch: through,
-    });
-  }
+  const offer = (subject: string, heldIn: string, signedInTo: string) =>
+    offerFrom(api, subject, heldIn, signedInTo);
 
   it('offers the switch to a person holding a grant in the held business, both ways', async () => {
     expect(await offer(subjects.both, 'bravo', 'alpha')).toEqual({

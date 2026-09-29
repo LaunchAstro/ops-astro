@@ -31,7 +31,7 @@ interface System {
 function load(system: System, preference?: string): HTMLElement {
   const fresh = document.createElement('html');
   document.replaceChild(fresh, document.documentElement);
-  if (preference !== undefined) fresh.setAttribute('data-theme-preference', preference);
+  if (preference !== undefined) fresh.dataset['themePreference'] = preference;
   window.matchMedia = ((query: string) => ({
     media: query,
     get matches() {
@@ -46,8 +46,11 @@ function load(system: System, preference?: string): HTMLElement {
   return fresh;
 }
 
-const theme = (root: HTMLElement): string | null => root.getAttribute('data-theme');
-const tick = (): Promise<void> => new Promise((done) => setTimeout(done, 0));
+const theme = (root: HTMLElement): string | null => root.dataset['theme'] ?? null;
+const tick = (): Promise<void> =>
+  new Promise((done) => {
+    setTimeout(done, 0);
+  });
 
 describe('MP-1-1 theme before paint', () => {
   it('MP-1-1 theme before paint', async () => {
@@ -78,7 +81,7 @@ describe('MP-1-1 theme before paint', () => {
     expect(theme(page)).toBe('dark');
 
     // A preference handed after load goes through the same step.
-    page.setAttribute('data-theme-preference', 'light');
+    page.dataset['themePreference'] = 'light';
     await tick();
     expect(theme(page)).toBe('light');
     // And a system change no longer overrides it.

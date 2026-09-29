@@ -34,29 +34,37 @@ const PEOPLE = [
   { business: 'bravo', own: 'zenith-plumbing', other: 'acme-dental', otherBusiness: 'alpha' },
 ] as const;
 
+/** Each person opens their own client on every scoped page and is refused the other, naming nothing. */
+async function ownAndRefused({
+  business,
+  own,
+  other,
+  otherBusiness,
+}: (typeof PEOPLE)[number]): Promise<void> {
+  expect(scoped.length).toBeGreaterThan(40);
+  for (const page of scoped) {
+    const mine = await open(filled(page.path, own), { businessKey: business });
+    expect(mine.view.find('[data-outcome="placeholder"]'), page.path).not.toBeNull();
+    await mine.view.unmount();
+
+    const theirs = await open(filled(page.path, other), { businessKey: business });
+    const refusal = theirs.view.find('[data-outcome="denied"]');
+    expect(refusal, page.path).not.toBeNull();
+    expect(theirs.view.find('[data-outcome="placeholder"]'), page.path).toBeNull();
+    expect(refusal?.textContent, page.path).not.toContain(other);
+    expect(refusal?.textContent, page.path).not.toContain(otherBusiness);
+    // No rail, tab or title for another client's pages either.
+    expect(theirs.view.all('a[href]').some((a) => a.getAttribute('href')?.includes(other))).toBe(
+      false,
+    );
+    await theirs.view.unmount();
+  }
+}
+
 describe('MP-2-1 isolation', () => {
   it.each(PEOPLE)(
     '$business opens its own client and is refused the other, naming nothing',
-    async ({ business, own, other, otherBusiness }) => {
-      expect(scoped.length).toBeGreaterThan(40);
-      for (const page of scoped) {
-        const mine = await open(filled(page.path, own), { businessKey: business });
-        expect(mine.view.find('[data-outcome="placeholder"]'), page.path).not.toBeNull();
-        await mine.view.unmount();
-
-        const theirs = await open(filled(page.path, other), { businessKey: business });
-        const refusal = theirs.view.find('[data-outcome="denied"]');
-        expect(refusal, page.path).not.toBeNull();
-        expect(theirs.view.find('[data-outcome="placeholder"]'), page.path).toBeNull();
-        expect(refusal?.textContent, page.path).not.toContain(other);
-        expect(refusal?.textContent, page.path).not.toContain(otherBusiness);
-        // No rail, tab or title for another client's pages either.
-        expect(
-          theirs.view.all('a[href]').some((a) => a.getAttribute('href')?.includes(other)),
-        ).toBe(false);
-        await theirs.view.unmount();
-      }
-    },
+    ownAndRefused,
   );
 
   it('refuses an unknown client exactly as it refuses a real one held by nobody here', async () => {
