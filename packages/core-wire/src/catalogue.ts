@@ -90,7 +90,8 @@ export function buildCatalogue(
   });
 }
 
-export type Surfaces = Readonly<Record<'api' | 'cli' | 'web', ReadonlyMap<string, Profile>>> & {
+type Reach = ReadonlyMap<string, Profile>;
+export type Surfaces = Readonly<Record<'api' | 'agent' | 'cli' | 'web', Reach>> & {
   readonly ui: readonly UiUse[];
   readonly exempt: readonly Exempt[];
 };
@@ -120,7 +121,8 @@ export function checkParity(
 ): string[] {
   const failures: string[] = [];
   const owned = new Map(declarations.map((one) => [one.name as string, profileOf(one)]));
-  const reaches = Object.entries({ API: surfaces.api, CLI: surfaces.cli, app: surfaces.web });
+  const { api, agent, cli, web } = surfaces;
+  const reaches = Object.entries({ API: api, 'agent API': agent, CLI: cli, app: web });
   for (const [name, profile] of owned) {
     const row = rows.find((one) => one.command === name);
     if (row === undefined) failures.push(`the catalogue has no row for ${name}`);
@@ -185,20 +187,17 @@ export function reachableBy(
 export function renderReport(rows: readonly CatalogueRow[], failures: readonly string[]): string {
   const buttons = rows.filter((row) => row.kind === 'write' && row.ui.length > 0);
   const lines = [
-    '# Command parity report',
-    '',
+    '# Command parity report\n',
     '| App action | Where | CLI command | API endpoint | Key |',
     '| --- | --- | --- | --- | --- |',
     ...buttons.map(
       (row) =>
         `| ${row.command} | ${row.ui.join('; ')} | \`pnpm cli ${row.cli}\` | ${row.api.person} | ${row.permissionKey} |`,
     ),
-    '',
     failures.length === 0
-      ? `${String(buttons.length)} app actions change something; each has its CLI command. None is missing.`
-      : `Missing or unequal:\n${failures.map((line) => `- ${line}`).join('\n')}`,
-    '',
-    'Exempt, view only:',
+      ? `\n${String(buttons.length)} app actions change something; each has its CLI command. None is missing.`
+      : `\nMissing or unequal:\n${failures.map((line) => `- ${line}`).join('\n')}`,
+    '\nExempt, view only:',
     ...VIEW_ONLY_EXEMPT.map((one) => `- ${one.action}: ${one.reason}`),
   ];
   return `${lines.join('\n')}\n`;

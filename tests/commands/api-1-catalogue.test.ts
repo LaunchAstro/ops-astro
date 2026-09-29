@@ -44,7 +44,7 @@ interface Run {
 const real = (): Run => run() as Run;
 
 /** The real surfaces with one command's profile on one of them replaced. */
-function planted(surface: 'api' | 'cli' | 'web', name: string, change: Partial<Profile>) {
+function planted(surface: 'api' | 'agent' | 'cli' | 'web', name: string, change: Partial<Profile>) {
   const surfaces = realSurfaces([]);
   const reach = new Map(surfaces[surface] as Map<string, Profile>);
   reach.set(name, { ...(reach.get(name) as Profile), ...change });
@@ -147,6 +147,13 @@ describe('API-1 command catalogue', () => {
     const rows = buildCatalogue([]);
     expect(checkParity(rows, planted('cli', 'task.update', { authority: [] }))).toEqual([
       'CLI task.update skips the grant check task:write the app makes',
+    ]);
+    // The agent route for a person-only decision running an agent-eligible command instead.
+    const comment = realSurfaces([]).agent.get('task.comment') as Profile;
+    expect(checkParity(rows, planted('agent', 'task.decide', comment))).toEqual([
+      'agent API task.decide skips the grant check task:decide the app makes',
+      'agent API task.decide asks at record scope where the app asks at business',
+      'agent API task.decide drops the person-only marker and admits an agent',
     ]);
     expect(checkParity(rows, planted('api', 'task.read', { authorisedOn: 'business' }))).toEqual([
       'API task.read asks at business scope where the app asks at record',
@@ -257,7 +264,7 @@ describe('API-1 command catalogue', () => {
       ...(realSurfaces([]).api as Map<string, Profile>),
       ['task.duplicate', profileOf(DUPLICATE)],
     ]);
-    const surfaces = { ...realSurfaces([]), api: reach, cli: reach, web: reach };
+    const surfaces = { ...realSurfaces([]), api: reach, agent: reach, cli: reach, web: reach };
     expect(checkParity(rows, surfaces, declarations)).toEqual([]);
     const dropMarker = edit(rows, 'task.duplicate', { personOnly: false });
     expect(checkParity(dropMarker, surfaces, declarations)).toContain(
