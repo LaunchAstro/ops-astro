@@ -30,9 +30,10 @@
 // subject and a missing login do: telling them apart tells an outsider which
 // businesses exist.
 
+import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { streamSSE, type SSEStreamingApi } from 'hono/streaming';
+import { streamSSE } from 'hono/streaming';
 import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
@@ -46,6 +47,8 @@ import {
   isCommandRefusal,
   isReadName,
   refuseCommand,
+  refuseNotFound,
+  viewerOf,
 } from '../../packages/core-commands/src/index.ts';
 import {
   COMMAND_SURFACE,
@@ -64,8 +67,9 @@ import type {
   AdmissionAt,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
-import type { LiveSignal, LiveTopics } from './live.ts';
-import type { LivePresence } from './live-presence.ts';
+import type { LiveTopics } from './live.ts';
+import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
+import { follow, topicsOf, TOPICS, type Seated, type Watching } from './live-follow.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -129,6 +133,8 @@ export interface LiveOptions {
   readonly admit: ReadAdmitter;
   /** C2: who else is on each watched task; absent, the stream carries no presence. */
   readonly presence?: LivePresence;
+  /** `reads/execute.ts`'s `viewerOf`, unless a test hands in its own. */
+  readonly viewer?: typeof viewerOf;
 }
 
 /** The live channel's check: `admitReads`'s signature. */
@@ -329,21 +335,82 @@ export function createApi(options: ApiOptions): Hono {
           // eslint-disable-next-line no-await-in-loop -- written in the order named.
           await stream.writeSSE({ event: 'closed', data: watch.label });
         }
-        await follow(stream, live, watched, asks);
+        await follow(stream, live, watched, asks, await seatOf(options, live, context, asks));
       });
     });
+
+    // C2: presence on the stream's seat. Both routes check their input before
+    // anything is read, resolve the caller as a recheck does and ask about the
+    // task again, and write nothing (`tests/api/c2-presence-live.test.ts`).
+    const { presence } = live;
+    if (presence !== undefined) {
+      api.post(`${PREFIX.person}:businessKey/live/mark`, async (context) => {
+        const body = await readObject(context);
+        const asked =
+          body === undefined ? refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]) : markOf(body);
+        return await onSeat(options, live, context, asked, (mark, viewer, businessId) =>
+          presence.mark(businessId, mark.taskId, mark.seat, viewer, mark.field)
+            ? { marked: true }
+            : undefined,
+        );
+      });
+      api.get(`${PREFIX.person}:businessKey/live/presence`, async (context) => {
+        const asked = presenceAskOf(context.req.queries());
+        return await onSeat(options, live, context, asked, (ask, viewer, businessId) => {
+          const seenBy = presence.seenBy(businessId, ask.taskId, ask.seat, viewer);
+          return seenBy === undefined ? undefined : { seenBy };
+        });
+      });
+    }
   }
 
   return api;
 }
 
-/** How a stream asks, for its business, whether its caller may still watch a task. */
-interface Watching {
-  readonly businessId: string;
-  /** At join, every topic in one transaction: the login's one authentication attempt, nothing else. */
-  atDoor(taskIds: readonly string[]): Promise<readonly (string | CommandRefusal)[]>;
-  /** Before each delivery and on the recheck: writes nothing. */
-  again(taskId: string): Promise<string | CommandRefusal>;
+/**
+ * A presence route once its input has passed: the door, the caller's standing
+ * (nothing recorded), the task asked about again as the stream asks, then
+ * `answer` for the caller's own person; undefined from it is no such seat.
+ */
+async function onSeat<A extends SeatAsk>(
+  options: ApiOptions,
+  live: LiveOptions,
+  context: Context,
+  asked: A | CommandRefusal,
+  answer: (asked: A, personId: string, businessId: string) => object | undefined,
+): Promise<Response> {
+  const admitted = await admit(options, context, PERSON, false);
+  if (admitted instanceof Response) return admitted;
+  if (isCommandRefusal(asked)) return refuse(context, asked);
+  const { businessId, presented } = admitted;
+  const viewer = await (live.viewer ?? viewerOf)(options.database, businessId, presented);
+  if (isCommandRefusal(viewer)) return refuse(context, viewer);
+  const task = { read: 'task.execution' as const, recordId: asked.taskId };
+  const again = await live.admit(options.database, businessId, presented, [task], 'recheck');
+  const [admission] = isCommandRefusal(again) ? [again] : again;
+  if (admission === undefined || isCommandRefusal(admission)) {
+    return refuse(context, admission ?? refuseNotFound());
+  }
+  const answered = answer(asked, viewer.personId, businessId);
+  return answered === undefined ? refuse(context, refuseNotFound()) : context.json(answered);
+}
+
+/** The stream's seat in the presence book, for a caller whose standing still resolves. */
+async function seatOf(
+  options: ApiOptions,
+  live: LiveOptions,
+  context: Context,
+  asks: Watching,
+): Promise<Seated | undefined> {
+  const { presence } = live;
+  const presented = await options.verify(context.req);
+  if (presence === undefined || presented === undefined || presented === 'expired')
+    return undefined;
+  const viewer = await (live.viewer ?? viewerOf)(options.database, asks.businessId, presented);
+  if (isCommandRefusal(viewer)) return undefined;
+  const { personId, name, staff } = viewer;
+  const session = { sessionId: randomUUID(), personId, name, side: staff ? 'staff' : 'client' };
+  return { presence, session: session as Seated['session'] };
 }
 
 function watching(
@@ -395,84 +462,6 @@ async function mayWatch(
     if (answer.recordId === undefined) throw new Error('task.execution admitted no task');
     return answer.recordId;
   });
-}
-
-/** One followed task, and the name the stream gives it: the caller's own topic. */
-interface Watch {
-  readonly label: string;
-  readonly taskId: string;
-}
-
-const TOPIC = /^task:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/u;
-const MOST_TOPICS = 32;
-const TOPICS = `Name each topic once, as task:<id>, from one to ${String(MOST_TOPICS)}.`;
-
-/** The topics a tab named, or undefined when any is malformed, repeated or too many. */
-function topicsOf(named: readonly string[]): readonly Watch[] | undefined {
-  if (named.length === 0 || named.length > MOST_TOPICS) return undefined;
-  if (new Set(named).size !== named.length) return undefined;
-  const watches = named.map((label) => ({ label, taskId: TOPIC.exec(label)?.[1] }));
-  return watches.every((watch): watch is Watch => watch.taskId !== undefined) ? watches : undefined;
-}
-
-const RECHECK_MS = 30_000;
-const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
-
-/**
- * One open stream: `resync` for each watched task once subscribed, then each
- * signal once the caller is asked again, and `closed` the first time the
- * answer is no. An ended session answers no for every task on the next
- * check, and the stream ends with its last task. Signals that arrive for a task
- * while one is pending merge into it, the strongest kept.
- */
-async function follow(
-  stream: SSEStreamingApi,
-  live: LiveOptions,
-  watches: readonly Watch[],
-  asks: Watching,
-): Promise<void> {
-  const ended = new Promise<void>((resolve) => {
-    stream.onAbort(resolve);
-  });
-  const stops = new Map<Watch, () => void>();
-  const pending = new Map<Watch, LiveSignal | 'check'>();
-  let chain = Promise.resolve();
-  const send = async (watch: Watch): Promise<void> => {
-    const signal = pending.get(watch);
-    pending.delete(watch);
-    if (signal === undefined || stream.aborted || !stops.has(watch)) return;
-    if (typeof (await asks.again(watch.taskId)) !== 'string') {
-      stops.get(watch)?.();
-      stops.delete(watch);
-      await stream.writeSSE({ event: 'closed', data: watch.label });
-      if (stops.size === 0) stream.abort();
-    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: watch.label });
-  };
-  const want = (watch: Watch, signal: LiveSignal | 'check'): void => {
-    const was = pending.get(watch);
-    if (was === undefined)
-      chain = chain.then(async () => await send(watch)).catch(() => stream.abort());
-    if (was === undefined || RANK[signal] > RANK[was]) pending.set(watch, signal);
-  };
-  for (const watch of watches) {
-    stops.set(
-      watch,
-      live.topics.subscribe(asks.businessId, watch.taskId, (signal) => want(watch, signal)),
-    );
-  }
-  const timer = setInterval(() => {
-    for (const watch of stops.keys()) want(watch, 'check');
-  }, live.recheckMs ?? RECHECK_MS);
-  try {
-    for (const watch of watches) {
-      // eslint-disable-next-line no-await-in-loop -- written in order.
-      await stream.writeSSE({ event: 'resync', data: watch.label });
-    }
-    await ended;
-  } finally {
-    clearInterval(timer);
-    for (const stop of stops.values()) stop();
-  }
 }
 
 /**

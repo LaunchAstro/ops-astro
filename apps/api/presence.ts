@@ -101,6 +101,11 @@ export class PresenceBook {
     return [...people.values()];
   }
 
+  /** The person seated as `sessionId` on `topic`, or undefined when no such seat is held. */
+  seatedAs(businessId: string, topic: string, sessionId: string): string | undefined {
+    return this.#seat(businessId, topic, sessionId)?.session.personId;
+  }
+
   /**
    * Every business, topic and seat kept, for the proof that a leaving keeps
    * nothing: an emptied topic left behind would be a record of what was viewed.

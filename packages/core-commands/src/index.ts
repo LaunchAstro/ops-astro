@@ -11,11 +11,23 @@
 export { type AgentRequest } from './commands/agent-call.ts';
 export { agentAnswer, executeAgentCommand } from './commands/agent-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
-export { isCommandRefusal, refuseCommand, type CommandRefusal } from './commands/refusal.ts';
+export {
+  isCommandRefusal,
+  refuseCommand,
+  refuseNotFound,
+  type CommandRefusal,
+} from './commands/refusal.ts';
 export { type CommandRequest } from './commands/requests.ts';
 // T3d1: the pass asks the register whether an unknown step's effect happened.
 export { lookupEffect } from './commands/register-store.ts';
-export { admitReads, executeRead, type Admission, type AdmissionAt } from './reads/execute.ts';
+export {
+  admitReads,
+  executeRead,
+  viewerOf,
+  type Admission,
+  type AdmissionAt,
+  type Viewer,
+} from './reads/execute.ts';
 export { isReadName } from './reads/catalogue.ts';
 export { type ReadRequest } from './reads/requests.ts';
 export {
