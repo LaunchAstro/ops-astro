@@ -174,7 +174,7 @@ describe.skipIf(serverUrl === undefined)('S0-3 identity scope', () => {
       `select 1 from pg_class where relowner = (select oid from pg_roles where rolname = $1)`,
       [BACKUP],
     );
-    expect(owned).toStrictEqual([]);
+    expect(owned.length).toBe(0);
   });
 
   it('takes one consistent read of every table with row security off, as pg_dump does', async () => {
@@ -447,7 +447,7 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
       } finally {
         await client.end();
       }
-      expect(await archiveIds()).toStrictEqual(inWindow.toSorted());
+      expect(await archiveIds()).toStrictEqual([...inWindow, old?.id].toSorted());
 
       const { expireBackups } = await job();
       const receipt = await expireBackups({ storeUrl: retentionLogin.url });

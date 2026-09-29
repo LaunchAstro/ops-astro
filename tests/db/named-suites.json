@@ -268,6 +268,7 @@
     "tests/runtime/cap-storage-backstop.test.ts",
     "tests/runtime/o3-held-recheck.test.ts",
     "tests/runtime/successor-bounds-edge.test.ts",
+    "tests/db/backup-identity.test.ts",
     "tests/ci/upgrade-drill.test.ts",
     "tests/ci/operator-only.test.ts",
     "tests/ci/service-stop.test.ts",
