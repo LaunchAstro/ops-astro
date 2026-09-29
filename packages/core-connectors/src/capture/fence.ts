@@ -32,7 +32,8 @@ export type FenceCode =
   | 'CAPTURE_OVERSIZED'
   | 'CAPTURE_FAILED'
   | 'CAPTURE_STATUS_REFUSED'
-  | 'CAPTURE_BODY_MALFORMED';
+  | 'CAPTURE_BODY_MALFORMED'
+  | 'CAPTURE_KIND_REFUSED';
 
 /** What the path records of a refusal: the code, the hop and the origin only, never a path or query. */
 export interface FenceRefusal {
