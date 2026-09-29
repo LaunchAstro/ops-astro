@@ -66,7 +66,14 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.purge': (tx, context, request) => purgeTasks(tx, context, request.olderThanDays),
 
   'task.comment': (tx, context, request) =>
-    commentOnTask(tx, context, request.body, request.audience, request.commentType),
+    commentOnTask(
+      tx,
+      context,
+      request.body,
+      request.audience,
+      request.commentType,
+      request.mentions,
+    ),
 
   // The revision travels with the rest of the envelope rather than as a
   // field of the settings payload, and goes to the settings write as sent,

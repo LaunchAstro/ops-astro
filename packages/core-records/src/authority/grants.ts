@@ -124,6 +124,31 @@ export async function effectiveGrants(
 }
 
 /**
+ * The people an effective grant for this request reaches: a person named on
+ * the grant, or the person behind an actor it names. Nothing in this head
+ * gives a group members, so a group grant reaches nobody here.
+ */
+export async function grantHolders(
+  tx: TenantQuery,
+  request: ScopeRequest,
+): Promise<readonly string[]> {
+  const rows = await tx.query<{ readonly person_id: string }>(
+    `${EFFECTIVE}
+     select distinct coalesce(a.person_id, e.subject_id) as person_id
+       from effective e
+       left join public.actors a
+         on e.subject_kind = 'actor' and a.business_id = e.business_id
+        and a.id = e.subject_id and a.kind = 'person' and a.active
+      where e.collection = $1 and e.action = $2
+        and (e.subject_kind = 'person' or a.person_id is not null)
+        and (e.scope_kind = 'business' or (e.scope_kind = $3 and e.scope_id = $4::uuid))
+      order by 1`,
+    [request.collection, request.action, request.scope.kind, request.scope.id],
+  );
+  return rows.map((row) => row.person_id);
+}
+
+/**
  * The check a serving operation makes. A denied read says so with a code and a
  * fix; it never comes back as an empty list, because empty and denied are
  * different answers and only one of them is honest here.

@@ -4,7 +4,7 @@
 // unchanged when the one task-runtime module was divided (thermo review
 // b483399, H2).
 
-import { subjectsOf } from '../../../core-records/src/index.ts';
+import { raiseDecision, subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { lockProposal, proposeUnderLocks } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
@@ -170,6 +170,7 @@ export async function proposeOnTask(
   }
   const result = await proposeUnderLocks(tx, proposal, held);
   if (!result.ok) return refused(result.refusal);
+  await raiseDecision(tx, { taskId: target.id, gateId: result.value.gateId });
 
   // The revision is the task's own and is unchanged: a proposal is a record
   // beside the task, not an edit to it, so a caller may keep writing against

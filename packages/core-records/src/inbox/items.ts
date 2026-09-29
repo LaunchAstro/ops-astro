@@ -170,6 +170,23 @@ export async function readInboxItems(
   return items;
 }
 
+/** One person's access to one task, derived as every read derives it. */
+export async function taskAccess(
+  tx: TenantQuery,
+  personId: string,
+  taskId: string,
+): Promise<InboxAccess> {
+  const rows = await tx.query<{ readonly trashed: boolean; readonly clientId: string | null }>(
+    `select deleted_at is not null as trashed, uuid_7 as "clientId" from public.records
+      where business_id = $1 and id = $2`,
+    [tx.businessId, taskId],
+  );
+  const task = rows[0];
+  if (task === undefined) return 'gone';
+  const subjects = await recipientSubjects(tx, personId);
+  return await accessOf(tx, subjects, taskId, task.trashed, task.clientId);
+}
+
 /** The person and their own acting identities: the two a grant may name. */
 async function recipientSubjects(tx: TenantQuery, personId: string): Promise<readonly Subject[]> {
   const actors = await tx.query<{ readonly id: string }>(

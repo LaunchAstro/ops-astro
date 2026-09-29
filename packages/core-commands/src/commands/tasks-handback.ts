@@ -4,6 +4,7 @@
 // unchanged when the one task-runtime module was divided (thermo review
 // b483399, H2).
 
+import { raiseDecision, raiseRunSettled } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { handback, type SuccessorRequest } from '../../../core-runtime/src/index.ts';
 import type { HandbackHolder } from '../../../core-runtime/src/index.ts';
@@ -206,6 +207,12 @@ async function settle(
   }
 
   const settled = result.value;
+  // INB-1: the launcher is told, and a successor's gate is a decision to raise.
+  const outcome = fields.outcome as 'completed' | 'failed';
+  const taskId = await raiseRunSettled(tx, { leaseId: settled.leaseId, outcome });
+  if (settled.successorGateId !== null) {
+    await raiseDecision(tx, { taskId, gateId: settled.successorGateId });
+  }
   return applied(null, null, {
     leaseId: settled.leaseId,
     reservationId: settled.reservationId,

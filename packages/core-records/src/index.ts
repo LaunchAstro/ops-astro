@@ -63,6 +63,7 @@ export {
   raiseInboxItem,
   readInboxItems,
   recordDeliveryAttempt,
+  taskAccess,
   type DeliveryChannel,
   type DeliveryState,
   type InboxAccess,
@@ -72,6 +73,14 @@ export {
   type InboxWorkState,
   type RaiseInboxItem,
 } from './inbox/items.ts';
+export {
+  raiseAssignment,
+  raiseDecision,
+  raiseMentions,
+  raiseRunSettled,
+  readMentions,
+  type Mentioned,
+} from './inbox/raise.ts';
 export {
   isSettingRevisionStale,
   readBusinessSetting,
