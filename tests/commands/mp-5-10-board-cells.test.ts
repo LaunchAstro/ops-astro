@@ -175,7 +175,8 @@ describe.skipIf(serverUrl === undefined)('MP-5-10 refusals per key', () => {
     expect(await stageOf('cells')).toBe('Drafting');
   });
 
-  it.todo('task:write: the time estimate (LEANS-ON MP-4-8’s estimated_minutes field, SL08 U20)');
+  // task:write on the time estimate waits on MP-4-8's estimated_minutes field
+  // (SL08 U20, LEANS-ON). No todo here: the isolation manifest refuses a skip.
 });
 
 describe.skipIf(serverUrl === undefined)('MP-5-10 isolation', () => {

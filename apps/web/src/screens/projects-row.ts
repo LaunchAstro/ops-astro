@@ -8,7 +8,7 @@
 // plain click opens the task page until the dock panel lands (MP-4-8, U20);
 // the timer waits on the time commands (U19), so the row draws none.
 
-import type { RowActions } from '../../../../packages/ui/src/board/projects.ts';
+import type { RowActions } from '@launchastro/ui';
 import type { BoardTask } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 
