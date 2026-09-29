@@ -32,7 +32,7 @@ import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
-import { countOwed, readInbox } from './inbox.ts';
+import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -359,6 +359,19 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       (await holdsAnyGrant(tx, session))
         ? { ok: true, owed: await countOwed(tx, session.personId) }
         : NO_GRANT_AT_ALL,
+  },
+  // Every path to a person broken (INB-1e): `operations:read` on the business,
+  // declared, and within it only the items whose task the caller reads.
+  'inbox.unattended': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx, session) => ({
+      ok: true,
+      unattended: await readUnattendedInbox(tx, session.personId),
+    }),
   },
 };
 

@@ -35,7 +35,7 @@ import type {
   TaskBoardResult,
   TaskDetail,
 } from '../../../core-wire/src/index.ts';
-import type { InboxEntry } from './inbox.ts';
+import type { InboxEntry, UnattendedEntry } from './inbox.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -98,6 +98,8 @@ export interface ReadOperands {
   readonly 'inbox.read': NoOperands;
   /** The caller's owed count: the counted entries of `inbox.read`. */
   readonly 'inbox.count': NoOperands;
+  /** The business's items no path reaches, for `operations:read` (INB-1e). */
+  readonly 'inbox.unattended': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -123,4 +125,5 @@ export type ReadResult =
   | SettingsReadResult
   | CapabilitiesResult
   | { readonly ok: true; readonly inbox: readonly InboxEntry[] }
-  | { readonly ok: true; readonly owed: number };
+  | { readonly ok: true; readonly owed: number }
+  | { readonly ok: true; readonly unattended: readonly UnattendedEntry[] };

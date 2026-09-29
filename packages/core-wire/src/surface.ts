@@ -100,7 +100,11 @@ export type CommandName =
   // and `seen` stamped on the caller's own attention row.
   | 'inbox.read'
   | 'inbox.count'
-  | 'inbox.seen';
+  | 'inbox.seen'
+  // Items no path reaches, for the operations view (INB-1e), and the caller's
+  // own notification setting on one channel.
+  | 'inbox.unattended'
+  | 'notifications.set_channel';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -362,6 +366,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
   'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
   'inbox.seen': { itemId: 'id' },
+  'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -509,6 +514,18 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'self',
     untargetedIdentifiers: ['itemId'],
+  }),
+  // `operations:read`: owner and administrators by default, never an agent
+  // (the catalogue's C55 row). It names other people's items, so it is not
+  // `self`.
+  read('inbox.unattended', 'operations'),
+  // Per channel, never per item: the body names no item. Self-scoped like
+  // `inbox.seen`, so it asks no grant and reaches the caller's own setting.
+  declare('notifications.set_channel', 'write', {
+    collection: 'preference',
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: [],
   }),
 ];
 

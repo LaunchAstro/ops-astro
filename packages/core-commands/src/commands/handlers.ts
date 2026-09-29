@@ -19,7 +19,7 @@ import { setState, writeOwnedFields } from './tasks-state.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
-import { setBusinessSetting } from './settings-write.ts';
+import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
@@ -103,6 +103,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.handback': handbackOwnLease,
 
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
+  'notifications.set_channel': setNotificationChannel,
 };
 
 function writeOwned(
