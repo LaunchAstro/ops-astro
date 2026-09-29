@@ -62,6 +62,9 @@ function scripted(replies: readonly (() => Promise<Response>)[]): {
   const calls: string[] = [];
   let index = 0;
   const fetch = (async (url: string | URL) => {
+    // The Projects screen's people read (MP-5-10's assignee editor) answers
+    // none and takes no scripted reply: these outcomes are the board's.
+    if (String(url).endsWith('person/list')) return json({ ok: true, persons: [] })();
     calls.push(String(url));
     const reply = replies[Math.min(index, replies.length - 1)];
     index += 1;

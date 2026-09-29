@@ -1,20 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What a Projects board row does (MP-5-9), as commands. The tick is the one
-// completion transition, `task.complete` or `task.reopen`, never a second one;
-// a rename is `task.update` on the title. Each is sent at the revision the
+// What a Projects board row does (MP-5-9, MP-5-10), as commands. The tick is
+// the one completion transition, `task.complete` or `task.reopen`, never a
+// second one; a rename is `task.update` on the title. The cell editors send
+// `task.assign`, `task.update` on the due date and `task.set_stage`; the
+// assignee editor offers the people `person.list` answers, and none while
+// that read has not answered. Each is sent at the revision the
 // board last read for that task, so a change made elsewhere since is refused
 // as stale rather than overwritten, and every outcome re-reads the board. A
 // plain click opens the task page until the dock panel lands (MP-4-8, U20);
 // the timer waits on the time commands (U19), so the row draws none.
 
 import type { RowActions } from '@launchastro/ui';
-import type { BoardTask } from '../../../../packages/core-wire/src/index.ts';
+import type { BoardTask, PersonView } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 
 export function rowActions(options: {
   readonly client: OperationsClient;
   readonly tasks: readonly BoardTask[];
+  /** The people the assignee editor offers; null while unknown, and then no assignee editor. */
+  readonly people: readonly PersonView[] | null;
   readonly href: (key: string) => string;
   readonly reload: () => void;
 }): RowActions {
@@ -44,6 +49,34 @@ export function rowActions(options: {
     },
     onOpen: (row) => {
       window.location.assign(options.href(row.key));
+    },
+    ...cellActions(client, options.people, at, send),
+  };
+}
+
+/** The cell editors' commands (MP-5-10): assignee, due date and stage, each at the board's revision. */
+function cellActions(
+  client: OperationsClient,
+  people: readonly PersonView[] | null,
+  at: (id: string) => { readonly expectedRevision?: number },
+  send: (sent: Promise<unknown>) => void,
+): RowActions {
+  return {
+    ...(people === null
+      ? {}
+      : {
+          people: people.map((person) => ({ id: person.personId, name: person.name })),
+          onAssign: (row, assignee) => {
+            send(
+              client.mutate('task.assign', { recordId: row.id, fields: { assignee } }, at(row.id)),
+            );
+          },
+        }),
+    onDue: (row, due) => {
+      send(client.mutate('task.update', { recordId: row.id, fields: { due } }, at(row.id)));
+    },
+    onStage: (row, stage) => {
+      send(client.mutate('task.set_stage', { recordId: row.id, fields: { stage } }, at(row.id)));
     },
   };
 }

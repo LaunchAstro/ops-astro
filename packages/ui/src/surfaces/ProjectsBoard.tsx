@@ -12,7 +12,7 @@
 
 import { useMemo, useState, type ReactElement } from 'react';
 import { BoardMachine } from './BoardMachine.tsx';
-import { projectCell } from './ProjectCell.tsx';
+import { projectCell, type CellContext } from './ProjectCell.tsx';
 import {
   groupReason,
   projectColumns,
@@ -76,6 +76,23 @@ function useChips(rows: readonly ProjectRow[], viewer: string | null, now: Date)
   return { facets, presets, modes };
 }
 
+/** The stage editor's choices: the vocabulary in its order, then stages in use outside it. */
+function stageChoices(vocabulary: readonly string[], rows: readonly ProjectRow[]): string[] {
+  const inUse = rows.flatMap((row) => (row.stage === null ? [] : [row.stage]));
+  return [...new Set([...vocabulary, ...inUse])];
+}
+
+/** What every cell draws with: the clock, the links, the commands and the stage choices. */
+function useCells(props: ProjectsBoardProps, now: Date): CellContext {
+  const stages = useMemo(() => stageChoices(props.stages, props.rows), [props.stages, props.rows]);
+  return {
+    now,
+    href: props.href,
+    stages,
+    ...(props.actions ? { actions: props.actions } : {}),
+  };
+}
+
 export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
   const viewer = props.viewer ?? null;
   // The viewer preset is on at load agency-wide and off on a client's board (P-11).
@@ -94,7 +111,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
     [props.rows, props.stages],
   );
   const { facets, presets, modes } = useChips(props.rows, viewer, now);
-  const cells = { now, href: props.href, ...(props.actions ? { actions: props.actions } : {}) };
+  const cells = useCells(props, now);
   const statuses = useMemo(() => statusOrder(props.rows), [props.rows]);
   return (
     <BoardMachine<ProjectRow>

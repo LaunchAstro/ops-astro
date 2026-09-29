@@ -57,11 +57,14 @@ const TASK = {
 
 type Sent = { readonly url: string; readonly body: Readonly<Record<string, unknown>> }[];
 
-/** A server that answers the board with TASK and every command with success, keeping what it was sent. */
+/** A server that answers the board with TASK, the people with none, and every command with success, keeping what it was sent. */
 const server = (sent: Sent): typeof globalThis.fetch =>
   ((url: string, init?: { body?: string }) => {
     const body = JSON.parse(init?.body ?? '{}') as Readonly<Record<string, unknown>>;
     sent.push({ url: String(url), body });
+    // The assignee editor's people (MP-5-10): read once, never a command.
+    if (String(url).endsWith('person/list'))
+      return Promise.resolve(json({ ok: true, persons: [] }));
     return Promise.resolve(
       String(url).includes('board')
         ? json({ ok: true, tasks: [TASK], changedAt: null, viewer: null, withheld: 0 })
@@ -96,7 +99,7 @@ describe('MP-5-9 the row’s commands from the Projects screen', () => {
     );
     await settle();
     const commands = sent
-      .filter((each) => !each.url.includes('board'))
+      .filter((each) => !each.url.includes('board') && !each.url.endsWith('person/list'))
       .map((each) => [each.url.split('/').slice(-2).join('/'), each.body]);
     expect(commands).toStrictEqual([
       ['task/complete', { recordId: TASK_ID, operationId: 'operation-1', expectedRevision: 7 }],
