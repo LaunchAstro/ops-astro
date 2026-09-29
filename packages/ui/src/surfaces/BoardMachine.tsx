@@ -125,6 +125,9 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
     }),
     [props.facets, props.columns, props.presets, props.modes],
   );
+  // Every filter's row count, once per set of rows: a drag redraws on each
+  // pointer move and must not recount.
+  const ranked = useMemo(() => rankFacets(props.rows, props.facets), [props.rows, props.facets]);
   const [machine, setMachine] = useState<MachineState>(() =>
     initialMachine({ ...readView(props.address ?? '', context), widths: props.widths ?? null }),
   );
@@ -307,7 +310,7 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   const hidden = hiddenFilters(view, presets);
   const funnelLabel =
     hidden === 0 ? 'Filters' : `Filters, ${String(hidden)} on that this bar does not show`;
-  const listing = funnelMenu(rankFacets(props.rows, props.facets), menu.q, menu.all);
+  const listing = funnelMenu(ranked, menu.q, menu.all);
   const stamp = freshness(props.changedAt ?? null, props.now ?? new Date());
 
   const command = (
