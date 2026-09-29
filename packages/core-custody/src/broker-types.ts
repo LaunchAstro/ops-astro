@@ -61,7 +61,27 @@ export interface Broker {
   readonly audit: (tx: TenantQuery, note: AuditNote) => Promise<void>;
 }
 
-export interface ModelCallField {
+/**
+ * A field the caller supplies, with its statement of where the value came
+ * from. The statement only narrows: a claimed `business_internal` is treated
+ * as `outside` (S3), because only the broker can find a source internal.
+ */
+export interface ClaimedField {
+  readonly name: string;
+  readonly source: FieldSource;
+  readonly value: string;
+}
+
+/** A field bound to the row it is read from: the broker reads the value and finds the source. */
+export interface BoundField {
+  readonly name: string;
+  readonly from: { readonly recordId: string; readonly key: string };
+}
+
+export type ModelCallField = ClaimedField | BoundField;
+
+/** A field as the broker acts on it: its value, and the source the broker found. */
+export interface ResolvedField {
   readonly name: string;
   readonly source: FieldSource;
   readonly value: string;
@@ -93,6 +113,7 @@ export type BrokerRefusal =
   | 'EFFECT_NOT_RECONCILABLE'
   | 'LOCAL_MODEL_REQUIRED'
   | 'CLIENT_MODEL_USE_OFF'
+  | 'SOURCE_UNREADABLE'
   | 'BUDGET_UNAVAILABLE'
   | 'RATE_LIMITED'
   | 'COPY_NOT_REGISTERED'

@@ -102,7 +102,7 @@ export OPS_ASTRO_AGENT=1 OPS_ASTRO_BUSINESS=alpha
 pnpm cli task.queue
 pnpm cli task.pickup --json '{"reservationId":"<reservationId>","operationId":"<your-id>"}'
 pnpm cli task.heartbeat --json '{"leaseId":"<leaseId>","fence":<fence>}'
-pnpm cli model.call --json '{"leaseId":"<leaseId>","fence":<fence>,"operation":"model.replay_compose","fields":[{"name":"tone","source":"business_internal","value":"warm"}]}'
+pnpm cli model.call --json '{"leaseId":"<leaseId>","fence":<fence>,"operation":"model.replay_compose","fields":[{"name":"tone","from":{"recordId":"<taskId>","key":"title"}}]}'
 pnpm cli task.handback --json '{"leaseId":"<leaseId>","fence":<fence>,"outcome":"completed","report":{}}'
 ```
 

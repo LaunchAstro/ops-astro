@@ -61,7 +61,9 @@ export const AGENT_RECIPES: Partial<Record<CommandName, AgentRecipe>> = {
         leaseId: picked['leaseId'],
         fence: picked['fence'],
         operation: 'model.replay_compose',
-        fields: [{ name: 'tone', source: 'business_internal', value: 'plain' }],
+        // Bound to the run's own task, which a person entered: only the
+        // broker finds a source business-internal (S3).
+        fields: [{ name: 'tone', from: { recordId: picked['taskId'], key: 'title' } }],
       },
       credential: String(picked['credential']),
     };

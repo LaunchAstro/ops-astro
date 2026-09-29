@@ -1,19 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // AW-01 personal information stays local, S3: a field's business-internal
-// source is the broker's finding, never the caller's claim (owner line 72).
-//
-// The class that lets a field reach a cloud route is allowed only on a field
-// whose source is business-internal: no client key, not entered by a client
-// person, a guest or an outside source. So a field that wants it names the
-// row it is read from, and the broker reads that row under the tenant's
-// business, held `for share` beside the run's task, and takes the value from
-// it. A row qualifies only when it is a live task of this business with no
-// client on it, entered by one of the business's own people (its `source`
-// is a person's, through the app, the API or the command line), and every
-// write the register names on it was a person's. A caller's claim alone, a
-// client's row, an agent's or an import's row, and a foreign, made-up or
-// trashed row never reach a cloud route.
+// source is the broker's finding from the row it is bound to, never the
+// caller's claim (owner line 72). A caller's claim alone, a client's row, a
+// row entered by anyone but the business's own people or written to by an
+// agent, and a foreign, made-up or trashed row never reach a cloud route.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
@@ -62,8 +53,6 @@ const bound = (recordId: string, key = 'title'): ModelCallField => ({
 const internalRow = async (title: string = `s3-${randomUUID()}`): Promise<string> =>
   await createTask(s, title);
 
-const lastBody = (): string => world.provider.seen.at(-1)?.body ?? '';
-
 it('AW-01 personal information stays local (S3): a caller that only claims business_internal goes local', async () => {
   const work = await liveWork(s, 's3 a claim alone', 2_000);
   world.provider.mode('answer');
@@ -96,7 +85,7 @@ it('AW-01 personal information stays local (S3): a field bound to a staff-entere
     { route_key: 'replay', route_reach: 'cloud' },
   ]);
   // The value is the row's, read by the broker: the caller sent none.
-  expect(lastBody()).toContain(value);
+  expect(world.provider.seen.at(-1)?.body).toContain(value);
 }, 120_000);
 
 it('AW-01 personal information stays local (S3): a bound row a client is on goes local', async () => {
@@ -119,7 +108,7 @@ it('AW-01 personal information stays local (S3): a bound row a client is on goes
   ]);
 }, 120_000);
 
-it('AW-01 personal information stays local (S3): rows entered by an agent, an import or an outside party, or edited by an agent, go local', async () => {
+it('AW-01 personal information stays local (S3): rows entered by an agent, an import, an outside party or an integration go local', async () => {
   const work = await liveWork(s, 's3 entered elsewhere', 2_000);
   world.provider.mode('answer');
   const seen = world.provider.seen.length;
@@ -137,7 +126,47 @@ it('AW-01 personal information stays local (S3): rows entered by an agent, an im
       code: 'LOCAL_MODEL_REQUIRED',
     });
   }
-  // A person's row that an agent then wrote to: the register names the agent.
+  expect(world.provider.seen.length).toBe(seen);
+}, 120_000);
+
+it("AW-01 personal information stays local (S3): a comment, a row of another type, goes local even with a person's source", async () => {
+  const work = await liveWork(s, 's3 a comment', 2_000);
+  world.provider.mode('answer');
+  const seen = world.provider.seen.length;
+  const commented = await internalRow();
+  const comment = await asPerson(s, {
+    command: 'task.comment',
+    operationId: randomUUID(),
+    recordId: commented,
+    expectedRevision: await revisionOf(s, commented),
+    body: `s3-comment-${randomUUID()}`,
+    audience: 'internal',
+  });
+  expect(codeOf(comment)).toBe('applied');
+  const [commentRow] = await s.db.admin.execute<{ id: string }>(
+    `select r.id::text as id from public.records r
+       join public.record_types ty on ty.id = r.record_type_id
+      where r.business_id = $1 and ty.key <> 'task' and r.data->>'body' like 's3-comment-%'
+      order by r.created_at desc limit 1`,
+    [s.business],
+  );
+  if (commentRow === undefined) throw new Error('no comment row');
+  // Even stamped with a person's source, so only its type keeps it local.
+  await s.db.admin.execute(
+    `update public.records set data = data || '{"source":"person:api"}'::jsonb where id = $1`,
+    [commentRow.id],
+  );
+  expect(
+    await call(work, { fields: [bound(commentRow.id, 'body')] }, withRoutes([CLOUD])),
+  ).toMatchObject({ ok: false, code: 'LOCAL_MODEL_REQUIRED' });
+  expect(world.provider.seen.length).toBe(seen);
+}, 120_000);
+
+it("AW-01 personal information stays local (S3): a person's row an agent then wrote to goes local", async () => {
+  const work = await liveWork(s, 's3 an agent wrote', 2_000);
+  world.provider.mode('answer');
+  const seen = world.provider.seen.length;
+  // The register names the agent on the row.
   const edited = await internalRow();
   await s.db.admin.execute(
     `insert into public.operations

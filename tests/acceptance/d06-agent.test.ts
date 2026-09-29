@@ -62,7 +62,9 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
 ];
 
 /** A business-internal field the replay operation may take to its cloud route. */
-const PLAIN_TONE = { name: 'tone', source: 'business_internal', value: 'plain' } as const;
+/** Bound to the run's own task, which a person entered: only the broker finds a source business-internal (S3). */
+const toneOn = (taskId: string) =>
+  ({ name: 'tone', from: { recordId: taskId, key: 'title' } }) as const;
 
 /** In `AGENT_SURFACE` and still not the agent's: a person decides (case (j) of the matrix). */
 const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide']);
@@ -205,7 +207,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       return { body: { operationId, ...lease, attemptId: held.attemptId }, credential };
     }
     if (name === 'model.call') {
-      const call = { operation: 'model.replay_compose', fields: [PLAIN_TONE] };
+      const call = { operation: 'model.replay_compose', fields: [toneOn(held.taskId)] };
       return {
         body: { operationId, leaseId: held.leaseId, fence: held.fence, ...call },
         credential,

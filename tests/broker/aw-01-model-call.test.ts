@@ -30,6 +30,7 @@ import { statusOf } from '../../packages/core-records/src/index.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/index.ts';
 import { openCustodyWorld, type CustodyWorld } from '../custody/custody-world.ts';
 import {
+  createTask,
   liveWork,
   openSchedules,
   type Schedules,
@@ -53,7 +54,7 @@ const bodyFor = (
   leaseId: work.picked['leaseId'],
   fence: work.picked['fence'],
   operation: REPLAY_COMPOSE.key,
-  fields: [{ name: 'tone', source: 'business_internal', value: 'warm' }],
+  fields: [tone],
   ...extra,
 });
 
@@ -61,6 +62,8 @@ const bodyFor = (
 const it = serverUrl === undefined ? vitestIt.skip : vitestIt;
 
 let s: Schedules;
+/** A field bound to a task a person entered: only the broker finds a source business-internal (S3). */
+let tone: Readonly<Record<string, unknown>>;
 let world: CustodyWorld;
 let key: string;
 let agentToken: string;
@@ -135,6 +138,7 @@ const callsOn = async (work: Work): Promise<readonly Record<string, unknown>[]> 
 beforeAll(async () => {
   if (serverUrl === undefined) return;
   s = await openSchedules('aw01modelcall', 1_000_000);
+  tone = { name: 'tone', from: { recordId: await createTask(s, 'warm'), key: 'title' } };
   world = await openCustodyWorld();
   const [row] = await s.db.admin.execute<{ key: string }>(
     'select key from public.businesses where id = $1',
@@ -266,4 +270,28 @@ it('AW-01 model.call with no broker configured', async () => {
   expect(answer.body['code']).toBe('DEPENDENCY_NOT_LANDED');
   expect(world.provider.seen.length).toBe(seen);
   expect(await callsOn(work)).toEqual([]);
+});
+
+it('AW-01 model.call (S3): a malformed bound field is refused by name, and nothing is written', async () => {
+  const work = await liveWork(s, 'a malformed binding', 2_000);
+  const seen = world.provider.seen.length;
+  const recordId = work.taskId;
+  const malformed: readonly unknown[] = [
+    { name: 'tone', from: { recordId, key: 'title', path: 'x' } },
+    { name: 'tone', from: { recordId: 7, key: 'title' } },
+    { name: 'tone', from: { recordId } },
+    { name: 'tone', from: { recordId, key: 'title' }, value: 'plain' },
+    { name: 'tone', from: { recordId, key: 'title' }, source: 'business_internal' },
+    { name: 'tone', from: [recordId, 'title'] },
+    { name: 'tone', from: null },
+    { from: { recordId, key: 'title' } },
+  ];
+  for (const field of malformed) {
+    // eslint-disable-next-line no-await-in-loop
+    const answer = await asAgent(work, bodyFor(work, { fields: [field] }));
+    expect(answer.body['code'], JSON.stringify(field)).toBe('FIELD_VALUE_INVALID');
+    expect(answer.status).toBe(statusOf('FIELD_VALUE_INVALID'));
+  }
+  expect(await callsOn(work)).toEqual([]);
+  expect(world.provider.seen.length).toBe(seen);
 });

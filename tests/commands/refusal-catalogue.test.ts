@@ -126,6 +126,8 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['LOCAL_MODEL_REQUIRED', 501, 'caller'],
   // C60, the client's model use.
   ['CLIENT_MODEL_USE_OFF', 403, 'caller'],
+  // AW-01 S3, a bound field's row.
+  ['SOURCE_UNREADABLE', 422, 'caller'],
   ['SUBSCRIPTION_UNATTENDED', 403, 'caller'],
   ['SUBSCRIPTION_OTHER_TENANT', 403, 'caller'],
   ['SUBSCRIPTION_NOT_OWN_WORK', 403, 'caller'],

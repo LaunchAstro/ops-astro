@@ -16,6 +16,7 @@ import {
 } from '../../core-connectors/src/index.ts';
 import { mayCarry } from './credentials.ts';
 import { committedMinor, lockFacts, type Facts } from './broker-facts.ts';
+import { resolveFields } from './broker-sources.ts';
 import type {
   Broker,
   BrokerRefusal,
@@ -23,6 +24,7 @@ import type {
   ModelCaller,
   ModelCallRequest,
   ModelCallResult,
+  ResolvedField,
 } from './broker-types.ts';
 
 const WAIT_SECONDS = 5;
@@ -111,6 +113,9 @@ const FIXES: Partial<Record<BrokerRefusal, readonly string[]>> = {
     "Model use is off for this task's client: its work reaches no model, local or cloud.",
     'Personal information stays out of cloud AI until a local model exists.',
   ],
+  SOURCE_UNREADABLE: [
+    "A bound field's row could not be read: bind it to a live task of this business, and a key it holds as text.",
+  ],
 };
 
 /** The refusal in the register's words: the plain words, the wait, then the fix. */
@@ -159,7 +164,10 @@ export async function reserveModelCall(
   // no call on a client's task reaches a route. The setting itself is stored
   // on the client record once there is one (C32).
   if (facts.clientId !== null) return await refused('CLIENT_MODEL_USE_OFF');
-  const route = routeFor(operation, caller, request, facts, broker);
+  // S3: each field's source is the broker's finding, from its row, never the caller's claim.
+  const resolved = resolveFields(request.fields, facts.sources);
+  if (!resolved.ok) return await refused(resolved.code);
+  const route = routeFor(operation, caller, resolved.fields, facts, broker);
   if (!route.ok) return await refused(route.code, route.words);
   if (await atCeiling(tx, operation, route.route)) {
     return refusing('RATE_LIMITED', null, { retryAfterSeconds: WAIT_SECONDS });
@@ -178,7 +186,7 @@ export async function reserveModelCall(
 function routeFor(
   operation: ModelOperation,
   caller: ModelCaller,
-  request: ModelCallRequest,
+  fields: readonly ResolvedField[],
   facts: Facts,
   broker: Broker,
 ):
@@ -186,7 +194,7 @@ function routeFor(
   | { readonly ok: false; readonly code: BrokerRefusal; readonly words?: string } {
   const choice = eligibleRoutes(
     operation.fields,
-    request.fields,
+    fields,
     broker.routes.filter((route) => route.provider === operation.provider),
   );
   const local = {

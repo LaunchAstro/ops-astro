@@ -845,10 +845,10 @@ catalogued operation and the prompt's fields; it never names a destination, a
 credential, a price, the run's step or itself. The step is the one the lease's
 attempt was reserved for, read under the lease (`stepOfLease`).
 
-| Route                              | Body                                                                                      | Authority                                                                                                            |
-| ---------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `/api/a/b/:key/model/call` (agent) | `operationId`, `leaseId`, `fence`, `operation`, `fields` (each `name`, `source`, `value`) | the delegation the pickup minted, on the lease's task (`write`); then the broker's six facts, from rows, under locks |
-| `/api/b/:key/model/call` (person)  | as above                                                                                  | refused `SCOPE_NOT_GRANTED`: the call is the run's worker's, not a person's                                          |
+| Route                              | Body                                                                                                                                 | Authority                                                                                                            |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `/api/a/b/:key/model/call` (agent) | `operationId`, `leaseId`, `fence`, `operation`, `fields` (each `name`, `source`, `value`, or `name` and `from`, `{ recordId, key }`) | the delegation the pickup minted, on the lease's task (`write`); then the broker's six facts, from rows, under locks |
+| `/api/b/:key/model/call` (person)  | as above                                                                                                                             | refused `SCOPE_NOT_GRANTED`: the call is the run's worker's, not a person's                                          |
 
 It runs in two parts (`commands/model-call.ts`). The agent entry runs the row
 `modelCallRow` (`commands/agent-operations.ts`) through
@@ -871,6 +871,7 @@ model's words, only on the request that made them. The words are never stored,
 so a replay answers the ledger's state without them. A reserve refusal is the
 register's code (`LEASE_NOT_OWNED`, `LEASE_EXPIRED`, `AUTHORITY_LOST`,
 `DECISION_STALE`, `OPERATION_NOT_CATALOGUED`, `EFFECT_NOT_RECONCILABLE`,
+`SOURCE_UNREADABLE`,
 `LOCAL_MODEL_REQUIRED` 501, `CLIENT_MODEL_USE_OFF` (the task's client has
 model use off, C60), the three `SUBSCRIPTION_` codes, `RATE_LIMITED`
 with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
@@ -885,11 +886,23 @@ its value is never echoed into the audit. Where no broker is configured the
 agent envelope's own `model.call` row answers `DEPENDENCY_NOT_LANDED` 501 after
 the delegation check (`AGENT_OPERATIONS`).
 
-A field's `source` is the caller's statement of where it read the value. It
-can only narrow: `business_internal` reaches a cloud route only where the
-operation also declares the field business-internal, and any other source
-keeps the field local (`effectiveClass`, `core-connectors/src/data-class.ts`).
-Binding a source to the row it was read from is C60's.
+A field is supplied, `{ name, source, value }`, or bound to the row it is
+read from, `{ name, from: { recordId, key } }` (S3). A supplied field's
+`source` is the caller's statement and only narrows: a claimed
+`business_internal` counts as `outside`, so the field stays local. For a
+bound field the broker reads the value from the row, holding it `for share`
+with the run's task, and finds the source itself: `business_internal` only
+for a live task of this business with no client on it, entered by one of its
+people through the app, the API or the command line, and written to by no
+agent or worker since; otherwise `client_row` or `outside`. The field reaches
+a cloud route only where the source is `business_internal` and the operation
+also declares the field business-internal (`effectiveClass`,
+`core-connectors/src/data-class.ts`; `broker-sources.ts`). A bound row that is
+another business's, made up, trashed, or holds no text at the key is
+`SOURCE_UNREADABLE` 422, recorded as a step, in the same words whoever's row
+it was. The start reads the rows again, and a row that stopped being a
+business-internal source since the hold releases the call unsent
+(`LOCAL_MODEL_REQUIRED`); the values sent are the ones read at the start.
 
 ## Source-to-route manifest
 

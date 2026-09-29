@@ -1453,6 +1453,19 @@ run's task `for share` ahead of the lease (class `task` before `lease`), so a
 again under the same locks, and a task that gained a client since the hold
 releases the call unsent.
 
+A field reaches a cloud route only when the broker finds its source
+business-internal (S3): the field is bound to its row, `from: { recordId,
+key }`, and the row is a live task of this business with no client on it,
+entered by one of its people through the app, the API or the command line
+(the spine's `source`), and written to by no agent or worker since (the
+register's applied operations on it, less those that leave its data alone).
+A caller's claim of `business_internal` counts as `outside`. The bound rows
+are held `for share` in the same statement as the run's task, in id order,
+so a link or an edit in flight is waited on; the start reads them again and
+sends the values read there. Comments and other record types are not yet a
+source: nothing else records who entered them. Client persons and guests do
+not exist yet (C32); when they do, their writes must disqualify a row too.
+
 ## Instruction files pinned by digest
 
 `0033_bootstrap_pins` (AW-02; numbered again at the rebase) adds three
