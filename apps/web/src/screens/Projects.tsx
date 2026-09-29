@@ -216,6 +216,10 @@ function rowOf(task: BoardTask): ProjectRow {
     completed: task.completedAt !== null,
     stage: task.stage,
     status: task.state?.label ?? 'No state',
+    statusPosition: task.statePosition,
+    // No stored field says why a task waits yet (the run lifecycle's
+    // approval reason, LEANS-ON), so no banner draws one.
+    waitReason: null,
     estimate: null,
     actual: null,
     comments: { client: 0, mentions: 0, latest: null },

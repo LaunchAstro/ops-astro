@@ -22,6 +22,8 @@ export {
   type Burn,
 } from './project-words.ts';
 
+export { groupReason, statusOrder } from './project-groups.ts';
+
 export type { Actual, Estimate, ProjectRow } from './project-row.ts';
 
 /** Token rows sort after every time row (P-27). */
