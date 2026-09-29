@@ -4,12 +4,15 @@
 // as data. Test tooling, never shipped. The generator takes any shape, so a
 // suite can seed this one at a small scale and the snapshot build the full.
 //
-// The run rows are held back, and the report says so. Through the commands a
-// proposal version plans exactly one step (`proposal-writer.ts`, ordinal 1),
-// and T2a writes two events per pickup and hand-back; a failed hand-back
-// settles the hold and a restart opens a new lineage. So events never exceed
-// twice the steps, and the SPEC's 1,200 steps, 6,000 events and one run at
-// 1,500 cannot be reached without writing rows no command wrote.
+// Which path writes each dimension (the coordinator's ruling on Sol's review
+// 2): tasks, subtasks, comments, trash, lineages, the runs and each run's
+// first step and its claimed and handed-back events go through the commands.
+// People, grants, clients, the agent and the preset fields go through the
+// records layer, since no command issues them. So do the steps past the first
+// and the events past the pair, on the admin connection: through the commands
+// a version plans exactly one step (`proposal-writer.ts`, ordinal 1) and T2a
+// writes two events per pickup and hand-back, so no command reaches SPEC
+// 10.1's 1,200 steps, 6,000 events and one run held at 1,500.
 
 export interface FixtureShape {
   /** Task records in A and B, subtasks and trashed ones included. */
@@ -37,6 +40,11 @@ export interface FixtureShape {
   };
   /** Proposed, approved, picked up and handed back, each on a task of its own. */
   readonly runs: number;
+  /** Planned steps across all runs, the first of each from the command. */
+  readonly steps: number;
+  /** Run events across the runs, and the share one run holds (1,500 of 6,000). */
+  readonly runEvents: number;
+  readonly heldRunShare: number;
 }
 
 export const FIXTURE_SHAPE: FixtureShape = {
@@ -54,4 +62,7 @@ export const FIXTURE_SHAPE: FixtureShape = {
   trash: { batch: 40, earlier: 5 },
   lineages: { total: 200, twoVersions: 30, threeVersions: 5 },
   runs: 300,
+  steps: 1_200,
+  runEvents: 6_000,
+  heldRunShare: 0.25,
 };

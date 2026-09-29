@@ -35,6 +35,34 @@ const serverUrl = databaseUrlFromEnvironment() ?? '';
  * in as positional arguments, never into the shell text.
  */
 async function copy(target: string): Promise<string> {
+  const via = await copyData(target);
+  await copyPrivileges(target);
+  return via;
+}
+
+/**
+ * A new database starts with the default privileges, PUBLIC's TEMP among
+ * them, whatever the template's are (0031 revokes it). Give the copy the
+ * template's own, entry for entry.
+ */
+async function copyPrivileges(target: string): Promise<void> {
+  await server.execute(`revoke all on database "${target}" from public`);
+  const entries = await server.execute<{ grantee: string | null; privilege: string }>(
+    `select case when a.grantee = 0 then null else pg_get_userbyid(a.grantee) end grantee,
+            a.privilege_type privilege
+       from pg_database d, aclexplode(coalesce(d.datacl, acldefault('d', d.datdba))) a
+      where d.datname = $1`,
+    [template],
+  );
+  const grants = entries.map(({ grantee, privilege }) => {
+    if (!/^[A-Z]+$/u.test(privilege)) throw new Error(`fixture: unexpected privilege ${privilege}`);
+    const to = grantee === null ? 'public' : `"${grantee.replaceAll('"', '""')}"`;
+    return `grant ${privilege} on database "${target}" to ${to}`;
+  });
+  for (const grant of grants) await server.execute(grant); // eslint-disable-line no-await-in-loop
+}
+
+async function copyData(target: string): Promise<string> {
   try {
     await server.execute(`create database "${target}" template "${template}"`);
     return 'template';
