@@ -434,6 +434,17 @@ describe('a source comment cites no review round, lane or finding id', () => {
     ).toEqual([true, true]);
   });
 
+  it('Sol proof, criterion 4: reads leading SQL comments and preserves numeric dollar tags', () => {
+    const leading = "tx.query('-- Final review R1 #10\\nselect 1');";
+    const quoted = 'const q = sql`select $body1$ -- Sol 6 $body1$`;';
+    const unterminated = 'const q = sql`select /* Sol 6`;';
+    expect([
+      passages(commentLines(leading)).some(({ comment }) => cites(comment) !== undefined),
+      commentLines(quoted).length === 0,
+      passages(commentLines(unterminated)).some(({ comment }) => cites(comment) !== undefined),
+    ]).toEqual([true, true, true]);
+  });
+
   it('Sol proof, criterion 5: product comments do not narrate earlier draft reviews', () => {
     const files = [
       'apps/api/app.ts',
