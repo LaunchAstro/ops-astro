@@ -344,7 +344,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
-    expect(names.toSorted(), 'every declaration outside the eleven target-free ones').toStrictEqual(
+    expect(names.toSorted(), 'every declaration outside the twelve target-free ones').toStrictEqual(
       bearing,
     );
     const outside: string[] = [];
