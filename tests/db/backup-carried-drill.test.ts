@@ -25,6 +25,7 @@ import {
   backupLogin,
   retentionLogin,
   restoreLogin,
+  addArchive,
   backupStoreHooks,
   hostReach,
   seal,
@@ -83,7 +84,7 @@ async function carriedReceipt(): Promise<Receipt> {
   const body = (await seal()).sealArchive(Buffer.from('-- a made-up dump\n'), keys.publicKey);
   const job = await asRole(backupLogin.url, BACKUP);
   try {
-    await job.query('insert into backups.archives (body) values ($1)', [body]);
+    await addArchive(job, body);
   } finally {
     await job.end();
   }
@@ -92,7 +93,7 @@ async function carriedReceipt(): Promise<Receipt> {
   exported = file;
   const gate = gateOf(operator);
   await exportArchive({ gate, storeUrl: restoreLogin.url, file, reach: hostReach });
-  const takenAt = (JSON.parse(readFileSync(file, 'utf8')) as { takenAt: string }).takenAt;
+  const takenAt = (JSON.parse(readFileSync(`${file}.json`, 'utf8')) as { takenAt: string }).takenAt;
   const at = new Date().toISOString();
   return await drillAsOperator({
     gate,
@@ -130,11 +131,12 @@ async function swappedAndDrilled(): Promise<Receipt> {
     /* @vite-ignore */
     '../../scripts/ops/carried-archive.mjs' as string
   )) as { digestOf: (body: Buffer) => string };
-  const held = JSON.parse(readFileSync(exported, 'utf8')) as Record<string, string>;
+  const held = JSON.parse(readFileSync(`${exported}.json`, 'utf8')) as Record<string, unknown>;
   const body = sealArchive(Buffer.from('-- another dump\n'), keys.publicKey);
   const file = join(mkdtempSync(join(scratch, 'swap-')), 'archive.sealed');
-  const swapped = { ...held, sha256: digestOf(body), body: body.toString('base64') };
-  writeFileSync(file, `${JSON.stringify(swapped)}\n`);
+  const swapped = { ...held, sha256: digestOf(body), bytes: body.length };
+  writeFileSync(file, body);
+  writeFileSync(`${file}.json`, `${JSON.stringify(swapped)}\n`);
   const at = new Date().toISOString();
   return await (
     await drillModule()

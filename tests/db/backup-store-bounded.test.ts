@@ -23,6 +23,7 @@ import {
   restoreLogin,
   receipts,
   archiveIds,
+  addArchive,
   backupStoreHooks,
   type Client,
 } from './backup-identity.fixture.ts';
@@ -32,7 +33,7 @@ const FULL = '53400';
 /** Bytes already stored, as the admin counts them from the archives themselves. */
 async function stored(): Promise<number> {
   const [row] = await store.admin.execute<{ n: string }>(
-    'select coalesce(sum(length(body)), 0)::text as n from backups.archives',
+    'select coalesce(sum(bytes), 0)::text as n from backups.archives',
   );
   return Number(row?.n);
 }
@@ -42,8 +43,9 @@ async function roomFor(room: number): Promise<void> {
   await store.admin.execute(`update backups.settings set max_bytes = ${(await stored()) + room}`);
 }
 
-const add = (client: Client, bytes: number) =>
-  client.query('insert into backups.archives (body) values ($1)', [Buffer.alloc(bytes, 7)]);
+/** An archive of `bytes` bytes, as the job adds one; `open` when the caller holds a transaction. */
+const add = (client: Client, bytes: number, open = false) =>
+  addArchive(client, Buffer.alloc(bytes, 7), open);
 
 const codeOf = async (work: Promise<unknown>): Promise<string> => {
   try {
@@ -143,9 +145,9 @@ function boundedCases2() {
     try {
       await first.query('begin');
       await second.query('begin');
-      await add(first, 100);
+      await add(first, 100, true);
       const waiter = await backendPid(second);
-      const later = codeOf(add(second, 100));
+      const later = codeOf(add(second, 100, true));
       await waitingOnLock(waiter);
       await first.query('commit');
       expect(await later).toBe(FULL);
@@ -168,9 +170,9 @@ function boundedCases2() {
       await second.query('begin isolation level repeatable read');
       await second.query('select 1');
       await first.query('begin');
-      await add(first, 100);
+      await add(first, 100, true);
       const waiter = await backendPid(second);
-      const later = codeOf(add(second, 100));
+      const later = codeOf(add(second, 100, true));
       await waitingOnLock(waiter);
       await first.query('commit');
       expect(await later).not.toBe('ok');
@@ -193,9 +195,9 @@ function boundedCases3() {
     try {
       await first.query('begin');
       await second.query('begin');
-      await add(first, 100);
+      await add(first, 100, true);
       const waiter = await backendPid(second);
-      const later = codeOf(add(second, 100));
+      const later = codeOf(add(second, 100, true));
       await waitingOnLock(waiter);
       await first.query('rollback');
       expect(await later).toBe('ok');

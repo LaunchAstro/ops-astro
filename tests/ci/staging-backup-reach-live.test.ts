@@ -12,14 +12,23 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { largeArchive, overTheCap } from './staging-backup-reach-large.fixture.ts';
 
-type Reach = (url: string, script: string) => Promise<string>;
+type Reach = (
+  url: string,
+  script: string | Iterable<string> | AsyncIterable<string>,
+  onLine?: (line: string) => unknown,
+) => Promise<string>;
 type JobModule = {
   runBackup: (o: Record<string, unknown>) => Promise<Record<string, unknown>>;
   expireBackups: (o: Record<string, unknown>) => Promise<Record<string, unknown>>;
 };
 type DrillModule = {
-  fetchLatest: (url: string, reach?: Reach) => Promise<{ takenAt: string; body: Buffer }>;
+  fetchLatest: (
+    url: string,
+    file: string,
+    reach?: Reach,
+  ) => Promise<{ takenAt: string; sha256: string; bytes: number }>;
   recordDrill: (
     url: string,
     who: string,
@@ -223,8 +232,10 @@ live('S0-3 store reach, live', () => {
     });
     expect(added).toMatchObject({ event: 'backup run', outcome: 'recorded' });
 
-    const fetched = await fetchLatest(logins['ops_astro_backup_restore'] ?? '', reach);
-    expect(openArchive(fetched.body, keys.privateKey)).toStrictEqual(dump);
+    const file = join(scratch, 'fetched');
+    const fetched = await fetchLatest(logins['ops_astro_backup_restore'] ?? '', file, reach);
+    expect(openArchive(readFileSync(file), keys.privateKey)).toStrictEqual(dump);
+    rmSync(file);
     expect(Number.isNaN(Date.parse(fetched.takenAt))).toBe(false);
 
     const last = await recordPassed(
@@ -259,4 +270,15 @@ live('S0-3 store reach, live', () => {
     expect(refused).toMatchObject({ outcome: 'failed', stage: 'store' });
     expect(JSON.stringify(refused)).not.toMatch(/s03r_|postgres:\/\//u);
   }, 60_000);
+
+  // REV158S criterion 5: an archive larger than the store container's memory
+  // (512m in staging's definition) goes in and comes back out in parts, and
+  // neither the job nor the drill ever holds it whole.
+  it("an archive just over the store's memory limit is stored exactly and fetched back in fixed memory", async () => {
+    await largeArchive({ reach: await reachOn(names('staging')), logins, keys, asAdmin, scratch });
+  }, 900_000);
+
+  it('an archive over the cap is refused (53400) part way through, and the store keeps nothing of it', async () => {
+    await overTheCap({ reach: await reachOn(names('staging')), logins, keys, asAdmin, scratch });
+  }, 300_000);
 });

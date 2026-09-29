@@ -5,6 +5,9 @@
 // S0-3 (S0-3c, line C8). The shared fixture is backup-identity.fixture.ts.
 
 import { randomBytes } from 'node:crypto';
+import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import postgres from 'postgres';
 import { describe, expect, it } from 'vitest';
 import {
@@ -58,8 +61,8 @@ function backupEncryptionCases1() {
       await expect(
         reader.begin(async (tx) => {
           await tx.unsafe(`set local role ${RESTORE}`);
-          const [archive] = await tx`select body from backups.read_latest()`;
-          expect(archive?.['body']).toBeInstanceOf(Buffer);
+          const [archive] = await tx`select sha256 from backups.read_latest()`;
+          expect(archive?.['sha256']).toMatch(/^[0-9a-f]{64}$/u);
           throw new Error('rollback after access');
         }),
       ).rejects.toThrow('rollback after access');
@@ -82,7 +85,8 @@ function backupEncryptionCases2() {
     });
     expect(ok).toMatchObject({ outcome: 'recorded' });
     const [row] = await store.admin.execute<{ body: Buffer }>(
-      'select body from backups.archives order by taken_at desc, id desc limit 1',
+      `select string_agg(chunk, ''::bytea order by seq) as body from backups.archive_parts
+        where archive_id = (select id from backups.archives order by taken_at desc, id desc limit 1)`,
     );
     expect(row?.body.includes(dump)).toBe(false);
     expect(row?.body.includes(Buffer.from('PGDMP'))).toBe(false);
@@ -101,15 +105,26 @@ function backupEncryptionCases2() {
   });
 }
 
+/** The newest backup fetched as the drill fetches it, into a file of its own: its time. */
+async function fetchedTakenAt(): Promise<string> {
+  const { fetchLatest } = await drill();
+  const folder = mkdtempSync(join(tmpdir(), 's0-3c-'));
+  try {
+    const fetched = await fetchLatest(restoreLogin.url, join(folder, 'a'), hostReach);
+    expect(statSync(join(folder, 'a')).mode & 0o777).toBe(0o600);
+    return fetched.takenAt;
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+}
+
 function backupEncryptionCases3() {
   it('lets the restore identity read the newest backup only through the store, logging each read', async () => {
     const [newest] = await store.admin.execute<{ id: string; taken_at: Date }>(
       'select id::text, taken_at from backups.archives order by taken_at desc, id desc limit 1',
     );
     const before = (await receipts()).length;
-    const { fetchLatest } = await drill();
-    const fetched = await fetchLatest(restoreLogin.url, hostReach);
-    expect(fetched.takenAt).toBe(newest?.taken_at.toISOString());
+    expect(await fetchedTakenAt()).toBe(newest?.taken_at.toISOString());
     const logged = await receipts();
     expect(logged.length).toBe(before + 1);
     expect(logged.at(-1)).toMatchObject({ action: 'backup read', archive_id: newest?.id });
@@ -121,9 +136,9 @@ function backupEncryptionCases3() {
     const reader = await asRole(restoreLogin.url, RESTORE);
     try {
       for (const text of [
-        'select body from backups.archives',
+        'select chunk from backups.archive_parts',
         'select id from backups.archives',
-        `insert into backups.archives (body) values ('\\x01')`,
+        `select backups.add_part(0, '\\x01')`,
         'delete from backups.archives',
         'update backups.receipts set actor = actor',
         'select * from backups.settings',

@@ -16,13 +16,20 @@ import {
   type EmptyDatabase,
 } from '../support/fresh-database.ts';
 
-/** How the job and the drill reach the store: a login and a script in, what psql prints out. */
-export type Reach = (url: string, script: string) => Promise<string>;
+/**
+ * How the job and the drill reach the store: a login and a script (text or
+ * pieces of text) in, what psql prints out, or each line to `onLine`.
+ */
+export type Reach = (
+  url: string,
+  script: string | Iterable<string> | AsyncIterable<string>,
+  onLine?: (line: string) => unknown,
+) => Promise<string>;
 
 /** The job as the machine runs it; loaded per test so a missing job fails its own tests only. */
 export const job = async (): Promise<{
   runBackup: (options: {
-    dump: () => Promise<Buffer>;
+    dump: () => Promise<Buffer | AsyncIterable<Buffer>>;
     storeUrl: string;
     publicKey?: string;
     heartbeat?: string;
@@ -58,9 +65,13 @@ export const keys: { publicKey: string; privateKey: string } = generateKeyPairSy
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 });
 export const drill = async (): Promise<{
-  fetchLatest: (storeUrl: string, reach?: Reach) => Promise<{ takenAt: string; body: Buffer }>;
+  fetchLatest: (
+    storeUrl: string,
+    file: string,
+    reach?: Reach,
+  ) => Promise<{ takenAt: string; sha256: string; bytes: number }>;
   restoreDrill: (options: {
-    fetchArchive: () => Promise<{ takenAt: string; body: Buffer }>;
+    fetchArchive: (file: string) => Promise<{ takenAt: string; body?: Buffer }>;
     privateKey: string;
     scope: { business: string; client: string; person: string };
     docker: (args: string[], input?: Buffer) => Promise<{ code: number; stdout: string }>;
@@ -115,18 +126,34 @@ export async function loginIn(
  * (scripts/ops/backup-store-reach.mjs) over one session, and answers what
  * `psql -At` prints: each row's one value, a line each.
  */
-export async function hostReach(url: string, script: string): Promise<string> {
+export async function hostReach(
+  url: string,
+  script: string | Iterable<string> | AsyncIterable<string>,
+  onLine?: (line: string) => unknown,
+): Promise<string> {
+  let text = '';
+  if (typeof script === 'string') text = script;
+  else for await (const piece of script) text += piece;
   const sql = postgres(url, { max: 1, onnotice: () => {} });
+  let printed: string;
   try {
-    const results = (await sql.unsafe(script)) as unknown as Record<string, unknown>[][];
-    return results
+    const results = (await sql.unsafe(text)) as unknown as Record<string, unknown>[][];
+    printed = results
       .flat()
       .map((row) => String(Object.values(row)[0] ?? ''))
       .join('\n');
   } finally {
     await sql.end();
   }
+  if (onLine === undefined) return printed;
+  for (const line of printed === '' ? [] : printed.split('\n')) {
+    // oxlint-disable-next-line no-await-in-loop -- a line at a time, as psql prints them
+    await onLine(line);
+  }
+  return '';
 }
+
+export { addArchive, PART } from './backup-archive.fixture.ts';
 
 /** One session, so `set role` and `begin` hold for every statement after them. */
 export class Client {
