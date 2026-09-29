@@ -79,18 +79,24 @@ async function copyData(target: string): Promise<string> {
       `fixture: FIXTURE_PG_CONTAINER ${JSON.stringify(container)} is not a container name or id`,
     );
   }
-  const [row] = await server.execute<{ identity: string | null }>(IDENTITY);
-  const identity = row?.identity ?? '';
+  // DATABASE_URL names the server under test; the admin URL, read first
+  // for the connection, may name another.
+  const databaseUrl = process.env['DATABASE_URL'] ?? '';
+  const identity = await identityOf(databaseUrl === '' ? serverUrl : databaseUrl);
   if (identity === '') throw new Error('fixture: the DATABASE_URL server gave no identity');
-  // The container proves it runs DATABASE_URL's server before it creates
-  // anything, asking over the socket the copy then uses.
+  const adminIdentity = await identityOf(serverUrl);
+  // Before it creates anything, the container proves it runs DATABASE_URL's
+  // server, asking over the socket the copy then uses, and the admin server
+  // the template lives on must be that server too.
   const script = [
     '[ -n "$4" ] && [ "$(psql -U "$1" -d postgres -XAtc "$5")" = "$4" ] || {',
     '  printf "fixture: container %s is not the DATABASE_URL server;' +
       ' set FIXTURE_PG_CONTAINER to its container. Nothing was created." "$6" >&2; exit 1; }',
+    '[ "$7" = "$4" ] || {',
+    '  printf "fixture: DATABASE_ADMIN_URL is not the DATABASE_URL server. Nothing was created." >&2; exit 1; }',
     'createdb -U "$1" -T template0 "$3" && pg_dump -U "$1" -Fc "$2" | pg_restore -U "$1" -d "$3"',
   ].join('\n');
-  const positional = [user, template, target, identity, IDENTITY, container];
+  const positional = [user, template, target, identity, IDENTITY, container, adminIdentity];
   const args = ['exec', container, 'sh', '-c', script, 'copy', ...positional];
   const run = spawnSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'] });
   if (run.status !== 0) {
@@ -99,6 +105,21 @@ async function copyData(target: string): Promise<string> {
     throw new Error(`fixture: dump and restore failed (${String(run.status)})${why && `: ${why}`}`);
   }
   return 'dump-restore';
+}
+
+/** The identity of the server at `url`, read over a connection of its own. */
+async function identityOf(url: string): Promise<string> {
+  if (url === serverUrl) {
+    const [row] = await server.execute<{ identity: string | null }>(IDENTITY);
+    return row?.identity ?? '';
+  }
+  const other = connectAsAdmin(url, { source: 'harness' });
+  try {
+    const [row] = await other.execute<{ identity: string | null }>(IDENTITY);
+    return row?.identity ?? '';
+  } finally {
+    await other.close();
+  }
 }
 
 /**
