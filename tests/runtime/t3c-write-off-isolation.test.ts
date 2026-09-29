@@ -24,6 +24,7 @@ import { openSecond } from './t3b-harness.ts';
 import { cq8World } from './cq-8-world.ts';
 import { openBilling, t3d1Harness } from './t3d1-harness.ts';
 import { holdOf, writeOffBody } from './t3c-harness.ts';
+import type { Work } from './t2d-harness.ts';
 
 const url = databaseUrlFromEnvironment();
 
@@ -56,6 +57,18 @@ describe('T3 no machine path: one caller of the write-off', () => {
     expect(causes).toStrictEqual(['packages/core-runtime/src/recovery/write-off.ts']);
   });
 });
+
+/** What of another client's work a refusal must never carry. */
+const foreignOf = (
+  w: Pick<Work, 'taskId' | 'attemptId' | 'picked' | 'decision'>,
+  owner: Member,
+): readonly string[] => [
+  w.taskId,
+  w.attemptId,
+  String(w.picked['leaseId']),
+  String(w.decision['reservationId']),
+  owner.personId,
+];
 
 const as = async (on: Schedules, who: Member, body: object) =>
   await executeCommand(on.db.app, on.business, who.presented, 'api', body as never);
@@ -101,28 +114,48 @@ describe.skipIf(url === undefined)('T3c write-off separations', { timeout: 60_00
     expect(await holdOf(other, theirs)).toMatchObject({ reservation_actual: '100' });
   });
 
-  it("client to client: a client's task share and billing grant reach no write-off, and no refusal names the other task", async () => {
-    const shared = await h.unknownStep({ applied: false });
-    const another = await h.unknownStep({ applied: false });
-    const client = await cq8World(s).client(s.business, s.decider, 'client-a', shared.taskId);
+  it("client to client: two clients, each granted on its own task, reach no write-off on the other's, and no body names it", async () => {
+    const world = cq8World(s);
+    const a = await h.unknownStep({ applied: false });
+    const b = await h.unknownStep({ applied: false });
+    const clientA = await world.client(s.business, s.decider, 'client-a', a.taskId);
+    const clientB = await world.client(s.business, s.decider, 'client-b', b.taskId);
     await s.db.app.withBusiness(s.business, async (tx) => {
-      await grantTo(tx, client, 'decide', { kind: 'record', id: shared.taskId }, false, 'billing');
+      await grantTo(tx, clientA, 'decide', { kind: 'record', id: a.taskId }, false, 'billing');
+      await grantTo(tx, clientB, 'decide', { kind: 'record', id: b.taskId }, false, 'billing');
     });
-    const before = [await holdOf(s, shared), await holdOf(s, another)];
-    for (const w of [shared, another]) {
+    const before = [await holdOf(s, a), await holdOf(s, b)];
+    const crossings = [
+      // Each client names the other's attempt under the other's task, and under its own.
+      { who: clientA, body: writeOffBody(b, 0), foreign: foreignOf(b, clientB) },
+      {
+        who: clientA,
+        body: writeOffBody({ taskId: a.taskId, attemptId: b.attemptId }, 0),
+        foreign: foreignOf(b, clientB),
+      },
+      { who: clientB, body: writeOffBody(a, 0), foreign: foreignOf(a, clientA) },
+      {
+        who: clientB,
+        body: writeOffBody({ taskId: b.taskId, attemptId: a.attemptId }, 0),
+        foreign: foreignOf(a, clientA),
+      },
+    ];
+    for (const crossing of crossings) {
       // eslint-disable-next-line no-await-in-loop
-      const refused = await as(s, client, writeOffBody(w, 0));
+      const refused = await as(s, crossing.who, crossing.body);
+      // Refused on authority: an external client's billing grant is never used (R4).
       expect(codeOf(refused)).toBe('SCOPE_NOT_GRANTED');
       const said = JSON.stringify(refused);
-      for (const foreign of [
-        another.taskId,
-        another.attemptId,
-        String(another.decision['reservationId']),
-      ]) {
-        if (w !== another) expect(said).not.toContain(foreign);
-      }
+      for (const foreign of crossing.foreign) expect(said).not.toContain(foreign);
     }
-    expect([await holdOf(s, shared), await holdOf(s, another)]).toStrictEqual(before);
+    // R4: an external client's billing grant reaches no write-off on its own task either.
+    expect(codeOf(await as(s, clientA, writeOffBody(a, 0)))).toBe('SCOPE_NOT_GRANTED');
+    expect(codeOf(await as(s, clientB, writeOffBody(b, 0)))).toBe('SCOPE_NOT_GRANTED');
+    expect([await holdOf(s, a), await holdOf(s, b)]).toStrictEqual(before);
+
+    // The positive control: the business's own holder closes one client's, and only that one.
+    appliedDetail(await as(s, s.decider, writeOffBody(a, 0)), 'budget.write_off');
+    expect(await holdOf(s, b)).toStrictEqual(before[1]);
   });
 
   it("task to task: an attempt named under another task is not found; one task's grant reaches no other", async () => {
