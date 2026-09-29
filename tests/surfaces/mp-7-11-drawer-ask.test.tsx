@@ -8,7 +8,8 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
-import { AskSparkle } from '../../packages/ui/src/index.ts';
+// Not exported from the package until its first host page mounts it.
+import { AskSparkle } from '../../packages/ui/src/surfaces/assistant/asker.tsx';
 import { mount } from './mount.tsx';
 import { chat, drawer, heardOf, press, track, unmountAll } from './mp-7-11-drawer-fixtures.tsx';
 
