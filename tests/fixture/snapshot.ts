@@ -40,11 +40,14 @@ try {
     const report = await seedFixture(db, FIXTURE_SHAPE);
     await db.app.close();
     await db.admin.close();
-    await server.execute(`alter database "${db.name}" rename to "${template}"`);
-    await server.execute(`drop role "${db.loginRole}", "${db.restrictedRole}"`);
     console.log(
       JSON.stringify({ template, key, seedMs: report.seedMs, heldBack: report.heldBack, stale }),
     );
+    await server.execute(`alter database "${db.name}" rename to "${template}"`);
+    // The run's two logins hold connect on the database; a clone needs neither.
+    const roles = `"${db.loginRole}", "${db.restrictedRole}"`;
+    await server.execute(`revoke all on database "${template}" from ${roles}`);
+    await server.execute(`drop role ${roles}`);
   } else if (verb === 'build') {
     console.log(JSON.stringify({ template, key, reused: true, stale }));
   } else if (verb === 'clone' && /^[a-z][a-z0-9_]{0,62}$/u.test(target ?? '')) {
