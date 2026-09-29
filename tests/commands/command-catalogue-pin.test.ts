@@ -103,6 +103,11 @@ vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async
   revokeDelegationAsManager: recorder('revokeDelegationAsManager'),
   revokeGrantAsManager: recorder('revokeGrantAsManager'),
 }));
+vi.mock('../../packages/core-commands/src/commands/live-corrections.ts', async (original) => ({
+  ...(await original<object>()),
+  approveLiveCorrection: recorder('approveLiveCorrection'),
+  requestLiveCorrection: recorder('requestLiveCorrection'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (original) => ({
   ...(await original<object>()),
   cancelOnTask: recorder('cancelOnTask'),
@@ -118,8 +123,11 @@ const PINNED_RUNTIME_SHAPED = {
 const PINNED_UNTARGETED_IDENTIFIERS = {
   'delegation.revoke': [],
   'grant.revoke': [],
+  'live_correction.approve': ['correctionId', 'versionId'],
+  'live_correction.request': ['partyId', 'taskId'],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
+  'settings.set_live_correction_approver': [],
   'task.cancel': ['recordId', 'lineageId'],
   'task.create': ['parentId', 'board', 'boardSection'],
   'task.decide': ['gateId', 'versionId'],
@@ -134,12 +142,15 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'delegation.revoke',
   'grant.revoke',
+  'live_correction.approve',
+  'live_correction.request',
   'person.list',
   'preset.plan',
   'session.capabilities',
   'settings.read',
   'settings.set_client_sign_off',
   'settings.set_four_eyes_threshold',
+  'settings.set_live_correction_approver',
   'task.board',
   'task.cancel',
   'task.create',
@@ -155,6 +166,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 ];
 
 const PINNED_AGENT_SURFACE = [
+  'live_correction.request',
   'session.capabilities',
   'task.comment',
   'task.decide',
@@ -230,6 +242,27 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
   { command: 'task.restart', operationId: 'op', recordId: 'r', lineageId: 'lin' },
   { command: 'task.heartbeat', operationId: 'op', leaseId: 'l', fence: 4 },
+  {
+    command: 'live_correction.request',
+    operationId: 'op',
+    partyId: 'party',
+    taskId: 'task',
+    path: 'p',
+    word: 'w',
+    replacement: 'x',
+    pageUrl: 'u',
+    baseRevision: 'b',
+    before: 'before',
+    after: 'after',
+  },
+  {
+    command: 'live_correction.approve',
+    operationId: 'op',
+    correctionId: 'c',
+    versionId: 'v',
+    decision: 'approve',
+  },
+  { command: 'settings.set_live_correction_approver', operationId: 'op', value: null },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -272,6 +305,14 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.cancel': ['cancelOnTask', 'request'],
   'task.restart': ['restartOnTask', 'request'],
   'task.heartbeat': ['heartbeatOwnLease', 'request'],
+  'live_correction.request': ['requestLiveCorrection', 'request'],
+  'live_correction.approve': ['approveLiveCorrection', 'request'],
+  'settings.set_live_correction_approver': [
+    'setBusinessSetting',
+    'settings.set_live_correction_approver',
+    null,
+    undefined,
+  ],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -311,13 +352,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty from an expected revision', () => {
+  it('exempts the same twenty-three from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same eight, two of them before a pickup', () => {
+  it('lets an agent reach the same nine, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

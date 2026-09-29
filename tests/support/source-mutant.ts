@@ -32,6 +32,8 @@ const DEFAULT_TREES: readonly string[] = [
   'packages/core-commands/src',
   'packages/core-wire/src',
   'packages/core-digest/src',
+  // C80: the command package calls the provider operations once a gate has passed.
+  'packages/core-connectors/src',
 ];
 
 export interface MutationSpec {

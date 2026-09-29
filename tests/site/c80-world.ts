@@ -62,74 +62,89 @@ export interface C80World {
   receiptsOf(correctionId: string): Promise<number>;
 }
 
-export async function c80World(part: string): Promise<C80World> {
-  const world = await agentWorld(part, `c80${randomUUID().slice(0, 6)}`);
+const WHOLE: Scope = { kind: 'business', id: null };
+
+type Body = Readonly<Record<string, unknown>>;
+
+/** Business alpha's people: three business-wide, one on party B only, an administrator. */
+async function seedAlpha(world: AgentWorld, partyB: string) {
   await world.db.app.withBusiness(world.business, async (tx) => {
     await installBusinessSettings(tx);
   });
-  const partyA = randomUUID();
-  const partyB = randomUUID();
   const [ava, ben, cal, dee] = [
     await world.decider('ava'),
     await world.decider('ben'),
     await world.decider('cal'),
     await world.decider('dee'),
   ];
-  const business: Scope = { kind: 'business', id: null };
   for (const member of [ava, ben, cal]) {
     // oxlint-disable-next-line no-await-in-loop -- setup, one business
-    await correctionGrants(world, member, business);
+    await correctionGrants(world, member, WHOLE);
   }
   await correctionGrants(world, dee, { kind: 'party', id: partyB });
   const admin = await enrol(world.db.app, world.business, 'admin');
   await world.db.app.withBusiness(world.business, async (tx) => {
-    await grantTo(tx, admin, 'manage', business, false, 'settings');
+    await grantTo(tx, admin, 'manage', WHOLE, false, 'settings');
   });
+  return { ava, ben, cal, dee, admin };
+}
 
+/** Business beta, with one member holding every correction grant there. */
+async function seedBeta(world: AgentWorld): Promise<{ beta: string; eve: Member }> {
   const beta = await insertBusiness(world.db.app, `beta${randomUUID().slice(0, 6)}`);
   await installSpine(world.db.app, beta);
   const eve = await enrol(world.db.app, beta, 'eve');
   await world.db.app.withBusiness(beta, async (tx) => {
     await installBusinessSettings(tx);
-    await grantTo(tx, eve, 'read', business, false, 'run');
-    await grantTo(tx, eve, 'write', business, false, 'run');
-    await grantTo(tx, eve, 'decide', business, false, 'gate');
+    await grantTo(tx, eve, 'read', WHOLE, false, 'run');
+    await grantTo(tx, eve, 'write', WHOLE, false, 'run');
+    await grantTo(tx, eve, 'decide', WHOLE, false, 'gate');
   });
+  return { beta, eve };
+}
 
-  const asIn = async (id: string, member: Member, body: Readonly<Record<string, unknown>>) =>
+export async function c80World(part: string): Promise<C80World> {
+  const world = await agentWorld(part, `c80${randomUUID().slice(0, 6)}`);
+  const partyA = randomUUID();
+  const partyB = randomUUID();
+  const people = await seedAlpha(world, partyB);
+  const { beta, eve } = await seedBeta(world);
+  const asIn = async (id: string, member: Member, body: Body) =>
     await executeCommand(world.db.app, id, member.presented, 'api', {
       operationId: randomUUID(),
       ...body,
     } as never);
-  const as = async (member: Member, body: Readonly<Record<string, unknown>>) =>
-    await asIn(world.business, member, body);
-
-  const created = await as(ava, { command: 'task.create', fields: { title: 'About page word' } });
+  const as = async (member: Member, body: Body) => await asIn(world.business, member, body);
+  const created = await as(people.ava, { command: 'task.create', fields: { title: 'About' } });
   if (!('recordId' in created)) throw new Error('c80World: task.create refused');
   const taskA = String(created.recordId);
-
-  const one = async (sql: string, parameters: readonly unknown[]) =>
-    (await world.db.admin.execute<{ readonly v: string }>(sql, parameters))[0]?.v;
-
   return {
     world,
     partyA,
     partyB,
-    ava,
-    ben,
-    cal,
-    dee,
-    admin,
+    ...people,
     beta,
     eve,
     taskA,
     as,
     asIn,
+    ...commands(world, as, { partyA, taskA, admin: people.admin }),
+  };
+}
+
+function commands(
+  world: AgentWorld,
+  as: (member: Member, body: Body) => Promise<CommandResult>,
+  at: { readonly partyA: string; readonly taskA: string; readonly admin: Member },
+): Pick<C80World, 'request' | 'approve' | 'setApprover' | 'stateOf' | 'receiptsOf'> {
+  const one = async (sql: string, parameters: readonly unknown[]) =>
+    (await world.db.admin.execute<{ readonly v: string }>(sql, parameters))[0]?.v;
+  return {
     request: async (member, overrides = {}) =>
       await as(member, {
         command: 'live_correction.request',
-        partyId: partyA,
-        taskId: taskA,
+        partyId: at.partyA,
+        taskId: at.taskA,
         path: ABOUT,
         word: 'friendly',
         replacement: 'welcoming',
@@ -147,7 +162,7 @@ export async function c80World(part: string): Promise<C80World> {
         decision: 'approve',
       }),
     setApprover: async (personId) =>
-      await as(admin, { command: 'settings.set_live_correction_approver', value: personId }),
+      await as(at.admin, { command: 'settings.set_live_correction_approver', value: personId }),
     stateOf: async (id) =>
       await one('select state as v from public.live_corrections where id = $1', [id]),
     receiptsOf: async (id) =>

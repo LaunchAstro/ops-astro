@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { c80World, type C80World } from './c80-world.ts';
+import { grantTo } from '../commands/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('C80 approver: DATABASE_URL is unset, so nothing ran.');
@@ -68,7 +69,7 @@ describe.skipIf(serverUrl === undefined)('C80 approver, version and timing', () 
         w.approve(w.ben, correctionId, versionId),
         w.approve(w.ben, correctionId, versionId),
       ])
-    ).map(codeOf);
+    ).map((result) => codeOf(result));
     expect(codes.toSorted()).toEqual(['GATE_ALREADY_DECIDED', 'not-a-refusal']);
     expect(await w.stateOf(correctionId)).toBe('approved');
   });
@@ -106,5 +107,42 @@ describe.skipIf(serverUrl === undefined)('C80 no self-approval', () => {
       }),
     ).rejects.toThrow(/live_corrections_no_self_approval/u);
     expect(await w.stateOf(correctionId)).toBe('requested');
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('C80 approver, the approved version stays pinned', () => {
+  it('refuses a change to what the request pinned, before or after the approval', async () => {
+    await w.setApprover(w.ben.personId);
+    const { correctionId, versionId } = await requested();
+    await w.approve(w.ben, correctionId, versionId);
+    await expect(
+      w.world.db.app.withBusiness(w.world.business, async (tx) => {
+        await tx.query(`update public.live_corrections set replacement = 'hostile' where id = $1`, [
+          correctionId,
+        ]);
+      }),
+    ).rejects.toThrow(/live_corrections_pinned/u);
+    expect(await w.stateOf(correctionId)).toBe('approved');
+  });
+
+  it('refuses a request worked under a task the requester cannot read, as if absent', async () => {
+    const hidden = await w.as(w.cal, { command: 'task.create', fields: { title: 'private' } });
+    const taskId = 'recordId' in hidden ? String(hidden.recordId) : '';
+    const outsider = await w.world.decider('gil');
+    await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+      await tx.query(
+        `update public.grants set revoked_at = now()
+          where subject_id = $1 and collection = 'task' and action = 'read'`,
+        [outsider.personId],
+      );
+      for (const action of ['read', 'write'] as const) {
+        // oxlint-disable-next-line no-await-in-loop -- setup, two grants
+        await grantTo(tx, outsider, action, { kind: 'business', id: null }, false, 'run');
+      }
+    });
+    const refused = await w.request(outsider, { taskId });
+    expect(codeOf(refused)).toBe('NOT_FOUND');
+    const absent = await w.request(outsider, { taskId: '00000000-0000-4000-8000-000000000002' });
+    expect(JSON.stringify(refused)).toBe(JSON.stringify(absent));
   });
 });

@@ -17,6 +17,7 @@ import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts'
 import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
+import { requestAsAgent, requestOperands } from './live-corrections.ts';
 import { isFieldMap } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
@@ -509,6 +510,16 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       authority: 'decision',
       replay: 'reauthorise',
       operands: NONE,
+    }),
+  ],
+  [
+    'live_correction.request',
+    row({
+      authority: 'purpose',
+      replay: 'reauthorise',
+      operands: requestOperands,
+      serve: async (tx, { session }, operands, delegation) =>
+        await requestAsAgent(tx, session.actorId, operands, delegation),
     }),
   ],
   [

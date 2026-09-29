@@ -75,9 +75,12 @@ describe('the surface as a table', () => {
     // about the caller rather than about the business's records. `grant` and
     // `delegation` are the revocation controls': the path names the row a
     // revocation writes, and the authority it asks is still on tasks.
+    // `live_correction` is C80's: its commands ask `run` and `gate`.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation)\/[a-z_]+$/u.test(path),
+        /^\/(?:task|person|preset|settings|session|grant|delegation|live_correction)\/[a-z_]+$/u.test(
+          path,
+        ),
       ),
     ).toBe(true);
   });
