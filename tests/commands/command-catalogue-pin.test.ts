@@ -28,6 +28,9 @@
 // `task.edit_comment` and `task.delete_comment`, two writes an agent reaches
 // inside its delegation, one row each in the tables that list every write or
 // every agent operation, and `task.comment` handing on its `parentId`.
+// The sixth is MP-4-4's parent scope: `task.set_party` goes to `setParty`,
+// which holds a subtask to its parent's client and carries a client down the
+// subtree before the owned write.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -74,6 +77,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-scores.ts', async (orig
 vi.mock('../../packages/core-commands/src/commands/tasks-adhoc.ts', async (original) => ({
   ...(await original<object>()),
   setAdHoc: recorder('setAdHoc'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-party.ts', async (original) => ({
+  ...(await original<object>()),
+  setParty: recorder('setParty'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-client-access.ts', async (original) => ({
   ...(await original<object>()),
@@ -356,7 +363,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.assign': ['writeOwnedFields', 'task.assign', { assignee: 'f-assign' }],
   'task.triage': ['writeOwnedFields', 'task.triage', { intake: 'f-triage' }],
   'task.set_stage': ['writeOwnedFields', 'task.set_stage', { stage: 'f-stage' }],
-  'task.set_party': ['writeOwnedFields', 'task.set_party', { party: 'f-party' }],
+  'task.set_party': ['setParty', { party: 'f-party' }],
   'task.set_audience': ['writeOwnedFields', 'task.set_audience', { audience: 'f-audience' }],
   'task.set_scores': ['setScores', { impact: 7 }],
   'task.set_adhoc': ['setAdHoc', { ad_hoc: true }],

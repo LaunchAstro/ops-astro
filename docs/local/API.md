@@ -889,7 +889,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.assign`                              | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                  |
 | `task.triage`                              | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                  |
 | `task.set_stage`                           | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                  |
-| `task.set_party`                           | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                  |
+| `task.set_party`                           | `setParty` (`commands/tasks-party.ts`), then `writeOwnedFields`                           | refused `DELEGATION_EXCLUDES_OPERATION`                                                                  |
 | `task.set_audience`                        | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                  |
 | `task.set_scores`                          | `setScores` (`commands/tasks-scores.ts`)                                                  | served under a live delegation, on its own task (`serve`)                                                |
 | `task.set_adhoc`                           | `setAdHoc` (`commands/tasks-adhoc.ts`)                                                    | served under a live delegation, on its own task (`serve`)                                                |
@@ -1018,6 +1018,23 @@ reads as no board. An agent's pool is its one task, so an agent always gets
 (`task.set_party`), for the task page's facts band (MP-4-2). The client's
 name waits on the client model. Both are the task's own record; the shared
 view carries neither.
+
+`task.read` carries `steps`, the task's subtasks (MP-4-4): each is a full
+task whose `parent` is this one, read with the parent in one query
+(`readTaskFamily`) in the order they were added, and each is sent only when
+the reader's own grants reach it, so a record-scoped reader of the parent is
+not told a step they may not read exists. A step carries its `id`, `key`,
+`title`, `state`, `done` (the completed category), `archived` (when and why it
+left the count without being done, or null), `assignee` and `revision`. An
+agent reads under its one task and is sent no steps. The shared view carries
+none.
+
+A subtask carries its parent's client. `task.create` with a `parentId` copies
+the parent's client onto the new task; `task.set_party` on a subtask naming any
+other client, and `task.reparent` under a parent whose client differs from the
+task's own, are refused `PLACEMENT_IS_DERIVED` naming `client`; a client set
+on a task carries down its live subtree in the same transaction, each
+descendant asked `task:share` at its own scope first.
 
 ## Proposal projection
 

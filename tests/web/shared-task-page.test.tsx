@@ -193,6 +193,7 @@ describe('the task page for a member', () => {
         clientAccess: false,
         stage: null,
         clientSet: false,
+        steps: [],
       },
     });
     const page = await mount(screen(api.fetch));

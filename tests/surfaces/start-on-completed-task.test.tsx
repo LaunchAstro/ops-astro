@@ -49,6 +49,7 @@ function clientFor(category: 'unstarted' | 'started' | 'completed'): OperationsC
     clientAccess: false,
     stage: null,
     clientSet: false,
+    steps: [],
     comments: [],
     proposals: [],
   };
