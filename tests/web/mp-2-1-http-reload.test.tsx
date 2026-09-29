@@ -12,6 +12,14 @@
 // starts cold as a fresh checkout and CI do. A warm cache left by an earlier
 // run hid a close that never finished; the close is bounded so that shows as
 // a failure rather than a hook timeout.
+//
+// Why it never finished (Vite 8.3.0): from cold, the dev server pre-bundles
+// React on its own schedule, and answering a page starts transforms that wait
+// for that bundle. Closing mid-bundle cancels it without releasing them, and
+// the close waits for every pending transform. A reload asks for the document
+// only, never a module, so this server runs without the dependency optimiser
+// (`noDiscovery` with nothing included is Vite's way to turn it off): nothing
+// waits on a bundle, and nothing writes one after the close.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -33,6 +41,7 @@ async function startDevServer(): Promise<DevServer> {
   const server = await createServer({
     configFile: resolve('apps/web/vite.config.ts'),
     cacheDir,
+    optimizeDeps: { noDiscovery: true },
     server: { port: 0, strictPort: false, host: '127.0.0.1', hmr: false },
     logLevel: 'silent',
   });
