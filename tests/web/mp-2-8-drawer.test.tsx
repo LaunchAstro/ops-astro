@@ -18,7 +18,7 @@ import { follow, layout, lit, press } from './frame-support.tsx';
 const shellCss = readFileSync(resolve('packages/ui/src/styles/3-shell.css'), 'utf8');
 const tokensCss = readFileSync(resolve('packages/ui/src/styles/1-tokens.css'), 'utf8');
 
-let undo: () => void = () => undefined;
+let undo: () => void = () => {};
 beforeEach(() => {
   undo = layout();
 });

@@ -11,14 +11,10 @@
 // is read here; MP-2-11 owns the stored preference and hands it over that way.
 
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const html = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), '../../apps/web/index.html'),
-  'utf8',
-);
+const html = readFileSync(join(import.meta.dirname, '../../apps/web/index.html'), 'utf8');
 const head = new DOMParser().parseFromString(html, 'text/html').head;
 const step = head.querySelector('script')?.textContent ?? '';
 
@@ -44,7 +40,7 @@ function load(system: System, preference?: string): HTMLElement {
     addEventListener: (_type: string, listener: (event: { matches: boolean }) => void) => {
       system.listeners.push(listener);
     },
-    removeEventListener: () => undefined,
+    removeEventListener: () => {},
   })) as unknown as typeof window.matchMedia;
   new Function(step)();
   return fresh;

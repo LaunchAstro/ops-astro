@@ -245,7 +245,7 @@ export class OperationsClient {
       return { unavailable: true, because: describe(error) };
     }
 
-    const parsed: unknown = await response.json().catch(() => undefined);
+    const parsed: unknown = await response.json().catch(() => {});
 
     if (isWireRefusal(parsed)) {
       if (

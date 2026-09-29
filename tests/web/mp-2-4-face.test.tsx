@@ -110,7 +110,7 @@ describe('MP-2-4 CS-2.5 a labelled "view as client" preview, client writes disab
     const asked: string[] = [];
     const fetch = vi.fn(async (input: RequestInfo | URL) => {
       asked.push(String(input));
-      return new Promise<Response>(() => undefined);
+      return new Promise<Response>(() => {});
     }) as unknown as typeof globalThis.fetch;
     for (const address of [
       '/portal/acme-dental/',

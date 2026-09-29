@@ -151,7 +151,7 @@ export function App(props: AppProps): ReactElement {
   // whole action, not only the storage clear, is gated on it still being the
   // one in hand. Identity is the test: `setSession` is the only way a session
   // gets here, and every sign-in mints a new object.
-  const endedRef = useRef<(from: Session, refusal: WireRefusal) => void>(() => undefined);
+  const endedRef = useRef<(from: Session, refusal: WireRefusal) => void>(() => {});
   const hereRef = useRef(here);
   hereRef.current = here;
   const sessionRef = useRef(session);
@@ -207,7 +207,7 @@ export function App(props: AppProps): ReactElement {
     null,
   );
   useEffect(() => {
-    if (session === null) return undefined;
+    if (session === null) return;
     let current = true;
     void client.read<unknown>('session.person', {}).then((answer) => {
       // Read as the server's answer, not as the type it should have: a body

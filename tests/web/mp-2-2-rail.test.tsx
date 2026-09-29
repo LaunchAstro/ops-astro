@@ -21,11 +21,11 @@ const tokensCss = readFileSync(resolve('packages/ui/src/styles/1-tokens.css'), '
 
 /** The declarations of the first rule whose selector is exactly `selector`. */
 const rule = (selector: string): string => {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const escaped = selector.replaceAll(/[.*+?^${}()|[\]\\]/gu, '\\$&');
   return new RegExp(`(?:^|\\n|\\})\\s*${escaped}\\s*\\{([^}]*)\\}`, 'u').exec(shellCss)?.[1] ?? '';
 };
 
-let undo: () => void = () => undefined;
+let undo: () => void = () => {};
 beforeEach(() => {
   undo = layout();
 });

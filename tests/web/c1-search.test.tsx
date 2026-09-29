@@ -23,7 +23,7 @@ function searching(answer: (query: string) => Response) {
   const asked: { readonly url: string; readonly query: string }[] = [];
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (!url.endsWith('/task/search')) return new Promise<Response>(() => undefined);
+    if (!url.endsWith('/task/search')) return new Promise<Response>(() => {});
     const { query } = JSON.parse(String(init?.body ?? '{}')) as { query: string };
     asked.push({ url, query });
     return answer(query);
