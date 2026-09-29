@@ -39,6 +39,8 @@ const encryptedSession = (): string =>
 const pasted = (): readonly (readonly [string, string])[] => [
   ['the Claude.ai cookie pair', `sessionKey=sk-ant-sid01-${plantedKey()}`],
   ['the cookie pair in other case', `SESSIONKEY=SK-ANT-SID01-${plantedKey()}`],
+  ['a quoted session key, copied from a stored reply', `"sk-ant-sid01-${plantedKey()}"`],
+  ["the cookie's name with a value of another shape", `sessionKey=${plantedKey()}`],
   ['a percent-encoded session key', `sk%2Dant%2Dsid01-${plantedKey()}`],
   ['a percent-encoded cookie pair', `sessionKey%3Dsk-ant-sid01-${plantedKey()}`],
   ["ChatGPT's encrypted session value", encryptedSession()],
