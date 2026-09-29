@@ -3,7 +3,7 @@
 // CQ-16: a description edit re-runs only `review evidence for this revision`, and the size report
 // counts non-test code only. Each case is named after a line of the ticket's supporting checklist.
 // Since FU-400 (owner, 29 September 2026) the size is reported, not limited: every case exits 0,
-// and the counting is proven by the report instead.
+// whatever the size, and the counting is proven by the report instead.
 
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -198,7 +198,7 @@ describe('CQ-16 size counts code only', () => {
     const { status, out } = sized({ 'src/a.ts': 201, 'src/b.ts': 200, 'tests/b.test.ts': 50 });
     expect(status).toBe(0);
     expect(out).toContain('pr-size: 401 changed lines of non-test code across 2 file(s).');
-    expect(out).toContain('pr-size: the size is reported, not limited; this check never blocks.');
+    expect(out).toContain('pr-size: the size is reported, not limited; no size fails this check.');
     expect(out).not.toContain('::error::');
   });
 

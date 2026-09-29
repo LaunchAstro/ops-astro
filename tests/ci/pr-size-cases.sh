@@ -3,10 +3,12 @@
 # The pull request size report, against throwaway repositories.
 #
 # The size is reported, not limited (owner, 29 September 2026): the script
-# measures and prints its report, total, per file and moved lines, and always
-# exits 0, so the required check 'pull request size' never blocks. The cases
-# that once expected a block now expect a pass and check the report instead,
-# so the measuring stays proven. Waiver labels change nothing.
+# measures and prints its report, total, per file and moved lines, and exits
+# 0 whatever the size, so no size fails the required check 'pull request
+# size'. The cases that once expected a block now expect a pass and check the
+# report instead, so the measuring stays proven. Waiver labels change nothing.
+# A failure to measure still fails (Sol, review 1 on #143): report-only
+# covers the size, never a missing report.
 #
 # Usage: tests/ci/pr-size-cases.sh [path-to-script]
 
@@ -62,13 +64,13 @@ reports() {
   if printf '%s\n' "$REPORT" | grep -qF -- "$2"; then pass "$1"; else fail "$1" "report was: $REPORT"; fi
 }
 
-# The report is never a refusal: no error annotation, and the closing line
-# says the size is not limited.
+# A size is never a refusal: no error annotation, and the closing line says
+# the size is not limited.
 not_a_refusal() {
   if printf '%s\n' "$REPORT" | grep -q '^::error::'; then
     fail "$1" "the report carries an error annotation: $REPORT"
   else
-    reports "$1" 'pr-size: the size is reported, not limited; this check never blocks.'
+    reports "$1" 'pr-size: the size is reported, not limited; no size fails this check.'
   fi
 }
 
@@ -260,26 +262,35 @@ else
 fi
 rm -rf "$dir"
 
-# The check never blocks, even when it cannot measure: a missing or unknown
-# revision is a warning, not a failure.
+# A failure to measure is not a size, so it still fails (Sol, review 1 on
+# #143): a missing or unknown revision exits 2 with an error annotation and
+# prints no report, rather than a green check with nothing measured.
 dir="$(new_repo)"
 REPORT="$(cd "$dir" && env -u BASE_SHA -u HEAD_SHA node "$SIZER" 2>&1)"; STATUS=$?
-[ "$STATUS" = "0" ] && pass "no revisions to measure passes with a warning (exit 0)" \
-  || fail "no revisions to measure passes with a warning" "expected 0, got $STATUS: $REPORT"
-reports "no revisions to measure is a warning" '::warning::pr-size could not measure this pull request'
+[ "$STATUS" = "2" ] && pass "no revisions to measure fails (exit 2)" \
+  || fail "no revisions to measure fails" "expected 2, got $STATUS: $REPORT"
+reports "no revisions to measure is an error" '::error::pr-size could not measure this pull request'
 REPORT="$(cd "$dir" && BASE_SHA=0000000000000000000000000000000000000000 HEAD_SHA="$(git rev-parse HEAD)" \
     node "$SIZER" 2>&1)"; STATUS=$?
-[ "$STATUS" = "0" ] && pass "an unknown revision passes with a warning (exit 0)" \
-  || fail "an unknown revision passes with a warning" "expected 0, got $STATUS: $REPORT"
-reports "an unknown revision is a warning" '::warning::pr-size could not measure this pull request'
-# Hostile: a revision carrying a line break and a workflow command. Nothing
-# printed, git's own stderr included, may start a line with it.
+[ "$STATUS" = "2" ] && pass "an unknown revision fails (exit 2)" \
+  || fail "an unknown revision fails" "expected 2, got $STATUS: $REPORT"
+reports "an unknown revision is an error" '::error::pr-size could not measure this pull request'
+if printf '%s\n' "$REPORT" | grep -q '^pr-size: '; then
+  fail "a failure to measure prints no report" "a report line was printed: $REPORT"
+else
+  pass "a failure to measure prints no report"
+fi
+# Hostile: a revision carrying a line break and a workflow command. The
+# script's own error is the only workflow command printed, git's own stderr
+# included, and it holds the planted text on its one line.
 REPORT="$(cd "$dir" && BASE_SHA=$'nope\n::error::planted-canary' HEAD_SHA="$(git rev-parse HEAD)" \
     node "$SIZER" 2>&1)"; STATUS=$?
-if [ "$STATUS" = "0" ] && ! printf '%s\n' "$REPORT" | grep -q '^::error::'; then
-  pass "a revision carrying a workflow command cannot start one (exit 0)"
+commands="$(printf '%s\n' "$REPORT" | grep -c '^::')"
+if [ "$STATUS" = "2" ] && [ "$commands" = "1" ] \
+    && printf '%s\n' "$REPORT" | grep -q '^::error::pr-size could not measure this pull request: .*planted-canary'; then
+  pass "a revision carrying a workflow command cannot start one (exit 2)"
 else
-  fail "a revision carrying a workflow command cannot start one" "status $STATUS: $REPORT"
+  fail "a revision carrying a workflow command cannot start one" "status $STATUS, $commands command line(s): $REPORT"
 fi
 rm -rf "$dir"
 
