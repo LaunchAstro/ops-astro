@@ -11,6 +11,13 @@
 export { type AgentRequest } from './commands/agent-call.ts';
 export { agentAnswer, executeAgentCommand } from './commands/agent-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
+export {
+  runLivePublish,
+  runLiveRevert,
+  type CorrectionRun,
+  type RunnerPorts,
+  type RunResult,
+} from './commands/live-correction-runner.ts';
 export { isCommandRefusal, refuseCommand, type CommandRefusal } from './commands/refusal.ts';
 export { type CommandRequest } from './commands/requests.ts';
 export { executeRead } from './reads/execute.ts';
