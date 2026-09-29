@@ -181,7 +181,7 @@ describe.skipIf(serverUrl === undefined)('T2a run progress on a real database', 
     expect(execution.runs[1]).toMatchObject({ state: 'planned' });
   });
 
-  it('Sol proof, criterion 2: task.execution reports every run present at its event head', async () => {
+  it('task.execution reports every run present at its event head', async () => {
     const work = await liveWork(s, `sol-t2a-snapshot-${randomUUID()}`, 1_000);
     const otherPool = racer(s);
     let successorRunId: unknown;
@@ -369,7 +369,7 @@ describe.skipIf(serverUrl === undefined)('T2a run progress on a real database', 
     expect(seen[0]?.n).toBe('0');
   });
 
-  it('Sol proof, criterion 3: T2 isolation crosses two clients with one grant each in both businesses', async () => {
+  it('T2 isolation crosses two clients with one grant each in both businesses', async () => {
     const clients = await s.db.admin.execute<{
       readonly business_id: string;
       readonly subject_id: string;
