@@ -25,6 +25,7 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import pg from 'pg';
+import { leakRun } from '../support/docker-leak.mjs';
 
 const IMAGE = 'postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
 
@@ -75,6 +76,10 @@ if (Number.isNaN(interval)) {
 
 const docker = (...args) => spawnSync('docker', args, { encoding: 'utf8' });
 
+// Every container carries this run's tag, so the end of the run can check that
+// none, and none of their data volumes, is left behind (issue #103, leak A).
+const leaks = leakRun();
+
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 
 async function attempt() {
@@ -92,6 +97,7 @@ async function attempt() {
     'POSTGRES_DB=conformance',
     '--publish',
     '0:5432',
+    ...leaks.tag('/var/lib/postgresql'),
     IMAGE,
   );
   if (started.status !== 0) throw new Error(`could not start Postgres: ${started.stderr}`);
@@ -118,7 +124,7 @@ async function attempt() {
       await client.end().catch(() => {});
     }
   } finally {
-    docker('rm', '--force', name);
+    docker('rm', '--force', '--volumes', name);
   }
 }
 
@@ -133,4 +139,7 @@ const failed = runs - (tally['ok'] ?? 0);
 console.log(
   `db-ready-race: check=${values.check} interval=${interval}ms runs=${runs} failed=${failed} ${JSON.stringify(tally)}`,
 );
-process.exit(failed === 0 ? 0 : 1);
+const left = leaks.leftBehind();
+if (left.length > 0)
+  console.error(`db-ready-race: left Docker resources behind: ${left.join(', ')}`);
+process.exit(failed === 0 && left.length === 0 ? 0 : 1);

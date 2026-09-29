@@ -42,7 +42,8 @@ import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import test from 'node:test';
+import test, { after } from 'node:test';
+import { leakRun } from '../support/docker-leak.mjs';
 
 const repoRoot = resolve(import.meta.dirname, '../..');
 const runner = join(repoRoot, 'scripts/db-conformance.mjs');
@@ -54,6 +55,14 @@ const docker = (...args) =>
 
 const dockerUp = () => docker('info', '--format', '{{.ServerVersion}}').status === 0;
 
+// Every container this run starts carries its tag, and the run fails if one,
+// or its data volume, is still there at the end (issue #103, leak A).
+const leaks = leakRun();
+let startedAny = false;
+after(() => {
+  if (startedAny) assert.deepEqual(leaks.leftBehind(), [], 'this run left Docker resources behind');
+});
+
 // A database the caller already runs, named here, is used instead of a new
 // container for each probe, so a lane holding a fixed port stays on it.
 const givenUrl = process.env['DB_CONFORMANCE_CASES_URL'] ?? '';
@@ -63,6 +72,7 @@ function withDatabase(run) {
   if (givenUrl !== '') return run(givenUrl);
   const password = randomBytes(18).toString('hex');
   const name = `hub-db-conformance-${randomBytes(6).toString('hex')}`;
+  startedAny = true;
   const started = docker(
     'run',
     '--rm',
@@ -75,6 +85,7 @@ function withDatabase(run) {
     'POSTGRES_DB=conformance',
     '--publish',
     '0:5432',
+    ...leaks.tag('/var/lib/postgresql'),
     IMAGE,
   );
   assert.equal(started.status, 0, `could not start Postgres: ${started.stderr}`);
@@ -97,7 +108,7 @@ function withDatabase(run) {
     assert.ok(ready, 'Postgres never became ready');
     return run(url);
   } finally {
-    docker('rm', '--force', name);
+    docker('rm', '--force', '--volumes', name);
   }
 }
 
