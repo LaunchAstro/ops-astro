@@ -271,19 +271,23 @@ async function parseKeySet(body: Uint8Array): Promise<Loaded> {
   const kids = entries.map((key) => key['kid']).filter((kid) => typeof kid === 'string');
   if (new Set(kids).size !== kids.length) return 'shape';
 
+  // An entry that names ES256 is one this verifier would use, so it is whole
+  // or the answer is refused; it is never quietly skipped beside a good key.
+  // Entries naming another algorithm are left alone.
+  const claimed = entries.filter((key) => key['alg'] === 'ES256');
+  if (!claimed.every((key) => isUsable(key))) return 'shape';
+
   const usable = new Map<string, webcrypto.CryptoKey>();
-  const imports = entries
-    .filter((key) => isUsable(key))
-    .map(async (key) => {
-      const imported = await crypto.subtle.importKey(
-        'jwk',
-        { kty: 'EC', crv: 'P-256', x: key['x'], y: key['y'] } as webcrypto.JsonWebKey,
-        { name: 'ECDSA', namedCurve: 'P-256' },
-        false,
-        ['verify'],
-      );
-      usable.set(key['kid'] as string, imported);
-    });
+  const imports = claimed.map(async (key) => {
+    const imported = await crypto.subtle.importKey(
+      'jwk',
+      { kty: 'EC', crv: 'P-256', x: key['x'], y: key['y'] } as webcrypto.JsonWebKey,
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['verify'],
+    );
+    usable.set(key['kid'] as string, imported);
+  });
   try {
     await Promise.all(imports);
   } catch {
@@ -293,7 +297,7 @@ async function parseKeySet(body: Uint8Array): Promise<Loaded> {
   return usable;
 }
 
-/** An ES256 public key this verifier may use. Other entries are left alone. */
+/** A complete ES256 public key: the only shape an ES256 entry may have. */
 function isUsable(key: Record<string, unknown>): boolean {
   const ops = key['key_ops'];
   return (
