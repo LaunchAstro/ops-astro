@@ -20,6 +20,7 @@ import { PANELS, dockTabs, isPanelId, type PanelId, type PanelRegistry } from '.
 import { closeAll, close, isOwnAddress, press, ranked, visit } from './dock/open-set.ts';
 import { useDock } from './dock/use-dock.ts';
 import { useDockLayout } from './dock/use-layout.ts';
+import type { RailPreference } from './shell/use-rail.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
@@ -39,6 +40,10 @@ export interface AppProps {
   readonly storage: Storage | null;
   /** Which clients the session may open. None until MP-10-1 supplies client records. */
   readonly clientAccess?: ClientAccess;
+  /** The person's rail as they left it, read before the first render so it is drawn before paint. */
+  readonly railPreference?: RailPreference;
+  /** Told when the person folds the rail or lets its grip go: the preference to keep. */
+  readonly saveRailPreference?: (preference: RailPreference) => void;
   /** The dock's panels. The shipped registry unless a test hands another. */
   readonly panels?: PanelRegistry;
 }

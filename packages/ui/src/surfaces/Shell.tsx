@@ -34,6 +34,14 @@ export interface ShellProps {
   readonly dockWidth?: number;
   /** The one sheet height below the side tier, so the page can be padded under it. */
   readonly dockSheetHeight?: number;
+  /** The person's rail: folded to the 56px strip, and its width while open. */
+  readonly railCollapsed?: boolean;
+  readonly railWidth?: number;
+  readonly onRailFold?: () => void;
+  /** The rail's width while its grip moves. */
+  readonly onRailResize?: (width: number) => void;
+  /** The width the grip was let go at, to keep. */
+  readonly onRailResizeEnd?: (width: number) => void;
   /** Every click inside the shell, heard after its target's own handlers. */
   readonly onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   readonly children: ReactNode;
