@@ -107,7 +107,8 @@ export function receiptL(observations: Partial<Record<ReceiptLField, unknown>>):
   readonly complete: boolean;
   readonly missing: readonly ReceiptLField[];
 } {
-  return { complete: observations !== undefined, missing: [] };
+  const missing = RECEIPT_L_OBSERVATIONS.filter((field) => !filled(observations[field]));
+  return { complete: missing.length === 0, missing };
 }
 
 export interface CaseResult {
@@ -143,5 +144,18 @@ export function receiptLP(input: ReceiptLPInput): {
   readonly missing: readonly string[];
   readonly staysHeld: readonly string[];
 } {
-  return { complete: input !== undefined, missing: [], staysHeld: STAYS_HELD };
+  const missing = [
+    ...receiptL(input.receiptL).missing.map((field) => `receipt_l.${field}`),
+    ...ACCEPTANCE_CASES.flatMap(({ id }) => {
+      const entry = input.cases[id];
+      return entry?.result === 'pass' && entry.evidence.trim() !== '' ? [] : [`case.${id}`];
+    }),
+    ...PRECONDITIONS.flatMap(({ id, kind }) =>
+      preconditionHolds(kind, input.preconditions[id]) ? [] : [`precondition.${id}`],
+    ),
+  ];
+  const interval = input.revertIntervalMs;
+  const timed = typeof interval === 'number' && Number.isFinite(interval) && interval >= 0;
+  if (input.cases[8]?.result === 'pass' && !timed) missing.push('revert_interval');
+  return { complete: missing.length === 0, missing, staysHeld: STAYS_HELD };
 }

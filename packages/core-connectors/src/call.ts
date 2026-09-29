@@ -73,5 +73,86 @@ export async function callConnector(
   params: Readonly<Record<string, string>>,
   deps: CallDependencies,
 ): Promise<ConnectorResult> {
-  const answer = await deps.transport({ url: new URL(`https://${registration.connector.host}/`), address: '', family: 4, headers: {}, timeoutMs: 1, maxBytes: 1e9, ...(params ? {} : {}) }); return answer.kind === 'answer' ? { kind: 'ok', value: JSON.parse(new TextDecoder().decode(answer.body) || '{}') as ProviderValue } : { kind: 'ok', value: {} };
+  const { connector, declaration } = registration;
+  const write = connector.method !== 'GET';
+  const refuse = (code: string, proof?: string): ConnectorResult => {
+    deps.record(code);
+    return proof === undefined ? { kind: 'refused', code } : { kind: 'refused', code, proof };
+  };
+  const unreadable = (code: string): ConnectorResult => {
+    deps.record(code);
+    return write ? { kind: 'unknown', code } : { kind: 'refused', code };
+  };
+
+  if (!CONNECTOR_HOSTS.includes(connector.host)) return refuse('DESTINATION_NOT_LISTED');
+  if (connectorRelease(connector) !== declaration.connector_release) {
+    return refuse('CONNECTOR_RELEASE_UNAVAILABLE');
+  }
+  const built = buildPath(connector.pathTemplate, params, connector.bodyParams);
+  if ('code' in built) return refuse(built.code);
+
+  let address: string;
+  try {
+    const answers = await deps.resolve(connector.host);
+    if (answers.length === 0 || answers.some(isDeniedAddress))
+      return refuse('DESTINATION_ADDRESS_DENIED');
+    address = answers[0] ?? '';
+  } catch {
+    return refuse('PROVIDER_UNREACHABLE');
+  }
+
+  let token: string | undefined;
+  if (connector.credential !== 'none') {
+    try {
+      token = await deps.credential(connector.credential);
+    } catch {
+      return refuse('CREDENTIAL_UNAVAILABLE');
+    }
+  }
+  const body = Object.fromEntries(
+    connector.bodyParams.flatMap((name) =>
+      params[name] === undefined ? [] : [[name, params[name]]],
+    ),
+  );
+  const answer = await deps.transport({
+    url: new URL(`https://${connector.host}${built.path}`),
+    address,
+    family: isIP(address) === 6 ? 6 : 4,
+    method: connector.method,
+    headers: {
+      accept: 'application/json',
+      'user-agent': 'site-connector',
+      ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+      ...(write ? { 'content-type': 'application/json' } : {}),
+    },
+    ...(write ? { body: new TextEncoder().encode(JSON.stringify(body)) } : {}),
+    timeoutMs: connector.timeoutMs,
+    maxBytes: connector.maxResponseBytes,
+  });
+
+  if (answer.kind === 'timeout') return unreadable('PROVIDER_TIMEOUT');
+  if (answer.kind === 'oversized') return unreadable('PROVIDER_RESPONSE_OVERSIZED');
+  if (answer.kind !== 'answer') return unreadable('PROVIDER_CONNECTION_LOST');
+  if (answer.status >= 300 && answer.status < 400) return unreadable('PROVIDER_REDIRECT_REFUSED');
+  const proof = connector.refusalProofs[String(answer.status)];
+  if (proof !== undefined && declaration.nothing_happened_proof.includes(proof)) {
+    return refuse('PROVIDER_REFUSED', proof);
+  }
+  if (answer.status < 200 || answer.status >= 300) return unreadable('PROVIDER_STATUS_UNEXPECTED');
+  const type = (answer.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase();
+  if (type !== 'application/json') return unreadable('PROVIDER_RESPONSE_MALFORMED');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(answer.body));
+  } catch {
+    return unreadable('PROVIDER_RESPONSE_MALFORMED');
+  }
+  const value: Record<string, string | number | boolean> = {};
+  for (const [field, kind] of Object.entries(connector.responseSchema)) {
+    const read = readField(parsed, field);
+    // oxlint-disable-next-line valid-typeof -- `kind` is the schema's own type name
+    if (typeof read !== kind) return unreadable('PROVIDER_RESPONSE_SCHEMA');
+    value[field] = read as string | number | boolean;
+  }
+  return { kind: 'ok', value };
 }

@@ -116,7 +116,29 @@ function inTextNode(source: string, offset: number): boolean {
 
 /** Refuses anything wider than the envelope, naming why. */
 export function checkEnvelope(change: ProposedChange, target: CorrectionTarget): EnvelopeResult {
-  return { ok: true, value: { path: target.path, line: change.files.length, before: target.word, after: target.replacement } };
+  if (!ONE_WORD.test(target.word) || !ONE_WORD.test(target.replacement)) {
+    return exceeded('the correction is not one word for one word');
+  }
+  if (target.word === target.replacement) return exceeded('the word does not change');
+  if (change.files.length !== 1) return exceeded('more than one file');
+  const [file] = change.files;
+  if (file === undefined || file.path !== target.path) return exceeded('not the target file');
+  if (file.before === null || file.after === null) return exceeded('a create, delete or rename');
+  const before = file.before.split('\n');
+  const after = file.after.split('\n');
+  if (before.length !== after.length) return exceeded('lines added or removed');
+  const changed = before.flatMap((line, index) => (line === after[index] ? [] : [index]));
+  if (changed.length !== 1)
+    return exceeded(changed.length === 0 ? 'no change' : 'more than one line');
+  const index = changed[0] ?? 0;
+  const at = replacedAt(before[index] ?? '', after[index] ?? '', target);
+  if (at === undefined) return exceeded('not the one word replaced in place');
+  const offset = before.slice(0, index).reduce((sum, line) => sum + line.length + 1, 0) + at;
+  if (!inTextNode(file.before, offset)) return exceeded('the word is not in body copy');
+  return {
+    ok: true,
+    value: { path: file.path, line: index + 1, before: target.word, after: target.replacement },
+  };
 }
 
 /** What one fenced capture of a page observed. */
@@ -165,5 +187,25 @@ function sameStylesheets(left: PageObservation, right: PageObservation): boolean
 }
 
 export function compareCaptures(input: CaptureComparison): ComparisonResult {
-  return { ok: true, value: { wordChanged: true, restOfPageUnchanged: true, stylesheetsUnchanged: true, decoyUnchanged: true } } as ComparisonResult & { input?: typeof input };
+  const { before, after, decoyBefore, decoyAfter, target } = input;
+  const failed: ('word' | 'page' | 'stylesheets' | 'decoy')[] = [];
+  if (after.text === before.text) failed.push('word');
+  else if (replacedAt(before.text, after.text, target) === undefined) failed.push('page');
+  if (!sameStylesheets(before, after)) failed.push('stylesheets');
+  const decoyHeld =
+    wordOffsets(decoyBefore.text, target.word).length > 0 &&
+    decoyAfter.text === decoyBefore.text &&
+    decoyAfter.documentDigest === decoyBefore.documentDigest &&
+    sameStylesheets(decoyBefore, decoyAfter);
+  if (!decoyHeld) failed.push('decoy');
+  if (failed.length > 0) return { ok: false, code: 'NOTHING_ELSE_MOVED_FAILED', fields: failed };
+  return {
+    ok: true,
+    value: {
+      wordChanged: true,
+      restOfPageUnchanged: true,
+      stylesheetsUnchanged: true,
+      decoyUnchanged: true,
+    },
+  };
 }

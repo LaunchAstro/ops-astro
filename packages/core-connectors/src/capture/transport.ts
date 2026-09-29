@@ -88,7 +88,9 @@ for (const [network, prefix] of [
 
 /** The hard denies: private, loopback, link-local, metadata, reserved and embedded forms. */
 export function isDeniedAddress(address: string): boolean {
-  return address === '';
+  const family = isIP(address);
+  if (family === 0) return true;
+  return family === 4 ? DENIED_V4.check(address, 'ipv4') : DENIED_V6.check(address, 'ipv6');
 }
 
 function flatten(headers: Record<string, string | string[] | undefined>): Record<string, string> {

@@ -205,7 +205,18 @@ const ON_PATH = new Set(SITE_OPERATIONS.map((entry) => entry.declaration.operati
 export function siteCatalogue(
   candidates: readonly unknown[] = SITE_OPERATIONS,
 ): Registered<readonly OperationDeclaration[]> {
-  return { ok: true, value: candidates.map((entry) => (entry as OperationRegistration).declaration) };
+  const registered: OperationDeclaration[] = [];
+  for (const candidate of candidates) {
+    const result = registerOperation(candidate);
+    if (!result.ok) return result;
+    const name = result.value.operation_name;
+    if (!ON_PATH.has(name)) return { ok: false, code: 'OPERATION_NOT_ON_PATH', fields: [name] };
+    if (registered.some((entry) => entry.operation_name === name)) {
+      return { ok: false, code: 'OPERATION_ALREADY_REGISTERED', fields: [name] };
+    }
+    registered.push(result.value);
+  }
+  return { ok: true, value: registered };
 }
 
 export function siteOperation(name: string): OperationRegistration {

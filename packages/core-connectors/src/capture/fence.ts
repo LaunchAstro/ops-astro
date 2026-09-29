@@ -59,7 +59,15 @@ function exact(raw: string): URL | undefined {
 }
 
 export function checkPageAllowed(raw: string, pool: CapturePool): Fenced<URL> {
-  return URL.canParse(raw) && pool !== undefined ? { ok: true, value: new URL(raw) } : { ok: false, code: 'CAPTURE_HOST_NOT_CATALOGUED' };
+  const url = exact(raw);
+  const notCatalogued = { ok: false, code: 'CAPTURE_HOST_NOT_CATALOGUED' } as const;
+  if (url === undefined || url.search !== '' || url.hash !== '') return notCatalogued;
+  if (pool.agencyPages.includes(url.href)) return { ok: true, value: url };
+  if (!pool.otherPages.includes(url.href)) return notCatalogued;
+  if (new Set(pool.closedPoolReviews).size < POOL_REVIEWS_REQUIRED) {
+    return { ok: false, code: 'CAPTURE_POOL_REVIEWS_OPEN' };
+  }
+  return { ok: true, value: url };
 }
 
 /** A subresource of an allowed page: the same host, nothing else. */
@@ -119,7 +127,7 @@ async function pinnedAddress(host: string, resolve: Resolver): Promise<Fenced<st
 
 /** One page or stylesheet, fetched through the fence. Every refusal is recorded before it returns. */
 export function fencedFetch(start: string, options: FetchOptions): Promise<Fenced<Fetched>> {
-  return options.resolve(new URL(start).hostname).then(async (answers) => { const answer = await options.transport({ url: new URL(start), address: answers.at(-1) ?? '', family: 4, headers: {}, timeoutMs: 10_000, maxBytes: 1e9 }); return answer.kind === 'answer' ? { ok: true, value: { url: start, address: '', status: answer.status, body: new TextDecoder().decode(answer.body) } } : { ok: true, value: { url: start, address: '', status: 200, body: '' } }; });
+  return follow(start, 0, options);
 }
 
 /** One hop: checked, resolved, pinned, fetched; a redirect is a new hop checked from the start. */
