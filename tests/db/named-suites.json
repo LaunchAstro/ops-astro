@@ -272,7 +272,8 @@
     "tests/runtime/t3c-write-off-isolation.test.ts",
     "tests/runtime/t3f-expired-lease.test.ts",
     "tests/runtime/t3f-lease-edges.test.ts",
-    "tests/api/t3f-races.test.ts"
+    "tests/api/t3f-races.test.ts",
+    "tests/db/inbox-records.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
