@@ -421,6 +421,48 @@ export interface SecretListResult {
 }
 
 /**
+ * One connection as the fleet shows it (MP-14-7a). `custody` is a reference:
+ * the secret's id and whether custody holds a value for it, never any part of
+ * one. `clients` are the ones the caller may read: all of them for a
+ * business-wide reader, their own for a client-scoped one. `repairStartedAt`
+ * is set when a repair was started on this revision.
+ */
+export interface ConnectionView {
+  readonly id: string;
+  readonly connectorKey: string;
+  readonly label: string;
+  readonly authMethod: string;
+  readonly status: 'active' | 'degraded' | 'broken';
+  readonly failureClass: string | null;
+  readonly cadenceMinutes: number;
+  readonly lastSyncedAt: string | null;
+  readonly lastAttemptAt: string | null;
+  readonly scope: string;
+  readonly readComponents: readonly string[];
+  readonly executeComponents: readonly string[];
+  readonly custody: { readonly secretId: string | null; readonly state: 'set' | 'not set' };
+  readonly clients: readonly { readonly id: string; readonly label: string }[];
+  readonly repairStartedAt: string | null;
+  readonly revision: number;
+}
+
+/**
+ * The fleet: its rows and the counts the facets, tiles and banner draw, which
+ * are derived from those same rows so they cannot disagree with them.
+ */
+export interface ConnectionFleetResult {
+  readonly ok: true;
+  readonly connections: readonly ConnectionView[];
+  readonly counts: {
+    readonly all: number;
+    readonly active: number;
+    readonly degraded: number;
+    readonly broken: number;
+    readonly clientConnections: number;
+  };
+}
+
+/**
  * The capability answer is flat: `personId`, `businessKey` and `grants` sit
  * beside `ok` rather than under a `capabilities` object, because that is the
  * shape the surfaces read and one nesting level for three fields buys

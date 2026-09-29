@@ -51,6 +51,8 @@ export type {
   ReservationView,
   SettingsReadResult,
   SecretListResult,
+  ConnectionFleetResult,
+  ConnectionView,
   SecretView,
   SessionCapabilities,
   SettingView,

@@ -143,3 +143,13 @@ export {
   type Sealed,
   type SealingKey,
 } from './custody/index.ts';
+export {
+  isRepairRefusal,
+  listConnections,
+  startRepair,
+  type ConnectionClient,
+  type ConnectionRow,
+  type ConnectionStatus,
+  type RepairRefusal,
+  type RepairStarted,
+} from './connections/fleet.ts';

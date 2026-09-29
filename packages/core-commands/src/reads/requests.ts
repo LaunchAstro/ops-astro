@@ -32,6 +32,7 @@ import type {
   QueueResult,
   SettingsReadResult,
   SecretListResult,
+  ConnectionFleetResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
@@ -97,6 +98,8 @@ export interface ReadOperands {
   readonly 'settings.read': NoOperands;
   /** Custody's rows at the scopes the caller holds `custody:manage` (C31). */
   readonly 'secret.list': NoOperands;
+  /** The connections at the scopes the caller holds `connection:read` (MP-14-7a). */
+  readonly 'connection.fleet': NoOperands;
   /**
    * What the caller may do here. The one read whose answer is about the caller
    * rather than about the business, and the one that takes no grant: every
@@ -131,4 +134,5 @@ export type ReadResult =
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | SecretListResult
+  | ConnectionFleetResult
   | CapabilitiesResult;
