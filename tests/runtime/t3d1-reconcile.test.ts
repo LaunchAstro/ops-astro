@@ -305,7 +305,7 @@ describe.skipIf(url === undefined)('T3d1: the reconciliation pass', { timeout: 6
     expect(await h.t3b.money(w)).toMatchObject({ envelope_held: '0' });
   });
 
-  it('Sol proof, criterion 2: a happened outcome stops an absence-proof replacement before dispatch', async () => {
+  it('a happened outcome stops an absence-proof replacement before dispatch', async () => {
     const original = await h.unknownStep({ applied: false, room: true });
     expect(await h.reconcile()).toMatchObject([
       { attemptId: original.attemptId, answer: 'absent' },
