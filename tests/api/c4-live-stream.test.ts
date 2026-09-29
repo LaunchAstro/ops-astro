@@ -222,6 +222,33 @@ describe.skipIf(serverUrl === undefined)(
       carriesOnly(tab, named);
     });
 
+    it('C4 live-sync 1: two browsers on one task each hear a change within 1 s at p95', async () => {
+      const taskId = await createTask(s, `c4s-p95-${randomUUID()}`);
+      const other = await enrol(s.db.app, s.business, `c4s-second-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, other, 'read'));
+      const tabs = [await open([topic(taskId)], s.decider), await open([topic(taskId)], other)];
+      await within(
+        2_000,
+        () => tabs.every((t) => count(t, 'resync', topic(taskId)) === 1),
+        'joined',
+      );
+      const took: number[] = [];
+      for (let n = 1; n <= 20; n += 1) {
+        const started = Date.now();
+        // eslint-disable-next-line no-await-in-loop
+        await touch(s.business, taskId);
+        // eslint-disable-next-line no-await-in-loop
+        await within(
+          2_000,
+          () => tabs.every((t) => count(t, 'invalidate', topic(taskId)) >= n),
+          `change ${String(n)}`,
+        );
+        took.push(Date.now() - started);
+      }
+      const p95 = took.toSorted((a, b) => a - b)[Math.ceil(took.length * 0.95) - 1] ?? Infinity;
+      expect(p95).toBeLessThan(1_000);
+    });
+
     it('C4 stream scope: fan-out follows the session’s business, never a topic the caller names, and an ended session closes every topic', async () => {
       const world = cq8World(s);
       const other = await world.party(`c4s-other-${randomUUID().slice(0, 8)}`);
