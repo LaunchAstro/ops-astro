@@ -56,14 +56,7 @@ export async function readTaskExecution(
   taskId: string,
   cursor: number,
 ): Promise<TaskExecution> {
-  const runs = await runsOf(tx, taskId);
-  const head = await tx.query<{ readonly n: string }>(
-    `select coalesce(max(position), 0)::text as n
-       from public.run_events where business_id = $1 and task_id = $2`,
-    [tx.businessId, taskId],
-  );
-  const sourceRevision = Number(head[0]?.n ?? 0);
-  const events = await eventsAfter(tx, taskId, cursor, sourceRevision);
+  const { runs, sourceRevision, events } = await snapshot(tx, taskId, cursor);
   const last = events.at(-1)?.position ?? cursor;
   const complete = last >= sourceRevision;
   return {
@@ -81,34 +74,50 @@ export async function readTaskExecution(
 const ISO = `'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`;
 
 /**
- * Every run naming the task, oldest first, each on its own. Counters come back
- * as `float8`, exact to 2^53 as a JS number is, so the rows need no mapping.
+ * The runs, the event head and one page of events, read by one statement so
+ * all three come from one snapshot: separate reads could see a successor's
+ * events without its run (Sol, #97 criterion 2). Counters come back as
+ * `float8`, exact to 2^53 as a JS number is, so the rows need no mapping.
  */
-async function runsOf(tx: TenantQuery, taskId: string): Promise<readonly ExecutionRun[]> {
-  return await tx.query<ExecutionRun>(
-    `select id as "runId", lineage_id as "lineageId", version_id as "versionId", state,
-            task_revision_at_request::float8 as "taskRevisionAtRequest",
-            to_char(created_at at time zone 'UTC', ${ISO}) as "createdAt"
-       from public.planned_runs where business_id = $1 and task_id = $2
-      order by created_at, id`,
-    [tx.businessId, taskId],
-  );
-}
-
-/** One page of the task's events after `cursor`, bounded by the head read above. */
-async function eventsAfter(
+async function snapshot(
   tx: TenantQuery,
   taskId: string,
   cursor: number,
-  sourceRevision: number,
-): Promise<readonly ExecutionEvent[]> {
-  return await tx.query<ExecutionEvent>(
-    `select id as "eventId", run_id as "runId", position::float8 as position, kind,
-            lease_id as "leaseId", attempt_id as "attemptId", actor_id as "actorId", detail,
-            to_char(created_at at time zone 'UTC', ${ISO}) as at
-       from public.run_events
-      where business_id = $1 and task_id = $2 and position > $3 and position <= $4
-      order by position limit $5`,
-    [tx.businessId, taskId, cursor, sourceRevision, EXECUTION_PAGE],
+): Promise<{
+  readonly runs: readonly ExecutionRun[];
+  readonly sourceRevision: number;
+  readonly events: readonly ExecutionEvent[];
+}> {
+  const rows = await tx.query<{
+    readonly runs: readonly ExecutionRun[];
+    readonly sourceRevision: number;
+    readonly events: readonly ExecutionEvent[];
+  }>(
+    `with head as (
+       select coalesce(max(position), 0) as n
+         from public.run_events where business_id = $1 and task_id = $2
+     ), page as (
+       select * from public.run_events
+        where business_id = $1 and task_id = $2
+          and position > $3 and position <= (select n from head)
+        order by position limit $4
+     )
+     select (select n from head)::float8 as "sourceRevision",
+            coalesce((select json_agg(json_build_object(
+                'runId', id, 'lineageId', lineage_id, 'versionId', version_id, 'state', state,
+                'taskRevisionAtRequest', task_revision_at_request::float8,
+                'createdAt', to_char(created_at at time zone 'UTC', ${ISO}))
+              order by created_at, id)
+              from public.planned_runs where business_id = $1 and task_id = $2), '[]') as runs,
+            coalesce((select json_agg(json_build_object(
+                'eventId', id, 'runId', run_id, 'position', position::float8, 'kind', kind,
+                'leaseId', lease_id, 'attemptId', attempt_id, 'actorId', actor_id,
+                'detail', detail, 'at', to_char(created_at at time zone 'UTC', ${ISO}))
+              order by position)
+              from page), '[]') as events`,
+    [tx.businessId, taskId, cursor, EXECUTION_PAGE],
   );
+  const [row] = rows;
+  if (row === undefined) throw new Error('task.execution: the snapshot returned no row');
+  return row;
 }
