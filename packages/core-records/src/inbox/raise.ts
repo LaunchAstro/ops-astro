@@ -15,27 +15,20 @@
 
 import { grantHolders } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { withdrawEndedGates } from './clear.ts';
 import { raiseInboxItem, taskAccess } from './items.ts';
 
 /**
- * A new pending gate. The superseded gates of its lineage have their open
- * items withdrawn, then every person holding `task:decide` on the task (the
- * key and scope the decision itself checks) is raised one item on the new gate.
+ * A new pending gate. The task's superseded or ended gates have their open
+ * items withdrawn (`clear.ts`), then every person holding `task:decide` on the
+ * task (the key and scope the decision itself checks) is raised one item on
+ * the new gate.
  */
 export async function raiseDecision(
   tx: TenantQuery,
   gate: { readonly taskId: string; readonly gateId: string },
 ): Promise<void> {
-  await tx.query(
-    `update public.inbox_items i set work_state = 'withdrawn', closed_at = now()
-       from public.gates g, public.gates raised
-      where raised.business_id = $1 and raised.id = $2
-        and g.business_id = raised.business_id and g.lineage_id = raised.lineage_id
-        and g.state = 'superseded'
-        and i.business_id = g.business_id and i.fact_kind = 'gate' and i.fact_id = g.id
-        and i.work_state = 'open'`,
-    [tx.businessId, gate.gateId],
-  );
+  await withdrawEndedGates(tx, gate.taskId);
   const holders = await grantHolders(tx, {
     collection: 'task',
     action: 'decide',
