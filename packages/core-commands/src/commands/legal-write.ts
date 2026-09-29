@@ -48,6 +48,8 @@ const STATE_FIXES: Readonly<Record<Exclude<VersionRefusal, 'not-found'>, readonl
   'already-approved': ['Publish it, or draft a new version for a change.'],
   'not-approved': ['Approve this exact version first.'],
   'already-published': ['Draft a new version for a change.'],
+  'register-changed': ['Draft the privacy policy again from the register as it stands.'],
+  'register-unconfirmed': ['Confirm or remove each service marked to confirm, then draft again.'],
 };
 
 const CODES = {
@@ -55,6 +57,8 @@ const CODES = {
   'already-approved': 'LEGAL_ALREADY_APPROVED',
   'not-approved': 'LEGAL_NOT_APPROVED',
   'already-published': 'LEGAL_ALREADY_PUBLISHED',
+  'register-changed': 'LEGAL_REGISTER_CHANGED',
+  'register-unconfirmed': 'LEGAL_REGISTER_UNCONFIRMED',
 } as const;
 
 const DOCUMENTS: ReadonlySet<string> = new Set(LEGAL_DOCUMENTS);

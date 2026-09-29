@@ -10,6 +10,7 @@
     "tests/identity/c59-second-factor.test.ts",
     "tests/api/c59-factor-routes.test.ts",
     "tests/operations/c55-operations-view.test.ts",
-    "tests/operations/c81-legal-documents.test.ts"
+    "tests/operations/c81-legal-documents.test.ts",
+    "tests/operations/c81-register.test.ts"
   ]
 }

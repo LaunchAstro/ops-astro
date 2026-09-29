@@ -526,3 +526,18 @@ publication once set, so a published version's bytes never change in place.
 The application may select, insert and update; nothing deletes a row. The
 table is tenancy-keyed with the restrictive policy. The audit chain and the
 operation register hold a digest and the version's id, never the words.
+
+## Overseas-services register (0035, C81)
+
+`overseas_services` holds one row per outside service that receives personal
+information (SP-25): the service, what it receives, where it is stored
+(`stored_where`), whether it trains on it, the contract, `to_confirm` and
+`in_use`, with who changed it last and when. One row per service in any letter
+case (`overseas_services_one_service`). The application may select, insert and
+update; nothing deletes a row. Tenancy-keyed with the restrictive policy.
+
+0035 also gives `legal_document_versions` two columns, `register` (the rows in
+use as a JSON array) and `register_digest` (SHA-256 over those rows and their
+`to_confirm` marks, in order). A privacy-policy version has both, and no other
+document has either (`legal_document_versions_register_policy_only`). The
+written-once guard now covers them with the rest of the draft.

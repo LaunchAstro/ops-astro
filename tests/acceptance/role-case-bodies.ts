@@ -268,6 +268,18 @@ export function createPositiveBody(
         return { body: await legalVersion(context, false) };
       case 'legal.publish_version':
         return { body: { versionId: (await legalVersion(context, true)).versionId } };
+      case 'privacy.set_overseas_service':
+        return {
+          body: {
+            service: 'A made-up service the matrix sets',
+            receives: 'nothing real',
+            where: 'nowhere',
+            trainsOnIt: 'no',
+            contract: 'none',
+            toConfirm: false,
+            inUse: true,
+          },
+        };
       case 'privacy.record_incident':
         return {
           body: {

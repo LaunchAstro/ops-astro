@@ -583,6 +583,14 @@ the bytes it holds (standing gate 5); approval and publication each lock the
 version's row and decide from what they read under it. The public read of a
 published version asks no key: it is published.
 
+Setting a row of the overseas-services register
+(`privacy.set_overseas_service`) is `privacy:manage` too, never an agent's.
+The register has one lock per business, taken by every change to it and by
+each draft, approval and publication of a privacy policy before it reads the
+register, so a change and a policy decision apply in one order. Approval and
+publication take the version's row lock first and the register's second; a
+change takes only the register's, so the two never wait in a cycle.
+
 ## Revocation
 
 `grant.revoke` and `delegation.revoke` are the ledger's "existing

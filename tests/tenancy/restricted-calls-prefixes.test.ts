@@ -113,6 +113,17 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     body_digest: '',
     drafted_by_actor: randomUUID(),
   },
+  // 0035 (C81): no journey sets a register row.
+  'public.overseas_services': {
+    service: 'restricted calls seed',
+    receives: 'nothing',
+    stored_where: 'nowhere',
+    trains_on_it: 'no',
+    contract: 'none',
+    to_confirm: false,
+    in_use: true,
+    updated_by_actor: randomUUID(),
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;
