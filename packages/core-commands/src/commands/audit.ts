@@ -31,6 +31,11 @@ export interface AuditEvent {
   /** Only the keys a spoof attempt carried. Never the whole payload. */
   readonly attempted?: Readonly<Record<string, unknown>> | null;
   /**
+   * The conversation that created the task, on the task's creation event
+   * (AW-03). The command that creates a task from a conversation sets it.
+   */
+  readonly originConversationId?: string | null;
+  /**
    * Offered by a caller and ignored by the server. They are here so a test can
    * present them and watch them not persist; nothing in the product supplies
    * them, and the trigger overwrites all three.
