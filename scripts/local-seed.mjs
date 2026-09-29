@@ -426,8 +426,8 @@ const seedPeople = [...CAST, ...(existsSync(usersFile) ? JSON.parse(readFileSync
 const names = [...seedPeople.map((member) => member.person), 'Ext Alpha'];
 const signs = await productionSigns(admin, Object.values(BUSINESS_KEYS), confirmed, names);
 if (signs.length > 0) {
-  console.error(`local-seed: REFUSED, this looks like a production backup: ${signs.join('; ')}.`);
-  console.error('local-seed: made-up data only; LOCAL_SEED_MADE_UP=confirm marks a made-up one.');
+  console.error(`local-seed: REFUSED, not provably made-up data: ${signs.join('; ')}.`);
+  console.error('local-seed: a person confirms a new database once: LOCAL_SEED_MADE_UP=confirm');
   await admin.close();
   process.exit(1);
 }

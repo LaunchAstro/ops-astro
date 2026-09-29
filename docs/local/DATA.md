@@ -43,7 +43,7 @@ state; the major is pinned in `.nvmrc`.
 ```sh
 bash scripts/local/db-up.sh      # start it; idempotent; writes .local/db.env
 node scripts/db-migrate.mjs      # apply every migration in migrations/, in order, once each
-node scripts/local-seed.mjs      # businesses, people, logins, memberships, grants
+node scripts/local-seed.mjs      # people and grants (new database: LOCAL_SEED_MADE_UP=confirm)
 bash scripts/local/db-down.sh    # stop the container; the volume is untouched
 
 set -a; . ./.local/db.env; set +a

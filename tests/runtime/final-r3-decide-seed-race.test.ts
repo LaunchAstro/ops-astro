@@ -83,6 +83,7 @@ describe.skipIf(serverUrl === undefined)('the seed and a pickup in flight', () =
         PATH: process.env['PATH'] ?? '',
         DATABASE_URL: database.appUrl,
         DATABASE_ADMIN_URL: adminUrl,
+        LOCAL_SEED_MADE_UP: 'confirm',
         GOTRUE_URL: 'http://127.0.0.1:9',
       },
     });
@@ -225,6 +226,7 @@ describe.skipIf(serverUrl === undefined)('the seed and a pickup in flight', () =
           PATH: process.env['PATH'] ?? '',
           DATABASE_URL: database.appUrl,
           DATABASE_ADMIN_URL: adminUrl,
+          LOCAL_SEED_MADE_UP: 'confirm',
           GOTRUE_URL: 'http://127.0.0.1:9',
         },
       });

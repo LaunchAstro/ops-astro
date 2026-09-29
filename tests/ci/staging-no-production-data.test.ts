@@ -75,6 +75,8 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
   });
 
   const reset = async (): Promise<void> => {
+    await db.admin.execute('delete from public.records');
+    await db.admin.execute('delete from public.record_types');
     await db.admin.execute('delete from public.people');
     await db.admin.execute('delete from public.businesses');
     await db.admin.execute('delete from auth.users');
@@ -93,11 +95,16 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
   };
   const address = (email: string): Promise<unknown> =>
     db.admin.execute('insert into auth.users (id, email) values ($1, $2)', [randomUUID(), email]);
-  const seed = () => {
+  const seed = (confirm = false) => {
     const usersFileBefore = existsSync(USERS_FILE);
     const result = spawnSync(process.execPath, [SEED], {
       encoding: 'utf8',
-      env: { ...process.env, DATABASE_ADMIN_URL: adminUrl, DATABASE_URL: db.appUrl },
+      env: {
+        ...process.env,
+        DATABASE_ADMIN_URL: adminUrl,
+        DATABASE_URL: db.appUrl,
+        LOCAL_SEED_MADE_UP: confirm ? 'confirm' : '',
+      },
     });
     expect(existsSync(USERS_FILE), 'the refused seed wrote its users file').toBe(usersFileBefore);
     return { status: result.status, out: `${result.stdout}${result.stderr}` };
@@ -112,8 +119,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     await business('harbour-freight-canary');
     const result = seed();
     expect(result.status, result.out).toBe(1);
-    expect(result.out).toMatch(/local-seed: REFUSED.*production backup/u);
-    expect(result.out).toMatch(/it holds businesses and carries no made-up mark/u);
+    expect(result.out).toMatch(/local-seed: REFUSED, not provably made-up data/u);
+    expect(result.out).toMatch(/it carries no made-up mark/u);
+    expect(result.out).toMatch(/LOCAL_SEED_MADE_UP=confirm/u);
     expect(result.out).not.toContain('harbour-freight-canary');
     expect(result.out).not.toMatch(/local-seed: business /u);
     expect(await keys()).toEqual(['harbour-freight-canary']);
@@ -124,7 +132,8 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     await business('alpha');
     await address('ada@alpha.local');
     await address('owner.canary@example.net');
-    const result = seed();
+    // Confirmed, so the check reaches the sign-ins; unconfirmed it stops at the mark.
+    const result = seed(true);
     expect(result.status, result.out).toBe(1);
     expect(result.out).toMatch(/it holds a sign-in that is not a made-up address/u);
     expect(result.out).not.toContain('owner.canary');
@@ -155,14 +164,72 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     await reset();
     await business('alpha');
     await business('bravo');
-    expect(await productionSigns(db.admin, MADE_UP)).toEqual([
-      'it holds businesses and carries no made-up mark',
-    ]);
+    expect(await productionSigns(db.admin, MADE_UP)).toEqual(['it carries no made-up mark']);
     expect(await productionSigns(db.admin, MADE_UP, true)).toEqual([]);
     await business('harbour-freight-canary');
     expect(await productionSigns(db.admin, MADE_UP, true)).toEqual([
       'it holds a business the seed did not make',
     ]);
+  });
+
+  it('S0-1 no production data: a malformed mark is no mark', async () => {
+    await reset();
+    await business('alpha');
+    for (const comment of [
+      'ops-astro made-up data; businesses: ',
+      'OPS-ASTRO MADE-UP DATA; BUSINESSES: ; PEOPLE: ',
+      ' ops-astro made-up data; businesses: ; people: ',
+    ]) {
+      // One database comment, rewritten per case: the cases run in turn by design.
+      // oxlint-disable-next-line no-await-in-loop
+      const [row] = await db.admin.execute<{ statement: string }>(
+        "select format('comment on database %I is %L', current_database(), $1::text) as statement",
+        [comment],
+      );
+      // oxlint-disable-next-line no-await-in-loop
+      await db.admin.execute(row!.statement);
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await productionSigns(db.admin, MADE_UP), comment).toEqual([
+        'it carries no made-up mark',
+      ]);
+    }
+  });
+
+  it('S0-1 no production data: planted record content is refused by the seed and never printed', async () => {
+    await reset();
+    const businessId = await business('alpha');
+    await markMadeUp(db.admin, [businessId]);
+    const typeId = randomUUID();
+    await db.admin.execute(
+      'insert into public.record_types (business_id, id, key, name) values ($1, $2, $3, $4)',
+      [businessId, typeId, 'private_note', 'Private note'],
+    );
+    await db.admin.execute(
+      'insert into public.records (business_id, id, record_type_id, data) values ($1, $2, $3, $4)',
+      [businessId, randomUUID(), typeId, { title: 'Private customer canary' }],
+    );
+    // A mark is always checked: the confirmation does not reopen a marked database.
+    const result = seed(true);
+    expect(result.status, result.out).toBe(1);
+    expect(result.out).toMatch(/it holds a record the seed cannot vouch for/u);
+    expect(result.out).not.toMatch(/Private customer canary|private_note|Private note/u);
+    expect(result.out).not.toContain(businessId);
+  });
+
+  it('S0-1 no production data: task records people made in a marked database pass', async () => {
+    await reset();
+    const businessId = await business('alpha');
+    await markMadeUp(db.admin, [businessId]);
+    const typeId = randomUUID();
+    await db.admin.execute(
+      'insert into public.record_types (business_id, id, key, name) values ($1, $2, $3, $4)',
+      [businessId, typeId, 'task', 'Task'],
+    );
+    await db.admin.execute(
+      'insert into public.records (business_id, id, record_type_id, data) values ($1, $2, $3, $4)',
+      [businessId, randomUUID(), typeId, { title: 'a made-up task' }],
+    );
+    expect(await productionSigns(db.admin, MADE_UP)).toEqual([]);
   });
 
   it('Sol proof, criterion 9: a backup with an allowed business key and production content is refused', async () => {
