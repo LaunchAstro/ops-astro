@@ -1201,12 +1201,14 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     expect(left.ok).toBe(true);
     expect(right.ok).toBe(true);
     if (!left.ok || !right.ok) return;
+    const leftId = left.value.decision === 'escalate' ? null : left.value.decisionId;
+    const rightId = right.value.decision === 'escalate' ? null : right.value.decisionId;
 
     const seqs = await database.app.withBusiness(fixture.businessId, async (tx) => {
       const rows = await tx.query<{ readonly at: string }>(
         `select seq::text as at from public.gate_decisions
           where business_id = $1 and id = any($2::uuid[]) order by seq`,
-        [fixture.businessId, [left.value.decisionId, right.value.decisionId]],
+        [fixture.businessId, [leftId, rightId]],
       );
       return rows.map((row) => Number(row.at));
     });

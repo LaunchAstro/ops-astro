@@ -327,7 +327,13 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     expiresInSeconds: 'any',
     lineageId: 'id?|null',
   },
-  'task.decide': { gateId: 'id', versionId: 'id', decision: 'any', note: 'any' },
+  'task.decide': {
+    gateId: 'id',
+    versionId: 'id',
+    decision: 'any',
+    note: 'any',
+    recipientPersonId: 'id?|null',
+  },
   'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },
   // A lease call names its task through its lease; a `recordId` beside the
   // lease is taken and plays no part in the check (API.md, id operands).

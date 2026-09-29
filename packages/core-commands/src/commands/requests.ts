@@ -114,6 +114,7 @@ export type CommandRequest =
       readonly versionId: string;
       readonly decision: string;
       readonly note: string;
+      readonly recipientPersonId?: string | null;
     } & Envelope)
   | ({
       readonly command: 'task.pickup';

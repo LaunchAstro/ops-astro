@@ -2,7 +2,7 @@
 //
 // `task.decide`: a person's decision on a gate.
 
-import { subjectsOf } from '../../../core-records/src/index.ts';
+import { isUuid, subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { decide, type DecisionKind } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
@@ -17,9 +17,11 @@ export interface DecideFields {
   readonly versionId: string;
   readonly decision: string;
   readonly note: string;
+  /** Escalate's recipient, and only escalate's (T3a). */
+  readonly recipientPersonId?: string | null;
 }
 
-const DECISIONS: readonly DecisionKind[] = ['approve', 'reject', 'request_changes'];
+const DECISIONS: readonly DecisionKind[] = ['approve', 'reject', 'request_changes', 'escalate'];
 
 function isDecisionKind(decision: string): decision is DecisionKind {
   return (DECISIONS as readonly string[]).includes(decision);
@@ -43,9 +45,26 @@ export async function decideOnGate(
       refuseCommand(
         'FIELD_VALUE_INVALID',
         ['decision'],
-        ['A decision is approve, reject or request_changes.'],
+        ['A decision is approve, reject, request_changes or escalate.'],
       ),
       { decision },
+    );
+  }
+  // Escalate names its recipient and nothing else takes one: a field the
+  // decision would not honour is refused, never dropped.
+  const recipient = fields.recipientPersonId ?? undefined;
+  if ((decision === 'escalate') !== (recipient !== undefined)) {
+    return refused(
+      refuseCommand(
+        'FIELD_VALUE_INVALID',
+        ['recipientPersonId'],
+        ['Escalate names the person it goes to in recipientPersonId; no other decision takes one.'],
+      ),
+    );
+  }
+  if (recipient !== undefined && !isUuid(recipient)) {
+    return refused(
+      refuseCommand('FIELD_VALUE_INVALID', ['recipientPersonId'], ['Name a person by their id.']),
     );
   }
 
@@ -94,6 +113,7 @@ export async function decideOnGate(
     note: fields.note,
     signingKey,
     capId,
+    ...(recipient === undefined ? {} : { recipientPersonId: recipient.toLowerCase() }),
   });
   if (!result.ok) {
     // A gate this business cannot see is `NOT_FOUND`, whether it is another
@@ -106,6 +126,14 @@ export async function decideOnGate(
   }
 
   const decided = result.value;
+  if (decided.decision === 'escalate') {
+    return applied(null, null, {
+      gateId: decided.gateId,
+      versionId: decided.versionId,
+      decision: decided.decision,
+      escalatedToPersonId: decided.escalatedToPersonId,
+    });
+  }
   return applied(null, null, {
     decisionId: decided.decisionId,
     gateId: decided.gateId,
