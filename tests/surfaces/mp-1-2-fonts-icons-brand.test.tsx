@@ -231,7 +231,7 @@ it('MP-1-2 the wordmark and planet masks are present', () => {
       here="/"
       title="Board"
       dock={[]}
-      onDockTab={() => undefined}
+      onDockTab={() => {}}
       seated={false}
     >
       {null}

@@ -144,9 +144,9 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number] {
   const [width, setWidth] = useState(0);
   useLayoutEffect(() => {
     const element = ref.current;
-    if (element === null) return undefined;
+    if (element === null) return;
     setWidth(Math.round(element.getBoundingClientRect().width));
-    if (typeof ResizeObserver === 'undefined') return undefined;
+    if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver((entries) => {
       const seen = entries.at(-1)?.contentRect.width;
       if (seen !== undefined) setWidth(Math.round(seen));

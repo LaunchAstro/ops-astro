@@ -192,14 +192,12 @@ export const CONTROLS: readonly GalleryEntry[] = [
       { label: 'With glyph', render: () => <Chip icon="clock">Due Friday</Chip> },
       {
         label: 'Filter',
-        render: () => (
-          <Chip kind="filter" name="Owner" value="Account lead" onRemove={() => undefined} />
-        ),
+        render: () => <Chip kind="filter" name="Owner" value="Account lead" onRemove={() => {}} />,
       },
       {
         label: 'Suggestion',
         render: () => (
-          <Chip kind="suggestion" onClick={() => undefined}>
+          <Chip kind="suggestion" onClick={() => {}}>
             Summarise this week
           </Chip>
         ),

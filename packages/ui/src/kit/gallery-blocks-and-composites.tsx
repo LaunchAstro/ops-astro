@@ -41,7 +41,7 @@ export const BLOCKS: readonly GalleryEntry[] = [
                 label: 'Hours',
                 align: 'end',
                 sort: 'descending',
-                onSort: () => undefined,
+                onSort: () => {},
               },
             ]}
             rows={SAMPLE_ROWS}
@@ -228,7 +228,7 @@ export const BLOCKS: readonly GalleryEntry[] = [
       {
         label: 'Tip',
         render: () => (
-          <Banner tone="info" onDismiss={() => undefined}>
+          <Banner tone="info" onDismiss={() => {}}>
             Drag a card to change its stage.
           </Banner>
         ),
@@ -300,9 +300,7 @@ export const BLOCKS: readonly GalleryEntry[] = [
       { label: 'Row', render: () => <Empty look="row" title="Nothing to act on" /> },
       {
         label: 'Filtered',
-        render: () => (
-          <Empty title="No matches for these filters." onClearFilters={() => undefined} />
-        ),
+        render: () => <Empty title="No matches for these filters." onClearFilters={() => {}} />,
       },
     ],
   },

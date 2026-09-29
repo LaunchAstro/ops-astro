@@ -132,6 +132,37 @@ export function declaredStyles(tokensCss) {
   return { styles, missing };
 }
 
+/**
+ * A rule's font: `inherit` with its companions, or one declared type style
+ * with its tracking and case set to that style's own. Marks what it accounts
+ * for, records what is wrong, and returns the style it drew, if any.
+ */
+function fontOf(value, declared, accounted, violations, where) {
+  const font = value('font');
+  if (font === 'inherit') {
+    accounted.add('font');
+    for (const prop of ['letter-spacing', 'text-transform'])
+      if (value(prop) === 'inherit' || value(prop) === undefined) accounted.add(prop);
+    return;
+  }
+  if (font === undefined) return;
+  const name = /^var\(\s*(--type-[a-z0-9-]+)\s*\)$/u.exec(font)?.[1];
+  if (name === undefined || !declared.includes(name)) {
+    violations.push(`${where}: font is not a declared type style (font: ${font})`);
+    return;
+  }
+  accounted.add('font');
+  for (const [prop, part] of [
+    ['letter-spacing', 'tracking'],
+    ['text-transform', 'case'],
+  ]) {
+    if (value(prop) === `var(${name}-${part})`) accounted.add(prop);
+    else if (value(prop) === undefined)
+      violations.push(`${where}: ${name} without ${prop}: var(${name}-${part})`);
+  }
+  return name;
+}
+
 /** One sheet's rules against the declared styles: what each rule draws, its exception and its strays. */
 function censusSheet(file, css, declared) {
   const used = [];
@@ -146,28 +177,8 @@ function censusSheet(file, css, declared) {
       if (!RULING.test(marker)) violations.push(`${where}: exception marker names no ruling`);
     const value = (prop) => text.findLast((decl) => decl.prop === prop)?.value;
     const accounted = new Set();
-    const font = value('font');
-    if (font === 'inherit') {
-      accounted.add('font');
-      for (const prop of ['letter-spacing', 'text-transform'])
-        if (value(prop) === 'inherit' || value(prop) === undefined) accounted.add(prop);
-    } else if (font !== undefined) {
-      const name = /^var\(\s*(--type-[a-z0-9-]+)\s*\)$/u.exec(font)?.[1];
-      if (name === undefined || !declared.includes(name)) {
-        violations.push(`${where}: font is not a declared type style (font: ${font})`);
-      } else {
-        accounted.add('font');
-        used.push(name);
-        for (const [prop, part] of [
-          ['letter-spacing', 'tracking'],
-          ['text-transform', 'case'],
-        ]) {
-          if (value(prop) === `var(${name}-${part})`) accounted.add(prop);
-          else if (value(prop) === undefined)
-            violations.push(`${where}: ${name} without ${prop}: var(${name}-${part})`);
-        }
-      }
-    }
+    const name = fontOf(value, declared, accounted, violations, where);
+    if (name !== undefined) used.push(name);
     const strays = text.filter(({ prop }) => !accounted.has(prop));
     if (ruling !== undefined && strays.length > 0) {
       exceptions.push({
@@ -234,7 +245,7 @@ const files = (dir, endings) =>
     .map((entry) => join(entry.parentPath, entry.name))
     .toSorted();
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1] === import.meta.filename) {
   const args = process.argv.slice(2);
   const all = (flag) => args.flatMap((arg, at) => (arg === flag ? [args[at + 1]] : []));
   const css = all('--css');

@@ -11,14 +11,10 @@
 // is read here; MP-2-11 owns the stored preference and hands it over that way.
 
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const html = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), '../../apps/web/index.html'),
-  'utf8',
-);
+const html = readFileSync(join(import.meta.dirname, '../../apps/web/index.html'), 'utf8');
 const head = new DOMParser().parseFromString(html, 'text/html').head;
 const step = head.querySelector('script')?.textContent ?? '';
 
@@ -35,7 +31,7 @@ interface System {
 function load(system: System, preference?: string): HTMLElement {
   const fresh = document.createElement('html');
   document.replaceChild(fresh, document.documentElement);
-  if (preference !== undefined) fresh.setAttribute('data-theme-preference', preference);
+  if (preference !== undefined) fresh.dataset['themePreference'] = preference;
   window.matchMedia = ((query: string) => ({
     media: query,
     get matches() {
@@ -44,14 +40,17 @@ function load(system: System, preference?: string): HTMLElement {
     addEventListener: (_type: string, listener: (event: { matches: boolean }) => void) => {
       system.listeners.push(listener);
     },
-    removeEventListener: () => undefined,
+    removeEventListener: () => {},
   })) as unknown as typeof window.matchMedia;
   new Function(step)();
   return fresh;
 }
 
-const theme = (root: HTMLElement): string | null => root.getAttribute('data-theme');
-const tick = (): Promise<void> => new Promise((done) => setTimeout(done, 0));
+const theme = (root: HTMLElement): string | null => root.dataset['theme'] ?? null;
+const tick = (): Promise<void> =>
+  new Promise((done) => {
+    setTimeout(done, 0);
+  });
 
 describe('MP-1-1 theme before paint', () => {
   it('MP-1-1 theme before paint', async () => {
@@ -82,7 +81,7 @@ describe('MP-1-1 theme before paint', () => {
     expect(theme(page)).toBe('dark');
 
     // A preference handed after load goes through the same step.
-    page.setAttribute('data-theme-preference', 'light');
+    page.dataset['themePreference'] = 'light';
     await tick();
     expect(theme(page)).toBe('light');
     // And a system change no longer overrides it.

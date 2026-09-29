@@ -165,7 +165,9 @@ if (assetsFlag !== -1) {
 const hasVersion = (pkg) => {
   if (nonEmpty(pkg['version'])) return true;
   const versions = pkg['versions'];
-  return Array.isArray(versions) && versions.length > 0 && versions.every(nonEmpty);
+  return (
+    Array.isArray(versions) && versions.length > 0 && versions.every((version) => nonEmpty(version))
+  );
 };
 
 const describeVersion = (pkg) => {

@@ -189,7 +189,7 @@ describe('MP-1-1 tokens', () => {
     ];
     const lightOnly = (name: string, css: string): string[] => {
       const problems: string[] = [];
-      const bare = css.replace(/\/\*[\s\S]*?\*\//gu, '');
+      const bare = css.replaceAll(/\/\*[\s\S]*?\*\//gu, '');
       for (const match of bare.matchAll(/([a-z-]+)\s*:\s*([^;{}]+);/gu)) {
         const [, property = '', value = ''] = match;
         if (!colourProperty.test(property)) continue;
@@ -220,7 +220,7 @@ describe('MP-1-1 tokens', () => {
 
   it('MP-1-1 dock callout edge', () => {
     const sets = resolved();
-    const shell = read(`${styles}3-shell.css`).replace(/\/\*[\s\S]*?\*\//gu, '');
+    const shell = read(`${styles}3-shell.css`).replaceAll(/\/\*[\s\S]*?\*\//gu, '');
     const rule = /\.dock__tablabel\s*\{([^}]*)\}/u.exec(shell)?.[1] ?? '';
     const ground = /background:\s*var\((--[\w-]+)\)/u.exec(rule)?.[1] ?? '';
     const edge = /border:\s*1px solid var\((--[\w-]+)\)/u.exec(rule)?.[1] ?? '';
@@ -242,7 +242,7 @@ describe('MP-1-1 tokens', () => {
           { id: 'assistant', label: 'Assistant', open: false },
           { id: 'clients', label: 'Clients', open: true },
         ]}
-        onDockTab={() => undefined}
+        onDockTab={() => {}}
         seated={false}
       >
         <p>content</p>

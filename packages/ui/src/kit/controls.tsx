@@ -257,9 +257,9 @@ export function Select(props: SelectProps): ReactElement {
       close();
     } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      if (!open) setOpen(true);
-      else
+      if (open)
         setActive((i) => (event.key === 'ArrowDown' ? Math.min(last, i + 1) : Math.max(0, i - 1)));
+      else setOpen(true);
     } else if ((event.key === 'Enter' || event.key === ' ') && open) {
       event.preventDefault();
       choose(active);

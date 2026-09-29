@@ -65,7 +65,7 @@ class Observer {
 }
 /** Tell every live observer its element is now `width` wide, the way a show or a resize does. */
 const resize = async (width: number): Promise<void> => {
-  await act(async () => {
+  await act(() => {
     for (const observer of Observer.live) observer.report(width);
   });
 };
@@ -90,28 +90,28 @@ const enquiries = {
 } as const;
 
 const hover = async (target: Element | null | undefined): Promise<void> => {
-  if (target == null) throw new Error('nothing to hover');
-  await act(async () => {
+  if (target === null || target === undefined) throw new Error('nothing to hover');
+  await act(() => {
     target.dispatchEvent(
       new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }),
     );
   });
 };
 const leave = async (target: Element | null | undefined): Promise<void> => {
-  if (target == null) throw new Error('nothing to leave');
-  await act(async () => {
+  if (target === null || target === undefined) throw new Error('nothing to leave');
+  await act(() => {
     target.dispatchEvent(
       new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body }),
     );
   });
 };
 const key = async (target: Element | null, name: string): Promise<void> => {
-  await act(async () => {
+  await act(() => {
     target?.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
   });
 };
 const focus = async (target: Element | null | undefined): Promise<void> => {
-  await act(async () => {
+  await act(() => {
     (target as SVGElement | null)?.focus();
   });
 };
@@ -451,7 +451,7 @@ describe('MP-1-5 chart primitives', () => {
     // The tooltip describes the focused day for a screen reader too.
     const active = document.activeElement;
     expect(active?.getAttribute('aria-describedby')).toBe(mounted.find('[role="tooltip"]')?.id);
-    await act(async () => {
+    await act(() => {
       (active as SVGElement).blur();
     });
     expect(mounted.find('[role="tooltip"]')).toBeNull();
@@ -489,7 +489,7 @@ describe('MP-1-5 chart primitives', () => {
     for (const figure of mounted.all('[data-state]'))
       expect(
         figure.querySelector('svg, .funnel'),
-        figure.getAttribute('data-state') ?? '',
+        (figure as HTMLElement).dataset['state'] ?? '',
       ).not.toBeNull();
     const drawn = GALLERY.flatMap((entry) => entry.states.map((state) => state.label));
     for (const shape of [
