@@ -210,14 +210,24 @@ it('C2 presence shown (page): the app strip shows who else is on this page from 
   const ben = await tab(api, 'ben');
   const elsewhere = await tab(api, 'cleo', 'TSK-3');
   await until('the strip names Ana on Ben’s page', () => onStrip(ben).includes('Ana Ng'));
+  // Exactly who is here: the team list's Dee, on no page, is not drawn.
   expect(onStrip(ben)).toEqual(['Ana Ng']);
   expect(onStrip(ana)).toEqual(['Ben Ode']);
-  expect(ben.text()).not.toContain('Dee Away');
   expect(onStrip(elsewhere)).toEqual([]);
 
   await ana.unmount();
   opened.splice(opened.indexOf(ana), 1);
   await until('the strip empties when Ana leaves', () => onStrip(ben).length === 0);
+
+  // Back on Ana's side: her tab's page closes and the strip keeps nobody from it.
+  const back = await tab(api, 'ana');
+  await until('Ana sees Ben again', () => onStrip(back).includes('Ben Ode'));
+  await back.render(
+    <PagePresenceProvider>
+      <StripPresence />
+    </PagePresenceProvider>,
+  );
+  expect(onStrip(back)).toEqual([]);
 });
 
 it('C2 a client session neither sees staff presence nor is seen (page)', async () => {

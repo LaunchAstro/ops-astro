@@ -17,6 +17,7 @@ import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { drawScreen } from './screen-registry.tsx';
+import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
 
 export interface AppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
@@ -179,46 +180,49 @@ export function App(props: AppProps): ReactElement {
   })();
 
   return (
-    <Shell
-      face="agency"
-      rail={rail}
-      here={here}
-      title={match?.route.title ?? 'Not found'}
-      meta={
-        session === null ? null : (
-          <span className="topbar__who">
-            {session.email} · {session.businessKey}
-            <button className="btn" type="button" onClick={onSignOut}>
-              Sign out
-            </button>
-          </span>
-        )
-      }
-      // The panel registry is the dock. Each registration names the address
-      // that draws its surface, and the tab navigates there rather than
-      // opening a drawer over the page: the surface has a real address, and an
-      // address a person can quote is worth more than a panel they cannot.
-      // An open tab is announced as "Close", so pressing it leaves the address
-      // for the board rather than pushing the same address again.
-      dock={
-        session === null
-          ? []
-          : PANELS.map((panel) => ({
-              id: panel.id,
-              label: panel.label,
-              open: panel.route !== null && here === pathTo(panel.route),
-            }))
-      }
-      onDockTab={(id) => {
-        const panel = PANELS.find((entry) => entry.id === id);
-        if (panel?.route == null) return;
-        const target = pathTo(panel.route);
-        props.navigate(here === target ? pathTo('agency:projects-board') : target);
-      }}
-      seated={false}
-    >
-      {content}
-    </Shell>
+    <PagePresenceProvider>
+      <Shell
+        face="agency"
+        rail={rail}
+        here={here}
+        title={match?.route.title ?? 'Not found'}
+        meta={
+          session === null ? null : (
+            <span className="topbar__who">
+              <StripPresence />
+              {session.email} · {session.businessKey}
+              <button className="btn" type="button" onClick={onSignOut}>
+                Sign out
+              </button>
+            </span>
+          )
+        }
+        // The panel registry is the dock. Each registration names the address
+        // that draws its surface, and the tab navigates there rather than
+        // opening a drawer over the page: the surface has a real address, and an
+        // address a person can quote is worth more than a panel they cannot.
+        // An open tab is announced as "Close", so pressing it leaves the address
+        // for the board rather than pushing the same address again.
+        dock={
+          session === null
+            ? []
+            : PANELS.map((panel) => ({
+                id: panel.id,
+                label: panel.label,
+                open: panel.route !== null && here === pathTo(panel.route),
+              }))
+        }
+        onDockTab={(id) => {
+          const panel = PANELS.find((entry) => entry.id === id);
+          if (panel?.route == null) return;
+          const target = pathTo(panel.route);
+          props.navigate(here === target ? pathTo('agency:projects-board') : target);
+        }}
+        seated={false}
+      >
+        {content}
+      </Shell>
+    </PagePresenceProvider>
   );
 }
 

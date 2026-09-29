@@ -125,3 +125,45 @@
 [data-evidence='digest'] {
   overflow-wrap: anywhere;
 }
+
+/* C2 presence (SH-15, DS-COMP-1): who else is on this page, as overlapping
+   circles with the first ringed and the name as the native title; hidden at
+   640 and under. Plain until the kit's AvatarStack replaces it. */
+.presence-strip {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-end: 8px;
+}
+
+.presence-strip__avatar {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 24px;
+  block-size: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  background: var(--surface-3);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.presence-strip__avatar + .presence-strip__avatar {
+  margin-inline-start: -8px;
+}
+
+.presence-strip__avatar:first-child {
+  box-shadow: 0 0 0 2px var(--accent-ring);
+}
+
+@media (width <= 640px) {
+  .presence-strip {
+    display: none;
+  }
+}
+
+.presence-task {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-muted);
+}

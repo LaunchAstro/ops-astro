@@ -88,6 +88,8 @@ import type {
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { hubOf } from '../data/live.ts';
+import { usePresence } from '../data/presence.ts';
+import { TaskPresence, useShowOnPage } from '../views/presence.tsx';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { ConflictNotice, MovedNotice, TaskHeader, UnsavedBar } from './task/Notices.tsx';
 
@@ -517,6 +519,10 @@ function Loaded(props: LoadedProps): ReactElement {
   };
   const dirty = props.draft !== null;
 
+  // C2: who else is here, for this task and for the app strip.
+  const presence = usePresence(client, `task:${task.id}`);
+  useShowOnPage(presence.seen);
+
   /** Every keystroke lands in both places: this form, and the draft above it. */
   const edit = (next: { title?: string; due?: string }): void => {
     const nextTitle = next.title ?? title;
@@ -547,6 +553,7 @@ function Loaded(props: LoadedProps): ReactElement {
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
       <TaskHeader task={task} />
+      <TaskPresence seen={presence.seen} />
 
       {because === null ? null : (
         <p className="field__error" role="alert" data-voice="input-wrong">
@@ -586,6 +593,7 @@ function Loaded(props: LoadedProps): ReactElement {
         title={title}
         due={due}
         onEdit={edit}
+        onField={presence.mark}
         onSubmit={onFields}
       />
 

@@ -10,14 +10,19 @@
 // leaves that topic off the stream until its last follower has gone.
 // A page no topic reaches, an agency-wide rollup, follows `rollup-floor.ts`
 // instead: every 30 s while visible, at once on return, no timer while hidden.
+// C2 rides the same stream: `seat` hands the tab its seat in the presence
+// book, and `presence` says who is on a topic changed; the page re-reads it
+// through that seat (`presence.ts`). A stream joined again is a new seat, and
+// one that is down is no seat.
 
 export const FLOOR_MS = 30_000;
 const REJOIN_MS = 2_000;
-const EVENT = /^event: (invalidate|resync|closed)\ndata: (.*)$/mu;
+const EVENT = /^event: (invalidate|resync|closed|seat|presence)\ndata: (.*)$/mu;
 
 export type LiveChange = 'changed' | 'closed';
 
 type OnChange = (change: LiveChange) => void;
+type OnSeat = (seat: string | null) => void;
 
 /** Open one stream naming `topics`, or null when it is refused or unreachable. */
 export type OpenTopics = (
@@ -34,7 +39,7 @@ export interface LiveHub {
   /** Hear `topic` until the returned function is called. */
   follow(topic: string, onChange: OnChange): () => void;
   /** Hear `topic`'s presence (C2): each seat the stream is handed, and each change on the task. */
-  presence(topic: string, onSeat: (seat: string | null) => void): () => void;
+  presence(topic: string, onSeat: OnSeat): () => void;
   /** When the stream went down, or null while it is open or none is needed (`LiveStatus`). */
   readonly downSince: number | null;
 }
@@ -74,6 +79,8 @@ async function readEvents(
 class TabStream implements LiveHub {
   readonly #followers = new Map<string, Set<OnChange>>();
   readonly #closed = new Set<string>();
+  readonly #seated = new Map<string, Set<OnSeat>>();
+  #seat: string | null = null;
   #joined: { readonly topics: string; readonly abort: AbortController } | null = null;
   #floor: ReturnType<typeof setInterval> | undefined;
   #downSince: number | null = null;
@@ -108,8 +115,21 @@ class TabStream implements LiveHub {
     };
   }
 
-  presence(_topic: string, _onSeat: (seat: string | null) => void): () => void {
-    return () => {};
+  presence(topic: string, onSeat: OnSeat): () => void {
+    this.#seated.set(topic, (this.#seated.get(topic) ?? new Set()).add(onSeat));
+    if (this.#seat !== null) onSeat(this.#seat);
+    return () => {
+      const each = this.#seated.get(topic);
+      each?.delete(onSeat);
+      if (each?.size === 0) this.#seated.delete(topic);
+    };
+  }
+
+  /** A new seat, or none: every presence listener hears it. */
+  #reseat(seat: string | null): void {
+    if (this.#seat === seat) return;
+    this.#seat = seat;
+    for (const each of this.#seated.values()) for (const onSeat of each) onSeat(seat);
   }
 
   #tell(topic: string, change: LiveChange): void {
@@ -121,6 +141,15 @@ class TabStream implements LiveHub {
   };
 
   readonly #onEvent = (name: string, topic: string): void => {
+    if (name === 'seat') {
+      this.#reseat(topic);
+      return;
+    }
+    if (name === 'presence') {
+      const seat = this.#seat;
+      if (seat !== null) for (const onSeat of this.#seated.get(topic) ?? []) onSeat(seat);
+      return;
+    }
     if (name !== 'closed') {
       if (this.#visible()) this.#tell(topic, 'changed');
       return;
@@ -155,6 +184,7 @@ class TabStream implements LiveHub {
     if (this.#joined?.topics === topics) return;
     this.#joined?.abort.abort();
     this.#joined = null;
+    this.#reseat(null);
     if (this.#followers.size === 0) {
       this.#up();
       this.#listen(false);
@@ -175,6 +205,7 @@ class TabStream implements LiveHub {
       this.#up();
       await readEvents(body, this.#onEvent, abort.signal).catch(() => {});
       if (abort.signal.aborted) return;
+      this.#reseat(null);
       this.#down(false);
     }
     await wait(body === null ? FLOOR_MS : REJOIN_MS, abort.signal);

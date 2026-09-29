@@ -1,23 +1,83 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C2's two drawings: who else is on this page, in the app strip (CS-7.1), and
-// who else is on this task and what they are changing (CS-7.36).
+// C2's two drawings: who else is on this page, in the app strip (CS-7.1,
+// SH-15), and who else is on this task and what they are changing (CS-7.36).
+// Both draw only what the presence book answered through the tab's seat; the
+// strip is never drawn from the team list. A page shows its viewers to the
+// strip through `useShowOnPage`, and a page with no record shows nobody: there
+// is no business-wide topic to read. The strip's avatars are plain circles
+// until the kit's AvatarStack lands.
 
-import type { ReactElement, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import type { PresenceView } from '../data/presence.ts';
 
+const NOBODY: readonly PresenceView[] = [];
+const Seen = createContext<readonly PresenceView[]>(NOBODY);
+const Show = createContext<((seen: readonly PresenceView[]) => void) | null>(null);
+
 export function PagePresenceProvider(props: { readonly children: ReactNode }): ReactElement {
-  return <>{props.children}</>;
+  const [seen, show] = useState<readonly PresenceView[]>(NOBODY);
+  return (
+    <Show.Provider value={show}>
+      <Seen.Provider value={seen}>{props.children}</Seen.Provider>
+    </Show.Provider>
+  );
 }
 
-export function useShowOnPage(_seen: readonly PresenceView[]): void {}
+/** Put this page's viewers in the strip while the page is open. */
+export function useShowOnPage(seen: readonly PresenceView[]): void {
+  const show = useContext(Show);
+  useEffect(() => {
+    show?.(seen);
+  }, [show, seen]);
+  useEffect(() => () => show?.(NOBODY), [show]);
+}
+
+const initials = (name: string): string =>
+  name
+    .split(/\s+/u)
+    .filter((part) => part !== '')
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('');
 
 export function StripPresence(): ReactElement | null {
-  return null;
+  const seen = useContext(Seen);
+  if (seen.length === 0) return null;
+  return (
+    <span className="presence-strip" data-presence="page" aria-label="Also on this page">
+      {seen.map((person) => (
+        <span key={person.personId} className="presence-strip__avatar" title={person.name}>
+          {initials(person.name)}
+        </span>
+      ))}
+    </span>
+  );
 }
 
-export function TaskPresence(_props: {
+const LABELS: Readonly<Record<string, string>> = { title: 'Title', due: 'Due date' };
+const labelOf = (field: string): string => LABELS[field] ?? field.replaceAll('_', ' ');
+
+export function TaskPresence(props: {
   readonly seen: readonly PresenceView[];
 }): ReactElement | null {
-  return null;
+  if (props.seen.length === 0) return null;
+  return (
+    <ul className="presence-task" data-presence="task" aria-live="polite">
+      {props.seen.map((person) => (
+        <li key={person.personId}>
+          {person.state === 'changing' && person.field !== null
+            ? `${person.name} is editing ${labelOf(person.field)}`
+            : `${person.name} is viewing`}
+        </li>
+      ))}
+    </ul>
+  );
 }
