@@ -104,7 +104,8 @@ const STATEMENT = `
                        join public.records ds on ds.business_id = d.business_id and ds.id = d.uuid_1
                       where d.business_id = m.business_id and d.uuid_4 = m.id
                         and d.record_type_id = m.record_type_id and d.deleted_at is null
-                        and ds.data ->> 'machine_category' = 'completed'), '[]'::json))
+                        and ds.data ->> 'machine_category' = 'completed'
+                        and d.data ->> 'closed_as' is distinct from 'out_of_scope'), '[]'::json))
             from public.records m
            where m.business_id = t.business_id and m.id = t.uuid_4
              and m.record_type_id = t.record_type_id and m.deleted_at is null

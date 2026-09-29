@@ -38,6 +38,7 @@ interface TicketRow {
   readonly state: string | null;
   readonly category: string | null;
   readonly gist: string | null;
+  readonly closed_as: string | null;
   readonly closed_at: Date | null;
   readonly revision: string;
   readonly blocked_by: readonly string[];
@@ -54,10 +55,15 @@ function componentView(row: ComponentRow): MapComponentView {
   return { id: row.id, kind: row.kind, text: row.body, ticketId: row.ticket_id };
 }
 
-/** Decisions so far: the map's completed tickets in closing order, rendered, never stored. */
+/**
+ * Decisions so far: the map's completed tickets in closing order, rendered,
+ * never stored. A ticket ruled out of scope is not a step on the route: it is
+ * an Out of scope item and stays out of Decisions so far (the wayfinder
+ * skill's "Out of scope"; CS-15.6).
+ */
 function decisionsSoFar(tickets: readonly TicketRow[]): MapView['decisions'] {
   return tickets
-    .filter((ticket) => ticket.category === 'completed')
+    .filter((ticket) => ticket.category === 'completed' && ticket.closed_as !== 'out_of_scope')
     .toSorted(
       (a, b) =>
         (a.closed_at?.getTime() ?? 0) - (b.closed_at?.getTime() ?? 0) || a.id.localeCompare(b.id),
@@ -120,7 +126,8 @@ async function readMapTickets(
   return await tx.query<TicketRow>(
     `select c.id, c.txt_1 as key, c.txt_4 as title, coalesce(c.data ->> 'type', 'task') as type,
             s.data ->> 'key' as state, s.data ->> 'machine_category' as category,
-            c.data ->> 'gist' as gist, c.ts_2 as closed_at, c.revision::text as revision,
+            c.data ->> 'gist' as gist, c.data ->> 'closed_as' as closed_as,
+            c.ts_2 as closed_at, c.revision::text as revision,
             -- Its blockers: only live tickets of this same map (a blocks link
             -- from any other record is never shown under a task grant).
             coalesce((select array_agg(l.from_record_id::text order by l.from_record_id)
