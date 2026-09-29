@@ -36,6 +36,7 @@ export {
 export {
   checkAuthority,
   effectiveGrants,
+  grantedScopes,
   revokeGrant,
   subjectsOf,
   type Action,
@@ -123,3 +124,22 @@ export {
   type TenantQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
+export {
+  clearSecret,
+  isSecretStale,
+  listSecrets,
+  markSecretUsed,
+  readSecret,
+  setSecret,
+  type SecretRow,
+  type SecretScope,
+  type SecretStale,
+  type SecretWritten,
+} from './custody/secrets.ts';
+export {
+  generateSealingPair,
+  loadSealingKey,
+  seal,
+  type Sealed,
+  type SealingKey,
+} from './custody/sealing.ts';

@@ -132,6 +132,7 @@ export {
   type RuntimeResult,
 } from './refusals.ts';
 export {
+  custodySealingKey,
   delegationCredentialKeys,
   gateSigningKey,
   readBusinessCapId,

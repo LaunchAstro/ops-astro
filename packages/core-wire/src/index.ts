@@ -50,6 +50,8 @@ export type {
   ReceiptResult,
   ReservationView,
   SettingsReadResult,
+  SecretListResult,
+  SecretView,
   SessionCapabilities,
   SettingView,
   SharedTaskRead,

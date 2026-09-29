@@ -401,6 +401,26 @@ export interface SettingsReadResult {
 }
 
 /**
+ * One secret as custody shows it (C31): whether a value is set, its scope and
+ * when it was last used, never any part of the value. `clientId` is the party
+ * a client-scoped secret belongs to, null for a business-wide one.
+ */
+export interface SecretView {
+  readonly id: string;
+  readonly name: string;
+  readonly clientId: string | null;
+  readonly state: 'set' | 'not set';
+  readonly setAt: string | null;
+  readonly lastUsedAt: string | null;
+  readonly revision: number;
+}
+
+export interface SecretListResult {
+  readonly ok: true;
+  readonly secrets: readonly SecretView[];
+}
+
+/**
  * The capability answer is flat: `personId`, `businessKey` and `grants` sit
  * beside `ok` rather than under a `capabilities` object, because that is the
  * shape the surfaces read and one nesting level for three fields buys

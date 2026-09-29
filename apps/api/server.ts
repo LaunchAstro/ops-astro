@@ -100,6 +100,9 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
     // Deployment configuration rather than a secret, in a file of its own so the
     // database script that rewrites `db.env` cannot drop it.
     ...readEnvFile(join(ROOT, '.local', 'recovery.env')),
+    // The broker's public key custody seals secrets to (C31). Public: the
+    // private half is the broker's and never in this process's files.
+    ...readEnvFile(join(ROOT, '.local', 'custody.env')),
     ...process.env,
   };
 }
