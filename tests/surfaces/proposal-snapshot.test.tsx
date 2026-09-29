@@ -143,6 +143,12 @@ function clientServing(taskId: string, proposals: readonly ProposalView[]): Oper
     completedAt: null,
     revision: 2,
     history: [],
+    board: null,
+    rank: { number: null, score: null, calc: '' },
+    adHoc: false,
+    clientAccess: false,
+    stage: null,
+    clientSet: false,
     comments: [],
     proposals: JSON.parse(JSON.stringify(proposals)) as unknown,
   };
