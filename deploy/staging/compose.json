@@ -15,7 +15,6 @@
         "POSTGRES_USER": "${STAGING_DB_ADMIN_USER:?set from the staging runbook}",
         "POSTGRES_PASSWORD": "${STAGING_DB_ADMIN_PASSWORD:?set from the staging runbook}"
       },
-      "ports": ["127.0.0.1:${STAGING_DB_PORT:?set from the staging runbook}:5432"],
       "volumes": ["ops-astro-staging-pgdata:/var/lib/postgresql/data"],
       "networks": ["staging"],
       "restart": "unless-stopped",
@@ -24,12 +23,35 @@
         "interval": "5s",
         "timeout": "5s",
         "retries": 20
+      },
+      "user": "70:70",
+      "read_only": true,
+      "cap_drop": ["ALL"],
+      "security_opt": ["no-new-privileges:true"],
+      "tmpfs": [
+        "/var/run/postgresql:size=1m,uid=70,gid=70,mode=0775",
+        "/tmp:size=64m,uid=70,gid=70,mode=1777"
+      ],
+      "cpus": "1.0",
+      "mem_limit": "1g",
+      "memswap_limit": "1g",
+      "pids_limit": 200,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
       }
     },
     "auth": {
       "container_name": "ops-astro-staging-auth",
       "image": "public.ecr.aws/supabase/gotrue:v2.192.0@sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab",
-      "depends_on": { "db": { "condition": "service_healthy" } },
+      "depends_on": {
+        "db": {
+          "condition": "service_healthy"
+        }
+      },
       "environment": {
         "GOTRUE_API_HOST": "0.0.0.0",
         "PORT": "9999",
@@ -50,11 +72,43 @@
         "GOTRUE_SMTP_HOST": "",
         "GOTRUE_LOG_LEVEL": "info"
       },
-      "ports": ["127.0.0.1:${STAGING_AUTH_PORT:?set from the staging runbook}:9999"],
       "networks": ["staging"],
-      "restart": "unless-stopped"
+      "restart": "unless-stopped",
+      "read_only": true,
+      "cap_drop": ["ALL"],
+      "security_opt": ["no-new-privileges:true"],
+      "tmpfs": ["/tmp:size=16m"],
+      "cpus": "0.5",
+      "mem_limit": "256m",
+      "memswap_limit": "256m",
+      "pids_limit": 100,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      }
     }
   },
-  "networks": { "staging": { "name": "ops-astro-staging" } },
-  "volumes": { "ops-astro-staging-pgdata": { "name": "ops-astro-staging-pgdata" } }
+  "networks": {
+    "staging": {
+      "name": "ops-astro-staging",
+      "internal": true,
+      "enable_ipv6": false,
+      "driver_opts": {
+        "com.docker.network.bridge.gateway_mode_ipv4": "isolated"
+      }
+    }
+  },
+  "volumes": {
+    "ops-astro-staging-pgdata": {
+      "name": "ops-astro-staging-pgdata",
+      "driver_opts": {
+        "type": "tmpfs",
+        "device": "tmpfs",
+        "o": "size=512m,uid=70,gid=70,mode=0700"
+      }
+    }
+  }
 }
