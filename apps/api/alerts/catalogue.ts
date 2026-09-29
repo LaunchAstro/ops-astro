@@ -33,6 +33,11 @@ const WORDS = {
     'The latest records may not be in a backup yet',
     'The owner checks the backup job from the runbook and runs it by hand if it failed',
   ],
+  'restore-stale': [
+    "{Place}'s restore drill is out of date",
+    'Nobody has proved lately that the backups can be restored',
+    'The owner asks the second operator to run the restore drill from the runbook',
+  ],
   'app-error': [
     'The app hit an unexpected error on {place}',
     'One request did not complete, and the person who made it was asked to retry',

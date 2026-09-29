@@ -58,6 +58,17 @@ data does not survive a restart.
 Backups are never restored into staging: the restore drill takes no target and
 restores only into a throwaway container of its own.
 
+The restore drill is a person's act under `operations:manage`, asked of the
+operator gate before anything else, like staging preparation and the promotion.
+Each drill it runs, passed or failed, leaves a receipt in the backup store
+(`backups.drills`: time, outcome, stage, majors, table count, stage timings
+and the operator; no record data, key, credential, fingerprint or path) and a
+line in the operator's record folder. The receipt names the date of the last
+tested restore. The daily upkeep job (`backup.mjs expire`) pings the restore
+heartbeat only while a drill passed within `backups.settings.restore_days`
+(35 to start); once none has, the watcher mails the owner and the second
+operator that the restore drill is out of date.
+
 Before staging is prepared, and again after, the owner runs
 `scripts/ops/service-report.mjs` on the machine:
 
@@ -83,8 +94,8 @@ containers these names (`S0-1 gated stop`).
 ## Alerts
 
 Nothing deploys before the alerts reach the owner (ticket S0-2). The watcher
-(UptimeRobot, off the machine) checks each environment's web page, API health
-and backup heartbeat, and the error sink's health; the error sink (GlitchTip)
+(UptimeRobot, off the machine) checks each environment's web page, API health,
+backup heartbeat and restore heartbeat, and the error sink's health; the error sink (GlitchTip)
 takes the API's errors and its security alerts. The API raises repeated
 failed sign-ins, a burst of cross-scope refusals, a grant or delegation
 revoked, and unusual download volume (the records its reads hand out, per
@@ -102,6 +113,8 @@ addresses are private, set in the environment at run time:
 | `OPS_WATCH_STAGING_URL`, `OPS_WATCH_PRODUCTION_URL`        | `alerts.mjs plan`                      | the public https addresses watched; production's from the first promotion |
 | `OPS_ERROR_SINK_DSN`                                       | the API, `alerts.mjs`, the secret scan | the sink's DSN; unset, the API runs with no sink                          |
 | `OPS_ENVIRONMENT`, `OPS_RELEASE`                           | the API, `alerts.mjs test`             | `staging` or `production`; the build stamp                                |
+| `OPS_BACKUP_HEARTBEAT_URL`                                 | `backup.mjs run`                       | the watcher's backup heartbeat, pinged once a backup is recorded          |
+| `OPS_RESTORE_HEARTBEAT_URL`                                | `backup.mjs expire`                    | the watcher's restore heartbeat, pinged only while a drill is fresh       |
 
 `node scripts/ops/alerts.mjs plan` prints the checks, each with its name and
 its alert message in plain words, and the recipients to set up in both services (`--test`: all mail to the test address). `node

@@ -19,16 +19,18 @@
 -- store writes a receipt for every add, read and delete: action, id, time,
 -- size and login; no bytes, no fingerprint.
 --
--- The retention window is one row, `backups.settings`, here and nowhere else.
+-- The retention window, and how old the last passed restore drill may be,
+-- are one row, `backups.settings`, here and nowhere else.
 
 create schema backups;
 revoke all on schema backups from public;
 
 create table backups.settings (
   one boolean primary key default true check (one),
-  retention_days integer not null check (retention_days between 1 and 365)
+  retention_days integer not null check (retention_days between 1 and 365),
+  restore_days integer not null check (restore_days between 1 and 365)
 );
-insert into backups.settings (retention_days) values (35);
+insert into backups.settings (retention_days, restore_days) values (35, 35);
 
 create table backups.archives (
   id uuid primary key default gen_random_uuid(),
@@ -136,6 +138,61 @@ grant select (id, taken_at), delete on backups.archives to ops_astro_backup_rete
 grant select on backups.settings to ops_astro_backup_retention;
 grant usage on schema backups to ops_astro_backup_restore;
 grant execute on function backups.read_latest() to ops_astro_backup_restore;
+
+-- The restore drill's receipts (ticket S0-3, lines C4 to C6 and C10). The
+-- drill writes one row per run through `backups.record_drill`, as the restore
+-- identity, and the row carries times, majors, counts and stage names only: no
+-- record data, key, credential, fingerprint or path. The operations view reads
+-- the date of the last passed drill from here (C55). `backups.restore_fresh()`
+-- answers only yes or no: whether a drill passed inside the window
+-- `backups.settings.restore_days` sets. The daily upkeep job asks it and pings
+-- the watcher's restore heartbeat only on yes, so a stale restore raises S0-2's
+-- alert.
+create table backups.drills (
+  id bigint generated always as identity primary key,
+  at timestamptz not null default now(),
+  outcome text not null check (outcome in ('passed', 'failed')),
+  stage text check (stage in ('scope', 'fetch', 'open', 'start', 'target', 'restore', 'check')),
+  operator uuid not null,
+  archive_taken_at timestamptz,
+  production_major integer not null,
+  source_major integer,
+  target_major integer,
+  tables integer,
+  timings jsonb not null,
+  actor text not null default session_user,
+  check ((outcome = 'passed') = (stage is null)),
+  check (outcome = 'failed' or (archive_taken_at is not null and source_major is not null
+    and target_major = production_major and tables > 0))
+);
+create trigger drills_append_only before update or delete or truncate on backups.drills
+  for each statement execute function backups.receipts_append_only();
+
+-- It answers the date of the last passed drill, this one included.
+create function backups.record_drill(
+  text, text, uuid, timestamptz, integer, integer, integer, integer, jsonb
+) returns timestamptz
+  language sql security definer set search_path = pg_catalog as $$
+  insert into backups.drills (outcome, stage, operator, archive_taken_at, production_major,
+    source_major, target_major, tables, timings, actor)
+  values ($1, $2, $3, $4, $5, $6, $7, $8, $9, session_user);
+  select max(at) from backups.drills where outcome = 'passed';
+$$;
+revoke execute on function backups.record_drill(text, text, uuid, timestamptz, integer, integer,
+  integer, integer, jsonb) from public;
+grant execute on function backups.record_drill(text, text, uuid, timestamptz, integer, integer,
+  integer, integer, jsonb) to ops_astro_backup_restore;
+
+create function backups.restore_fresh() returns boolean
+  language sql stable security definer set search_path = pg_catalog as $$
+  select exists (
+    select from backups.drills
+    where outcome = 'passed'
+      and at > now() - make_interval(days => (select restore_days from backups.settings))
+  )
+$$;
+revoke execute on function backups.restore_fresh() from public;
+grant execute on function backups.restore_fresh() to ops_astro_backup_retention;
 
 -- Row security holds the window for the retention identity, and it is forced,
 -- so the backup identity's own bypass of row security on the source reads
