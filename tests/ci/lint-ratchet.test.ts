@@ -257,3 +257,22 @@ it('Sol proof, criterion 6: trailing blank lines count toward the 1,000-line lim
   expect(run.status).toBe(1);
   expect(run.out).toContain('packages/p/src/ok.ts: 1001 lines');
 });
+
+describe('CQ-12 the 1,000-line rule holds against hostile names and line endings', () => {
+  it.each([
+    ['an upper-case extension', 'apps/web/src/Big.TSX', lines(1001)],
+    ['a tab in the name', 'packages/p/src/a\tb.ts', lines(1001)],
+    ['a non-ASCII name', 'packages/p/src/größe.ts', lines(1001)],
+    ['bare CR line endings', 'packages/p/src/cr.ts', lines(1001).replaceAll('\n', '\r')],
+  ])('CQ-12 over 1,000 lines: %s still fails, naming the file', (_, path, text) => {
+    // The baseline allows the pedantic 300-line warning, so only the size rule can fail.
+    const { dir, base } = repo({
+      'src/a.mjs': 'export const a = 1;\n',
+      [path]: text,
+      [BASELINE]: baseline({ [MAX]: 1 }),
+    });
+    const run = ratchet(dir, base);
+    expect(run.status).toBe(1);
+    expect(run.out).toContain(`${path}: 1001 lines, over the 1000-line limit`);
+  });
+});
