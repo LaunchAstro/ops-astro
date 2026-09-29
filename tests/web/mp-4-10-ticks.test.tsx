@@ -70,17 +70,18 @@ async function ticks(client: OperationsClient, flags: Flags, server: Flags) {
 }
 
 const key = async (view: Mounted, selector: string, name: string) => {
-  const target = view.find(selector);
+  const target = view.host.querySelector(selector);
   if (target === null) throw new Error(`nothing matches ${selector}`);
   await act(async () => {
     target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
+    await Promise.resolve();
   });
 };
 
 const checked = (view: Mounted, name: string) =>
   view.find(`[data-tick="${name}"]`)?.getAttribute('aria-checked');
 
-describe('MP-4-10 ticks toggle', () => {
+describe('MP-4-10 ticks toggle: pointer', () => {
   it('Ad hoc turns on and off by pointer, through task.set_adhoc at the task’s revision', async () => {
     const { client, sent } = commands(OK);
     const server = { adHoc: true, clientAccess: false };
@@ -105,7 +106,9 @@ describe('MP-4-10 ticks toggle', () => {
     expect(sent[1]?.body['fields']).toStrictEqual({ ad_hoc: false });
     await view.unmount();
   });
+});
 
+describe('MP-4-10 ticks toggle: keyboard', () => {
   it('Client access turns on by Space and off by Enter, sharing then withdrawing', async () => {
     const { client, sent } = commands(OK);
     const server = { adHoc: false, clientAccess: true };
@@ -142,7 +145,9 @@ describe('MP-4-10 ticks toggle', () => {
     expect(sent).toHaveLength(0);
     await view.unmount();
   });
+});
 
+describe('MP-4-10 ticks toggle: one press at a time, and a refusal said', () => {
   it('a second press while the first is in flight sends nothing', async () => {
     const { client, sent, held } = commands(() => 'hold');
     const { view } = await ticks(
@@ -157,6 +162,7 @@ describe('MP-4-10 ticks toggle', () => {
     expect(view.find('[data-tick="adhoc"]')?.getAttribute('aria-disabled')).toBe('true');
     await act(async () => {
       for (const release of held) release();
+      await Promise.resolve();
     });
     await tick();
     expect(checked(view, 'adhoc')).toBe('true');
