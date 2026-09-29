@@ -13,7 +13,13 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import { BoardMachine } from './BoardMachine.tsx';
 import { projectCell } from './ProjectCell.tsx';
-import { groupReason, projectColumns, statusOrder, type ProjectRow } from '../board/projects.ts';
+import {
+  groupReason,
+  projectColumns,
+  statusOrder,
+  type ProjectRow,
+  type RowActions,
+} from '../board/projects.ts';
 import { clientFiltersIn, projectFacets } from '../board/project-facets.ts';
 import {
   openWithViewer,
@@ -41,6 +47,8 @@ export interface ProjectsBoardProps {
   readonly viewer?: string | null;
   /** Whether the viewer preset is on at load: agency-wide yes, a client's board no. */
   readonly viewerOn?: boolean;
+  /** What a row can do (MP-5-9); the page owns the commands. */
+  readonly actions?: RowActions;
 }
 
 const WORK_ORDER = { key: 'rank', dir: 'asc' } as const;

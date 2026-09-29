@@ -44,3 +44,19 @@ export interface ProjectRow {
     readonly latest: string | null;
   };
 }
+
+/**
+ * What a Projects row can do, as the page hands it in (MP-5-9): the page owns
+ * the commands, the row only draws the controls. A control whose callback is
+ * absent is not drawn.
+ */
+export interface RowActions {
+  /** The tick: `true` completes, `false` reopens, through the one completion transition. */
+  readonly onTick?: (row: ProjectRow, done: boolean) => void;
+  /** A rename in place, already trimmed, changed and not blank. */
+  readonly onRename?: (row: ProjectRow, title: string) => void;
+  /** Open the task beside the board (a plain click, after the double-click window). */
+  readonly onOpen?: (row: ProjectRow) => void;
+  /** The hover box's timer; drawn only when the page can start one. */
+  readonly onStartTimer?: (row: ProjectRow) => void;
+}
