@@ -24,6 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { PrivacyRequest } from './requests-privacy.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -210,53 +211,8 @@ export type CommandRequest =
       readonly value: boolean;
       readonly expectedRevision?: number;
     } & Envelope)
-  // C55: a privacy incident record's day-0 facts, each checked by the handler
-  // in its own words (`privacy-write.ts`), so every field is `unknown` here.
-  | ({
-      readonly command: 'privacy.record_incident';
-      readonly whatHappened: unknown;
-      readonly foundAt: unknown;
-      readonly foundBy: unknown;
-      readonly affected: unknown;
-      readonly informationKinds: unknown;
-    } & Envelope)
-  // C81: a legal document's version. The draft's fields and the approval's
-  // digest are checked by the handler in its own words (`legal-write.ts`).
-  | ({
-      readonly command: 'legal.draft_version';
-      readonly document: unknown;
-      readonly version: unknown;
-      readonly body: unknown;
-    } & Envelope)
-  | ({
-      readonly command: 'legal.approve_version';
-      readonly versionId: string;
-      readonly digest: unknown;
-    } & Envelope)
-  | ({ readonly command: 'legal.publish_version'; readonly versionId: string } & Envelope)
-  // C81: one row of the overseas-services register, every field checked by the
-  // handler in its own words (`overseas-write.ts`).
-  | ({
-      readonly command: 'privacy.set_overseas_service';
-      readonly service: unknown;
-      readonly receives: unknown;
-      readonly where: unknown;
-      readonly trainsOnIt: unknown;
-      readonly contract: unknown;
-      readonly toConfirm: unknown;
-      readonly inUse: unknown;
-    } & Envelope)
-  // C81: one row of the data-class register, every field checked by the
-  // handler in its own words (`data-class-write.ts`).
-  | ({
-      readonly command: 'privacy.set_data_class';
-      readonly dataClass: unknown;
-      readonly purpose: unknown;
-      readonly disclosures: unknown;
-      readonly retention: unknown;
-      readonly deletion: unknown;
-      readonly inUse: unknown;
-    } & Envelope)
+  // C55, C81 and API-2, in their own file.
+  | PrivacyRequest<Envelope>
   // The support controls. Revocation names the row it revokes; the time is the
   // server's. Cancel and restart name the task and the lineage on it, so the
   // task is where the work-control authority is asked and the lineage is

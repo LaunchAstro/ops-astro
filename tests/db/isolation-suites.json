@@ -18,6 +18,8 @@
     "tests/operations/c81-register-isolation.test.ts",
     "tests/operations/c81-breach-drill.test.ts",
     "tests/operations/c81-breach-drill-clock.test.ts",
-    "tests/operations/c81-data-classes-isolation.test.ts"
+    "tests/operations/c81-data-classes-isolation.test.ts",
+    "tests/api/api-2-agent-credential.test.ts",
+    "tests/api/api-2-agent-credential-revoke.test.ts"
   ]
 }

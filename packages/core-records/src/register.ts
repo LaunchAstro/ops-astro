@@ -421,6 +421,26 @@ const ROWS = [
     meaning: 'The published breach runbook has no notice template the drill can fill',
     source: 'C81 TR-SEC-11',
   },
+  // API-2, the agent credential: never wider than its issuer, never decide,
+  // share or manage (403), and revoked once (409).
+  {
+    code: 'CREDENTIAL_SCOPE_WIDENS',
+    status: 403,
+    meaning: 'A ticked key is one the issuer does not hold at business scope',
+    source: 'API-2',
+  },
+  {
+    code: 'CREDENTIAL_ACTION_EXCLUDED',
+    status: 403,
+    meaning: 'An agent credential never carries decide, share or manage',
+    source: 'API-2',
+  },
+  {
+    code: 'CREDENTIAL_ALREADY_REVOKED',
+    status: 409,
+    meaning: 'This agent credential is already revoked',
+    source: 'API-2',
+  },
 
   // Delegation and lease, T1's pickup and handback. No table yet.
   {

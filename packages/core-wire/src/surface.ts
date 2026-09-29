@@ -102,6 +102,10 @@ export type CommandName =
   | 'legal.draft_version'
   | 'legal.approve_version'
   | 'legal.publish_version'
+  // API-2: an agent credential, issued and revoked by a person on their own
+  // account.
+  | 'credential.issue'
+  | 'credential.revoke'
   // C81: the overseas-services register the privacy policy reads.
   | 'privacy.set_overseas_service'
   // C81: the data-class register the privacy policy reads.
@@ -370,6 +374,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'legal.draft_version': { document: 'any', version: 'any', body: 'any' },
   'legal.approve_version': { versionId: 'id', digest: 'any' },
   'legal.publish_version': { versionId: 'id' },
+  'credential.issue': { scope: 'any', expiresAt: 'any', purpose: 'any' },
+  'credential.revoke': { credentialId: 'id' },
   'privacy.set_overseas_service': {
     service: 'any',
     receives: 'any',
@@ -546,6 +552,20 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: 'privacy',
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
+  }),
+
+  // API-2: an agent credential is a person's own, so both are `credential:write`
+  // and never an agent's. A revocation of another person's credential asks
+  // `access:manage` too, under the row's lock (`credential-write.ts`).
+  declare('credential.issue', 'write', {
+    collection: 'credential',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('credential.revoke', 'write', {
+    collection: 'credential',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['credentialId'],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this

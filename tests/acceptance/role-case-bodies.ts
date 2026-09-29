@@ -27,6 +27,7 @@ import { randomUUID } from 'node:crypto';
 import type { CommandDeclaration, CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 import { privacyBody } from './role-case-privacy-bodies.ts';
+import { credentialBody } from './role-case-credential-bodies.ts';
 
 /** The proposal every case that needs a gate proposes, spelled once. */
 export const PROPOSAL = {
@@ -242,6 +243,10 @@ export function createPositiveBody(
       case 'privacy.draft_breach_notices':
       case 'privacy.record_incident':
         return await privacyBody(declaration.name, context);
+      // API-2: the admin holds `credential:write`, as the owner does.
+      case 'credential.issue':
+      case 'credential.revoke':
+        return await credentialBody(declaration.name, context);
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');

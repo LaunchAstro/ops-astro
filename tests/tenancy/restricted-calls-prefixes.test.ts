@@ -134,6 +134,18 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     in_use: true,
     updated_by_actor: randomUUID(),
   },
+  // 0037 (API-2): no journey issues an agent credential.
+  'public.agent_credentials': {
+    agent_actor_id: randomUUID(),
+    issued_by_person_id: randomUUID(),
+    issued_by_actor_id: randomUUID(),
+    purpose: 'restricted calls seed',
+    scope: ['task:read'],
+    credential_hash: '0'.repeat(64),
+    credential_scheme: 'hmac-sha256-v1',
+    credential_key_id: 'seed',
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

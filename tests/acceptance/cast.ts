@@ -102,6 +102,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   // default is the owner and administrators.
   'operations',
   'privacy',
+  // API-2: an agent credential, issued and revoked on the holder's own account.
+  'credential',
 ];
 
 export async function tokenFor(

@@ -24,7 +24,7 @@ export const CASE = {
 } as const;
 
 /**
- * The seventeen operations that name no identifier, each with a minimal valid body.
+ * The eighteen operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -95,9 +95,17 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
       inUse: true,
     },
   ],
+  [
+    'credential.issue',
+    {
+      scope: [{ collection: 'task', action: 'read' }],
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      purpose: 'A made-up credential issued while bravo is watched',
+    },
+  ],
 ];
 
-/** The twelve identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The thirteen identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -113,6 +121,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.pickup': ['reservationId', 'pickup'],
   'legal.approve_version': ['versionId', 'control'],
   'legal.publish_version': ['versionId', 'control'],
+  'credential.revoke': ['credentialId', 'control'],
 };
 
 /**
