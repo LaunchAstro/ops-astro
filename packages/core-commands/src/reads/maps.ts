@@ -190,3 +190,13 @@ export async function readMapFrontier(
     fog: fog.map((row) => ({ id: row.id, text: row.body })),
   };
 }
+
+/** Map status (API-4): not built yet. */
+export function readMapStatus(
+  _tx: TenantQuery,
+  _taskTypeId: string,
+  _mapId: string,
+  _detail: 'brief' | 'standard' | 'full',
+): Promise<{ readonly frontier: readonly unknown[] } | undefined> {
+  return Promise.resolve(undefined as never);
+}

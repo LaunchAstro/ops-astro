@@ -274,4 +274,14 @@ describe.skipIf(serverUrl === undefined)('API-3 quota', () => {
     expect(over.body['code']).toBe('FIELD_VALUE_INVALID');
     expect(over.body['names']).toStrictEqual(['limit']);
   });
+
+  it('API-4 quota: map status is charged like every call', async () => {
+    const api = app(limits({ requests: { credential: 2 } }));
+    clock += WINDOW + 1;
+    const map = (await w.create(ann, { title: 'quota status map' }, { taskType: 'map' })).id;
+    const status = async () => await call(api, ann, '/map/status', { recordId: map });
+    expect((await status()).status).toBe(200);
+    expect((await status()).status).toBe(200);
+    expectQuotaRefusal(await status(), 'requests', 'credential');
+  });
 });
