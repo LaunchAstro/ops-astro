@@ -163,6 +163,34 @@ it('Sol proof, criterion 5: a live container configuration change makes the repo
   expect(report.out).toMatch(/CONFIG|RECONFIGURED|MEMORY CHANGED/u);
 });
 
+it('Sol proof, criterion 5: a live network attachment change makes the report red', () => {
+  const containers = JSON.parse(inspect(LIVE)) as Record<string, unknown>[];
+  containers[0]!['NetworkSettings'] = { Networks: { live: { NetworkID: 'live-network' } } };
+  const before = run([
+    'snapshot',
+    '--docker-inspect',
+    file(JSON.stringify(containers)),
+    '--launchctl',
+    file(launchctl(JOBS)),
+  ]);
+  expect(before.status, before.out).toBe(0);
+  const afterContainers = structuredClone(containers);
+  afterContainers[0]!['NetworkSettings'] = {
+    Networks: { live: { NetworkID: 'live-network' }, added: { NetworkID: 'other-network' } },
+  };
+  const after = run([
+    'snapshot',
+    '--docker-inspect',
+    file(JSON.stringify(afterContainers)),
+    '--launchctl',
+    file(launchctl(JOBS)),
+  ]);
+  expect(after.status, after.out).toBe(0);
+  const report = compare(file(before.out), file(after.out));
+  expect(report.status, report.out).toBe(1);
+  expect(report.out).toMatch(/RECONFIGURED docker live-runner/u);
+});
+
 // ---- S0-1 credentials canary -------------------------------------------------
 
 it('S0-1 credentials canary', () => {
