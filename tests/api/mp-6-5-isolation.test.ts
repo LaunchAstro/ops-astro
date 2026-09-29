@@ -48,6 +48,8 @@ describe.skipIf(serverUrl === undefined)('MP-6-5 isolation', () => {
     const rows = await c.fixture.db.admin.execute<{ readonly id: string }>(
       `select id from public.task_envelopes where task_id = $1
        union all select id from public.reservations r
+        where r.envelope_id in (select id from public.task_envelopes where task_id = $1)
+       union all select run_id from public.reservations r
         where r.envelope_id in (select id from public.task_envelopes where task_id = $1)`,
       [one.taskId],
     );
