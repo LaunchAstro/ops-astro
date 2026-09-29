@@ -51,14 +51,14 @@ const both = (bundle: { json: string; markdown: string }): string =>
   `${bundle.json}\n${bundle.markdown}`;
 
 describe('the bundle withholds what a person wrote, wherever it arrives', () => {
-  it('withholds a body quoted in a separation leak, and keeps its code and identifiers', () => {
+  it('withholds a body quoted in a separation leak, and keeps the identifiers it holds elsewhere', () => {
     const text = both(
       bundleWith([
         `app client: {"refused":true,"code":"NOT_FOUND","body":"${BODY}","recordId":"${DECISION}"}`,
       ]),
     );
     expect(text).not.toContain(BODY);
-    expect(text).toContain('NOT_FOUND');
+    expect(text).not.toContain('NOT_FOUND');
     expect(text).toContain(DECISION);
     expect(text).toContain(TREE);
   });
@@ -85,18 +85,63 @@ describe('the bundle withholds what a person wrote, wherever it arrives', () => 
     expect(text).not.toContain(BODY);
   });
 
-  it('keeps a plain-text detail private: its digest and only its safe tokens (Sol, review 3)', () => {
+  it('keeps a case detail as its digest alone, whatever its words are spelled like (Sol, REV164D)', () => {
     const title = 'Client ACME defaced plan for the decade';
-    const detail = `task.read refused NOT_FOUND for ${DECISION} while handling ${title}, 106 ms, see tests/journey/run.ts and T2g (#136)`;
+    const detail = `task.read refused NOT_FOUND for ${DECISION} while handling ${title}, CLIENT_X_SECRET, 106 ms, see tests/journey/run.ts and T2g (#136)`;
     const bundle = bundleWith([detail]);
     const text = both(bundle);
-    for (const word of ['Client', 'ACME', 'defaced', 'decade', title]) {
+    for (const word of [
+      'Client',
+      'ACME',
+      'CLIENT_X_SECRET',
+      'NOT_FOUND',
+      '106 ms',
+      'run.ts',
+      '#136',
+      title,
+    ]) {
       expect(text).not.toContain(word);
     }
     const [line] = (JSON.parse(bundle.json) as { behaviour: { detail: string }[] }).behaviour;
     const digest = createHash('sha256').update(detail, 'utf8').digest('hex').slice(0, 16);
-    expect(line?.detail).toBe(
-      `detail sha256 ${digest}; facts: NOT_FOUND, ${DECISION}, 106 ms, tests/journey/run.ts, T2g, #136`,
-    );
+    expect(line?.detail).toBe(`detail sha256 ${digest}`);
+  });
+
+  it('shows the typed facts the command set beside a case, and takes the owner from them', () => {
+    const bundle = writeBundle({
+      head: 'a'.repeat(40),
+      tree: TREE,
+      clean: true,
+      identity: '{}',
+      environment: {},
+      cases: [
+        {
+          case: 'T2g: request changes',
+          status: 'unrun',
+          detail: 'owned by CLIENT_X_SECRET',
+          facts: { owner: 'T2g', pr: '#136', ms: 106, clean: true },
+        },
+      ],
+      budgets: [],
+      crashPoints: '',
+      approval: {
+        taskId: 'task-1',
+        decisionId: DECISION,
+        decision: 'approve',
+        action: JSON.stringify({ decision: 'approve', note: 'routine' }),
+      },
+    });
+    const parsed = JSON.parse(bundle.json) as {
+      behaviour: { facts?: Record<string, unknown> }[];
+      openItems: { owner: string }[];
+    };
+    expect(parsed.behaviour[0]?.facts).toStrictEqual({
+      owner: 'T2g',
+      pr: '#136',
+      ms: 106,
+      clean: true,
+    });
+    expect(parsed.openItems[0]?.owner).toBe('T2g');
+    expect(`${bundle.json}${bundle.markdown}`).not.toContain('CLIENT_X_SECRET');
   });
 });
