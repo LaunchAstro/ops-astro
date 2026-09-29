@@ -65,7 +65,7 @@ function stubDatabase(seen: Seen[], admissions: unknown[][] = []): Database {
         },
       });
     },
-    close: async () => undefined,
+    close: () => Promise.resolve(),
   };
 }
 
@@ -84,7 +84,7 @@ function build(overrides: Partial<Parameters<typeof createApi>[0]> = {}, seen: S
   return createApi({
     database: stubDatabase(seen),
     verify: createSupabaseVerifier(testSignIn(ISSUER)),
-    resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
+    resolveBusiness: (key) => Promise.resolve(key === 'alpha' ? ALPHA : undefined),
     executeCommand,
     executeRead,
     ...overrides,

@@ -168,7 +168,7 @@ export async function createWorld(part: string): Promise<World> {
     // The server resolves the key on the administrative connection because the
     // tenancy root is behind forced row security. Two keys are the whole map
     // here, and an unknown key answers nothing, exactly as the server's does.
-    resolveBusiness: async (key: string) => byKey[key],
+    resolveBusiness: (key: string) => Promise.resolve(byKey[key]),
     executeCommand,
     executeRead,
     executeAgentCommand,
@@ -215,7 +215,7 @@ export function rebuildApi(world: World): {
     api: createApi({
       database,
       verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
-      resolveBusiness: async (key: string) => byKey[key],
+      resolveBusiness: (key: string) => Promise.resolve(byKey[key]),
       executeCommand,
       executeRead,
       executeAgentCommand,

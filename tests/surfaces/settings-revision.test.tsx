@@ -69,20 +69,22 @@ function server(
   let value: unknown = 500;
   let revision = options.revision;
   let refuseNext = options.stale === true;
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     sent.push({ at, body });
     if (at.endsWith('/session/capabilities')) {
-      return json({
-        ok: true,
-        personId: 'p-ada',
-        businessKey: 'alpha',
-        grants: [{ collection: 'settings', action: 'manage' }],
-      });
+      return Promise.resolve(
+        json({
+          ok: true,
+          personId: 'p-ada',
+          businessKey: 'alpha',
+          grants: [{ collection: 'settings', action: 'manage' }],
+        }),
+      );
     }
     if (at.endsWith('/settings/read')) {
-      return json({ ok: true, settings: [row(value, revision)] });
+      return Promise.resolve(json({ ok: true, settings: [row(value, revision)] }));
     }
     if (at.endsWith('/settings/set_four_eyes_threshold')) {
       if (refuseNext) {
@@ -90,21 +92,25 @@ function server(
         refuseNext = false;
         value = 999;
         revision = (revision ?? 0) + 1;
-        return json(
-          {
-            refused: true,
-            code: 'VERSION_STALE',
-            names: ['four_eyes_threshold'],
-            fixes: ['reread and try again'],
-          },
-          409,
+        return Promise.resolve(
+          json(
+            {
+              refused: true,
+              code: 'VERSION_STALE',
+              names: ['four_eyes_threshold'],
+              fixes: ['reread and try again'],
+            },
+            409,
+          ),
         );
       }
       value = body['value'];
       revision = revision === undefined ? undefined : revision + 1;
-      return json({ recordId: 'row', revision: revision ?? null, detail: { value } });
+      return Promise.resolve(
+        json({ recordId: 'row', revision: revision ?? null, detail: { value } }),
+      );
     }
-    throw new Error(`unrouted ${at}`);
+    return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
   return { fetch, sent };
 }

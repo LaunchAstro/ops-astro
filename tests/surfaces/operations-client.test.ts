@@ -26,16 +26,18 @@ function stub(
   readonly calls: Captured[];
 } {
   const calls: Captured[] = [];
-  const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+  const fetch = ((url: string | URL | Request, init?: RequestInit) => {
     calls.push({
       url: String(url),
       headers: (init?.headers ?? {}) as Record<string, string>,
       body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
     });
-    return new Response(JSON.stringify(answer), {
-      status,
-      headers: { 'content-type': 'application/json' },
-    });
+    return Promise.resolve(
+      new Response(JSON.stringify(answer), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
   }) as unknown as typeof globalThis.fetch;
   return { fetch, calls };
 }

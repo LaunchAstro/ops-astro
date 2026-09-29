@@ -105,7 +105,7 @@ function observeOn(wrapper: Wrapper, world: World) {
   const api = createApi({
     database,
     verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
-    resolveBusiness: async (key: string) => byKey[key],
+    resolveBusiness: (key: string) => Promise.resolve(byKey[key]),
     executeCommand,
     executeRead,
     executeAgentCommand,

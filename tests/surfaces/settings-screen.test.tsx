@@ -48,49 +48,57 @@ const json = (body: unknown, status = 200): Response =>
  */
 function server(options: { readonly refuse?: boolean; readonly reads?: boolean } = {}) {
   const sent: { readonly at: string; readonly body: Record<string, unknown> }[] = [];
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     sent.push({ at, body });
     if (at.endsWith('/settings/read') || at.endsWith('/session/capabilities')) {
-      if (options.reads !== true) return json({ error: 'not found' }, 404);
-      return at.endsWith('/settings/read')
-        ? json({ ok: true, settings: [] })
-        : json({
-            ok: true,
-            personId: 'p-ada',
-            businessKey: 'alpha',
-            grants: [{ collection: 'settings', action: 'manage' }],
-          });
+      if (options.reads !== true) return Promise.resolve(json({ error: 'not found' }, 404));
+      return Promise.resolve(
+        at.endsWith('/settings/read')
+          ? json({ ok: true, settings: [] })
+          : json({
+              ok: true,
+              personId: 'p-ada',
+              businessKey: 'alpha',
+              grants: [{ collection: 'settings', action: 'manage' }],
+            }),
+      );
     }
     if (options.refuse === true) {
-      return json(
-        {
-          refused: true,
-          code: 'SCOPE_NOT_GRANTED',
-          names: [],
-          fixes: ['no live grant covers it', 'ask a holder who may delegate'],
-        },
-        403,
+      return Promise.resolve(
+        json(
+          {
+            refused: true,
+            code: 'SCOPE_NOT_GRANTED',
+            names: [],
+            fixes: ['no live grant covers it', 'ask a holder who may delegate'],
+          },
+          403,
+        ),
       );
     }
     if (at.endsWith('/settings/set_four_eyes_threshold')) {
       // The row carried no revision, so the outcome has none. The detail is the
       // row's key and the value it now holds.
-      return json({
-        recordId: 'row-four-eyes',
-        revision: null,
-        detail: { key: 'four_eyes_threshold', value: body['value'] },
-      });
+      return Promise.resolve(
+        json({
+          recordId: 'row-four-eyes',
+          revision: null,
+          detail: { key: 'four_eyes_threshold', value: body['value'] },
+        }),
+      );
     }
     if (at.endsWith('/settings/set_client_sign_off')) {
-      return json({
-        recordId: 'row-sign-off',
-        revision: null,
-        detail: { key: 'client_sign_off_required', value: body['value'] },
-      });
+      return Promise.resolve(
+        json({
+          recordId: 'row-sign-off',
+          revision: null,
+          detail: { key: 'client_sign_off_required', value: body['value'] },
+        }),
+      );
     }
-    throw new Error(`unrouted ${at}`);
+    return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
   return { fetch, sent };
 }

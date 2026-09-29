@@ -71,30 +71,35 @@ function server(
   } = {},
 ): Stub {
   const sent: { at: string; body: Record<string, unknown> }[] = [];
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     sent.push({ at, body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown> });
     if (at.endsWith('/session/capabilities')) {
-      return (
-        options.capabilities ??
-        (() =>
-          json({
-            ok: true,
-            personId: 'p-ada',
-            businessKey: 'alpha',
-            grants: [{ collection: 'settings', action: 'manage' }],
-          }))
-      )();
+      return Promise.resolve(
+        (
+          options.capabilities ??
+          (() =>
+            json({
+              ok: true,
+              personId: 'p-ada',
+              businessKey: 'alpha',
+              grants: [{ collection: 'settings', action: 'manage' }],
+            }))
+        )(),
+      );
     }
     if (at.endsWith('/settings/read')) {
-      return json({ ok: true, settings: [row('four_eyes_threshold', 500)] });
+      return Promise.resolve(json({ ok: true, settings: [row('four_eyes_threshold', 500)] }));
     }
     if (at.includes('/settings/set_')) {
-      return (
-        options.write ?? (() => json({ recordId: 'row', revision: null, detail: { value: 1200 } }))
-      )();
+      return Promise.resolve(
+        (
+          options.write ??
+          (() => json({ recordId: 'row', revision: null, detail: { value: 1200 } }))
+        )(),
+      );
     }
-    throw new Error(`unrouted ${at}`);
+    return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
   return { fetch, sent };
 }

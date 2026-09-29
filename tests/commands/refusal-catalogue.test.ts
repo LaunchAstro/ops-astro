@@ -280,7 +280,7 @@ const stubDatabase = (): Database =>
           return [];
         },
       }),
-    close: async () => undefined,
+    close: () => Promise.resolve(),
   }) as unknown as Database;
 
 const api = createApi({
@@ -288,7 +288,7 @@ const api = createApi({
   executeCommand,
   executeRead,
   verify: createSupabaseVerifier(testSignIn(ISSUER)),
-  resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
+  resolveBusiness: (key) => Promise.resolve(key === 'alpha' ? ALPHA : undefined),
 });
 
 async function raw(

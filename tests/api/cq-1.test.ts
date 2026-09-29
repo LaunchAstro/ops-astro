@@ -53,7 +53,11 @@ const CASES: readonly (readonly [string, () => Promise<string>, string])[] = [
   ['CQ-1 audience refused: another', () => signBearer(claims({ aud: 'anon' })), NO],
   ['CQ-1 issuer refused: another', () => signBearer(claims({ iss: `${ISSUER}/` })), NO],
   ['CQ-1 issuer refused: none', () => signBearer(claims({ iss: undefined })), NO],
-  ['CQ-1 algorithm refused: none', async () => `${b64({ alg: 'none' })}.${b64(claims())}.`, NO],
+  [
+    'CQ-1 algorithm refused: none',
+    () => Promise.resolve(`${b64({ alg: 'none' })}.${b64(claims())}.`),
+    NO,
+  ],
   ['CQ-1 algorithm refused: HS512', () => sign(claims(), 'a-shared-secret', 'HS512'), NO],
   ['CQ-1 future nbf refused', () => signBearer(claims({ nbf: now() + 600 })), NO],
   ['CQ-1 expired still expired', () => signBearer(claims(PAST)), 'AUTH_SESSION_EXPIRED'],

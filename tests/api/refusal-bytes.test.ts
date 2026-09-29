@@ -52,13 +52,13 @@ const stubDatabase = (): Database =>
           return [];
         },
       }),
-    close: async () => undefined,
+    close: () => Promise.resolve(),
   }) as unknown as Database;
 
 const api = createApi({
   database: stubDatabase(),
   verify: createSupabaseVerifier(testSignIn(ISSUER)),
-  resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
+  resolveBusiness: (key) => Promise.resolve(key === 'alpha' ? ALPHA : undefined),
   executeCommand,
   executeRead,
 });
@@ -70,7 +70,8 @@ const api = createApi({
  * one `createApi` built, with its own status, its own headers and its own
  * bytes. No case here may construct a body.
  */
-const transport = async (url: string, init?: RequestInit) => api.fetch(new Request(url, init));
+const transport = (url: string, init?: RequestInit) =>
+  Promise.resolve(api.fetch(new Request(url, init)));
 
 const client = (token: string | null): OperationsClient =>
   new OperationsClient({
