@@ -164,36 +164,12 @@ function withheldValue(value: unknown, held: Set<string>): string {
 }
 
 /**
- * What a case detail may keep once it crosses into the bundle (Sol, review 3
- * on #164): a detail is free text, so it is private at the boundary, JSON or
- * not. Only these tokens are kept, in the order they appear: identifiers and
- * digests (a hex run must hold a digit, so a word spelled from a to f is not
- * one), refusal codes (upper case with an underscore, so a capitalised name
- * is not one), ticket and pull request names, repository paths, and numbers
- * with their unit. Everything else is gone; the detail's digest stands for it.
+ * A case detail as the bundle carries it: its digest, and nothing else (Sol,
+ * reviews 3 and REV164D on #164). A detail is free text, and no token in it
+ * is safe because of how it is spelled: a client's words can look like a
+ * refusal code, an identifier or a path. What the bundle shows beside a case
+ * comes from the facts the command's code typed separately (`CaseLine.facts`).
  */
-const FACTS = [
-  /<id \d+>/gu,
-  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/giu,
-  /\b(?=[0-9a-f]*\d)[0-9a-f]{7,64}\b/gu,
-  /\b[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]\b/gu,
-  /#\d+\b|\b(?:T\d[a-z]\d?|CQ-\d+|INB-\d+|U\d\d|RN-\d+|T\d-[RN]\d+)\b/gu,
-  /(?:^|(?<=[\s(]))(?:tests|scripts|docs|packages|apps|migrations|\.local)\/[\w./-]+/gu,
-  /\b\d+(?:\.\d+)? ?(?:ms|s|bytes|B|KB|MB|%)(?![\w])/gu,
-];
-
-/** A case detail as the bundle may carry it: its digest, and only its safe tokens. */
-export function privateDetail(detail: string): string {
-  const found = FACTS.flatMap((pattern) =>
-    [...detail.matchAll(pattern)].map((match) => ({ at: match.index, token: match[0] })),
-  ).toSorted((a, b) => a.at - b.at || b.token.length - a.token.length);
-  const kept: string[] = [];
-  let end = -1;
-  for (const { at, token } of found) {
-    if (at < end) continue;
-    end = at + token.length;
-    if (!kept.includes(token)) kept.push(token);
-  }
-  const digest = `detail sha256 ${digestOf(detail).slice(0, 16)}`;
-  return kept.length === 0 ? digest : `${digest}; facts: ${kept.join(', ')}`;
+export function digestDetail(detail: string): string {
+  return `detail sha256 ${digestOf(detail).slice(0, 16)}`;
 }

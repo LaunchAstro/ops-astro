@@ -43,27 +43,26 @@ const ROOT = resolve(import.meta.dirname, '../..');
  * fails the command until the part lands here (Rebase notes on the pull request).
  */
 const UNRUN = [
-  [
-    'T2g: request changes, the revision round, journey_parity_cli',
-    'T2g (#136) is not on this base; the re-baseline brings it',
-  ],
-  [
-    'T3a: escalate at the bound, reject, cancel and restart',
-    'T3a (#153) is not on this base; the re-baseline brings it',
-  ],
-  [
-    'T4c: the pinned-mockup comparison at 1480, 900 and 390',
-    'T4c (#134) is not on this base; the re-baseline brings it',
-  ],
+  ['T2g: request changes, the revision round, journey_parity_cli', { owner: 'T2g', pr: '#136' }],
+  ['T3a: escalate at the bound, reject, cancel and restart', { owner: 'T3a', pr: '#153' }],
+  ['T4c: the pinned-mockup comparison at 1480, 900 and 390', { owner: 'T4c', pr: '#134' }],
+].map(([name, facts]) => [
+  name,
+  `${facts.owner} (${facts.pr}) is not on this base; the re-baseline brings it`,
+  facts,
+]);
+UNRUN.push(
   [
     'the browser pass (slice-acceptance) on this stack',
     'the web app signs in through GoTrue, which this stack does not start yet',
+    { owner: 'T4b1' },
   ],
   [
     'keyboard-only and 390-wide passes over the whole journey (T4-R9)',
     'they drive the browser, which needs GoTrue on this stack, and the revision round needs T2g',
+    { owner: 'T4b2' },
   ],
-];
+);
 
 const args = process.argv.slice(2).filter((arg) => arg !== '--');
 const flag = (name, fallback) => {
@@ -98,14 +97,13 @@ function say(line) {
   console.log(`journey: ${line}`);
 }
 
-function record(name, status, raw) {
+/** One case line; `facts` is what the command's code typed beside it, the bundle's only view. */
+function record(name, status, raw, facts) {
   // The container's password never reaches a line, whatever a failure quotes.
   const detail = raw.replaceAll(password, '<password>');
-  lines.push({ case: name, status, detail });
-  appendFileSync(
-    join(evidence, 'cases.jsonl'),
-    `${JSON.stringify({ case: name, status, detail })}\n`,
-  );
+  const line = { case: name, status, detail, ...(facts === undefined ? {} : { facts }) };
+  lines.push(line);
+  appendFileSync(join(evidence, 'cases.jsonl'), `${JSON.stringify(line)}\n`);
   say(`${status.padEnd(5)} ${name}${detail === '' ? '' : ` -- ${detail}`}`);
 }
 
@@ -115,7 +113,7 @@ function take(line) {
   const value = line.slice(`${kind} `.length);
   if (kind === 'journey-case') {
     const one = JSON.parse(value);
-    record(one.case, one.status, one.detail);
+    record(one.case, one.status, one.detail, one.facts);
   } else if (kind === 'journey-approval') carried.approval = JSON.parse(value);
   else if (kind === 'journey-budget') carried.budgets.push(JSON.parse(value));
   else if (kind === 'journey-measure') Object.assign(carried.measures, JSON.parse(value));
@@ -204,7 +202,7 @@ function afterJourney() {
       record(line.case, line.status, line.detail);
     }
   }
-  for (const [name, reason] of UNRUN) record(name, 'unrun', reason);
+  for (const [name, reason, facts] of UNRUN) record(name, 'unrun', reason, facts);
 }
 
 /** T4d: the budgets the command measures itself, then the bundle beside the case lines. */
