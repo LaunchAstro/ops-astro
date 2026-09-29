@@ -135,7 +135,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
         </p>
       )}
       {props.citation === null ? null : (
-        <p className="aip__cited" data-assistant="citation">
+        <p className="aip__cited" data-assistant="citation" data-ask-row={props.citation.row}>
           Asked from {props.citation.label}
         </p>
       )}
