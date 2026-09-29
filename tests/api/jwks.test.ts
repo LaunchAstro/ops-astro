@@ -377,6 +377,22 @@ describe('S0-6 expired genuine', () => {
 });
 
 describe('S0-6 hostile provider', () => {
+  it('Sol proof, criterion 6: malformed key rejects the whole provider set', async () => {
+    const refusals: KeySetRefusal[] = [];
+    const source = provider(() =>
+      Response.json({
+        keys: [current.publicJwk, { kid: 'broken', kty: 'EC', crv: 'P-256', alg: 'ES256' }],
+      }),
+    );
+    const verify = verifierOver(source.fetch, refusals);
+
+    expect(await verify(await tokenFor(current))).toEqual({
+      outcome: 'refused',
+      reason: 'key_set_unavailable',
+    });
+    expect(refusals).toEqual([{ reason: 'shape' }]);
+  });
+
   it('fetches only the pinned address, follows no redirect, and sets a time limit', async () => {
     const source = provider(keySet(current));
     const verify = verifierOver(source.fetch);
