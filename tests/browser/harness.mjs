@@ -312,7 +312,8 @@ export async function throughSubmit(page, request) {
       const client = new OperationsClient({
         origin: '',
         businessKey: ask.businessKey ?? session.businessKey,
-        token: session.token,
+        signedIn: true,
+        sessionId: session.sessionId,
         fetch: window.fetch.bind(window),
       });
       return await submitEdit(client, ask.request);
@@ -338,7 +339,8 @@ export async function throughClient(page, ask) {
       const client = new OperationsClient({
         origin: '',
         businessKey: session.businessKey,
-        token: session.token,
+        signedIn: true,
+        sessionId: session.sessionId,
         fetch: spy,
       });
       const result = given.read

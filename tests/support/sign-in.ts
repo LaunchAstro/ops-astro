@@ -19,6 +19,8 @@ import type { AddressInfo } from 'node:net';
 import { sign } from 'hono/jwt';
 import type { KeySetFetch } from '../../apps/api/auth/jwks.ts';
 import type { SupabaseVerifierOptions } from '../../apps/api/auth/supabase.ts';
+import { cookieNameFor, sessionIdOf } from '../../apps/api/auth/session.ts';
+import { SESSION_HEADER } from '../../packages/core-wire/src/index.ts';
 
 export const TEST_KID = 'test-sign-in-es256';
 
@@ -115,4 +117,26 @@ let shared: Promise<ServedKeySet> | undefined;
 export async function sharedKeySetUrl(): Promise<string> {
   shared ??= serveTestKeySet();
   return (await shared).url;
+}
+
+/**
+ * The web client's `fetch` as a browser runs it after sign-in (S0-6c): the
+ * sign-in's own session cookie added to every request, which the page never
+ * holds, and its session id (`SESSION_HEADER`) as the client names it once the
+ * API has given it, unless the client already sent one. `null` is a browser
+ * with no session.
+ */
+export function asBrowser(
+  token: string | null,
+  fetch: (input: string, init?: RequestInit) => Promise<Response>,
+): typeof globalThis.fetch {
+  return (async (input: string | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    if (token !== null) {
+      const session = sessionIdOf(token);
+      headers.set('cookie', `${cookieNameFor(session)}=${token}`);
+      if (!headers.has(SESSION_HEADER)) headers.set(SESSION_HEADER, session);
+    }
+    return await fetch(String(input), { ...init, headers });
+  }) as unknown as typeof globalThis.fetch;
 }

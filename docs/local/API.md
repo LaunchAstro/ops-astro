@@ -216,6 +216,16 @@ signature and `exp` against GoTrue's published key set
 `sub` as `VerifiedSubject { provider: 'supabase', subject }`. The API holds no
 secret that can make a token.
 
+A browser holds no token (S0-6c). It posts the token once to
+`POST /api/session`, which verifies it, answers `{ ok: true, session }` and
+sets it as an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/b/`,
+one per sign-in, named from `session` (a digest of the token, not a secret).
+A cookie-carried request needs `x-ops-astro-csrf: 1` and no cross-site
+`Sec-Fetch-Site` (else `AUTH_CROSS_SITE` 403), and reads only the cookie of
+the sign-in its `x-ops-astro-session` names; session cookies with none named
+are `AUTH_SESSION_MISMATCH` 403. `/api/session/end` clears only the named
+sign-in's cookie, so a late sign-out ends no other. A bearer is read first.
+
 Nothing else reaches identity. Not a body field, not a host or forwarded
 header, not an `apikey`, not a query parameter. A request carrying `actorId` or
 `businessId` alongside its token is a request with those fields nowhere to go.

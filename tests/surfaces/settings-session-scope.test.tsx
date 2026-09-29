@@ -44,8 +44,8 @@ const tick = async (): Promise<void> => {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-const ADA: Session = { token: 'tok-ada', businessKey: 'alpha', email: 'ada@alpha.local' };
-const MIA: Session = { token: 'tok-mia', businessKey: 'alpha', email: 'mia@alpha.local' };
+const ADA: Session = { businessKey: 'alpha', email: 'ada@alpha.local' };
+const MIA: Session = { businessKey: 'alpha', email: 'mia@alpha.local' };
 
 /** What `settings.read` answers this session: the rows, a refusal, or no such read. */
 type ReadAnswer = 'rows' | 'denied' | 'unavailable';
@@ -96,7 +96,7 @@ const open = async (session: Session, read: ReadAnswer): Promise<Mounted> => {
         new OperationsClient({
           origin: '',
           businessKey: session.businessKey,
-          token: session.token,
+          signedIn: true,
           fetch: api(read),
         })
       }

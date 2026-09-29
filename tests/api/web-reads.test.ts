@@ -24,6 +24,7 @@ import type {
 import type { Member } from '../commands/fixture.ts';
 import { tokenFor } from './fixture.ts';
 import { createControls, type Controls } from './controls-fixture.ts';
+import { asBrowser } from '../support/sign-in.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -49,9 +50,8 @@ describe.skipIf(serverUrl === undefined)('the web client reads task.queue and pr
     return new OperationsClient({
       origin: 'http://api.test',
       businessKey: 'alpha',
-      token,
-      fetch: (async (url: string | URL, init?: RequestInit) =>
-        await c.api.fetch(new Request(String(url), init))) as unknown as typeof globalThis.fetch,
+      signedIn: true,
+      fetch: asBrowser(token, async (url, init) => await c.api.fetch(new Request(url, init))),
     });
   }
 

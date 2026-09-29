@@ -28,7 +28,9 @@ reports the API as unavailable, which is the intended reading.
 ## Sign in
 
 Email and password go to GoTrue's own `/token?grant_type=password`. The
-application never mints or inspects a token. The API verifies the signature.
+application never mints or inspects a token. It hands it to `POST /api/session`,
+which keeps it as an `HttpOnly` cookie no script reads (S0-6c, `API.md`, "Who
+is calling"). The built page's content policy runs only this origin's scripts.
 The business selector (`alpha` or `bravo`) chooses the `/api/b/<key>` prefix. It
 is a routing choice, not a claim, so picking `bravo` with an alpha-only account
 gets `AUTH_NO_MEMBERSHIP` rather than access to bravo.

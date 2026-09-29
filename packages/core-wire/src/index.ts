@@ -8,11 +8,15 @@
 
 export {
   COMMAND_SURFACE,
+  CSRF_HEADER,
   declarationOf,
   DELEGATION_HEADER,
   pathOf,
   PREFIX,
   READS,
+  SESSION_COOKIE,
+  SESSION_PATH,
+  SESSION_HEADER,
   type CommandDeclaration,
   type CommandName,
   type Operand,

@@ -132,7 +132,7 @@ function taskServer(
   return new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => 'operation-1',
   });
@@ -246,7 +246,7 @@ describe('the board, pinned whole', () => {
     const client = new OperationsClient({
       origin: '',
       businessKey: 'alpha',
-      token: 'a-token',
+      signedIn: true,
       fetch,
       newOperationId: () => 'operation-1',
     });
