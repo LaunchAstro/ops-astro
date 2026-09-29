@@ -50,7 +50,8 @@ export async function raiseDecision(
  * An escalated gate (T3a). Escalating decides nothing, and from then on only a
  * holder of `task:decide` across the business decides the gate, so an open
  * item on it held by anyone else is withdrawn (they can no longer act on it)
- * and the recipient, who holds that role, is raised one if they had none. Only
+ * and every such holder, the recipient among them, is raised one if they had
+ * none: one granted the role after the gate was raised is owed it too. Only
  * items about the gate's own task move: one whose pointer names the gate but
  * whose subject is another task is not this gate's.
  */
@@ -79,12 +80,16 @@ export async function raiseEscalation(
         and recipient_person_id <> all($4::uuid[])`,
     [tx.businessId, escalated.gateId, taskId, deciders],
   );
-  await raiseInboxItem(tx, {
-    recipientPersonId: escalated.recipientPersonId,
-    subjectRecordId: taskId,
-    reason: 'decision',
-    fact: { kind: 'gate', id: escalated.gateId },
-  });
+  const owed = new Set([...deciders, escalated.recipientPersonId]);
+  for (const person of owed) {
+    // oxlint-disable-next-line no-await-in-loop
+    await raiseInboxItem(tx, {
+      recipientPersonId: person,
+      subjectRecordId: taskId,
+      reason: 'decision',
+      fact: { kind: 'gate', id: escalated.gateId },
+    });
+  }
 }
 
 /**
