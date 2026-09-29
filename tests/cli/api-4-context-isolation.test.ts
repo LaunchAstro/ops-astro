@@ -48,6 +48,33 @@ describe.skipIf(serverUrl === undefined)('API-4 work this ticket, isolation', ()
     return { map, tickets };
   }
 
+  it('API-4 a blocks link from a record that is not a task is never shown, in the bundle or the task read', async () => {
+    const { tickets } = await chartedMap('foreign-type ctx');
+    const b = tickets['b'] as string;
+    // The ticket's own state record, linked as a blocker behind the commands' back.
+    const [row] = await w.db.admin.execute<{ readonly state: string }>(
+      `select uuid_1::text as state from public.records where business_id = $1 and id = $2`,
+      [w.business, b],
+    );
+    const state = row?.state as string;
+    await w.db.admin.execute(
+      `insert into public.record_links (business_id, id, link_type, from_record_id, to_record_id)
+       values ($1, $2, 'blocks', $3, $4)`,
+      [w.business, randomUUID(), state, b],
+    );
+    const answer = await cli.run('task', 'context', b, '--detail', 'full', '--json');
+    expect(answer.exit, answer.out).toBe(0);
+    const got = JSON.parse(answer.out) as { blockedBy: readonly { id: string }[] };
+    expect(got.blockedBy.map((one) => one.id)).toStrictEqual([tickets['a']]);
+    expect(answer.out).not.toContain(`"id":"${state}","key"`);
+    // API-3's leveled task read lists the same blockers.
+    const read = await cli.run('task', 'get', b, '--detail', 'full', '--json');
+    expect(read.exit, read.out).toBe(0);
+    expect((JSON.parse(read.out) as { blockedBy: readonly string[] }).blockedBy).toStrictEqual([
+      tickets['a'],
+    ]);
+  });
+
   it('API-4 a refusal per key: work this ticket asks task:read', async () => {
     const { tickets } = await chartedMap('refused ctx');
     const stranger = await w.person(await w.member('ctx-stranger', ['comment']));
