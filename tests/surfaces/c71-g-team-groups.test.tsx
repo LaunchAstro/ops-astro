@@ -10,6 +10,7 @@
 // isolation crossings are the server's (MP-4-5's comment record); these tests
 // are the UI half of each.
 
+import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   TeamPanel,
@@ -72,6 +73,12 @@ describe('C71-G CS-7.41 start a group conversation with chosen teammates and nam
     await mounted.click('form.tmc__new input[name="member"][value="p-cath"]');
     expect((mounted.host.querySelector(submit) as HTMLButtonElement).disabled).toBe(true);
     await mounted.click(submit);
+    // Enter in the name field submits the form past the disabled button.
+    await act(() => {
+      mounted?.host
+        .querySelector('form.tmc__new')
+        ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
     expect(p.calls.groups).toEqual([]);
     await mounted.click('form.tmc__new .tmc__cancel');
     expect(mounted.find('form.tmc__new')).toBeNull();
@@ -121,6 +128,13 @@ describe('C71-G CS-7.41 its creator, the owner or an administrator renames it an
     mounted = await mount(<TeamPanel {...p} />);
     await mounted.click('[data-group="g-launch"] .tmc__g');
     await mounted.click('.tmc__ghead .tmc__rename');
+    await mounted.type('form.tmc__renaming input[name="name"]', '   ');
+    await act(() => {
+      mounted?.host
+        .querySelector('form.tmc__renaming')
+        ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(p.calls.groups.filter((a) => a.do === 'rename')).toEqual([]);
     await mounted.type('form.tmc__renaming input[name="name"]', ' Launch week ');
     await mounted.click('form.tmc__renaming button[type="submit"]');
     expect(p.calls.groups.at(-1)).toEqual({ do: 'rename', id: 'g-launch', name: 'Launch week' });
@@ -148,6 +162,30 @@ describe('C71-G CS-7.41 its creator, the owner or an administrator renames it an
       do: 'members',
       id: 'g-launch',
       add: ['p-len'],
+      remove: [],
+    });
+  });
+});
+
+describe('C71-G CS-7.41 a manager adds only teammates who are not yet members', () => {
+  it('Add takes the teammate shown first, or the one chosen', async () => {
+    const pair: GroupThread = { ...LAUNCH, members: [ME, 'p-ryan'] };
+    const p = props({ groups: [pair] });
+    mounted = await mount(<TeamPanel {...p} />);
+    await mounted.click('[data-group="g-launch"] .tmc__g');
+    await mounted.click('form.tmc__adding button[type="submit"]');
+    expect(p.calls.groups.at(-1)).toEqual({
+      do: 'members',
+      id: 'g-launch',
+      add: ['p-len'],
+      remove: [],
+    });
+    await mounted.choose('form.tmc__adding select[name="person"]', 'p-cath');
+    await mounted.click('form.tmc__adding button[type="submit"]');
+    expect(p.calls.groups.at(-1)).toEqual({
+      do: 'members',
+      id: 'g-launch',
+      add: ['p-cath'],
       remove: [],
     });
   });
