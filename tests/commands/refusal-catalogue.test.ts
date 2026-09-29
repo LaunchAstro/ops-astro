@@ -115,6 +115,16 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['EFFECT_NOT_DISPATCHED', 409, 'caller'],
   ['EFFECT_NOT_OBSERVED', 409, 'caller'],
   ['LIABILITY_NOT_UNKNOWN', 409, 'caller'],
+  // AW-01, the broker's model call (AUTHORITY_LOST, DECISION_STALE and
+  // EFFECT_NOT_RECONCILABLE are the core's, above).
+  ['OPERATION_NOT_CATALOGUED', 403, 'caller'],
+  ['LOCAL_MODEL_REQUIRED', 501, 'caller'],
+  ['SUBSCRIPTION_UNATTENDED', 403, 'caller'],
+  ['SUBSCRIPTION_OTHER_TENANT', 403, 'caller'],
+  ['SUBSCRIPTION_NOT_OWN_WORK', 403, 'caller'],
+  ['RATE_LIMITED', 409, 'caller'],
+  ['COPY_NOT_REGISTERED', 409, 'caller'],
+  ['LIABILITY_UNKNOWN', 409, 'caller'],
 ];
 
 /** The runtime's own twenty-six, as `core-runtime` names them; T2c1 added three, T2c2 one, T2g one, T3d1 one. */
