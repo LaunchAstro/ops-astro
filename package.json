@@ -58,6 +58,8 @@
     "db:down": "bash scripts/local/db-down.sh",
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:seed": "node scripts/local-seed.mjs",
+    "fixture:snapshot": "bash scripts/local/fixture-snapshot.sh build",
+    "fixture:clone": "bash scripts/local/fixture-snapshot.sh clone",
     "auth:up": "bash scripts/local/auth-up.sh",
     "auth:seed": "node scripts/local/auth-seed.mjs",
     "api:up": "bash scripts/local/api-up.sh",
