@@ -66,6 +66,21 @@ describe('S0-6 isolation: one cookie per sign-in, many tabs', () => {
   isolationOneCookieCases3();
 });
 
+/** Every script element on a page, and those that are not an empty same-origin file. */
+function scriptsOf(html: string) {
+  const scripts = [
+    ...html.matchAll(/<script\b(?<attributes>[^>]*)>(?<body>[\s\S]*?)<\/script>/giu),
+  ];
+  const inline = scripts
+    .filter(
+      (script) =>
+        !/\ssrc="\/[^/]/u.test(script.groups?.['attributes'] ?? '') ||
+        script.groups?.['body']?.trim() !== '',
+    )
+    .map((script) => script[0]);
+  return { found: scripts.length, inline };
+}
+
 describe('S0-6 content policy', () => {
   const page = readFileSync(join(ROOT, 'apps/web/index.html'), 'utf8');
   const meta = /<meta\s+http-equiv="Content-Security-Policy"\s+content="(?<policy>[^"]+)"/iu.exec(
@@ -90,13 +105,24 @@ describe('S0-6 content policy', () => {
   });
 
   it('the page itself has no inline script for the policy to have to allow', () => {
-    const scripts = [
-      ...page.matchAll(/<script\b(?<attributes>[^>]*)>(?<body>[\s\S]*?)<\/script>/giu),
-    ];
-    expect(scripts.length).toBeGreaterThan(0);
-    for (const script of scripts) {
-      expect(script.groups?.['attributes']).toMatch(/\ssrc="\/[^/]/u);
-      expect(script.groups?.['body']?.trim()).toBe('');
+    const { found, inline } = scriptsOf(page);
+    expect(found).toBeGreaterThan(0);
+    expect(inline).toEqual([]);
+  });
+
+  it('the inline-script check catches hostile markup: odd end tags, case, a > in a quoted value', () => {
+    const own = '<script type="module" src="/assets/index.js"></script>';
+    expect(scriptsOf(own).inline).toEqual([]);
+    for (const planted of [
+      '<script>window.planted = 1;</script >',
+      '<script>window.planted = 1;</script\t>',
+      '<script>window.planted = 1;</script foo="bar">',
+      '<SCRIPT>window.planted = 1;</SCRIPT>',
+      '<script src="/a.js" data-x=">">window.planted = 1;</script>',
+      '<script src="https://outside.example/a.js"></script>',
+      '<script src="//outside.example/a.js"></script>',
+    ]) {
+      expect(scriptsOf(`${own}${planted}`).inline, planted).not.toEqual([]);
     }
   });
 });
