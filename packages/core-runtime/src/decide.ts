@@ -478,7 +478,10 @@ async function recheckGate(
   const gates = await tx.query<GateRow>(
     `select g.id, g.lineage_id, g.version_id, g.run_id, g.step_id, g.evidence_pack_id,
             g.payload_digest, g.state, g.round, (g.expires_at <= $3::timestamptz) as expired,
-            (g.escalated_at is not null) as escalated
+            -- Read through the row, not by column name: a database upgraded only
+            -- as far as an earlier migration (the upgrade-path suites decide on
+            -- one) has no 0041 column, and a gate there was never escalated.
+            (to_jsonb(g) ->> 'escalated_at') is not null as escalated
        from public.gates g where g.business_id = $1 and g.id = $2`,
     [tx.businessId, request.gateId, lockedAt],
   );
