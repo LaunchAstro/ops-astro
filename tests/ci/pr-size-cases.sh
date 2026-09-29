@@ -120,6 +120,18 @@ status="$(run_sizer "$dir" "size-waiver-mechanical")"
   || fail "a generated file over the cap passes on its pattern" "expected 0, got $status"
 rm -rf "$dir"
 
+# The design system's checked copy (C82) is generated too; a doc beside it is not.
+dir="$(new_repo)"; add_lines "$dir" "docs/design-system/PAGE-MAP.md" 600
+status="$(run_sizer "$dir" "size-waiver-mechanical")"
+[ "$status" = "0" ] && pass "the design system's checked copy over the cap passes on its pattern (exit 0)" \
+  || fail "the design system's checked copy over the cap passes on its pattern" "expected 0, got $status"
+rm -rf "$dir"
+dir="$(new_repo)"; add_lines "$dir" "docs/design-system.md" 600
+status="$(run_sizer "$dir" "size-waiver-mechanical")"
+[ "$status" = "1" ] && pass "a doc beside the copy keeps the per-file cap (exit 1)" \
+  || fail "a doc beside the copy keeps the per-file cap" "expected 1, got $status"
+rm -rf "$dir"
+
 # Moved lines do not count (issue 110). A split of a large file into smaller
 # ones is read as a move by a reviewer, so it is measured as one: only the
 # lines git does not mark as moved (indentation changes allowed) count
