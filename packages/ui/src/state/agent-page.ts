@@ -7,7 +7,7 @@
 
 import type { RunStory } from './agent-run.ts';
 import { stagedOf, type Staged } from './agent-staged.ts';
-import type { RunCheck, RunLineage, RunVersion } from './run-projection.ts';
+import type { RunCheck, RunLineage, RunRevision, RunVersion } from './run-projection.ts';
 
 export interface HeroCell {
   readonly key: 'jobs' | 'checks' | 'time';
@@ -146,7 +146,7 @@ export interface ActivityRow {
 }
 
 /** Same-instant records keep the order the run makes them in. */
-const ORDER = { gate: 0, decision: 1, run: 2, check: 3 } as const;
+const ORDER = { gate: 0, decision: 1, run: 2, check: 3, revision: 4 } as const;
 
 function versionRows(one: RunVersion): readonly (ActivityRow & { rank: number })[] {
   const version = `v${String(one.version)}`;
@@ -181,12 +181,33 @@ function versionRows(one: RunVersion): readonly (ActivityRow & { rank: number })
       rank: ORDER.check,
     });
   }
+  for (const revision of one.revisions ?? []) {
+    rows.push({
+      key: `revision-${revision.id}`,
+      at: revision.revisedAt,
+      title: `State v${String(revision.version)} revised`,
+      state: 'revised',
+      note: null,
+      rank: ORDER.revision,
+    });
+  }
   return rows;
 }
 
 /**
+ * What the run knows so far (TA-04, CS-16.4): the newest state revision of the
+ * newest version that has a run, so a handed-back run's knowledge stays shown
+ * beside its successor. Null while that run has revised nothing. Only a run's
+ * own revisions are read: nothing carries over from another run (RA-10).
+ */
+export function knowledgeOf(lineage: RunLineage | undefined): RunRevision | null {
+  const ran = lineage?.versions.find((one) => one.runId !== null);
+  return ran?.revisions?.at(-1) ?? null;
+}
+
+/**
  * The run's stored records, oldest first (TA-06): gates raised, decisions,
- * runs started and checks. Each comes from an append-only record, so a later
+ * runs started, checks and state revisions. Each comes from an append-only record, so a later
  * record adds a row and never changes one drawn before it. Null when no run
  * has started on the lineage.
  */

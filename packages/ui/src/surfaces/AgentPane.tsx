@@ -16,10 +16,10 @@ import type { RunLineage } from '../state/run-projection.ts';
 import { Attempts } from './agent/attempts.tsx';
 import { Gate, type GateDecision, type GateRef } from './agent/gate.tsx';
 import { ProposalHeader, Summary, Workflow } from './agent/header.tsx';
-import { Activity, Artefacts, Given, Hero } from './agent/page.tsx';
+import { Activity, Artefacts, Given, Hero, Knows } from './agent/page.tsx';
 import { Scope } from './agent/scope.tsx';
 import { StagedOutput } from './agent/staged.tsx';
-import { activityOf, artefactsOf, heroCells } from '../state/agent-page.ts';
+import { activityOf, artefactsOf, heroCells, knowledgeOf } from '../state/agent-page.ts';
 import { scopeStamp } from '../state/agent-scope.ts';
 
 export type { GateDecision } from './agent/gate.tsx';
@@ -120,6 +120,7 @@ function RunView(
         decisions={lineage?.decisions ?? []}
         onDecide={props.onDecide}
       />
+      <Knows revision={knowledgeOf(lineage)} />
       <Artefacts artefacts={artefactsOf(lineage)} />
       <Activity rows={activityOf(lineage, props.nameOf)} />
     </>
