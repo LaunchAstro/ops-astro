@@ -26,13 +26,23 @@ export const RECEIPT_FIELDS = [
   'lastTestedRestore',
   'business',
   'operator',
+  'ranOn',
 ];
 
 /**
  * The drill's receipt in the store, as the restore identity: the store stamps
  * the time, and a passed drill's time is the date of the last tested restore.
+ * A drill on a carried archive (`carried`) is recorded through
+ * `backups.record_carried_drill`, which takes it once, only against a read of
+ * that archive the store logged for this login.
  */
-export async function recordDrill(storeUrl, operator, record, reach = stagingReach) {
+export async function recordDrill(
+  storeUrl,
+  operator,
+  record,
+  reach = stagingReach,
+  carried = false,
+) {
   const args = [
     value(record.outcome, 'text'),
     value(record.stage ?? null, 'text'),
@@ -46,7 +56,7 @@ export async function recordDrill(storeUrl, operator, record, reach = stagingRea
   ];
   const at = await reach(
     storeUrl,
-    `set role ${RESTORE_ROLE};\nselect to_json(backups.record_drill(${args.join(', ')}))::text;\n`,
+    `set role ${RESTORE_ROLE};\nselect to_json(backups.${carried ? 'record_carried_drill' : 'record_drill'}(${args.join(', ')}))::text;\n`,
   );
   return at === '' ? null : new Date(JSON.parse(at)).toISOString();
 }

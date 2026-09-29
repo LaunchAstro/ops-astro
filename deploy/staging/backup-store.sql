@@ -17,8 +17,9 @@
 -- read, change or delete, and not the time it was taken.
 -- `ops_astro_backup_retention` sees ids and times, never bytes, and deletes
 -- only past the window. `ops_astro_backup_restore` (the restore drill, S0-3c)
--- takes the newest backup through `backups.read_latest()` and nothing else;
--- what it gets is sealed, and only the operator's private key opens it. The
+-- takes the newest backup through `backups.read_latest()` and nothing else,
+-- with the digest the store recorded when it took it; what it gets is sealed,
+-- and only the operator's private key opens it. The
 -- store writes a receipt for every add, read and delete: action, id, time,
 -- size and login; no bytes, no fingerprint.
 --
@@ -157,7 +158,7 @@ revoke all on schema backups_audit from public;
 create extension dblink schema backups_audit;
 
 create function backups.read_latest()
-  returns table (id uuid, taken_at timestamptz, body bytea)
+  returns table (id uuid, taken_at timestamptz, sha256 text, body bytea)
   language plpgsql security definer set search_path = pg_catalog as $$
 declare
   picked backups.archives;
@@ -173,7 +174,7 @@ begin
       'backup read', picked.id, picked.taken_at, picked.bytes, session_user
     )
   );
-  return query select picked.id, picked.taken_at, picked.body;
+  return query select picked.id, picked.taken_at, picked.sha256, picked.body;
 end $$;
 revoke execute on function backups.read_latest() from public;
 
@@ -206,6 +207,10 @@ create table backups.drills (
   tables integer,
   timings jsonb not null,
   actor text not null default session_user,
+  -- Where it ran: on the machine, from the store, or on another host from a
+  -- carried archive (restore-drill.mjs --drill --archive, then --record).
+  ran_on text not null default 'staging machine'
+    check (ran_on in ('staging machine', 'carried archive')),
   check ((outcome = 'passed') = (stage is null)),
   check (outcome = 'failed' or (archive_taken_at is not null and source_major is not null
     and target_major = production_major and tables > 0)),
@@ -230,6 +235,38 @@ revoke execute on function backups.record_drill(text, text, uuid, timestamptz, i
   integer, integer, jsonb) from public;
 grant execute on function backups.record_drill(text, text, uuid, timestamptz, integer, integer,
   integer, integer, jsonb) to ops_astro_backup_restore;
+
+-- A carried drill's receipt, brought back (restore-drill.mjs --record). It is
+-- taken only against a read of that archive the store logged for this same
+-- login inside the freshness window, and only once per archive and outcome, so
+-- a receipt cannot be made up for an archive the store never handed out, nor
+-- replayed to keep the restore fresh. The time the store stamps is the time it
+-- was brought back.
+create function backups.record_carried_drill(
+  text, text, uuid, timestamptz, integer, integer, integer, integer, jsonb
+) returns timestamptz
+  language plpgsql security definer set search_path = pg_catalog as $$
+begin
+  if not exists (
+    select from backups.receipts r
+    where r.action = 'backup read'
+      and r.actor = session_user
+      and date_trunc('milliseconds', r.taken_at) = $4
+      and r.at > now() - make_interval(days => (select restore_days from backups.settings))
+  ) then
+    raise exception 'no read of that archive by this login inside the window' using errcode = '42501';
+  end if;
+  insert into backups.drills (outcome, stage, operator, archive_taken_at, production_major,
+    source_major, target_major, tables, timings, actor, ran_on)
+  values ($1, $2, $3, $4, $5, $6, $7, $8, $9, session_user, 'carried archive');
+  return (select max(at) from backups.drills where outcome = 'passed');
+end $$;
+revoke execute on function backups.record_carried_drill(text, text, uuid, timestamptz, integer,
+  integer, integer, integer, jsonb) from public;
+grant execute on function backups.record_carried_drill(text, text, uuid, timestamptz, integer,
+  integer, integer, integer, jsonb) to ops_astro_backup_restore;
+create unique index drills_carried_once on backups.drills (archive_taken_at, outcome)
+  where ran_on = 'carried archive';
 
 create function backups.restore_fresh() returns boolean
   language sql stable security definer set search_path = pg_catalog as $$
