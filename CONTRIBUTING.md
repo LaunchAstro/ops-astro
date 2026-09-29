@@ -157,8 +157,10 @@ scripts outside `tests/` included. A recorded reason is required for either
 waiver: `size-waiver-mechanical` for mechanical changes, or
 `size-waiver-coherence` for a change that must be reviewed together. The
 maintainer decides a coherence waiver. One file may not contain more than 400
-hand-written changed lines in a pull request. Split work names the invariant
-test that verifies the integrated result.
+hand-written changed lines in a pull request. Lines git marks as moved between
+non-test files, indentation changes allowed, count towards neither limit, and
+the report lists them per file; a moved line that is then edited counts. Split
+work names the invariant test that verifies the integrated result.
 
 Keep every pull request under 250 commits, the most the DCO check can
 evaluate; no ruleset change makes room for more. One ticket per pull request

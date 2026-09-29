@@ -238,7 +238,7 @@ describe('CQ-16 size counts code only', () => {
       );
     const out = move('src/keep.ts', 'tests/keep.test.ts');
     expect(`${String(out.status)} ${out.out}`).toMatch(
-      /^1 [\s\S]*src\/keep\.ts => tests\/keep\.test\.ts \(500\)/u,
+      /^1 [\s\S]*src\/keep\.ts => tests\/keep\.test\.ts: 500 counted, 0 treated as moved \(500 changed\)/u,
     );
     expect(move('tests/a.test.ts', 'tests/b.test.ts').status).toBe(0);
     expect(move('tests/a.test.ts', 'src/a.ts').status).toBe(1);

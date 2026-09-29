@@ -14,6 +14,15 @@
 // a file moved between code and tests counts unless both of its paths are
 // tests.
 //
+// Moved lines are not counted either, towards the total or the per-file cap
+// (issue 110): a reviewer reads a block cut from one place and pasted into
+// another, or re-indented when it is wrapped into a named step, as moved,
+// not as new. A line is moved when git's own move detection says so
+// (`--color-moved=plain --color-moved-ws=allow-indentation-change`). A moved
+// line that is then edited is new text and counts. Moves are only looked for
+// between non-test files, so code cannot enter a test file uncounted and then
+// be moved out of it uncounted as well.
+//
 // Two waivers, each a label, each needing a reason written on the pull
 // request. Two anti-gaming rules come with them: a per-file cap, and the
 // requirement that a split names the invariant test that only passes once
@@ -60,43 +69,144 @@ if (!base || !head) {
   process.exit(2);
 }
 
-const git = (args) => execFileSync('git', args, { encoding: 'utf8' });
+const git = (args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 1024 ** 3 });
 
 // The merge base, not the base branch tip, or every commit that landed on
 // main since the branch started would be counted against the author.
 const mergeBase = git(['merge-base', base, head]).trim();
-// -z keeps each path as written, and gives a rename both of its paths.
-const numstat = git(['diff', '--numstat', '-z', mergeBase, head]).split('\0');
 
+// A path is printed as written unless it could be misread: one holding the
+// rename arrow, the `: ` before a count, a quote, a backslash or a control
+// character is printed as a JSON string. So a file named "a => b" and a
+// rename from a to b never share a name in the report.
+const shown = (path) => {
+  const quoted = JSON.stringify(path);
+  // JSON escapes exactly the quote, the backslash and control characters.
+  const plain = quoted === `"${path}"` && !path.includes(' => ') && !path.includes(': ');
+  return plain ? path : quoted;
+};
+
+// One record per file, in git's order. -z keeps each path as written, and
+// gives a rename both of its paths.
+const diffRecords = (args) => {
+  const numstat = git(['diff', '--numstat', '-z', ...args]).split('\0');
+  const records = [];
+  for (let i = 0; i < numstat.length; i += 1) {
+    const record = numstat[i];
+    if (!record) continue;
+    // Only the first two tabs separate fields: a path may hold a tab of its own.
+    const first = record.indexOf('\t');
+    const second = record.indexOf('\t', first + 1);
+    const addedRaw = record.slice(0, first);
+    const deletedRaw = record.slice(first + 1, second);
+    const only = record.slice(second + 1);
+    // A rename's record ends in a tab, and its two paths follow.
+    const paths = only ? [only] : [numstat[i + 1] ?? '', numstat[i + 2] ?? ''];
+    if (!only) i += 2;
+    // A binary file shows as "-\t-\t<path>".
+    const added = addedRaw === '-' ? 0 : Number(addedRaw);
+    const deleted = deletedRaw === '-' ? 0 : Number(deletedRaw);
+    // `path` is for the report; `key` is the real path pair, which a literal
+    // filename such as "a => b" cannot share with a rename.
+    records.push({
+      paths,
+      path: paths.map(shown).join(' => '),
+      key: JSON.stringify(paths),
+      changed: added + deleted,
+    });
+  }
+  return records;
+};
+
+// How many lines of each non-test file git marks as moved, by path. The
+// patch is read in colour because that is the only form git reports moves
+// in; every colour is set here, so no local setting can change the reading.
+// Its file sections come in the same order as the numstat records of the
+// same diff, and each section's line count must equal its record's, or the
+// script stops rather than guess.
+const MOVE_COLOURS = { old: 31, new: 32, oldMoved: 35, newMoved: 36, meta: 1 };
+const COLOUR_NAMES = { 31: 'red', 32: 'green', 35: 'magenta', 36: 'cyan', 1: 'bold' };
+const NON_TEST = [
+  ':(top)',
+  ':(top,exclude,glob)tests/**',
+  ':(top,exclude,glob)**/*.test.*',
+  ':(top,exclude,glob)**/*.spec.*',
+];
+
+const movedLines = () => {
+  const args = ['--no-ext-diff', '--no-textconv', mergeBase, head, '--', ...NON_TEST];
+  const colours = Object.entries(MOVE_COLOURS).flatMap(([slot, code]) => [
+    '-c',
+    `color.diff.${slot}=${COLOUR_NAMES[code]}`,
+  ]);
+  const patch = git([
+    ...colours,
+    'diff',
+    '--color=always',
+    '--color-moved=plain',
+    '--color-moved-ws=allow-indentation-change',
+    '--ws-error-highlight=none',
+    ...args,
+  ]);
+  const sgr = '\u001B[';
+  const sections = [];
+  for (const line of patch.split('\n')) {
+    if (line.startsWith(`${sgr}${MOVE_COLOURS.meta}mdiff --git `)) {
+      sections.push({ changed: 0, moved: 0 });
+      continue;
+    }
+    // A changed line opens with its colour, then its sign.
+    if (!line.startsWith(sgr) || sections.length === 0) continue;
+    const end = line.indexOf('m', sgr.length);
+    if (end === -1 || (line[end + 1] !== '+' && line[end + 1] !== '-')) continue;
+    const code = Number(line.slice(sgr.length, end));
+    const section = sections.at(-1);
+    if (code === MOVE_COLOURS.old || code === MOVE_COLOURS.new) section.changed += 1;
+    if (code === MOVE_COLOURS.oldMoved || code === MOVE_COLOURS.newMoved) {
+      section.changed += 1;
+      section.moved += 1;
+    }
+  }
+  const records = diffRecords(args);
+  const agree =
+    records.length === sections.length &&
+    records.every((record, i) => record.changed === sections[i].changed);
+  if (!agree) {
+    console.error(
+      'pr-size: the coloured patch and the numstat disagree; cannot count moved lines.',
+    );
+    process.exit(2);
+  }
+  return new Map(records.map((record, i) => [record.key, { ...record, moved: sections[i].moved }]));
+};
+
+const moved = movedLines();
 const files = [];
 const tests = [];
 let total = 0;
+let movedTotal = 0;
 let testTotal = 0;
 
-for (let i = 0; i < numstat.length; i += 1) {
-  const record = numstat[i];
-  if (!record) continue;
-  // Only the first two tabs separate fields: a path may hold a tab of its own.
-  const first = record.indexOf('\t');
-  const second = record.indexOf('\t', first + 1);
-  const addedRaw = record.slice(0, first);
-  const deletedRaw = record.slice(first + 1, second);
-  const only = record.slice(second + 1);
-  // A rename's record ends in a tab, and its two paths follow.
-  const paths = only ? [only] : [numstat[i + 1] ?? '', numstat[i + 2] ?? ''];
-  if (!only) i += 2;
-  const path = paths.join(' => ');
-  // A binary file shows as "-\t-\t<path>".
-  const added = addedRaw === '-' ? 0 : Number(addedRaw);
-  const deleted = deletedRaw === '-' ? 0 : Number(deletedRaw);
-  const changed = added + deleted;
+for (const { paths, path, key, changed } of diffRecords([mergeBase, head])) {
   if (paths.every(isTest)) {
     testTotal += changed;
     tests.push({ path, changed });
     continue;
   }
-  total += changed;
-  files.push({ path, changed, generated: GENERATED.some((r) => r.test(paths.at(-1))) });
+  // A file the non-test diff pairs differently, such as one renamed from a
+  // test file, finds no matching entry here, and every one of its lines counts.
+  const entry = moved.get(key);
+  const movedHere = entry?.changed === changed ? entry.moved : 0;
+  const counted = changed - movedHere;
+  total += counted;
+  movedTotal += movedHere;
+  files.push({
+    path,
+    changed,
+    moved: movedHere,
+    counted,
+    generated: GENERATED.some((r) => r.test(paths.at(-1))),
+  });
 }
 
 const hasMechanical = labels.includes(MECHANICAL_LABEL);
@@ -106,10 +216,16 @@ const waived = hasMechanical || hasCoherence;
 const annotate = (level, message) => console.log(`::${level}::${message}`);
 
 console.log(`pr-size: ${total} changed lines of non-test code across ${files.length} file(s).`);
+console.log(`pr-size: ${movedTotal} moved lines of non-test code, not counted.`);
 console.log(
   `pr-size: ${testTotal} changed test lines across ${tests.length} file(s), not counted.`,
 );
-for (const file of files) console.log(`pr-size:   ${file.path} (${file.changed})`);
+for (const file of files) {
+  console.log(
+    `pr-size:   ${file.path}: ${file.counted} counted, ${file.moved} treated as moved ` +
+      `(${file.changed} changed)`,
+  );
+}
 for (const test of tests) console.log(`pr-size:   ${test.path} (${test.changed}, test)`);
 console.log(`pr-size: warn at ${WARN_AT}, block at ${BLOCK_AT}, per-file cap ${PER_FILE_CAP}.`);
 if (labels.length > 0) console.log(`pr-size: labels: ${labels.join(', ')}`);
@@ -148,17 +264,17 @@ if (total > BLOCK_AT) {
 // applying a label, which is the honest route. If a file is generated and its
 // pattern is missing, add the pattern.
 for (const file of files) {
-  if (file.changed <= PER_FILE_CAP) continue;
+  if (file.counted <= PER_FILE_CAP) continue;
   if (file.generated) {
     annotate(
       'warning',
-      `${file.path} changes ${file.changed} lines, over the per-file cap of ${PER_FILE_CAP}, ` +
+      `${file.path} changes ${file.counted} lines, over the per-file cap of ${PER_FILE_CAP}, ` +
         'allowed because it matches a generated-file pattern.',
     );
     continue;
   }
   failures.push(
-    `${file.path} changes ${file.changed} hand-written lines, over the per-file cap of ` +
+    `${file.path} changes ${file.counted} hand-written lines, not counting moved ones, over the per-file cap of ` +
       `${PER_FILE_CAP}. Splitting the pull request without splitting this file does not help ` +
       'a reviewer, and no label lifts this cap. If the file is generated, add its pattern ' +
       'to GENERATED in this script rather than labelling around it.',
