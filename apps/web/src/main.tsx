@@ -28,10 +28,10 @@ import { SessionStore, tabStorage } from './session/token.ts';
  * land on that address (B5) — which is a server rewrite, not a router feature.
  */
 function Root(): React.ReactElement {
-  const [path, setPath] = useState(window.location.pathname);
+  const [path, setPath] = useState(addressOf(window.location));
   useEffect(() => {
     const onPop = (): void => {
-      setPath(window.location.pathname);
+      setPath(addressOf(window.location));
     };
     window.addEventListener('popstate', onPop);
     return () => {
@@ -54,6 +54,9 @@ function Root(): React.ReactElement {
     />
   );
 }
+
+/** The whole address: a legacy one carries its client and tab in the query and hash. */
+const addressOf = (at: Location): string => `${at.pathname}${at.search}${at.hash}`;
 
 const GOTRUE_URL =
   (import.meta.env['VITE_GOTRUE_URL'] as string | undefined) ?? 'http://127.0.0.1:54391';
