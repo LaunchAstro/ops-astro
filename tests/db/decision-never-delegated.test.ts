@@ -38,6 +38,9 @@ import { sqlRefusal } from '../runtime/gate-negatives-cases.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const HEX64 = 'a'.repeat(64);
+/** Lifts the two barriers that answer before `delegations_pairs_never_decide`. */
+const LIFT_KNOWN_AND_FIXED = `alter table public.delegations
+  drop constraint delegations_pairs_known, disable trigger delegations_pairs_are_fixed`;
 
 describe.skipIf(serverUrl === undefined)('a decision is never delegated, in the schema', () => {
   let db: FreshDatabase;
@@ -182,10 +185,7 @@ describe.skipIf(serverUrl === undefined)('a decision is never delegated, in the 
     const alone = async (statement: string, parameters: readonly unknown[]) =>
       await sqlRefusal(
         db.admin.transaction(async (execute) => {
-          await execute(`alter table public.delegations drop constraint delegations_pairs_known`);
-          await execute(
-            `alter table public.delegations disable trigger delegations_pairs_are_fixed`,
-          );
+          await execute(LIFT_KNOWN_AND_FIXED);
           await execute(`set local role ops_astro_app`);
           await execute(`select set_config('app.business_id', $1, true)`, [business]);
           await execute(statement, parameters);

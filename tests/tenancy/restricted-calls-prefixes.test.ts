@@ -164,7 +164,10 @@ async function referenceRows(): Promise<Reference> {
     // Before 0034 a delegation held `collections` and `actions`, not `pairs`.
     // Each row carries both shapes, and a prefix inserts the columns it has.
     const delegations = rows.get('public.delegations') ?? [];
-    rows.set('public.delegations', delegations.map(withProductShape));
+    rows.set(
+      'public.delegations',
+      delegations.map((row) => withProductShape(row)),
+    );
     return rows;
   } finally {
     await world.close();

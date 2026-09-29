@@ -83,119 +83,116 @@ interface Seeded {
 }
 
 // eslint-disable-next-line max-lines-per-function -- one upgraded database, every row on it
-describe.skipIf(serverUrl === undefined)(
-  'delegation pairs, upgraded from the product shape',
-  () => {
-    let db: EmptyDatabase;
-    let business: string;
-    const live: Seeded[] = [];
-    let revokedId = '';
+describe.skipIf(serverUrl === undefined)('pairs upgraded from the product shape', () => {
+  let db: EmptyDatabase;
+  let business: string;
+  const live: Seeded[] = [];
+  let revokedId = '';
 
-    beforeAll(async () => {
-      expect(PAIRS).not.toBe('');
-      db = await createEmptyDatabase({ part: 'pairs_upgrade' });
-      await applyMigrations(
-        db.admin,
-        onDisk.filter((m) => m.version < PAIRS),
-      );
-      business = await insertBusiness(db.app, 'alpha');
-      await db.app.withBusiness(business, async (tx) => {
-        const person = await insertPerson(tx, 'Ada');
-        const actor = await insertActor(tx, person);
-        await insertMembership(tx, person);
-        const write = async (shape: (typeof SHAPES)[number], revoked: boolean): Promise<Seeded> => {
-          const agentActorId = await insertAgentActor(tx);
-          const id = randomUUID();
-          await tx.query(
-            `insert into public.delegations
+  beforeAll(async () => {
+    expect(PAIRS).not.toBe('');
+    db = await createEmptyDatabase({ part: 'pairs_upgrade' });
+    await applyMigrations(
+      db.admin,
+      onDisk.filter((m) => m.version < PAIRS),
+    );
+    business = await insertBusiness(db.app, 'alpha');
+    await db.app.withBusiness(business, async (tx) => {
+      const person = await insertPerson(tx, 'Ada');
+      const actor = await insertActor(tx, person);
+      await insertMembership(tx, person);
+      const write = async (shape: (typeof SHAPES)[number], revoked: boolean): Promise<Seeded> => {
+        const agentActorId = await insertAgentActor(tx);
+        const id = randomUUID();
+        await tx.query(
+          `insert into public.delegations
              (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
               collections, actions, credential_hash, expires_at, purpose_scope_kind,
               purpose_scope_id, revoked_at)
            values ($1, $2, $3, $4, $5, 'old_shape', $6::text[], $7::text[], $8,
                    now() + interval '1 hour', 'record', $9, $10)`,
-            [
-              business,
-              id,
-              agentActorId,
-              person,
-              actor,
-              shape.collections,
-              shape.actions,
-              randomUUID().replaceAll('-', '').repeat(2),
-              randomUUID(),
-              revoked ? new Date() : null,
-            ],
-          );
-          return { id, agentActorId, ...shape };
-        };
-        for (const shape of SHAPES) {
-          // oxlint-disable-next-line no-await-in-loop
-          live.push(await write(shape, false));
-        }
-        revokedId = (await write(REVOKED_SHAPE, true)).id;
-      });
-      // The runner refuses while this database has other sessions; seeding opened one.
-      await db.closeSessions();
-      const migration = await migrate(db.admin, 'migrations');
-      expect(migration.applied).toContain(PAIRS);
-    }, 120_000);
-
-    afterAll(async () => {
-      await db?.drop();
+          [
+            business,
+            id,
+            agentActorId,
+            person,
+            actor,
+            shape.collections,
+            shape.actions,
+            randomUUID().replaceAll('-', '').repeat(2),
+            randomUUID(),
+            revoked ? new Date() : null,
+          ],
+        );
+        return { id, agentActorId, ...shape };
+      };
+      for (const shape of SHAPES) {
+        // oxlint-disable-next-line no-await-in-loop
+        live.push(await write(shape, false));
+      }
+      revokedId = (await write(REVOKED_SHAPE, true)).id;
     });
+    // The runner refuses while this database has other sessions; seeding opened one.
+    await db.closeSessions();
+    const migration = await migrate(db.admin, 'migrations');
+    expect(migration.applied).toContain(PAIRS);
+  }, 120_000);
 
-    it('product rows migrate to exact pairs', async () => {
-      const rows = await db.admin.execute<{ readonly id: string; readonly pairs: string[] }>(
-        `select id, pairs from public.delegations where business_id = $1`,
-        [business],
-      );
-      const stored = new Map(rows.map((row) => [row.id, row.pairs.toSorted()]));
-      for (const seeded of live) expect(stored.get(seeded.id)).toStrictEqual(product(seeded));
-      expect(stored.get(revokedId)).toStrictEqual(product(REVOKED_SHAPE));
-    });
+  afterAll(async () => {
+    await db?.drop();
+  });
 
-    it('each migrated row allows exactly what it allowed, call by call', async () => {
-      await db.app.withBusiness(business, async (tx) => {
-        for (const seeded of live) {
-          // oxlint-disable-next-line no-await-in-loop
-          const delegation = await resolveLiveById(tx, seeded.agentActorId, seeded.id);
-          expect(delegation).toBeDefined();
-          if (delegation === undefined) continue;
-          for (const collection of COLLECTIONS) {
-            for (const action of ACTIONS) {
-              // oxlint-disable-next-line no-await-in-loop
-              const reach = await checkDelegatedAuthority(tx, delegation, {
-                collection,
-                action,
-                scope: delegation.purposeScope,
-              });
-              const allowedBefore =
-                action !== 'decide' &&
-                seeded.collections.includes(collection) &&
-                seeded.actions.includes(action);
-              const code = reach.ok ? 'ok' : reach.refusal.code;
-              expect([collection, action, code]).toStrictEqual([
-                collection,
-                action,
-                allowedBefore
-                  ? 'DELEGATION_NARROWED'
-                  : action === 'decide'
-                    ? 'DELEGATION_EXCLUDES_DECISION'
-                    : 'DELEGATION_OUT_OF_PURPOSE',
-              ]);
-            }
+  it('product rows migrate to exact pairs', async () => {
+    const rows = await db.admin.execute<{ readonly id: string; readonly pairs: string[] }>(
+      `select id, pairs from public.delegations where business_id = $1`,
+      [business],
+    );
+    const stored = new Map(rows.map((row) => [row.id, row.pairs.toSorted()]));
+    for (const seeded of live) expect(stored.get(seeded.id)).toStrictEqual(product(seeded));
+    expect(stored.get(revokedId)).toStrictEqual(product(REVOKED_SHAPE));
+  });
+
+  it('each migrated row allows exactly what it allowed, call by call', async () => {
+    await db.app.withBusiness(business, async (tx) => {
+      for (const seeded of live) {
+        // oxlint-disable-next-line no-await-in-loop
+        const delegation = await resolveLiveById(tx, seeded.agentActorId, seeded.id);
+        expect(delegation).toBeDefined();
+        if (delegation === undefined) continue;
+        for (const collection of COLLECTIONS) {
+          for (const action of ACTIONS) {
+            // oxlint-disable-next-line no-await-in-loop
+            const reach = await checkDelegatedAuthority(tx, delegation, {
+              collection,
+              action,
+              scope: delegation.purposeScope,
+            });
+            const allowedBefore =
+              action !== 'decide' &&
+              seeded.collections.includes(collection) &&
+              seeded.actions.includes(action);
+            const code = reach.ok ? 'ok' : reach.refusal.code;
+            expect([collection, action, code]).toStrictEqual([
+              collection,
+              action,
+              allowedBefore
+                ? 'DELEGATION_NARROWED'
+                : action === 'decide'
+                  ? 'DELEGATION_EXCLUDES_DECISION'
+                  : 'DELEGATION_OUT_OF_PURPOSE',
+            ]);
           }
         }
-      });
+      }
     });
+  });
 
-    it('the product columns are gone', async () => {
-      const columns = await db.admin.execute<{ readonly name: string }>(
-        `select column_name as name from information_schema.columns
+  it('the product columns are gone', async () => {
+    const columns = await db.admin.execute<{ readonly name: string }>(
+      `select column_name as name from information_schema.columns
         where table_schema = 'public' and table_name = 'delegations'
           and column_name in ('collections', 'actions', 'pairs')`,
-      );
-      expect(columns.map((row) => row.name)).toStrictEqual(['pairs']);
-    });
-  },
-);
+    );
+    expect(columns.map((row) => row.name)).toStrictEqual(['pairs']);
+  });
+});

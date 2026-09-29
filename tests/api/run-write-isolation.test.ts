@@ -24,7 +24,7 @@ import {
   resolveDelegation,
 } from '../../packages/core-records/src/authority/delegations.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { grantTo, installSpine } from '../commands/fixture.ts';
+import { grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import { authorised, post, tokenFor, type Answer } from './fixture.ts';
 import { agentPath, detailOf, type Controls } from './controls-fixture.ts';
@@ -63,6 +63,33 @@ describe.skipIf(serverUrl === undefined)('run:write isolation', () => {
     tokenB = await tokenFor(subject);
   }
 
+  /** Task B, approved by the writer (so theirs is the delegation), picked up by agent B. */
+  async function approvedByWriterPickedUpByB(writer: Member): Promise<void> {
+    const task = await c.createTask('client two');
+    taskB = task.id;
+    const proposal = await c.propose(task.id, task.revision, 'run_client_two');
+    const decided = await c.asPerson(
+      'task.decide',
+      {
+        gateId: proposal['gateId'],
+        versionId: proposal['versionId'],
+        decision: 'approve',
+        note: 'approved by a person without run:write',
+      },
+      writer,
+    );
+    expect(decided.status).toBe(200);
+    const reservationId = detailOf(decided)['reservationId'];
+    const picked = await post(
+      c.api,
+      agentPath('task.pickup'),
+      { operationId: randomUUID(), reservationId, leaseSeconds: 600 },
+      authorised(tokenB),
+    );
+    expect(picked.status).toBe(200);
+    credentialB = String(detailOf(picked)['credential']);
+  }
+
   beforeAll(async () => {
     const world = await checksWorld('run_write_isolation');
     c = world.c;
@@ -89,29 +116,7 @@ describe.skipIf(serverUrl === undefined)('run:write isolation', () => {
     foreign = [canary, workA.taskId, workA.leaseId, delegationA?.id ?? 'missing'];
 
     await agentOfWriter(world.writer);
-    const task = await c.createTask('client two');
-    taskB = task.id;
-    const proposal = await c.propose(task.id, task.revision, 'run_client_two');
-    const decided = await c.asPerson(
-      'task.decide',
-      {
-        gateId: proposal['gateId'],
-        versionId: proposal['versionId'],
-        decision: 'approve',
-        note: 'approved by a person without run:write',
-      },
-      world.writer,
-    );
-    expect(decided.status).toBe(200);
-    const reservationId = detailOf(decided)['reservationId'];
-    const picked = await post(
-      c.api,
-      agentPath('task.pickup'),
-      { operationId: randomUUID(), reservationId, leaseSeconds: 600 },
-      authorised(tokenB),
-    );
-    expect(picked.status).toBe(200);
-    credentialB = String(detailOf(picked)['credential']);
+    await approvedByWriterPickedUpByB(world.writer);
 
     const bravo = await insertBusiness(db.app, 'bravo');
     await installSpine(db.app, bravo);
