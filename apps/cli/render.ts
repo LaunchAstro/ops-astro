@@ -20,9 +20,9 @@ function inline(value: unknown): string {
   if (value === null || value === undefined) return '-';
   if (typeof value === 'string') return value.replaceAll(/\s+/gu, ' ');
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (Array.isArray(value)) return value.map(inline).join(', ');
+  if (Array.isArray(value)) return value.map((one) => inline(one)).join(', ');
   return Object.values(value as Json)
-    .map(inline)
+    .map((one) => inline(one))
     .join(' ');
 }
 
@@ -30,7 +30,7 @@ function inline(value: unknown): string {
 export function text(value: Json): string {
   const lines: string[] = [];
   for (const [key, field] of Object.entries(value)) {
-    if (Array.isArray(field) && field.some(isObject)) {
+    if (Array.isArray(field) && field.some((item) => isObject(item))) {
       lines.push(`${key} (${String(field.length)}):`);
       for (const item of field) lines.push(`- ${inline(item)}`);
     } else lines.push(`${key}: ${inline(field)}`);
@@ -40,7 +40,11 @@ export function text(value: Json): string {
 
 /** A page: one line per item, then the next token when there is one. */
 export function pageText(items: readonly Json[], next: string | null): string {
-  const lines = items.map((item) => Object.values(item).map(inline).join(' | '));
+  const lines = items.map((item) =>
+    Object.values(item)
+      .map((one) => inline(one))
+      .join(' | '),
+  );
   if (next !== null) lines.push(`next: ${next}`);
   return lines.join('\n');
 }
