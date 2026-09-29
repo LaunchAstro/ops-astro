@@ -15,8 +15,8 @@
 // why they are here rather than deferred.
 //
 // The task-state type is `states.ts`. The two are one model and are two files
-// because the per-file review cap is 400 hand-written lines and no waiver lifts
-// it; the seam is the one the model already has, a record type each.
+// so each stays readable at about 400 lines, the repository's guide; the seam
+// is the one the model already has, a record type each.
 
 import type { FieldValueType, VisibilityClass, WriteMode } from '../records/fields.ts';
 

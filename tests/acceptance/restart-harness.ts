@@ -3,12 +3,12 @@
 // The journey item 5 restarts, and the machinery for restarting it.
 //
 // Split out of `restart-and-expiry.test.ts` because that file reached 436
-// changed lines against this repository's 400-line per-file cap, which no
-// waiver lifts. The repository's own answer to exactly this is SPEC section
-// 6's T1h row — **split the file, not the change** — and it names the two
-// things not to do: delete the comments that say why each assertion is the
-// assertion, or add the file to the size gate's generated list. Neither was
-// done. The cases stayed in the test file; the walk, the row reads and the
+// changed lines, past the 400-line per-file cap of the time (since FU-400,
+// about 400 lines is a guide for a readable file, never a gate). The
+// repository's own answer to exactly this is SPEC section 6's T1h row —
+// **split the file, not the change** — and it names the two things not to
+// do: delete the comments that say why each assertion is the assertion, or
+// hide the file from the size report. Neither was done. The cases stayed in the test file; the walk, the row reads and the
 // container control came here.
 //
 // Nothing in this file asserts anything about the product. It builds the state

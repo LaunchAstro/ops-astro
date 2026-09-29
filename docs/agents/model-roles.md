@@ -3,17 +3,17 @@
 [AGENTS.md](../../AGENTS.md) declares the Matt Pocock loop as the only router.
 Pstack supplies selected standards inside that workflow.
 
-| Role                       | Responsibility                                                                                                                                 |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Planner                    | Resolve open requirements and prepare the specification and proposed ticket boundaries.                                                        |
-| Builder                    | Own one ticket, isolated worktree, and branch. Produce implementation and evidence.                                                            |
-| Independent model reviewer | A frontier model from a different company than the builder's, in fresh context. Inspect the exact files, diff, specification, and boundaries.  |
-| Security reviewer          | Review sensitive changes before their pull request under the repository's security procedure.                                                  |
-| Copilot                    | Review the actual hosted revision. Resolve each finding on its merits.                                                                         |
-| Verifier                   | Exercise the integrated behaviour and inspect durable results.                                                                                 |
-| Merging agent              | Invoke the merge on Nathan's credential once every required check is green on the revision, then notify him. It exercises no discretion.       |
-| Nathan                     | Decide the production deploy, the five protected parts, coherence waivers, tier reductions, and the final sandbox contract before it is built. |
-| Conformance proof          | The component's conformance test must be green before a change to one of the eight protected components merges. A check, not a person.         |
+| Role                       | Responsibility                                                                                                                                |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Planner                    | Resolve open requirements and prepare the specification and proposed ticket boundaries.                                                       |
+| Builder                    | Own one ticket, isolated worktree, and branch. Produce implementation and evidence.                                                           |
+| Independent model reviewer | A frontier model from a different company than the builder's, in fresh context. Inspect the exact files, diff, specification, and boundaries. |
+| Security reviewer          | Review sensitive changes before their pull request under the repository's security procedure.                                                 |
+| Copilot                    | Review the actual hosted revision. Resolve each finding on its merits.                                                                        |
+| Verifier                   | Exercise the integrated behaviour and inspect durable results.                                                                                |
+| Merging agent              | Invoke the merge on Nathan's credential once every required check is green on the revision, then notify him. It exercises no discretion.      |
+| Nathan                     | Decide the production deploy, the five protected parts, tier reductions, and the final sandbox contract before it is built.                   |
+| Conformance proof          | The component's conformance test must be green before a change to one of the eight protected components merges. A check, not a person.        |
 
 The merge rule: an agent merges on Nathan's credential once every required
 check is green on the head being merged; a change touching one of the eight
