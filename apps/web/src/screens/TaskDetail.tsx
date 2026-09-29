@@ -85,6 +85,7 @@ import type { CallResult, OperationsClient } from '../operations/client.ts';
 import type { PersonListResult, TaskDetail as Task, TaskReadResult } from '../operations/shapes.ts';
 import { useRead } from '../data/use-read.ts';
 import { Proposals, type DecisionNote, type ProposeDraft } from '../views/proposals.tsx';
+import { RunProgress } from '../views/run-progress.tsx';
 import { RecordState } from '../views/record-state.tsx';
 import { drawTaskState } from '../views/task-state.ts';
 import { describeRefusal, submitEdit } from '../records/submit.ts';
@@ -622,6 +623,8 @@ function Loaded(props: LoadedProps): ReactElement {
         recordId={task.id}
         revision={task.revision}
       />
+
+      <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
 
       <History history={task.history} />
     </div>

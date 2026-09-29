@@ -329,3 +329,29 @@ export interface CapabilitiesResult {
   readonly businessKey: string;
   readonly grants: readonly Grant[];
 }
+
+/** One run naming the task, as `task.execution` reports it (T2a); never merged. */
+export interface ExecutionRun {
+  readonly runId: string;
+  readonly lineageId: string;
+  readonly versionId: string;
+  readonly state: string;
+  readonly taskRevisionAtRequest: number | null;
+  readonly createdAt: string;
+}
+
+/** One durable progress event, in the task-wide order. */
+export interface ExecutionEvent {
+  readonly eventId: string;
+  readonly runId: string;
+  readonly position: number;
+  readonly kind: string;
+  readonly at: string;
+}
+
+/** `task.execution`'s answer; `denied`, `unavailable` and `loading` are the read's own. */
+export interface TaskExecutionResult {
+  readonly outcome: 'ready' | 'no-run' | 'stale';
+  readonly runs: readonly ExecutionRun[];
+  readonly events: readonly ExecutionEvent[];
+}
