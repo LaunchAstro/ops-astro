@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `/projects/`. The board of the business's unboarded tasks, and the form that
-// makes one.
+// `/projects/`. The caller's inbox, the board of the business's unboarded
+// tasks, and the form that makes one.
 //
 // The read is `task.board` with `board: null`, which the contract defines as
 // the business's unboarded tasks — the acceptance case creates a task
@@ -22,6 +22,7 @@ import { RecordState } from '../views/record-state.tsx';
 import { drawTaskState } from '../views/task-state.ts';
 import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
+import { Inbox } from '../views/inbox.tsx';
 
 /** A create whose outcome is not known, held so the retry is the same attempt. */
 interface PendingCreate {
@@ -114,6 +115,8 @@ export function Projects(props: ProjectsProps): ReactElement {
 
   return (
     <div className="stack">
+      {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
+      <Inbox client={client} grantKey={props.grantKey} />
       <form className="taskform projects__create" onSubmit={onCreate}>
         <div className="field">
           <label className="tf__k" htmlFor="create-title">
