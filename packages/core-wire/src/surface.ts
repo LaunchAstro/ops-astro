@@ -105,7 +105,12 @@ export type CommandName =
   // message, its owner's alone, and read at its address after the body purges.
   | 'conversation.start'
   | 'conversation.message'
-  | 'conversation.read';
+  | 'conversation.read'
+  // The assistant panel's tab row (MP-7-11): the person's own conversations,
+  // a tab's title, and the page it is about.
+  | 'conversation.list'
+  | 'conversation.rename'
+  | 'conversation.set_scope';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -365,6 +370,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   },
   'conversation.start': { body: 'any', title: 'any', subject: 'any', scope: 'any' },
   'conversation.message': { conversationId: 'any', body: 'any' },
+  'conversation.rename': { conversationId: 'any', title: 'any' },
+  'conversation.set_scope': { conversationId: 'any', page: 'any' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -469,6 +476,20 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['conversationId'],
   }),
   read('conversation.read', CONVERSATION_COLLECTION),
+  // MP-7-11's tab row, under the same rule: the owner's own, no agent entry.
+  // The list is the caller's own conversations and nobody else's, whatever
+  // read-any grant they hold; its rule is the read's own, like the read's.
+  read('conversation.list', CONVERSATION_COLLECTION),
+  declare('conversation.rename', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
+  declare('conversation.set_scope', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was

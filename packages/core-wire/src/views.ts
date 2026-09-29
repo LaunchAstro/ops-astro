@@ -465,6 +465,21 @@ export interface ConversationMessageView {
   readonly createdAt: string;
 }
 
+/** One of the caller's own conversations, as the assistant panel's tab row draws it (MP-7-11). */
+export interface ConversationTabView {
+  readonly id: string;
+  readonly address: string;
+  readonly title: string;
+  readonly lastActivityAt: string;
+  readonly bodyPurged: boolean;
+}
+
+/** The caller's own conversations, newest activity first; nobody else's. */
+export interface ConversationListResult {
+  readonly ok: true;
+  readonly conversations: readonly ConversationTabView[];
+}
+
 export interface ConversationReadResult {
   readonly ok: true;
   readonly conversation: {
@@ -473,6 +488,8 @@ export interface ConversationReadResult {
     readonly title: string;
     readonly subject: string | null;
     readonly scope: { readonly kind: 'task'; readonly id: string } | null;
+    /** The page added to its context (MP-7-11): one slot, a second replaces it. */
+    readonly page: { readonly address: string; readonly shows: string } | null;
     readonly createdAt: string;
     readonly lastActivityAt: string;
     readonly bodyPurgedAt: string | null;

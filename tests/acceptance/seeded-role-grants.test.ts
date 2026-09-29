@@ -42,9 +42,10 @@ const held = (role: string): readonly string[] =>
  * family is `task`. `session.capabilities` asks about nothing: it reports
  * what the caller holds. `conversation.read` asks its own rule (the owner, or
  * the read-any grant `conversation:read`, which no role holds on install), so
- * its declared pair is deliberately seeded to nobody.
+ * its declared pair is deliberately seeded to nobody; `conversation.list`
+ * asks its own rule too (`conversation:write`, the caller's own only).
  */
-const NOT_SEEDED = new Set(['session.capabilities', 'conversation.read']);
+const NOT_SEEDED = new Set(['session.capabilities', 'conversation.read', 'conversation.list']);
 const asked = COMMAND_SURFACE.filter((each) => !NOT_SEEDED.has(each.name))
   .map((each) =>
     each.name === 'preset.plan' ? 'task:manage' : `${each.collection}:${each.action}`,

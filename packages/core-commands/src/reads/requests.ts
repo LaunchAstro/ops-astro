@@ -31,6 +31,7 @@ import type {
   PresetPlanResult,
   QueueResult,
   AwaitingReviewResult,
+  ConversationListResult,
   ConversationReadResult,
   SettingsReadResult,
   SharedTaskRead,
@@ -102,6 +103,8 @@ export interface ReadOperands {
    * read-any grant's. After the body purges it answers the wrap-up.
    */
   readonly 'conversation.read': { readonly conversationId: unknown };
+  /** The caller's own conversations, for the assistant panel's tab row (MP-7-11). */
+  readonly 'conversation.list': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -127,4 +130,5 @@ export type ReadResult =
   | PresetPlanResult
   | SettingsReadResult
   | CapabilitiesResult
-  | ConversationReadResult;
+  | ConversationReadResult
+  | ConversationListResult;

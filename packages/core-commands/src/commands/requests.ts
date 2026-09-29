@@ -249,6 +249,16 @@ export type CommandRequest =
       readonly command: 'conversation.message';
       readonly conversationId: unknown;
       readonly body: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'conversation.rename';
+      readonly conversationId: unknown;
+      readonly title: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'conversation.set_scope';
+      readonly conversationId: unknown;
+      readonly page: unknown;
     } & Envelope);
 
 /**

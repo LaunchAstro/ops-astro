@@ -64,6 +64,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.pickup': ['reservationId', 'pickup'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
+  'conversation.rename': ['conversationId', 'conversation'],
+  'conversation.set_scope': ['conversationId', 'conversation'],
 };
 
 /**

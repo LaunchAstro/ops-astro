@@ -53,6 +53,11 @@ vi.mock('../../packages/core-commands/src/commands/conversations.ts', async (ori
   startConversation: recorder('startConversation'),
   messageConversation: recorder('messageConversation'),
 }));
+vi.mock('../../packages/core-commands/src/commands/conversation-tabs.ts', async (original) => ({
+  ...(await original<object>()),
+  renameConversation: recorder('renameConversation'),
+  setConversationScope: recorder('setConversationScope'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-write.ts', async (original) => ({
   ...(await original<object>()),
   createTask: recorder('createTask'),
@@ -127,6 +132,8 @@ const PINNED_RUNTIME_SHAPED = {
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
   'conversation.message': ['conversationId'],
+  'conversation.rename': ['conversationId'],
+  'conversation.set_scope': ['conversationId'],
   'conversation.start': [],
   'delegation.revoke': [],
   'grant.revoke': [],
@@ -145,8 +152,11 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
+  'conversation.list',
   'conversation.message',
   'conversation.read',
+  'conversation.rename',
+  'conversation.set_scope',
   'conversation.start',
   'delegation.revoke',
   'gate.pending',
@@ -259,6 +269,8 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'conversation.start', operationId: 'op', body: 'hello', subject: 's' },
   { command: 'conversation.message', operationId: 'op', conversationId: 'c', body: 'again' },
+  { command: 'conversation.rename', operationId: 'op', conversationId: 'c', title: 'Renamed' },
+  { command: 'conversation.set_scope', operationId: 'op', conversationId: 'c', page: null },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -304,6 +316,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.check': ['checkOwnLease', 'request'],
   'conversation.start': ['startConversation', 'request'],
   'conversation.message': ['messageConversation', 'request'],
+  'conversation.rename': ['renameConversation', 'request'],
+  'conversation.set_scope': ['setConversationScope', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -343,7 +357,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-five from an expected revision', () => {
+  it('exempts the same twenty-eight from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

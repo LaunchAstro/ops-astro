@@ -27,6 +27,7 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import type {
+  ConversationListResult,
   ConversationMessageView,
   ConversationReadResult,
   WrapUpView,
@@ -81,6 +82,8 @@ interface ConversationRow {
   readonly subject: string | null;
   readonly scope_kind: 'task' | null;
   readonly scope_record_id: string | null;
+  readonly page_address: string | null;
+  readonly page_shows: string | null;
   readonly created_at: Date;
   readonly last_activity_at: Date;
   readonly body_purged_at: Date | null;
@@ -141,8 +144,8 @@ async function messagesOf(
 
 async function served(tx: TenantQuery, conversationId: string): Promise<ConversationReadResult> {
   const rows = await tx.query<ConversationRow>(
-    `select id, title, subject, scope_kind, scope_record_id, created_at, last_activity_at,
-            body_purged_at
+    `select id, title, subject, scope_kind, scope_record_id, page_address, page_shows,
+            created_at, last_activity_at, body_purged_at
        from conversations where business_id = $1 and id = $2`,
     [tx.businessId, conversationId],
   );
@@ -169,6 +172,10 @@ async function served(tx: TenantQuery, conversationId: string): Promise<Conversa
         row.scope_kind === null || row.scope_record_id === null
           ? null
           : { kind: row.scope_kind, id: row.scope_record_id },
+      page:
+        row.page_address === null || row.page_shows === null
+          ? null
+          : { address: row.page_address, shows: row.page_shows },
       createdAt: row.created_at.toISOString(),
       lastActivityAt: row.last_activity_at.toISOString(),
       bodyPurgedAt: row.body_purged_at?.toISOString() ?? null,
@@ -227,4 +234,48 @@ export async function readConversation(
   const refusal = await mayRead(tx, session, door);
   if (refusal !== undefined) return refusal;
   return await served(tx, conversationId);
+}
+
+const LIST_LIMIT = 50;
+
+/**
+ * `conversation.list`: the caller's own conversations for the tab row
+ * (MP-7-11, CS-7.32), newest activity first, at most fifty. The owner filter
+ * is in the statement: a read-any grant reads a conversation at its address
+ * and never lists another person's. A caller who no longer holds
+ * `conversation:write` is refused as the read refuses them, and a caller
+ * with no membership holds no grant to list by.
+ */
+export async function listConversations(
+  tx: TenantQuery,
+  session: Session,
+): Promise<ConversationListResult | CommandRefusal> {
+  const own = await checkAuthority(tx, subjectsOf(session), {
+    collection: COLLECTION,
+    action: 'write',
+    scope: { kind: 'business', id: null },
+  });
+  if (session.roleKey === null || !own.ok) return HOLDS_NOTHING;
+  const rows = await tx.query<{
+    readonly id: string;
+    readonly title: string;
+    readonly last_activity_at: Date;
+    readonly body_purged_at: Date | null;
+  }>(
+    `select id, title, last_activity_at, body_purged_at from conversations
+      where business_id = $1 and owner_actor_id = $2
+      order by last_activity_at desc, id
+      limit ${String(LIST_LIMIT)}`,
+    [tx.businessId, session.actorId],
+  );
+  return {
+    ok: true,
+    conversations: rows.map((row) => ({
+      id: row.id,
+      address: conversationAddress(row.id),
+      title: row.title,
+      lastActivityAt: row.last_activity_at.toISOString(),
+      bodyPurged: row.body_purged_at !== null,
+    })),
+  };
 }
