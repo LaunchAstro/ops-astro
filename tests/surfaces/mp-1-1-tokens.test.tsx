@@ -71,9 +71,12 @@ const ALIASES = new Set([
 const STATUS_ALIASES = /^--(info|success|warning|danger)-(light|soft)$/u;
 
 // Held on purpose in both themes: the one accent, ink on a dark or accent
-// ground, the dark ground itself, and the fills that do not flip.
+// ground, the dark ground itself, and the fills that do not flip. The two
+// lilacs are chart paint (the mockup's PAINT): its sheets never flip them.
 const CONSTANT = new Set([
   '--accent',
+  '--lilac',
+  '--lilac-deep',
   '--accent-ink',
   '--brand',
   '--btn-hover',
