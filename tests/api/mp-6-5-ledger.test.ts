@@ -31,6 +31,7 @@ interface Envelope {
 interface Reservation {
   readonly id: string;
   readonly envelopeId: string;
+  readonly runId: string;
   readonly state: string;
   readonly heldMinor: number;
   readonly actualMinor: number | null;
@@ -109,6 +110,22 @@ describe.skipIf(serverUrl === undefined)('MP-6-5 token ledger', () => {
     expect(envelope?.actualMinor).toBe(Number(row?.['actual_minor']));
     expect(held).toBe(envelope?.heldMinor);
     expect(actual).toBe(envelope?.actualMinor);
+  });
+
+  it('MP-6-5 per-run rows match the ledger: each row names the run it holds for', async () => {
+    const read = await taskRead(work.taskId);
+    const rows = read.proposals.flatMap((proposal) => proposal.reservations);
+    const runs = await c.fixture.db.admin.execute<{ id: string; run_id: string }>(
+      `select r.id, r.run_id from public.reservations r
+         join public.planned_runs run on run.business_id = r.business_id and run.id = r.run_id
+         join public.proposal_lineages lin on lin.business_id = run.business_id and lin.id = run.lineage_id
+        where lin.task_id = $1`,
+      [work.taskId],
+    );
+    expect(runs.length).toBe(rows.length);
+    for (const run of runs) {
+      expect(rows.find((reservation) => reservation.id === run.id)?.runId).toBe(run.run_id);
+    }
   });
 
   it('MP-6-5 per-run rows match the ledger: a task never approved has no envelope, and says so', async () => {

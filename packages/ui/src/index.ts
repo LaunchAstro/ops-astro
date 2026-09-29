@@ -43,6 +43,7 @@ export * from './state/run-projection.ts';
 export * from './state/agent-run.ts';
 export * from './state/agent-staged.ts';
 export * from './state/agent-scope.ts';
+export * from './state/token-ledger.ts';
 export * from './primitives/Absence.tsx';
 export * from './primitives/Status.tsx';
 export * from './primitives/Tabs.tsx';

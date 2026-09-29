@@ -41,6 +41,14 @@ export interface RunVersion {
 }
 
 export interface RunReservation {
+  /**
+   * The reservation, the task envelope it holds against and the run it holds
+   * for (MP-6-5). Absent from a read made before MP-6-5, which draws no
+   * per-run rows.
+   */
+  readonly id?: string;
+  readonly envelopeId?: string;
+  readonly runId?: string;
   readonly state: string;
   readonly heldMinor: number;
   readonly actualMinor: number | null;

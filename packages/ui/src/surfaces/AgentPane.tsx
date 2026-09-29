@@ -19,6 +19,8 @@ import { ProposalHeader, Summary, Workflow } from './agent/header.tsx';
 import { Scope } from './agent/scope.tsx';
 import { StagedOutput } from './agent/staged.tsx';
 import { scopeStamp } from '../state/agent-scope.ts';
+import type { TaskLedger } from '../state/token-ledger.ts';
+import { TokenTracked } from './agent/tokens.tsx';
 
 export type { GateDecision } from './agent/gate.tsx';
 
@@ -40,6 +42,8 @@ export interface AgentPaneProps {
   readonly onCancel: (lineageId: string) => void;
   /** The access ledger's address for one grant, or null while the ledger has no screen. */
   readonly ledgerHref: ((grantId: string) => string) | null;
+  /** `task.read`'s token ledger (MP-6-5); null for a reader it is not shown to. */
+  readonly ledger: TaskLedger | null;
 }
 
 export function AgentPane(props: AgentPaneProps): ReactElement {
@@ -104,6 +108,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
         decisions={lineage?.decisions ?? []}
         onDecide={props.onDecide}
       />
+      <TokenTracked ledger={props.ledger} lineages={props.lineages ?? []} />
     </>
   );
 }

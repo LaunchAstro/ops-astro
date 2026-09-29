@@ -83,6 +83,7 @@ export async function pane(overrides: Partial<AgentPaneProps> = {}): Promise<Mou
     onReject: ignore,
     onCancel: ignore,
     ledgerHref: null,
+    ledger: null,
     ...overrides,
   };
   const page = await mount(<AgentPane {...props} />);
