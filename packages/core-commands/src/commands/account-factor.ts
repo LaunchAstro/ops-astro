@@ -8,7 +8,7 @@
 // each crosses to the sign-in provider, which holds the factor and its secret.
 // A provider call is never made inside a database transaction, so every act is
 // three steps: check under the serving transaction, call the provider, then
-// record under a second transaction that locks the person's factor row and
+// record under a second transaction that locks the person's own row and
 // checks again, so two tabs cannot enrol twice or verify a factor another tab
 // has just removed. The record and its audit event commit together.
 //
