@@ -8,16 +8,7 @@
 // the command is run as the owner runs it, over a fixture artefact store and
 // fixture service-manager output, the way S0-1a's report is tested.
 import { spawnSync } from 'node:child_process';
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readlinkSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -103,24 +94,6 @@ const fixture = (name: string, text: string): string => {
   writeFileSync(path, text);
   return path;
 };
-/** A PATH whose docker and launchctl answer as the live service manager would. */
-const liveManager = ({ apiRunning }: { apiRunning: boolean }): string => {
-  const bin = mkdtempSync(join(scratch, 'manager-'));
-  const inspect = JSON.stringify([
-    { Name: '/prod-api', State: { Running: apiRunning }, HostConfig: {} },
-  ]);
-  writeFileSync(
-    join(bin, 'docker'),
-    `#!/bin/sh\nif [ "$1" = ps ]; then echo api-id; exit 0; fi\nif [ "$1" = inspect ]; then printf '%s\\n' '${inspect}'; exit 0; fi\nexit 2\n`,
-  );
-  writeFileSync(
-    join(bin, 'launchctl'),
-    `#!/bin/sh\nprintf 'PID\\tStatus\\tLabel\\n-\\t0\\torg.example.prod-auth\\n'\n`,
-  );
-  for (const command of ['docker', 'launchctl']) chmodSync(join(bin, command), 0o755);
-  return `${bin}:${process.env['PATH'] ?? ''}`;
-};
-
 // ---- S0-1 promotion same artefact (the invariant) --------------------------
 
 describe('S0-1 promotion same artefact', () => {
@@ -215,46 +188,9 @@ describe('S0-1 promotion refuses running app', () => {
     }
   });
 
-  it('the command refuses from the live service manager, not open connections, and leaves production pointing where it was', () => {
-    const current = join(scratch, 'current-refused');
-    symlinkSync(join(scratch, 'previous-build'), current);
-    const result = run(
-      [
-        '--version',
-        STAGED,
-        '--artefacts',
-        STORE(),
-        '--line',
-        LINE,
-        '--api',
-        'docker:prod-api',
-        '--auth',
-        'launchd:org.example.prod-auth',
-        '--current',
-        current,
-      ],
-      {
-        PATH: liveManager({ apiRunning: true }),
-        DATABASE_ADMIN_URL: 'postgres://nobody@127.0.0.1:1/never',
-      },
-    );
-    expect(result.status, result.out).toBe(1);
-    expect(result.out).toMatch(/docker:prod-api is running/u);
-    expect(result.out).not.toMatch(/promotion recorded|db-migrate/u);
-    expect(readlinkSync(current)).toBe(join(scratch, 'previous-build'));
-  });
-
-  it('the command takes no saved report and no argument it does not know', () => {
-    const base = ['--version', STAGED, '--artefacts', STORE(), '--line', LINE];
-    for (const saved of ['--docker-inspect', '--launchctl']) {
-      const result = run([...base, saved, fixture('saved.json', '[]')]);
-      expect(result.status, result.out).toBe(1);
-      expect(result.out).toMatch(/never a saved report/u);
-    }
-    const typo = run([...base, '--dryrun']);
-    expect(typo.status, typo.out).toBe(2);
-    expect(typo.out).toMatch(/--dryrun is not an argument/u);
-  });
+  // The command-level cases (the live service manager's refusal, no saved
+  // report, no unknown argument) run past S0-1e's operator gate as a signed-in
+  // operator, so they live in tests/ci/operator-only.test.ts.
 
   it('names services only as docker:<name> or launchd:<label>', () => {
     expect(parseService('docker:prod-api')).toEqual(API);
@@ -314,31 +250,15 @@ describe('S0-1 promotion migrates stopped app', () => {
 });
 
 describe('Sol review proofs', () => {
-  it('Sol proof, criterion 14: a saved stopped report cannot bypass a live running API', () => {
-    const bin = join(scratch, 'sol-live-manager-bin');
-    mkdirSync(bin, { recursive: true });
-    const dockerCommand = join(bin, 'docker');
-    writeFileSync(
-      dockerCommand,
-      `#!/bin/sh\nif [ "$1" = ps ]; then echo live-api-id; exit 0; fi\nif [ "$1" = inspect ]; then printf '%s\\n' '[{"Name":"/prod-api","State":{"Running":true},"HostConfig":{}}]'; exit 0; fi\nexit 2\n`,
-    );
-    chmodSync(dockerCommand, 0o755);
-    const launchctlCommand = join(bin, 'launchctl');
-    writeFileSync(
-      launchctlCommand,
-      `#!/bin/sh\nprintf 'PID\\tStatus\\tLabel\\n-\\t0\\torg.example.prod-auth\\n'\n`,
-    );
-    chmodSync(launchctlCommand, 0o755);
+  it('Sol proof, criterion 4: a caller without operator authority is refused before migration', () => {
     const docker = fixture(
-      'sol-false-stopped-docker.json',
+      'sol-operator-docker.json',
       JSON.stringify([{ Name: '/prod-api', State: { Running: false }, HostConfig: {} }]),
     );
     const launchd = fixture(
-      'sol-false-stopped-launchctl.txt',
+      'sol-operator-launchctl.txt',
       'PID\tStatus\tLabel\n-\t0\torg.example.prod-auth\n',
     );
-    const current = join(scratch, 'sol-running-current');
-    symlinkSync(join(scratch, 'previous-build'), current);
     const result = run(
       [
         '--version',
@@ -352,20 +272,19 @@ describe('Sol review proofs', () => {
         '--auth',
         'launchd:org.example.prod-auth',
         '--current',
-        current,
+        join(scratch, 'sol-operator-current'),
         '--docker-inspect',
         docker,
         '--launchctl',
         launchd,
       ],
-      {
-        PATH: `${bin}:${process.env['PATH'] ?? ''}`,
-        DATABASE_ADMIN_URL: 'postgres://nobody@127.0.0.1:1/never',
-      },
+      { DATABASE_ADMIN_URL: 'postgres://nobody@127.0.0.1:1/never' },
     );
     expect(result.status).toBe(1);
-    expect(result.out).toMatch(/running|fixture|saved report/iu);
+    expect(result.out).toMatch(/operator|operations:manage|permission|authoris/iu);
     expect(result.out).not.toMatch(/db-migrate|ECONNREFUSED/iu);
-    expect(readlinkSync(current)).toBe(join(scratch, 'previous-build'));
   });
+
+  // Criterion 14's proof runs past the operator gate as a signed-in operator,
+  // in tests/ci/operator-only.test.ts.
 });
