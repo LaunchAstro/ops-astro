@@ -30,6 +30,7 @@ if (serverUrl === undefined) {
 
 const onDisk = readMigrations('migrations');
 const THROUGH_0035 = (version: string): boolean => version.slice(0, 4) <= '0035';
+const THROUGH_0036 = (version: string): boolean => version.slice(0, 4) <= '0036';
 const GATE_ENGINE = ['gates', 'gate_decisions', 'proposal_lineages', 'proposal_versions'];
 
 /** Every constraint and trigger on the gate engine's tables, and on `alerts`. */
@@ -66,6 +67,7 @@ describe.skipIf(serverUrl === undefined)('0036 the alert record', () => {
   let fixture: RuntimeFixture;
   let other: RuntimeFixture;
   let gateBefore: unknown;
+  let gateAt0036: unknown;
   let seededBefore: unknown;
 
   beforeAll(async () => {
@@ -83,6 +85,14 @@ describe.skipIf(serverUrl === undefined)('0036 the alert record', () => {
     gateBefore = await gateEngine(upgraded);
     seededBefore = await dump(upgraded);
     await upgraded.closeSessions();
+    // The gate engine as 0036 alone leaves it: a later migration may change the
+    // gate tables on purpose (T3a's 0041 adds escalation to `gates`), and that
+    // is its own suite's question, not this one's.
+    await applyMigrations(
+      upgraded.admin,
+      onDisk.filter((m) => THROUGH_0036(m.version)),
+    );
+    gateAt0036 = await gateEngine(upgraded);
     await migrate(upgraded.admin, 'migrations');
   }, 180_000);
 
@@ -114,7 +124,7 @@ describe.skipIf(serverUrl === undefined)('0036 the alert record', () => {
   it('rewrites no row, reads the same catalogue fresh and upgraded, and adds nothing to the gate engine’s tables', async () => {
     expect(await dump(upgraded)).toStrictEqual(seededBefore);
     expect(await catalogue(upgraded)).toStrictEqual(await catalogue(fresh));
-    expect(await gateEngine(upgraded)).toStrictEqual(gateBefore);
+    expect(gateAt0036).toStrictEqual(gateBefore);
   });
 
   it('writes one alert per transition, as the application role', async () => {
