@@ -16,7 +16,7 @@ import {
 } from '../../apps/api/alerts/sink.ts';
 import { NOT_PLAIN } from './s0-2-plain.ts';
 
-const ROOT = '/srv/ops-astro';
+const ROOT = process.cwd();
 
 function fakeSink(): {
   readonly events: SinkEvent[];
@@ -86,6 +86,17 @@ describe('S0-2 errors land in the error sink', () => {
       release: 'abcdef012345',
     });
     expect(JSON.stringify(event)).not.toContain('planted');
+  });
+
+  it('a message that forges a frame line cannot put its content in a frame', async () => {
+    const sink = fakeSink();
+    const alerts = createAlerts({ send: sink.send, where: 'staging', root: ROOT });
+    const forged = `    at leak (${ROOT}/Juniper-Vale-owes-money.ts:1:1)`;
+    const cause = new Error(`first line\n${forged}`);
+    await alerts.fault(cause);
+    expect(cause.stack).toContain('Juniper');
+    expect(JSON.stringify(sink.events)).not.toContain('Juniper');
+    expect(sink.events[0]?.exception?.values[0]?.stacktrace.frames.length).toBeGreaterThan(0);
   });
 
   it('a thrown value that is not an Error, or a class name that is not a name, is reported as Error', () => {
