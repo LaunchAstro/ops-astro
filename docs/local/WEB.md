@@ -99,12 +99,13 @@ browser.
 
 ## Addresses
 
-| Address      | What it draws                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------ |
-| `/sign-in`   | Credentials and the business selector                                                            |
-| `/projects/` | `task.board` for the unboarded tasks (`board: null`), and the create form                        |
-| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision |
-| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`  |
+| Address      | What it draws                                                                                      |
+| ------------ | -------------------------------------------------------------------------------------------------- |
+| `/sign-in`   | Credentials and the business selector                                                              |
+| `/projects/` | `task.board` for the unboarded tasks (`board: null`), and the create form                          |
+| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision   |
+| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`    |
+| `/map/:key`  | `map.view`: a Wayfinder map's sections, each edited in place through `map.revise`, and its history |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
@@ -189,6 +190,19 @@ a new attempt (`saveFields` in `TaskDetail.tsx`).
 The settings screen's writes go through `useCommand` too. `use-settings.ts`
 keeps only what settings does with each kind, and its memory of the last
 confirmed write is in `confirmed.ts`.
+
+## A Wayfinder map
+
+`/map/:key` (WF-3, `screens/Map.tsx` and `screens/map/Sections.tsx`) draws one
+`map.view` answer: Destination, Notes, Decisions so far (each line links its
+ticket's `/task/:key`), Not yet specified (the fog), Out of scope and the
+version history. Every edit (Destination or Notes rewritten, a fog line added or
+removed, an Out of scope line added) is one `map.revise` carrying the map's
+record revision from the same read, so a second writer's edit comes back
+`VERSION_STALE` and the page reads the map again. After an applied edit the
+page rereads: the new version in the history is the server's. A refused edit
+keeps its draft in the editor and names the key it needed (`task:write`), as
+the CLI's refusal line does. The look waits on the accepted prototype W4.
 
 ## Comments on a task
 

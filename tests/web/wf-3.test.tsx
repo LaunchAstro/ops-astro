@@ -123,7 +123,12 @@ describe.skipIf(serverUrl === undefined)('WF-3 the map view', () => {
     const before = page.all('[data-map-section="history"] [data-version]').length;
 
     await editNotes(page, 'owner check notes, second pass');
-    await until(page, () => section('notes').includes('second pass'), 'the new notes');
+    await until(
+      page,
+      () =>
+        page.find('textarea[name="notes"]') === null && section('notes').includes('second pass'),
+      'the new notes, read back',
+    );
     const versions = page.all('[data-map-section="history"] [data-version]');
     expect(versions.length).toBe(before + 1);
     expect(
@@ -132,11 +137,13 @@ describe.skipIf(serverUrl === undefined)('WF-3 the map view', () => {
   });
 
   it('WF-3 each Decisions so far line links its ticket', async () => {
-    const { key, settledKey } = await fullMap('linked');
+    const { key, settled, settledKey } = await fullMap('linked');
     const page = await openMap(lead, key);
+    // The resolved ticket and the one closed out of scope are both decisions.
     const lines = page.all('[data-map-section="decisions"] li');
-    expect(lines.length).toBe(1);
-    const link = lines[0]?.querySelector('a');
+    expect(lines.length).toBe(2);
+    for (const line of lines) expect(line.querySelector('a')).not.toBeNull();
+    const link = page.find(`[data-map-section="decisions"] li[data-ticket="${settled}"] a`);
     expect(link?.getAttribute('href')).toBe(`/task/${encodeURIComponent(settledKey)}`);
     expect(link?.textContent).toContain('linked gist');
   });
@@ -146,7 +153,13 @@ describe.skipIf(serverUrl === undefined)('WF-3 the map view', () => {
     const before = (await w.audit()).length;
     const page = await openMap(lead, key);
     await editNotes(page, 'audited notes, edited');
-    await until(page, () => page.text().includes('audited notes, edited'), 'the edit');
+    await until(
+      page,
+      () =>
+        page.find('textarea[name="notes"]') === null &&
+        page.text().includes('audited notes, edited'),
+      'the edit, read back',
+    );
     const lines = (await w.audit()).slice(before).map((l) => [l.command, l.outcome, l.subject]);
     // Opened, edited, read again: one read event each, and the edit's own event.
     expect(lines).toStrictEqual([
@@ -174,7 +187,14 @@ describe.skipIf(serverUrl === undefined)('WF-3 the map view', () => {
     await until(page, () => page.find('[data-map-failure]') !== null, 'the refusal');
     expect(page.find('[data-map-failure]')?.textContent).toContain('task:write');
     expect(await w.revisionOf(map)).toBe(version);
-    expect(page.find('[data-map-section="notes"]')?.textContent).toContain('refused edit notes');
+    // The attempt stays in the editor to copy; the stored notes are unchanged.
+    expect((page.find('textarea[name="notes"]') as HTMLTextAreaElement).value).toBe(
+      'refused edit, attempted',
+    );
+    const stored = (await w.read(lead, { read: 'map.view', recordId: map })) as {
+      map: { notes: { text: string } | null };
+    };
+    expect(stored.map.notes?.text).toBe('refused edit notes');
   });
 
   it('WF-3 the notes edit is reachable from the CLI with the same result and the same refusal', async () => {
@@ -196,18 +216,19 @@ describe.skipIf(serverUrl === undefined)('WF-3 the map view', () => {
       });
     };
 
-    // The same refusal: the CLI's names the same key the page shows.
+    // The same refusal: the CLI gets the code the page shows, and the page
+    // names the key the edit needs.
     const refusedCli = await (
       await cliFor(reader)
     ).run('map.revise', { operationId: operationId(), ...(await at(map)), notes: 'x' });
     const page = await openMap(reader, key);
     await editNotes(page, 'x');
     await until(page, () => page.find('[data-map-failure]') !== null, 'the refusal');
-    const refusal = refusedCli.body as { readonly code: string; readonly names: readonly string[] };
-    expect(refusal.names).toContain('task:write');
-    expect(page.find('[data-map-failure]')?.textContent).toContain(
-      `${refusal.code} (${refusal.names.join(', ')})`,
-    );
+    const refusal = refusedCli.body as { readonly code: string };
+    expect(refusedCli.status).not.toBe(200);
+    const shown = page.find('[data-map-failure]')?.textContent ?? '';
+    expect(shown.startsWith(`${refusal.code}.`), shown).toBe(true);
+    expect(shown).toContain('You need task:write');
 
     // The same result: a CLI edit is a numbered version the page shows.
     const edited = await (

@@ -482,6 +482,8 @@ export interface MapView {
   readonly owner: string | null;
   readonly client: string | null;
   readonly version: number;
+  /** The map record's revision, which an edit sends back as `expectedRevision`. */
+  readonly revision: number;
   readonly destination: MapComponentView | null;
   readonly notes: MapComponentView | null;
   readonly fog: readonly MapComponentView[];
