@@ -116,15 +116,16 @@ function failed(event, stage) {
   return { event, outcome: 'failed', stage, at: new Date().toISOString() };
 }
 
+// The backup identity's one write on the source (migration 0034).
+const UPSERT_CHALLENGE =
+  'insert into ops.restore_challenge (challenge) values ($1) on conflict (one) do update set challenge = excluded.challenge, written_at = now()';
+
 /**
  * Writes `challenge` into the source database's one restore challenge row, as
  * the backup identity, through its one write (migration 0034), bound.
  */
 export async function writeRestoreChallenge(sourceUrl, challenge, reach = stagingReach) {
-  await reach(
-    sourceUrl,
-    `set role ${BACKUP_ROLE};\n${bound('select ops.set_restore_challenge($1)', [challenge])}`,
-  );
+  await reach(sourceUrl, `set role ${BACKUP_ROLE};\n${bound(UPSERT_CHALLENGE, [challenge])}`);
 }
 
 /**

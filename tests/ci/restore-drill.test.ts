@@ -507,10 +507,10 @@ function drillTargetCases2() {
   }, 120_000);
 
   it('takes no target from its command line or environment', () => {
-    const source = readFileSync(
-      new URL('../../scripts/ops/restore-drill.mjs', import.meta.url),
-      'utf8',
-    );
+    // The command line (restore-drill.mjs) and the drill itself (drill-restore.mjs).
+    const source = ['restore-drill.mjs', 'drill-restore.mjs']
+      .map((name) => readFileSync(new URL(`../../scripts/ops/${name}`, import.meta.url), 'utf8'))
+      .join('\n');
     expect(source).not.toMatch(/DATABASE_URL|SUPABASE|--host|PGHOST/u);
     expect(source).toMatch(/--network none /u);
   });

@@ -36,6 +36,12 @@ import {
   dropLogins,
 } from './backup-identity.fixture.ts';
 
+/** The job's upsert of the restore challenge (scripts/ops/backup.mjs). */
+const UPSERT =
+  'insert into ops.restore_challenge (challenge) values ($1) on conflict (one) do update set challenge = excluded.challenge, written_at = now()';
+/** What the refusal case's attempts reach on the challenge's table: its one write, with no value. */
+const ONE_WRITE: readonly string[] = ['insert into ops.restore_challenge default values: 23502'];
+
 let db: FreshDatabase;
 let login: { url: string; name: string };
 let tables: { qualified: string; column: string }[];
@@ -203,12 +209,9 @@ function identityScopeCases3() {
     } finally {
       await client.end();
     }
-    // Its one write (REV158K criterion 13): the restore challenge, refused a
-    // null as every value not of its shape. It changes no row here.
-    expect(allowed).toStrictEqual([
-      'execute ops.set_restore_challenge(text)',
-      'call ops.set_restore_challenge(text): 22023',
-    ]);
+    // Its one write (REV158K criterion 13): the restore challenge's insert,
+    // reached here with no value and refused by the table. It changes no row.
+    expect(allowed).toStrictEqual(ONE_WRITE);
     expect(await contents()).toBe(before);
   });
 
@@ -216,12 +219,14 @@ function identityScopeCases3() {
     const client = await asRole(login.url, BACKUP);
     const [first, second] = [randomBytes(32).toString('hex'), randomBytes(32).toString('hex')];
     try {
-      await client.query('select ops.set_restore_challenge($1)', [first]);
-      await client.query('select ops.set_restore_challenge($1)', [second]);
+      await client.query(UPSERT, [first]);
+      await client.query(UPSERT, [second]);
       for (const bad of ['', 'AB'.repeat(32), `${first}'; drop table ops.restore_challenge; --`]) {
         // oxlint-disable-next-line no-await-in-loop
-        expect(await attempt(client, 'select ops.set_restore_challenge($1)', [bad])).toBe('22023');
+        expect(await attempt(client, UPSERT, [bad])).toBe('23514');
       }
+      expect(await attempt(client, 'update ops.restore_challenge set one = true')).toBe('42501');
+      expect(await attempt(client, 'delete from ops.restore_challenge')).toBe('42501');
     } finally {
       await client.end();
     }
