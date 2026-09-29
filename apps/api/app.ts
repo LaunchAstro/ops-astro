@@ -64,6 +64,7 @@ import type {
   ReadRequest,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
+import type { SecuritySignal } from './alerts/detect.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -116,6 +117,7 @@ export interface ApiOptions {
    * which is the honest answer for a deployment that has not enabled it.
    */
   readonly executeAgentCommand?: AgentExecutor;
+  readonly observe?: (signal: SecuritySignal) => void;
 }
 
 /** The person path's executor: `commands/envelope.ts`'s signature. */

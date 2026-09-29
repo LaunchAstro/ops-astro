@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs';
 import { relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { plainAlert, type AlertKind, type Where } from './catalogue.ts';
+import type { SecuritySignal } from './detect.ts';
 
 export type Frame = { filename: string; function: string; lineno: number; in_app: true };
 
@@ -42,6 +43,7 @@ export interface Place {
 }
 
 export interface Alerts {
+  readonly observe: (signal: SecuritySignal) => void;
   readonly fault: (cause: unknown) => Promise<void>;
   /** Resolves once every event handed to the sink so far is sent or dropped. */
   readonly settled: () => Promise<void>;
@@ -154,6 +156,9 @@ export function createAlerts(options: Place & { readonly send: Transport }): Ale
     return sent;
   }
   return {
+    observe: () => {
+      throw new Error('S0-2: not built');
+    },
     fault: async (cause) => await deliver(errorEvent(cause, options)),
     settled: async () => void (await Promise.all(pending)),
   };

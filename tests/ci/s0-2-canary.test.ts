@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // S0-2 canary: a planted secret and planted record content never reach the
-// error sink, the log or the response.
+// error sink, the log, the response or an alert.
 //
 // The served composition (`composeApi`) with the sink as a fake transport. A
 // read throws a fault whose message carries both plants, under a bearer whose
-// subject is the secret and a body carrying the content. Every
+// subject is the secret and a body carrying the content; the same subject is
+// then refused until the detector raises. Every
 // place the fault could travel is read back: the events the sink
 // was handed, what the server wrote to the console, and the response body.
 // Nothing here writes an audit payload; the alerts path holds no connection.
@@ -15,6 +16,7 @@ import { createAlerts, type SinkEvent } from '../../apps/api/alerts/sink.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { COMMAND_SURFACE, PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
+import { times } from './s0-2-plain.ts';
 
 const CANARY_SECRET = 'canary-S02CANARY-4e8a1c-alert-secret';
 const RECORD_CONTENT = 'Private note: client Juniper Vale owes 4,210';
@@ -90,5 +92,26 @@ describe('S0-2 canary', () => {
       expect(place).not.toContain('S02CANARY');
       expect(place).not.toContain('Juniper');
     }
+  });
+
+  it('refusals of a subject that is the planted secret raise an alert that does not carry it', async () => {
+    const { app, events, alerts } = served(() => Promise.reject(new Error('unused')));
+    await times(10, async () => {
+      const response = await app.fetch(
+        new Request(`http://api.test${PREFIX.person}nobody-${CANARY_SECRET}${READ_PATH}`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${await bearer(CANARY_SECRET)}`,
+          },
+          body: JSON.stringify({ note: RECORD_CONTENT }),
+        }),
+      );
+      expect(response.status).toBe(403);
+    });
+    await alerts.settled();
+    expect(events.map((e) => e.tags['alert'])).toEqual(['cross-scope-burst']);
+    expect(JSON.stringify(events)).not.toContain('S02CANARY');
+    expect(JSON.stringify(events)).not.toContain('Juniper');
   });
 });
