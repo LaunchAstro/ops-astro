@@ -452,12 +452,18 @@ const ROWS = [
     status: 409,
     meaning: 'A later version of the proposal exists',
     source: 'contract 4.4',
+    // `decide` on a gate whose version was superseded (T3a; it replaced
+    // L4's `VERSION_SUPERSEDED`).
+    runtime: true,
   },
   {
     code: 'PROPOSAL_SCOPE_EXCEEDED',
     status: 422,
     meaning: 'The proposal reaches past what was authorised',
     source: 'contract 4.3',
+    // `propose` past the envelope, the cap or its currency, or with no
+    // positive ceiling (T3a; it replaced L4's `PROPOSAL_OUT_OF_SCOPE`).
+    runtime: true,
   },
   {
     code: 'FOUR_EYES_REQUIRED',
@@ -494,14 +500,6 @@ const ROWS = [
   // with L4's review fixes (R2, R3 and R6) and are registered on the same terms
   // as the eight before them.
   //
-  // The gate names a version that is no longer the live one.
-  {
-    code: 'VERSION_SUPERSEDED',
-    status: 409,
-    meaning: 'A later version of this proposal is the live one',
-    source: 'L4 RUNTIME.md',
-    runtime: true,
-  },
   // The gate's stored digest and the version's own disagree.
   {
     code: 'EVIDENCE_MISMATCH',
@@ -543,14 +541,6 @@ const ROWS = [
     status: 409,
     meaning: 'Two formal rounds are used and there is no third',
     source: 'spec G08',
-    runtime: true,
-  },
-  // The proposal asks for more than the caller's authority covers.
-  {
-    code: 'PROPOSAL_OUT_OF_SCOPE',
-    status: 403,
-    meaning: 'The proposal reaches past the caller\u2019s authority',
-    source: 'L4 RUNTIME.md',
     runtime: true,
   },
   {
@@ -847,11 +837,9 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'DELEGATION_EXCLUDES_INTAKE',
   'DELEGATION_EXPIRED',
   'DELEGATION_REVOKED',
-  // A T2 spelling the runtime did not adopt: it raises `GATE_ALREADY_DECIDED`
-  // where this says superseded. `GATE_PENDING` left the list with T2g, which
-  // raises it on completing a task whose gate is open.
-  'PROPOSAL_SUPERSEDED',
-  'PROPOSAL_SCOPE_EXCEEDED',
+  // `GATE_PENDING` left the list with T2g, which raises it on completing a
+  // task whose gate is open; `PROPOSAL_SUPERSEDED` and
+  // `PROPOSAL_SCOPE_EXCEEDED` left it with T3a, which gave each its producer.
   'TASK_NOT_PICKABLE',
   // The two L4 codes that need something no caller can reach.
   //
@@ -890,7 +878,7 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // business the same cap. Nor, since final review round 2 (R2-RUNTIME-26), is
   // the currency half: `task.propose` checks the currency against the task's
   // cap (its envelope's, else the business cap) before the first write, and
-  // refuses another currency `PROPOSAL_OUT_OF_SCOPE`, so no version in another
+  // refuses another currency `PROPOSAL_SCOPE_EXCEEDED`, so no version in another
   // currency reaches a decision. It stays off this list because the runtime
   // produces it; the list names codes nothing produces.
   //
