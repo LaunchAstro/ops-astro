@@ -13,12 +13,28 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { productionSigns } from '../../scripts/ops/made-up-only.ts';
+import { productionSigns, type OwnerQuery } from '../../scripts/ops/made-up-only.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const SEED = new URL('../../scripts/local-seed.mjs', import.meta.url).pathname;
 const USERS_FILE = new URL('../../.local/synthetic-users.json', import.meta.url).pathname;
 const MADE_UP = ['alpha', 'bravo'];
+
+it('Sol proof, criterion 4: business-to-business and person-to-person rows are not counted by seed preflight', async () => {
+  const statements: string[] = [];
+  const owner: OwnerQuery = {
+    async execute<Row>(statement: string): Promise<readonly Row[]> {
+      statements.push(statement);
+      if (statement.includes('to_regclass')) return [{ present: true }] as Row[];
+      return [{ n: 0 }] as Row[];
+    },
+  };
+  await productionSigns(owner, ['alpha']);
+  const crossBoundaryCounts = statements.filter((statement) =>
+    /select count\(\*\).*from (?:public\.businesses|auth\.users)/u.test(statement),
+  );
+  expect(crossBoundaryCounts).toEqual([]);
+});
 
 if (serverUrl === undefined) {
   console.warn('S0-1 no production data: DATABASE_URL is unset, so nothing below ran.');
@@ -109,5 +125,20 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     await address('someone@example.com');
     await business('charlie');
     expect(await productionSigns(db.admin, MADE_UP)).toHaveLength(2);
+  });
+
+  it('Sol proof, criterion 9: a backup with an allowed business key and production content is refused', async () => {
+    await reset();
+    const businessId = randomUUID();
+    await db.admin.execute(
+      'insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $3)',
+      [businessId, 'alpha', 'alpha'],
+    );
+    await db.admin.execute(
+      'insert into public.people (business_id, id, display_name) values ($1, $2, $3)',
+      [businessId, randomUUID(), 'Private Customer Canary'],
+    );
+    const signs = await productionSigns(db.admin, MADE_UP);
+    expect(signs).not.toEqual([]);
   });
 });

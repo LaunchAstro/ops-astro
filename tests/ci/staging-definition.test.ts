@@ -136,6 +136,33 @@ it('S0-1 services unchanged: a report it cannot read is refused, never green', (
   expect(run(['compare', before]).status).toBe(2);
 });
 
+it('Sol proof, criterion 5: a live container configuration change makes the report red', () => {
+  const container = JSON.parse(inspect(LIVE)) as Record<string, unknown>[];
+  const before = run([
+    'snapshot',
+    '--docker-inspect',
+    file(JSON.stringify(container)),
+    '--launchctl',
+    file(launchctl(JOBS)),
+  ]);
+  expect(before.status, before.out).toBe(0);
+  const beforeFile = file(before.out);
+  const changed = structuredClone(container);
+  const live = changed[0] as { HostConfig: { Memory?: number } };
+  live.HostConfig.Memory = 64 * 1024 * 1024;
+  const after = run([
+    'snapshot',
+    '--docker-inspect',
+    file(JSON.stringify(changed)),
+    '--launchctl',
+    file(launchctl(JOBS)),
+  ]);
+  expect(after.status, after.out).toBe(0);
+  const report = compare(beforeFile, file(after.out));
+  expect(report.status, report.out).toBe(1);
+  expect(report.out).toMatch(/CONFIG|RECONFIGURED|MEMORY CHANGED/u);
+});
+
 // ---- S0-1 credentials canary -------------------------------------------------
 
 it('S0-1 credentials canary', () => {
