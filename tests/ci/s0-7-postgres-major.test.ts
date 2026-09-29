@@ -50,9 +50,11 @@ const job = (name: string) =>
 /** Every `image:` a block names, comments dropped. */
 const images = (block: string) =>
   [...block.matchAll(/^\s*image: *(\S+)/gmu)].map((m) => m[1] ?? '');
-/** The value a shell script assigns to `name`, once. */
+/** The values a shell script assigns to `name`, one per line it is set on. */
 function assigned(path: string, name: string): string[] {
-  return [...read(path).matchAll(new RegExp(`^${name}=(\\S+)$`, 'gmu'))].map((m) => m[1] ?? '');
+  return [...read(path).matchAll(/^(\w+)=(\S+)$/gmu)].flatMap((m) =>
+    m[1] === name ? [m[2] ?? ''] : [],
+  );
 }
 const required = (
   JSON.parse(read('.github/required-checks.json')) as {
