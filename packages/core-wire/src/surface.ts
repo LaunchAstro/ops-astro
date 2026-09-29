@@ -82,6 +82,8 @@ export type CommandName =
   // Settings ▸ Access (C32): Team, Clients and Agents from the one set of
   // person records, each with what its grants and delegations allow now.
   | 'access.read'
+  // C55: the operations view, the one read of what needs the operator's eye.
+  | 'operations.read'
   // The two settings the model classifies `operation`. A setting that decides
   // who must agree before money moves or before work completes is an authority
   // change wearing configuration's clothes, so it is not reachable through a
@@ -91,6 +93,8 @@ export type CommandName =
   | 'settings.set_client_sign_off'
   // C59: whether a money action needs a recent second-factor sign-in.
   | 'settings.set_money_step_up'
+  // C55: the breach runbook's day-0 record, `privacy incident recorded`.
+  | 'privacy.record_incident'
   // The support controls the contract ledger requires through owning
   // production interfaces: revocation of an existing grant or delegation,
   // cancellation of a run's lineage, an authorised restart as a new lineage,
@@ -345,6 +349,13 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'settings.set_four_eyes_threshold': { value: 'any', expectedRevision: 'any' },
   'settings.set_client_sign_off': { value: 'any', expectedRevision: 'any' },
   'settings.set_money_step_up': { value: 'any', expectedRevision: 'any' },
+  'privacy.record_incident': {
+    whatHappened: 'any',
+    foundAt: 'any',
+    foundBy: 'any',
+    affected: 'any',
+    informationKinds: 'any',
+  },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -437,6 +448,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // (C32): the answer is every person's authority, so reading it is not a
   // member's everyday read. An agent never holds it.
   read('access.read', 'access', { action: 'manage' }),
+  // C55: `operations:read` (install default owner and administrators), never
+  // an agent's.
+  read('operations.read', 'operations'),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was
@@ -455,6 +469,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // an administrator), never by an agent, and audited by the envelope.
   declare('settings.set_money_step_up', 'manage', {
     collection: SETTINGS_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // C55: a privacy incident is recorded under `privacy:manage` (the owner and
+  // administrators), never by an agent, and audited by the envelope as a
+  // digest of the act.
+  declare('privacy.record_incident', 'manage', {
+    collection: 'privacy',
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),

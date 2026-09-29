@@ -210,6 +210,16 @@ export type CommandRequest =
       readonly value: boolean;
       readonly expectedRevision?: number;
     } & Envelope)
+  // C55: a privacy incident record's day-0 facts, each checked by the handler
+  // in its own words (`privacy-write.ts`), so every field is `unknown` here.
+  | ({
+      readonly command: 'privacy.record_incident';
+      readonly whatHappened: unknown;
+      readonly foundAt: unknown;
+      readonly foundBy: unknown;
+      readonly affected: unknown;
+      readonly informationKinds: unknown;
+    } & Envelope)
   // The support controls. Revocation names the row it revokes; the time is the
   // server's. Cancel and restart name the task and the lineage on it, so the
   // task is where the work-control authority is asked and the lineage is

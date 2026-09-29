@@ -24,7 +24,7 @@ export const CASE = {
 } as const;
 
 /**
- * The nine operations that name no identifier, each with a minimal valid body.
+ * The thirteen operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -37,12 +37,23 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['settings.set_four_eyes_threshold', { value: 1300 }],
   ['settings.set_client_sign_off', { value: false }],
   ['settings.set_money_step_up', { value: true }],
+  [
+    'privacy.record_incident',
+    {
+      whatHappened: 'A made-up incident recorded while bravo is watched.',
+      foundAt: new Date(Date.now() - 60_000).toISOString(),
+      foundBy: 'The matrix',
+      affected: 'Nobody; it is made up.',
+      informationKinds: ['other'],
+    },
+  ],
   ['task.queue', {}],
   ['person.list', {}],
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
   ['settings.read', {}],
   ['session.capabilities', {}],
   ['access.read', {}],
+  ['operations.read', {}],
 ];
 
 /** The ten identifier-bearing operations outside (c) and (d): operand and executed case. */

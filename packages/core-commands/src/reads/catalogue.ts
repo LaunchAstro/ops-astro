@@ -30,6 +30,7 @@ import { listPeople, readAccess } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
+import { readOperations } from './operations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -337,6 +338,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: false,
     serve: async (tx) => ({ ok: true, ...(await readAccess(tx)) }),
+  },
+  // C55. The business's own operations, so no subject record; it asks
+  // `read` on `operations`, which no agent holds.
+  'operations.read': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => ({ ok: true, ...(await readOperations(tx)) }),
   },
 };
 

@@ -74,6 +74,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, person_id, provider, provider_factor_id)
      select business_id, gen_random_uuid(), id, 'supabase', 'restricted-calls-seed'
        from public.people where business_id = $1 order by id limit 1 returning 1`,
+  // C55: no journey records a privacy incident, so one is written here.
+  'public.privacy_incidents': `insert into public.privacy_incidents
+       (business_id, id, what_happened, found_at, found_by, affected, information_kinds,
+        recorded_by_actor)
+     select business_id, gen_random_uuid(), 'restricted calls seed', now(), 'seed', 'nobody',
+            array['other'], id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
   'public.record_links': `insert into public.record_links
        (business_id, id, link_type, from_record_id, to_record_id)
      select a.business_id, gen_random_uuid(), 'restricted_calls', a.id, b.id

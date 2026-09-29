@@ -501,3 +501,15 @@ never written here. Whether a person has a verified factor is mirrored onto
 query it already makes and refuses a sign-in without the second factor. It
 reads the column through the row's json, so on a database from before 0032,
 which has no such column, the answer is no factor.
+
+## Privacy incidents (0033, C55)
+
+`privacy_incidents` holds the breach runbook's day-0 record: what happened,
+when it was found (`found_at`, day 0), who found it, which clients and people
+(`affected`), and the kinds of information from a closed list of seven. The
+assessment limit is derived from `found_at` where the row is read, so no stored
+date can drift from it. Status is `open` or `closed`. The application may
+select, insert and update; nothing deletes a row. The table is tenancy-keyed
+with the restrictive policy like every business table, and it is not a
+`records` row, so no share, search or export reaches it. The audit chain and
+the operation register hold a digest and the new row's id, never the words.

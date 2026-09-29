@@ -20,6 +20,7 @@ import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { setBusinessSetting } from './settings-write.ts';
+import { recordIncident } from './privacy-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
@@ -76,6 +77,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'settings.set_four_eyes_threshold': setting,
   'settings.set_client_sign_off': setting,
   'settings.set_money_step_up': setting,
+
+  'privacy.record_incident': recordIncident,
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,

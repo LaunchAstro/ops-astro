@@ -96,6 +96,15 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     provider: 'supabase',
     provider_factor_id: 'restricted-calls-seed',
   },
+  // 0033 (C55): no journey records a privacy incident.
+  'public.privacy_incidents': {
+    what_happened: 'restricted calls seed',
+    found_at: new Date(),
+    found_by: 'seed',
+    affected: 'nobody',
+    information_kinds: ['other'],
+    recorded_by_actor: randomUUID(),
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

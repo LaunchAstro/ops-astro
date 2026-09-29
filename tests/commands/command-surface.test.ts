@@ -74,17 +74,21 @@ describe('the surface as a table', () => {
     // the only collection nothing is stored in, because the read under it is
     // about the caller rather than about the business's records. `grant` and
     // `delegation` are the revocation controls': the path names the row a
-    // revocation writes, and the authority it asks is still on tasks.
+    // revocation writes, and the authority it asks is still on tasks. `operations`
+    // and `privacy` are C55's view and its incident record.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|access)\/[a-z_]+$/u.test(path),
+        /^\/(?:task|person|preset|settings|session|grant|delegation|access|operations|privacy)\/[a-z_]+$/u.test(
+          path,
+        ),
       ),
     ).toBe(true);
   });
 
-  it('declares the eight reads as reads, and everything else as a write', () => {
+  it('declares the nine reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
       'access.read',
+      'operations.read',
       'person.list',
       'preset.plan',
       'session.capabilities',

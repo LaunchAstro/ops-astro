@@ -98,6 +98,10 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'settings',
   'preset',
   'access',
+  // C55: the operations view and the privacy incident record, whose install
+  // default is the owner and administrators.
+  'operations',
+  'privacy',
 ];
 
 export async function tokenFor(

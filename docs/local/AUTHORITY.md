@@ -563,6 +563,16 @@ every row (`SettingView.revision`, filled by `readSettings` in
 administrators writing at once (its `describe` at `:287`), and
 `tests/commands/settings-revision.test.ts` holds the command path.
 
+## The operations view (C55)
+
+Two keys, each on its own collection, neither ever an agent's:
+`operations:read` opens the operations view (`operations.read`) and
+`privacy:manage` records a privacy incident (`privacy.record_incident`). A
+holder of one is not a holder of the other. An agent under a live delegation
+from a person who holds both is refused both, `DELEGATION_EXCLUDES_OPERATION`,
+because neither is in the agent's operation set. The install defaults (the
+owner and administrators) are C32's role presets.
+
 ## Revocation
 
 `grant.revoke` and `delegation.revoke` are the ledger's "existing

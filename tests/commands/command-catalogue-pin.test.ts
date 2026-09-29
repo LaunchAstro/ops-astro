@@ -78,6 +78,10 @@ vi.mock('../../packages/core-commands/src/commands/settings-write.ts', async (or
   ...(await original<object>()),
   setBusinessSetting: recorder('setBusinessSetting'),
 }));
+vi.mock('../../packages/core-commands/src/commands/privacy-write.ts', async (original) => ({
+  ...(await original<object>()),
+  recordIncident: recorder('recordIncident'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
   proposeOnTask: recorder('proposeOnTask'),
@@ -118,6 +122,7 @@ const PINNED_RUNTIME_SHAPED = {
 const PINNED_UNTARGETED_IDENTIFIERS = {
   'delegation.revoke': [],
   'grant.revoke': [],
+  'privacy.record_incident': [],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'settings.set_money_step_up': [],
@@ -136,8 +141,10 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'access.read',
   'delegation.revoke',
   'grant.revoke',
+  'operations.read',
   'person.list',
   'preset.plan',
+  'privacy.record_incident',
   'session.capabilities',
   'settings.read',
   'settings.set_client_sign_off',
@@ -229,6 +236,15 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'settings.set_client_sign_off', operationId: 'op', value: true },
   { command: 'settings.set_money_step_up', operationId: 'op', value: false },
+  {
+    command: 'privacy.record_incident',
+    operationId: 'op',
+    whatHappened: 'w',
+    foundAt: 'f',
+    foundBy: 'b',
+    affected: 'a',
+    informationKinds: ['other'],
+  },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -277,6 +293,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
     false,
     undefined,
   ],
+  'privacy.record_incident': ['recordIncident', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -321,7 +338,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-two from an expected revision', () => {
+  it('exempts the same twenty-four from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
