@@ -520,6 +520,11 @@ describe('a source comment cites no review round, lane or finding id', () => {
     ]).toEqual([true, true, true]);
   });
 
+  it('Sol proof, criterion 4: preserves non-ASCII dollar-quoted SQL values', () => {
+    const source = 'const q = sql`select $é2$ -- Sol 6 $é2$`;';
+    expect(commentLines(source)).toEqual([]);
+  });
+
   it('Sol proof, criterion 5: product comments do not narrate earlier draft reviews', () => {
     const files = [
       'apps/api/app.ts',
