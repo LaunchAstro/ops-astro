@@ -53,8 +53,19 @@ type Call =
   | { kind: 'donut'; values: number[]; centre: string; centreLabel: string }
   | { kind: 'sparkline'; values: number[] };
 
-/** Each shape: the mockup page and host it is drawn in, and the gallery's chart. */
-const SHAPES: { what: string; page: string; host: string; call: Call; gallery: string }[] = [
+/**
+ * Each shape: the mockup page and host it is drawn in, and the gallery's chart.
+ * `keep`: a pane the page removes after drawing, held in place so the chart is
+ * read where the mockup draws it.
+ */
+const SHAPES: {
+  what: string;
+  page: string;
+  host: string;
+  call: Call;
+  gallery: string;
+  keep?: string;
+}[] = [
   {
     what: 'score-dial',
     page: WORKBENCH('website-performance'),
@@ -68,6 +79,12 @@ const SHAPES: { what: string; page: string; host: string; call: Call; gallery: s
     host: '#speedGauge',
     // The workbench draws its gauge in the accent (channel-workbench, speedGauge).
     call: { kind: 'gauge', value: 62, target: 75, color: 'var(--accent)' },
+    // Mockup drift, not copied: the pinned mockup's real-data snapshot
+    // replaces the source list with one that has no call-tracking source, so
+    // the workbench draws the gauge and then removes the calls panel with it
+    // (applyWorkbenchAvailability, truth.js). No mockup page shows the gauge;
+    // the panel is held so the gauge is read in the panel that draws it.
+    keep: '[data-panel="calls"]',
     gallery: `${state('DS-COMP-28', 'Gauge with target')} svg`,
   },
   {
@@ -86,6 +103,16 @@ const SHAPES: { what: string; page: string; host: string; call: Call; gallery: s
     gallery: `${state('DS-COMP-29', 'Sparkline')} svg.spark`,
   },
 ];
+
+/** Runs before the mockup page's own scripts: on `path` alone, `keep` is never removed. */
+function holdRemoval(given: { path: string; keep: string }): void {
+  if (location.pathname !== given.path) return;
+  // oxlint-disable-next-line typescript/unbound-method -- called with its element below
+  const remove = Element.prototype.remove;
+  Element.prototype.remove = function held(this: Element): void {
+    if (!this.matches(given.keep)) remove.call(this);
+  };
+}
 
 /**
  * Runs in the mockup page: draws the call with the page's own charts.js into
@@ -196,6 +223,8 @@ async function oneView(
   const lines: string[] = [];
   for (const shape of SHAPES) {
     const label = `MP-1-5 ${shape.what}${at.name}`;
+    if (shape.keep !== undefined)
+      await sides.mockup.context.addInitScript(holdRemoval, { path: shape.page, keep: shape.keep });
     const page = await load(sides.mockup, at.packet, `${MOCKUP_ORIGIN}${shape.page}`);
     const drawn = await page.evaluate(drawMockup, { host: shape.host, call: shape.call });
     const left = drawn === '' ? undefined : await page.evaluate(marksOf, drawn);
