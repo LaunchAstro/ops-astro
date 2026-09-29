@@ -117,7 +117,7 @@ export async function readPrivacyIncidents(
       limit $2`,
     [tx.businessId, limit],
   );
-  return rows.map(shaped);
+  return rows.map((row) => shaped(row));
 }
 
 /** One of this business's incidents by id, or `undefined` when it has none such. */

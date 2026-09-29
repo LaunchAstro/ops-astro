@@ -34,40 +34,14 @@ import type {
   VerifiedSubject,
 } from '../../../core-records/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
+import {
+  providerRefusal,
+  type FactorProvider,
+  type FactorSession,
+  type IssuedFactor,
+} from './account-factor-provider.ts';
 import { writeAuditEvent } from './audit.ts';
 import { asCallerVisible, refuseCommand, type CommandRefusal } from './refusal.ts';
-
-/** What can go wrong at the provider, by kind only (TR-SEC4R-5). */
-export type ProviderFault = 'refused' | 'malformed' | 'oversized' | 'slow' | 'unreachable';
-
-export type ProviderAnswer<T> =
-  { readonly ok: true; readonly value: T } | { readonly ok: false; readonly fault: ProviderFault };
-
-/** A factor the provider has just issued. The secret goes to the person once. */
-export interface IssuedFactor {
-  readonly factorId: string;
-  readonly qrCode: string;
-  readonly secret: string;
-  readonly uri: string;
-}
-
-/** The session a verified code gives: now at `aal2`. */
-export interface FactorSession {
-  readonly accessToken: string;
-  readonly refreshToken: string;
-  readonly expiresIn: number;
-}
-
-/** The provider's three second-factor calls, made with the person's own token. */
-export interface FactorProvider {
-  enrol(accessToken: string): Promise<ProviderAnswer<IssuedFactor>>;
-  verify(
-    accessToken: string,
-    factorId: string,
-    code: string,
-  ): Promise<ProviderAnswer<FactorSession>>;
-  remove(accessToken: string, factorId: string): Promise<ProviderAnswer<void>>;
-}
 
 /** Who is asking and what they presented, as the API door admitted them. */
 export interface FactorCaller {
@@ -87,12 +61,6 @@ const ENROLLED_FIXES: readonly string[] = [
   'You already have an authenticator app. To replace it, remove it with a code from it first.',
 ];
 const NOT_ENROLLED_FIXES: readonly string[] = ['Set up an authenticator app first.'];
-const CODE_FIXES: readonly string[] = [
-  'Enter the six-digit code your authenticator app shows now.',
-];
-const PROVIDER_FIXES: readonly string[] = [
-  'The sign-in service did not answer as expected. Nothing was changed; try again shortly.',
-];
 const BODY_FIXES: readonly string[] = ['Send only { "code": "<the six digits>" }.'];
 const LOCKED_FIXES: readonly string[] = [
   'Too many wrong codes. Wait 15 minutes, then try again with the code your app shows.',
@@ -270,7 +238,7 @@ async function judged(
     caller.presented,
     async (tx, session) => {
       const refusal = await check(tx, session);
-      if (stage === 'before' && refusal === undefined) return undefined;
+      if (stage === 'before' && refusal === undefined) return;
       await writeAuditEvent(tx, {
         actorId: session.actorId,
         command: act,
@@ -319,15 +287,4 @@ function codeOf(body: unknown): string | undefined {
   const code = (body as Readonly<Record<string, unknown>>)['code'];
   if (keys.length !== 1 || typeof code !== 'string' || !/^[0-9]{6}$/u.test(code)) return undefined;
   return code;
-}
-
-/**
- * A provider's no to a code is a wrong code, recorded as the failed attempt;
- * any other fault, and a no to anything but a code, is the provider's answer
- * refused, by its kind alone.
- */
-function providerRefusal(fault: ProviderFault, asked: 'code' | 'answer'): CommandRefusal {
-  return fault === 'refused' && asked === 'code'
-    ? refuseCommand('SECOND_FACTOR_INVALID', [], CODE_FIXES)
-    : refuseCommand('PROVIDER_ANSWER_INVALID', [fault], PROVIDER_FIXES);
 }

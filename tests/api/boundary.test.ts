@@ -51,21 +51,21 @@ const ADMISSION = 'insert into public.authentication_attempts';
 
 function stubDatabase(seen: Seen[], admissions: unknown[][] = []): Database {
   return {
-    log: { record: () => undefined, statements: () => [] } as unknown as Database['log'],
+    log: { record: () => {}, statements: () => [] } as unknown as Database['log'],
     withBusiness: async (businessId, run) => {
       seen.push({ businessId, presented: { provider: 'recorded', subject: businessId } });
       return await run({
         businessId,
-        query: async <Row>(text: string, parameters: readonly unknown[] = []) => {
+        query: <Row>(text: string, parameters: readonly unknown[] = []) => {
           if (!text.trimStart().startsWith(ADMISSION)) {
-            throw new Error('the stub database has no rows');
+            return Promise.reject(new Error('the stub database has no rows'));
           }
           admissions.push([...parameters]);
-          return [] as readonly Row[];
+          return Promise.resolve([] as readonly Row[]);
         },
       });
     },
-    close: async () => undefined,
+    close: () => Promise.resolve(),
   };
 }
 
@@ -88,7 +88,7 @@ function build(overrides: Partial<Parameters<typeof createApi>[0]> = {}, seen: S
   return createApi({
     database: stubDatabase(seen),
     verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
-    resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
+    resolveBusiness: (key) => Promise.resolve(key === 'alpha' ? ALPHA : undefined),
     executeCommand,
     executeRead,
     ...overrides,
@@ -290,9 +290,9 @@ describe('a body that is not an object', () => {
   });
 });
 
-describe('the read half of the surface', () => {
-  const declared = COMMAND_SURFACE.filter((one) => one.kind === 'read');
+const declared = COMMAND_SURFACE.filter((one) => one.kind === 'read');
 
+describe('the read half of the surface', () => {
   it('names the read from the route, not from the body', async () => {
     const first = declared[0];
     if (first === undefined) {

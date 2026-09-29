@@ -23,9 +23,11 @@ export {
   removeSecondFactor,
   verifySecondFactor,
   type FactorCaller,
+} from './commands/account-factor.ts';
+export {
   type FactorProvider,
   type FactorSession,
   type IssuedFactor,
   type ProviderAnswer,
   type ProviderFault,
-} from './commands/account-factor.ts';
+} from './commands/account-factor-provider.ts';

@@ -39,7 +39,7 @@ const KINDS: ReadonlySet<string> = new Set(INFORMATION_KINDS);
 function text(value: unknown, most: number): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
-  return trimmed.length >= 1 && trimmed.length <= most ? trimmed : undefined;
+  return trimmed.length > 0 && trimmed.length <= most ? trimmed : undefined;
 }
 
 /** Postgres raises 23514 on a failed check constraint. */

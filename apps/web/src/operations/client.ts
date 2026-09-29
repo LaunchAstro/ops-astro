@@ -147,7 +147,7 @@ export class OperationsClient {
    * to be idempotent about and no revision to be stale against.
    */
   async read<T>(name: ReadName, body: Readonly<Record<string, unknown>>): Promise<CallResult<T>> {
-    return this.#post<T>(name, body);
+    return await this.#post<T>(name, body);
   }
 
   /**
@@ -166,7 +166,7 @@ export class OperationsClient {
     if (options.expectedRevision !== undefined) {
       payload['expectedRevision'] = options.expectedRevision;
     }
-    return this.#post<CommandOutcome>(name, payload);
+    return await this.#post<CommandOutcome>(name, payload);
   }
 
   /** The task's live channel (T2f), or nothing if the join is refused or unreachable. */
@@ -210,7 +210,7 @@ export class OperationsClient {
       return { unavailable: true, because: describe(error) };
     }
 
-    const parsed: unknown = await response.json().catch(() => undefined);
+    const parsed: unknown = await response.json().catch(() => {});
 
     if (isWireRefusal(parsed)) {
       if (

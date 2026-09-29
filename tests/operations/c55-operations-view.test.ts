@@ -13,17 +13,9 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
-import { tokenFor } from '../acceptance/cast.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
-import {
-  agentPath,
-  bearer,
-  call,
-  personPath,
-  serverUrl,
-  type Answer,
-} from '../acceptance/world.ts';
-import { grantTo, shareWithClient, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
+import { agentPath, bearer, call, personPath, serverUrl } from '../acceptance/world.ts';
+import { c55Keys, incident, incidentsOf, pathOf } from './c55-operations-world.ts';
 
 const CANARY = 'CANARY-c55-incident-detail-4b91d2';
 
@@ -31,94 +23,43 @@ if (serverUrl === undefined) {
   console.warn('operations/c55-operations-view: DATABASE_URL is unset, so nothing below ran.');
 }
 
-/** A valid incident, found an hour ago; `overrides` replaces any field. */
-const incident = (overrides: Readonly<Record<string, unknown>> = {}) => ({
-  operationId: `c55-${randomUUID()}`,
-  whatHappened: 'A client folder link reached the wrong person.',
-  foundAt: new Date(Date.now() - 3_600_000).toISOString(),
-  foundBy: 'The second operator',
-  affected: 'One client; two of their customers.',
-  informationKinds: ['contact'],
-  ...overrides,
+let harness: Harness;
+let credential: string;
+let clientToken: string;
+
+const asCaller = async (
+  token: string,
+  name: 'operations.read' | 'privacy.record_incident',
+  body: Readonly<Record<string, unknown>>,
+  businessKey = 'alpha',
+) => await call(harness.world.api, personPath(businessKey, pathOf(name)), body, bearer(token));
+
+const record = async (
+  body: Readonly<Record<string, unknown>> = incident(),
+  token = harness.world.ada.token,
+  businessKey = 'alpha',
+) => await asCaller(token, 'privacy.record_incident', body, businessKey);
+
+const view = async (token = harness.world.ada.token, businessKey = 'alpha') =>
+  await asCaller(token, 'operations.read', { operationId: `c55-${randomUUID()}` }, businessKey);
+
+const incidentRows = async (businessId: string) =>
+  await harness.world.db.app.withBusiness(businessId, (tx) =>
+    tx.query<{ readonly n: number }>('select count(*)::int as n from public.privacy_incidents'),
+  );
+
+beforeAll(async () => {
+  if (serverUrl === undefined) return;
+  harness = await createHarness('c55_operations');
+  ({ credential, clientToken } = await c55Keys(harness));
+}, 120_000);
+
+afterAll(async () => {
+  if (serverUrl === undefined) return;
+  await harness?.close();
 });
 
-interface IncidentView {
-  readonly id: string;
-  readonly whatHappened: string;
-  readonly foundAt: string;
-  readonly foundBy: string;
-  readonly affected: string;
-  readonly informationKinds: readonly string[];
-  readonly assessBy: string;
-  readonly status: string;
-}
-
-/** The route of an operation, as `pathOf` in the surface builds it. */
-const pathOf = (name: 'operations.read' | 'privacy.record_incident') =>
-  `/${name.replace('.', '/')}`;
-
-/** A world caller as the fixture's member, which carries the same ids. */
-const member = (caller: unknown) => caller as Member;
-
-const incidentsOf = (answer: Answer): readonly IncidentView[] =>
-  (answer.body['privacyIncidents'] ?? []) as readonly IncidentView[];
-
 describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
-  let harness: Harness;
-  let credential: string;
-  let clientToken: string;
-
-  const asCaller = async (
-    token: string,
-    name: 'operations.read' | 'privacy.record_incident',
-    body: Readonly<Record<string, unknown>>,
-    businessKey = 'alpha',
-  ) => await call(harness.world.api, personPath(businessKey, pathOf(name)), body, bearer(token));
-
-  const record = async (
-    body: Readonly<Record<string, unknown>> = incident(),
-    token = harness.world.ada.token,
-    businessKey = 'alpha',
-  ) => await asCaller(token, 'privacy.record_incident', body, businessKey);
-
-  const view = async (token = harness.world.ada.token, businessKey = 'alpha') =>
-    await asCaller(token, 'operations.read', { operationId: `c55-${randomUUID()}` }, businessKey);
-
-  const incidentRows = async (businessId: string) =>
-    await harness.world.db.app.withBusiness(businessId, async (tx) =>
-      tx.query<{ readonly n: number }>('select count(*)::int as n from public.privacy_incidents'),
-    );
-
-  beforeAll(async () => {
-    harness = await createHarness('c55_operations');
-    const { world } = harness;
-    await world.db.app.withBusiness(world.alpha, async (tx) => {
-      await grantTo(tx, member(world.noah), 'read', WHOLE_BUSINESS, false, 'operations');
-    });
-    await world.db.app.withBusiness(world.bravo, async (tx) => {
-      await grantTo(tx, member(world.bea), 'read', WHOLE_BUSINESS, false, 'operations');
-      await grantTo(tx, member(world.bea), 'manage', WHOLE_BUSINESS, false, 'privacy');
-    });
-    const client = await shareWithClient(
-      world.db.app,
-      world.alpha,
-      member(world.ada),
-      harness.alphaTask.id,
-    );
-    clientToken = await tokenFor(client.presented.subject);
-
-    const { decided } = await harness.approvedReservation();
-    expect(decided.code, 'the decision a pickup needs').toBe('ok');
-    const reservationId = (decided.body['detail'] as Record<string, unknown>)['reservationId'];
-    const picked = await harness.asAgent('task.pickup', { reservationId });
-    expect(picked.code, 'the pickup').toBe('ok');
-    credential = String((picked.body['detail'] as Record<string, unknown>)['credential']);
-  }, 120_000);
-
-  afterAll(async () => {
-    await harness?.close();
-  });
-
   it('C55 records: the owner records a privacy incident, and the view shows it with its 30-day assessment date', async () => {
     const body = incident({ informationKinds: ['contact', 'financial'] });
     const recorded = await record(body);
@@ -148,7 +89,9 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
     expect(events.at(-1)?.outcome).toBe('applied');
     expect(events.map((event) => event.row).join('\n')).not.toContain(body.whatHappened);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
   it('C55 records: a malformed incident is refused and nothing is recorded', async () => {
     const before = await incidentRows(harness.world.alpha);
     const cases: ReadonlyArray<Readonly<Record<string, unknown>>> = [
@@ -185,7 +128,9 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
     // Only the near-edge incident was recorded.
     expect(await incidentRows(harness.world.alpha)).toEqual([{ n: (before[0]?.n ?? 0) + 1 }]);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
   it('C55 records: a NUL or a lone surrogate in a text field is refused by name, and no driver error carries the words to a log', async () => {
     const before = await incidentRows(harness.world.alpha);
     const logged: string[] = [];
@@ -223,7 +168,9 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
     }
     expect(await incidentRows(harness.world.alpha)).toEqual(before);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
   it('C55 refusal operations:read: a member without the key and a client are refused the view; a holder of it alone reads it', async () => {
     for (const token of [harness.world.mia.token, clientToken]) {
       // oxlint-disable-next-line no-await-in-loop
@@ -236,7 +183,9 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
     expect(noah.status).toBe(200);
     expect(incidentsOf(noah).length).toBeGreaterThan(0);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
   it('C55 isolation: another business, another client and a delegated agent never read, count or record an incident', async () => {
     const planted = incident({ whatHappened: `alpha only ${randomUUID()}` });
     expect((await record(planted)).status).toBe(200);
@@ -281,7 +230,9 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
       bravoOwn.whatHappened,
     );
   });
+});
 
+describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
   it('C55 canary: incident words reach no log, audit row, operation register row or refusal', async () => {
     const logged: string[] = [];
     const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));

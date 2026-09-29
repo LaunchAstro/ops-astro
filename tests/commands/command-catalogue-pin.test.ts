@@ -480,7 +480,9 @@ describe('the per-command requests and handlers at 06ab232', () => {
     expect(REQUESTS.map((request) => request.command).toSorted()).toStrictEqual(writes.toSorted());
     expect(Object.keys(PINNED_HANDLERS).toSorted()).toStrictEqual(writes.toSorted());
   });
+});
 
+describe('the per-command tables at 06ab232', () => {
   it.each(REQUESTS.map((request) => [request.command, request] as const))(
     'hands %s to the same handler with the same operands',
     async (name, request) => {
