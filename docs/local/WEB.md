@@ -152,6 +152,13 @@ this task in the panel", "Add the first one in the task panel", "Log time in
 the task panel", "Start the timer in the task panel") call the screen's
 `onOpenPanel`; with none given they are drawn disabled.
 
+History (`History.tsx`, MP-4-16) is the transitions on the task's own address
+from `task.read`, with comments left out (they are the conversation's). Its head
+reads the latest change as how long ago, who and what; the page shows the whole
+trail open, and with no change says "Nothing has changed on this one yet." Who
+is the actor's identifier until the read carries a name. The dock task panel's
+folded trail and its saved preference are MP-4-8's.
+
 The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
 goes to `/settings`. An open dock tab is announced as "Close Settings"
 (`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
