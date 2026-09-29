@@ -9,8 +9,8 @@
 // the wait: no machine path, restart recovery included.
 //
 // Built ahead: the question's place in the conversation leans on SL12 (U31,
-// U32) and AW-04's origin conversation; the answers (top-up, end) are the next
-// increment.
+// U32) and AW-04's origin conversation; the answers (top-up, end) are in
+// aw-05-budget-top-up, aw-05-budget-end and aw-05-budget-restart.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';

@@ -821,10 +821,10 @@ export function isCommandRefusal(value: object): value is CommandRefusal {
  * `BUDGET_EXHAUSTED` is what the enforcing path returns when an attempt would
  * cross a ceiling a person approved (`core-runtime/src/budget.ts`).
  * `GATE_NOT_APPROVED` and `FOUR_EYES_REQUIRED` belong to the gated money
- * decisions, a top-up and a write-off, which are deferred, so nothing in
- * `apps/` or `packages/` returns either code. They are registered,
- * unproduced and not on this list, so this list is not every code nothing
- * produces.
+ * decisions. AW-05's top-up at the budget stop produces `FOUR_EYES_REQUIRED`
+ * (`core-runtime/src/budget-answer.ts`); the write-off is deferred, and
+ * nothing returns `GATE_NOT_APPROVED`. Neither is on this list, so this list
+ * is not every code nothing produces.
  * Asserted by name in `tests/commands/refusal-register.test.ts`, so a part
  * that closes one has to come here and take it off the list.
  * `AUTH_UNKNOWN_LOGIN` was on this list until a review pointed out that the

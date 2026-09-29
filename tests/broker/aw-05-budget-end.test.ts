@@ -19,10 +19,11 @@ import { enrol, grantTo } from '../commands/fixture.ts';
 import {
   appliedDetail,
   asPerson,
+  liveWork,
   seedSchedules,
   type Schedules,
 } from '../runtime/schedules-harness.ts';
-import { noDatabase, s, useBrokerWorld } from './broker-world.ts';
+import { call, noDatabase, s, useBrokerWorld, world } from './broker-world.ts';
 import {
   as,
   failingAt,
@@ -92,6 +93,28 @@ it('AW-05 one click ends the work at the budget stop and parks the task', async 
   expect(codeOf(await end(as(people.second, runId)))).toBe('TRANSITION_NOT_PERMITTED');
   expect(codeOf(await topUp(as(people.approver, runId)))).toBe('TRANSITION_NOT_PERMITTED');
   expect(await moneyOf(runId)).toEqual(after);
+});
+
+it('AW-05 ending keeps the spend to date counted and releases only the rest', async () => {
+  // A 500 ceiling holds one call priced at most 500; the second stops.
+  const work = await liveWork(s, 'aw05 end with spend', 500);
+  world.provider.mode('answer');
+  expect((await call(work)).ok).toBe(true);
+  expect((await call(work)).ok).toBe(false);
+  const { run_id: runId, spent_minor: spent } = await one<{ run_id: string; spent_minor: string }>(
+    `select run_id, spent_minor::text as spent_minor from public.budget_asks where lease_id = $1`,
+    [work.picked['leaseId']],
+  );
+  expect(Number(spent)).toBeGreaterThan(0);
+  const before = await moneyOf(runId);
+  expect(await end(as(people.second, runId))).toMatchObject({
+    ok: true,
+    value: { releasedMinor: 500 - Number(spent), spentMinor: Number(spent) },
+  });
+  expect(await moneyOf(runId)).toMatchObject({
+    envelope_actual: String(Number(before.envelope_actual) + Number(spent)),
+    cap_committed: String(Number(before.cap_committed) - 500 + Number(spent)),
+  });
 });
 
 it('AW-05 ending needs gate:decide, and a failed end applies nothing', async () => {

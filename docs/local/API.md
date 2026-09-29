@@ -1334,8 +1334,10 @@ business fact every member works against, and changing one is an authority
 change. The four-eyes band is stored and shown, and no first-slice operation
 applies it yet. `settings.set_four_eyes_threshold` writes it
 (`commands/settings-write.ts`), `settings.read` returns it, and no operation
-produces `FOUR_EYES_REQUIRED`. Its consumers, top-up (S2-04) and write-off
-(S2-10), are deferred (ROOT-FBFREEZE-RULINGS §3). The seed gives
+on this surface produces `FOUR_EYES_REQUIRED` yet. Its first consumer is
+AW-05's top-up at the budget stop (`core-runtime/src/budget-answer.ts`,
+[RUNTIME.md](RUNTIME.md)), built ahead of its route; write-off (S2-10) stays
+deferred (ROOT-FBFREEZE-RULINGS §3). The seed gives
 `settings:read` to `admin` and to `member`; the write stays with `admin`.
 
 **`settings.read` carries a `revision` on every setting.** It is the number
