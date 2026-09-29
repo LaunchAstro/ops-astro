@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The records package's one way in: tenancy, identity, authority, the records
-// engine, the task type, the inbox and the refusal register. It is the bottom
-// layer. It imports neither the runtime nor the command package, and every
-// other package reaches it through this file (`.dependency-cruiser.cjs`).
+// engine, the task type and the refusal register. It is the bottom layer. It
+// imports neither the runtime nor the command package, and every other package
+// reaches it through this file (`.dependency-cruiser.cjs`).
 //
 // Two names are renamed here because two modules use them for different
 // things: `Refusal` is the authority check's, and the identity layer's is

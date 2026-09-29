@@ -9,10 +9,6 @@
 // from the recipient's own row, delivery from the attempts, and access derived
 // on this read from the recipient's live grants. Read is not done, delivered is
 // not seen, and withheld is not gone.
-//
-// Raising on a state transition, clearing inside a decision and the
-// permission-checked list and count are later parts' (INB-1b to INB-1d); this
-// module is the record they call.
 
 import { effectiveGrants, type Scope, type Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -49,13 +45,11 @@ export interface RaiseInboxItem {
   readonly fact: { readonly kind: InboxFactKind; readonly id: string };
 }
 
-export interface InboxItem {
+interface InboxItemAxes {
   readonly id: string;
   readonly recipientPersonId: string;
-  readonly subjectRecordId: string;
   readonly reason: InboxReason;
   readonly factKind: InboxFactKind;
-  readonly factId: string;
   readonly owed: boolean;
   readonly workState: InboxWorkState;
   readonly raisedAt: Date;
@@ -63,7 +57,20 @@ export interface InboxItem {
   readonly closedByPersonId: string | null;
   readonly seenAt: Date | null;
   readonly lastDelivery: DeliveryState | null;
-  readonly access: InboxAccess;
+}
+
+/**
+ * The pointers come back only while the task is readable. A withheld or gone
+ * item says that it is owed and why, and names neither the task nor the fact,
+ * so an item on another client's task leaks no identifier of theirs.
+ */
+export type InboxItem =
+  | (InboxItemAxes & Pointers & { readonly access: 'readable' })
+  | (InboxItemAxes & { readonly access: 'withheld' | 'gone' });
+
+interface Pointers {
+  readonly subjectRecordId: string;
+  readonly factId: string;
 }
 
 /** Only a finished run asks nothing back; the schema holds the same rule. */
@@ -128,11 +135,12 @@ export async function recordDeliveryAttempt(
   return id;
 }
 
-/** A row as read: the item's axes, and the two facts access is derived from. */
-type ItemRow = Omit<InboxItem, 'access'> & {
-  readonly trashed: boolean;
-  readonly clientId: string | null;
-};
+/** A row as read: the axes, the pointers, and the two facts access is derived from. */
+type ItemRow = InboxItemAxes &
+  Pointers & {
+    readonly trashed: boolean;
+    readonly clientId: string | null;
+  };
 
 /**
  * Every item of one recipient, each axis read separately, access derived now.
@@ -151,7 +159,7 @@ export async function readInboxItems(
             a.seen_at as "seenAt",
             (select d.state from public.inbox_delivery_attempts d
               where d.business_id = i.business_id and d.item_id = i.id
-              order by d.observed_at desc, d.id desc limit 1) as "lastDelivery",
+              order by d.observed_seq desc limit 1) as "lastDelivery",
             r.deleted_at is not null as trashed, r.uuid_7 as "clientId"
        from public.inbox_items i
        join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
@@ -162,10 +170,12 @@ export async function readInboxItems(
   );
   const subjects = await recipientSubjects(tx, recipientPersonId);
   const items: InboxItem[] = [];
-  for (const { trashed, clientId, ...item } of rows) {
+  for (const { trashed, clientId, subjectRecordId, factId, ...axes } of rows) {
     // oxlint-disable-next-line no-await-in-loop
-    const access = await accessOf(tx, subjects, item.subjectRecordId, trashed, clientId);
-    items.push({ ...item, access });
+    const access = await accessOf(tx, subjects, subjectRecordId, trashed, clientId);
+    items.push(
+      access === 'readable' ? { ...axes, access, subjectRecordId, factId } : { ...axes, access },
+    );
   }
   return items;
 }
