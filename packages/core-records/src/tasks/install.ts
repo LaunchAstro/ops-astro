@@ -257,6 +257,31 @@ async function readStates(
 }
 
 /**
+ * The unslotted spine fields an installed task type does not have yet.
+ *
+ * An install made before a field joined the spine (the wayfinder fields,
+ * WF-1) is brought forward by adding the missing rows. Only unslotted fields
+ * are added this way: a slotted field would need its slot planned against the
+ * type's live fields, and a spine field that needs one arrives with its own
+ * migration. Nothing already there is read back or rewritten.
+ */
+async function addMissingSpineFields(tx: TenantQuery, taskTypeId: string): Promise<void> {
+  const rows = await tx.query<{ readonly key: string }>(
+    `select key from field_defs where business_id = $1 and record_type_id = $2`,
+    [tx.businessId, taskTypeId],
+  );
+  const present = new Set(rows.map((row) => row.key));
+  const missing = TASK_SPINE.filter((field) => !present.has(field.key));
+  const slotted = missing.filter((field) => field.slot !== null).map((field) => field.key);
+  if (slotted.length > 0) {
+    throw new Error(
+      `installTaskSpine: slotted spine fields missing on install: ${slotted.join(', ')}`,
+    );
+  }
+  await createFields(tx, taskTypeId, missing, []);
+}
+
+/**
  * The comment type, added beside a task type that is already installed.
  *
  * Its slots are planned against an empty `taken` because the type is new: a
@@ -296,6 +321,7 @@ export async function installTaskSpine(tx: TenantQuery): Promise<InstalledTaskSp
     // The one exception to "touch nothing": title and state's visibility, the
     // I09 ruling an install from before it never received.
     await reconcileVisibility(tx, existing);
+    await addMissingSpineFields(tx, existing);
     return {
       taskTypeId: existing,
       taskStateTypeId: stateTypeId,

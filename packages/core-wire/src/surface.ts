@@ -108,7 +108,15 @@ export type CommandName =
   // A person records what an unknown effect came to: one of three (T3d1).
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
-  | 'budget.write_off';
+  | 'budget.write_off'
+  // Wayfinder (WF-1): the map is a task of type `map` and its tickets are its
+  // subtasks, so these are task commands on the task collection. Retyping a
+  // ticket to or from grilling, prototype or map asks `decide` of the map's
+  // owner inside the handler, on top of the row's `write`.
+  | 'task.set_type'
+  | 'map.revise'
+  | 'map.scope'
+  | 'map.view';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -311,6 +319,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     board: 'id?|null',
     boardSection: 'id?|null',
     stateKey: 'any',
+    taskType: 'any',
   },
   'task.update': FIELDS,
   'task.complete': TARGET,
@@ -385,6 +394,16 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  'task.set_type': { ...TARGET, taskType: 'any' },
+  'map.revise': {
+    ...TARGET,
+    destination: 'any',
+    notes: 'any',
+    addFog: 'any',
+    addOutOfScope: 'any',
+    retire: 'any',
+  },
+  'map.scope': { ...TARGET, client: 'any' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -574,6 +593,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
   }),
+
+  // Wayfinder (WF-1). The agent's reach to these waits on the agent
+  // credential narrowed from a person's grants (API-2); until it lands an
+  // agent is refused at the surface, which is the retype rule's floor.
+  declare('task.set_type', 'write'),
+  declare('map.revise', 'write'),
+  declare('map.scope', 'write'),
+  read('map.view', TASK_COLLECTION, { authorisedOn: 'record' }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));

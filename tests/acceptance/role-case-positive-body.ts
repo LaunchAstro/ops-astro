@@ -19,6 +19,7 @@ import {
   ownLease,
   ownAppliedEffect,
   ownUnknownAttempt,
+  freshMap,
 } from './role-case-bodies.ts';
 
 export function createPositiveBody(
@@ -218,6 +219,16 @@ export function createPositiveBody(
         if (observed.code !== 'ok') throw new Error(`matrix: observe refused ${observed.code}`);
         return { body: { attemptId: applied.attemptId } };
       }
+      // Wayfinder (WF-1). An unguarded retype is `write` on the task; the
+      // three map rows need a task of type map, filed through the route.
+      case 'task.set_type':
+        return { body: { ...(await target()), taskType: 'build' } };
+      case 'map.revise':
+        return { body: { ...(await freshMap(context)), notes: 'the admin revises it' } };
+      case 'map.scope':
+        return { body: { ...(await freshMap(context)), client: randomUUID() } };
+      case 'map.view':
+        return { body: { recordId: (await freshMap(context)).recordId } };
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }

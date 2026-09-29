@@ -86,6 +86,21 @@ export async function approvableGate(
   return { gateId: detail['gateId'] as string, versionId: detail['versionId'] as string };
 }
 
+/** A map filed by the context's person, and the revision it stands at. */
+export async function freshMap(
+  context: BodyContext,
+): Promise<{ recordId: string; expectedRevision: number }> {
+  const made = await context.asPerson('task.create', {
+    fields: { title: 'a map for the matrix' },
+    taskType: 'map',
+  });
+  if (made.code !== 'ok') throw new Error(`matrix: map create refused ${made.code}`);
+  return {
+    recordId: String(made.body['recordId']),
+    expectedRevision: Number(made.body['revision']),
+  };
+}
+
 /** Proposed and approved by the context's person: a reservation on the queue. */
 export async function approvedReservationId(context: BodyContext): Promise<string> {
   const gate = await approvableGate(context);

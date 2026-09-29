@@ -111,6 +111,15 @@ export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.t
 export { TASK_STATE_TYPE_KEY, type MachineCategory } from './tasks/states.ts';
 export { purgeTrashedRecords, restoreBatch, trashSubtree } from './tasks/trash.ts';
 export {
+  isTaskType,
+  isWayfinderRecord,
+  OWNER_TYPES,
+  TASK_TYPES,
+  wayfinderFacts,
+  type TaskType,
+  type WayfinderFacts,
+} from './tasks/wayfinder.ts';
+export {
   advisoryLock,
   connect,
   connectAsAdmin,

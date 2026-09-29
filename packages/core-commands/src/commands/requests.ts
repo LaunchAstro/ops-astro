@@ -72,7 +72,21 @@ export type CommandRequest =
       readonly board?: string | null;
       readonly boardSection?: string | null;
       readonly stateKey?: string;
+      /** The ticket type (WF-1); `task` when absent. Checked by value in the handler. */
+      readonly taskType?: unknown;
     } & Envelope)
+  // Wayfinder (WF-1). Each operand is `any` on its row and checked by value
+  // in `wayfinder.ts`, so the refusal names the operand in its own words.
+  | ({ readonly command: 'task.set_type'; readonly taskType: unknown } & Targeted)
+  | ({
+      readonly command: 'map.revise';
+      readonly destination?: unknown;
+      readonly notes?: unknown;
+      readonly addFog?: unknown;
+      readonly addOutOfScope?: unknown;
+      readonly retire?: unknown;
+    } & Targeted)
+  | ({ readonly command: 'map.scope'; readonly client: unknown } & Targeted)
   | ({ readonly command: 'task.update'; readonly fields: FieldValues } & Targeted)
   | ({ readonly command: 'task.complete' } & Targeted)
   | ({ readonly command: 'task.reopen'; readonly reason: string } & Targeted)

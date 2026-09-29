@@ -207,6 +207,39 @@ Every field carries a write mode, slotted or not. The conformance check names
 each field with a null write mode (`every field has a non-null write mode`,
 `packages/core-records/src/records/conformance.ts`).
 
+## Wayfinder maps
+
+A map is a task whose `type` is `map`, and its tickets are its subtasks
+(WF-1). There is no map record type and no maps table. `type` is an unslotted
+task field owned by `task.set_type`; a create names it with the `taskType`
+operand and defaults to `task`. `map_owner` (the creator), `map_version` and
+`type_history` are system fields beside it. An install made before these
+fields existed gets them from `installTaskSpine`, which adds any unslotted
+spine field an installed task type is missing and touches nothing else.
+
+Migration `0032_wayfinder_maps.sql` holds what a map has that a task does not:
+
+| Table            | What it holds                                                                                    | Application role       |
+| ---------------- | ------------------------------------------------------------------------------------------------ | ---------------------- |
+| `map_components` | Destination, Notes, fog patches and Out of scope items, each with its own id; retired by version | select, insert, update |
+| `map_versions`   | One row per `map.revise`: the version number and the component ids it added or retired           | select, insert         |
+| `map_summaries`  | The summary read model: version, open and closed tickets, fog and Out of scope counts            | select                 |
+
+Decisions so far is not stored: `map.view` renders it from the map's completed
+tickets in closing order, so a decision lives once, on its ticket.
+
+`map_summaries` has one writer, the security definer trigger functions in 0032. A write to a task recounts the map it is, and the map its parent was
+before and after; a write to a component or a version recounts its map. So the
+counts move in the transaction that changed them, whichever command did it.
+
+A grant scoped to a map covers the map and its tickets. `prepare.ts` and
+`reads/dispatch.ts` ask the record's own scope first and, when that is
+refused, the map's (`coveringMap`); the first refusal stands when both fail. A
+map, its tickets and their threads never reach a client surface: a new share
+of one is refused `NOT_FOUND`, `task.set_audience` refuses making one client
+visible, and the shared-task read answers `NOT_FOUND` for one even under a
+read grant written outside the share path.
+
 ## What the tenancy proofs are
 
 The suites under `tests/tenancy/` each run against a database of their own,

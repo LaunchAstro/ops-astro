@@ -463,3 +463,53 @@ export interface ReceiptResult {
       | { readonly state: string; readonly heldMinor: number };
   };
 }
+
+/** One component of a map's body (WF-1): its own id, its kind and its text. */
+export interface MapComponentView {
+  readonly id: string;
+  readonly kind: 'destination' | 'notes' | 'fog' | 'out_of_scope';
+  readonly text: string;
+  /** An Out of scope item's closed ticket, where one exists. */
+  readonly ticketId: string | null;
+}
+
+/** A map as its view reads it: the task, its sections, its tickets and its versions. */
+export interface MapView {
+  readonly id: string;
+  readonly key: string | null;
+  readonly title: string | null;
+  readonly type: 'map';
+  readonly owner: string | null;
+  readonly client: string | null;
+  readonly version: number;
+  readonly destination: MapComponentView | null;
+  readonly notes: MapComponentView | null;
+  readonly fog: readonly MapComponentView[];
+  readonly outOfScope: readonly MapComponentView[];
+  /** Rendered from resolved tickets in closing order; stored once, on each ticket. */
+  readonly decisions: readonly {
+    readonly ticketId: string;
+    readonly key: string | null;
+    readonly title: string | null;
+    readonly gist: string | null;
+    readonly closedAt: string | null;
+  }[];
+  readonly tickets: readonly {
+    readonly id: string;
+    readonly key: string | null;
+    readonly title: string | null;
+    readonly type: string;
+    readonly state: string | null;
+  }[];
+  readonly versions: readonly {
+    readonly version: number;
+    readonly changed: readonly string[];
+    readonly actorId: string;
+    readonly at: string;
+  }[];
+}
+
+export interface MapViewResult {
+  readonly ok: true;
+  readonly map: MapView;
+}
