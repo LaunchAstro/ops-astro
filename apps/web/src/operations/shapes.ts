@@ -243,6 +243,21 @@ export interface TaskDetail extends TaskSummary {
    * list would print "no proposals" over a projection that was never consulted.
    */
   readonly proposals?: readonly ProposalLineage[];
+  /**
+   * The task's alerts, newest first (T2h). Optional for the reason `proposals`
+   * is: an absent key is an answer that did not carry them, not a task with none.
+   */
+  readonly alerts?: readonly TaskAlert[];
+}
+
+/** One alert as `task.read` and `task.queue` carry it (`core-runtime/src/alerts.ts`). */
+export interface TaskAlert {
+  readonly id: string;
+  readonly taskId: string;
+  readonly kind: string;
+  readonly waitingReason: string | null;
+  readonly causeId: string;
+  readonly raisedAt: string;
 }
 
 /**
