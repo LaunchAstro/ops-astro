@@ -19,7 +19,9 @@
 // through the store's own function, each read leaving a receipt. The seal and
 // the drill's half are in tests/ci/restore-drill.test.ts.
 import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -36,8 +38,14 @@ const job = async (): Promise<{
     dump: () => Promise<Buffer>;
     storeUrl: string;
     publicKey?: string;
+    heartbeat?: string;
+    send?: (address: string | undefined) => Promise<string>;
   }) => Promise<Record<string, unknown>>;
-  expireBackups: (options: { storeUrl: string }) => Promise<Record<string, unknown>>;
+  expireBackups: (options: {
+    storeUrl: string;
+    restoreHeartbeat?: string;
+    send?: (address: string | undefined) => Promise<string>;
+  }) => Promise<Record<string, unknown>>;
 }> => {
   const path = '../../scripts/ops/backup.mjs';
   return await import(/* @vite-ignore */ path);
@@ -667,6 +675,263 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
       expect(await archiveIds()).toStrictEqual(inWindow.toSorted());
       const expired = (await receipts()).filter((r) => r.action === 'backup expired');
       expect(expired.map((r) => r.archive_id)).toStrictEqual([old?.id]);
+    });
+  });
+
+  describe('S0-3 drill receipt', () => {
+    const operator = randomUUID();
+    const passed = {
+      outcome: 'passed',
+      stage: null,
+      target: 'throwaway container',
+      productionMajor: 17,
+      sourceMajor: 17,
+      targetMajor: 17,
+      archiveTakenAt: '2026-09-29T02:00:00.000Z',
+      tables: 12,
+      readAs: 'ops_astro_app',
+      timings: { fetch: 10, open: 20, start: 900, restore: 400, check: 30 },
+    };
+    const failed = {
+      ...passed,
+      outcome: 'failed',
+      stage: 'restore',
+      sourceMajor: null,
+      tables: null,
+      readAs: null,
+    };
+    const call = (r: typeof passed | typeof failed) =>
+      [
+        'select backups.record_drill($1, $2, $3, $4, $5, $6, $7, $8, $9)::text as last',
+        [
+          r.outcome,
+          r.stage,
+          operator,
+          r.archiveTakenAt,
+          r.productionMajor,
+          r.sourceMajor,
+          r.targetMajor,
+          r.tables,
+          JSON.stringify(r.timings),
+        ],
+      ] as [string, unknown[]];
+
+    it('only the restore identity records a drill, and a receipt is never changed or removed', async () => {
+      for (const [login, role] of [
+        [backupLogin, BACKUP],
+        [retentionLogin, RETENTION],
+      ] as const) {
+        // oxlint-disable-next-line no-await-in-loop
+        const client = await asRole(login.url, role);
+        try {
+          // oxlint-disable-next-line no-await-in-loop
+          expect(await attempt(client, ...call(passed)), role).toBe('42501');
+        } finally {
+          // oxlint-disable-next-line no-await-in-loop
+          await client.end();
+        }
+      }
+      const reader = await asRole(restoreLogin.url, RESTORE);
+      try {
+        for (const text of [
+          'select * from backups.drills',
+          'update backups.drills set outcome = outcome',
+          'delete from backups.drills',
+          `insert into backups.drills (outcome, operator, production_major, timings) values ('passed', gen_random_uuid(), 17, '{}')`,
+        ]) {
+          // oxlint-disable-next-line no-await-in-loop
+          expect(await attempt(reader, text), text).toBe('42501');
+        }
+        // A passed drill with a field missing is not a passed drill.
+        const [text, values] = call(passed);
+        expect(await attempt(reader, text, values.with(5, null))).toBe('23514');
+        expect(await attempt(reader, text, values.with(4, 18))).toBe('23514');
+      } finally {
+        await reader.end();
+      }
+      for (const text of [
+        'update backups.drills set outcome = outcome',
+        'delete from backups.drills',
+        'truncate backups.drills',
+      ]) {
+        // oxlint-disable-next-line no-await-in-loop
+        await expect(store.admin.execute(text), text).rejects.toThrow(/append-only/u);
+      }
+    });
+
+    it('a passed drill answers its own date as the last tested restore; a failed one answers the last passed', async () => {
+      const reader = await asRole(restoreLogin.url, RESTORE);
+      try {
+        const first = await reader.query<{ last: string }>(...call(passed));
+        const last = first.rows[0]?.last ?? '';
+        expect(Date.parse(last)).toBeGreaterThan(Date.now() - 60_000);
+        const second = await reader.query<{ last: string }>(...call(failed));
+        expect(second.rows[0]?.last).toBe(last);
+      } finally {
+        await reader.end();
+      }
+      const rows = await store.admin.execute<{
+        outcome: string;
+        stage: string | null;
+        actor: string;
+      }>('select outcome, stage, actor from backups.drills order by id');
+      expect(rows.slice(-2)).toStrictEqual([
+        { outcome: 'passed', stage: null, actor: restoreLogin.name },
+        { outcome: 'failed', stage: 'restore', actor: restoreLogin.name },
+      ]);
+    });
+
+    it('the operator receipt has every field and no other, and carries no key, credential, path or record data', async () => {
+      const path = '../../scripts/ops/restore-drill.mjs';
+      const drillModule = (await import(/* @vite-ignore */ path)) as {
+        drillAsOperator: (options: Record<string, unknown>) => Promise<unknown>;
+        RECEIPT_FIELDS: readonly string[];
+      };
+      const records = mkdtempSync(join(tmpdir(), 's0-3d-'));
+      const canary = `canary-${randomBytes(8).toString('hex')}`;
+      try {
+        const gate = {
+          ok: true as const,
+          operator: { personId: operator, business: 'made-up' },
+          records,
+          recordSignIn: async () => {},
+        };
+        for (const outcome of [passed, failed]) {
+          // oxlint-disable-next-line no-await-in-loop
+          const receipt = (await drillModule.drillAsOperator({
+            gate,
+            storeUrl: restoreLogin.url,
+            drill: async () => ({
+              event: 'restore drill',
+              at: new Date().toISOString(),
+              ...outcome,
+            }),
+          })) as Record<string, unknown>;
+          expect(Object.keys(receipt).toSorted()).toStrictEqual(
+            [...drillModule.RECEIPT_FIELDS].toSorted(),
+          );
+          expect(receipt).toMatchObject({
+            action: 'restore drill recorded',
+            outcome: outcome.outcome,
+            operator,
+            productionMajor: 17,
+            targetMajor: 17,
+          });
+          expect(typeof receipt['lastTestedRestore']).toBe('string');
+          const text = JSON.stringify(receipt);
+          for (const secret of [
+            restoreLogin.url,
+            restoreLogin.name,
+            records,
+            keys.privateKey,
+            canary,
+          ]) {
+            expect(text).not.toContain(secret);
+          }
+          expect(text).not.toMatch(/PRIVATE KEY|postgres:\/\/|\/Users\/|\/tmp\/|sha256/u);
+        }
+        const kept = readFileSync(join(records, 'deployments.jsonl'), 'utf8').trim().split('\n');
+        expect(kept).toHaveLength(2);
+        expect(kept.map((line) => (JSON.parse(line) as { action: string }).action)).toStrictEqual([
+          'restore drill recorded',
+          'restore drill recorded',
+        ]);
+      } finally {
+        rmSync(records, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('S0-3 restore staleness', () => {
+    const address = 'https://heartbeat.example.test/api/push/restore';
+    const expire = async (sent: string[]) =>
+      await (
+        await job()
+      ).expireBackups({
+        storeUrl: retentionLogin.url,
+        restoreHeartbeat: address,
+        send: async (to: string | undefined) => {
+          sent.push(to ?? '');
+          return 'sent';
+        },
+      });
+    const age = async (days: number) => {
+      await store.admin.execute('alter table backups.drills disable trigger drills_append_only');
+      try {
+        await store.admin.execute(
+          `update backups.drills set at = now() - make_interval(days => ${days})`,
+        );
+      } finally {
+        await store.admin.execute('alter table backups.drills enable trigger drills_append_only');
+      }
+    };
+
+    it('the daily upkeep pings the restore heartbeat only while a drill passed inside the window', async () => {
+      const [settings] = await store.admin.execute<{ days: number }>(
+        'select restore_days as days from backups.settings',
+      );
+      const window = settings?.days ?? 0;
+      expect(window).toBeGreaterThan(0);
+
+      await age(window - 1);
+      const fresh: string[] = [];
+      expect(await expire(fresh)).toMatchObject({ restoreFresh: true, restoreHeartbeat: 'sent' });
+      expect(fresh).toStrictEqual([address]);
+
+      await age(window + 1);
+      const stale: string[] = [];
+      expect(await expire(stale)).toMatchObject({
+        restoreFresh: false,
+        restoreHeartbeat: 'withheld',
+      });
+      expect(stale).toStrictEqual([]);
+    });
+
+    it('the retention identity learns only yes or no, and cannot record or read a drill', async () => {
+      const client = await asRole(retentionLogin.url, RETENTION);
+      try {
+        const answer = await client.query('select backups.restore_fresh() as fresh');
+        expect(Object.keys(answer.rows[0] ?? {})).toStrictEqual(['fresh']);
+        expect(typeof answer.rows[0]?.['fresh']).toBe('boolean');
+        expect(await attempt(client, 'select * from backups.drills')).toBe('42501');
+      } finally {
+        await client.end();
+      }
+      const backup = await asRole(backupLogin.url, BACKUP);
+      try {
+        expect(await attempt(backup, 'select backups.restore_fresh()')).toBe('42501');
+      } finally {
+        await backup.end();
+      }
+    });
+
+    it('a recorded backup pings the backup heartbeat; a failed one does not', async () => {
+      const sent: string[] = [];
+      const send = async (to: string | undefined) => {
+        sent.push(to ?? '');
+        return 'sent';
+      };
+      const { runBackup } = await job();
+      const beat = 'https://heartbeat.example.test/api/push/backup';
+      const ok = await runBackup({
+        dump: async () => Buffer.from('PGDMP made-up nightly'),
+        storeUrl: backupLogin.url,
+        publicKey: keys.publicKey,
+        heartbeat: beat,
+        send,
+      });
+      expect(ok).toMatchObject({ outcome: 'recorded', heartbeat: 'sent' });
+      const bad = await runBackup({
+        dump: async () => {
+          throw new Error('no');
+        },
+        storeUrl: backupLogin.url,
+        publicKey: keys.publicKey,
+        heartbeat: beat,
+        send,
+      });
+      expect(bad).toMatchObject({ outcome: 'failed' });
+      expect(sent).toStrictEqual([beat]);
     });
   });
 

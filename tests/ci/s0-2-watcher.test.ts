@@ -66,6 +66,7 @@ describe('S0-2 uptime check off the machine for staging and production', () => {
       ['staging', 'web', 'http', 'https://staging.example.test/'],
       ['staging', 'api', 'http', 'https://staging.example.test/api/health'],
       ['staging', 'backup', 'heartbeat', '-'],
+      ['staging', 'restore', 'heartbeat', '-'],
       ['-', 'error sink', 'http', 'https://example.test/_health/'],
     ]);
   });
@@ -74,7 +75,12 @@ describe('S0-2 uptime check off the machine for staging and production', () => {
     const { monitors } = plan({ ...BASE, OPS_WATCH_PRODUCTION_URL: 'https://ops.example.test' });
     expect(
       monitors.filter((m) => m.environment === 'production').map((m) => m.url ?? m.type),
-    ).toEqual(['https://ops.example.test/', 'https://ops.example.test/api/health', 'heartbeat']);
+    ).toEqual([
+      'https://ops.example.test/',
+      'https://ops.example.test/api/health',
+      'heartbeat',
+      'heartbeat',
+    ]);
   });
 
   it('an address the off-box watcher could not reach is refused, by name and without the value', () => {
