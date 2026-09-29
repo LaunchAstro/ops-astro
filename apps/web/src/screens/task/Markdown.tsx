@@ -15,9 +15,9 @@ type Block =
   | { readonly kind: 'list'; readonly ordered: boolean; readonly items: readonly string[] }
   | { readonly kind: 'paragraph'; readonly lines: readonly string[] };
 
-const HEADING = /^\s*#{1,4}\s+(.*)$/;
-const BULLET = /^\s*[-*+]\s+(.*)$/;
-const NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
+const HEADING = /^\s*#{1,4}\s+(.*)$/u;
+const BULLET = /^\s*[-*+]\s+(.*)$/u;
+const NUMBERED = /^\s*\d+[.)]\s+(.*)$/u;
 
 function blocksOf(source: string): readonly Block[] {
   const blocks: Block[] = [];
@@ -56,15 +56,15 @@ function blocksOf(source: string): readonly Block[] {
 /** `**bold**`, `` `code` `` and `[words](address)` inside one line; the rest is text. */
 function inline(text: string): ReactNode[] {
   const out: ReactNode[] = [];
-  const pattern = /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\([^)]*\)/g;
+  const pattern = /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\([^)]*\)/gu;
   let at = 0;
   for (const match of text.matchAll(pattern)) {
     const start = match.index;
     if (start > at) out.push(text.slice(at, start));
     const [, bold, code, words] = match;
-    if (bold !== undefined) out.push(<strong key={start}>{bold}</strong>);
-    else if (code !== undefined) out.push(<code key={start}>{code}</code>);
-    else out.push(words);
+    if (bold === undefined && code === undefined) out.push(words);
+    else if (code === undefined) out.push(<strong key={start}>{bold}</strong>);
+    else out.push(<code key={start}>{code}</code>);
     at = start + match[0].length;
   }
   if (at < text.length) out.push(text.slice(at));

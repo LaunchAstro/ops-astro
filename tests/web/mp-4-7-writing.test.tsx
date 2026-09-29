@@ -14,88 +14,23 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { briefFacts } from '../../apps/web/src/screens/task/brief-facts.ts';
 import { BriefField, DescriptionField } from '../../apps/web/src/screens/task/Writing.tsx';
 import { found, TASK_ID } from './task-page-stub.tsx';
-import { json, mount, page, press, typeInto, unmountAll } from './perspective-support.tsx';
+import { mount, page, unmountAll } from './perspective-support.tsx';
+import { BRIEF, field, textOf } from './writing-support.tsx';
 import type { Mounted } from '../surfaces/mount.tsx';
 
 afterEach(async () => {
   await unmountAll();
 });
 
-const BRIEF = [
-  '# Pacing fix',
-  '**Objective:** Hold the daily spend inside the monthly budget.',
-  '',
-  '## Done when',
-  'Spend tracks the line for seven days.',
-  'The report says so.',
-  '',
-  '## Notes',
-  'Nothing here is a fact.',
-  '**Escalation** — ask Ada before touching bids.',
-].join('\n');
-
 const pane = (view: Mounted, side: 'team' | 'agent'): Element | null =>
   view.find(`#perspective-panel-${side}`);
 
 const facts = (view: Mounted): string[] =>
   view.all('[data-writing="asked-for"] .sout__row').map((row) => row.textContent ?? '');
-
-/** A panel field against a server that records every write it is sent. */
-const field = (
-  answer: { status: number; body: unknown } = {
-    status: 200,
-    body: { recordId: TASK_ID, revision: 5 },
-  },
-) => {
-  const sent: Record<string, unknown>[] = [];
-  const saved: number[] = [];
-  const fetch = ((url: string | URL, init?: RequestInit) => {
-    const at = String(url);
-    if (!at.endsWith('/task/update')) throw new Error(`unrouted ${at}`);
-    sent.push(
-      JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Record<string, unknown>,
-    );
-    return Promise.resolve(json(answer.body, answer.status));
-  }) as unknown as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
-  const onSaved = () => {
-    saved.push(Date.now());
-  };
-  return { sent, saved, client, onSaved };
-};
-
-const settleWrites = async (): Promise<void> => {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-};
-
-const blur = async (view: Mounted, selector: string): Promise<void> => {
-  const target = view.host.querySelector(selector);
-  if (target === null) throw new Error(`nothing matches ${selector}`);
-  await act(() => {
-    target.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-  });
-};
-
-const pressWith = async (
-  view: Mounted,
-  selector: string,
-  init: KeyboardEventInit,
-): Promise<void> => {
-  const target = view.host.querySelector(selector);
-  if (target === null) throw new Error(`nothing matches ${selector}`);
-  await act(() => {
-    target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, ...init }));
-  });
-};
 
 describe('MP-4-7 two voices under their tabs', () => {
   it('the description reads on the Team side and the brief on the Agent side, each once', async () => {
@@ -153,7 +88,7 @@ describe('MP-4-7 the brief is always present', () => {
     expect(area?.getAttribute('placeholder')).toBe(
       'The pre-prompt an agent boots on — write it here.',
     );
-    expect((area as HTMLTextAreaElement | null)?.value).toBe('');
+    expect(textOf(view, 'textarea[data-writing="brief"]')).toBe('');
   });
 });
 
@@ -203,7 +138,8 @@ describe('MP-4-7 the description is sans everywhere; mono only on the Agent MD f
     'utf8',
   );
   const rule = (selector: string): string =>
-    new RegExp(`(?:^|\\n)${selector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? '';
+    new RegExp(`(?:^|\\n)${selector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`, 'u').exec(css)?.[1] ??
+    '';
 
   it('the description field and prose are sans; the brief field alone is mono', async () => {
     const { client, onSaved } = field();
@@ -230,116 +166,6 @@ describe('MP-4-7 the description is sans everywhere; mono only on the Agent MD f
     const view = await page('Proj-Verity-Pacing', found({ description: 'x', agentBrief: 'y' }));
     expect(view.find('[data-writing="description"] .tt__prose')).not.toBeNull();
     expect(view.find('[data-writing="brief"] .md.tt__prose')).not.toBeNull();
-  });
-});
-
-describe('MP-4-7 CS-4.24 write the description', () => {
-  it('a changed description is saved on leaving the field, against the revision it was read at', async () => {
-    const { sent, saved, client, onSaved } = field();
-    const view = await mount(
-      <DescriptionField
-        client={client}
-        recordId={TASK_ID}
-        revision={4}
-        value="old"
-        onSaved={onSaved}
-      />,
-    );
-    await typeInto(view, 'textarea[data-writing="description"]', 'Fix the pacing.');
-    await blur(view, 'textarea[data-writing="description"]');
-    await settleWrites();
-    expect(sent).toMatchObject([
-      { recordId: TASK_ID, expectedRevision: 4, fields: { description: 'Fix the pacing.' } },
-    ]);
-    expect(saved).toHaveLength(1);
-  });
-
-  it('Ctrl or Cmd and Enter saves; Escape puts the saved text back and sends nothing', async () => {
-    const { sent, client, onSaved } = field();
-    const view = await mount(
-      <DescriptionField
-        client={client}
-        recordId={TASK_ID}
-        revision={4}
-        value="old"
-        onSaved={onSaved}
-      />,
-    );
-    const at = 'textarea[data-writing="description"]';
-    await typeInto(view, at, 'typed');
-    await press(view, at, 'Escape');
-    expect((view.find(at) as HTMLTextAreaElement).value).toBe('old');
-    await blur(view, at);
-    await settleWrites();
-    expect(sent).toStrictEqual([]);
-    await typeInto(view, at, 'sent');
-    await pressWith(view, at, { key: 'Enter', metaKey: true });
-    await settleWrites();
-    expect(sent).toMatchObject([{ fields: { description: 'sent' } }]);
-  });
-
-  it('an emptied description is cleared, not saved as blank text; an unchanged one sends nothing', async () => {
-    const { sent, client, onSaved } = field();
-    const view = await mount(
-      <DescriptionField
-        client={client}
-        recordId={TASK_ID}
-        revision={4}
-        value="old"
-        onSaved={onSaved}
-      />,
-    );
-    const at = 'textarea[data-writing="description"]';
-    await blur(view, at);
-    await settleWrites();
-    expect(sent).toStrictEqual([]);
-    await typeInto(view, at, '  ');
-    await blur(view, at);
-    await settleWrites();
-    expect(sent).toMatchObject([{ fields: { description: null } }]);
-  });
-
-  it('a refused save keeps the typing and quotes the server', async () => {
-    const refusal = {
-      refused: true,
-      code: 'SCOPE_NOT_GRANTED',
-      names: ['task:write'],
-      fixes: ['Ask for write on this task.'],
-    };
-    const { saved, client, onSaved } = field({ status: 403, body: refusal });
-    const view = await mount(
-      <DescriptionField
-        client={client}
-        recordId={TASK_ID}
-        revision={4}
-        value="old"
-        onSaved={onSaved}
-      />,
-    );
-    const at = 'textarea[data-writing="description"]';
-    await typeInto(view, at, 'mine');
-    await blur(view, at);
-    await settleWrites();
-    expect((view.find(at) as HTMLTextAreaElement).value).toBe('mine');
-    expect(view.find('[role="alert"]')?.textContent).toContain('SCOPE_NOT_GRANTED');
-    expect(saved).toStrictEqual([]);
-  });
-});
-
-describe('MP-4-7 CS-4.23 write the agent brief', () => {
-  it('the brief field writes agent_brief, whole, on leaving it', async () => {
-    const { sent, saved, client, onSaved } = field();
-    const view = await mount(
-      <BriefField client={client} recordId={TASK_ID} revision={7} value={null} onSaved={onSaved} />,
-    );
-    await typeInto(view, 'textarea[data-writing="brief"]', BRIEF);
-    await blur(view, 'textarea[data-writing="brief"]');
-    await settleWrites();
-    expect(sent).toMatchObject([
-      { recordId: TASK_ID, expectedRevision: 7, fields: { agent_brief: BRIEF } },
-    ]);
-    expect(Object.keys((sent[0]?.['fields'] ?? {}) as object)).toStrictEqual(['agent_brief']);
-    expect(saved).toHaveLength(1);
   });
 });
 
