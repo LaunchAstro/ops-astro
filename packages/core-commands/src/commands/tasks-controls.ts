@@ -12,7 +12,7 @@
 // Neither writes the task record, which is why neither takes an
 // `expectedRevision`.
 
-import { subjectsOf, isUuid } from '../../../core-records/src/index.ts';
+import { isUuid, raiseDecision, subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import {
   cancelAndClassify,
@@ -224,6 +224,7 @@ export async function restartOnTask(
   const lapsed = await decideHeld(tx, context, found.taskId);
   if (lapsed !== null) return lapsed;
   await closeOpenEnvelope(tx, found.taskId);
+  await raiseDecision(tx, { taskId: found.taskId, gateId: result.value.gateId });
   return applied(found.taskId, null, {
     lineageId: result.value.lineageId,
     restartsLineageId: result.value.restartsLineageId,

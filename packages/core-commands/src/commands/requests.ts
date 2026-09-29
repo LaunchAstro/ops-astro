@@ -85,6 +85,8 @@ export type CommandRequest =
       readonly audience: string;
       /** `note`, `client` or `system`. A person writing a comment writes a note. */
       readonly commentType?: string;
+      /** The people the comment names, by person id. */
+      readonly mentions?: unknown;
     } & Targeted)
   // A proposal is a record beside the task and targets it, so it names the
   // revision it was written against like every other targeted command. What it
