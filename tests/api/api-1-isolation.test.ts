@@ -30,15 +30,17 @@ interface Heard {
   readonly body: unknown;
 }
 
-type Name = 'client1' | 'client2' | 'bravo';
+type Name = 'client1' | 'client2' | 'bravo' | 'other';
+/** Whose delegated work a task, title, lease or reservation is: the agent's own, or the second Alpha person's. */
+type Owner = 'delegated' | 'other';
 
-/** Every task, title, business or person any answer names, refusals included, but the caller's own. */
+/** Every task, title, lease, reservation, business or person any answer names, refusals included, but the caller's own. */
 function foreign(heard: readonly Heard[], own: Name | null): string[] {
   const named = heard
     .flatMap((one) =>
       Array.from(
         JSON.stringify(one.body).matchAll(
-          /<(client1|client2|bravo) (?:task|title|business|person)>/gu,
+          /<(client1|client2|bravo|other) (?:task|title|lease|reservation|business|person)>/gu,
         ),
       ),
     )
@@ -149,7 +151,7 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
       await grantTo(tx, clientOne, 'read', { kind: 'record', id: task.client1 });
       await grantTo(tx, clientTwo, 'read', { kind: 'record', id: task.client2 });
     });
-    ({ agentToken, delegation, delegatedTask } = await pickUp(alphaToken));
+    ({ agentToken, delegation, delegatedTask } = await pickUp(alphaToken, 'delegated'));
     const otherPerson = await enrol(fixture.db.app, fixture.business, 'other-decider');
     foreignPersonId = otherPerson.personId;
     labels.set(otherPerson.personId, '<other person>').set(otherPerson.actorId, '<other person>');
@@ -163,7 +165,7 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
     // Their held reservation, for the agent's own purpose; and their live lease, held
     // by a second agent under their delegation for that same purpose, so only the
     // delegation's one task tells the two agents' leases apart.
-    foreignReservation = await approve(otherToken);
+    foreignReservation = await approve(otherToken, 'other');
     const secondAgent = `agent-${randomUUID()}`;
     await fixture.db.app.withBusiness(fixture.business, async (tx) => {
       const actorId = randomUUID();
@@ -183,19 +185,18 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
         ],
       );
     });
-    const theirs = await pickUp(otherToken, secondAgent);
+    const theirs = await pickUp(otherToken, 'other', secondAgent);
     foreignTaskId = theirs.delegatedTask;
     foreignLease = { leaseId: theirs.leaseId, fence: theirs.fence };
   }, 120_000);
 
   /** An Alpha person proposes and approves one task: its reservation, held for pickup. */
-  async function approve(personToken: string): Promise<string> {
+  async function approve(personToken: string, owner: Owner): Promise<string> {
     const asPerson = async (path: string, body: Record<string, unknown>) =>
       (await post(api, `/api/b/alpha${path}`, body, authorised(personToken))).body;
-    const made = await asPerson('/task/create', {
-      operationId: randomUUID(),
-      fields: { title: `made-up delegated ${randomUUID()}` },
-    });
+    const title = `made-up ${owner} ${randomUUID()}`;
+    const made = await asPerson('/task/create', { operationId: randomUUID(), fields: { title } });
+    labels.set(String(made['recordId']), `<${owner} task>`).set(title, `<${owner} title>`);
     const proposed = await asPerson('/task/propose', {
       operationId: randomUUID(),
       recordId: made['recordId'],
@@ -215,25 +216,25 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
     });
     const reservationId = detail(decided)['reservationId'];
     if (typeof reservationId !== 'string') throw new Error(JSON.stringify(decided));
-    labels.set(reservationId, '<reservation>');
+    labels.set(reservationId, `<${owner} reservation>`);
     return reservationId;
   }
 
   /** An Alpha person approves one task, and an agent picks it up under that person's delegation. */
-  async function pickUp(personToken: string, agentSubject = fixture.agent.subject) {
+  async function pickUp(personToken: string, owner: Owner, agentSubject = fixture.agent.subject) {
     const token = await tokenFor(agentSubject);
     const picked = await post(
       api,
       '/api/a/b/alpha/task/pickup',
-      { operationId: randomUUID(), reservationId: await approve(personToken) },
+      { operationId: randomUUID(), reservationId: await approve(personToken, owner) },
       authorised(token),
     );
     if (picked.status !== 200) throw new Error(JSON.stringify(picked));
     const taskId = String(detail(picked.body)['taskId']);
-    labels.set(taskId, '<delegated task>');
+    labels.set(taskId, `<${owner} task>`);
     const held = detail(picked.body);
     const leaseId = String(held['leaseId']);
-    labels.set(leaseId, '<lease>');
+    labels.set(leaseId, `<${owner} lease>`);
     return {
       agentToken: token,
       delegation: String(held['credential']),
@@ -440,7 +441,17 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
           new Set(heard.map((one) => canonical(one))).size,
           `${where} ${JSON.stringify(heard)}`,
         ).toBe(1);
-        expect(foreign(heard, null), where).toEqual([]);
+        // The queue is the business's outstanding work, which any agent login may read by
+        // contract (agent-envelope.ts; minimum contract 8.2 case 9): the other person's
+        // queued work shows there as ids, purpose and amount, never their title or their
+        // person, and nothing of another business or client. Every other answer names none.
+        const queued = row.command === 'task.queue' && businessKey === 'alpha';
+        expect(foreign(heard, null), where).toEqual(queued ? ['other'] : []);
+        if (queued) {
+          const seen = JSON.stringify(heard);
+          expect(seen, where).toContain('<other reservation>');
+          expect(seen, where).not.toMatch(/<other (?:title|person|lease)>|<delegated title>/u);
+        }
         if (target[row.command]?.(other) === null && businessKey === 'alpha') {
           expect(heard[0]?.status, where).toBe(200);
           continue;
