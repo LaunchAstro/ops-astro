@@ -109,3 +109,38 @@ describe('MP-4-16 a change on the page appears at once', () => {
 describe('MP-4-16 visual match', () => {
   it.todo('matches the mockup at 1480, 900 and 390, light and dark (MP-1-7 harness)');
 });
+
+describe('MP-4-16 who: the page names whoever made each change', () => {
+  const NAMED = [
+    {
+      at: at(60),
+      actorId: 'actor-ada',
+      actorName: 'Ada Lovelace',
+      actorKind: 'person',
+      operation: 'task.create',
+    },
+    {
+      at: at(30),
+      actorId: 'actor-bot',
+      actorName: null,
+      actorKind: 'agent',
+      operation: 'task.set_adhoc',
+    },
+    {
+      at: at(10),
+      actorId: 'actor-sys',
+      actorName: null,
+      actorKind: 'worker',
+      operation: 'task.update',
+    },
+  ];
+
+  it('a person by name, an agent and the system in words, and never an identifier', async () => {
+    const view = await page('Proj-Verity-Pacing', found({ history: NAMED }));
+    expect(head(view)).toBe('10 minutes ago · The system · Details changed');
+    const trail = rows(view).join(' | ');
+    expect(trail).toContain('Ada Lovelace');
+    expect(trail).toContain('An agent');
+    expect(view.find('[data-history]')?.parentElement?.textContent).not.toMatch(/actor-/u);
+  });
+});
