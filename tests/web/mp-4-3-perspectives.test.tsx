@@ -121,6 +121,17 @@ const press = async (view: Mounted, selector: string, key: string): Promise<void
   });
 };
 
+/** A keystroke into a textarea, through the element's own value setter. */
+const typeInto = async (view: Mounted, selector: string, text: string): Promise<void> => {
+  const field = view.host.querySelector(selector);
+  if (field === null) throw new Error(`nothing matches ${selector}`);
+  const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')?.set;
+  await act(() => {
+    setter?.call(field, text);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+};
+
 describe('MP-4-3 Team counts unfinished subtasks', () => {
   it('counts live steps not yet done; a done or retired step is not counted', () => {
     expect(counts({}).team).toBe(0);
@@ -286,12 +297,7 @@ describe('MP-4-3 counts update at once after a status or message change', () => 
     );
     await tick();
     expect(badge(view, 'agent')).toBeNull();
-    const field = view.find('#comment-body') as HTMLTextAreaElement;
-    const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value')?.set;
-    await act(async () => {
-      setter?.call(field, 'Please go ahead.');
-      field.dispatchEvent(new Event('input', { bubbles: true }));
-    });
+    await typeInto(view, '#comment-body', 'Please go ahead.');
     await view.click('[data-comment="post"]');
     await tick();
     expect(badge(view, 'agent')).toBe('2');
