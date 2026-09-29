@@ -575,6 +575,16 @@ from a person who holds both is refused both, `DELEGATION_EXCLUDES_OPERATION`,
 because neither is in the agent's operation set. The install defaults (the
 owner and administrators) are C32's role presets.
 
+## Legal documents (C81)
+
+Drafting, approving and publishing a legal document's version are each
+`privacy:manage`, the key C55's privacy incident uses, and none is ever an
+agent's: an agent under a live delegation from a holder is refused
+`DELEGATION_EXCLUDES_OPERATION`. Publishing takes only a version approved as
+the bytes it holds (standing gate 5); approval and publication each lock the
+version's row and decide from what they read under it. The public read of a
+published version asks no key: it is published.
+
 ## Revocation
 
 `grant.revoke` and `delegation.revoke` are the ledger's "existing

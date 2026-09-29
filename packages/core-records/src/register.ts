@@ -354,6 +354,40 @@ const ROWS = [
     meaning: 'The sign-in provider answered malformed, oversized, slowly or not at all',
     source: 'C59 TR-SEC4R-5',
   },
+  // C81, the legal documents. A version is written once, approved as the
+  // bytes the approver read, and published only once that exact version is
+  // approved (standing gate 5). Each is a state the caller can fix by
+  // drafting or approving, so 409; a foreign or made-up version is NOT_FOUND.
+  {
+    code: 'LEGAL_VERSION_EXISTS',
+    status: 409,
+    meaning: 'This document already has this version; a change is a new version',
+    source: 'C81 CS-16.20',
+  },
+  {
+    code: 'LEGAL_DIGEST_MISMATCH',
+    status: 409,
+    meaning: 'The approval names bytes other than this version holds',
+    source: 'C81 TR-S-B2-2',
+  },
+  {
+    code: 'LEGAL_ALREADY_APPROVED',
+    status: 409,
+    meaning: 'This version is already approved',
+    source: 'C81 CS-16.20',
+  },
+  {
+    code: 'LEGAL_NOT_APPROVED',
+    status: 409,
+    meaning: 'Only a version the owner approved can be published',
+    source: 'C81 TR-S-B2-2',
+  },
+  {
+    code: 'LEGAL_ALREADY_PUBLISHED',
+    status: 409,
+    meaning: 'This version is already published',
+    source: 'C81 CS-16.20',
+  },
 
   // Delegation and lease, T1's pickup and handback. No table yet.
   {

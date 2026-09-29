@@ -221,6 +221,20 @@ export type CommandRequest =
       readonly affected: unknown;
       readonly informationKinds: unknown;
     } & Envelope)
+  // C81: a legal document's version. The draft's fields and the approval's
+  // digest are checked by the handler in its own words (`legal-write.ts`).
+  | ({
+      readonly command: 'legal.draft_version';
+      readonly document: unknown;
+      readonly version: unknown;
+      readonly body: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'legal.approve_version';
+      readonly versionId: string;
+      readonly digest: unknown;
+    } & Envelope)
+  | ({ readonly command: 'legal.publish_version'; readonly versionId: string } & Envelope)
   // The support controls. Revocation names the row it revokes; the time is the
   // server's. Cancel and restart name the task and the lineage on it, so the
   // task is where the work-control authority is asked and the lineage is

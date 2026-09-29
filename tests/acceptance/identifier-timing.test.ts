@@ -258,6 +258,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
       delegationId,
     }));
+    byAda('legal.approve_version', 'versionId', f.legalVersionId, (versionId) => ({
+      versionId,
+      digest: '0'.repeat(64),
+    }));
+    byAda('legal.publish_version', 'versionId', f.legalVersionId, (versionId) => ({ versionId }));
     const own = await w.propose('a lineage the timing cells name');
     byAda('task.cancel', 'lineageId', f.proposal.lineageId, (lineageId) => ({
       recordId: own.task.id,
@@ -318,11 +323,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 33 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 35 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(33);
-    expect(names).toHaveLength(33);
+    expect(new Set(names).size, 'distinct operations').toBe(35);
+    expect(names).toHaveLength(35);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

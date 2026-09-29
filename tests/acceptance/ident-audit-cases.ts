@@ -77,6 +77,7 @@ export interface IdentWorld {
     picked: Picked;
     batchId: string;
     grantId: string;
+    legalVersionId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
@@ -228,6 +229,16 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
     [world.bravo, world.bea.personId],
   );
 
+  // A drafted legal document version of bravo's (C81), written directly: the
+  // alpha caller is handed its id and must not learn it exists.
+  const bravoLegal = await world.db.admin.execute<{ readonly id: string }>(
+    `insert into public.legal_document_versions
+       (business_id, id, document, version, body, body_digest, drafted_by_actor)
+     values ($1, gen_random_uuid(), 'breach-runbook', '1.0', 'A bravo draft.', '', $2)
+     returning id`,
+    [world.bravo, world.bea.actorId],
+  );
+
   // alpha's second agent, with a live lease of its own.
   const secondAgent = await enrolAgent(world.db, world.alpha, world.ada.actorId as string);
   const otherPicked = await pickUpAs(world.ada, secondAgent, 'the second agent’s work', 'alpha');
@@ -256,6 +267,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       picked: bravoPicked,
       batchId: String(trashed['batchId']),
       grantId: String(bravoGrants[0]?.id),
+      legalVersionId: String(bravoLegal[0]?.id),
     },
     otherPicked,
     rhea,

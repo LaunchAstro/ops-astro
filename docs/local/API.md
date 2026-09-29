@@ -1514,3 +1514,32 @@ as a digest; the words are in `privacy_incidents` and nowhere else.
 Held until their parts land (each placed here as its owner's read, never a
 second list): unattended items (INB-1), security alerts (S0-2), the last tested
 restore (S0-3), the watcher's status (C34) and the error-sink link.
+
+## Legal documents (C81)
+
+Each document is a run of versions: `client-terms`, `privacy-policy` (with its
+collection notices), `data-handling` and `breach-runbook`. Three tracked
+actions, each under `privacy:manage` and never an agent's:
+
+- `legal.draft_version` (`legal document version drafted`) takes
+  `{ operationId, document, version, body }`: a version `major.minor` and 1 to
+  200,000 characters of words. Its detail is `{ versionId, digest }`, the
+  digest being the SHA-256 of the words as stored. A version a document already
+  has is `LEGAL_VERSION_EXISTS` 409: a change is a new version.
+- `legal.approve_version` (`legal document version approved`) takes
+  `{ operationId, versionId, digest }`. The digest is of the words the approver
+  read; other words are `LEGAL_DIGEST_MISMATCH` 409, and a second approval is
+  `LEGAL_ALREADY_APPROVED` 409.
+- `legal.publish_version` (`legal document published`) takes
+  `{ operationId, versionId }` and publishes only an approved version:
+  otherwise `LEGAL_NOT_APPROVED` 409, and a second time
+  `LEGAL_ALREADY_PUBLISHED` 409.
+
+A bad field is `FIELD_VALUE_INVALID` 422 naming the field alone. A version of
+another business and a made-up one are both `NOT_FOUND` 404.
+
+`GET /api/public/b/<businessKey>/legal/<document>` needs no sign-in. It answers
+the version of `client-terms`, `privacy-policy` or `data-handling` published
+most recently, as `{ document, version, body, digest, publishedAt }`. No such
+business, nothing published, the breach runbook and any other name all answer
+`{ code: 'NOT_FOUND' }` 404.

@@ -83,6 +83,12 @@ const UNREACHED: Readonly<Record<string, string>> = {
      select business_id, gen_random_uuid(), 'restricted calls seed', now(), 'seed', 'nobody',
             array['other'], id
        from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C81: no journey drafts a legal document version, so one is written here.
+  'public.legal_document_versions': `insert into public.legal_document_versions
+       (business_id, id, document, version, body, body_digest, drafted_by_actor)
+     select business_id, gen_random_uuid(), 'breach-runbook', '0.1', 'restricted calls seed', '',
+            id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
   'public.record_links': `insert into public.record_links
        (business_id, id, link_type, from_record_id, to_record_id)
      select a.business_id, gen_random_uuid(), 'restricted_calls', a.id, b.id

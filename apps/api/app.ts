@@ -37,10 +37,16 @@ import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
   EXPIRED_FIXES,
+  PUBLIC_LEGAL_DOCUMENTS,
+  readPublishedLegal,
   recordBodyRefusal,
   statusOf,
 } from '../../packages/core-records/src/index.ts';
-import type { Database, VerifiedSubject } from '../../packages/core-records/src/index.ts';
+import type {
+  Database,
+  LegalDocument,
+  VerifiedSubject,
+} from '../../packages/core-records/src/index.ts';
 import {
   agentAnswer,
   enrolSecondFactor,
@@ -55,6 +61,7 @@ import {
   COMMAND_SURFACE,
   DELEGATION_HEADER,
   PREFIX,
+  PUBLIC_PREFIX,
   pathOf,
 } from '../../packages/core-wire/src/index.ts';
 import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
@@ -310,6 +317,7 @@ export function createApi(options: ApiOptions): Hono {
   }
   const factors = options.factors;
   if (factors !== undefined) mountFactorRoutes(api, options, factors);
+  mountPublicLegal(api, options);
 
   return api;
 }
@@ -380,6 +388,32 @@ async function follow(
     clearInterval(timer);
     unsubscribe();
   }
+}
+
+/**
+ * A business's published legal documents (C81), read with no sign-in: the
+ * version published most recently, its words and their digest. No business,
+ * nothing published, the breach runbook (the operators' own) and a name that
+ * is no document are one answer, so the address tells an outsider nothing
+ * about which businesses exist or what they have drafted.
+ */
+function mountPublicLegal(api: Hono, options: ApiOptions): void {
+  const PUBLIC: ReadonlySet<string> = new Set(PUBLIC_LEGAL_DOCUMENTS);
+  api.get(`${PUBLIC_PREFIX}:businessKey/legal/:document`, async (context) => {
+    const document = context.req.param('document');
+    const businessId = PUBLIC.has(document)
+      ? await options.resolveBusiness(context.req.param('businessKey'))
+      : undefined;
+    const published =
+      businessId === undefined
+        ? undefined
+        : await options.database.withBusiness(
+            businessId,
+            async (tx) => await readPublishedLegal(tx, document as LegalDocument),
+          );
+    if (published === undefined) return context.json({ code: 'NOT_FOUND' }, 404);
+    return context.json({ ...published, publishedAt: published.publishedAt.toISOString() }, 200);
+  });
 }
 
 /**

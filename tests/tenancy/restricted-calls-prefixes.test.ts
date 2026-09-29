@@ -113,6 +113,14 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     information_kinds: ['other'],
     recorded_by_actor: randomUUID(),
   },
+  // 0034 (C81): no journey drafts a legal document version.
+  'public.legal_document_versions': {
+    document: 'breach-runbook',
+    version: '0.1',
+    body: 'restricted calls seed',
+    body_digest: '',
+    drafted_by_actor: randomUUID(),
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

@@ -24,7 +24,7 @@ export const CASE = {
 } as const;
 
 /**
- * The thirteen operations that name no identifier, each with a minimal valid body.
+ * The fourteen operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -54,9 +54,17 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['session.capabilities', {}],
   ['access.read', {}],
   ['operations.read', {}],
+  [
+    'legal.draft_version',
+    {
+      document: 'breach-runbook',
+      version: '9.0',
+      body: 'A made-up runbook drafted while bravo is watched.',
+    },
+  ],
 ];
 
-/** The sixteen identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The eighteen identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -76,6 +84,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
   'budget.write_off': ['attemptId', 'control'],
+  'legal.approve_version': ['versionId', 'control'],
+  'legal.publish_version': ['versionId', 'control'],
 };
 
 /**

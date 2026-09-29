@@ -282,6 +282,17 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
             reason: 'identifier negatives',
           })),
         ],
+        [
+          'legal.approve_version',
+          pair('versionId', f.legalVersionId, (versionId) => ({
+            versionId,
+            digest: '0'.repeat(64),
+          })),
+        ],
+        [
+          'legal.publish_version',
+          pair('versionId', f.legalVersionId, (versionId) => ({ versionId })),
+        ],
       );
       for (const [op, { operand, forms }] of cells) {
         // eslint-disable-next-line no-await-in-loop
