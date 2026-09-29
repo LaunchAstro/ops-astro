@@ -7,3 +7,8 @@ evidence check accepts only evidence bound to the exact head.
 
 This file never merges. The pull request that carries it is closed when the
 rehearsal ends.
+
+## Slice A
+
+A docs-only candidate on its own slice branch, merged into the batch by the
+integrator.
