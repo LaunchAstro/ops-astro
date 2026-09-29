@@ -414,6 +414,15 @@ another client's work or in another business, never moves it; no refusal
 carries it. `tests/reads/mp-5-board-isolation.test.ts` holds it, across three
 crossings.
 
+Each row `task.board` answers is the task's summary with what the Projects
+board's cells draw (MP-5-8): `rank`, `stage` and `clientSet`. The stage and
+the client mark are the stored slots. The rank is to be worked out at read
+over the open tasks in the caller's scope, the same scope the one grant read
+admitted the board with, so a task's #N on the board is its #N on its page;
+its marks and pool are SL08's U15 (MP-4-9), not on main yet, so every row is
+answered unranked until they land. `tests/reads/mp-5-8-board-columns.test.ts`
+reads the stage and client mark back and holds the crossings.
+
 ## The operations L2 made possible
 
 Four rows joined the surface when L2's model modules landed, and one came off
