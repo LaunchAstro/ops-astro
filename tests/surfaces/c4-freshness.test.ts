@@ -30,6 +30,11 @@ const said = (status: Partial<LiveStatus>) => freshnessOf({ ...healthy, ...statu
 describe('C4 CS-1.1 the freshness marker reports live, with the age of the newest change', () => {
   it('a healthy stream and a good read are live, aged from the newest change in scope', () => {
     expect(said({})).toEqual({ state: 'live', age: '2 min ago' });
+    // 2 min 40 s is still 2 min: an age never runs ahead of itself.
+    expect(said({ changedAt: at('2026-09-29T00:42:20Z') })).toEqual({
+      state: 'live',
+      age: '2 min ago',
+    });
     expect(said({ changedAt: at('2026-09-29T00:44:40Z') })).toEqual({
       state: 'live',
       age: 'just now',
