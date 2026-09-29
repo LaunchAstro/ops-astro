@@ -25,6 +25,9 @@ export interface EmptyProps {
   /** The third tier, for a hint that is not the reason. */
   readonly hint?: string;
   readonly action?: ReactNode;
+  /** MP-1-3 stub: declared for the red tests, not drawn yet. */
+  readonly look?: 'block' | 'inline' | 'row' | undefined;
+  readonly onClearFilters?: (() => void) | undefined;
 }
 
 /** Voice one: no rows. */
