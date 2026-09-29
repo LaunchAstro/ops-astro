@@ -3,7 +3,7 @@
 // T2e's races, over a real database: the second approval against a first
 // approver's revocation, a first approval that commits while the second is in
 // flight, and a late first approver whose grant is mid-revocation. Sol's proofs
-// on #130 (80182bf, 40da5a1) are moved here unchanged from t2e-top-up.test.ts.
+// on #130 (94c9cde, d82fbca) are moved here unchanged from t2e-top-up.test.ts.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
