@@ -36,6 +36,7 @@ export {
 export {
   checkAuthority,
   effectiveGrants,
+  grantFingerprint,
   revokeGrant,
   subjectsOf,
   type Action,

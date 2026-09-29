@@ -125,6 +125,29 @@ export async function effectiveGrants(
 }
 
 /**
+ * Every grant the subjects hold right now, as one opaque value. It changes
+ * whenever one of them is issued, revoked or expires, or loses the parent it
+ * was delegated under, so a cache keyed by it never outlives the authority it
+ * was worked out under (C4 rollup scope).
+ */
+export async function grantFingerprint(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+): Promise<string> {
+  const [row] = await tx.query<{ readonly fingerprint: string }>(
+    `${EFFECTIVE}
+     select encode(sha256(convert_to(coalesce(string_agg(e.id::text, ',' order by e.id), ''),
+                                     'UTF8')), 'hex') as fingerprint
+       from effective e
+      where exists (select 1 from unnest($1::text[], $2::uuid[]) as s (kind, id)
+                     where s.kind = e.subject_kind and s.id = e.subject_id)`,
+    [subjects.map((subject) => subject.kind), subjects.map((subject) => subject.id)],
+  );
+  if (row === undefined) throw new Error('grant fingerprint answered no row');
+  return row.fingerprint;
+}
+
+/**
  * The check a serving operation makes. A denied read says so with a code and a
  * fix; it never comes back as an empty list, because empty and denied are
  * different answers and only one of them is honest here.
