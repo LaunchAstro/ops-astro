@@ -237,7 +237,8 @@ export async function load(
   // theme (the drift mode's made-up pages) is its caller's to prove: the
   // app-only drift mode compares it with its light drawing.
   const drawn = await page.evaluate(
-    () => document.body.dataset['theme'] ?? document.documentElement.dataset['theme'] ?? null,
+    // oxlint-disable-next-line unicorn/prefer-dom-node-dataset -- null, not undefined, when unmarked: the form REV155P3C's test reads
+    () => document.body.dataset['theme'] ?? document.documentElement.getAttribute('data-theme'),
   );
   if (drawn !== null && drawn !== side.theme) {
     throw new Error(`visual: ${url} drew in ${String(drawn)}, not ${side.theme}`);
