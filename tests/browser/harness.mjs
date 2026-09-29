@@ -41,7 +41,9 @@ export const API = process.env.API_URL;
  * taken over. The locks go when this process exits.
  */
 function claimPort(url) {
-  const port = new URL(url).port;
+  const parsed = new URL(url);
+  const fallback = parsed.protocol === 'https:' ? '443' : '80';
+  const port = parsed.port === '' ? fallback : parsed.port;
   const lock = `${root}.local/ports/${port}.lock`;
   mkdirSync(`${root}.local/ports`, { recursive: true });
   try {
