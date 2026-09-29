@@ -9,9 +9,8 @@
 // capability-map discovery, which was not ported (product issue 55):
 // `reachableBy` answers which commands a principal may call, and through which
 // surface.
-//
-// It reads no record and writes nothing at run time. A row holds names, keys
-// and addresses with the business left as `:businessKey`, never a value.
+// It reads no record and writes nothing at run time; a row holds names, keys
+// and addresses with the business left as `:businessKey`.
 
 import {
   COMMAND_SURFACE,
@@ -21,12 +20,11 @@ import {
   type CommandName,
 } from './surface.ts';
 
-/** A place in the app that calls a command: the route that draws it, and the file. */
+/** A place in the app that calls a command. */
 export interface UiUse {
   readonly command: string;
   readonly route: string;
-  /** Relative to `apps/web/src`. */
-  readonly file: string;
+  readonly file: string; // relative to apps/web/src
 }
 
 /** What a surface asks before it runs a command. The same on every surface, or parity fails. */
@@ -61,16 +59,10 @@ export interface Exempt {
 }
 
 export const VIEW_ONLY_EXEMPT: readonly Exempt[] = [
-  {
-    action: 'navigate',
-    reason: 'changes the address only; the page it opens reads through its own command',
-  },
+  { action: 'navigate', reason: 'changes the address; the page reads through its own command' },
   { action: 'focus', reason: 'moves keyboard focus; nothing is read or written' },
   { action: 'scroll', reason: 'moves the view; nothing is read or written' },
-  {
-    action: 'open or close a dock or drawer',
-    reason: 'view state; its contents read through their own command',
-  },
+  { action: 'open or close a dock', reason: 'view state; its contents read through a command' },
   { action: 'switch a tab', reason: 'view state; the tab reads through its own command' },
 ];
 
@@ -118,7 +110,6 @@ export function buildCatalogue(
   });
 }
 
-/** What each surface reaches, command by command, and the profile it asks there. */
 export interface Surfaces {
   readonly api: ReadonlyMap<string, Profile>;
   readonly cli: ReadonlyMap<string, Profile>;
@@ -160,26 +151,18 @@ export function checkParity(
 ): string[] {
   const failures: string[] = [];
   const owned = new Map(declarations.map((one) => [one.name as string, profileOf(one)]));
-  const named = new Set(rows.map((row) => row.command as string));
+  const reaches = Object.entries({ API: surfaces.api, CLI: surfaces.cli, app: surfaces.web });
   for (const [name, profile] of owned) {
     const row = rows.find((one) => one.command === name);
     if (row === undefined) failures.push(`the catalogue has no row for ${name}`);
     else failures.push(...compare('catalogue row', name, profile, row));
-    for (const [surface, reach] of Object.entries({
-      API: surfaces.api,
-      CLI: surfaces.cli,
-      app: surfaces.web,
-    })) {
+    for (const [surface, reach] of reaches) {
       const asked = reach.get(name);
       if (asked === undefined) failures.push(`${name} has no ${surface} equivalent`);
       else failures.push(...compare(surface, name, profile, asked));
     }
   }
-  for (const [surface, reach] of Object.entries({
-    API: surfaces.api,
-    CLI: surfaces.cli,
-    app: surfaces.web,
-  })) {
+  for (const [surface, reach] of reaches) {
     for (const name of reach.keys()) {
       if (!owned.has(name)) failures.push(`${surface} reaches ${name}, which no command owns`);
     }
@@ -192,17 +175,16 @@ export function checkParity(
     }
   }
   for (const use of surfaces.ui) {
-    if (!surfaces.cli.has(use.command)) {
-      failures.push(`the app action ${use.command} at ${use.route} (${use.file}) has no CLI verb`);
-    }
-    if (!surfaces.api.has(use.command)) {
-      failures.push(
-        `the app action ${use.command} at ${use.route} (${use.file}) has no API endpoint`,
-      );
+    for (const [what, reach] of [
+      ['CLI verb', surfaces.cli],
+      ['API endpoint', surfaces.api],
+    ] as const) {
+      const at = `${use.command} at ${use.route} (${use.file})`;
+      if (!reach.has(use.command)) failures.push(`the app action ${at} has no ${what}`);
     }
   }
   for (const exempt of surfaces.exempt) {
-    if (named.has(exempt.action) || owned.has(exempt.action)) {
+    if (owned.has(exempt.action) || rows.some((row) => row.command === exempt.action)) {
       failures.push(`${exempt.action} reads or writes a record and cannot be exempt`);
     }
   }
