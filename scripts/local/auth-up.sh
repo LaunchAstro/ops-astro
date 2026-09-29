@@ -21,6 +21,8 @@
 # Otherwise this script starts the same container, at the same pinned digest,
 # on the same port, with the same named volume, so whichever script runs first
 # the other finds what it expects.
+# GoTrue is labelled with the id of the Postgres container it migrated, so
+# whichever script replaced that container, GoTrue is started again on the new one.
 
 set -euo pipefail
 
@@ -155,6 +157,17 @@ if [ "${pg_new:-no}" = yes ] && exists "${AUTH_CONTAINER}"; then
   echo "auth-up: ${PG_CONTAINER} was started afresh; replacing ${AUTH_CONTAINER} so it migrates it"
   docker rm -f "${AUTH_CONTAINER}" >/dev/null
 fi
+# The same holds when db-up.sh replaced the Postgres container before this run:
+# GoTrue carries the id of the container it migrated, and one started against
+# any other container (or carrying none) is replaced.
+PG_ID="$(docker inspect -f '{{.Id}}' "${PG_CONTAINER}" 2>/dev/null || true)"
+serves_this_postgres() {
+  [ "$(docker inspect -f '{{index .Config.Labels "ops-astro.postgres"}}' "$1" 2>/dev/null)" = "${PG_ID}" ]
+}
+if exists "${AUTH_CONTAINER}" && ! serves_this_postgres "${AUTH_CONTAINER}"; then
+  echo "auth-up: ${AUTH_CONTAINER} was started against another ${PG_CONTAINER}; replacing it so it migrates this one"
+  docker rm -f "${AUTH_CONTAINER}" >/dev/null
+fi
 if running "${AUTH_CONTAINER}" && { ! docker inspect "${AUTH_CONTAINER}" | grep -qF "GOTRUE_JWT_ISSUER=${GOTRUE_URL}\"" || ! signs_with_key "${AUTH_CONTAINER}"; }; then
   docker rm -f "${AUTH_CONTAINER}" >/dev/null
 fi
@@ -172,6 +185,7 @@ else
     --name "${AUTH_CONTAINER}" \
     --network "${NETWORK}" \
     --label "ops-astro.signing-key=${KEY_LABEL}" \
+    --label "ops-astro.postgres=${PG_ID}" \
     -p "127.0.0.1:${AUTH_PORT}:9999" \
     -e GOTRUE_API_HOST=0.0.0.0 \
     -e PORT=9999 \
