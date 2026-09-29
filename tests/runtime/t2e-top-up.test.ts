@@ -14,8 +14,10 @@
 // the cap stays the hard ceiling.
 //
 // Separations proved: business to business (a top-up moves only its own
-// business's envelope), client to client (a grant on one client's task does
-// not reach another client's task in the same business), person to person
+// business's envelope), client to client (an external client sharing one
+// task, with a billing grant on it, tops up neither that task nor another
+// client's), task to task (a member's grant on one task reaches no other),
+// person to person
 // (the second approver is a different person holding the grant in that
 // business, and a first approval whose holder lost the grant pairs with no
 // one).
@@ -29,6 +31,7 @@ import { installBusinessSettings } from '../../packages/core-records/src/records
 import { topUp as applyTopUp } from '../../packages/core-runtime/src/budget.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import { insertBusiness } from '../identity/fixture.ts';
+import { cq8World } from './cq-8-world.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import {
   appliedDetail,
@@ -75,6 +78,9 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
   let planner: Member;
   let nobody: Member;
   let clientA: Member;
+  let taskScoped: Member;
+  /** The task shared with `clientA`, whose plan the planner approved. */
+  let clientTask: string;
 
   const as = async (who: Member, body: Readonly<Record<string, unknown>>) =>
     await executeCommand(s.db.app, s.business, who.presented, 'api', body as never);
@@ -128,7 +134,7 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
     second = await enrol(s.db.app, s.business, 'second');
     planner = await enrol(s.db.app, s.business, 'planner');
     nobody = await enrol(s.db.app, s.business, 'nobody');
-    clientA = await enrol(s.db.app, s.business, 'client-a-billing');
+    taskScoped = await enrol(s.db.app, s.business, 'task-scoped-billing');
     await s.db.app.withBusiness(s.business, async (tx) => {
       await installBusinessSettings(tx);
       await grantTo(tx, s.decider, 'decide', undefined, false, 'billing');
@@ -138,6 +144,16 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
         // eslint-disable-next-line no-await-in-loop
         await grantTo(tx, planner, action);
       }
+    });
+    // Sol, #130: an external client, no membership, sharing one task, and
+    // holding a billing grant on it that R4 must never let it use.
+    await s.db.app.withBusiness(s.business, async (tx) => {
+      await grantTo(tx, s.decider, 'share');
+    });
+    clientTask = (await planned(planner)).taskId;
+    clientA = await cq8World(s).client(s.business, s.decider, 'client-a', clientTask);
+    await s.db.app.withBusiness(s.business, async (tx) => {
+      await grantTo(tx, clientA, 'decide', { kind: 'record', id: clientTask }, false, 'billing');
     });
   }, 180_000);
 
@@ -383,15 +399,34 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
     if (revokedBeforeDecision) expect(await maximumOf(plan.taskId)).toBe(MAXIMUM);
   });
 
-  it("client to client: a grant on one client's task does not reach another client's task", async () => {
+  it("client to client: a client's own task share and billing grant reach no top-up, on theirs or another client's", async () => {
+    const theirs = await planned(planner);
+    for (const taskId of [clientTask, theirs.taskId]) {
+      // eslint-disable-next-line no-await-in-loop
+      expect(codeOf(await topUp(clientA, taskId, SMALL, MAXIMUM))).toBe('SCOPE_NOT_GRANTED');
+      // eslint-disable-next-line no-await-in-loop
+      expect(await maximumOf(taskId)).toBe(MAXIMUM);
+    }
+  });
+
+  it("task to task: a member's grant on one task does not reach another task", async () => {
     const mine = await planned(planner);
     const theirs = await planned(planner);
     await s.db.app.withBusiness(s.business, async (tx) => {
-      await grantTo(tx, clientA, 'decide', { kind: 'record', id: mine.taskId }, false, 'billing');
+      await grantTo(
+        tx,
+        taskScoped,
+        'decide',
+        { kind: 'record', id: mine.taskId },
+        false,
+        'billing',
+      );
     });
-    expect(codeOf(await topUp(clientA, theirs.taskId, SMALL, MAXIMUM))).toBe('SCOPE_NOT_GRANTED');
+    expect(codeOf(await topUp(taskScoped, theirs.taskId, SMALL, MAXIMUM))).toBe(
+      'SCOPE_NOT_GRANTED',
+    );
     expect(await maximumOf(theirs.taskId)).toBe(MAXIMUM);
-    appliedDetail(await topUp(clientA, mine.taskId, SMALL, MAXIMUM), 'budget.top_up');
+    appliedDetail(await topUp(taskScoped, mine.taskId, SMALL, MAXIMUM), 'budget.top_up');
     expect(await maximumOf(mine.taskId)).toBe(MAXIMUM + SMALL);
   });
 

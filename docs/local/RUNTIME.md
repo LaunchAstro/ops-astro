@@ -1344,8 +1344,9 @@ legacy row as derivable, and 0022's trigger forbids it.
 
 ## What is not here
 
-- **No worker, sweeper, top-up, write-off or effect activation.** `apps/worker/`
-  is still `.gitkeep`.
+- **No sweeper and no write-off.** The worker (`apps/worker/`, T2b), effect
+  activation (T2c1, T2c2) and the top-up (T2e, `topUp` in `budget.ts`) are
+  built.
 - **No audit row from this package.** `audit_events` is written through L3's
   command envelope, which owns the actor and the operation identity. The first
   attempt to write one from `handback.ts` aborted the whole transaction on a

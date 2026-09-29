@@ -90,7 +90,7 @@ import { useRead } from '../data/use-read.ts';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { ConflictNotice, MovedNotice, TaskHeader, UnsavedBar } from './task/Notices.tsx';
 
-import type { ProposeDraft } from '../views/propose-form.tsx';
+import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { RecordState } from '../views/record-state.tsx';
 import { submitEdit } from '../records/submit.ts';
 import { useCommand } from '../records/use-command.ts';
@@ -170,6 +170,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [moved, setMoved] = useHeld<string>(identity, denied);
   const [commentDraft, setCommentDraft] = useHeld<CommentDraft>(identity, denied);
   const [proposeDraft, setProposeDraft] = useHeld<ProposeDraft>(identity, denied);
+  const [topUpNote, setTopUpNote] = useHeld<TopUpNote>(identity, denied);
 
   return (
     <div className="stack">
@@ -225,6 +226,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
               onCommentDraft={setCommentDraft}
               proposeDraft={proposeDraft}
               onProposeDraft={setProposeDraft}
+              topUpNote={topUpNote}
+              onTopUpNote={setTopUpNote}
               onAttempt={(attempt) => {
                 setDraft((current) =>
                   current !== null && current.identity === identity
@@ -470,6 +473,9 @@ interface LoadedProps {
   readonly onCommentDraft: (next: CommentDraft | null) => void;
   readonly proposeDraft: ProposeDraft | null;
   readonly onProposeDraft: (next: ProposeDraft | null) => void;
+  /** The last top-up's answer, held so a reread keeps it (T2e). */
+  readonly topUpNote: TopUpNote | null;
+  readonly onTopUpNote: (note: TopUpNote | null) => void;
   /** Record, or forget, the draft save whose outcome is unknown. */
   readonly onAttempt: (attempt: SaveAttempt | null) => void;
   readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;
@@ -589,6 +595,8 @@ function Loaded(props: LoadedProps): ReactElement {
         onProposeDraft={props.onProposeDraft}
         proposals={task.proposals}
         envelope={task.envelope ?? null}
+        topUpNote={props.topUpNote}
+        onTopUpNote={props.onTopUpNote}
         recordId={task.id}
         revision={task.revision}
       />

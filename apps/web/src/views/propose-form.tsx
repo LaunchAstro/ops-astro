@@ -290,16 +290,26 @@ function minorOf(amount: string): number {
 }
 
 /** The envelope and its top-up (T2e), of the maximum drawn here so a moved envelope is refused. */
+/** A first approval waiting on a second person, or a refusal as the server said it. */
+export interface TopUpNote {
+  readonly kind: 'awaiting' | 'refusal';
+  readonly said: string;
+}
+
+const AWAITING =
+  'Your approval is recorded. Above the four-eyes threshold a second person approves it too.';
+
 export function TopUp(props: {
   readonly client: OperationsClient;
   readonly envelope: TaskEnvelope;
   readonly recordId: string;
+  readonly note: TopUpNote | null;
+  readonly onNote: (note: TopUpNote | null) => void;
   readonly onChanged: () => void;
 }): ReactElement {
-  const { envelope } = props;
+  const { envelope, note } = props;
   const command = useCommand();
   const [amount, setAmount] = useState('');
-  const [awaiting, setAwaiting] = useState(false);
   const submit = (): void => {
     if (command.locked || minorOf(amount) <= 0) return;
     command.run(
@@ -310,10 +320,11 @@ export function TopUp(props: {
           fromMaximumMinor: envelope.maximumMinor,
         }),
       (settlement) => {
-        setAwaiting(
-          settlement.kind === 'ok' &&
-            settlement.value.detail?.['state'] === 'awaiting_second_approver',
-        );
+        // Held above the read: the reread below unmounts this control (Sol, #130).
+        if (settlement.kind !== 'ok') props.onNote({ kind: 'refusal', said: settlement.because });
+        else if (settlement.value.detail?.['state'] === 'awaiting_second_approver') {
+          props.onNote({ kind: 'awaiting', said: AWAITING });
+        } else props.onNote(null);
         if (settlement.kind === 'ok') setAmount('');
         props.onChanged();
       },
@@ -328,14 +339,13 @@ export function TopUp(props: {
         approved {money(envelope.maximumMinor, envelope.currency)} · held{' '}
         {money(envelope.heldMinor, '')} · spent {money(envelope.actualMinor, '')}
       </p>
-      {awaiting ? (
-        <p className="card__sub" data-top-up="awaiting">
-          Your approval is recorded. Above the four-eyes threshold a second person approves it too.
-        </p>
-      ) : null}
-      {command.because === null ? null : (
-        <p className="field__error" role="alert" data-top-up="refusal">
-          {command.because}
+      {note === null ? null : (
+        <p
+          className={note.kind === 'refusal' ? 'field__error' : 'card__sub'}
+          data-top-up={note.kind}
+          {...(note.kind === 'refusal' ? { role: 'alert' } : {})}
+        >
+          {note.said}
         </p>
       )}
       <div className="field">

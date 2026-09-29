@@ -86,7 +86,7 @@ import type {
 } from '../../../../packages/core-wire/src/index.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
 import { Chain, money, Reservations, stored } from './proposal-record.tsx';
-import { Propose, TopUp, type ProposeDraft } from './propose-form.tsx';
+import { Propose, TopUp, type ProposeDraft, type TopUpNote } from './propose-form.tsx';
 
 /** What a refused decision left behind, held above the read that follows it. */
 export interface DecisionNote {
@@ -117,6 +117,9 @@ export interface ProposalsProps {
   readonly proposals: readonly ProposalLineage[] | undefined;
   /** The task's open envelope, or null when the read carried none (T2e). */
   readonly envelope: TaskEnvelope | null;
+  /** The last top-up's answer, held above the read that follows it (T2e). */
+  readonly topUpNote: TopUpNote | null;
+  readonly onTopUpNote: (note: TopUpNote | null) => void;
   readonly recordId: string;
   /** The revision the page holds; a proposal is offered against it. */
   readonly revision: number;
@@ -174,6 +177,8 @@ export function Proposals(props: ProposalsProps): ReactElement {
         <TopUp
           client={props.client}
           envelope={props.envelope}
+          note={props.topUpNote}
+          onNote={props.onTopUpNote}
           onChanged={props.onChanged}
           recordId={props.recordId}
         />
