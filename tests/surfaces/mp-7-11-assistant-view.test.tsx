@@ -24,34 +24,54 @@ interface Sent {
   readonly body: Readonly<Record<string, unknown>>;
 }
 
-function recorder(refuse: string | null = null): {
+function recorder(
+  refuse: string | null = null,
+  held: Promise<void> = Promise.resolve(),
+): {
   readonly client: OperationsClient;
   readonly sent: Sent[];
 } {
   const sent: Sent[] = [];
   const client = {
-    mutate: (name: string, body: Readonly<Record<string, unknown>>) => {
+    mutate: async (name: string, body: Readonly<Record<string, unknown>>) => {
       sent.push({ name, body });
+      // An answer the test holds back, so a second press lands while the
+      // first is still in flight.
+      await held;
       if (refuse !== null) {
-        return Promise.resolve({
+        return {
           ok: false,
           refused: true,
           code: 'FIELD_VALUE_INVALID',
           names: ['body'],
           fixes: [refuse],
-        });
+        };
       }
-      return Promise.resolve({
+      return {
         ok: true,
         value: { recordId: '', revision: 0, detail: { conversationId: CONVERSATION } },
-      });
+      };
     },
   } as unknown as OperationsClient;
   return { client, sent };
 }
 
-async function view(options: { refuse?: string; entry?: AskEntry } = {}) {
-  const { client, sent } = recorder(options.refuse ?? null);
+/** An answer held back until the test lets it go. */
+function heldAnswer(): { readonly held: Promise<void>; readonly release: () => void } {
+  const released: (() => void)[] = [];
+  const held = new Promise<void>((resolve) => {
+    released.push(resolve);
+  });
+  return {
+    held,
+    release: () => {
+      for (const resolve of released) resolve();
+    },
+  };
+}
+
+async function view(options: { refuse?: string; entry?: AskEntry; held?: Promise<void> } = {}) {
+  const { client, sent } = recorder(options.refuse ?? null, options.held);
   const page = track(
     await mount(
       <AssistantView
@@ -129,6 +149,25 @@ describe('MP-7-11 records', () => {
         body: { conversationId: CONVERSATION, page: { address: '/settings', shows: 'Settings' } },
       },
     ]);
+  });
+
+  it('two quick questions start one conversation: the second waits for the start', async () => {
+    const gate = heldAnswer();
+    const { held } = gate;
+    const { page, sent } = await view({ held });
+    await page.type('[data-assistant="input"]', 'First');
+    await press(page, '[data-assistant="input"]', 'Enter');
+    await page.type('[data-assistant="input"]', 'Second');
+    await press(page, '[data-assistant="input"]', 'Enter');
+    expect(sent.map((call) => call.name)).toStrictEqual(['conversation.start']);
+    gate.release();
+    await settle();
+    await settle();
+    expect(sent.map((call) => call.name)).toStrictEqual([
+      'conversation.start',
+      'conversation.message',
+    ]);
+    expect(sent[1]?.body).toStrictEqual({ conversationId: CONVERSATION, body: 'Second' });
   });
 
   it('a refusal is shown as a failed reply in the server’s words', async () => {

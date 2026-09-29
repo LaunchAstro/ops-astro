@@ -15,7 +15,12 @@
 // Which panels are open is the dock's (the gesture law, MP-3-4); this file
 // never opens anything.
 
-import type { AssistantChat, AssistantCitation, AssistantPage } from '@launchastro/ui';
+import type {
+  AssistantChat,
+  AssistantCitation,
+  AssistantMessage,
+  AssistantPage,
+} from '@launchastro/ui';
 import type { ScopeInput } from './subject.ts';
 
 export interface Chat extends AssistantChat {
@@ -141,3 +146,18 @@ export const openDirect = (state: AssistantState): AssistantState => ({
   draft: '',
   scope: NO_SCOPE,
 });
+
+/** A line added to a tab's transcript. */
+export const said = (
+  state: AssistantState,
+  key: string,
+  message: AssistantMessage,
+): AssistantState =>
+  change(state, key, (chat) => ({ ...chat, messages: [...chat.messages, message] }));
+
+/** The tab's first question started its conversation. */
+export const started = (
+  state: AssistantState,
+  key: string,
+  conversationId: string,
+): AssistantState => change(state, key, (chat) => ({ ...chat, conversationId }));
