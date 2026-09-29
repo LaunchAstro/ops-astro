@@ -7,10 +7,12 @@
 //
 // Counted means open, owed and readable. Read is not done (reading changes
 // nothing), delivered is not seen (the last attempt and the attention row are
-// separate fields), and withheld is not gone (a lost grant and a trashed task
-// are two access states, and the item stays stored under both). An entry the
-// caller can no longer read keeps its own identity and axes and names nothing
-// of the task or the fact it points at.
+// separate fields), and withheld is not gone. A withheld item, about a task the
+// caller holds no read on, is not listed at all: its identity, reason and times
+// would say that another client's task exists. It stays stored and comes back
+// at the first read after access returns. A gone item, a trashed task the
+// caller still holds read on, is listed as gone and names nothing of the task
+// or the fact it points at.
 
 import { readInboxItems, type InboxItem } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -19,7 +21,7 @@ export interface InboxEntry {
   readonly id: string;
   readonly reason: InboxItem['reason'];
   readonly workState: InboxItem['workState'];
-  readonly access: InboxItem['access'];
+  readonly access: Exclude<InboxItem['access'], 'withheld'>;
   readonly owed: boolean;
   /** Open, owed and readable now: exactly what the count counts. */
   readonly counted: boolean;
@@ -36,7 +38,7 @@ export interface InboxEntry {
 
 const iso = (at: Date | null): string | null => (at === null ? null : at.toISOString());
 
-function entryOf(item: InboxItem): InboxEntry {
+function entryOf(item: InboxItem & { readonly access: InboxEntry['access'] }): InboxEntry {
   const readable = item.access === 'readable';
   return {
     id: item.id,
@@ -60,9 +62,12 @@ function entryOf(item: InboxItem): InboxEntry {
   };
 }
 
+const isListed = (item: InboxItem): item is InboxItem & { readonly access: InboxEntry['access'] } =>
+  item.access !== 'withheld';
+
 /** The caller's own inbox, newest raised last, as `readInboxItems` orders it. */
 export async function readInbox(tx: TenantQuery, personId: string): Promise<readonly InboxEntry[]> {
-  return (await readInboxItems(tx, personId)).map(entryOf);
+  return (await readInboxItems(tx, personId)).filter(isListed).map(entryOf);
 }
 
 /** The owed count: the counted entries of the same read, never a second query. */

@@ -29,8 +29,10 @@ export type InboxFactKind = 'gate' | 'planned_run' | 'record' | 'operation';
 export type InboxWorkState = 'open' | 'cleared' | 'withdrawn';
 
 /**
- * Derived at every read, never stored. `withheld`: the task is there and the
- * recipient no longer holds read on it. `gone`: the task is trashed.
+ * Derived at every read, never stored. `withheld`: the recipient holds no read
+ * on the task. `gone`: the task is trashed and the recipient still holds read
+ * on it; without read a trashed task is withheld, so it tells a stranger
+ * nothing.
  */
 export type InboxAccess = 'readable' | 'withheld' | 'gone';
 
@@ -137,21 +139,27 @@ export async function recordDeliveryAttempt(
 
 /**
  * Stamp `seen` on the recipient's own attention row (INB-1d). The row is
- * written only for an item whose recipient is `personId`, so nobody stamps
- * another person's item; a second stamp keeps the first. Nothing on the item
- * moves: seen leaves it open and counted. False when the item is not theirs.
+ * written only for an item whose recipient is `personId` and whose task they
+ * can read now, so nobody stamps another person's item or one about a task
+ * they cannot read; a second stamp keeps the first. Nothing on the item moves:
+ * seen leaves it open and counted. False otherwise.
  */
 export async function stampSeen(
   tx: TenantQuery,
   personId: string,
   itemId: string,
 ): Promise<boolean> {
-  const mine = await tx.query<{ readonly id: string }>(
-    `select id from public.inbox_items
+  const mine = await tx.query<{ readonly subject: string }>(
+    `select subject_record_id as subject from public.inbox_items
       where business_id = $1 and id = $2 and recipient_person_id = $3`,
     [tx.businessId, itemId, personId],
   );
-  if (mine.length === 0) return false;
+  // Opening needs read on the task now: an item about a task the recipient
+  // cannot read (another client's, a lost grant) is answered as not theirs.
+  const subject = mine[0]?.subject;
+  if (subject === undefined || (await taskAccess(tx, personId, subject)) !== 'readable') {
+    return false;
+  }
   await tx.query(
     `insert into public.inbox_attention (business_id, item_id, person_id)
      values ($1, $2, $3) on conflict (business_id, item_id) do nothing`,
@@ -249,7 +257,6 @@ async function accessOf(
   trashed: boolean,
   clientId: string | null,
 ): Promise<InboxAccess> {
-  if (trashed) return 'gone';
   const scopes: Scope[] = [{ kind: 'record', id: taskId }];
   if (clientId !== null) scopes.push({ kind: 'party', id: clientId });
   for (const scope of scopes) {
@@ -259,7 +266,7 @@ async function accessOf(
       action: 'read',
       scope,
     });
-    if (grants.length > 0) return 'readable';
+    if (grants.length > 0) return trashed ? 'gone' : 'readable';
   }
   return 'withheld';
 }
