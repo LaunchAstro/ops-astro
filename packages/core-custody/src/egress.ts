@@ -7,6 +7,17 @@
 // caller. No redirect is followed, to a listed host or any other. Every answer
 // is bounded by a timeout and a byte limit counted off the stream, and the
 // read stops at the limit rather than after it.
+//
+// A listed name is resolved once, before any socket exists, and the call is
+// refused when any address is a metadata, link-local or unspecified one. The
+// socket then takes exactly the addresses that were checked, so a second
+// lookup answering differently (DNS rebinding) is never asked.
+
+import { lookup as systemLookup } from 'node:dns/promises';
+import type { LookupAddress } from 'node:dns';
+import { request as httpRequest, type IncomingMessage, type RequestOptions } from 'node:http';
+import { request as httpsRequest } from 'node:https';
+import { BlockList, isIP, type LookupFunction } from 'node:net';
 
 export interface Destination {
   readonly key: string;
@@ -23,6 +34,27 @@ const FORBIDDEN_HOST = [
   /^metadata(\.google\.internal)?$/iu,
   /^0\.0\.0\.0$/u,
 ];
+
+/** The same hosts by address, IPv4-mapped IPv6 spellings included (BlockList matches those against the IPv4 rules). */
+const FORBIDDEN_ADDRESS = new BlockList();
+FORBIDDEN_ADDRESS.addSubnet('169.254.0.0', 16, 'ipv4');
+FORBIDDEN_ADDRESS.addAddress('0.0.0.0', 'ipv4');
+FORBIDDEN_ADDRESS.addSubnet('fe80::', 10, 'ipv6');
+FORBIDDEN_ADDRESS.addAddress('fd00:ec2::254', 'ipv6');
+FORBIDDEN_ADDRESS.addAddress('::', 'ipv6');
+
+/** Anything that is not an address is forbidden too: a resolver's answer is data, not trust. */
+function forbiddenAddress(address: string): boolean {
+  const family = isIP(address);
+  if (family === 0) return true;
+  return FORBIDDEN_ADDRESS.check(address, family === 4 ? 'ipv4' : 'ipv6');
+}
+
+/** A URL's hostname as an address, when it is one: IPv6 literals lose their brackets. */
+const literalOf = (hostname: string): string | undefined => {
+  const bare = hostname.startsWith('[') ? hostname.slice(1, -1) : hostname;
+  return isIP(bare) === 0 ? undefined : bare;
+};
 
 /** Custody's destination list, refused whole on any entry that is not a bare http(s) origin. */
 export function parseDestinations(
@@ -58,7 +90,11 @@ export function parseDestinations(
     ) {
       return { ok: false, code: 'DESTINATION_MALFORMED', at };
     }
-    if (FORBIDDEN_HOST.some((pattern) => pattern.test(url.hostname))) {
+    const literal = literalOf(url.hostname);
+    if (
+      FORBIDDEN_HOST.some((pattern) => pattern.test(url.hostname)) ||
+      (literal !== undefined && forbiddenAddress(literal))
+    ) {
       return { ok: false, code: 'DESTINATION_FORBIDDEN', at };
     }
     destinations.set(key, { key, origin: url.origin });
@@ -76,7 +112,14 @@ export interface OutboundRequest {
 }
 
 export type OutboundFault =
-  'unlisted' | 'bad_path' | 'redirect' | 'timeout' | 'too_large' | 'status' | 'network';
+  | 'unlisted'
+  | 'bad_path'
+  | 'forbidden'
+  | 'redirect'
+  | 'timeout'
+  | 'too_large'
+  | 'status'
+  | 'network';
 
 export type Outbound =
   | { readonly ok: true; readonly status: number; readonly body: string }
@@ -86,25 +129,20 @@ export type Outbound =
 const PATH = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/u;
 
 async function readBounded(
-  response: Response,
+  response: IncomingMessage,
   limit: number,
 ): Promise<{ readonly ok: true; readonly text: string } | { readonly ok: false }> {
-  const reader = response.body?.getReader();
-  if (reader === undefined) return { ok: true, text: '' };
-  const parts: Uint8Array[] = [];
+  const parts: Buffer[] = [];
   let size = 0;
-  for (;;) {
-    // One chunk at a time: the count must stop the read, not follow it.
-    // eslint-disable-next-line no-await-in-loop
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
+  // One chunk at a time: the count must stop the read, not follow it.
+  for await (const chunk of response) {
+    const part = chunk as Buffer;
+    size += part.byteLength;
     if (size > limit) {
-      // eslint-disable-next-line no-await-in-loop
-      await reader.cancel();
+      response.destroy();
       return { ok: false };
     }
-    parts.push(value);
+    parts.push(part);
   }
   return { ok: true, text: Buffer.concat(parts).toString('utf8') };
 }
@@ -114,6 +152,80 @@ export type Resolve = (
   hostname: string,
 ) => Promise<readonly { readonly address: string; readonly family: number }[]>;
 
+const resolveBySystem: Resolve = async (hostname) =>
+  await systemLookup(hostname, { all: true, order: 'verbatim' });
+
+/** The addresses the socket may take, every one checked; none when any is forbidden. */
+async function checkedAddresses(url: URL, resolve: Resolve): Promise<readonly LookupAddress[]> {
+  const literal = literalOf(url.hostname);
+  let addresses: readonly LookupAddress[];
+  try {
+    addresses =
+      literal === undefined
+        ? await resolve(url.hostname)
+        : [{ address: literal, family: isIP(literal) }];
+  } catch {
+    return [];
+  }
+  return addresses.some((entry) => forbiddenAddress(entry.address)) ? [] : addresses;
+}
+
+/** A lookup that answers only with the checked addresses: the socket never resolves the name again. */
+const pinnedTo =
+  (addresses: readonly LookupAddress[]): LookupFunction =>
+  (_hostname, options, callback) => {
+    const [first] = addresses;
+    if (options.all === true) callback(null, [...addresses]);
+    else if (first !== undefined) callback(null, first.address, first.family);
+  };
+
+/** A response read within its limit. A redirect is answered, never followed. */
+async function answerOf(
+  response: IncomingMessage,
+  limit: number,
+  failed: (status: number | null) => Outbound,
+): Promise<Outbound> {
+  const status = response.statusCode ?? 0;
+  if (status >= 300 && status < 400) {
+    response.destroy();
+    return { ok: false, fault: 'redirect', status };
+  }
+  let read: Awaited<ReturnType<typeof readBounded>>;
+  try {
+    read = await readBounded(response, limit);
+  } catch {
+    return failed(status);
+  }
+  if (!read.ok) return { ok: false, fault: 'too_large', status };
+  if (status < 200 || status >= 300) return { ok: false, fault: 'status', status };
+  return { ok: true, status, body: read.text };
+}
+
+/** One request and its bounded answer. */
+async function exchange(
+  url: URL,
+  options: RequestOptions,
+  body: string,
+  limit: number,
+): Promise<Outbound> {
+  const signal = options.signal;
+  return await new Promise<Outbound>((settle) => {
+    const failed = (status: number | null): Outbound => ({
+      ok: false,
+      fault: signal?.aborted === true ? 'timeout' : 'network',
+      status,
+    });
+    const outgoing = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, options);
+    outgoing.on('response', (response) => {
+      void answerOf(response, limit, failed).then(settle);
+    });
+    outgoing.on('error', () => {
+      settle(failed(null));
+    });
+    outgoing.end(body);
+  });
+}
+
 /**
  * Send one request to a listed destination with the credential header
  * custody adds. The caller never supplies the origin.
@@ -122,7 +234,7 @@ export async function send(
   destinations: ReadonlyMap<string, Destination>,
   request: OutboundRequest,
   credential: { readonly header: string; readonly value: string } | null,
-  _resolve?: Resolve,
+  resolve: Resolve = resolveBySystem,
 ): Promise<Outbound> {
   const destination = destinations.get(request.destination);
   if (destination === undefined) return { ok: false, fault: 'unlisted', status: null };
@@ -131,38 +243,25 @@ export async function send(
   }
   const url = new URL(request.path, destination.origin);
   if (url.origin !== destination.origin) return { ok: false, fault: 'bad_path', status: null };
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  const addresses = await checkedAddresses(url, resolve);
+  if (addresses.length === 0) return { ok: false, fault: 'forbidden', status: null };
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    'content-length': String(Buffer.byteLength(request.body)),
+  };
   if (credential !== null) {
     headers[credential.header] =
       credential.header === 'authorization' ? `Bearer ${credential.value}` : credential.value;
   }
-  let response: Response;
-  try {
-    response = await fetch(url, {
+  return await exchange(
+    url,
+    {
       method: request.method,
       headers,
-      body: request.body,
-      redirect: 'manual',
+      lookup: pinnedTo(addresses),
       signal: AbortSignal.timeout(request.timeoutMs),
-    });
-  } catch (error) {
-    const timedOut = error instanceof DOMException && error.name === 'TimeoutError';
-    return { ok: false, fault: timedOut ? 'timeout' : 'network', status: null };
-  }
-  if (response.status >= 300 && response.status < 400) {
-    await response.body?.cancel();
-    return { ok: false, fault: 'redirect', status: response.status };
-  }
-  let read: Awaited<ReturnType<typeof readBounded>>;
-  try {
-    read = await readBounded(response, request.maxResponseBytes);
-  } catch (error) {
-    const timedOut = error instanceof DOMException && error.name === 'TimeoutError';
-    return { ok: false, fault: timedOut ? 'timeout' : 'network', status: response.status };
-  }
-  if (!read.ok) return { ok: false, fault: 'too_large', status: response.status };
-  if (response.status < 200 || response.status >= 300) {
-    return { ok: false, fault: 'status', status: response.status };
-  }
-  return { ok: true, status: response.status, body: read.text };
+    },
+    request.body,
+    request.maxResponseBytes,
+  );
 }

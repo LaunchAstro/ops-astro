@@ -7,7 +7,9 @@ the component's conformance proof, per
 proof is pending too. **Amended 29 September 2026** (AW-01): the broker is
 built as two halves. Custody is its own forked process and the only holder of
 credentials; it loads them from its own credential file and sends each only to
-its own listed destination. The broker's half runs in the API process: it
+its own listed destination. A listed name is resolved once before any socket
+opens, refused when any address is a metadata, link-local or unspecified one,
+and the socket connects only to the addresses checked. The broker's half runs in the API process: it
 holds the money under row locks and runs the operation adapters, which build
 the request and price the answer and never run in custody's process. So an
 SDK that needs a credential value has no place yet; an adapter that needs one
