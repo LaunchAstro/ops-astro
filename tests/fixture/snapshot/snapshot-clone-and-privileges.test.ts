@@ -4,14 +4,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import postgres from 'postgres';
 import { afterAll, expect, it, vi } from 'vitest';
-import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
-import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { connectAsAdmin } from '../../../packages/core-records/src/tenancy/database.ts';
+import { databaseUrlFromEnvironment } from '../../support/fresh-database.ts';
 
 // What the build makes, as the seeding step sees it: the first case drops
 // only these, never a fixture database another file made at the same time.
 const built = vi.hoisted(() => ({ databases: [] as string[], roles: [] as string[] }));
 
-vi.mock('./generate.ts', () => ({
+vi.mock('../generate.ts', () => ({
   seedFixture: (db: { name: string; loginRole: string; restrictedRole: string }) => {
     built.databases.push(db.name);
     built.roles.push(db.loginRole, db.restrictedRole);
@@ -53,7 +53,7 @@ it.skipIf(serverUrl === undefined)(
     const beforeDatabases = await databases();
     const clone = `fixture_sol_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
     try {
-      process.argv = ['node', 'tests/fixture/snapshot.ts', 'build'];
+      process.argv = ['node', 'tests/fixture/snapshot/snapshot.ts', 'build'];
       await expect(import('./snapshot.ts')).resolves.toBeDefined();
       const template = (await databases()).find(
         (name) => name.startsWith('fixture_') && !beforeDatabases.includes(name),
@@ -107,7 +107,7 @@ it.skipIf(serverUrl === undefined)(
     const reader = postgres(templateUrl.toString(), { max: 1, idle_timeout: 0 });
     try {
       await reader`select 1`;
-      process.argv = ['node', 'tests/fixture/snapshot.ts', 'clone', clone];
+      process.argv = ['node', 'tests/fixture/snapshot/snapshot.ts', 'clone', clone];
       vi.resetModules();
       await expect(import('./snapshot.ts')).resolves.toBeDefined();
       const made = await server.execute<{ datname: string }>(
@@ -155,11 +155,11 @@ it.skipIf(serverUrl === undefined)(
     templateUrl.pathname = `/${template}`;
     const reader = postgres(templateUrl.toString(), { max: 1, idle_timeout: 0 });
     try {
-      process.argv = ['node', 'tests/fixture/snapshot.ts', 'clone', direct];
+      process.argv = ['node', 'tests/fixture/snapshot/snapshot.ts', 'clone', direct];
       vi.resetModules();
       await import('./snapshot.ts');
       await reader`select 1`;
-      process.argv = ['node', 'tests/fixture/snapshot.ts', 'clone', fallback];
+      process.argv = ['node', 'tests/fixture/snapshot/snapshot.ts', 'clone', fallback];
       vi.resetModules();
       await import('./snapshot.ts');
       const rows = await server.execute<{ datname: string; temporary: boolean }>(
@@ -201,7 +201,7 @@ it.skipIf(serverUrl === undefined)(
       await reader`select 1`;
       // docker would read it as its own option, and `--help` exits 0.
       process.env['FIXTURE_PG_CONTAINER'] = '--help';
-      process.argv = ['node', 'tests/fixture/snapshot.ts', 'clone', target];
+      process.argv = ['node', 'tests/fixture/snapshot/snapshot.ts', 'clone', target];
       vi.resetModules();
       await expect(import('./snapshot.ts')).rejects.toThrow(
         'fixture: FIXTURE_PG_CONTAINER "--help" is not a container name or id',

@@ -10,10 +10,10 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
-import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
-import { createFreshDatabase, databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { seedFixture } from './generate.ts';
-import { FIXTURE_SHAPE } from './shape.ts';
+import { connectAsAdmin } from '../../../packages/core-records/src/tenancy/database.ts';
+import { createFreshDatabase, databaseUrlFromEnvironment } from '../../support/fresh-database.ts';
+import { seedFixture } from '../generate.ts';
+import { FIXTURE_SHAPE } from '../shape.ts';
 
 const sources = [
   ...readdirSync('migrations')

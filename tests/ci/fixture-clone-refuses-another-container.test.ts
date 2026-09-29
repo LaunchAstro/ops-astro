@@ -45,9 +45,9 @@ it.skipIf(serverUrl === undefined || otherUrl === undefined || container === und
         createdTemplate = true;
       }
       await reader`select 1`;
-      process.argv = ['node', 'tests/fixture/snapshot.ts', 'clone', target];
+      process.argv = ['node', 'tests/fixture/snapshot/snapshot.ts', 'clone', target];
       vi.resetModules();
-      await expect(import('../fixture/snapshot.ts')).rejects.toThrow(
+      await expect(import('../fixture/snapshot/snapshot.ts')).rejects.toThrow(
         `fixture: container ${container ?? ''} is not the DATABASE_URL server;` +
           ' set FIXTURE_PG_CONTAINER to its container. Nothing was created.',
       );
