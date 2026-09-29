@@ -6,39 +6,94 @@
 // carried archive and record of its receipt brought back (carried-archive.mjs).
 // restore-drill.mjs passes the drill itself in and re-exports each act.
 
-import { stagingReach } from './backup-store-reach.mjs';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { closeSync, openSync, unlinkSync, writeSync } from 'node:fs';
+import { stagingReach, value } from './backup-store-reach.mjs';
 import { readCarried, readCarriedReceipt, writeCarried } from './carried-archive.mjs';
 import { RESTORE_ROLE, recordDrill } from './drill-receipt.mjs';
 import { recordDeployment } from './operator.ts';
 
-/**
- * The newest backup, read as the restore identity (the store logs the read),
- * with the digest the store recorded when it took it.
- */
-export async function fetchLatest(storeUrl, reach = stagingReach) {
-  const latest = await reach(
+const HEX64 = /^[0-9a-f]{64}$/u;
+// The store's part size (deploy/staging/backup-store.sql, backups.archive_parts).
+const PART = 4 * 1024 * 1024;
+const PART_LINE = /^(\d+)\|([0-9a-f]{64})\|((?:[0-9a-f]{2})+)$/u;
+const same = (a, b) =>
+  HEX64.test(a) && HEX64.test(b) && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+/** The store's header of the newest backup, as the restore identity (the store logs the read). */
+async function latestHeader(storeUrl, reach) {
+  const line = await reach(
     storeUrl,
     `set role ${RESTORE_ROLE};
-select json_build_object('takenAt', taken_at, 'sha256', sha256, 'body', encode(body, 'hex'))::text
+select json_build_object('id', id, 'takenAt', taken_at, 'bytes', bytes, 'parts', parts, 'sha256', sha256)::text
   from backups.read_latest();
 `,
   );
-  if (latest === '') throw new Error('no backup');
-  const row = JSON.parse(latest);
-  return {
-    takenAt: new Date(row.takenAt).toISOString(),
-    sha256: row.sha256,
-    body: Buffer.from(row.body, 'hex'),
-  };
+  if (line === '') throw new Error('no backup');
+  const header = JSON.parse(line);
+  if (!Number.isInteger(header.parts) || header.parts < 1 || !HEX64.test(header.sha256)) {
+    throw new Error('the store answered no archive');
+  }
+  return header;
+}
+
+/** The script that reads every part of `header`'s archive, one line per part. */
+function* partsScript(header) {
+  yield `set role ${RESTORE_ROLE};\n`;
+  for (let seq = 0; seq < header.parts; seq += 1) {
+    yield `select ${seq} || '|' || part_sha256 || '|' || encode(part, 'hex') from backups.read_part(${value(header.id, 'uuid')}, ${seq});\n`;
+  }
+}
+
+/**
+ * The newest backup, read as the restore identity (the store logs the read),
+ * part by part into `file` (made here, mode 600, never over a file), each
+ * part checked against the digest the store took of it and the whole against
+ * the digest the store recorded; nothing is held whole. On any failure the
+ * file is removed.
+ */
+export async function fetchLatest(storeUrl, file, reach = stagingReach) {
+  const header = await latestHeader(storeUrl, reach);
+  const fd = openSync(file, 'wx', 0o600);
+  const whole = createHash('sha256');
+  // One part's room, used for every part in turn.
+  const room = Buffer.allocUnsafe(PART);
+  let [next, bytes] = [0, 0];
+  try {
+    await reach(storeUrl, partsScript(header), (line) => {
+      const [, seq, digest, hex = ''] = PART_LINE.exec(line) ?? [];
+      const part = room.subarray(0, hex.length > 2 * PART ? 0 : room.write(hex, 'hex'));
+      const own = createHash('sha256').update(part).digest('hex');
+      if (Number(seq) !== next || part.length === 0 || !same(own, digest ?? '')) {
+        throw new Error('a part of the archive is not the one the store took');
+      }
+      whole.update(part);
+      writeSync(fd, part);
+      [next, bytes] = [next + 1, bytes + part.length];
+    });
+    if (
+      next !== header.parts ||
+      bytes !== header.bytes ||
+      !same(whole.digest('hex'), header.sha256)
+    ) {
+      throw new Error('the archive does not match the digest the store recorded');
+    }
+  } catch (error) {
+    closeSync(fd);
+    unlinkSync(file);
+    throw error;
+  }
+  closeSync(fd);
+  return { takenAt: new Date(header.takenAt).toISOString(), sha256: header.sha256, bytes };
 }
 
 /**
  * `--export`: the newest backup as the store handed it out, into `file` for a
- * drill on another host (carried-archive.mjs). The key is never read here.
+ * drill on another host, with its time and digest beside it
+ * (carried-archive.mjs). The key is never read here.
  */
 export async function exportArchive({ gate, storeUrl, file, reach = stagingReach }) {
-  const archive = await fetchLatest(storeUrl, reach);
-  writeCarried(file, archive);
+  const archive = await writeCarried(file, (into) => fetchLatest(storeUrl, into, reach));
   return await recordDeployment(gate, {
     action: 'archive exported',
     archiveTakenAt: archive.takenAt,
@@ -61,8 +116,8 @@ export async function drillAsOperator({
   const carried = archiveFile !== undefined;
   // The carried archive's digest, as the store recorded it, once it is read.
   let archiveDigest = null;
-  const readFile = () => {
-    const archive = readCarried(archiveFile);
+  const readFile = async (into) => {
+    const archive = await readCarried(archiveFile, into);
     archiveDigest = archive.sha256;
     return archive;
   };
@@ -71,7 +126,7 @@ export async function drillAsOperator({
     at: _at,
     ...result
   } = await drill({
-    fetchArchive: carried ? readFile : () => fetchLatest(storeUrl, reach),
+    fetchArchive: carried ? readFile : (into) => fetchLatest(storeUrl, into, reach),
     privateKey,
     scope,
   });
