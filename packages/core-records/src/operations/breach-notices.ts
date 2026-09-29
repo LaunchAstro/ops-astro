@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The breach drill's notices (C81, TR-SEC-11): the published breach runbook's
+// The breach drill's notices (C81): the published breach runbook's
 // "Template: notice to affected people", filled from a privacy incident for
 // the OAIC and each affected person at the recipient the operator names. It
 // drafts; nothing here or anywhere sends a notice, because the owner decides
