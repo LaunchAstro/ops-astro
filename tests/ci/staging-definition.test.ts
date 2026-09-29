@@ -3,10 +3,10 @@
 // credentials canary. The report is run as its CLI, the way the owner runs it
 // on the machine, over fixture service lists written here.
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
+import { afterAll, expect, it } from 'vitest';
 
 const read = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
@@ -66,6 +66,7 @@ const JOBS: [string, string][] = [
 ];
 
 const scratch = mkdtempSync(join(tmpdir(), 's0-1a-'));
+afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 let files = 0;
 const file = (text: string): string => {
   files += 1;

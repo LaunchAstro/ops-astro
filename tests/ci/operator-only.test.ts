@@ -26,8 +26,13 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sign } from 'hono/jwt';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  serveTestKeySetApart,
+  signBearer,
+  signForged,
+  type ServedKeySet,
+} from '../support/sign-in.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import {
@@ -52,7 +57,6 @@ const definition = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
 ) as { 'x-ops-astro': { artefact: string } };
 
-const SECRET = 'a-local-test-secret-for-the-operator-gate';
 const ISSUER = 'http://127.0.0.1:54391';
 const STAGED = '0123456789ab';
 const LINE = 'Tried the task page and the approval queue on staging; both behave.';
@@ -60,19 +64,22 @@ const CANARY = 'canary-7c2f41-operator-secret';
 
 const serverUrl = databaseUrlFromEnvironment();
 const scratch = mkdtempSync(join(tmpdir(), 's0-1e-'));
+afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-const token = async (subject: string, secret = SECRET): Promise<string> =>
-  await sign(
-    {
-      sub: subject,
-      aud: 'authenticated',
-      iss: ISSUER,
-      role: 'authenticated',
-      exp: Math.floor(Date.now() / 1000) + 600,
-    },
-    secret,
-    'HS256',
-  );
+/** The test key set on loopback, in its own process: the gate runs under spawnSync. */
+let keySet: ServedKeySet | undefined;
+let keySetUrl = '';
+afterAll(async () => await keySet?.close());
+
+/** A sign-in's ES256 bearer, as the provider issues it; `forged` signs with a stranger's key. */
+const token = async (subject: string, forged = false): Promise<string> =>
+  await (forged ? signForged : signBearer)({
+    sub: subject,
+    aud: 'authenticated',
+    iss: ISSUER,
+    role: 'authenticated',
+    exp: Math.floor(Date.now() / 1000) + 600,
+  });
 
 /** A PATH whose docker and launchctl append every call to `calls` and answer as the live manager. */
 const manager = (apiRunning: boolean): { path: string; calls: string } => {
@@ -220,6 +227,8 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
   let operatorPerson = '';
 
   beforeAll(async () => {
+    keySet = await serveTestKeySetApart();
+    keySetUrl = keySet.url;
     db = await createFreshDatabase({ part: 's01e' });
     const alpha = await insertBusiness(db.app, 'alpha');
     alphaBusiness = alpha;
@@ -263,7 +272,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
     OPS_ASTRO_DEPLOYMENTS: at.records,
     DATABASE_URL: db.appUrl,
     DATABASE_ADMIN_URL: adminUrl(),
-    SUPABASE_JWT_SECRET: SECRET,
+    SUPABASE_KEY_SET_URL: keySetUrl,
     GOTRUE_URL: ISSUER,
     ...own,
   });
@@ -292,7 +301,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
       OPS_ASTRO_TOKEN: await token(subjects.betaOperator),
     }),
     'a forged sign-in': async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.operator, `${CANARY}-not-the-secret`),
+      OPS_ASTRO_TOKEN: await token(subjects.operator, true),
     }),
   };
 
@@ -306,7 +315,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
         expect(result.status, result.out).toBe(1);
         expect(result.out).toMatch(/operations:manage/u);
         expect(result.out).not.toMatch(/db-migrate|promotion recorded|staging prepared/u);
-        for (const secret of [CANARY, own['OPS_ASTRO_TOKEN'] ?? CANARY, SECRET]) {
+        for (const secret of [CANARY, own['OPS_ASTRO_TOKEN'] ?? CANARY]) {
           expect(result.out).not.toContain(secret);
         }
         expect(existsSync(at.calls), 'the service manager was asked').toBe(false);

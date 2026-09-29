@@ -14,6 +14,7 @@
 // The private half never leaves this module except as signatures.
 
 import { generateKeyPairSync } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { sign } from 'hono/jwt';
@@ -108,6 +109,36 @@ export async function serveTestKeySet(body: unknown = TEST_KEY_SET): Promise<Ser
       await new Promise<void>((resolve, reject) => {
         server.close((cause) => (cause === undefined ? resolve() : reject(cause)));
       }),
+  };
+}
+
+/**
+ * The static set served from a child process of its own, for a command the test
+ * runs with `spawnSync`: that blocks this process, so a set served here could
+ * never answer it. `close` stops only that child.
+ */
+export async function serveTestKeySetApart(body: unknown = TEST_KEY_SET): Promise<ServedKeySet> {
+  const script = `
+    const body = process.env.KEY_SET_BODY;
+    const server = require('node:http').createServer((request, response) => {
+      if (request.url !== '/auth/v1/.well-known/jwks.json') return response.writeHead(404).end();
+      response.writeHead(200, { 'content-type': 'application/json' }).end(body);
+    });
+    server.listen(0, '127.0.0.1', () => console.log(server.address().port));`;
+  const child = spawn(process.execPath, ['-e', script], {
+    env: { KEY_SET_BODY: JSON.stringify(body) },
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  const port = await new Promise<string>((resolve, reject) => {
+    child.once('error', reject);
+    child.stdout.once('data', (chunk: Buffer) => resolve(chunk.toString().trim()));
+  });
+  return {
+    url: `http://127.0.0.1:${port}/auth/v1/.well-known/jwks.json`,
+    close: async () => {
+      child.kill();
+      await new Promise((resolve) => child.once('exit', resolve));
+    },
   };
 }
 
