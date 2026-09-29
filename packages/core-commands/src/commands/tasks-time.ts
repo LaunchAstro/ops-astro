@@ -20,6 +20,7 @@
 
 import {
   checkAuthority,
+  isUuid,
   deleteTimeEntry,
   logTime,
   parseDuration,
@@ -55,6 +56,8 @@ async function refuseUnreadable(
   context: TimeContext,
   taskId: string,
 ): Promise<Refused | undefined> {
+  // Never cast what is not an identifier: it names no task, like a foreign one.
+  if (!isUuid(taskId)) return NO_TASK;
   const reach = await checkAuthority(tx, subjectsOf(context.session), {
     collection: 'task',
     action: 'read',
