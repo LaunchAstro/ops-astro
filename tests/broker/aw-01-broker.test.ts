@@ -28,6 +28,7 @@ import {
   type Broker,
   type BrokerRoute,
   type ModelCallField,
+  type ModelCaller,
   type ModelCallRequest,
 } from '../../packages/core-custody/src/index.ts';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
@@ -125,14 +126,16 @@ describe.skipIf(serverUrl === undefined)('AW-01 the broker on the database', () 
     ...overrides,
   });
 
-  const caller = (): { actorId: string; attendedByPersonId: null } => ({
+  /** The agent, under the delegation its pickup of this work minted. */
+  const caller = (work: Work): ModelCaller => ({
     actorId: s.agentActorId,
+    delegationId: String(work.picked['delegationId']),
     attendedByPersonId: null,
   });
 
   const call = async (work: Work, overrides: Partial<ModelCallRequest> = {}, with_ = broker) => {
     await stepOf(work);
-    return await callModel(s.db.app, s.business, caller(), requestFor(work, overrides), with_);
+    return await callModel(s.db.app, s.business, caller(work), requestFor(work, overrides), with_);
   };
 
   const rowsOf = async (callId: string | null): Promise<readonly Record<string, unknown>[]> =>
@@ -144,6 +147,11 @@ describe.skipIf(serverUrl === undefined)('AW-01 the broker on the database', () 
             callId,
           ]),
         );
+
+  const rowsOnLease = async (work: Work): Promise<readonly Record<string, unknown>[]> =>
+    await s.db.admin.execute(`select id from public.model_calls where lease_id = $1`, [
+      work.picked['leaseId'],
+    ]);
 
   const callCount = async (): Promise<number> =>
     Number(
@@ -339,7 +347,7 @@ describe.skipIf(serverUrl === undefined)('AW-01 the broker on the database', () 
     const stranger = await callModel(
       s.db.app,
       s.business,
-      { actorId: randomUUID(), attendedByPersonId: null },
+      { ...caller(work), actorId: randomUUID() },
       requestFor(work),
       broker,
     );
@@ -353,6 +361,27 @@ describe.skipIf(serverUrl === undefined)('AW-01 the broker on the database', () 
       ok: false,
       code: 'EFFECT_NOT_RECONCILABLE',
     });
+  });
+
+  it('AW-01 six facts: the lease carries the delegation the caller resolved', async () => {
+    // One agent, two pickups, two live delegations: each lease is only its own.
+    const first = await liveWork(s, 'the first pickup', 2_000);
+    const second = await liveWork(s, 'the second pickup', 2_000);
+    await stepOf(first);
+    const seen = world.provider.seen.length;
+    for (const delegationId of [String(second.picked['delegationId']), null]) {
+      // eslint-disable-next-line no-await-in-loop
+      const crossed = await callModel(
+        s.db.app,
+        s.business,
+        { ...caller(first), delegationId },
+        requestFor(first),
+        broker,
+      );
+      expect(crossed).toEqual({ ok: false, code: 'LEASE_NOT_OWNED', callId: null });
+    }
+    expect(world.provider.seen.length).toBe(seen);
+    expect(await rowsOnLease(first)).toEqual([]);
   });
 
   it('AW-01 personal information stays local, on the broker: refused before any route, then only the local one', async () => {
@@ -450,7 +479,7 @@ describe.skipIf(serverUrl === undefined)('AW-01 the broker on the database', () 
     await stepOf(work);
     world.provider.mode('slow');
     const seen = world.provider.seen.length;
-    const pending = callModel(s.db.app, s.business, caller(), requestFor(work), {
+    const pending = callModel(s.db.app, s.business, caller(work), requestFor(work), {
       ...broker,
       operations: catalogue([{ ...REPLAY_COMPOSE, timeoutMs: 20_000 }]),
     });
@@ -586,7 +615,7 @@ describe.skipIf(serverUrl === undefined)('AW-01 the broker on the database', () 
         await callModel(
           s.db.app,
           s.business,
-          { actorId: bravo.agentActorId, attendedByPersonId: null },
+          { ...caller(mine), actorId: bravo.agentActorId },
           requestFor(mine),
           broker,
         ),
@@ -606,7 +635,7 @@ describe.skipIf(serverUrl === undefined)('AW-01 the broker on the database', () 
       await callModel(
         s.db.app,
         s.business,
-        { actorId: clientX.actorId, attendedByPersonId: null },
+        { ...caller(mine), actorId: clientX.actorId },
         requestFor(mine),
         broker,
       ),
@@ -659,7 +688,7 @@ describe.skipIf(serverUrl === undefined)('AW-01 the broker on the database', () 
       await callModel(
         s.db.app,
         s.business,
-        { actorId: otherAgent, attendedByPersonId: null },
+        { ...caller(mine), actorId: otherAgent },
         requestFor(mine),
         broker,
       ),

@@ -433,7 +433,12 @@ async function serveHeartbeat(
  * where the deployment configured no broker, and says so.
  */
 export function modelCallRow(
-  serve: (tx: TenantQuery, call: AgentCall, operands: ModelCallOperands) => Promise<HandlerOutcome>,
+  serve: (
+    tx: TenantQuery,
+    call: AgentCall,
+    operands: ModelCallOperands,
+    delegation: Delegation,
+  ) => Promise<HandlerOutcome>,
 ): AgentOperation {
   return row({
     authority: 'record',
@@ -442,7 +447,7 @@ export function modelCallRow(
     operands: modelCallOperands,
     // The lease's task was checked under the delegation; the broker checks
     // the lease, the delegation and the reservation again under their locks.
-    serve: async (tx, call, operands) => await serve(tx, call, operands),
+    serve: async (tx, call, operands, delegation) => await serve(tx, call, operands, delegation),
   });
 }
 

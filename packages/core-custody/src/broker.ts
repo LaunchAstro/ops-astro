@@ -108,6 +108,8 @@ export interface ModelCallRequest {
 /** Who is calling, from the authenticated envelope, never the body. */
 export interface ModelCaller {
   readonly actorId: string;
+  /** The delegation the envelope resolved for this call, or none for a person's own lease. */
+  readonly delegationId: string | null;
   /** The person present in their own session for this call, or none for unattended work. */
   readonly attendedByPersonId: string | null;
 }
