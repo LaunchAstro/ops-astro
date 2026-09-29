@@ -10,6 +10,7 @@
 // `tests/api/mp-6-2-agent-page.test.ts`.
 
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RunLineage } from '../../packages/ui/src/index.ts';
 import { lineage, pane, running, unmountAll, version } from './mp-6-1-agent-fixtures.tsx';
@@ -227,7 +228,7 @@ describe('MP-6-2 side column', () => {
 
   it('is 21rem wide at 1279 pixels and above, and stacks below', () => {
     const css = readFileSync(
-      new URL('../../packages/ui/src/styles/6-agent.css', import.meta.url),
+      path.join(process.cwd(), 'packages/ui/src/styles/6-agent.css'),
       'utf8',
     ).replaceAll(/\s+/gu, ' ');
     expect(css).toMatch(

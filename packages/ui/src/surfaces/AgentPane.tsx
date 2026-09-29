@@ -16,8 +16,10 @@ import type { RunLineage } from '../state/run-projection.ts';
 import { Attempts } from './agent/attempts.tsx';
 import { Gate, type GateDecision, type GateRef } from './agent/gate.tsx';
 import { ProposalHeader, Summary, Workflow } from './agent/header.tsx';
+import { Activity, Artefacts, Given, Hero } from './agent/page.tsx';
 import { Scope } from './agent/scope.tsx';
 import { StagedOutput } from './agent/staged.tsx';
+import { activityOf, artefactsOf, heroCells } from '../state/agent-page.ts';
 import { scopeStamp } from '../state/agent-scope.ts';
 
 export type { GateDecision } from './agent/gate.tsx';
@@ -59,17 +61,34 @@ export function AgentPane(props: AgentPaneProps): ReactElement {
     );
   }
   const shown = stories.find((story) => story.lineageId === opened) ?? current;
+  const lineage = (props.lineages ?? []).find((each) => each.lineageId === shown.lineageId);
+  // The page's two columns (MP-6-2): the run in the main column, what it was
+  // allowed and given in a side column that is 21rem wide at 1279px and up.
   return (
     <section className="agent" data-agent="pane" data-agent-lineage={shown.lineageId}>
-      <RunView {...props} shown={shown} />
-      <Attempts stories={stories} shown={shown} onOpen={setOpened} />
+      <div className="agentpage">
+        <div className="agentpage__main">
+          <RunView {...props} shown={shown} lineage={lineage} />
+          <Attempts stories={stories} shown={shown} onOpen={setOpened} />
+        </div>
+        <aside className="agentpage__side" data-agent="side">
+          <Scope
+            stamp={scopeStamp(lineage)}
+            head={shown.head}
+            nameOf={props.nameOf}
+            ledgerHref={props.ledgerHref}
+          />
+          <Given />
+        </aside>
+      </div>
     </section>
   );
 }
 
-function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement {
-  const { shown } = props;
-  const lineage = (props.lineages ?? []).find((each) => each.lineageId === shown.lineageId);
+function RunView(
+  props: AgentPaneProps & { readonly shown: RunStory; readonly lineage: RunLineage | undefined },
+): ReactElement {
+  const { shown, lineage } = props;
   return (
     <>
       <ProposalHeader
@@ -89,12 +108,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
           {shown.head.runId ?? 'not planned'}
         </span>
       </div>
-      <Scope
-        stamp={scopeStamp(lineage)}
-        head={shown.head}
-        nameOf={props.nameOf}
-        ledgerHref={props.ledgerHref}
-      />
+      <Hero story={shown} cells={heroCells(shown, lineage, props.now ?? Date.now())} />
       <Summary story={shown} />
       <Workflow jobs={shown.jobs} open={props.jobListOpen} onToggle={props.onJobList} />
       <StagedOutput story={shown} />
@@ -106,6 +120,8 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
         decisions={lineage?.decisions ?? []}
         onDecide={props.onDecide}
       />
+      <Artefacts artefacts={artefactsOf(lineage)} />
+      <Activity rows={activityOf(lineage, props.nameOf)} />
     </>
   );
 }

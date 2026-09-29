@@ -373,3 +373,35 @@
   font-size: var(--fs-mono-sm);
   color: var(--ink-faint);
 }
+
+/* The Agent page (MP-6-2, mockup TA-01 to TA-12): the run in the main column
+   and, at 1279px and up, what it was allowed and given in a 21rem side
+   column. Below that width the side column stacks under the run. */
+.agentpage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+  min-width: 0;
+}
+.agentpage__main,
+.agentpage__side,
+.agent__part {
+  display: grid;
+  gap: var(--s-3);
+  align-content: start;
+  min-width: 0;
+}
+.agent__part .sbact {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.u-wrap {
+  overflow-wrap: anywhere;
+}
+@media (min-width: 1279px) {
+  .agentpage {
+    grid-template-columns: minmax(0, 1fr) 21rem;
+  }
+}
