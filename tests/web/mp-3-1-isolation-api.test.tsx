@@ -77,6 +77,8 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
   let clientOne: Member;
   let clientTwo: Member;
   let both: Member;
+  let revoked: Member;
+  let revokedGrant = '';
   let taskOne = '';
   const canary = `CANARY-${randomUUID()}`;
   const live: Mounted[] = [];
@@ -96,10 +98,12 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
     clientOne = await enrol(fixture.db.app, fixture.business, 'client-one');
     clientTwo = await enrol(fixture.db.app, fixture.business, 'client-two');
     both = await enrol(fixture.db.app, fixture.business, 'both');
+    revoked = await enrol(fixture.db.app, fixture.business, 'revoked');
     await fixture.db.app.withBusiness(fixture.business, async (tx) => {
       await grantTo(tx, clientOne, 'read', { kind: 'record', id: taskOne });
       await grantTo(tx, clientTwo, 'read', { kind: 'record', id: taskTwo });
       await grantTo(tx, both, 'read', { kind: 'record', id: taskOne });
+      revokedGrant = await grantTo(tx, revoked, 'read', { kind: 'record', id: taskOne });
     });
     const bravo = await insertBusiness(fixture.db.app, 'bravo');
     await installSpine(fixture.db.app, bravo);
@@ -300,6 +304,44 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
       for (const read of reads) expect([401, 403, 404], session.email).toContain(read.status);
       expect(page.text(), session.email).not.toContain(canary);
     }
+  });
+
+  // MP-3-5 isolation: the dock's history never reopens a record the person
+  // can no longer read. A walk back puts the panel on the task again, and the
+  // panel reads it again under the session in hand, which the server refuses
+  // once the grant is gone. (Another business or person starts a history of
+  // its own: tests/web/dock-history-app.test.tsx.)
+  it('MP-3-5 isolation: back to a task whose grant was revoked is refused', async () => {
+    const storage = memory();
+    const session = {
+      token: await tokenFor(revoked.presented.subject),
+      businessKey: 'alpha',
+      email: 'revoked@example.test',
+    };
+    plant(storage, 'alpha', session.email, `/task/${taskOne}`);
+    const heard: Heard[] = [];
+    const page = await signedIn(session, storage, heard);
+    expect(page.find('[data-panel-id="todos"]')?.textContent).toContain(canary);
+    expect(readsOf(heard).map((each) => each.status)).toContain(200);
+
+    const link = document.createElement('a');
+    link.setAttribute('href', '/projects/');
+    (page.find('[data-panel-id="todos"] .dpanel__body') as HTMLElement).append(link);
+    await act(async () => {
+      link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await quiet(heard);
+    expect(page.text()).not.toContain(canary);
+
+    const revoke = await controls.asPerson('grant.revoke', { grantId: revokedGrant });
+    expect(revoke.status).toBe(200);
+    const asked = heard.length;
+    await page.click('[data-panel-id="todos"] [data-act="back"]');
+    await quiet(heard);
+    const again = readsOf(heard.slice(asked));
+    expect(again.length).toBeGreaterThan(0);
+    for (const read of again) expect([403, 404]).toContain(read.status);
+    expect(page.text()).not.toContain(canary);
   });
 
   it('MP-3-1 no audit: the dock adds no audit event of its own', async () => {
