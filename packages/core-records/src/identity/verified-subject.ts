@@ -8,8 +8,20 @@
 // between "who is this" and "write down that we were asked" is a cycle nobody
 // can read an ordering out of.
 
+/** How strongly the provider says the caller signed in (C59). */
+export type AssuranceLevel = 'aal1' | 'aal2';
+
+export interface Assurance {
+  readonly level: AssuranceLevel;
+  readonly signedInAt: number | null;
+  readonly factorAt: number | null;
+}
+
+export const NO_ASSURANCE: Assurance = { level: 'aal1', signedInAt: null, factorAt: null };
+
 /** A subject the auth provider has already verified. Never from a request body. */
 export interface VerifiedSubject {
   readonly provider: string;
   readonly subject: string;
+  readonly assurance?: Assurance;
 }
