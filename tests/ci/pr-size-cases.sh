@@ -57,6 +57,30 @@ run_sizer() {
       PR_LABELS="$labels" node "$SIZER" >/dev/null 2>&1; echo $? )
 }
 
+# Moved lines. A pull request that only moves code starts from a base that
+# already holds it, so these cases measure the last commit alone and keep the
+# report for the per-file assertions.
+# write_block <dir> <path> <from> <to> [indent]
+write_block() {
+  local dir="$1" path="$2" from="$3" to="$4" indent="${5:-}"
+  mkdir -p "$dir/$(dirname "$path")"
+  local i="$from"
+  while [ "$i" -le "$to" ]; do
+    printf '%sconst value_%s = compute(%s);\n' "$indent" "$i" "$i" >> "$dir/$path"
+    i=$((i + 1))
+  done
+}
+
+commit_all() { git -C "$1" add -A >/dev/null; git -C "$1" commit -qm "$2"; }
+
+# Sets STATUS and REPORT rather than echoing, so the report survives.
+run_last_commit() {
+  local dir="$1" labels="$2"
+  REPORT="$(cd "$dir" && BASE_SHA="$(git rev-parse HEAD~1)" HEAD_SHA="$(git rev-parse HEAD)" \
+      PR_LABELS="$labels" node "$SIZER" 2>&1)"
+  STATUS=$?
+}
+
 echo "pr-size cases, against $SIZER"
 echo
 
@@ -94,6 +118,79 @@ dir="$(new_repo)"; add_lines "$dir" "pnpm-lock.yaml" 600
 status="$(run_sizer "$dir" "size-waiver-mechanical")"
 [ "$status" = "0" ] && pass "a generated file over the cap passes on its pattern (exit 0)" \
   || fail "a generated file over the cap passes on its pattern" "expected 0, got $status"
+rm -rf "$dir"
+
+# Moved lines do not count (issue 110). A split of a large file into smaller
+# ones is read as a move by a reviewer, so it is measured as one: only the
+# lines git does not mark as moved (indentation changes allowed) count
+# towards the per-file cap and the total.
+dir="$(new_repo)"; write_block "$dir" "src/big.ts" 1 500; commit_all "$dir" "base"
+rm "$dir/src/big.ts"; write_block "$dir" "src/a.ts" 1 250; write_block "$dir" "src/b.ts" 251 500
+commit_all "$dir" "split big.ts"
+run_last_commit "$dir" ""; status="$STATUS"
+[ "$status" = "0" ] && pass "a pure move of 500 lines into two files passes (exit 0)" \
+  || fail "a pure move of 500 lines into two files passes" "expected 0, got $status: $REPORT"
+rm -rf "$dir"
+
+dir="$(new_repo)"; add_lines "$dir" "src/hand.ts" 401
+status="$(run_sizer "$dir" "size-waiver-coherence")"
+[ "$status" = "1" ] && pass "401 hand-written lines in one file still fail the per-file cap (exit 1)" \
+  || fail "401 hand-written lines in one file still fail the per-file cap" "expected 1, got $status"
+rm -rf "$dir"
+
+dir="$(new_repo)"; write_block "$dir" "src/wrap.ts" 1 450; commit_all "$dir" "base"
+: > "$dir/src/wrap.ts"
+printf 'export function run() {\n' >> "$dir/src/wrap.ts"
+write_block "$dir" "src/wrap.ts" 1 450 "  "
+printf '}\n' >> "$dir/src/wrap.ts"
+commit_all "$dir" "wrap into a named step"
+run_last_commit "$dir" ""; status="$STATUS"
+[ "$status" = "0" ] && pass "a block re-indented into a function counts as moved (exit 0)" \
+  || fail "a block re-indented into a function counts as moved" "expected 0, got $status: $REPORT"
+echo "$REPORT" | grep -qF 'src/wrap.ts: 2 counted, 900 treated as moved (902 changed)' \
+  && pass "the report names the re-indented lines as moved" \
+  || fail "the report names the re-indented lines as moved" "report was: $REPORT"
+rm -rf "$dir"
+
+# Moved and then edited: the edited lines are new text and count, on both
+# sides, while the untouched rest of the block is still a move. big.ts keeps
+# its first hundred lines, so git reads it as modified, not renamed.
+dir="$(new_repo)"; write_block "$dir" "src/big.ts" 1 500; commit_all "$dir" "base"
+: > "$dir/src/big.ts"; write_block "$dir" "src/big.ts" 1 100
+write_block "$dir" "src/moved.ts" 101 200
+i=201; while [ "$i" -le 260 ]; do printf 'const value_%s = edited(%s);\n' "$i" "$i" >> "$dir/src/moved.ts"; i=$((i + 1)); done
+write_block "$dir" "src/moved.ts" 261 500
+commit_all "$dir" "move and edit"
+run_last_commit "$dir" ""; status="$STATUS"
+[ "$status" = "0" ] && pass "a moved and edited block passes when its edits are small (exit 0)" \
+  || fail "a moved and edited block passes when its edits are small" "expected 0, got $status: $REPORT"
+echo "$REPORT" | grep -qF 'src/moved.ts: 60 counted, 340 treated as moved (400 changed)' \
+  && echo "$REPORT" | grep -qF 'src/big.ts: 60 counted, 340 treated as moved (400 changed)' \
+  && pass "a moved and edited block counts its edited lines" \
+  || fail "a moved and edited block counts its edited lines" "report was: $REPORT"
+rm -rf "$dir"
+
+dir="$(new_repo)"; write_block "$dir" "src/big.ts" 1 600; commit_all "$dir" "base"
+: > "$dir/src/big.ts"; write_block "$dir" "src/big.ts" 1 100
+write_block "$dir" "src/moved.ts" 101 130
+i=131; while [ "$i" -le 540 ]; do printf 'const value_%s = edited(%s);\n' "$i" "$i" >> "$dir/src/moved.ts"; i=$((i + 1)); done
+write_block "$dir" "src/moved.ts" 541 600
+commit_all "$dir" "move and rewrite"
+run_last_commit "$dir" "size-waiver-coherence"; status="$STATUS"
+[ "$status" = "1" ] && pass "a moved block with 410 edited lines fails the per-file cap (exit 1)" \
+  || fail "a moved block with 410 edited lines fails the per-file cap" "expected 1, got $status: $REPORT"
+rm -rf "$dir"
+
+# Test lines are never counted, so a move out of a test file is not a move:
+# otherwise code could be written uncounted in a test and moved uncounted
+# into the product.
+dir="$(new_repo)"; write_block "$dir" "tests/helper.test.ts" 1 500; commit_all "$dir" "base"
+: > "$dir/tests/helper.test.ts"; write_block "$dir" "tests/helper.test.ts" 1 50
+write_block "$dir" "src/helper.ts" 51 500
+commit_all "$dir" "move test code into the product"
+run_last_commit "$dir" "size-waiver-coherence"; status="$STATUS"
+[ "$status" = "1" ] && pass "code moved out of a test file counts in full (exit 1)" \
+  || fail "code moved out of a test file counts in full" "expected 1, got $status: $REPORT"
 rm -rf "$dir"
 
 # Removing a waiver label must change the result, which is only true if the
