@@ -24,7 +24,7 @@ import {
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/index.ts';
 import { ISSUER, SECRET, tokenFor } from '../api/fixture.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
-import { seedSchedules, type Schedules } from '../runtime/schedules-harness.ts';
+import { liveWork, seedSchedules, type Schedules } from '../runtime/schedules-harness.ts';
 import { noDatabase, s, useBrokerWorld } from './broker-world.ts';
 import { moneyOf, one, people, setThreshold, stopped, usePeople } from './budget-answers-world.ts';
 
@@ -215,10 +215,13 @@ it('AW-05 above the threshold the route records one approval and a second person
   }
 });
 
-it('AW-05 the agent prefix refuses both answers, with or without the delegation', async () => {
+it('AW-05 the agent prefix refuses both answers, with or without a delegation, a live one included', async () => {
   const { work, runId } = await stopped('an agent tries to answer');
-  const before = await moneyOf(runId);
   const agentToken = await tokenFor(s.agent.subject);
+  // The stopped run's delegation is retired at the stop; the agent's live one
+  // is for other work, in the same business.
+  const live = await liveWork(s, 'the agent works something else', 2_000);
+  const before = await moneyOf(runId);
   for (const [path, body] of [
     ['/run/top_up', topUpBody(work.taskId, runId)],
     ['/run/end_at_budget_stop', endBody(work.taskId, runId)],
@@ -228,6 +231,10 @@ it('AW-05 the agent prefix refuses both answers, with or without the delegation'
       {
         authorization: `Bearer ${agentToken}`,
         [DELEGATION_HEADER]: String(work.picked['credential']),
+      },
+      {
+        authorization: `Bearer ${agentToken}`,
+        [DELEGATION_HEADER]: String(live.picked['credential']),
       },
     ]) {
       // eslint-disable-next-line no-await-in-loop -- one refusal at a time reads as a list

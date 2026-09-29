@@ -1465,10 +1465,12 @@ calls on one run reaching the ceiling at once stop it once.
   classify a waiting run's hold on its ended lease or retired delegation:
   neither is a transition to classify, and the wait is not a clock. A
   cancelled, rejected or superseded lineage is still classified.
-- **Built ahead, not here yet.** The answers' routes on the app, API and
-  command line (parity), the question in the conversation where the plan was
-  approved (AW-04's origin, SL12's drawer), and the second-factor check on a
-  money answer (C59).
+- **Not here yet.** The question in the conversation where the plan was
+  approved, with its two buttons (AW-04's origin, SL12's drawer), and the
+  second-factor check on a money answer (C59). The answers themselves are
+  commands, `run.top_up` and `run.end_at_budget_stop`, on the API, the command
+  line and the app's client
+  ([API.md](API.md#the-answers-at-the-budget-stop)).
 
 ## The answers at the budget stop
 
@@ -1528,8 +1530,8 @@ or delete.
   reaching into another unit's trail.
 - **No HTTP surface of its own.** This package is reached only through L3's
   command surface: `task.propose`, `task.decide`, `task.pickup`,
-  `task.handback`, `task.queue`, `task.cancel`, `task.restart` and
-  `task.heartbeat` are routed there, and its codes are registered, with their
+  `task.handback`, `task.queue`, `task.cancel`, `task.restart`,
+  `task.heartbeat`, `run.top_up` and `run.end_at_budget_stop` are routed there, and its codes are registered, with their
   statuses, in `core-records/src/register.ts`
   ([API.md](API.md#the-operations-l4s-runtime-made-possible)).
 - **No operation-identity replay.** `propose` and `decide` take no

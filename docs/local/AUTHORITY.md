@@ -525,8 +525,9 @@ body naming `olderThanDays` is refused `COMMAND_BODY_INVALID`
 and no accepted source names one for the work window (C122-1's seven-day floor
 is the conversation window's). `conversation_window_days`,
 `four_eyes_threshold` and `client_sign_off_required` still have no consumer
-among the first slice's operations. AW-05's top-up at the budget stop, built
-ahead, reads `four_eyes_threshold` under its locks ([RUNTIME.md](RUNTIME.md)).
+among the first slice's operations. AW-05's top-up at the budget stop,
+`run.top_up`, reads `four_eyes_threshold` under its locks
+([RUNTIME.md](RUNTIME.md)).
 
 **Every setting has a revision** (0020), for the reason a record has one: two
 administrators editing one row from two browser tabs both wrote, and the second
@@ -674,6 +675,14 @@ foreign and a fabricated id get the same answer (`SCOPE_OF.claim`,
 `commands/prepare.ts`). A restart of a live, completed or already restarted
 lineage is `TRANSITION_NOT_PERMITTED` 409, the same code a second
 grant revocation answers.
+
+AW-05's two answers at the budget stop are authorised the same way as
+`task.cancel`: on the task named in `recordId`, `decide` on `billing` for
+`run.top_up` and `decide` on `gate` for `run.end_at_budget_stop`. The handler
+refuses a run that is not on that task with the bytes a made-up run gets, and
+the runtime asks the same pair of the run's own task again under the run's
+locks. No agent holds `decide`, and neither row is in the agent's reach. The
+seed gives both pairs to `admin` only (`scripts/local-seed.mjs`).
 
 ## The restricted worker role
 
