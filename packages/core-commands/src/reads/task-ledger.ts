@@ -63,5 +63,5 @@ const envelopeView = (row: EnvelopeRow): EnvelopeView => ({
 
 /** The task's envelopes, in the projection's order: the open one first, then the closed ones, newest first. */
 export const ledgerOf = (rows: readonly EnvelopeRow[]): TaskLedgerView => ({
-  envelopes: rows.map(envelopeView),
+  envelopes: rows.map((row) => envelopeView(row)),
 });
