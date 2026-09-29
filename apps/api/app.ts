@@ -72,6 +72,8 @@ import {
   CROSS_SITE_FIXES,
   crossSiteSession,
   fromOwnPages,
+  MISMATCH_FIXES,
+  otherPersonsCookie,
   SESSION_COOKIE_OPTIONS,
 } from './auth/session.ts';
 
@@ -208,6 +210,11 @@ async function admit(
   if (presented === 'expired') {
     return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES));
   }
+  // One cookie serves every tab: a tab whose person is not the cookie's reads
+  // nothing of the cookie's person, their business or their clients.
+  if (otherPersonsCookie(context.req, presented.subject)) {
+    return refuse(context, refuseCommand('AUTH_SESSION_MISMATCH', [], MISMATCH_FIXES));
+  }
 
   // The key comes from the path and is resolved by the server.
   const body = readsBody ? await readObject(context) : {};
@@ -241,7 +248,8 @@ export function createApi(options: ApiOptions): Hono {
     // No `Max-Age`: the cookie ends with the browser session and the token's
     // own `exp` ends it sooner. Its lifetime under the 12-hour limit is C58's.
     setCookie(context, SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
-    return context.json({ ok: true }, 200);
+    // The tab sends this back as `SUBJECT_HEADER`. An identifier, not a credential.
+    return context.json({ ok: true, subject: presented.subject }, 200);
   });
   api.post(`${SESSION_PATH}/end`, (context) => {
     if (!fromOwnPages(context.req)) return refuse(context, CROSS_SITE());

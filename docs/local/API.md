@@ -216,17 +216,12 @@ signature and `exp` against GoTrue's published key set
 `sub` as `VerifiedSubject { provider: 'supabase', subject }`. The API holds no
 secret that can make a token.
 
-A browser holds no token (S0-6c). After the password grant it posts the token
-once to `POST /api/session` as the bearer. The API verifies it the same way and
-answers `{ ok: true }` with a `Secure`, `HttpOnly`, `SameSite=Lax` cookie,
-`ops-astro-session`, scoped to `/api/b/`, holding that token. The adapter reads
-a bearer when there is one and the cookie otherwise, so the command line keeps
-its bearer. `POST /api/session/end` clears the cookie. A request whose
-credential is the cookie, and both session routes, must carry
-`x-ops-astro-csrf: 1` and no `Sec-Fetch-Site` other than `same-origin`. A page
-on another origin cannot add that header without a preflight this API never
-answers. Anything else is `AUTH_CROSS_SITE` 403 before the verifier runs
-(`apps/api/auth/session.ts`, `tests/api/session-cookie.test.ts`).
+A browser holds no token (S0-6c). It posts the token once to
+`POST /api/session`, which verifies it, answers `{ ok: true, subject }` and
+sets it as an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/b/`;
+`/api/session/end` clears it. A cookie-carried request needs
+`x-ops-astro-csrf: 1`, no cross-site `Sec-Fetch-Site` (else `AUTH_CROSS_SITE` 403) and `x-ops-astro-subject` naming the cookie's person (else
+`AUTH_SESSION_MISMATCH` 403). A bearer, the command line's, is read first.
 
 Nothing else reaches identity. Not a body field, not a host or forwarded
 header, not an `apikey`, not a query parameter. A request carrying `actorId` or

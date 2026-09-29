@@ -13,8 +13,7 @@
 // prefix and verified server-side by login resolution, so there is no field
 // here for a caller to put a business in and no header this module will set
 // that could carry one (checklist N7). The actor is likewise absent: the server
-// takes it from the subject of the session cookie's token, which this module
-// never holds (S0-6c).
+// takes it from the bearer token's subject.
 //
 // **`operationId` is minted here, per attempt, and a retry reuses it.** That
 // is what makes the register's replay rule reachable from a browser: the same
@@ -43,7 +42,12 @@
 // matching `commands/requests.ts`, though the slice contract's prose writes
 // `operation_id`. There is one spelling on the wire and this is it.
 
-import { CSRF_HEADER, PREFIX, pathOf } from '../../../../packages/core-wire/src/index.ts';
+import {
+  CSRF_HEADER,
+  PREFIX,
+  SUBJECT_HEADER,
+  pathOf,
+} from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
 import type { NotARead, ReadName } from './read-names.ts';
 
@@ -102,11 +106,10 @@ export interface ClientOptions {
   readonly origin: string;
   /** `alpha` or `bravo`. It is a path segment, not a claim in a body. */
   readonly businessKey: string;
-  /**
-   * Whether the person is signed in. The credential is the session cookie the
-   * browser sends and no script reads; this says only that there is one.
-   */
+  /** Signed in: the credential is the session cookie, which no script reads. */
   readonly signedIn: boolean;
+  /** The person this tab signed in as, which the API holds the cookie to. */
+  readonly subject?: string;
   /** Injected so a test can drive the client without a network or a global. */
   readonly fetch: typeof globalThis.fetch;
   /** Injected for the same reason: a test needs a predictable operation id. */
@@ -195,15 +198,13 @@ export class OperationsClient {
     body: Readonly<Record<string, unknown>>,
   ): Promise<CallResult<T>> {
     const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${pathOf(name)}`;
-    // The session cookie is the only credential, and the browser adds it. No
-    // actor header, no business header, no forwarded host: there is nothing
-    // here for a tampered request to reach (checklist N7). `CSRF_HEADER` is
-    // what the API asks of a cookie-carried request: a page on another origin
-    // cannot add it.
+    // The browser adds the cookie, the only credential. No actor, business or
+    // forwarded header for a tampered request to reach (checklist N7).
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       [CSRF_HEADER]: '1',
     };
+    if (this.#options.subject !== undefined) headers[SUBJECT_HEADER] = this.#options.subject;
 
     let response: Response;
     try {

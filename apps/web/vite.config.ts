@@ -116,11 +116,7 @@ function buildStamp(): Plugin {
   };
 }
 
-/**
- * The dev server drops the page's content policy. React's fast refresh puts an
- * inline script in the served page, which the policy refuses; the built page,
- * the one that is deployed, keeps it.
- */
+/** The dev server drops the content policy: fast refresh is an inline script. */
 function devWithoutContentPolicy(): Plugin {
   return {
     name: 'ops-astro-dev-without-content-policy',

@@ -33,19 +33,41 @@ export interface ApiRoute {
   readonly fetch: typeof globalThis.fetch;
 }
 
+/** Sign-outs still on their way to the API, and a count of sign-ins and outs. */
+const signingOut = new Set<Promise<unknown>>();
+let latest = 0;
+
 /**
  * The browser's sign-in: the password grant, then the token straight to the
- * API, which keeps it as an `HttpOnly` session cookie no script reads (S0-6c). The token is not returned, so the
- * page is left holding nothing. The command line calls `signIn` and keeps its
- * bearer instead.
+ * API, which keeps it as an `HttpOnly` session cookie no script reads (S0-6c).
+ * What comes back is the person the cookie is, as the API names them, never
+ * the token. The command line calls `signIn` and keeps its bearer instead.
  */
 export async function openSession(
   request: SignInRequest & ApiRoute,
-): Promise<{ readonly ok: true } | { readonly ok: false; readonly because: string }> {
+): Promise<
+  | { readonly ok: true; readonly subject?: string }
+  | { readonly ok: false; readonly because: string }
+> {
   const result = await signIn(request);
   if (!result.ok) return result;
-  const kept = await toApi(request, SESSION_PATH, `Bearer ${result.token}`);
-  return kept ? { ok: true } : { ok: false, because: 'The API did not accept the sign-in.' };
+  const bearer = `Bearer ${result.token}`;
+  const mine = ++latest;
+  // A sign-out still in flight clears whichever cookie is there when its
+  // answer lands, this one included. So once it has landed the session is
+  // written again, unless a later sign-in or sign-out has had its say.
+  if (signingOut.size > 0) {
+    const landed = Promise.allSettled(signingOut);
+    void (async () => {
+      await landed;
+      if (latest === mine) await toApi(request, SESSION_PATH, bearer);
+    })();
+  }
+  const answer = await toApi(request, SESSION_PATH, bearer);
+  if (answer === undefined) return { ok: false, because: 'The API did not accept the sign-in.' };
+  const body: unknown = await answer.json().catch(() => undefined);
+  const subject = (body as { subject?: unknown } | undefined)?.subject;
+  return typeof subject === 'string' ? { ok: true, subject } : { ok: true };
 }
 
 export async function signIn(request: SignInRequest): Promise<SignInResult> {
@@ -79,11 +101,19 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
 
 /** Ask the API to clear the session cookie. The page has no other way to. */
 export async function signOut(request: ApiRoute): Promise<void> {
-  await toApi(request, `${SESSION_PATH}/end`);
+  latest += 1;
+  const sent = toApi(request, `${SESSION_PATH}/end`);
+  signingOut.add(sent);
+  await sent;
+  signingOut.delete(sent);
 }
 
 /** One call to the session route, with the header its CSRF check asks for. */
-async function toApi(request: ApiRoute, path: string, bearer?: string): Promise<boolean> {
+async function toApi(
+  request: ApiRoute,
+  path: string,
+  bearer?: string,
+): Promise<Response | undefined> {
   const headers: Record<string, string> = { [CSRF_HEADER]: '1' };
   if (bearer !== undefined) headers['authorization'] = bearer;
   try {
@@ -91,9 +121,9 @@ async function toApi(request: ApiRoute, path: string, bearer?: string): Promise<
       method: 'POST',
       headers,
     });
-    return response.ok;
+    return response.ok ? response : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 

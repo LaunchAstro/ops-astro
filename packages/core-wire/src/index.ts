@@ -18,6 +18,7 @@ export {
   READS,
   SESSION_COOKIE,
   SESSION_PATH,
+  SUBJECT_HEADER,
   type CommandDeclaration,
   type CommandName,
   type Operand,
