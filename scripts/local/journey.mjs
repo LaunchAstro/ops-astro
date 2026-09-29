@@ -31,7 +31,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
   DOCKER,
@@ -40,6 +40,7 @@ import {
   startPostgres,
   stopStarted,
 } from './journey-stack.mjs';
+import { builtCases, protectedVerdicts } from './journey-proofs.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 /**
@@ -62,6 +63,10 @@ const UNRUN = [
   [
     'the browser pass (slice-acceptance) on this stack',
     'the web app signs in through GoTrue, which this stack does not start yet',
+  ],
+  [
+    'keyboard-only and 390-wide passes over the whole journey (T4-R9)',
+    'they drive the browser, which needs GoTrue on this stack, and the revision round needs T2g',
   ],
 ];
 
@@ -153,30 +158,36 @@ async function journey() {
   }
 }
 
-/** T3d2's restart legs, then T1 to T3's named suites, then what this base cannot run. */
+/**
+ * T3d2's restart legs, T1 to T3's named suites with the protected set's
+ * verdicts read from that same run, the built bundle and the worker's
+ * structure, then what this base cannot run.
+ */
 function afterJourney() {
   const proofs = 'T3d2 restart legs (runtime-proofs)';
-  const suites = 'named suites: T1 to T3 cases (db:conformance)';
+  const suites = 'named suites: T1 to T3 cases and the conformance proofs (db:conformance)';
   if (onlyJourney) {
-    record(proofs, 'unrun', 'skipped by --only journey');
-    record(suites, 'unrun', 'skipped by --only journey');
+    for (const name of [proofs, suites, 'the protected set, the bundle and the worker structure']) {
+      record(name, 'unrun', 'skipped by --only journey');
+    }
   } else {
     const file = join(evidence, 'runtime-proofs.txt');
-    const own = ['--name', `${container}-proofs`, '--port', String(ports.proofsPg)];
-    const legs = run('bash', [
-      'scripts/local/runtime-proofs.sh',
-      ...own,
-      '--api-port',
-      String(ports.proofsApi),
-      '--evidence',
-      file,
-    ]);
+    const own = ['--name', `${container}-proofs`, '--port', ports.proofsPg];
+    const api = ['--api-port', ports.proofsApi, '--evidence', file];
+    const legs = run('bash', ['scripts/local/runtime-proofs.sh', ...own, ...api]);
     record(proofs, legs.ok ? 'pass' : 'fail', `evidence ${file}`);
-    const named = run(process.execPath, ['scripts/db-conformance.mjs'], {
-      DATABASE_URL: admin,
-      DATABASE_ADMIN_URL: admin,
-    });
-    record(suites, named.ok ? 'pass' : 'fail', named.out.trim().split('\n').slice(-3).join(' / '));
+    const env = { DATABASE_URL: admin, DATABASE_ADMIN_URL: admin };
+    const named = run(process.execPath, ['scripts/db-conformance.mjs'], env);
+    appendFileSync(
+      join(evidence, 'db-conformance.txt'),
+      named.out.replaceAll(password, '<password>'),
+    );
+    const tail = named.out.trim().split('\n').slice(-3).join(' / ');
+    record(suites, named.ok ? 'pass' : 'fail', tail);
+    const manifest = JSON.parse(readFileSync(join(ROOT, 'tests/db/named-suites.json'), 'utf8'));
+    for (const line of [...protectedVerdicts(named.out, manifest), ...builtCases()]) {
+      record(line.case, line.status, line.detail);
+    }
   }
   for (const [name, reason] of UNRUN) record(name, 'unrun', reason);
 }
