@@ -96,7 +96,9 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
     // Every timer past every window: the gate, the delegation and the lease,
     // then the sweep, the restart replay and the sweep again.
     await s.db.admin.execute(
-      `update public.delegations set expires_at = clock_timestamp() - interval '1 second'
+      `update public.delegations
+          set granted_at = least(granted_at, clock_timestamp() - interval '2 seconds'),
+              expires_at = clock_timestamp() - interval '1 second'
         where business_id = $1`,
       [s.business],
     );
@@ -208,11 +210,12 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
       await a.close();
       // eslint-disable-next-line no-await-in-loop
       const after = await alpha.money(w);
-      if (codeOf(dispatch) !== 'applied') {
-        expect(after).toMatchObject({ state: 'abandoned', dispatch_marker: false });
-      } else {
-        expect(after).toMatchObject({ state: 'held', attempt_state: 'liability_unknown' });
-      }
+      // Exactly one winner: a mark held unknown, or a release with no mark.
+      expect(after).toMatchObject(
+        codeOf(dispatch) === 'applied'
+          ? { state: 'held', attempt_state: 'liability_unknown' }
+          : { state: 'abandoned', dispatch_marker: false },
+      );
       expect(after?.['lease_state']).toBe('expired');
     }
   });
@@ -242,7 +245,7 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
         where att.business_id = $1 and att.state = 'quarantined'`,
       [s.business],
     );
-    expect(both).toStrictEqual([]);
+    expect(both).toHaveLength(0);
   });
 
   it('a database seeded through first-slice operations is unchanged, or classified by name', async () => {
@@ -291,9 +294,9 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
       ['alpha', s.business],
       ['bravo', other.business],
     ]);
-    const outcome = await sweepDeployment(s.db.app, async (key: string) => keys.get(key), [
-      'bravo',
-    ]);
+    const resolve = async (key: string): Promise<string | undefined> =>
+      await Promise.resolve(keys.get(key));
+    const outcome = await sweepDeployment(s.db.app, resolve, ['bravo']);
     expect(outcome).toMatchObject({ ok: true, businesses: [{ key: 'bravo' }] });
     expect(await bravo.money(away)).toMatchObject({ attempt_state: 'liability_unknown' });
     const unknownIn = async (business: string) =>
@@ -303,7 +306,7 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
         [business],
       );
     expect(await unknownIn(other.business)).toHaveLength(1);
-    expect((await sweepDeployment(s.db.app, async () => undefined, ['nobody'])).ok).toBe(false);
+    expect((await sweepDeployment(s.db.app, resolve, ['nobody'])).ok).toBe(false);
   });
 
   it('client to client and person to person: the unknown amount reaches only a reader holding the task grant', async () => {

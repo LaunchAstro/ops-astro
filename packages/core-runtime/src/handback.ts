@@ -560,7 +560,11 @@ async function answer(
       reportId: settled.reportId,
       reservationId: found.reservation_id,
       attemptId: settled.attemptId,
-      reservationState: settled.classification.state,
+      // T3b: an unknown liability keeps its reservation held at the whole hold.
+      reservationState:
+        settled.classification.state === 'liability_unknown'
+          ? 'held'
+          : settled.classification.state,
       classification: settled.classification,
       envelopeHeldMinor: Number(envelope.held_minor),
       envelopeActualMinor: Number(envelope.actual_minor),

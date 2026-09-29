@@ -1228,7 +1228,8 @@ direct SQL.
   - Both revocations answer with `detail.classifiedHolds`: the ids of the
     reservations the revocation classified, and nothing else about them
     (`classifiedHolds`, `authority-controls.ts`).
-  - A marked or observed attempt keeps its full hold as `quarantined`.
+  - A marked or observed attempt keeps its full hold: a legacy row as
+    `quarantined`, a dispatched one as `liability_unknown` (T3b).
 
   `replayRecordedTransitions` also finds a revocation that committed without its
   classification (`discoverEligible`, `recovery.ts`). Its production caller is
@@ -1262,7 +1263,11 @@ direct SQL.
   row. No timer grants authority. Nothing runs on its own, a lease that stops
   beating expires, and the next pickup fences it as before. Bounded unstarted
   recovery stays the owning operations' classifier (W04), reached by pickup,
-  cancellation and restart replay, with no sweeper added.
+  cancellation and restart replay. T3b adds the sweep, the reconciliation
+  pass's lease-expiry phase (`recovery/sweep.ts`): the API runs it per
+  configured business on an interval, fences a live lease past its deadline,
+  releases an unmarked hold in full and holds a marked step as
+  `liability_unknown` at its whole maximum, which no timer path leaves.
 - **Open on the heartbeat.** The two bounds, 1 hour a beat and 8 hours in total,
   are lane constants (`MAXIMUM_RENEWAL_SECONDS` and
   `MAXIMUM_LEASE_LIFETIME_SECONDS`, `heartbeat.ts`), not an owner policy. They
@@ -1344,9 +1349,10 @@ legacy row as derivable, and 0022's trigger forbids it.
 
 ## What is not here
 
-- **No sweeper and no write-off.** The worker (`apps/worker/`, T2b), effect
-  activation (T2c1, T2c2) and the top-up (T2e, `topUp` in `budget.ts`) are
-  built.
+- **No write-off and no recorded outcome.** The worker (`apps/worker/`, T2b),
+  effect activation (T2c1, T2c2), the top-up (T2e, `topUp` in `budget.ts`) and
+  the sweep (T3b) are built. An unknown liability waits for a person (T3c,
+  T3d1); the sweep never settles or releases a marked step.
 - **No audit row from this package.** `audit_events` is written through L3's
   command envelope, which owns the actor and the operation identity. The first
   attempt to write one from `handback.ts` aborted the whole transaction on a
