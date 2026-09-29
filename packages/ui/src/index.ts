@@ -18,11 +18,10 @@
 // controls and layout; session-scoped panel registration, open state and drafts
 // belong to `apps/web` [ui-reference CONTRACT.md:305].
 //
-// **The working slice exports only what its screens mount.** There is no
-// `AgentTab`, `AgentPanel` or `Gate`: each draws a surface the slice's three
-// screens do not reach, over records no part of this build stores, and an
-// exported component that nothing mounts is an estate to maintain, not a
-// capability. They arrive with the phase that owns them.
+// **The working slice exports only what its screens mount.** `AgentPane`
+// arrived with MP-6-1, mounted on the task page over the proposals `task.read`
+// stores; an exported component that nothing mounts is an estate to maintain,
+// not a capability.
 
 // The package's stylesheets, in their load order: tokens, then primitives, then
 // the shell, then the board, then the task surfaces. They enter through this
@@ -33,12 +32,15 @@ import './styles/2-primitives.css';
 import './styles/3-shell.css';
 import './styles/4-board.css';
 import './styles/5-task.css';
+import './styles/6-agent.css';
 
 export * from './state/corpus.ts';
 export * from './state/project.ts';
+export * from './state/agent-run.ts';
 export * from './primitives/Absence.tsx';
 export * from './primitives/Status.tsx';
 export * from './primitives/Tabs.tsx';
 export * from './surfaces/Shell.tsx';
 export * from './surfaces/Board.tsx';
 export * from './surfaces/TaskPage.tsx';
+export * from './surfaces/AgentPane.tsx';

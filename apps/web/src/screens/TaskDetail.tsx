@@ -87,6 +87,7 @@ import type {
   TaskReadResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import { AgentSection } from '../views/agent-pane.tsx';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { ConflictNotice, MovedNotice, TaskHeader, UnsavedBar } from './task/Notices.tsx';
 
@@ -575,6 +576,14 @@ function Loaded(props: LoadedProps): ReactElement {
         onPosted={props.onChanged}
         draft={props.commentDraft}
         onDraft={props.onCommentDraft}
+      />
+
+      <AgentSection
+        client={client}
+        recordId={task.id}
+        proposals={task.proposals}
+        people={people.state.outcome === 'ready' ? people.state.value.persons : []}
+        onChanged={props.onChanged}
       />
 
       <Proposals
