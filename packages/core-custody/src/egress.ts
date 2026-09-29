@@ -155,17 +155,45 @@ export type Resolve = (
 const resolveBySystem: Resolve = async (hostname) =>
   await systemLookup(hostname, { all: true, order: 'verbatim' });
 
-/** The addresses the socket may take, every one checked; none when any is forbidden. */
-async function checkedAddresses(url: URL, resolve: Resolve): Promise<readonly LookupAddress[]> {
+/** The work, or the signal's reason once it aborts. The listener goes when the race ends. */
+async function within<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted();
+  const done = new AbortController();
+  const aborted = new Promise<never>((_resolve, reject) => {
+    signal.addEventListener(
+      'abort',
+      () => {
+        reject(signal.reason);
+      },
+      { once: true, signal: done.signal },
+    );
+  });
+  try {
+    return await Promise.race([work, aborted]);
+  } finally {
+    done.abort();
+  }
+}
+
+/**
+ * The addresses the socket may take, every one checked: none when any is
+ * forbidden or the lookup fails, and `timeout` when the request's time ran out
+ * first, since the lookup is part of the call.
+ */
+async function checkedAddresses(
+  url: URL,
+  resolve: Resolve,
+  signal: AbortSignal,
+): Promise<readonly LookupAddress[] | 'timeout'> {
   const literal = literalOf(url.hostname);
   let addresses: readonly LookupAddress[];
   try {
     addresses =
       literal === undefined
-        ? await resolve(url.hostname)
+        ? await within(resolve(url.hostname), signal)
         : [{ address: literal, family: isIP(literal) }];
   } catch {
-    return [];
+    return signal.aborted ? 'timeout' : [];
   }
   return addresses.some((entry) => forbiddenAddress(entry.address)) ? [] : addresses;
 }
@@ -243,7 +271,10 @@ export async function send(
   }
   const url = new URL(request.path, destination.origin);
   if (url.origin !== destination.origin) return { ok: false, fault: 'bad_path', status: null };
-  const addresses = await checkedAddresses(url, resolve);
+  // One deadline for the whole call, the lookup included.
+  const signal = AbortSignal.timeout(request.timeoutMs);
+  const addresses = await checkedAddresses(url, resolve, signal);
+  if (addresses === 'timeout') return { ok: false, fault: 'timeout', status: null };
   if (addresses.length === 0) return { ok: false, fault: 'forbidden', status: null };
   const headers: Record<string, string> = {
     'content-type': 'application/json',
@@ -259,7 +290,7 @@ export async function send(
       method: request.method,
       headers,
       lookup: pinnedTo(addresses),
-      signal: AbortSignal.timeout(request.timeoutMs),
+      signal,
     },
     request.body,
     request.maxResponseBytes,
