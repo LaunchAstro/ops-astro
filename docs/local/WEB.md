@@ -691,9 +691,10 @@ places this build does not yet reach it.
   - At 390 the sidebar is gone, and with it the only navigation apart from the
     breadcrumb. A person who lands on a task deep-linked has `Projects` in the
     crumb and nothing else.
-  - At 390 the task page's assignee section can still be drawing
-    `Loading the people…` after the record itself is on screen: two reads, two
-    arrival times, and the slower one is a block of text in the middle of the
-    form rather than a field-shaped placeholder.
+  - At 390 the task page's assignee section could still be drawing
+    `Loading the people…` after the record itself was on screen: two reads,
+    two arrival times, and the slower one a block of text in the middle of the
+    form. Fixed by MP-1-3: it now draws a field-shaped placeholder, and the
+    words are kept for a screen reader.
 
   Recorded, not fixed.

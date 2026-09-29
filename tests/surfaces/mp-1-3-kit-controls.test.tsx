@@ -70,7 +70,7 @@ it('MP-1-3 the component gallery page is registered and draws the kit', async ()
   expect(ids).toEqual(GALLERY.map((e) => e.id));
   expect(new Set(ids).size).toBe(ids.length);
   for (const entry of GALLERY) {
-    const states = mounted.all(`[data-catalogue-id="${entry.id}"] [data-state]`);
+    const states = mounted.all(`[data-catalogue-id="${entry.id}"] [data-gallery-state]`);
     expect(states.length, entry.id).toBe(entry.states.length);
     expect(states.length, entry.id).toBeGreaterThan(0);
   }
