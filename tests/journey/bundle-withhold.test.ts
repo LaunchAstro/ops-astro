@@ -6,6 +6,7 @@
 // failed comparison, the open items built from those details, the identity
 // line, the environment and the budgets. Hostile quoting included.
 
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { writeBundle } from '../../scripts/local/journey-bundle.ts';
 
@@ -82,5 +83,20 @@ describe('the bundle withholds what a person wrote, wherever it arrives', () => 
       bundleWith([], { environment: `{"note":"${BODY}"}`, budget: `{"body":"${BODY}"}` }),
     );
     expect(text).not.toContain(BODY);
+  });
+
+  it('keeps a plain-text detail private: its digest and only its safe tokens (Sol, review 3)', () => {
+    const title = 'Client ACME defaced plan for the decade';
+    const detail = `task.read refused NOT_FOUND for ${DECISION} while handling ${title}, 106 ms, see tests/journey/run.ts and T2g (#136)`;
+    const bundle = bundleWith([detail]);
+    const text = both(bundle);
+    for (const word of ['Client', 'ACME', 'defaced', 'decade', title]) {
+      expect(text).not.toContain(word);
+    }
+    const [line] = (JSON.parse(bundle.json) as { behaviour: { detail: string }[] }).behaviour;
+    const digest = createHash('sha256').update(detail, 'utf8').digest('hex').slice(0, 16);
+    expect(line?.detail).toBe(
+      `detail sha256 ${digest}; facts: NOT_FOUND, ${DECISION}, 106 ms, tests/journey/run.ts, T2g, #136`,
+    );
   });
 });
