@@ -60,11 +60,17 @@ export async function recordAuthenticationAttempt(
   attempt: AuthenticationAttempt,
 ): Promise<void> {
   const resolved = attempt.outcome === 'resolved';
+  // The session a person came in on, so they can see it (C58). Only a
+  // resolved attempt's: a refused one's session is nobody's here. The column
+  // is named only when there is one, so a database from before 0038, which
+  // has no such column, is still written to by a token that names none.
+  const sessionId = resolved ? attempt.presented.sessionId : undefined;
+  const session = sessionId === undefined ? ['', ''] : [', session_id', ', $10'];
   await tx.query(
     `insert into public.authentication_attempts
        (business_id, id, owner, provider, subject_digest, outcome,
-        login_id, actor_id, person_id, refusal_code, session_id)
-     values ($1, gen_random_uuid(), $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        login_id, actor_id, person_id, refusal_code${session[0]})
+     values ($1, gen_random_uuid(), $2, $3, $4, $5, $6, $7, $8, $9${session[1]})`,
     [
       tx.businessId,
       attempt.owner,
@@ -75,9 +81,7 @@ export async function recordAuthenticationAttempt(
       resolved ? attempt.actorId : null,
       resolved ? (attempt.personId ?? null) : null,
       resolved ? null : attempt.refusalCode,
-      // The session a person came in on, so they can see it (C58). Only a
-      // resolved attempt's: a refused one's session is nobody's here.
-      resolved ? (attempt.presented.sessionId ?? null) : null,
+      ...(sessionId === undefined ? [] : [sessionId]),
     ],
   );
 }

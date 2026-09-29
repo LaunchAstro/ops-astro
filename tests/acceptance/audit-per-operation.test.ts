@@ -456,6 +456,8 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           login_id: null,
           actor_id: null,
           person_id: null,
+          // C58: a refused attempt names no session.
+          session_id: null,
         },
       ]);
     }
