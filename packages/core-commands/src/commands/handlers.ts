@@ -22,6 +22,7 @@ import { commentOnTask } from './tasks-comment.ts';
 import { setBusinessSetting } from './settings-write.ts';
 import { clearCustodySecret, setCustodySecret } from './custody-secrets.ts';
 import { startConnectorRepair } from './connector-repair.ts';
+import { demoteClass, fileMandate, promoteClass, revokeStandingMandate } from './mandates.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
@@ -81,6 +82,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'secret.set': (tx, context, request) => setCustodySecret(tx, context, request),
   'secret.clear': (tx, context, request) => clearCustodySecret(tx, context, request),
   'connector.repair': (tx, context, request) => startConnectorRepair(tx, context, request),
+  'mandate.file': (tx, context, request) => fileMandate(tx, context, request),
+  'mandate.revoke': (tx, context, request) => revokeStandingMandate(tx, context, request),
+  'graduation.promote': (tx, context, request) => promoteClass(tx, context, request),
+  'graduation.demote': (tx, context, request) => demoteClass(tx, context, request),
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,

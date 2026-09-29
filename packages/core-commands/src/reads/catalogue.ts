@@ -32,6 +32,7 @@ import { readSettings } from './settings.ts';
 import { listCustodySecrets } from './custody.ts';
 import { readConnectionFleet } from './connections.ts';
 import { readConnectionSignal } from './signal.ts';
+import { readConnectionGraduation } from './graduation.ts';
 import { readCapabilities } from './capabilities.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
@@ -328,6 +329,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'holds-any-grant',
     outsiderNotFound: false,
     serve: async (tx, session) => await readConnectionSignal(tx, session),
+  },
+  // The per-client region, every client the caller's `connection:read` scopes
+  // reach at once, so the scope bar asks nothing (MP-14-10a).
+  'connection.graduation': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await readConnectionGraduation(tx, session),
   },
   'settings.read': {
     identifiers: [],

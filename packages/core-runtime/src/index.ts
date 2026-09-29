@@ -106,3 +106,4 @@ export {
   withRuntimeKeys,
   type RuntimeKeys,
 } from './runtime-config.ts';
+export { standingMandateVerdict, type MandateQuestion, type MandateVerdict } from './mandates.ts';
