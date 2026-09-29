@@ -19,6 +19,7 @@ import { createWorld, type World } from '../acceptance/world.ts';
 import { serveApi, type ServedApi } from '../cli/cli-process-harness.ts';
 import { everyDeclaration, liveWithin2s } from './checks.ts';
 import { castSeparation, crossings } from './separation.ts';
+import { holdSecret, redact } from './redact.ts';
 import { compareFacts, readFacts } from './facts.ts';
 import { personOn, runPass, type PassContext, type PassResult } from './passes.ts';
 
@@ -44,7 +45,7 @@ let failed = 0;
 
 function report(name: string, ok: boolean, detail: string): void {
   if (!ok) failed += 1;
-  const line = { case: name, status: ok ? 'pass' : 'fail', detail };
+  const line = { case: name, status: ok ? 'pass' : 'fail', detail: redact(detail) };
   console.log(`journey-case ${JSON.stringify(line)}`);
 }
 
@@ -183,6 +184,9 @@ async function passCases(context: PassContext): Promise<PassResult[]> {
 
 async function main(): Promise<void> {
   const world = await createWorld('journey');
+  for (const caller of [world.ada, world.mia, world.noah, world.orphan, world.bea, world.agent]) {
+    holdSecret(caller.token);
+  }
   const keys = mkdtempSync(join(tmpdir(), 'journey-keys-'));
   process.env['CLI_PROCESS_PIDFILE'] = PIDFILE;
   const serve = async (): Promise<ServedApi> =>
