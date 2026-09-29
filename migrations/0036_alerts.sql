@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0034 the alert record (T2h). A run's transition into settled, failed or
+-- 0036 the alert record (T2h). A run's transition into settled, failed or
 -- cancelled, or into a wait only a person can end, raises one alert on its
 -- task, in the transaction that made the transition (`core-runtime/src/alerts.ts`).
 -- Progress raises none. The task page and the queue read show them; nothing

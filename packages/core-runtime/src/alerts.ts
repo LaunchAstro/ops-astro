@@ -11,7 +11,7 @@
 // gate a proposal opens is the gate engine's (`propose.ts`), and raising there
 // is a gate-engine touch this part does not make.
 //
-// One alert per cause and kind (`alerts_one_per_transition`, 0034); a replayed
+// One alert per cause and kind (`alerts_one_per_transition`, 0036); a replayed
 // transition's insert does nothing. Nothing delivers an alert: the task page
 // and the queue read show them to the team (C12-6).
 

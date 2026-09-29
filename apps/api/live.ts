@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // T2f: the live task channel's fan-out. One listen-only connection hears every
-// business's `business:kind:topic` (migration 0033) and hands each only to
+// business's `business:kind:topic` (migration 0035) and hands each only to
 // subscribers filed under that business: the one their session was admitted
 // to, never one a caller named. After a reconnect every subscriber resyncs,
 // since whatever changed in between was never heard.

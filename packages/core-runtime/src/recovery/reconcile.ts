@@ -14,7 +14,7 @@
 //   register holds (`price-book.ts`), never above the hold. The only machine
 //   settlement, and only on observed proof.
 // - Absent: the old hold stays held, whole, for a person (O6), marked
-//   `absence_proved_at` in the same answer (0035), the old worker's
+//   `absence_proved_at` in the same answer (0037), the old worker's
 //   delegation revoked, and the step resumes as a new attempt on its own
 //   hold, with its own identity. The replacement dispatches through T2c1's
 //   recheck like any other work.
@@ -202,7 +202,7 @@ export const settle = async (
 /**
  * The step again, as a new attempt on its own hold, on the still-approved
  * version. `keep` marks the old hold absence-proved first, so it stays held
- * beside the replacement (0035); a hold a person has just settled needs no
+ * beside the replacement (0037); a hold a person has just settled needs no
  * mark. A replacement the envelope or cap has no room for, or whose approval
  * moved, is not reserved, and the step keeps its stop (the savepoint takes the
  * mark back with it, so the next pass asks again).

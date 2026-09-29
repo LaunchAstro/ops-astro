@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0035 absence proved (T3d1). The reconciliation pass asks the operation
+-- 0037 absence proved (T3d1). The reconciliation pass asks the operation
 -- register whether an unknown step's effect happened. When it proves the
 -- effect absent, the step resumes as a new attempt with its own hold, and the
 -- old hold stays held, at its whole maximum, until a person records an outcome
@@ -18,7 +18,7 @@
 -- reservation is abandoned under that recorded cause (0013 keeps a zero
 -- actual off the row), and the attempt, which carries its dispatch marker, may
 -- now end `abandoned` too, but only with the outcome `abandoned` a person
--- recorded. Every other marked attempt keeps 0032's owning states.
+-- recorded. Every other marked attempt keeps 0033's owning states.
 --
 -- The old hold may later settle (a person's recorded outcome) or be written
 -- off (T3c), so the check admits those states and no other. Protected: budget

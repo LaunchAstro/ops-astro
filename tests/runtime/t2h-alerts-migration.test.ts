@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// T2h, migration 0034: the `alerts` table. On a fresh database and on one
-// seeded at 0033 then upgraded: rows unchanged and the same catalogue. As the
+// T2h, migration 0036: the `alerts` table. On a fresh database and on one
+// seeded at 0035 then upgraded: rows unchanged and the same catalogue. As the
 // application role an alert is written once and never changed: a second alert
 // for the same transition, an update and a delete are refused, and so is an
 // alert in another business's name or on another business's task. No trigger
@@ -29,7 +29,7 @@ if (serverUrl === undefined) {
 }
 
 const onDisk = readMigrations('migrations');
-const THROUGH_0033 = (version: string): boolean => version.slice(0, 4) <= '0033';
+const THROUGH_0035 = (version: string): boolean => version.slice(0, 4) <= '0035';
 const GATE_ENGINE = ['gates', 'gate_decisions', 'proposal_lineages', 'proposal_versions'];
 
 /** Every constraint and trigger on the gate engine's tables, and on `alerts`. */
@@ -60,7 +60,7 @@ async function dump(db: EmptyDatabase): Promise<unknown> {
   );
 }
 
-describe.skipIf(serverUrl === undefined)('0034 the alert record', () => {
+describe.skipIf(serverUrl === undefined)('0036 the alert record', () => {
   let fresh: EmptyDatabase;
   let upgraded: EmptyDatabase;
   let fixture: RuntimeFixture;
@@ -77,7 +77,7 @@ describe.skipIf(serverUrl === undefined)('0034 the alert record', () => {
     upgraded = await createEmptyDatabase({ part: 't2hmigup' });
     await applyMigrations(
       upgraded.admin,
-      onDisk.filter((m) => THROUGH_0033(m.version)),
+      onDisk.filter((m) => THROUGH_0035(m.version)),
     );
     await buildFixture(upgraded.app, 't2h-seed');
     gateBefore = await gateEngine(upgraded);

@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0033 the live task channel (T2f).
+-- 0035 the live task channel (T2f).
 --
 -- A write to a task's run or record emits a content-free invalidation from
 -- inside its own transaction: `pg_notify` is delivered at commit, never on a

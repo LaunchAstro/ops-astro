@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// T2d, migration 0033: the storage backstop 0026 lifted with the owner's
+// T2d, migration 0034: the storage backstop 0026 lifted with the owner's
 // acceptance (27 September 2026) and replaced by the settled-actual rules.
-// `0026` itself stays byte-identical on disk; 0033 drops its first rule, keeps
+// `0026` itself stays byte-identical on disk; 0034 drops its first rule, keeps
 // its second, and adds three: an actual reservation spends no more than it
 // held, an attempt carries an actual exactly when it is settled, and that
-// actual is positive. On a fresh database and on one seeded at 0032 through
+// actual is positive. On a fresh database and on one seeded at 0033 through
 // the runtime then upgraded: rows unchanged, the same constraints, each rule
 // refused as the application role, and the worker holding nothing.
 
@@ -41,7 +41,7 @@ if (serverUrl === undefined) {
 }
 
 const onDisk = readMigrations('migrations');
-const THROUGH_0032 = (version: string): boolean => version.slice(0, 4) <= '0032';
+const THROUGH_0033 = (version: string): boolean => version.slice(0, 4) <= '0033';
 const BACKSTOP_0026 = '28554fabfe72a262c5344f6bc22885a646b959c44982137b373d441e9c9be97e';
 
 /** One approved piece of work: its held reservation and its attempt. */
@@ -85,8 +85,8 @@ async function held(
   });
 }
 
-// T3d1: 0035 adds `absence_proved_at` to every hold, null on a row it did not
-// answer; the comparison is of the rows 0033 must not rewrite, as T2c1's is.
+// T3d1: 0037 adds `absence_proved_at` to every hold, null on a row it did not
+// answer; the comparison is of the rows 0034 must not rewrite, as T2c1's is.
 async function rows(db: EmptyDatabase): Promise<unknown> {
   return await db.admin.execute(
     `select (select json_agg(to_jsonb(r) - 'absence_proved_at' order by r.id)
@@ -105,13 +105,13 @@ async function constraints(db: EmptyDatabase): Promise<readonly { conname: strin
 }
 
 describe('0026 stays as it was approved', () => {
-  it('is byte-identical on disk; 0033 lifts it, never an edit', () => {
+  it('is byte-identical on disk; 0034 lifts it, never an edit', () => {
     const bytes = readFileSync('migrations/0026_reservation_first_head_no_actual.sql');
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(BACKSTOP_0026);
   });
 });
 
-describe.skipIf(serverUrl === undefined)('0033 settlement at the observed cost', () => {
+describe.skipIf(serverUrl === undefined)('0034 settlement at the observed cost', () => {
   let fresh: EmptyDatabase;
   let upgraded: EmptyDatabase;
   let fixture: RuntimeFixture;
@@ -126,7 +126,7 @@ describe.skipIf(serverUrl === undefined)('0033 settlement at the observed cost',
     upgraded = await createEmptyDatabase({ part: 't2dmigup' });
     await applyMigrations(
       upgraded.admin,
-      onDisk.filter((m) => THROUGH_0032(m.version)),
+      onDisk.filter((m) => THROUGH_0033(m.version)),
     );
     const seed = await buildFixture(upgraded.app, 't2d-seed');
     await held(upgraded.app, seed);

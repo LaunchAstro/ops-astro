@@ -19,7 +19,7 @@
 // refused `EFFECT_NOT_RECONCILABLE` before any mark.
 //
 // **The mark.** The attempt's marker first, then the step naming it, because
-// 0032's key onto the marked attempt is not deferrable. A second dispatch of a
+// 0033's key onto the marked attempt is not deferrable. A second dispatch of a
 // marked attempt writes nothing and answers the first mark, so a lost response
 // is recovered by asking again. The answer carries no secret: the attempt
 // identity is the effect's token (T2c2).
@@ -291,7 +291,7 @@ async function recheck(fact: EffectTimeFact, on: Recheck): Promise<RuntimeResult
   }
 }
 
-/** The mark, in 0032's order: the attempt's marker, then the step naming it. */
+/** The mark, in 0033's order: the attempt's marker, then the step naming it. */
 async function mark(
   tx: TenantQuery,
   found: Found,
