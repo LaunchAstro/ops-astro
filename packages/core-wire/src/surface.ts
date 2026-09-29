@@ -114,7 +114,15 @@ export type CommandName =
   // A person records what an unknown effect came to: one of three (T3d1).
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
-  | 'budget.write_off';
+  | 'budget.write_off'
+  // Time tracking (MP-4-6): a person's own time entries on a task, under
+  // `time:write`. None names the task's revision: a time entry is a row
+  // beside the task, not a write to it.
+  | 'time.start'
+  | 'time.stop'
+  | 'time.log'
+  | 'time.set_note'
+  | 'time.delete';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -274,6 +282,7 @@ const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const TIME_COLLECTION = 'time';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -404,6 +413,12 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  // A duration is text the handler parses and answers in its own words.
+  'time.start': { taskId: 'id' },
+  'time.stop': { taskId: 'id' },
+  'time.log': { taskId: 'id', duration: 'any', note: 'any' },
+  'time.set_note': { entryId: 'id', note: 'any' },
+  'time.delete': { entryId: 'id' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -612,6 +627,27 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
   }),
+
+  // Time tracking (MP-4-6, CS-4.1, CS-4.28 to CS-4.30): `write` on `time`,
+  // asked of the business, and the handler then asks `task:read` on the task
+  // the entry is against, so a person times only a task they may read. Each
+  // reaches only the caller's own entries. The key catalogue lets an agent
+  // hold `time:write` inside its delegation; the agent path does not serve
+  // these yet, so it is `never` here until it does.
+  ...(['time.start', 'time.stop', 'time.log'] as const).map((name) =>
+    declare(name, 'write', {
+      collection: TIME_COLLECTION,
+      targetsExistingRecord: false,
+      untargetedIdentifiers: ['taskId'],
+    }),
+  ),
+  ...(['time.set_note', 'time.delete'] as const).map((name) =>
+    declare(name, 'write', {
+      collection: TIME_COLLECTION,
+      targetsExistingRecord: false,
+      untargetedIdentifiers: ['entryId'],
+    }),
+  ),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));

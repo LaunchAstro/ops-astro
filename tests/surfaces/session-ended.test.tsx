@@ -49,6 +49,7 @@ const TASK = {
   stage: null,
   clientSet: false,
   steps: [],
+  time: null,
   // `task.read` carries the task's comments. This stub is not about them, so
   // the list is the empty one the read gives a task nobody has spoken on — an
   // absent key would be a shape the API never sends.

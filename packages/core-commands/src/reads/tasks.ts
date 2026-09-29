@@ -304,6 +304,7 @@ export async function readTaskDetail(
     stage: row.stage,
     clientSet: row.client_set,
     steps: await readTaskSteps(tx, taskTypeId, row.id, rankPool),
+    time: null,
   };
 }
 

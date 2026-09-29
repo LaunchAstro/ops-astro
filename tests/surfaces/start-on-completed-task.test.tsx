@@ -50,6 +50,7 @@ function clientFor(category: 'unstarted' | 'started' | 'completed'): OperationsC
     stage: null,
     clientSet: false,
     steps: [],
+    time: null,
     comments: [],
     proposals: [],
   };

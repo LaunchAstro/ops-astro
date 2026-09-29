@@ -31,6 +31,9 @@
 // The sixth is MP-4-4's parent scope: `task.set_party` goes to `setParty`,
 // which holds a subtask to its parent's client and carries a client down the
 // subtree before the owned write.
+// The seventh is MP-4-6's five `time.*` writes: untargeted, an agent never
+// reaches them, one row each in the tables that list every write or every
+// untargeted one.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -146,6 +149,14 @@ vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async
   revokeDelegationAsManager: recorder('revokeDelegationAsManager'),
   revokeGrantAsManager: recorder('revokeGrantAsManager'),
 }));
+vi.mock('../../packages/core-commands/src/commands/tasks-time.ts', async (original) => ({
+  ...(await original<object>()),
+  startTime: recorder('startTime'),
+  stopTime: recorder('stopTime'),
+  logTimeEntry: recorder('logTimeEntry'),
+  setEntryNote: recorder('setEntryNote'),
+  deleteEntry: recorder('deleteEntry'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (original) => ({
   ...(await original<object>()),
   cancelOnTask: recorder('cancelOnTask'),
@@ -191,6 +202,11 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'task.purge': [],
   'task.restart': ['recordId', 'lineageId'],
   'task.restore': ['batchId'],
+  'time.delete': ['entryId'],
+  'time.log': ['taskId'],
+  'time.set_note': ['entryId'],
+  'time.start': ['taskId'],
+  'time.stop': ['taskId'],
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
@@ -221,6 +237,11 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.receipt',
   'task.restart',
   'task.restore',
+  'time.delete',
+  'time.log',
+  'time.set_note',
+  'time.start',
+  'time.stop',
 ];
 
 const PINNED_AGENT_SURFACE = [
@@ -344,6 +365,11 @@ const REQUESTS: readonly CommandRequest[] = [
     amountMinor: 0,
     reason: 'why',
   },
+  { command: 'time.start', operationId: 'op', taskId: 't-start' },
+  { command: 'time.stop', operationId: 'op', taskId: 't-stop' },
+  { command: 'time.log', operationId: 'op', taskId: 't-log', duration: '1h', note: 'n-log' },
+  { command: 'time.set_note', operationId: 'op', entryId: 'e-note', note: 'n-note' },
+  { command: 'time.delete', operationId: 'op', entryId: 'e-delete' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -397,6 +423,11 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'time.start': ['startTime', 't-start'],
+  'time.stop': ['stopTime', 't-stop'],
+  'time.log': ['logTimeEntry', 't-log', '1h', 'n-log'],
+  'time.set_note': ['setEntryNote', 'e-note', 'n-note'],
+  'time.delete': ['deleteEntry', 'e-delete'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -436,7 +467,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-six from an expected revision', () => {
+  it('exempts the same thirty-one from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

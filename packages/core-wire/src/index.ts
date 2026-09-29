@@ -67,4 +67,6 @@ export type {
   TaskReadResult,
   TaskStateView,
   TaskSummary,
+  TaskTimeView,
+  TimeEntryView,
 } from './views.ts';
