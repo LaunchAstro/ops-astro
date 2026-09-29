@@ -14,10 +14,13 @@
 # then handed over rather than described by a migration of ours.
 #
 # It is convergent with SLICE-DATA's `db-up.sh`. If the Postgres container is
-# already running, this script reads `.local/db.env` and uses it. If it is not,
-# this script starts the same container, at the same pinned digest, on the same
-# port, with the same named volume, so whichever script runs first the other
-# finds what it expects.
+# already running on the pinned digest with the named volume, this script
+# reads `.local/db.env` and uses it. A container on another image or volume
+# (one made before S0-7 moved the local database to Postgres 17) is replaced
+# as `db-up.sh` replaces it: only the container goes, every volume is kept.
+# Otherwise this script starts the same container, at the same pinned digest,
+# on the same port, with the same named volume, so whichever script runs first
+# the other finds what it expects.
 
 set -euo pipefail
 
@@ -28,6 +31,7 @@ mkdir -p "${LOCAL}"
 PG_CONTAINER=ops-astro-local-pg
 PG_IMAGE=postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
 PG_VOLUME=ops-astro-local-pgdata-17
+PG_DATA_MOUNT=/var/lib/postgresql/data
 PG_PORT=54390
 PG_DATABASE=ops_astro_local
 
@@ -48,8 +52,20 @@ exists() { docker inspect "$1" >/dev/null 2>&1; }
 docker network inspect "${NETWORK}" >/dev/null 2>&1 || docker network create "${NETWORK}" >/dev/null
 
 # --------------------------------------------------------------- the database
-if ! running "${PG_CONTAINER}"; then
-  if exists "${PG_CONTAINER}"; then
+# A container on another image or volume is never reused, running or not.
+if exists "${PG_CONTAINER}"; then
+  pg_mount=$(docker inspect "${PG_CONTAINER}" \
+    --format '{{range .Mounts}}{{if eq .Destination "'"${PG_DATA_MOUNT}"'"}}{{.Name}}{{end}}{{end}}' 2>/dev/null || true)
+  pg_image=$(docker inspect "${PG_CONTAINER}" --format '{{.Config.Image}}' 2>/dev/null || true)
+  if [ "${pg_mount}" != "${PG_VOLUME}" ] || [ "${pg_image}" != "${PG_IMAGE}" ]; then
+    echo "auth-up: replacing ${PG_CONTAINER}: it is on ${pg_image} with ${PG_DATA_MOUNT} from '${pg_mount:-nothing}'"
+    echo "auth-up: every volume is kept; only the container is removed"
+    docker rm -f "${PG_CONTAINER}" >/dev/null
+    pg_replaced=yes
+  fi
+fi
+if [ "${pg_replaced:-no}" = yes ] || ! running "${PG_CONTAINER}"; then
+  if [ "${pg_replaced:-no}" = no ] && exists "${PG_CONTAINER}"; then
     echo "auth-up: starting the existing ${PG_CONTAINER}"
     docker start "${PG_CONTAINER}" >/dev/null
   else
@@ -59,7 +75,7 @@ if ! running "${PG_CONTAINER}"; then
       --name "${PG_CONTAINER}" \
       --network "${NETWORK}" \
       -p "127.0.0.1:${PG_PORT}:5432" \
-      -v "${PG_VOLUME}:/var/lib/postgresql/data" \
+      -v "${PG_VOLUME}:${PG_DATA_MOUNT}" \
       -e POSTGRES_PASSWORD=ops_astro_local \
       -e POSTGRES_DB="${PG_DATABASE}" \
       "${PG_IMAGE}" >/dev/null
