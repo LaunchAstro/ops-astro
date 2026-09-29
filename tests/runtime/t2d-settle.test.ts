@@ -285,6 +285,30 @@ describe.skipIf(serverUrl === undefined)('T2d settlement at the observed cost', 
     expect(await receiptOf(w.attemptId)).toMatchObject({ code: 'NOT_FOUND' });
   });
 
+  it('Sol proof, criterion 2: a settled failed attempt cannot apply its effect afterwards', async () => {
+    const w = await work();
+    await dispatched(w);
+    appliedDetail(
+      await observeOf(w, { usage: PRICED, outcome: 'failed' }),
+      'task.observe',
+    );
+    expect(await money(w)).toMatchObject({ attempt_state: 'settled', outcome: 'failed' });
+
+    const effect = await asAgent(
+      s,
+      {
+        command: 'task.comment',
+        operationId: effectOperationId(w.attemptId),
+        recordId: w.taskId,
+        body: 'This effect arrived after the attempt failed.',
+        audience: 'internal',
+      },
+      w.credential,
+    );
+    expect(codeOf(effect)).not.toBe('applied');
+    expect(await receiptOf(w.attemptId)).toMatchObject({ code: 'NOT_FOUND' });
+  });
+
   it('an expired lease settles the money and moves no work', async () => {
     const w = await work();
     await applied(w);
@@ -345,16 +369,17 @@ describe.skipIf(serverUrl === undefined)('T2d settlement at the observed cost', 
     expect(await money(w)).toMatchObject({ actual: '1800', envelope_actual: '1800' });
   });
 
-  it('T2 isolation: a settlement moves no other business’s envelope', async () => {
+  it('Sol proof, criterion 3: a populated foreign envelope and a wrong client stay isolated', async () => {
     const bravo = await cq8World(s).party('t2d-bravo');
     const others = async () =>
       await rows(
         s,
         `select business_id, id, held_minor::text, actual_minor::text from public.task_envelopes
-          where business_id <> $1 order by id`,
-        [s.business],
+          where business_id = $1 order by id`,
+        [bravo.id],
       );
     const before = await others();
+    expect(before.length).toBeGreaterThan(0);
     const w = await work();
     await applied(w);
     appliedDetail(await observeOf(w, { usage: PRICED }), 'task.observe');
@@ -366,6 +391,25 @@ describe.skipIf(serverUrl === undefined)('T2d settlement at the observed cost', 
     } as never);
     expect(foreign).toMatchObject({ code: 'NOT_FOUND' });
     expect(JSON.stringify(foreign)).not.toContain('1800');
+
+    const otherTask = await createTask(s, `t2d other client ${randomUUID()}`);
+    await s.db.app.withBusiness(s.business, async (tx) => {
+      await grantTo(tx, s.decider, 'share');
+    });
+    const ownClient = await cq8World(s).client(s.business, s.decider, 't2d-own', w.taskId);
+    const wrongClient = await cq8World(s).client(s.business, s.decider, 't2d-wrong', otherTask);
+    const own = await executeRead(s.db.app, s.business, ownClient.presented, {
+      read: 'task.read',
+      recordId: w.taskId,
+    } as never);
+    expect(own).toHaveProperty('sharedTask');
+    expect(JSON.stringify(own)).not.toContain('1800');
+    const crossed = await executeRead(s.db.app, s.business, wrongClient.presented, {
+      read: 'task.read',
+      recordId: w.taskId,
+    } as never);
+    expect(crossed).toMatchObject({ code: 'NOT_FOUND' });
+    expect(JSON.stringify(crossed)).not.toContain('1800');
   });
 
   it('the money line reaches only a reader holding the task grant', async () => {
