@@ -33,6 +33,7 @@ import './styles/2-primitives.css';
 import './styles/3-shell.css';
 import './styles/4-board.css';
 import './styles/5-task.css';
+import './styles/7-page-kit.css';
 
 export * from './state/corpus.ts';
 export * from './state/project.ts';
@@ -42,3 +43,4 @@ export * from './primitives/Tabs.tsx';
 export * from './surfaces/Shell.tsx';
 export * from './surfaces/Board.tsx';
 export * from './surfaces/TaskPage.tsx';
+export * from './page-kit/stubs.tsx';
