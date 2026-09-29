@@ -9,7 +9,7 @@
 // one file rather than spread across the modules that use them.
 //
 // The file is two halves. `composeApi` is the wiring and nothing else: given
-// the connections and the secret it builds the served app, fault mapping
+// the connections and the key set's address it builds the served app, fault mapping
 // included, and touches no environment, socket or process. `main` reads the
 // environment, runs restart recovery, calls `composeApi` and listens, and runs
 // only when this file is the process's entry, so a test imports the same
@@ -53,7 +53,7 @@ import {
 } from '../../packages/core-commands/src/index.ts';
 import { runtimeKeys, withRuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
-import { createSupabaseVerifier } from './auth/supabase.ts';
+import { createSupabaseVerifier, type SupabaseVerifierOptions } from './auth/supabase.ts';
 import {
   describeRecovered,
   parseRecoveryScope,
@@ -83,7 +83,7 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
     // connection string and it has no business in either of theirs.
     ...readEnvFile(join(ROOT, '.local', 'gate.env')),
     // The delegation credential keyring, in a gitignored file of its own for
-    // the same reason, and never the gate key or the JWT secret.
+    // the same reason, and never the gate key.
     ...(keyFileNamed ? {} : readEnvFile(join(ROOT, '.local', 'delegation.env'))),
     // The deployment's businesses for restart recovery, `RECOVERY_BUSINESS_KEYS`.
     // Deployment configuration rather than a secret, in a file of its own so the
@@ -136,10 +136,8 @@ export interface ApiConfig {
   readonly database: Database;
   /** The owner's connection, used for the business key and `/api/health` only. */
   readonly admin: AdminConnection;
-  /** The HS256 secret the Supabase adapter verifies bearers with. */
-  readonly secret: string;
-  /** The issuer every bearer must name: the GoTrue URL, `GOTRUE_URL`. */
-  readonly issuer: string;
+  /** The issuer and published key set bearers are checked against: public keys only. */
+  readonly signIn: Omit<SupabaseVerifierOptions, 'onRefusal'>;
   /** The signing key and delegation keyring `main` read, never put in `process.env`. */
   readonly keys: RuntimeKeys;
   /**
@@ -201,7 +199,13 @@ export function composeApi(config: ApiConfig): ComposedApi {
     '/',
     createApi({
       database,
-      verify: createSupabaseVerifier({ secret: config.secret, issuer: config.issuer }),
+      verify: createSupabaseVerifier({
+        ...config.signIn,
+        // The reason alone: an answer the provider sent is never repeated.
+        onRefusal: ({ reason }) => {
+          console.error(`api: the sign-in key set answer was refused (${reason})`);
+        },
+      }),
       resolveBusiness,
       executeRead,
       executeCommand,
@@ -233,13 +237,21 @@ async function main(): Promise<void> {
   const port = Number(environment['API_PORT'] ?? 8790);
   const databaseUrl = environment['DATABASE_URL'];
   const adminUrl = environment['DATABASE_ADMIN_URL'];
-  const secret = environment['SUPABASE_JWT_SECRET'];
   const issuer = environment['GOTRUE_URL'];
 
+  // A test's stand-in set, for a loopback issuer only: a hosted issuer's
+  // tokens are checked against that provider's own published set, always.
+  const named = environment['SUPABASE_KEY_SET_URL'] ?? '';
+  const loopback = /^http:\/\/127\.0\.0\.1:\d+(?:\/|$)/u;
+  if (named !== '' && !(loopback.test(named) && loopback.test(issuer ?? ''))) {
+    console.error(
+      'api: SUPABASE_KEY_SET_URL may name a loopback key set only, for a loopback issuer.',
+    );
+    process.exit(1);
+  }
   for (const [name, value] of [
     ['DATABASE_URL', databaseUrl],
     ['DATABASE_ADMIN_URL', adminUrl],
-    ['SUPABASE_JWT_SECRET', secret],
     ['GOTRUE_URL', issuer],
   ] as const) {
     if (value === undefined || value === '') {
@@ -268,8 +280,7 @@ async function main(): Promise<void> {
   const { app, resolveBusiness } = composeApi({
     database,
     admin,
-    secret: secret as string,
-    issuer: issuer as string,
+    signIn: { issuer: issuer as string, keySetUrl: keySetUrlOf(named, issuer as string) },
     keys,
     ...(alerts === undefined ? {} : { alerts }),
   });
@@ -315,6 +326,15 @@ function alertsFrom(environment: Readonly<Record<string, string | undefined>>): 
     console.error(`api: ${(error as Error).message}`);
     process.exit(1);
   }
+}
+
+/**
+ * The provider's key set, under its own address as GoTrue and a hosted project
+ * publish it. `SUPABASE_KEY_SET_URL` stands in for it only where both are on
+ * loopback (a test's static set), so it cannot move a hosted check anywhere.
+ */
+function keySetUrlOf(named: string, issuer: string): string {
+  return named === '' ? `${issuer.replace(/\/+$/u, '')}/.well-known/jwks.json` : named;
 }
 
 const RETRY =

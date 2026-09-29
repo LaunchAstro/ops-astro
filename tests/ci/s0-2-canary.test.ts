@@ -9,18 +9,17 @@
 // place the fault could travel is read back: the events the sink
 // was handed, what the server wrote to the console, and the response body.
 // Nothing here writes an audit payload; the alerts path holds no connection.
-import { sign } from 'hono/jwt';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { composeApi } from '../../apps/api/server.ts';
 import { createAlerts, type SinkEvent } from '../../apps/api/alerts/sink.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { COMMAND_SURFACE, PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
+import { signBearer, testSignIn } from '../support/sign-in.ts';
 import { times } from './s0-2-plain.ts';
 
 const CANARY_SECRET = 'canary-S02CANARY-4e8a1c-alert-secret';
 const RECORD_CONTENT = 'Private note: client Juniper Vale owes 4,210';
-const SECRET = 'a-local-test-secret-for-the-canary-case';
 const ISSUER = 'http://127.0.0.1:54391';
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const READ = COMMAND_SURFACE.find((declaration) => declaration.kind === 'read');
@@ -43,8 +42,7 @@ function served(executeRead: () => Promise<never>) {
   const { app } = composeApi({
     database: {} as Database,
     admin,
-    secret: SECRET,
-    issuer: ISSUER,
+    signIn: testSignIn(ISSUER),
     keys: runtimeKeys({}),
     executeRead: executeRead as never,
     alerts,
@@ -61,7 +59,7 @@ async function bearer(subject: string): Promise<string> {
     role: 'authenticated',
     exp: now + 600,
   };
-  return await sign(claims, SECRET, 'HS256');
+  return await signBearer(claims);
 }
 
 describe('S0-2 canary', () => {

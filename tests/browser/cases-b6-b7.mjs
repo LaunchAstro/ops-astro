@@ -52,7 +52,7 @@ import {
 const TARGET = restartTargetOf(process.env);
 
 /** Start the API detached, exactly as `scripts/local/api-up.sh` does, on `API_URL`'s port. */
-const API_UP = `. ./.local/db.env; . ./.local/auth.env; API_PORT=${TARGET.apiPort}; export DATABASE_URL DATABASE_ADMIN_URL SUPABASE_JWT_SECRET GOTRUE_URL API_PORT; nohup node apps/api/server.ts >> .local/api.log 2>&1 & echo $! > .local/api.pid`;
+const API_UP = `. ./.local/db.env; . ./.local/auth.env; API_PORT=${TARGET.apiPort}; export DATABASE_URL DATABASE_ADMIN_URL GOTRUE_URL API_PORT; nohup node apps/api/server.ts >> .local/api.log 2>&1 & echo $! > .local/api.pid`;
 
 /** The volume mounted where Postgres 18 keeps its cluster, as `db-up.sh` mounts it. */
 const mountedVolume = () =>

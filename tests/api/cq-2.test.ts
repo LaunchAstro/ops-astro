@@ -9,7 +9,8 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Hono } from 'hono';
 import type { ReadExecutor } from '../../apps/api/app.ts';
-import { authorised, createApiFixture, ISSUER, post, SECRET, tokenFor } from './fixture.ts';
+import { authorised, createApiFixture, ISSUER, post, tokenFor } from './fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import type { ApiFixture } from './fixture.ts';
 import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
 import { insertActor, insertBusiness, insertLogin, insertMapping } from '../identity/fixture.ts';
@@ -51,7 +52,7 @@ function start(settings: Record<string, string>, [url, admin]: readonly string[]
     if (String(parts[0]).startsWith('api: listening')) setImmediate(() => process.exit(0)); };`;
   const preload = `data:text/javascript,${encodeURIComponent(report)}`;
   const env = { PATH: process.env['PATH'], DATABASE_URL: url, DATABASE_ADMIN_URL: admin };
-  const settled = { ...env, SUPABASE_JWT_SECRET: SECRET, GOTRUE_URL: ISSUER, API_PORT: '0' };
+  const settled = { ...env, GOTRUE_URL: ISSUER, API_PORT: '0' };
   const options = { cwd: ROOT, env: { ...settled, ...settings }, timeout: 60_000 };
   const run = spawnSync(process.execPath, ['--import', preload, 'apps/api/server.ts'], options);
   return { status: run.status, output: `${run.stdout}${run.stderr}` };
@@ -94,7 +95,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
 
   const composed = (executeRead: ReadExecutor, keys = runtimeKeys({ ...fixture.environment })) => {
     const { app, admin } = fixture.db;
-    const config = { database: app, admin, secret: SECRET, issuer: ISSUER, keys, executeRead };
+    const config = { database: app, admin, signIn: testSignIn(ISSUER), keys, executeRead };
     return composeApi(config).app;
   };
 
