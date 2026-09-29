@@ -25,8 +25,8 @@
 -- a pin and a ledger row and may never update or delete one; it may insert an
 -- audit copy and may never read, update or delete one. The worker and broker
 -- roles hold nothing on any of them. The run they belong to keeps its
--- version, task and lineage: the application may update its state alone. The number is placed by the rebase onto
--- main (build-ahead).
+-- version, task and lineage: the application may update its state alone.
+-- The number is placed by the rebase onto main (build-ahead).
 
 create table public.run_definition_pins (
   business_id           uuid        not null,
