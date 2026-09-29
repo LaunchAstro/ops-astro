@@ -23,6 +23,8 @@ import {
 import {
   callModel,
   promptCopyRegistered,
+  reserveModelCall,
+  sendReservedCall,
   type AuditNote,
   sweepModelCalls,
   type Broker,
@@ -472,6 +474,37 @@ describe.skipIf(serverUrl === undefined)('AW-01 the broker on the database', () 
     expect(inFlight).toMatchObject({ ok: false, code: 'LIABILITY_UNKNOWN' });
     world.provider.mode('answer');
     expect(await call(work)).toEqual({ ok: false, code: 'AUTHORITY_LOST', callId: null });
+  });
+
+  it('AW-01 revocation between the hold and the send: nothing is sent and the hold is released', async () => {
+    const work = await liveWork(s, 'revoked before the send', 2_000);
+    await stepOf(work);
+    world.provider.mode('answer');
+    const seen = world.provider.seen.length;
+    // The hold commits in the caller's transaction, as model.call's does.
+    const reserving = await s.db.app.withBusiness(
+      s.business,
+      async (tx) => await reserveModelCall(tx, caller(work), requestFor(work), broker),
+    );
+    if (!reserving.ok) throw new Error(`reserve refused ${reserving.code}`);
+    await s.db.admin.execute(
+      `update public.delegations set revoked_at = clock_timestamp(), revocation_cause = 'delegation_revoked'
+        where id = (select delegation_id from public.leases where id = $1)`,
+      [work.picked['leaseId']],
+    );
+    const sent = await sendReservedCall(
+      s.db.app,
+      s.business,
+      caller(work),
+      requestFor(work),
+      reserving.reserved,
+      broker,
+    );
+    expect(sent).toEqual({ ok: false, code: 'AUTHORITY_LOST', callId: reserving.reserved.callId });
+    expect(world.provider.seen.length).toBe(seen);
+    expect(await rowsOf(reserving.reserved.callId)).toMatchObject([
+      { state: 'released', started_at: null },
+    ]);
   });
 
   it('AW-01 expired lease: the cost settles and the work is refused', async () => {
