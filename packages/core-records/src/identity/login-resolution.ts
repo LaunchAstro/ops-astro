@@ -84,6 +84,8 @@ export const NO_MEMBERSHIP_FIXES = [
 
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
 
+const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
+
 const SECOND_FACTOR_FIXES = [
   'enter the code from your authenticator app to finish signing in',
 ] as const;
@@ -141,6 +143,14 @@ export async function resolveLogin(
   }
   if (found.actor_id === null) {
     return await recordRefusal(tx, presented, refuse('ACTOR_INACTIVE', INACTIVE_FIXES));
+  }
+
+  // A session the person has ended (C58: signed out, or ended from another
+  // session or by a factor change) is over from that commit, whatever the
+  // token's own expiry says. Before the factor, so an ended session is told
+  // to sign in again rather than to give a code.
+  if (presented.sessionId !== undefined && (await sessionEnded(tx, found.person_id, presented))) {
+    return await recordRefusal(tx, presented, refuse('AUTH_SESSION_EXPIRED', ENDED_FIXES));
   }
 
   // After the person is known and active, because only a person has a factor,
@@ -211,6 +221,22 @@ export async function standsOnShares(tx: TenantQuery, personId: string): Promise
   ]);
   const row = rows[0];
   return row !== undefined && row.shares > 0 && row.business === 0;
+}
+
+/** Whether this person ended the session the token belongs to (C58, 0038). */
+async function sessionEnded(
+  tx: TenantQuery,
+  personId: string,
+  presented: VerifiedSubject,
+): Promise<boolean> {
+  const rows = await tx.query<{ readonly ended: boolean }>(
+    `select exists (
+       select 1 from public.ended_sessions
+        where business_id = $1 and person_id = $2 and session_id = $3
+     ) as ended`,
+    [tx.businessId, personId, presented.sessionId],
+  );
+  return rows[0]?.ended === true;
 }
 
 /** A refusal and its record commit together, so nobody is turned away unrecorded. */

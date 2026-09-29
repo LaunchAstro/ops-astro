@@ -63,8 +63,8 @@ export async function recordAuthenticationAttempt(
   await tx.query(
     `insert into public.authentication_attempts
        (business_id, id, owner, provider, subject_digest, outcome,
-        login_id, actor_id, person_id, refusal_code)
-     values ($1, gen_random_uuid(), $2, $3, $4, $5, $6, $7, $8, $9)`,
+        login_id, actor_id, person_id, refusal_code, session_id)
+     values ($1, gen_random_uuid(), $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
       tx.businessId,
       attempt.owner,
@@ -75,6 +75,9 @@ export async function recordAuthenticationAttempt(
       resolved ? attempt.actorId : null,
       resolved ? (attempt.personId ?? null) : null,
       resolved ? null : attempt.refusalCode,
+      // The session a person came in on, so they can see it (C58). Only a
+      // resolved attempt's: a refused one's session is nobody's here.
+      resolved ? (attempt.presented.sessionId ?? null) : null,
     ],
   );
 }

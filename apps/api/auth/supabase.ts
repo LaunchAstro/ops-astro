@@ -115,11 +115,27 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     // membership and role are the database's answer, read inside the serving
     // transaction, not a claim a token can assert.
     const assurance = assuranceOf(claims);
-    return pastAbsoluteLimit(assurance.signedInAt, now())
-      ? 'expired'
-      : { provider: SUPABASE_PROVIDER, subject, assurance };
+    if (pastAbsoluteLimit(assurance.signedInAt, now())) return 'expired';
+    const sessionId = sessionIdOf(claims);
+    return sessionId === undefined
+      ? { provider: SUPABASE_PROVIDER, subject, assurance }
+      : { provider: SUPABASE_PROVIDER, subject, assurance, sessionId };
   };
 }
+
+/**
+ * The provider's session, `session_id`, which a refresh carries unchanged
+ * (C58): how a person's sessions are told apart, listed and ended. Anything
+ * but a UUID names no session, so a token cannot aim at a session by a
+ * crafted value; a token with none is served as before and simply has no
+ * session to list or end here.
+ */
+function sessionIdOf(claims: Readonly<Record<string, unknown>>): string | undefined {
+  const value = claims['session_id'];
+  return typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : undefined;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 /**
  * The assurance a verified token carries: `aal`, and from `amr` the time of the

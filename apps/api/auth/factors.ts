@@ -11,7 +11,11 @@
 // `ProviderFault`, never a partial success, and the fault names only its kind:
 // the provider's own words, which could carry anything, go nowhere.
 
-import type { FactorProvider, ProviderAnswer } from '../../../packages/core-commands/src/index.ts';
+import type {
+  FactorProvider,
+  ProviderAnswer,
+  ProviderFault,
+} from '../../../packages/core-commands/src/index.ts';
 
 export interface GoTrueFactorOptions {
   /** GoTrue's own URL, `GOTRUE_URL`. The only destination this adapter calls. */
@@ -35,21 +39,20 @@ export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvide
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
   const send = options.fetch ?? fetch;
 
-  async function call(
+  async function request(
     method: 'POST' | 'DELETE',
     path: string,
     accessToken: string,
     body?: Json,
-  ): Promise<ProviderAnswer<Json>> {
+  ): Promise<Response | { readonly fault: ProviderFault }> {
     // The path is built here from fixed segments and provider ids already
     // shaped by the caller; the origin is the configured one, never the answer's.
     // GoTrue may be served under a path (`/auth/v1` on a hosted project), so
     // the call's path is appended to the base's, never put in its place.
     const url = new URL(`${base.pathname.replace(/\/+$/u, '')}${path}`, base);
-    if (url.origin !== base.origin) return { ok: false, fault: 'refused' };
-    let response: Response;
+    if (url.origin !== base.origin) return { fault: 'refused' };
     try {
-      response = await send(url, {
+      return await send(url, {
         method,
         redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs),
@@ -61,8 +64,18 @@ export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvide
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
     } catch (cause) {
-      return { ok: false, fault: isTimeout(cause) ? 'slow' : 'unreachable' };
+      return { fault: isTimeout(cause) ? 'slow' : 'unreachable' };
     }
+  }
+
+  async function call(
+    method: 'POST' | 'DELETE',
+    path: string,
+    accessToken: string,
+    body?: Json,
+  ): Promise<ProviderAnswer<Json>> {
+    const response = await request(method, path, accessToken, body);
+    if (!(response instanceof Response)) return { ok: false, fault: response.fault };
     const read = await readBounded(response, maxBytes, timeoutMs);
     if ('fault' in read) return { ok: false, fault: read.fault };
     let parsed: unknown;
@@ -136,6 +149,19 @@ export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvide
       return answer.value['id'] === factorId
         ? { ok: true, value: undefined }
         : { ok: false, fault: 'malformed' };
+    },
+
+    // GoTrue's sign-out (C58): done is a 204 and nothing else, with nothing in
+    // its body. A 200, a body of any kind or a refusal is not a sign-out.
+    async signOut(accessToken, scope) {
+      if (scope !== 'local' && scope !== 'others') return { ok: false, fault: 'refused' };
+      const response = await request('POST', `/logout?scope=${scope}`, accessToken);
+      if (!(response instanceof Response)) return { ok: false, fault: response.fault };
+      const read = await readBounded(response, maxBytes, timeoutMs);
+      if ('fault' in read) return { ok: false, fault: read.fault };
+      if (response.status >= 400 && response.status < 500) return { ok: false, fault: 'refused' };
+      if (response.status !== 204) return { ok: false, fault: 'unreachable' };
+      return read.text === '' ? { ok: true, value: undefined } : { ok: false, fault: 'malformed' };
     },
   };
 }

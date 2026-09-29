@@ -19,6 +19,7 @@
 // outcome and a digest of what identifies it.
 
 import {
+  endOtherSeenSessions,
   liveFactor,
   recordFactorEnrolled,
   recordFactorRemoved,
@@ -58,7 +59,17 @@ export interface FactorSession {
   readonly expiresIn: number;
 }
 
-/** The provider's three second-factor calls, made with the person's own token. */
+/** A person's other sessions ended (C58): how many here, and whether the provider confirmed. */
+export interface SessionsEnded {
+  readonly ended: number;
+  readonly signedOutAtProvider: boolean;
+}
+
+/**
+ * The provider's calls made with the person's own token: the three
+ * second-factor calls, and signing out (C58), of this session (`local`) or of
+ * every other (`others`), which revokes those sessions' refresh tokens.
+ */
 export interface FactorProvider {
   enrol(accessToken: string): Promise<ProviderAnswer<IssuedFactor>>;
   verify(
@@ -67,6 +78,7 @@ export interface FactorProvider {
     code: string,
   ): Promise<ProviderAnswer<FactorSession>>;
   remove(accessToken: string, factorId: string): Promise<ProviderAnswer<void>>;
+  signOut(accessToken: string, scope: 'local' | 'others'): Promise<ProviderAnswer<void>>;
 }
 
 /** Who is asking and what they presented, as the API door admitted them. */
@@ -163,7 +175,7 @@ export async function verifySecondFactor(
   caller: FactorCaller,
   body: unknown,
   provider: FactorProvider,
-): Promise<FactorSession | CommandRefusal> {
+): Promise<(FactorSession & { readonly otherSessions?: SessionsEnded }) | CommandRefusal> {
   const act = 'account.factor_verify';
   const code = codeOf(body);
   let factor: { readonly id: string; readonly providerFactorId: string } | undefined;
@@ -187,17 +199,25 @@ export async function verifySecondFactor(
   const target = factor;
 
   const verified = await provider.verify(caller.accessToken, target.providerFactorId, code);
+  let ended: number | undefined;
   const recorded = await judged(caller, act, async (tx, session) => {
     if (!verified.ok) return providerRefusal(verified.fault, 'code');
     const live = await liveFactor(tx, session.personId, { lock: true });
     // Removed or replaced by another tab between the two transactions.
     if (live?.id !== target.id) return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
+    // The first good code completes an enrolment, which is a factor change;
+    // a later one is a step-up and changes nothing.
+    if (live.status !== 'verified') ended = await endOthersOnChange(tx, session, caller);
     await recordFactorVerified(tx, { personId: session.personId, factorId: live.id });
     return undefined;
   });
   if (recorded !== undefined || !verified.ok)
     return recorded ?? providerRefusal('malformed', 'answer');
-  return verified.value;
+  if (ended === undefined) return verified.value;
+  return {
+    ...verified.value,
+    otherSessions: await signOutOthers(provider, verified.value.accessToken, ended),
+  };
 }
 
 /**
@@ -210,7 +230,7 @@ export async function removeSecondFactor(
   caller: FactorCaller,
   body: unknown,
   provider: FactorProvider,
-): Promise<{ readonly removed: true } | CommandRefusal> {
+): Promise<{ readonly removed: true; readonly otherSessions: SessionsEnded } | CommandRefusal> {
   const act = 'account.factor_remove';
   const code = codeOf(body);
   let factor: { readonly id: string; readonly providerFactorId: string } | undefined;
@@ -235,6 +255,7 @@ export async function removeSecondFactor(
   const target = factor;
 
   const proved = await provider.verify(caller.accessToken, target.providerFactorId, code);
+  let ended = 0;
   const removed = proved.ok
     ? await provider.remove(proved.value.accessToken, target.providerFactorId)
     : undefined;
@@ -243,10 +264,48 @@ export async function removeSecondFactor(
     if (removed !== undefined && !removed.ok) return providerRefusal(removed.fault, 'answer');
     const live = await liveFactor(tx, session.personId, { lock: true });
     if (live?.id !== target.id) return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
+    ended = await endOthersOnChange(tx, session, caller);
     await recordFactorRemoved(tx, { personId: session.personId, factorId: live.id });
     return undefined;
   });
-  return recorded ?? { removed: true };
+  if (recorded !== undefined || !proved.ok)
+    return recorded ?? providerRefusal('malformed', 'answer');
+  return {
+    removed: true,
+    otherSessions: await signOutOthers(provider, proved.value.accessToken, ended),
+  };
+}
+
+/**
+ * A factor change ends the person's other sessions (C58): here, in
+ * the change's own transaction, so they are refused from its commit.
+ */
+async function endOthersOnChange(
+  tx: TenantQuery,
+  session: Session,
+  caller: FactorCaller,
+): Promise<number> {
+  return await endOtherSeenSessions(
+    tx,
+    session.personId,
+    caller.presented.sessionId,
+    'factor_change',
+  );
+}
+
+/**
+ * Then at the provider, with the session the code has just raised (the one
+ * kept), which revokes every other session's refresh tokens. After the
+ * commit: the change stands whatever the provider answers, and the answer
+ * says whether it confirmed.
+ */
+async function signOutOthers(
+  provider: FactorProvider,
+  accessToken: string,
+  ended: number,
+): Promise<SessionsEnded> {
+  const signedOut = await provider.signOut(accessToken, 'others');
+  return { ended, signedOutAtProvider: signedOut.ok };
 }
 
 /**

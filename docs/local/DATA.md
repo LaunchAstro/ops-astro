@@ -549,6 +549,18 @@ record the retries. The application may select, insert and update; nothing
 deletes a row. Tenancy-keyed with the restrictive policy. The partial index
 `access_endings_owed` is what the server's retry looks for.
 
+## Ended sessions (0038, C58)
+
+`authentication_attempts.session_id` is the provider session a resolved
+attempt came in on (null on a refusal, and for a token that names none); a
+person's session list reads it through `authentication_attempts_person_sessions`.
+`ended_sessions` holds one row per session a person ended: signed out
+(`sign_out`), ended from another session (`end_others`) or by a second-factor
+change (`factor_change`). Unique on business, person and session; login
+resolution refuses a session named here for that person. The application may
+select and insert; nothing changes or deletes a row. Tenancy-keyed with the
+restrictive policy.
+
 ## Overseas-services register (0035, C81)
 
 `overseas_services` holds one row per outside service that receives personal

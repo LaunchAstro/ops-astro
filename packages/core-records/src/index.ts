@@ -93,6 +93,13 @@ export {
   type SecondFactor,
 } from './identity/second-factor.ts';
 export {
+  endOtherSeenSessions,
+  endOwnSession,
+  listSeenSessions,
+  type SeenSession,
+  type SessionEndReason,
+} from './identity/sessions.ts';
+export {
   isMoneyKey,
   judgeStepUp,
   MONEY_STEP_UP_SETTING,
