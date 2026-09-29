@@ -17,8 +17,9 @@
 
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { dirname } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { expect } from 'vitest';
 import {
   ADMIN_ACTIONS,
@@ -160,6 +161,14 @@ export interface Journey {
   /** The exact propose and decide requests, so a replay after a restart is byte-identical. */
   readonly proposeBody: Readonly<Record<string, unknown>>;
   readonly decideBody: Readonly<Record<string, unknown>>;
+  /**
+   * Each request's receipt: the register's answer to a replay taken before any
+   * restart, which a replay after one must answer byte for byte. The register
+   * keeps a result as jsonb, so a replay's keys come in jsonb's order and not
+   * the first answer's; the first answer is checked to carry the same content.
+   * `pickup` is empty when the journey stopped before its pickup.
+   */
+  readonly receipts: { readonly propose: string; readonly decide: string; readonly pickup: string };
 }
 
 /** A call on the person prefix as `ada`, against whichever instance is given. */
@@ -200,6 +209,25 @@ export async function countLeases(world: World, reservationId: string): Promise<
   return Number(rows[0]?.n ?? '0');
 }
 
+/**
+ * A body's digest, which is what a receipt comparison prints. The pickup's
+ * receipt carries its delegation credential, and a failure message must not.
+ */
+export const digestOf = (text: string): string => createHash('sha256').update(text).digest('hex');
+
+/** A replay of `first`'s request, its content checked against `first`, as that request's receipt. */
+async function receiptOf(
+  first: Awaited<ReturnType<typeof call>>,
+  replay: () => ReturnType<typeof call>,
+): Promise<string> {
+  const again = await replay();
+  expect(
+    isDeepStrictEqual(JSON.parse(again.text), first.body),
+    'the replay carries the first answer',
+  ).toBe(true);
+  return again.text;
+}
+
 /** propose → decide → pickup, as a person and then as the agent. */
 export async function walkTheJourney(
   world: World,
@@ -236,6 +264,16 @@ export async function walkTheJourney(
   const decided = await asAda(world, world.api, '/task/decide', decideBody);
   expect(decided.code, 'decide').toBe('ok');
   const decision = decided.body['detail'] as Record<string, string>;
+  const receipts = {
+    propose: await receiptOf(
+      proposed,
+      async () => await asAda(world, world.api, '/task/propose', proposeBody),
+    ),
+    decide: await receiptOf(
+      decided,
+      async () => await asAda(world, world.api, '/task/decide', decideBody),
+    ),
+  };
 
   const pickupOperationId = randomUUID();
   if (options.pickup === false) {
@@ -250,12 +288,11 @@ export async function walkTheJourney(
       pickupOperationId,
       proposeBody,
       decideBody,
+      receipts: { ...receipts, pickup: '' },
     };
   }
-  const pickedUp = await asAgent(world, world.api, '/task/pickup', {
-    operationId: pickupOperationId,
-    reservationId: decision['reservationId'],
-  });
+  const pickupBody = { operationId: pickupOperationId, reservationId: decision['reservationId'] };
+  const pickedUp = await asAgent(world, world.api, '/task/pickup', pickupBody);
   expect(pickedUp.code, 'pickup').toBe('ok');
   const picked = pickedUp.body['detail'] as Record<string, unknown>;
 
@@ -270,6 +307,13 @@ export async function walkTheJourney(
     pickupOperationId,
     proposeBody,
     decideBody,
+    receipts: {
+      ...receipts,
+      pickup: await receiptOf(
+        pickedUp,
+        async () => await asAgent(world, world.api, '/task/pickup', pickupBody),
+      ),
+    },
   };
 }
 

@@ -23,7 +23,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { withSession } from '../../packages/core-records/src/index.ts';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import { enrol, grantTo, installSpine, shareWithClient, type Member } from '../commands/fixture.ts';

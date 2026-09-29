@@ -30,7 +30,7 @@ import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { enrol, grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

@@ -27,7 +27,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 
@@ -330,7 +330,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-3 isolation', ()
     checkIsolation,
   );
 
-  it('Sol proof, criterion 4: both client bearers have an own task read and a foreign refusal', async () => {
+  it('both client bearers have an own task read and a foreign refusal', async () => {
     await checkIsolation();
     const reads = await db.admin.execute<{
       business_id: string;

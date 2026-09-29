@@ -20,7 +20,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 import {
   insertActor,
   insertAgentActor,
@@ -62,7 +62,7 @@ describe.skipIf(serverUrl === undefined)('every authentication attempt is record
   });
 
   const attempts = async (subject: string) =>
-    await db.app.withBusiness(business, async (tx) =>
+    await db.app.withBusiness(business, (tx) =>
       readAuthenticationAttempts(tx, { provider: PROVIDER, subject }),
     );
 
@@ -110,7 +110,7 @@ describe.skipIf(serverUrl === undefined)('every authentication attempt is record
     const [row] = await attempts(unknown);
     expect(row?.subject_digest).toBe(subjectDigest({ provider: PROVIDER, subject: unknown }));
     expect(row?.subject_digest).not.toContain(unknown);
-    const raw = await db.app.withBusiness(business, async (tx) =>
+    const raw = await db.app.withBusiness(business, (tx) =>
       tx.query<{ readonly n: string }>(
         `select count(*)::text as n from authentication_attempts
           where business_id = $1 and subject_digest = $2`,

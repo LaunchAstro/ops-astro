@@ -13,7 +13,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
-import type { FreshDatabase } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import type { FreshDatabase } from '../support/fresh-database.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';

@@ -24,7 +24,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
   approveBody,
   asAgent,
@@ -82,43 +82,40 @@ async function proposeWith(
   return appliedDetail(await asPerson(s, body), 'task.propose');
 }
 
-describe.skipIf(serverUrl === undefined)(
-  'RUNTIME-1: the cap currency binds the first envelope',
-  () => {
-    let s: Schedules;
+describe.skipIf(serverUrl === undefined)('the cap currency binds the first envelope', () => {
+  let s: Schedules;
 
-    beforeAll(async () => {
-      s = await openSchedules('s6cur', 100_000);
-    }, 90_000);
+  beforeAll(async () => {
+    s = await openSchedules('s6cur', 100_000);
+  }, 90_000);
 
-    afterAll(async () => {
-      await s?.db.drop();
+  afterAll(async () => {
+    await s?.db.drop();
+  });
+
+  it('approves AUD under an AUD cap and refuses USD with nothing moved', async () => {
+    const aud = await proposeWith(s, 'in the cap currency', { maximumMinor: 1_000 });
+    expect(codeOf(await asPerson(s, approveBody(aud)))).toBe('applied');
+
+    const before = await footprint(s);
+    const taskId = await createTask(s, 'in another currency');
+    const answer = await asPerson(s, {
+      ...proposeBody(taskId, await revisionOf(s, taskId)),
+      maximumMinor: 1_000,
+      currency: 'USD',
     });
+    expect(codeOf(answer)).toBe('PROPOSAL_OUT_OF_SCOPE');
+    expect(await footprint(s)).toStrictEqual(before);
+    const envelopes = await rows<{ readonly currency: string }>(
+      s,
+      `select distinct currency from public.task_envelopes where business_id = $1`,
+      [s.business],
+    );
+    expect(envelopes.map((row) => row.currency)).toStrictEqual(['AUD']);
+  }, 30_000);
+});
 
-    it('approves AUD under an AUD cap and refuses USD with nothing moved', async () => {
-      const aud = await proposeWith(s, 'in the cap currency', { maximumMinor: 1_000 });
-      expect(codeOf(await asPerson(s, approveBody(aud)))).toBe('applied');
-
-      const before = await footprint(s);
-      const taskId = await createTask(s, 'in another currency');
-      const answer = await asPerson(s, {
-        ...proposeBody(taskId, await revisionOf(s, taskId)),
-        maximumMinor: 1_000,
-        currency: 'USD',
-      });
-      expect(codeOf(answer)).toBe('PROPOSAL_OUT_OF_SCOPE');
-      expect(await footprint(s)).toStrictEqual(before);
-      const envelopes = await rows<{ readonly currency: string }>(
-        s,
-        `select distinct currency from public.task_envelopes where business_id = $1`,
-        [s.business],
-      );
-      expect(envelopes.map((row) => row.currency)).toStrictEqual(['AUD']);
-    }, 30_000);
-  },
-);
-
-describe.skipIf(serverUrl === undefined)('RUNTIME-2: a cap above 2^53 is compared exactly', () => {
+describe.skipIf(serverUrl === undefined)('a cap above 2^53 is compared exactly', () => {
   /** 2^53 + 1: a valid bigint that a JavaScript number cannot hold. */
   const LIMIT = '9007199254740993';
   let s: Schedules;
@@ -171,7 +168,7 @@ describe.skipIf(serverUrl === undefined)('RUNTIME-2: a cap above 2^53 is compare
   }, 30_000);
 });
 
-describe.skipIf(serverUrl === undefined)('RUNTIME-3: expiry is judged after the lock wait', () => {
+describe.skipIf(serverUrl === undefined)('expiry is judged after the lock wait', () => {
   let s: Schedules;
 
   beforeAll(async () => {

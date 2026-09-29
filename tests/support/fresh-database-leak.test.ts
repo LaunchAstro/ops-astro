@@ -12,10 +12,7 @@ import { join } from 'node:path';
 import { describe, expect, it, onTestFinished } from 'vitest';
 
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
-import {
-  createFreshDatabase,
-  databaseUrlFromEnvironment,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { createFreshDatabase, databaseUrlFromEnvironment } from './fresh-database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

@@ -297,7 +297,7 @@ function queryComments(program: unknown): (readonly [number, number])[] {
 /** The comment text on each line of `text`, with its line number. */
 const commentLines = (text: string, file?: string): CommentLine[] => readComments(text, file).lines;
 
-describe('a source comment cites no review round, lane or finding id', () => {
+describe('a source comment cites no review, lane or finding id', () => {
   it.each([
     ['// The door, the same on both prefixes (Sol 6 SURFACE-1, AUTHORITY-1).', 'a Sol review'],
     [
@@ -537,7 +537,7 @@ describe('a source comment cites no review round, lane or finding id', () => {
     expect(found).toEqual([]);
   });
 
-  it('Sol proof, criterion 4: rejects review citations in SQL comments', () => {
+  it('rejects review citations in SQL comments', () => {
     const source = [
       'const query = `select id from records',
       '  -- Final review R1 #10: a trashed task is not handed out.',
@@ -546,7 +546,7 @@ describe('a source comment cites no review round, lane or finding id', () => {
     expect(commentLines(source).some(({ comment }) => cites(comment) !== undefined)).toBe(true);
   });
 
-  it('Sol proof, criterion 4: rejects inline and multiline review comments', () => {
+  it('rejects inline and multiline review comments', () => {
     const sources = [
       'const n = 1;// Final review R1 #10',
       ['const n = 1; /*', ' * Final review R1 #10', ' */'].join('\n'),
@@ -559,7 +559,7 @@ describe('a source comment cites no review round, lane or finding id', () => {
     ).toEqual([true, true, true]);
   });
 
-  it('Sol proof, criterion 4: rejects SQL comments after query text', () => {
+  it('rejects SQL comments after query text', () => {
     const sources = [
       'const q = sql`select 1 -- Final review R1 #10\n`;',
       'const q = sql`select /* Final review R1 #10 */ 1`;',
@@ -571,7 +571,7 @@ describe('a source comment cites no review round, lane or finding id', () => {
     ).toEqual([true, true]);
   });
 
-  it('Sol proof, criterion 4: reads leading SQL comments and preserves numeric dollar tags', () => {
+  it('reads leading SQL comments and preserves numeric dollar tags', () => {
     const leading = "tx.query('-- Final review R1 #10\\nselect 1');";
     const quoted = 'const q = sql`select $body1$ -- Sol 6 $body1$`;';
     const unterminated = 'const q = sql`select /* Sol 6`;';
@@ -582,19 +582,19 @@ describe('a source comment cites no review round, lane or finding id', () => {
     ]).toEqual([true, true, true]);
   });
 
-  it('Sol proof, criterion 4: preserves non-ASCII dollar-quoted SQL values', () => {
+  it('preserves non-ASCII dollar-quoted SQL values', () => {
     const source = 'const q = sql`select $é2$ -- Sol 6 $é2$`;';
     expect(commentLines(source)).toEqual([]);
   });
 
-  it('Sol proof, criterion 4: unclosed outer dollar tags cannot hide citations', () => {
+  it('unclosed outer dollar tags cannot hide citations', () => {
     const source = 'const q = sql`select $a$ $b$ -- Sol 6 $b$`;';
     expect(passages(commentLines(source)).some(({ comment }) => cites(comment) !== undefined)).toBe(
       true,
     );
   });
 
-  it('Sol proof, criterion 5: product comments do not narrate earlier draft reviews', () => {
+  it('product comments do not narrate earlier draft reviews', () => {
     const files = [
       'apps/api/app.ts',
       'packages/core-commands/src/reads/dispatch.ts',
@@ -610,7 +610,7 @@ describe('a source comment cites no review round, lane or finding id', () => {
     expect(histories).toEqual([]);
   });
 
-  it('Sol proof, criterion 5: remaining source comments state the current rule', () => {
+  it('remaining source comments state the current rule', () => {
     const files = [
       'packages/core-runtime/src/refusals.ts',
       'packages/core-runtime/src/only.ts',
@@ -626,7 +626,7 @@ describe('a source comment cites no review round, lane or finding id', () => {
     expect(histories).toEqual([]);
   });
 
-  it('Sol proof, criterion 5: comments describe the current API projection', () => {
+  it('comments describe the current API projection', () => {
     const source = readFileSync(
       new URL('packages/core-records/src/tasks/comments.ts', root),
       'utf8',

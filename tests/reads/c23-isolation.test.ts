@@ -21,7 +21,7 @@ import { createHarness, type Harness } from '../acceptance/role-case-harness.ts'
 import { enrolCaller, type Caller } from '../acceptance/cast.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
 import type { CommandName } from '../../packages/core-wire/src/index.ts';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
 const END: CommandName = 'session.end';
 const PERSON: CommandName = 'session.person';

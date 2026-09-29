@@ -25,7 +25,7 @@ import {
   insertPerson,
 } from '../identity/fixture.ts';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
-import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

@@ -738,7 +738,7 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // mint reads the approver's live grants when the agent picks the work up, not
   // when the person approved it, so a grant revoked or expired in between
   // leaves the pickup asking for authority the approver no longer holds
-  // (`tests/commands/final-r1-fr1-agent-delegation-widens.test.ts`). These
+  // (`tests/commands/delegation-widens.test.ts`). These
   // three name a delegation lifecycle (intake, expiry as its own answer, an
   // explicit revocation) that this head's one-task purpose does not
   // distinguish.

@@ -31,7 +31,7 @@ import {
   APPLICATION_ROLE,
   createFreshDatabase,
   databaseUrlFromEnvironment,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from './fresh-database.ts';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 
 const SHARED_ROLES = [APPLICATION_ROLE, 'ops_astro_worker'] as const;

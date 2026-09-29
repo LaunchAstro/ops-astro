@@ -28,7 +28,7 @@ type Body = Readonly<Record<string, unknown>>;
 const SECRET = 'a sibling title the agent must not be shown';
 const NOTE = 'a note that must land on no sibling';
 
-describe.skipIf(serverUrl === undefined)('agent recordId shape (NNA1)', () => {
+describe.skipIf(serverUrl === undefined)('agent recordId shape', () => {
   let w: IdentWorld;
   let alpha: string;
   let bravo: string;
