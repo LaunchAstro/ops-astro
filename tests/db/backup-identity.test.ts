@@ -197,6 +197,23 @@ describe.skipIf(serverUrl === undefined)('S0-3 identity scope', () => {
     }
   });
 
+  it('Sol proof, criterion 4: backup identity reads auth data in the source database', async () => {
+    await db.admin.execute('create schema auth');
+    await db.admin.execute(
+      'create table auth.users (id integer primary key, marker text not null)',
+    );
+    await db.admin.execute(
+      "insert into auth.users (id, marker) values (1, 'auth-backup-sentinel')",
+    );
+    const client = await asRole(login.url, BACKUP);
+    try {
+      const result = await client.query<{ marker: string }>('select marker from auth.users');
+      expect(result.rows).toStrictEqual([{ marker: 'auth-backup-sentinel' }]);
+    } finally {
+      await client.end();
+    }
+  });
+
   it('is refused every write, schema change and function call, and changes no row', async () => {
     const before = await contents();
     const client = await asRole(login.url, BACKUP);
