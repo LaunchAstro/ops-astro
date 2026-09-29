@@ -3,7 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { expect, it } from 'vitest';
 
-it('Sol proof, criterion 1: review proofs retain the saved patch bytes', () => {
+it('review proofs retain the saved patch bytes', () => {
   const patchBlobs = new Map([
     ['tests/ci/fixture-database-url-container-proof.test.ts', '326f6957067ec306a452fe825bca2339a621e53d'],
     ['tests/ci/fixture-template-ownership-proof.test.ts', 'b7648959bd7a5bf6a11c7c768fc198712290277b'],
