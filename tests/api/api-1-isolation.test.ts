@@ -8,7 +8,7 @@
 // Made-up names only.
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Hono } from 'hono';
 import { buildCatalogue, type CatalogueRow } from '../../packages/core-wire/src/index.ts';
 import { createCli } from '../../apps/cli/client.ts';
@@ -24,6 +24,21 @@ const serverUrl = databaseUrlFromEnvironment();
 interface Heard {
   readonly status: number;
   readonly code: unknown;
+  /** The whole answer, each known record id and title replaced by its label. */
+  readonly body: unknown;
+}
+
+type Name = 'client1' | 'client2' | 'bravo';
+
+/** Every record a successful answer names, other than the caller's own. */
+function foreign(heard: readonly Heard[], own: Name | null): string[] {
+  const named = heard
+    .filter((one) => one.status < 300)
+    .flatMap((one) =>
+      Array.from(JSON.stringify(one.body).matchAll(/<(client1|client2|bravo) (?:task|title)>/gu)),
+    )
+    .map((match) => match[1] as string);
+  return [...new Set(named)].filter((name) => name !== own);
 }
 
 describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
@@ -38,19 +53,31 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
   };
   let clientOne: Member;
   let clientTwo: Member;
+  /** Raw id or title to its label, so a leak is named and no record value is printed. */
+  const labels = new Map<string, string>();
+
+  function label(value: unknown): unknown {
+    return JSON.parse(JSON.stringify(value ?? null), (_key, field: unknown) =>
+      typeof field === 'string'
+        ? [...labels].reduce((text, [raw, name]) => text.replaceAll(raw, name), field)
+        : field,
+    );
+  }
 
   const through = ((url: string | URL, init?: RequestInit) =>
     api.fetch(new Request(`http://api.test${String(url)}`, init))) as typeof fetch;
 
-  async function create(businessKey: string, token: string): Promise<string> {
+  async function create(businessKey: string, token: string, name: Name): Promise<string> {
+    const title = `made-up ${name} ${randomUUID()}`;
     const answer = await post(
       api,
       `/api/b/${businessKey}/task/create`,
-      { operationId: randomUUID(), fields: { title: `made-up ${businessKey}` } },
+      { operationId: randomUUID(), fields: { title } },
       authorised(token),
     );
     const id = (answer.body as { recordId?: string }).recordId;
     if (answer.status !== 200 || typeof id !== 'string') throw new Error(JSON.stringify(answer));
+    labels.set(id, `<${name} task>`).set(title, `<${name} title>`);
     return id;
   }
 
@@ -66,9 +93,9 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
       await grantTo(tx, bravoWriter, 'write');
     });
     const alphaToken = await tokenFor(fixture.member.presented.subject);
-    task.client1 = await create('alpha', alphaToken);
-    task.client2 = await create('alpha', alphaToken);
-    task.bravo = await create('bravo', await tokenFor(bravoWriter.presented.subject));
+    task.client1 = await create('alpha', alphaToken, 'client1');
+    task.client2 = await create('alpha', alphaToken, 'client2');
+    task.bravo = await create('bravo', await tokenFor(bravoWriter.presented.subject), 'bravo');
     clientOne = await enrol(fixture.db.app, fixture.business, 'client-one-person');
     clientTwo = await enrol(fixture.db.app, fixture.business, 'client-two-person');
     await fixture.db.app.withBusiness(fixture.business, async (tx) => {
@@ -93,8 +120,8 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
       const parsed = (await response
         .clone()
         .json()
-        .catch(() => ({}))) as { code?: unknown };
-      heard.push({ status: response.status, code: parsed.code });
+        .catch(() => ({}))) as { code?: unknown } | null;
+      heard.push({ status: response.status, code: parsed?.code, body: label(parsed) });
       return response;
     }) as typeof fetch;
     const app = new OperationsClient({ origin: '', businessKey, token, fetch: recording });
@@ -129,21 +156,25 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
       expect(heard, row.command).toHaveLength(3);
       expect(new Set(heard.map((one) => JSON.stringify(one))).size, row.command).toBe(1);
       expect(heard[0]?.status, row.command).toBeGreaterThanOrEqual(400);
+      expect(foreign(heard, null), row.command).toEqual([]);
     }
-  });
+  }, 60_000);
 
   it('API-1 isolation: client to client, a grant on one task reads nothing of the other on any surface', async () => {
     const reads = rows.filter(
       (row) => row.kind === 'read' && row.command === ('task.read' as CommandName),
     );
-    for (const [member, own, other] of [
-      [clientOne, task.client1, task.client2],
-      [clientTwo, task.client2, task.client1],
+    for (const [member, own, other, name] of [
+      [clientOne, task.client1, task.client2, 'client1'],
+      [clientTwo, task.client2, task.client1, 'client2'],
     ] as const) {
       for (const row of reads) {
         // eslint-disable-next-line no-await-in-loop -- each person in turn
         const allowed = await threeWays(row, member, 'alpha', { recordId: own });
         expect(allowed.map((one) => one.status)).toEqual([200, 200, 200]);
+        expect(new Set(allowed.map((one) => JSON.stringify(one))).size).toBe(1);
+        expect(JSON.stringify(allowed[0]?.body)).toContain(`<${name} task>`);
+        expect(foreign(allowed, name)).toEqual([]);
         // eslint-disable-next-line no-await-in-loop -- each person in turn
         const refused = await threeWays(row, member, 'alpha', { recordId: other });
         expect(new Set(refused.map((one) => JSON.stringify(one))).size).toBe(1);
@@ -156,6 +187,46 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
       const heard = await threeWays(row, clientOne, 'alpha', { recordId: task.client2 });
       expect(new Set(heard.map((one) => JSON.stringify(one))).size, row.command).toBe(1);
       expect(heard[0]?.status, row.command).toBeGreaterThanOrEqual(400);
+      expect(foreign(heard, 'client1'), row.command).toEqual([]);
+    }
+  }, 60_000);
+
+  it('API-1 isolation: a successful read carrying the other client record is caught', async () => {
+    const row = rows.find((one) => one.command === 'task.read') as CatalogueRow;
+    const leaked = vi
+      .spyOn(api, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(Response.json({ recordId: task.client2, fields: { title: 'x' } })),
+      );
+    try {
+      const heard = await threeWays(row, clientOne, 'alpha', { recordId: task.client1 });
+      expect(heard.map((one) => one.status)).toEqual([200, 200, 200]);
+      expect(foreign(heard, 'client1')).toEqual(['client2']);
+    } finally {
+      leaked.mockRestore();
+    }
+  });
+
+  it('Sol proof, criterion 4: isolation sees leaked client data in successful reads', async () => {
+    const row = rows.find((one) => one.command === 'task.read');
+    if (row === undefined) throw new Error('task.read is missing from the catalogue');
+    const leaked = vi
+      .spyOn(api, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({ recordId: task.client2, fields: { title: 'other client secret' } }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+        ),
+      );
+    try {
+      const heard = await threeWays(row, clientOne, 'alpha', { recordId: task.client1 });
+      expect(heard).toHaveLength(3);
+      expect(heard[0]).toHaveProperty('body');
+      expect(JSON.stringify(heard)).not.toContain(task.client2);
+    } finally {
+      leaked.mockRestore();
     }
   });
 });

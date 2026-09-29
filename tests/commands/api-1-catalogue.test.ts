@@ -51,6 +51,10 @@ function planted(surface: 'api' | 'cli' | 'web', name: string, change: Partial<P
   return { ...surfaces, [surface]: reach };
 }
 
+/** Grants held business-wide. */
+const wide = (...keys: string[]) =>
+  keys.map((key) => ({ key, scope: { kind: 'business' as const, id: null } }));
+
 /** The catalogue with one row changed by hand. */
 function edit(
   rows: readonly CatalogueRow[],
@@ -177,24 +181,30 @@ describe('API-1 command catalogue', () => {
     const rows = buildCatalogue([]);
     const writer = reachableBy(rows, {
       kind: 'person',
-      keys: new Set(['task:read', 'task:write']),
+      grants: wide('task:read', 'task:write'),
     });
     expect(writer.map((one) => one.command)).toContain('task.update');
     expect(writer.map((one) => one.command)).not.toContain('task.assign');
     const agent = reachableBy(rows, {
       kind: 'agent',
-      keys: new Set(['task:read', 'task:write', 'task:comment', 'task:decide']),
+      grants: wide('task:read', 'task:write', 'task:comment', 'task:decide'),
     });
     expect(agent.map((one) => one.command)).toContain('task.handback');
     expect(agent.map((one) => one.command)).not.toContain('task.decide');
     expect(agent.map((one) => one.command)).not.toContain('task.update');
-    const withUi = reachableBy(real().rows, { kind: 'person', keys: new Set(['task:write']) });
+    const withUi = reachableBy(real().rows, { kind: 'person', grants: wide('task:write') });
     expect(withUi.find((one) => one.command === 'task.start')?.surfaces).toEqual([
       'app',
       'API',
       'CLI',
     ]);
     expect(withUi.find((one) => one.command === 'task.rank')?.surfaces).toEqual(['API', 'CLI']);
+    const onOneTask = reachableBy(rows, {
+      kind: 'person',
+      grants: [{ key: 'task:write', scope: { kind: 'record', id: 'one-task' } }],
+    }).map((one) => one.command);
+    expect(onOneTask).toContain('task.update');
+    expect(onOneTask).not.toContain('task.create');
     const decisions = readFileSync('docs/current-decisions.md', 'utf8');
     expect(decisions).toContain('packages/core-wire/src/catalogue.ts');
     expect(decisions).toContain('capability-map discovery answered');

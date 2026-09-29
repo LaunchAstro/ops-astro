@@ -19,16 +19,4 @@ export {
 // so no records code reaches a bundle.
 export type { CommandRefusal } from '../../core-records/src/index.ts';
 // The command catalogue and its parity check (API-1).
-export {
-  buildCatalogue,
-  checkParity,
-  profileOf,
-  reachableBy,
-  renderReport,
-  VIEW_ONLY_EXEMPT,
-  type CatalogueRow,
-  type Exempt,
-  type Profile,
-  type Surfaces,
-  type UiUse,
-} from './catalogue.ts';
+export * from './catalogue.ts';
