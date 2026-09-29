@@ -109,13 +109,14 @@ export function Perspectives(props: {
 
 /**
  * The Team side's subtask and time sections, as the page reads them. The
- * subtask list (MP-4-4, `Subtasks.tsx`) is placed under the heading; the time
- * log arrives with MP-4-6, and until then says it has nothing and points at
- * the panel.
+ * subtask list (MP-4-4, `Subtasks.tsx`) and the time log (MP-4-6, `Time.tsx`)
+ * are placed under their headings; without a time log the section says it has
+ * nothing and points at the panel.
  */
 export function TeamWork(props: {
   readonly steps: readonly StepMark[];
   readonly list?: ReactNode;
+  readonly time?: ReactNode;
   readonly onOpenPanel: ((door: PanelDoor) => void) | undefined;
 }): ReactElement {
   const live = props.steps.filter((step) => !step.retired);
@@ -136,7 +137,7 @@ export function TeamWork(props: {
         <div className="sb__sh">
           <span className="sb__k">Time</span>
         </div>
-        <p className="card__sub">No time logged yet.</p>
+        {props.time ?? <p className="card__sub">No time logged yet.</p>}
         <PanelDoorButton door="log" onOpenPanel={props.onOpenPanel} />
         <PanelDoorButton door="timer" onOpenPanel={props.onOpenPanel} />
       </section>

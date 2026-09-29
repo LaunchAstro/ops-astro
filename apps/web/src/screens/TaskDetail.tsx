@@ -193,6 +193,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [proposeDraft, setProposeDraft] = useHeld<ProposeDraft>(identity, denied);
   const [perspective, setPerspective] = useHeld<Perspective>(identity, denied);
   const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
+  const [showAllTime, setShowAllTime] = useHeld<boolean>(identity, denied);
 
   return (
     <div className="stack">
@@ -230,6 +231,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                 onPerspective={setPerspective}
                 showFinished={showFinished ?? false}
                 onShowFinished={setShowFinished}
+                showAllTime={showAllTime ?? false}
+                onShowAllTime={setShowAllTime}
                 onOpenPanel={props.onOpenPanel}
                 onAttempt={(attempt) => {
                   setDraft((current) =>
@@ -521,6 +524,9 @@ interface LoadedProps {
   /** Whether the finished subtasks are unfolded, held above the read (MP-4-4). */
   readonly showFinished: boolean;
   readonly onShowFinished: (next: boolean) => void;
+  /** Whether every time entry shows, not only the latest three, held above the read (MP-4-6). */
+  readonly showAllTime: boolean;
+  readonly onShowAllTime: (next: boolean) => void;
   readonly onOpenPanel: ((door: PanelDoor) => void) | undefined;
   /** Record, or forget, the draft save whose outcome is unknown. */
   readonly onAttempt: (attempt: SaveAttempt | null) => void;
