@@ -265,7 +265,7 @@ function describeSwept(business: RecoveredBusiness): void {
  * recorded never reached one, and its missing comment is still an answer.
  */
 export const registerEffectLookup: EffectLookup = async (tx, step) => {
-  if (EFFECT_OPERATIONS[step.stepKind] !== 'replay') return undefined;
+  if (EFFECT_OPERATIONS[step.stepKind] !== 'replay') return;
   if ((await lookupEffect(tx, step.holderActorId, step.attemptId)) !== undefined) return true;
   const [attempt] = await tx.query<{
     readonly drop_cause: string | null;

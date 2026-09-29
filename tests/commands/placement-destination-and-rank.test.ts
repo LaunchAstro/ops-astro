@@ -457,7 +457,9 @@ describe.skipIf(serverUrl === undefined)('placement', () => {
         before = x;
       }
     }, 60_000);
+  });
 
+  describe('task.rank never writes a tie', () => {
     it('makes a second create in one sibling set wait, so the two ranks differ', async () => {
       const parent = await create();
       const spine = await db.app.withBusiness(business, async (tx) => await readTaskSpine(tx));

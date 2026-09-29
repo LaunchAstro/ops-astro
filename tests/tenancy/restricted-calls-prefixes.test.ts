@@ -42,15 +42,18 @@ import type { AdminConnection } from '../../packages/core-records/src/tenancy/da
 import { createWorld } from '../acceptance/world.ts';
 import { walkTheJourney, walkTheOtherLineages } from '../acceptance/restart-harness.ts';
 import {
-  APPLICATION_CALLERS,
   APPLICATION_EXECUTES,
-  OPERATIONS,
   WORKER_ROLE,
-  callFor,
   catalogueFunctions,
   catalogueTables,
-  copyStatement,
   describeOutcome,
+  type CatalogueTable,
+} from './restricted-calls-cases.ts';
+import {
+  APPLICATION_CALLERS,
+  OPERATIONS,
+  callFor,
+  copyStatement,
   expectedOutcome,
   fingerprint,
   meets,
@@ -60,9 +63,8 @@ import {
   statementFor,
   tally,
   type CallerName,
-  type CatalogueTable,
   type Callers,
-} from './restricted-calls-cases.ts';
+} from './restricted-calls-callers.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');

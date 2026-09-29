@@ -21,7 +21,7 @@ import {
   TEAM_NOTE,
   TITLE,
 } from './external-party-records.ts';
-import { createPositiveBody } from './role-case-bodies.ts';
+import { createPositiveBody } from './role-case-positive-body.ts';
 import {
   bearer,
   call,

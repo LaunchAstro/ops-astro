@@ -190,7 +190,9 @@ describe.skipIf(serverUrl === undefined)('slot_law', () => {
         }),
       ).rejects.toThrow(/invalid input syntax for type uuid/u);
     });
+  });
 
+  describe('the slot has one owner', () => {
     it('counts the revision up on the server and ignores what a writer asks for', async () => {
       await db.app.withBusiness(businessId, async (tx) => {
         const id = await insertRecord(tx, typeId, { title: 'first' });

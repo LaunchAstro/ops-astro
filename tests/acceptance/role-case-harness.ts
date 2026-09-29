@@ -6,8 +6,9 @@
 // Three files rather than one, for T1h's reason: about 400 lines is the
 // guide for a readable file, and the repository's answer is to split the
 // file rather than the change or the comments. The seams are real ones —
-// `role-case-ledger.ts` knows only about rows, `role-case-bodies.ts` knows
-// only about tasks, and this knows about callers — so
+// `role-case-ledger.ts` knows only about rows, `role-case-bodies.ts` (with
+// `role-case-positive-body.ts`) knows only about tasks, and this (with its
+// shape in `role-case-harness-shape.ts`) knows about callers — so
 // `role-case-matrix.test.ts` is left reading as the cases themselves.
 //
 // **What this file is careful not to be.** It is not a second world. Every
@@ -25,7 +26,6 @@ import {
 import { issueGrant, type Action } from '../../packages/core-records/src/authority/grants.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
-import { READ_CATALOGUE, isReadName } from '../../packages/core-commands/src/reads/catalogue.ts';
 import {
   agentPath,
   bearer,
@@ -34,66 +34,12 @@ import {
   personPath,
   type Answer,
   type Caller,
-  type World,
 } from './world.ts';
-import { PROPOSAL, createPositiveBody, type Prepared, type Task } from './role-case-bodies.ts';
+import { PROPOSAL, type Task } from './role-case-bodies.ts';
+import { createPositiveBody } from './role-case-positive-body.ts';
+import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
-/**
- * The grant pair a declaration is actually checked against.
- *
- * `preset.plan` is the one declaration whose collection is not the grant it
- * needs: `reads/dispatch.ts` checks `manage` on the family the request names,
- * not on a blanket `preset` collection, because a blanket holder would be
- * admitted to every installed type and the legitimate manager of the task
- * family refused. Everything else takes its own collection.
- */
-export const pairFor = (declaration: CommandDeclaration): string =>
-  `${declaration.name === 'preset.plan' ? 'task' : declaration.collection}:${declaration.action}`;
-
-/**
- * The field a declaration names its subject in: `recordId` on a targeted
- * command, and on a record-scoped read the identifier its catalogue row takes.
- * `task.receipt` names its task through `attemptId`, and a `recordId` beside
- * it is refused `COMMAND_BODY_INVALID` before authority, so a case that sent
- * one would measure that refusal instead of its own.
- */
-export function targetKeyOf(declaration: CommandDeclaration): string | undefined {
-  if (declaration.targetsExistingRecord) return 'recordId';
-  if (declaration.kind !== 'read' || declaration.authorisedOn !== 'record') return undefined;
-  return isReadName(declaration.name) ? READ_CATALOGUE[declaration.name].identifiers[0] : undefined;
-}
-
-export interface Harness {
-  readonly world: World;
-  /** A live alpha task and a live bravo record, for the cases that need a real id. */
-  readonly alphaTask: Task;
-  readonly bravoRecordId: string;
-  /** Who holds what, read back from `grants` rather than from the fixture's list. */
-  readonly heldBy: ReadonlyMap<string, ReadonlySet<string>>;
-  /** Everyone but the admin, in the order case (e) sweeps them. */
-  readonly otherCallers: readonly Caller[];
-  /** The grant pair a declaration is actually checked against. */
-  pairFor(declaration: CommandDeclaration): string;
-  asPerson(
-    name: CommandName,
-    body: Readonly<Record<string, unknown>>,
-    businessKey?: string,
-    caller?: { readonly token: string },
-  ): Promise<Answer>;
-  asAgent(
-    name: CommandName,
-    body: Readonly<Record<string, unknown>>,
-    credential?: string,
-  ): Promise<Answer>;
-  freshTask(title: string): Promise<Task>;
-  probeBody(declaration: CommandDeclaration): Readonly<Record<string, unknown>>;
-  positiveBody(declaration: CommandDeclaration): Promise<Prepared>;
-  approvedReservation(): Promise<{ subject: Task; sibling: Task; decided: Answer }>;
-  reserve(task: Task, purpose: string): Promise<Answer>;
-  activeRoleKeys(): Promise<readonly string[]>;
-  writeBothComments(taskId: string): Promise<readonly Answer[]>;
-  close(): Promise<void>;
-}
+export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
 /**
  * Build the world and everything the cases ask it.

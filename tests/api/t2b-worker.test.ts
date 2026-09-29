@@ -228,7 +228,9 @@ describe.skipIf(serverUrl === undefined)(
         expect(refused.body).toMatchObject({ refused: true, code: 'SCOPE_NOT_GRANTED' });
         expect(await proposalsOn(task.sibling.id)).toStrictEqual([]);
       });
+    });
 
+    describe('T2 propose key: task.propose on the agent route', () => {
       it('a proposal against a moved revision is refused VERSION_STALE with the current revision', async () => {
         const moved = await asPerson('task.update', {
           operationId: randomUUID(),
@@ -268,7 +270,9 @@ describe.skipIf(serverUrl === undefined)(
         );
         expect(answer.body).toMatchObject({ refused: true, code: 'DELEGATION_NOT_LIVE' });
       });
+    });
 
+    describe('T2 propose key: task.propose on the agent route', () => {
       it('another business key is refused before any task is looked at', async () => {
         const answer = await asAgent(
           'task.propose',

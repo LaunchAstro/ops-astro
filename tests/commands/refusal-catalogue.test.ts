@@ -232,7 +232,9 @@ describe('one refusal from each road, byte for byte', () => {
       '{"refused":true,"code":"FIELD_UNKNOWN","names":["colour"],"fixes":["Use a field it has."]}',
     ]);
   });
+});
 
+describe('one refusal from each road, byte for byte', () => {
   it('an identity refusal, person and agent, carries no names', () => {
     expect(wire(refuseCommand('ACTOR_INACTIVE', [], ['Ask an admin.']))).toStrictEqual([
       403,

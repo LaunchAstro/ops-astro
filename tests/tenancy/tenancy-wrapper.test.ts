@@ -83,7 +83,9 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance: the wrapper', () 
       expect(begin).toBeGreaterThanOrEqual(0);
       expect(runtime[begin + 1]?.text).toMatch(/set_config\('app\.business_id', \$1, true\)/u);
     });
+  });
 
+  describe('one business, and no other', () => {
     it('leaves no setting behind on the connection it used', async () => {
       const raw = connectAsAdmin(db.appUrl, { source: 'probe', max: 1 });
       try {

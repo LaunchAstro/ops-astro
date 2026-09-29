@@ -116,7 +116,7 @@ describe.skipIf(serverUrl === undefined)('T3f n-way races at the endpoint', () =
 
   /** The route's answers to `n` approvals sent at once, as codes. */
   const race = async (gates: readonly Record<string, unknown>[]): Promise<string[]> =>
-    (await Promise.all(gates.map(approve))).map((answer) =>
+    (await Promise.all(gates.map((gate) => approve(gate)))).map((answer) =>
       answer.status === 200 ? 'applied' : String(answer.body['code']),
     );
 

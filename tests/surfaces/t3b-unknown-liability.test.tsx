@@ -74,12 +74,14 @@ function client(): OperationsClient {
       },
     ],
   };
-  const fetch = (async (url: string | URL) => {
+  const answer = (url: string | URL): Response => {
     const at = String(url);
     if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
     if (at.endsWith('/task/read')) return json({ ok: true, task });
     return json({ ok: true });
-  }) as unknown as typeof globalThis.fetch;
+  };
+  const fetch = ((url: string | URL) =>
+    Promise.resolve(answer(url))) as unknown as typeof globalThis.fetch;
   return new OperationsClient({
     origin: '',
     businessKey: 'alpha',

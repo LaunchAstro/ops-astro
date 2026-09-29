@@ -115,7 +115,7 @@ function server(options: ServerOptions = {}) {
     revision: 3,
     history: [],
     comments: [],
-    proposals: (options.lineages ?? []).map(lineageOf),
+    proposals: (options.lineages ?? []).map((lineage) => lineageOf(lineage)),
     // The task cap's currency, which the propose form offers (CQ-7).
     capCurrency: 'AUD',
   };
@@ -264,7 +264,9 @@ describe('a stale comment or proposal rereads and keeps the text', () => {
     expect((page.find('#propose-purpose') as HTMLInputElement).value).toBe('');
     expect(page.find('[data-propose="stale"]')).toBeNull();
   });
+});
 
+describe('a stale comment or proposal rereads and keeps the text', () => {
   it('an unrelated reread keeps a comment and a proposal that were never sent', async () => {
     const { client } = server();
     const page = await open(client);

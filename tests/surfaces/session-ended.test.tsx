@@ -217,7 +217,9 @@ describe('a session the API will not vouch for any more', () => {
     expect([...store.held.keys()].some((key) => key.includes('return'))).toBe(false);
     await view.unmount();
   });
+});
 
+describe('a session the API will not vouch for any more', () => {
   it('a mutation refused AUTH_UNKNOWN_LOGIN does the same, from the task screen', async () => {
     const api = server();
     const store = storage(SIGNED_IN);
@@ -247,7 +249,9 @@ describe('a session the API will not vouch for any more', () => {
     expect(view.text()).toContain('Wire the board to the API');
     await view.unmount();
   });
+});
 
+describe('a session the API will not vouch for any more', () => {
   it('an ordinary denial is drawn as a denial and signs nobody out', async () => {
     const api = server({ reads: 'scope' });
     const store = storage(SIGNED_IN);

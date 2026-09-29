@@ -168,7 +168,9 @@ describe('a create whose response was lost', () => {
 
     await view.unmount();
   });
+});
 
+describe('a create whose response was lost', () => {
   it('starts a new attempt when the person asks for a different task', async () => {
     const api = server();
     const view = await mount(screen(api.fetch));
@@ -196,7 +198,9 @@ describe('a create whose response was lost', () => {
 
     await view.unmount();
   });
+});
 
+describe('a create whose response was lost', () => {
   it('is not editable while it is in flight, so a late success erases nothing', async () => {
     // The second half of the review's finding 2, on the create form. The
     // success handler used to clear the box unconditionally, so a title typed

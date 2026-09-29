@@ -20,17 +20,22 @@ import { walkTheJourney, walkTheOtherLineages } from '../acceptance/restart-harn
 import { APPLICATION_ROLE } from '../support/fresh-database.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import {
-  APPLICATION_CALLERS,
   APPLICATION_EXECUTES,
   WORKER_ROLE,
   APPLICATION_GRANTS,
-  OPERATIONS,
-  callFor,
   catalogueFunctions,
   catalogueTables,
   classify,
-  copyStatement,
   describeOutcome,
+  type CatalogueFunction,
+  type CatalogueTable,
+  type Outcome,
+} from './restricted-calls-cases.ts';
+import {
+  APPLICATION_CALLERS,
+  OPERATIONS,
+  callFor,
+  copyStatement,
   expectedOutcome,
   fingerprint,
   meets,
@@ -40,11 +45,8 @@ import {
   statementFor,
   tally,
   type CallerName,
-  type CatalogueFunction,
-  type CatalogueTable,
   type Callers,
-  type Outcome,
-} from './restricted-calls-cases.ts';
+} from './restricted-calls-callers.ts';
 
 /**
  * One owner-written row per business in the tables the journey leaves

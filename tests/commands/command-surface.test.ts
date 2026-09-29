@@ -81,7 +81,9 @@ describe('the surface as a table', () => {
       ),
     ).toBe(true);
   });
+});
 
+describe('the surface as a table', () => {
   it('declares the nine reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
       'person.list',
@@ -130,7 +132,9 @@ describe('the surface as a table', () => {
       expect(command.collection, command.name).toMatch(/^[a-z][a-z_]*$/u);
     }
   });
+});
 
+describe('the surface as a table', () => {
   // A case asserting that every action is one of the seven a grant can carry
   // was removed: `action` is typed `Action`, so an eighth is a type error and
   // the case could not fail. What is worth checking is that the actions are

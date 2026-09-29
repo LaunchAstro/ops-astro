@@ -14,8 +14,8 @@
 // The apparatus is three files beside this one, split for T1h's reason —
 // about 400 lines is the guide for a readable file, and the answer is to
 // split the file, not the change and not the comments. `role-case-ledger.ts` is the rows and the
-// file they are written to, `role-case-bodies.ts` the minimal valid body each
-// declaration needs, `role-case-harness.ts` the world and the callers. What is
+// file they are written to, `role-case-bodies.ts` and `role-case-positive-body.ts` the
+// minimal valid body each declaration needs, `role-case-harness.ts` the world and the callers. What is
 // left here is the cases and what each one claims.
 //
 // **The expected answers come from the product.** `refusal()` reads each

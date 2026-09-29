@@ -254,8 +254,9 @@ none unreachable.
 
 ## Item 2: the six roles and the nine cases
 
-`role-case-matrix.test.ts` with `role-case-harness.ts`, `role-case-bodies.ts`
-and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
+`role-case-matrix.test.ts` with `role-case-harness.ts` (its shape in
+`role-case-harness-shape.ts`), `role-case-bodies.ts` (its recipe table in
+`role-case-positive-body.ts`) and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
 and the whole matrix is written to `.local/l5-matrix.tsv` as
 `role · case · operation · observed code · observed status · expected · verdict`.
 
@@ -796,7 +797,7 @@ a real Chromium page. The person signs in through GoTrue, and the
 (`throughClient`), against the API on a socket and a real Postgres. The grid is
 not copied. The operations, keys, probe values and durable comparison come
 from `tests/acceptance/d06-cases.ts`, and the positive bodies from
-`role-case-bodies.ts` with their `asPerson` pointed at the page.
+`role-case-positive-body.ts` with their `asPerson` pointed at the page.
 
 - **Cells:** 966. That is 35 operations × 27 top-level keys (945) plus 7
   `fields` operations × 3 installed system fields (21). The L6 packet's 872

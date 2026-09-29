@@ -52,6 +52,8 @@ describe.skipIf(serverUrl === undefined)('a business key two businesses hold', (
   let fixture: ApiFixture;
   let memberToken: string;
   let agentToken: string;
+  // Read when a case runs, after beforeAll has signed both tokens.
+  const [asMember, asAgent] = [(): string => memberToken, (): string => agentToken];
   let before: string | undefined;
   let refused: unknown;
 
@@ -83,8 +85,8 @@ describe.skipIf(serverUrl === undefined)('a business key two businesses hold', (
 
   for (const [prefix, path] of PREFIXES) {
     for (const [who, token] of [
-      ['a member', () => memberToken],
-      ['an agent', () => agentToken],
+      ['a member', asMember],
+      ['an agent', asAgent],
     ] as const) {
       it(`${prefix} prefix, ${who}: the shared key answers the bytes of a key nobody holds`, async () => {
         const api = fixture.compose();

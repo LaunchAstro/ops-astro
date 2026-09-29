@@ -38,7 +38,7 @@ const unreachable: Database = {
   withBusiness: async () => {
     throw new Error('admission step 1 answers before any business is entered');
   },
-  close: async () => undefined,
+  close: () => Promise.resolve(),
 };
 
 function build() {
@@ -122,7 +122,7 @@ function admin(rows: readonly { id: string }[]): AdminConnection & { readonly as
     transaction: async () => {
       throw new Error('the resolver opens no transaction');
     },
-    close: async () => undefined,
+    close: () => Promise.resolve(),
   } as AdminConnection & { readonly asked: string[] };
 }
 

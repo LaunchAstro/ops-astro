@@ -546,7 +546,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId'],
-  }), // `billing:decide` on the task (T3d1): any person holding it records an
+  }),
+  // `billing:decide` on the task (T3d1): any person holding it records an
   // unknown effect's outcome (O8); no agent route serves it.
   declare('budget.record_outcome', 'decide', {
     collection: BILLING_COLLECTION,

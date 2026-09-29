@@ -13,15 +13,13 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { serverUrl } from '../acceptance/world.ts';
+import { createIdentWorld, type IdentWorld, type Picked } from '../acceptance/ident-audit-cases.ts';
 import {
   auditMark,
   auditSince,
-  createIdentWorld,
   domainState,
   expectAudited,
-  type IdentWorld,
-  type Picked,
-} from '../acceptance/ident-audit-cases.ts';
+} from '../acceptance/ident-audit-rows.ts';
 
 type Body = Readonly<Record<string, unknown>>;
 

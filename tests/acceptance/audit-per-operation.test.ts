@@ -38,15 +38,8 @@ import {
   type Answer,
   type Caller,
 } from './world.ts';
-import {
-  auditMark,
-  auditSince,
-  createIdentWorld,
-  domainState,
-  expectAudited,
-  type IdentWorld,
-  type Picked,
-} from './ident-audit-cases.ts';
+import { createIdentWorld, type IdentWorld, type Picked } from './ident-audit-cases.ts';
+import { auditMark, auditSince, domainState, expectAudited } from './ident-audit-rows.ts';
 
 /** One call, and what its audit row has to say about it. */
 interface Cell {

@@ -331,7 +331,9 @@ describe.skipIf(serverUrl === undefined)('the local working slice', () => {
       expect(after.assignee).toBeNull();
       expect(after.revision).toBe(made.revision);
     });
+  });
 
+  describe('B2, N3, N4, N5: what a write may not do', () => {
     it('N4: refuses source, key and completed_at in a body', async () => {
       const made = await create(`system fields ${randomUUID().slice(0, 8)}`);
       const attempts: readonly [Record<string, unknown>, string][] = [
@@ -361,7 +363,9 @@ describe.skipIf(serverUrl === undefined)('the local working slice', () => {
       expect(after.completedAt).toBeNull();
       expect(after.revision).toBe(made.revision);
     });
+  });
 
+  describe('B2, N3, N4, N5: what a write may not do', () => {
     it('N5: refuses a stale expectedRevision VERSION_STALE', async () => {
       const made = await create(`stale ${randomUUID().slice(0, 8)}`);
       await run({
@@ -402,7 +406,9 @@ describe.skipIf(serverUrl === undefined)('the local working slice', () => {
       // One applied event for the update, not two.
       expect(task.history.filter((entry) => entry.operation === 'task.update').length).toBe(1);
     });
+  });
 
+  describe('B2, N3, N4, N5: what a write may not do', () => {
     it('N5: the same identity with a different payload is OPERATION_ID_REUSED', async () => {
       const made = await create(`reused ${randomUUID().slice(0, 8)}`);
       const operationId = randomUUID();

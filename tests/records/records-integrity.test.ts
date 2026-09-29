@@ -112,7 +112,9 @@ describe.skipIf(serverUrl === undefined)('records integrity', () => {
         }),
       ).rejects.toThrow(/record_unique_values_claim_idx/u);
     });
+  });
 
+  describe('uniqueness is a table written in the record transaction', () => {
     it('releases the claim when the record is trashed, and takes it back on restore', async () => {
       // Each expected failure gets its own transaction. A statement that fails
       // aborts the transaction it is in, so a test that keeps writing after one
@@ -145,7 +147,9 @@ describe.skipIf(serverUrl === undefined)('records integrity', () => {
         }),
       ).rejects.toThrow(/record_unique_values_claim_idx/u);
     });
+  });
 
+  describe('uniqueness is a table written in the record transaction', () => {
     it('lets exactly one of two concurrent writes of the same value through', async () => {
       // The sequential case above is answered by the unique index on its own.
       // This is the case the contract actually names: two writers at once. One
@@ -336,7 +340,9 @@ describe.skipIf(serverUrl === undefined)('records integrity', () => {
         expect(rules(findings)).toContain('every registered slot is a column on records');
       });
     });
+  });
 
+  describe('the domain-model conformance set', () => {
     it('catches a preset field sitting in a reserved spine slot', async () => {
       await whenSchemaIs(
         db.admin,

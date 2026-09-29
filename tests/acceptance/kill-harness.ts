@@ -44,7 +44,9 @@ export interface KillRecord {
 }
 
 const sleep = async (ms: number): Promise<void> => {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 };
 
 /** `ps`'s state letter for `pid`, the same column on macOS and Linux. */

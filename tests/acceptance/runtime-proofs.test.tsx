@@ -82,9 +82,9 @@ describe.skipIf(!PROOFS_ASKED)('T3d2: the runtime proofs against real hard kills
       // eslint-disable-next-line no-await-in-loop
       const next = await Promise.race([
         reader.read(),
-        new Promise<undefined>((resolve) =>
-          setTimeout(resolve, Math.max(0, deadline - Date.now())),
-        ),
+        new Promise<undefined>((resolve) => {
+          setTimeout(resolve, Math.max(0, deadline - Date.now()));
+        }),
       ]);
       if (next === undefined || next.done) break;
       for (const line of new TextDecoder().decode(next.value).split('\n')) {

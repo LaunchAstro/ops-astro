@@ -3,7 +3,7 @@
 // D06 on the three person surfaces, generated. `d06-cases.ts` says what a cell
 // is and where each of its three lists comes from; this file runs them.
 //
-// Two recipes are added here beside `role-case-bodies.ts`'s, for the two
+// Two recipes are added here beside `role-case-positive-body.ts`'s, for the two
 // controls that recipe file leaves to other cases: `grant.revoke` revokes a
 // grant minted for this cell, and `delegation.revoke` revokes the delegation a
 // fresh agent pickup just opened. With those, every exported operation has a

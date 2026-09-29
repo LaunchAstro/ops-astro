@@ -202,7 +202,9 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
       );
       expect(written).toMatchObject({ value: 61, revision: (before?.revision ?? 0) + 1 });
     });
+  });
 
+  describe('the revision', () => {
     it('refuses a write against a revision that has moved on, and changes nothing', async () => {
       const before = await db.app.withBusiness(business, (tx) =>
         readBusinessSetting(tx, 'conversation_window_days'),
@@ -250,7 +252,9 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
       );
       expect(absent).toBeUndefined();
     });
+  });
 
+  describe('the revision', () => {
     it('writes an operation-owned row only for an operation the row names', async () => {
       const band = await db.app.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, {

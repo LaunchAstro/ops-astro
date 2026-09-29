@@ -17,13 +17,12 @@ import { statusOf } from '../../packages/core-records/src/index.ts';
 import type { RefusalCode } from '../../packages/core-records/src/index.ts';
 import { serverUrl } from '../acceptance/world.ts';
 import {
-  auditMark,
-  auditSince,
   createIdentWorld,
   type IdentWorld,
   type Picked,
   type RawAnswer,
 } from '../acceptance/ident-audit-cases.ts';
+import { auditMark, auditSince } from '../acceptance/ident-audit-rows.ts';
 
 const CANARY = `cq6-canary-${randomUUID()}`;
 

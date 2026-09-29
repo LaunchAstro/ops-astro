@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable require-unicode-regexp
+   -- the proof's body is kept as reviewed, byte for byte. */
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

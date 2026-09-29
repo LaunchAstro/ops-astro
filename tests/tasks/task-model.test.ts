@@ -158,7 +158,9 @@ describe.skipIf(serverUrl === undefined)('the task model', () => {
       expect(refusal?.code).toBe('FIELD_NOT_WRITABLE');
       expect(refusal?.names).toStrictEqual(['completed_at']);
     });
+  });
 
+  describe('the completion stamp', () => {
     it('refuses a generic write to each protected field, against the seeded model', async () => {
       const refusals = await db.app.withBusiness(businessId, async (tx) => {
         const fields = await readFieldDefinitions(tx, taskTypeId);
@@ -233,7 +235,9 @@ describe.skipIf(serverUrl === undefined)('the task model', () => {
         },
       );
     });
+  });
 
+  describe('the conformance set', () => {
     it('catches the completion stamp acquiring an owning operation', async () => {
       await whenTheModelIs(
         `update public.field_defs
@@ -280,7 +284,9 @@ describe.skipIf(serverUrl === undefined)('the task model', () => {
         },
       );
     });
+  });
 
+  describe('the conformance set', () => {
     it('catches a state carrying a category outside the five', async () => {
       await whenTheModelIs(
         `update public.records set data = data || '{"machine_category":"paused"}'::jsonb
