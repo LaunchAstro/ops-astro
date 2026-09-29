@@ -293,7 +293,16 @@ export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<Top
   if (found === undefined) {
     return refused('BUDGET_UNAVAILABLE', 'this task has no open envelope', 'Approve a plan first.');
   }
-  await holdCoveringGrants(tx, request.subjects, request.collection);
+  const figure = {
+    envelopeId: found.id,
+    fromMaximumMinor: Number(request.fromMaximumMinor),
+    amountMinor: Number(request.amountMinor),
+  };
+  // The first approvers' grants are held with the caller's, before the runtime
+  // set, so a revocation of either waits for this decision (Sol, #130).
+  const held = await approvers(tx, FIRST_APPROVALS, [found.id, figure]);
+  const holders = [...request.subjects, ...held.flatMap((first) => first.subjects)];
+  await holdCoveringGrants(tx, holders, request.collection);
   await acquire(tx, [
     { lockClass: 'cap', id: found.capId },
     { lockClass: 'envelope', id: found.id },
@@ -318,16 +327,11 @@ export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<Top
   const ceiling = capVerdict({ cap, capId: envelope.capId, wanted, currency: envelope.currency });
   if (ceiling !== null) return ceiling;
 
-  const figure = {
-    envelopeId: envelope.id,
-    fromMaximumMinor: Number(request.fromMaximumMinor),
-    amountMinor: Number(request.amountMinor),
-  };
   // Null is the band switched off; a business with no row has the shipped 500.
   const row = await readBusinessSetting(tx, 'four_eyes_threshold');
   const band = row === undefined ? 500 : row.value;
   const pairs = typeof band === 'number' && request.amountMinor > BigInt(Math.round(band * 100));
-  const firsts = pairs ? await approvers(tx, FIRST_APPROVALS, [envelope.id, figure]) : [];
+  const firsts = pairs ? held : [];
   const others = firsts.filter((first) => first.personId !== request.personId);
   const live = await Promise.all(others.map(async (one) => (await holds(one.subjects)) && one));
   const pair = live.find((one) => one !== false);
