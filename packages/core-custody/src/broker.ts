@@ -13,7 +13,7 @@
 //    operation, and the grant (the run's live delegation). None comes from
 //    the caller, and the caller never names a destination. A task a client
 //    is on is refused here, before any route (C60). Each field's source is
-//    found from its bound row, held with the task, never taken from the
+//    found from the run's task it is bound to, never taken from the
 //    caller (S3, `broker-sources.ts`). Then the data
 //    classes choose the eligible routes before any route is chosen, the
 //    credential rule checks the route's kind, and the operation's priced
@@ -21,9 +21,9 @@
 //    state `reserved`, with the outbound prompt's copy registered beside it.
 //    A refusal after the facts hold is recorded as a step (state `refused`);
 //    a refusal of the facts themselves writes nothing.
-// 2. Start. The six facts, the client link and the bound rows are read again
+// 2. Start. The six facts, the client link and the task's source are read again
 //    under their locks, and a call whose authority went, whose task gained a
-//    client, or whose route a bound row no longer allows, since the hold is
+//    client, or whose route its task's source no longer allows, since the hold is
 //    released unsent. The values sent are the ones read here. The call is marked
 //    `dispatched` with its route and credential kind before custody is
 //    asked, so a crash after this point leaves a call the sweep holds as
@@ -126,8 +126,8 @@ async function markStarted(
 
 /**
  * The start's own decision, on the facts read again under their locks: a task
- * that gained a client, or a bound row that became unreadable or stopped
- * being a business-internal source, releases the call unsent (C60, S3). The
+ * that gained a client, or a task that became unreadable or stopped being a
+ * business-internal source, releases the call unsent (C60, S3). The
  * values sent are the ones read here, under the share locks.
  */
 function startable(
@@ -139,7 +139,7 @@ function startable(
   | { readonly ok: false; readonly code: BrokerRefusal } {
   if (!facts.ok) return facts;
   if (facts.facts.clientId !== null) return { ok: false, code: 'CLIENT_MODEL_USE_OFF' };
-  const resolved = resolveFields(request.fields, facts.facts.sources);
+  const resolved = resolveFields(request.fields, facts.facts.source);
   if (!resolved.ok) return resolved;
   const still = eligibleRoutes(reserved.operation.fields, resolved.fields, [reserved.route]);
   if (!still.ok || still.routes.length === 0) return { ok: false, code: 'LOCAL_MODEL_REQUIRED' };

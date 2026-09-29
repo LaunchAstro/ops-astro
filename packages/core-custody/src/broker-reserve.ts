@@ -165,7 +165,7 @@ export async function reserveModelCall(
   // on the client record once there is one (C32).
   if (facts.clientId !== null) return await refused('CLIENT_MODEL_USE_OFF');
   // S3: each field's source is the broker's finding, from its row, never the caller's claim.
-  const resolved = resolveFields(request.fields, facts.sources);
+  const resolved = resolveFields(request.fields, facts.source);
   if (!resolved.ok) return await refused(resolved.code);
   const route = routeFor(operation, caller, resolved.fields, facts, broker);
   if (!route.ok) return await refused(route.code, route.words);

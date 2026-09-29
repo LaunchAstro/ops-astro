@@ -889,18 +889,19 @@ the delegation check (`AGENT_OPERATIONS`).
 A field is supplied, `{ name, source, value }`, or bound to the row it is
 read from, `{ name, from: { recordId, key } }` (S3). A supplied field's
 `source` is the caller's statement and only narrows: a claimed
-`business_internal` counts as `outside`, so the field stays local. For a
-bound field the broker reads the value from the row, holding it `for share`
-with the run's task, and finds the source itself: `business_internal` only
-for a live task of this business with no client on it, entered by one of its
-people through the app, the API or the command line, and written to by no
-agent or worker since; otherwise `client_row` or `outside`. The field reaches
-a cloud route only where the source is `business_internal` and the operation
-also declares the field business-internal (`effectiveClass`,
-`core-connectors/src/data-class.ts`; `broker-sources.ts`). A bound row that is
-another business's, made up, trashed, or holds no text at the key is
-`SOURCE_UNREADABLE` 422, recorded as a step, in the same words whoever's row
-it was. The start reads the rows again, and a row that stopped being a
+`business_internal` counts as `outside`, so the field stays local. A bound
+field reads what the agent may read: the run's own task, held `for share`,
+and a field the task spine marks `shared`. The broker takes the value from
+the row and finds the source itself: `business_internal` only when one of
+the business's people entered the task through the app, the API or the
+command line and no agent or worker has written to it since; otherwise
+`outside`. The field reaches a cloud route only where the source is
+`business_internal` and the operation also declares the field
+business-internal (`effectiveClass`, `core-connectors/src/data-class.ts`;
+`broker-sources.ts`). Any other row (another task, another business's, a
+made-up id), a field the agent is not shown, a key the task does not hold as
+text, or a task in the trash is `SOURCE_UNREADABLE` 422, recorded as a step,
+in the same words whoever's row it was. The start reads the rows again, and a row that stopped being a
 business-internal source since the hold releases the call unsent
 (`LOCAL_MODEL_REQUIRED`); the values sent are the ones read at the start.
 
