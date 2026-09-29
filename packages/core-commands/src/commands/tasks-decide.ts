@@ -2,7 +2,12 @@
 //
 // `task.decide`: a person's decision on a gate.
 
-import { clearDecision, isUuid, subjectsOf } from '../../../core-records/src/index.ts';
+import {
+  clearDecision,
+  isUuid,
+  raiseEscalation,
+  subjectsOf,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { decide, type DecisionKind } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
@@ -129,6 +134,13 @@ export async function decideOnGate(
 
   const decided = result.value;
   if (decided.decision === 'escalate') {
+    // INB-1: the gate is now the business-scope deciders' to decide, so the
+    // inbox moves with it in this transaction: nothing is cleared, since
+    // nothing was decided.
+    await raiseEscalation(tx, {
+      gateId: decided.gateId,
+      recipientPersonId: decided.escalatedToPersonId,
+    });
     return applied(null, null, {
       gateId: decided.gateId,
       versionId: decided.versionId,

@@ -201,4 +201,35 @@ describe.skipIf(serverUrl === undefined)('INB-1 escalate and the inbox', () => {
     expect(itemOf(after, approver.personId, taskId)?.state).toBe('withdrawn');
     expect(itemOf(after, approver.personId, other)?.state).toBe('open');
   });
+
+  it.each(['escalate first', 'approve first'] as const)(
+    'INB-1 escalate and approve at once (%s): one wins, and no item is left owed to someone who cannot act',
+    async (order) => {
+      const { taskId, v3, approver } = await atTheBound();
+      const escalate = () =>
+        asPerson(s, decideBody(v3, 'escalate', { recipientPersonId: holder.personId }));
+      const approve = () => as(approver, decideBody(v3, 'approve'));
+      type Result = Awaited<ReturnType<typeof escalate>>;
+      const race = async (): Promise<readonly [Result, Result]> => {
+        if (order === 'escalate first') return await Promise.all([escalate(), approve()]);
+        const [second, first] = await Promise.all([approve(), escalate()]);
+        return [first, second];
+      };
+      const [escalated, approved] = await race();
+      expect(
+        [codeOf(escalated), codeOf(approved)].filter((code) => code === 'applied'),
+      ).toHaveLength(1);
+      const after = await onGate(v3['gateId']);
+      // Whichever committed first, the other was refused under the gate lock
+      // and the items match the winner.
+      const approverItem = itemOf(after, approver.personId, taskId);
+      if (codeOf(approved) === 'applied') {
+        expect(after.filter((item) => item.state === 'open')).toStrictEqual([]);
+        expect(approverItem).toMatchObject({ state: 'cleared', closedBy: approver.personId });
+      } else {
+        expect(approverItem?.state).toBe('withdrawn');
+        expect(itemOf(after, holder.personId, taskId)?.state).toBe('open');
+      }
+    },
+  );
 });

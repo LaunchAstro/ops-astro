@@ -47,6 +47,47 @@ export async function raiseDecision(
 }
 
 /**
+ * An escalated gate (T3a). Escalating decides nothing, and from then on only a
+ * holder of `task:decide` across the business decides the gate, so an open
+ * item on it held by anyone else is withdrawn (they can no longer act on it)
+ * and the recipient, who holds that role, is raised one if they had none. Only
+ * items about the gate's own task move: one whose pointer names the gate but
+ * whose subject is another task is not this gate's.
+ */
+export async function raiseEscalation(
+  tx: TenantQuery,
+  escalated: { readonly gateId: string; readonly recipientPersonId: string },
+): Promise<void> {
+  const gates = await tx.query<{ readonly taskId: string }>(
+    `select l.task_id as "taskId"
+       from public.gates g
+       join public.proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
+      where g.business_id = $1 and g.id = $2`,
+    [tx.businessId, escalated.gateId],
+  );
+  const taskId = gates[0]?.taskId;
+  if (taskId === undefined) throw new Error('raiseEscalation: the escalated gate is not here');
+  const deciders = await grantHolders(tx, {
+    collection: 'task',
+    action: 'decide',
+    scope: { kind: 'business', id: null },
+  });
+  await tx.query(
+    `update public.inbox_items set work_state = 'withdrawn', closed_at = now()
+      where business_id = $1 and reason = 'decision' and fact_kind = 'gate' and fact_id = $2
+        and subject_record_id = $3 and work_state = 'open'
+        and recipient_person_id <> all($4::uuid[])`,
+    [tx.businessId, escalated.gateId, taskId, deciders],
+  );
+  await raiseInboxItem(tx, {
+    recipientPersonId: escalated.recipientPersonId,
+    subjectRecordId: taskId,
+    reason: 'decision',
+    fact: { kind: 'gate', id: escalated.gateId },
+  });
+}
+
+/**
  * A handed-back lease. The person who authorised it launched the run: a
  * completed run tells them it finished and owes nothing; a failed one is
  * waiting on their move (restart or cancel). Answers the lease's task.
