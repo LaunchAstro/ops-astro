@@ -10,7 +10,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 const serverUrl = databaseUrlFromEnvironment();
 
 describe.skipIf(serverUrl === undefined)('T2c1 reservation crash seam', () => {
-  it('Sol proof, criterion 2: a rejected decision returns after commit without a reservation', async () => {
+  it('a rejected decision returns after commit without a reservation', async () => {
     const fixture = await createApiFixture('sol_t2c1_reject');
     const previous = process.env[CRASH_POINT_VARIABLE];
     try {

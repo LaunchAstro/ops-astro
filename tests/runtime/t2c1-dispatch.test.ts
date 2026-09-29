@@ -258,7 +258,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
     }
   }, 20_000);
 
-  it('Sol proof, criterion 2: a settled delegation cannot dispatch while its lease is live', async () => {
+  it('a settled delegation cannot dispatch while its lease is live', async () => {
     const work = await leased(db.app, fixture);
     await db.admin.execute(
       `update public.delegations set settled_at = now()

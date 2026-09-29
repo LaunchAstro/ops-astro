@@ -15,7 +15,7 @@ function caseBody(name: string): string {
 }
 
 describe('T2c1 dispatch separation coverage', () => {
-  it('Sol proof, criterion 3: served dispatch tests cross client and person boundaries by name', () => {
+  it('served dispatch tests cross client and person boundaries by name', () => {
     for (const name of [
       'T2 isolation: client to client, task.dispatch',
       'T2 isolation: person to person, task.dispatch',
