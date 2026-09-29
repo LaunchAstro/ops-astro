@@ -73,7 +73,8 @@
     "FR5-0030 adds two cases to final-r3r-0030-upgrade-race (SOL-R3R2-1): a real propose on a database at 0029, held between its evidence pack and its gate (a first version) or between superseding the old gate and its pack (a successor), while 0030 starts as the runner applies it. Both must commit, with 0030 recorded, its pack key validated and the gate on its own version's pack. Unedited, 0030 deadlocked with the first; locking evidence_packs before gates deadlocks with the second; 0030 now locks proposal_versions first.",
     "FR6-RUNNER names final-r6-runner-guard as an invariant (the migration runner, owner ruling 2026-09-24: with a migration pending, a held application-login session or any other client backend on the database refuses the run, naming each by pid, login, application, address and start, with the ledger and schema unchanged; it applies once they close; an up-to-date database with the application connected passes; a session that connects inside a migration is caught by the check before its commit; db-migrate.mjs refuses and exits 2 with no bypass). The caller suites that seed through their own pools now close them first (EmptyDatabase.closeSessions), with assertions unchanged.",
     "FR8-0031 adds a case to final-r2-dbtest-upgrade-guards: a member of the application group dropped by another session after 0031's role loop has read it, on a fixed schedule (the loop blocks on a row lock the dropping session holds until the drop commits), no longer fails the upgrade, and every surviving member still has TEMPORARY revoked.",
-    "S0-3a adds the upgrade-drill suite (S0-3 upgrade drill: a database built and seeded at 0023 upgrades to the head row for row unchanged, and a planted changed row, lost row or dropped table turns the drill red)."
+    "S0-3a adds the upgrade-drill suite (S0-3 upgrade drill: a database built and seeded at 0023 upgrades to the head row for row unchanged, and a planted changed row, lost row or dropped table turns the drill red).",
+    "S0-7 adds the Postgres-major suite (the database under test runs the major the job names, 17 unless the look-ahead names 18, and a planted migration calling uuidv7() is refused on 17 by the server, with the ledger unchanged)."
   ],
   "invariant": [
     "tests/ci/staging-no-production-data.test.ts",
@@ -292,6 +293,7 @@
     "tests/runtime/final-r3-decide.test.ts",
     "tests/runtime/final-r3-decide-seed-race.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
-    "tests/support/fresh-database-leak.test.ts"
+    "tests/support/fresh-database-leak.test.ts",
+    "tests/ci/s0-7-postgres-major.test.ts"
   ]
 }
