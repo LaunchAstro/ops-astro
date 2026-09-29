@@ -401,6 +401,16 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       expect(await open(fixture.member.personId, 'mention')).toStrictEqual([]);
     });
 
+    it('raises a mention for a teammate named by an uppercase identifier, under their stored one', async () => {
+      const task = await newTask('mention me loudly');
+      const written = ok(await comment(task, [reviewer.personId.toUpperCase()]));
+      expect(
+        (await open(reviewer.personId, 'mention'))
+          .filter((i) => readable(i))
+          .filter((i) => i.subjectRecordId === task.id),
+      ).toMatchObject([{ factKind: 'record', factId: detailOf(written)['commentId'] }]);
+    });
+
     it('refuses before save a mention of someone who cannot read the task, naming them', async () => {
       const onA = await newTask('client A', clientA);
       const onB = await newTask('client B', randomUUID());

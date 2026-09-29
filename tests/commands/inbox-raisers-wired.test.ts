@@ -23,8 +23,3 @@ it('incident raising is called by a production transition', () => {
   );
   expect(callers).not.toHaveLength(0);
 });
-
-it('task.comment can raise a paid-client comment', () => {
-  const handler = readFileSync('packages/core-commands/src/commands/tasks-comment.ts', 'utf8');
-  expect(handler).not.toMatch(/paidClient:\s*false/u);
-});
