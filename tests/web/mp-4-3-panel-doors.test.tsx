@@ -81,6 +81,7 @@ const WORDS: Readonly<Record<PanelDoor, string>> = {
   'add-first': 'Add the first one in the task panel',
   log: 'Log time in the task panel',
   timer: 'Start the timer in the task panel',
+  reply: 'Reply in the task panel',
 };
 
 describe('MP-4-3 panel doors placed', () => {

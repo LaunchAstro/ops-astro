@@ -34,7 +34,7 @@ export {
   type StepMark,
 } from './perspective-counts.ts';
 
-export type PanelDoor = 'open' | 'tick' | 'add-first' | 'log' | 'timer';
+export type PanelDoor = 'open' | 'tick' | 'add-first' | 'log' | 'timer' | 'reply';
 
 const DOOR_WORDS: Readonly<Record<PanelDoor, string>> = {
   open: 'Open this task in the panel',
@@ -42,6 +42,7 @@ const DOOR_WORDS: Readonly<Record<PanelDoor, string>> = {
   'add-first': 'Add the first one in the task panel',
   log: 'Log time in the task panel',
   timer: 'Start the timer in the task panel',
+  reply: 'Reply in the task panel',
 };
 
 export function PanelDoorButton(props: {
