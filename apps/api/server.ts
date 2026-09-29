@@ -50,10 +50,12 @@ import {
   describeFault,
   executeCommand,
   executeRead as readExecutor,
+  type ModelCallExecutor,
 } from '../../packages/core-commands/src/index.ts';
 import { runtimeKeys, withRuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
+import { brokerSettings, startModelBroker } from './model-broker.ts';
 import {
   describeRecovered,
   parseRecoveryScope,
@@ -149,6 +151,8 @@ export interface ApiConfig {
    * to reach the fault branch.
    */
   readonly executeRead?: ReadExecutor;
+  /** `model.call` through the credential broker; absent where none is configured. */
+  readonly executeModelCall?: ModelCallExecutor;
 }
 
 export interface ComposedApi {
@@ -204,6 +208,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
       executeRead,
       executeCommand,
       executeAgentCommand,
+      ...(config.executeModelCall === undefined
+        ? {}
+        : { executeModelCall: config.executeModelCall }),
     }),
   );
 
@@ -256,6 +263,17 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // The credential broker (AW-01): custody's own process, started only from a
+  // complete configuration. None configured, `model.call` answers 501.
+  const brokerConfig = brokerSettings(environment);
+  if (brokerConfig.kind === 'invalid') {
+    console.error(`api: ${brokerConfig.problem}`);
+    process.exit(1);
+  }
+  const broker =
+    brokerConfig.kind === 'configured' ? await startModelBroker(brokerConfig) : undefined;
+  console.log(`api: credential broker ${broker === undefined ? 'not configured' : 'started'}`);
+
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
   // keys through the same resolver the requests will.
@@ -265,6 +283,7 @@ async function main(): Promise<void> {
     secret: secret as string,
     issuer: issuer as string,
     keys,
+    ...(broker === undefined ? {} : { executeModelCall: broker.executor }),
   });
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
@@ -282,7 +301,7 @@ async function main(): Promise<void> {
   const recovered = await withRuntimeKeys(keys, recovery);
   if (!recovered.ok) {
     console.error(`api: ${recovered.problem}`);
-    await Promise.allSettled([database.close(), admin.close()]);
+    await Promise.allSettled([database.close(), admin.close(), broker?.stop()]);
     process.exit(1);
   }
   for (const business of recovered.businesses) console.log(describeRecovered(business));
@@ -293,7 +312,9 @@ async function main(): Promise<void> {
   });
 
   const stop = (): void => {
-    void Promise.allSettled([database.close(), admin.close()]).then(() => process.exit(0));
+    void Promise.allSettled([database.close(), admin.close(), broker?.stop()]).then(() =>
+      process.exit(0),
+    );
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
