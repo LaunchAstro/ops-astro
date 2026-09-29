@@ -11,6 +11,7 @@
 // Nothing here writes an audit payload; the alerts path holds no connection.
 import { sign } from 'hono/jwt';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import postgres from 'postgres';
 import { composeApi } from '../../apps/api/server.ts';
 import { createAlerts, type SinkEvent } from '../../apps/api/alerts/sink.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
@@ -65,6 +66,53 @@ async function bearer(subject: string): Promise<string> {
 }
 
 describe('S0-2 canary', () => {
+  it('a canary in every field of a fault (name, code, message, stack, constraint, detail, cause) reaches no log, sink or response', async () => {
+    const PLANT = 'QZCANARYQZ';
+    const planted = Object.assign(new Error(`${PLANT} in the message`), {
+      name: PLANT,
+      code: 'QZCAN',
+      constraint_name: `${PLANT}_constraint`,
+      detail: PLANT,
+      cause: new Error(PLANT),
+    });
+    planted.stack = `${PLANT}: x\n    at ${PLANT} (${process.cwd()}/apps/api/app.ts:1:1)\n    at /${PLANT}.ts:2:2`;
+    const genuine = new postgres.PostgresError({
+      code: '22P02',
+      message: `${PLANT} value`,
+    } as never);
+    const check = async (fault: Error, logs: string): Promise<void> => {
+      const logged: string[] = [];
+      vi.spyOn(console, 'error').mockImplementation(
+        (...parts: unknown[]) => void logged.push(parts.join(' ')),
+      );
+      const { app, events, alerts } = served(() => Promise.reject(fault));
+      const response = await app.fetch(
+        new Request(`http://api.test${PREFIX.person}alpha${READ_PATH}`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${await bearer('person-one')}`,
+          },
+          body: '{}',
+        }),
+      );
+      await alerts.settled();
+      vi.restoreAllMocks();
+      expect(response.status).toBe(503);
+      expect(events).toHaveLength(1);
+      expect(logged.join('\n').includes(logs), 'the bounded log line').toBe(true);
+      for (const [where, seen] of [
+        ['log', logged.join('\n')],
+        ['sink', JSON.stringify(events)],
+        ['response', await response.text()],
+      ]) {
+        expect(/QZCAN/u.test(seen ?? ''), `a plant in the ${where}`).toBe(false);
+      }
+    };
+    await check(planted, 'api: unhandled fault unknown (reference');
+    await check(genuine, 'api: unhandled fault 22P02 (reference');
+  });
+
   it('Sol proof, criterion 4: a five-character planted fault code never reaches the API log', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
