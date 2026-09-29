@@ -946,6 +946,8 @@
   flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--s-4) var(--s-5);
+  /* A wide table or chart scrolls or fits inside its state; it never widens the page. */
+  min-width: 0;
 }
 /* A state lays its component out in flow, as a page does: an inline control
    (a button, a chip) keeps its own width and a block fills the state. */
