@@ -237,6 +237,52 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
     expect(await accessOf(ada, onB)).toBe('withheld');
   });
 
+  it('Sol proof, criterion 3: withheld client pointers are redacted', async () => {
+    await grantRead({ kind: 'party', id: clientA });
+    const hiddenItem = await inAlpha(
+      async (tx) =>
+        await raiseInboxItem(tx, {
+          recipientPersonId: ada,
+          subjectRecordId: taskB,
+          reason: 'incident',
+          fact: { kind: 'record', id: taskB },
+        }),
+    );
+    const read = await inAlpha(async (tx) => await readInboxItems(tx, ada));
+    const withheld = read.find((item) => item.id === hiddenItem);
+    expect(withheld?.access).toBe('withheld');
+    expect(withheld).not.toHaveProperty('subjectRecordId');
+    expect(withheld).not.toHaveProperty('factId');
+  });
+
+  it('Sol proof, criterion 5: delivery observations read in causal order', async () => {
+    const item = await inAlpha(
+      async (tx) =>
+        await raiseInboxItem(tx, {
+          recipientPersonId: ada,
+          subjectRecordId: taskA,
+          reason: 'incident',
+          fact: { kind: 'record', id: taskA },
+        }),
+    );
+    await inAlpha(async (tx) => {
+      await tx.query(
+        `insert into public.inbox_delivery_attempts
+           (business_id, id, item_id, channel, state)
+         values ($1, 'ffffffff-ffff-4fff-8fff-ffffffffffff', $2, 'in_app', 'asked')`,
+        [tx.businessId, item],
+      );
+      await tx.query(
+        `insert into public.inbox_delivery_attempts
+           (business_id, id, item_id, channel, state)
+         values ($1, '00000000-0000-4000-8000-000000000001', $2, 'in_app', 'accepted')`,
+        [tx.businessId, item],
+      );
+    });
+    const read = await inAlpha(async (tx) => await readInboxItems(tx, ada));
+    expect(read.find((candidate) => candidate.id === item)?.lastDelivery).toBe('accepted');
+  });
+
   it('separates person from person: a read is the recipient own, and so is attention', async () => {
     const beas = await inAlpha(async (tx) => await readInboxItems(tx, bea));
     expect(beas.length).toBeGreaterThan(0);
