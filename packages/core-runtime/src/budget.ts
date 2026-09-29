@@ -22,6 +22,7 @@ import {
 } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import { acquire } from './locks.ts';
+import { AffectedSetChanged } from './rediscovery.ts';
 import { checkAuthorityAt, holdCoveringGrants } from './recovery/classifier.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -298,10 +299,11 @@ export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<Top
     fromMaximumMinor: Number(request.fromMaximumMinor),
     amountMinor: Number(request.amountMinor),
   };
-  // The first approvers' grants are held with the caller's, before the runtime
-  // set, so a revocation of either waits for this decision (Sol, #130).
-  const held = await approvers(tx, FIRST_APPROVALS, [found.id, figure]);
-  const holders = [...request.subjects, ...held.flatMap((first) => first.subjects)];
+  // Discovery: everyone who gave a first approval on this envelope has their
+  // grants held with the caller's, before the runtime set, so a revocation
+  // waits for this decision (Sol, #130).
+  const known = await approvers(tx, ENVELOPE_APPROVERS, [found.id]);
+  const holders = [...request.subjects, ...known.flatMap((first) => first.subjects)];
   await holdCoveringGrants(tx, holders, request.collection);
   await acquire(tx, [
     { lockClass: 'cap', id: found.capId },
@@ -331,7 +333,12 @@ export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<Top
   const row = await readBusinessSetting(tx, 'four_eyes_threshold');
   const band = row === undefined ? 500 : row.value;
   const pairs = typeof band === 'number' && request.amountMinor > BigInt(Math.round(band * 100));
-  const firsts = pairs ? held : [];
+  // Under the locks: the first approvals of exactly this figure, so one that
+  // committed after discovery counts. Its holder's grants are held without
+  // waiting on a grant row under runtime locks (Sol, #130); rows discovery
+  // already holds come back at once.
+  const firsts = pairs ? await approvers(tx, FIRST_APPROVALS, [envelope.id, figure]) : [];
+  if (firsts.length > 0) await holdWithoutWaiting(tx, firsts, request.collection);
   const others = firsts.filter((first) => first.personId !== request.personId);
   const live = await Promise.all(others.map(async (one) => (await holds(one.subjects)) && one));
   const pair = live.find((one) => one !== false);
@@ -358,14 +365,42 @@ export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<Top
 
 /** The first approvals waiting on exactly this figure. */
 const FIRST_APPROVALS = `
-  select o.result -> 'detail' ->> 'firstApproverPersonId' as person_id, o.actor_id
+  select pending.result -> 'detail' ->> 'firstApproverPersonId' as person_id, pending.actor_id
+    from public.operations pending
+   where pending.business_id = $1 and pending.command = 'budget.top_up'
+     and pending.outcome = 'applied'
+     and pending.result -> 'detail' ->> 'state' = 'awaiting_second_approver'
+     and pending.result -> 'detail' ->> 'envelopeId' = $2
+     and pending.result -> 'detail' ->> 'fromMaximumMinor' = $3
+     and pending.result -> 'detail' ->> 'amountMinor' = $4
+   order by pending.created_at`;
+
+/** Contention on a late holder's grant rolls back into the entry's one retry. */
+async function holdWithoutWaiting(
+  tx: TenantQuery,
+  firsts: readonly { readonly subjects: readonly Subject[] }[],
+  collection: string,
+): Promise<void> {
+  try {
+    await holdCoveringGrants(
+      tx,
+      firsts.flatMap((first) => first.subjects),
+      collection,
+      'nowait',
+    );
+  } catch (cause) {
+    if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
+    throw new AffectedSetChanged("top-up: a first approver's grant is being changed; retry");
+  }
+}
+
+/** Everyone with a first approval on this envelope, whatever its figure: the discovery set. */
+const ENVELOPE_APPROVERS = `
+  select distinct o.result -> 'detail' ->> 'firstApproverPersonId' as person_id, o.actor_id
     from public.operations o
    where o.business_id = $1 and o.command = 'budget.top_up' and o.outcome = 'applied'
      and o.result -> 'detail' ->> 'state' = 'awaiting_second_approver'
-     and o.result -> 'detail' ->> 'envelopeId' = $2
-     and o.result -> 'detail' ->> 'fromMaximumMinor' = $3
-     and o.result -> 'detail' ->> 'amountMinor' = $4
-   order by o.created_at`;
+     and o.result -> 'detail' ->> 'envelopeId' = $2`;
 
 /** Who approved the task's latest approved plan. */
 const PLAN_APPROVER = `

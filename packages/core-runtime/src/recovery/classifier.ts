@@ -430,6 +430,9 @@ export async function holdCoveringGrants(
   tx: TenantQuery,
   subjects: readonly Subject[],
   collection: string,
+  // `nowait` is for a hold taken under runtime locks (the top-up's late first
+  // approver): it never waits on a grant row there, and contention rolls back.
+  wait: 'wait' | 'nowait' = 'wait',
 ): Promise<void> {
   await tx.query(
     `with recursive chain as (
@@ -445,7 +448,7 @@ export async function holdCoveringGrants(
      select g.id from public.grants g
       where g.business_id = $1 and g.id in (select id from chain)
       order by g.id
-      for share`,
+      for share${wait === 'nowait' ? ' nowait' : ''}`,
     [
       tx.businessId,
       collection,

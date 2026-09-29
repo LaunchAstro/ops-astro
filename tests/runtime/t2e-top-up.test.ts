@@ -14,42 +14,43 @@
 // the cap stays the hard ceiling.
 //
 // Separations proved: business to business (a top-up moves only its own
-// business's envelope), client to client (an external client sharing one
-// task, with a billing grant on it, tops up neither that task nor another
-// client's), task to task (a member's grant on one task reaches no other),
+// business's envelope), client to client (two external clients, each sharing
+// one task with a billing grant on it, read only their own and top up
+// neither), task to task (a member's grant on one task reaches no other),
 // person to person
 // (the second approver is a different person holding the grant in that
 // business, and a first approval whose holder lost the grant pairs with no
 // one).
+//
+// The races are `t2e-top-up-races.test.ts` and the client separations
+// `t2e-top-up-clients.test.ts`; the world is `t2e-harness.ts`.
 
-import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { randomUUID } from 'node:crypto';
 import { executeCommand, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
-import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
-import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
-import { topUp as applyTopUp } from '../../packages/core-runtime/src/budget.ts';
-import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import { insertBusiness } from '../identity/fixture.ts';
-import { cq8World } from './cq-8-world.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import {
   appliedDetail,
   approveBody,
   asAgent,
-  asPerson,
   codeOf,
   createTask,
   freshPurpose,
-  openSchedules,
   pickup,
   proposeBody,
-  racer,
-  revisionOf,
   rows,
-  type Detail,
   type Schedules,
 } from './schedules-harness.ts';
+import {
+  LARGE,
+  MAXIMUM,
+  SMALL,
+  openTopUpWorld,
+  topUpBody,
+  type TopUpWorld,
+} from './t2e-harness.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -57,108 +58,23 @@ if (serverUrl === undefined) {
   console.warn('runtime/t2e-top-up: DATABASE_URL is unset, so nothing below ran.');
 }
 
-/** The plan's estimated maximum, which opens the envelope at this figure. */
-const MAXIMUM = 2_500;
-/** Under the shipped band of 500 (50 000 minor units). */
-const SMALL = 10_000;
-/** Above it. */
-const LARGE = 60_000;
-
-const topUpBody = (taskId: string, amountMinor: number, fromMaximumMinor: number) => ({
-  command: 'budget.top_up',
-  operationId: randomUUID(),
-  recordId: taskId,
-  amountMinor,
-  fromMaximumMinor,
-});
-
 describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
+  let w: TopUpWorld;
   let s: Schedules;
   let second: Member;
   let planner: Member;
   let nobody: Member;
-  let clientA: Member;
-  let taskScoped: Member;
-  /** The task shared with `clientA`, whose plan the planner approved. */
-  let clientTask: string;
-
-  const as = async (who: Member, body: Readonly<Record<string, unknown>>) =>
-    await executeCommand(s.db.app, s.business, who.presented, 'api', body as never);
-
-  const topUp = async (
-    who: Member,
-    taskId: string,
-    amountMinor: number,
-    fromMaximumMinor: number,
-  ): Promise<CommandResult> => await as(who, topUpBody(taskId, amountMinor, fromMaximumMinor));
-
-  const maximumOf = async (taskId: string, business: string = s.business): Promise<number> =>
-    Number(
-      (
-        await rows<{ readonly maximum: string }>(
-          s,
-          `select maximum_minor::text as maximum from public.task_envelopes
-            where business_id = $1 and task_id = $2 and state = 'open'`,
-          [business, taskId],
-        )
-      )[0]?.maximum,
-    );
-
-  /** A task with an approved plan, so an envelope to top up, approved by `by`. */
-  async function planned(by: Member = s.decider): Promise<{ taskId: string; decision: Detail }> {
-    const taskId = await createTask(s, `t2e ${randomUUID()}`);
-    const proposal = appliedDetail(
-      await asPerson(
-        s,
-        proposeBody(taskId, await revisionOf(s, taskId), {
-          purpose: freshPurpose(),
-          maximumMinor: MAXIMUM,
-        }),
-      ),
-      'task.propose',
-    );
-    const decision = appliedDetail(await as(by, approveBody(proposal)), 'task.decide');
-    return { taskId, decision };
-  }
-
-  const setBand = async (value: string): Promise<void> => {
-    await s.db.admin.execute(
-      `update public.business_settings set value = $2::text::jsonb
-        where business_id = $1 and key = 'four_eyes_threshold'`,
-      [s.business, value],
-    );
-  };
+  const topUp: TopUpWorld['topUp'] = async (...args) => await w.topUp(...args);
+  const maximumOf: TopUpWorld['maximumOf'] = async (...args) => await w.maximumOf(...args);
+  const planned: TopUpWorld['planned'] = async (...args) => await w.planned(...args);
 
   beforeAll(async () => {
-    s = await openSchedules('t2e', 1_000_000);
-    second = await enrol(s.db.app, s.business, 'second');
-    planner = await enrol(s.db.app, s.business, 'planner');
-    nobody = await enrol(s.db.app, s.business, 'nobody');
-    taskScoped = await enrol(s.db.app, s.business, 'task-scoped-billing');
-    await s.db.app.withBusiness(s.business, async (tx) => {
-      await installBusinessSettings(tx);
-      await grantTo(tx, s.decider, 'decide', undefined, false, 'billing');
-      await grantTo(tx, second, 'decide', undefined, false, 'billing');
-      // The planner decides plans and holds no budget permission.
-      for (const action of ['read', 'decide'] as const) {
-        // eslint-disable-next-line no-await-in-loop
-        await grantTo(tx, planner, action);
-      }
-    });
-    // Sol, #130: an external client, no membership, sharing one task, and
-    // holding a billing grant on it that R4 must never let it use.
-    await s.db.app.withBusiness(s.business, async (tx) => {
-      await grantTo(tx, s.decider, 'share');
-    });
-    clientTask = (await planned(planner)).taskId;
-    clientA = await cq8World(s).client(s.business, s.decider, 'client-a', clientTask);
-    await s.db.app.withBusiness(s.business, async (tx) => {
-      await grantTo(tx, clientA, 'decide', { kind: 'record', id: clientTask }, false, 'billing');
-    });
+    w = await openTopUpWorld('t2e');
+    ({ s, second, planner, nobody } = w);
   }, 180_000);
 
   afterAll(async () => {
-    await s?.db.drop();
+    await w?.s.db.drop();
   });
 
   it("top_up_is_a_persons: refused under a delegation, and the same person's own credential succeeds", async () => {
@@ -220,20 +136,20 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
 
   it('reads the band from the business setting: off means one person at any amount, and a lower band bites sooner', async () => {
     try {
-      await setBand('null');
+      await w.setBand('null');
       const off = await planned();
       expect(
         appliedDetail(await topUp(s.decider, off.taskId, LARGE, MAXIMUM), 'budget.top_up'),
       ).toMatchObject({ state: 'applied', maximumMinor: MAXIMUM + LARGE });
 
-      await setBand('50');
+      await w.setBand('50');
       const low = await planned();
       expect(
         appliedDetail(await topUp(s.decider, low.taskId, SMALL, MAXIMUM), 'budget.top_up'),
       ).toMatchObject({ state: 'awaiting_second_approver' });
       expect(await maximumOf(low.taskId)).toBe(MAXIMUM);
     } finally {
-      await setBand('500');
+      await w.setBand('500');
     }
   });
 
@@ -261,7 +177,10 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
       appliedDetail(await topUp(second, taskId, LARGE + 1, MAXIMUM), 'budget.top_up'),
     ).toMatchObject({ state: 'awaiting_second_approver' });
     expect(await maximumOf(taskId)).toBe(MAXIMUM);
-    const standing = await as(s.decider, { ...topUpBody(taskId, SMALL, MAXIMUM), upToMinor: 1e6 });
+    const standing = await w.as(s.decider, {
+      ...topUpBody(taskId, SMALL, MAXIMUM),
+      upToMinor: 1e6,
+    });
     expect(codeOf(standing)).not.toBe('applied');
     expect(await maximumOf(taskId)).toBe(MAXIMUM);
   });
@@ -269,11 +188,11 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
   it('the cap is the hard ceiling, and a stale figure or a task with no envelope is refused', async () => {
     const { taskId } = await planned();
     expect(codeOf(await topUp(s.decider, taskId, SMALL, MAXIMUM - 1))).toBe('VERSION_STALE');
-    await setBand('null');
+    await w.setBand('null');
     try {
       expect(codeOf(await topUp(s.decider, taskId, 2_000_000, MAXIMUM))).toBe('BUDGET_EXHAUSTED');
     } finally {
-      await setBand('500');
+      await w.setBand('500');
     }
     expect(await maximumOf(taskId)).toBe(MAXIMUM);
     const bare = await createTask(s, `t2e bare ${randomUUID()}`);
@@ -296,237 +215,6 @@ describe.skipIf(serverUrl === undefined)('T2e the top-up', () => {
       appliedDetail(await topUp(second, plan.taskId, LARGE, MAXIMUM), 'budget.top_up'),
     ).toMatchObject({ state: 'awaiting_second_approver', firstApproverPersonId: second.personId });
     expect(await maximumOf(plan.taskId)).toBe(MAXIMUM);
-  });
-
-  it('Sol proof, criterion 2: a first approval revoked before the second decision commits cannot be counted', async () => {
-    const first = await enrol(s.db.app, s.business, 'sol-first');
-    const grantId = await s.db.app.withBusiness(
-      s.business,
-      async (tx) => await grantTo(tx, first, 'decide', undefined, false, 'billing'),
-    );
-    const plan = await planned(planner);
-    appliedDetail(await topUp(first, plan.taskId, LARGE, MAXIMUM), 'budget.top_up');
-
-    let unblock!: () => void;
-    let signal!: () => void;
-    const blocked = new Promise<void>((resolve) => {
-      unblock = resolve;
-    });
-    const reached = new Promise<void>((resolve) => {
-      signal = resolve;
-    });
-    let decisionFinished = false;
-    const decision = s.db.app
-      .withBusiness(s.business, async (tx) => {
-        const intercepted: TenantQuery = {
-          businessId: tx.businessId,
-          query: async <Row>(
-            sql: string,
-            parameters?: readonly unknown[],
-          ): Promise<readonly Row[]> => {
-            const answer = await tx.query<Row>(sql, parameters);
-            const ids = parameters?.[1];
-            if (
-              sql.includes('select id from public.grants') &&
-              Array.isArray(ids) &&
-              ids.includes(grantId)
-            ) {
-              signal();
-              await blocked;
-            }
-            return answer;
-          },
-        };
-        return await applyTopUp(intercepted, {
-          taskId: plan.taskId,
-          amountMinor: BigInt(LARGE),
-          fromMaximumMinor: BigInt(MAXIMUM),
-          personId: second.personId,
-          subjects: [
-            { kind: 'person', id: second.personId },
-            { kind: 'actor', id: second.actorId },
-          ],
-          collection: 'billing',
-        });
-      })
-      .then((result) => {
-        decisionFinished = true;
-        return result;
-      });
-    await reached;
-    let revokeFinished = false;
-    let revokedBeforeDecision = false;
-    const revoker = racer(s);
-    const revocation = revoker
-      .withBusiness(s.business, async (tx) => {
-        await tx.query('update public.grants set revoked_at = now() where id = $1', [grantId]);
-      })
-      .then(() => {
-        revokeFinished = true;
-        revokedBeforeDecision = !decisionFinished;
-        return undefined;
-      });
-    let parked = false;
-    for (let attempt = 0; attempt < 400; attempt += 1) {
-      if (revokeFinished) break;
-      // Poll the exact revocation, rather than assuming a blocked write finished.
-      // eslint-disable-next-line no-await-in-loop
-      const waiting = await s.db.admin.execute<{ readonly parked: boolean }>(
-        `select exists(select 1 from pg_stat_activity
-          where datname = current_database() and wait_event_type = 'Lock'
-            and query like 'update public.grants set revoked_at = now()%') as parked`,
-      );
-      if (waiting[0]?.parked === true) {
-        parked = true;
-        break;
-      }
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((resolve) => {
-        setTimeout(resolve, 25);
-      });
-    }
-    if (!revokeFinished && !parked)
-      throw new Error('revocation did not finish or wait for its grant');
-    unblock();
-    const outcome = await decision;
-    await revocation;
-    await revoker.close();
-    const applied = outcome.ok && outcome.value.state === 'applied';
-    expect({ revokedBeforeDecision, applied }).not.toStrictEqual({
-      revokedBeforeDecision: true,
-      applied: true,
-    });
-    if (revokedBeforeDecision) expect(await maximumOf(plan.taskId)).toBe(MAXIMUM);
-  });
-
-  it('Sol proof, criterion 2: a first approval committed before the second takes task locks counts as the first eye', async () => {
-    const plan = await planned(planner);
-    let release!: () => void;
-    let signal!: () => void;
-    const waiting = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const firstsRead = new Promise<void>((resolve) => {
-      signal = resolve;
-    });
-    const secondDecision = s.db.app.withBusiness(s.business, async (tx) => {
-      const intercepted: TenantQuery = {
-        businessId: tx.businessId,
-        query: async <Row>(
-          sql: string,
-          parameters?: readonly unknown[],
-        ): Promise<readonly Row[]> => {
-          const answer = await tx.query<Row>(sql, parameters);
-          if (
-            sql.includes('from public.operations o') &&
-            sql.includes("o.command = 'budget.top_up'")
-          ) {
-            expect(answer).toHaveLength(0);
-            signal();
-            await waiting;
-          }
-          return answer;
-        },
-      };
-      return await applyTopUp(intercepted, {
-        taskId: plan.taskId,
-        amountMinor: BigInt(LARGE),
-        fromMaximumMinor: BigInt(MAXIMUM),
-        personId: second.personId,
-        subjects: [
-          { kind: 'person', id: second.personId },
-          { kind: 'actor', id: second.actorId },
-        ],
-        collection: 'billing',
-      });
-    });
-    await firstsRead;
-    const firstConnection = racer(s);
-    try {
-      const first = await executeCommand(
-        firstConnection,
-        s.business,
-        s.decider.presented,
-        'api',
-        topUpBody(plan.taskId, LARGE, MAXIMUM) as never,
-      );
-      expect(appliedDetail(first, 'first top-up')).toMatchObject({
-        state: 'awaiting_second_approver',
-      });
-    } finally {
-      release();
-      await firstConnection.close();
-    }
-    const outcome = await secondDecision;
-    expect(outcome.ok && outcome.value.state).toBe('applied');
-    expect(await maximumOf(plan.taskId)).toBe(MAXIMUM + LARGE);
-  });
-
-  it("client to client: a client's own task share and billing grant reach no top-up, on theirs or another client's", async () => {
-    const theirs = await planned(planner);
-    for (const taskId of [clientTask, theirs.taskId]) {
-      // eslint-disable-next-line no-await-in-loop
-      expect(codeOf(await topUp(clientA, taskId, SMALL, MAXIMUM))).toBe('SCOPE_NOT_GRANTED');
-      // eslint-disable-next-line no-await-in-loop
-      expect(await maximumOf(taskId)).toBe(MAXIMUM);
-    }
-  });
-
-  it("task to task: a member's grant on one task does not reach another task", async () => {
-    const mine = await planned(planner);
-    const theirs = await planned(planner);
-    await s.db.app.withBusiness(s.business, async (tx) => {
-      await grantTo(
-        tx,
-        taskScoped,
-        'decide',
-        { kind: 'record', id: mine.taskId },
-        false,
-        'billing',
-      );
-    });
-    expect(codeOf(await topUp(taskScoped, theirs.taskId, SMALL, MAXIMUM))).toBe(
-      'SCOPE_NOT_GRANTED',
-    );
-    expect(await maximumOf(theirs.taskId)).toBe(MAXIMUM);
-    appliedDetail(await topUp(taskScoped, mine.taskId, SMALL, MAXIMUM), 'budget.top_up');
-    expect(await maximumOf(mine.taskId)).toBe(MAXIMUM + SMALL);
-  });
-
-  it('Sol proof, criterion 3: the client-isolation actor has a task share but no business membership', async () => {
-    const memberships = await rows<{ readonly id: string }>(
-      s,
-      `select id from public.memberships
-        where business_id = $1 and person_id = $2 and active`,
-      [s.business, clientA.personId],
-    );
-    const shares = await rows<{ readonly id: string }>(
-      s,
-      `select id from public.grants
-        where business_id = $1 and subject_kind = 'person' and subject_id = $2
-          and collection = 'task' and action = 'read' and scope_kind = 'record'
-          and revoked_at is null`,
-      [s.business, clientA.personId],
-    );
-    expect({ memberships: memberships.length, taskShares: shares.length }).toStrictEqual({
-      memberships: 0,
-      taskShares: 1,
-    });
-  });
-
-  it('Sol proof, criterion 3: two external clients each hold one distinct task share in this business', async () => {
-    const clients = await rows<{ readonly person_id: string; readonly task_id: string }>(
-      s,
-      `select g.subject_id as person_id, g.scope_id as task_id from public.grants g
-        where g.business_id = $1 and g.subject_kind = 'person' and g.collection = 'task'
-          and g.action = 'read' and g.scope_kind = 'record' and g.revoked_at is null
-          and not exists(select 1 from public.memberships m
-            where m.business_id = g.business_id and m.person_id = g.subject_id and m.active)`,
-      [s.business],
-    );
-    expect(new Set(clients.map((client) => client.person_id)).size).toBe(2);
-    expect(new Set(clients.map((client) => client.task_id)).size).toBe(2);
-    expect(clients).toHaveLength(2);
   });
 
   it("business to business: a top-up moves only its own business's envelope", async () => {
