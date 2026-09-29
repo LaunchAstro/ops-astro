@@ -6,6 +6,7 @@
     "tests/tenancy/restricted-calls-prefixes.test.ts",
     "tests/tenancy/pooled-crossover.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
-    "tests/ci/cq-15-security-gate.test.ts"
+    "tests/ci/cq-15-security-gate.test.ts",
+    "tests/db/inbox-records.test.ts"
   ]
 }
