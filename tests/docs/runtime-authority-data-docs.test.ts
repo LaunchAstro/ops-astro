@@ -93,7 +93,10 @@ describe('RUNTIME.md on grants judged at the locked instant', () => {
     const cancel = bodyOf(read(`${RUNTIME_SRC}/recovery/lease-retirement.ts`), 'cancelAndClassify');
     expect(cancel.indexOf('holdCoveringGrants(')).toBeGreaterThan(0);
     expect(cancel.indexOf('holdCoveringGrants(')).toBeLessThan(cancel.indexOf('lockRediscovered('));
-    expect(cancel).toMatch(/checkAuthorityAt\([\s\S]{0,200}?action: 'write'/u);
+    // T3a: write, and decide when `task.cancel` asks it, at the one locked instant.
+    expect(cancel).toMatch(
+      /\['write', 'decide'\][\s\S]{0,300}?checkAuthorityAt\([\s\S]{0,200}?action/u,
+    );
     expect(runtime).toMatch(/`task\.cancel` holds the canceller's covering grants for share/u);
   });
 });
