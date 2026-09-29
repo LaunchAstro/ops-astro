@@ -41,10 +41,12 @@ describe('S0-3 store reach', () => {
 
 function reachCases1() {
   it('the job, the drill and its receipt open no connection to the store from the machine', () => {
-    for (const file of ['backup.mjs', 'restore-drill.mjs', 'drill-receipt.mjs']) {
+    const drill = ['restore-drill.mjs', 'carried-archive.mjs'];
+    const reaching = ['backup.mjs', 'drill-acts.mjs', 'drill-receipt.mjs'];
+    for (const file of [...drill, ...reaching]) {
       const text = read(`scripts/ops/${file}`);
       expect(text, file).not.toMatch(/from 'postgres'|\bpostgres\(/u);
-      expect(text, file).toContain("from './backup-store-reach.mjs'");
+      if (reaching.includes(file)) expect(text, file).toContain("from './backup-store-reach.mjs'");
     }
   });
 
