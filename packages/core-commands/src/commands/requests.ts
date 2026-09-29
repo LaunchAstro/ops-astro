@@ -235,6 +235,18 @@ export type CommandRequest =
       readonly digest: unknown;
     } & Envelope)
   | ({ readonly command: 'legal.publish_version'; readonly versionId: string } & Envelope)
+  // C81: one row of the overseas-services register, every field checked by the
+  // handler in its own words (`overseas-write.ts`).
+  | ({
+      readonly command: 'privacy.set_overseas_service';
+      readonly service: unknown;
+      readonly receives: unknown;
+      readonly where: unknown;
+      readonly trainsOnIt: unknown;
+      readonly contract: unknown;
+      readonly toConfirm: unknown;
+      readonly inUse: unknown;
+    } & Envelope)
   // The support controls. Revocation names the row it revokes; the time is the
   // server's. Cancel and restart name the task and the lineage on it, so the
   // task is where the work-control authority is asked and the lineage is

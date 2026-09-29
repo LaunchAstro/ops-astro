@@ -388,6 +388,19 @@ const ROWS = [
     meaning: 'This version is already published',
     source: 'C81 CS-16.20',
   },
+  // C81: a privacy policy reads the overseas-services register (SP-25).
+  {
+    code: 'LEGAL_REGISTER_CHANGED',
+    status: 409,
+    meaning: 'The overseas-services register changed since this policy was drafted',
+    source: 'C81 SP-25',
+  },
+  {
+    code: 'LEGAL_REGISTER_UNCONFIRMED',
+    status: 409,
+    meaning: 'A service on the overseas-services register is still to confirm',
+    source: 'C81 SP-25',
+  },
 
   // Delegation and lease, T1's pickup and handback. No table yet.
   {

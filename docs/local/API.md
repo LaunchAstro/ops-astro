@@ -131,8 +131,9 @@ naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
 **A free operand the stores cannot hold is refused by name.** A comment
 `body`, a cancel `reason`, a decision `note`, a proposal's `purpose`,
 `currency`, `payload` and `step`, a handback's `report` and `successor`, a
-privacy incident's `whatHappened`, `foundBy` and `affected`, and a legal
-document version's `body`, holding U+0000 or an unpaired surrogate, in any string or key, are
+privacy incident's `whatHappened`, `foundBy` and `affected`, a legal
+document version's `body`, and an overseas service's `service`, `receives`,
+`where`, `trainsOnIt` and `contract`, holding U+0000 or an unpaired surrogate, in any string or key, are
 `FIELD_VALUE_INVALID` 422 naming the operand. A successor is named by its inner
 key (`successor.<key>`). The check runs after authority and before the target
 is read, and nothing is written (`FREE_OPERANDS` and
@@ -1542,4 +1543,24 @@ another business and a made-up one are both `NOT_FOUND` 404.
 the version of `client-terms`, `privacy-policy` or `data-handling` published
 most recently, as `{ document, version, body, digest, publishedAt }`. No such
 business, nothing published, the breach runbook and any other name all answer
-`{ code: 'NOT_FOUND' }` 404.
+`{ code: 'NOT_FOUND' }` 404. The privacy policy's answer also carries
+`services`: the overseas-services register's rows in use when that version was
+drafted, each `{ service, receives, where, trainsOnIt, contract }`, in the
+register's order.
+
+### The overseas-services register (C81, SP-25)
+
+`privacy.set_overseas_service` takes `{ operationId, service, receives, where,
+trainsOnIt, contract, toConfirm, inUse }`, every field each time, under
+`privacy:manage` and never an agent's. It sets the row of that service (its
+name matched in any letter case) and answers `{ serviceId }`; each change is
+its own audited operation. `service` is 1 to 120 characters, `receives` 1 to
+2,000, the other three 1 to 1,000; `toConfirm` and `inUse` are booleans. A bad
+field is `FIELD_VALUE_INVALID` 422 naming the field alone. A service no longer
+used is set `inUse: false` and kept.
+
+A privacy-policy draft takes the register's rows in use and their digest with
+it. Approving or publishing that version is `LEGAL_REGISTER_CHANGED` 409 once
+the register has changed since the draft (draft again), and
+`LEGAL_REGISTER_UNCONFIRMED` 409 while any of its rows is `toConfirm`. The
+other documents do not read the register.

@@ -251,16 +251,21 @@ function refuseMalformedIdentifier(
 const FREE_OPERANDS: readonly string[] = [
   'affected',
   'body',
+  'contract',
   'currency',
   'foundBy',
   'note',
   'payload',
   'purpose',
   'reason',
+  'receives',
   'report',
+  'service',
   'step',
   'successor',
+  'trainsOnIt',
   'whatHappened',
+  'where',
 ];
 
 /**

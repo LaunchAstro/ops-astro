@@ -101,7 +101,8 @@
     "W0-INTEG names snapshot-clone-and-privileges (T4a's review proofs, first filed as sol-snapshot) as an invariant beside fixture-shape: a snapshot build completes and leaves a cloneable template, a clone works while a reader holds the template, and both clone paths deny temporary tables to the application role; and bundle (T4d's bundle_names_the_approval: the bundle's approved action is the decision row byte for byte, and the bundle scan finds no credential, canary or claim of acceptance) beside journey-twice. Not named: budgets-bundle-and-person-crossing.test.ts (T4's review proofs, first filed as sol-proof-t4-review) is a pure unit suite: it reaches world.ts only for a type, stubs fetch and opens no database, so it moves the counter by 0.",
     "C59 adds c59-second-factor (the step-up and its setting through the real preparation, the second factor required once enrolled) and c59-factor-routes (enrolment, verification and removal over in-process Hono against a loopback stand-in provider); the adapter cases in the first need no database but share its file.",
     "C55 adds c55-operations-view (the privacy incident record under privacy:manage and the operations view under operations:read over in-process Hono: records, refusals per key, three crossings and the canary)",
-    "C81 adds c81-legal-documents (drafting, exact-version approval and publication under privacy:manage over in-process Hono, the published version unchanged in place, the public read with no sign-in, refusals, three crossings and the canary)"
+    "C81 adds c81-legal-documents (drafting, exact-version approval and publication under privacy:manage over in-process Hono, the published version unchanged in place, the public read with no sign-in, refusals, three crossings and the canary)",
+    "C81 adds c81-register (the overseas-services register under privacy:manage over in-process Hono, the privacy policy drafted from it and held back while a row is to confirm or the register has moved, its lock against an approval, refusals, three crossings and the canary)"
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -291,7 +292,8 @@
     "tests/identity/c59-second-factor.test.ts",
     "tests/api/c59-factor-routes.test.ts",
     "tests/operations/c55-operations-view.test.ts",
-    "tests/operations/c81-legal-documents.test.ts"
+    "tests/operations/c81-legal-documents.test.ts",
+    "tests/operations/c81-register.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

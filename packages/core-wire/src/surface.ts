@@ -101,6 +101,8 @@ export type CommandName =
   | 'legal.draft_version'
   | 'legal.approve_version'
   | 'legal.publish_version'
+  // C81: the overseas-services register the privacy policy reads.
+  | 'privacy.set_overseas_service'
   // The support controls the contract ledger requires through owning
   // production interfaces: revocation of an existing grant or delegation,
   // cancellation of a run's lineage, an authorised restart as a new lineage,
@@ -384,6 +386,15 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'legal.draft_version': { document: 'any', version: 'any', body: 'any' },
   'legal.approve_version': { versionId: 'id', digest: 'any' },
   'legal.publish_version': { versionId: 'id' },
+  'privacy.set_overseas_service': {
+    service: 'any',
+    receives: 'any',
+    where: 'any',
+    trainsOnIt: 'any',
+    contract: 'any',
+    toConfirm: 'any',
+    inUse: 'any',
+  },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -552,6 +563,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: 'privacy',
     targetsExistingRecord: false,
     untargetedIdentifiers: ['versionId'],
+  }),
+  // C81: a row of the overseas-services register is set under
+  // `privacy:manage`, never by an agent; every change is audited by the
+  // envelope.
+  declare('privacy.set_overseas_service', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this

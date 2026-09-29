@@ -16,6 +16,9 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { approveLegalVersion } from '../../packages/core-records/src/operations/legal-documents.ts';
+import { setOverseasService } from '../../packages/core-records/src/operations/overseas-services.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { tokenFor } from '../acceptance/cast.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
@@ -243,6 +246,22 @@ describe.skipIf(serverUrl === undefined)('C81 the overseas-services register', (
     await setOk({ ...changed, operationId: randomUUID(), inUse: false });
     const three = await releasePolicy();
     expect(three.json['services']).toEqual([listed(first), listed(added)]);
+
+    // The register a version was drafted from is written once with it.
+    for (const edit of [
+      `update public.legal_document_versions set register = '[]'::jsonb where document = 'privacy-policy'`,
+      `update public.legal_document_versions set register_digest = md5('x') where document = 'privacy-policy'`,
+    ]) {
+      // oxlint-disable-next-line no-await-in-loop
+      const refusal = await harness.world.db.app
+        .withBusiness(harness.world.alpha, async (tx) => await tx.query(edit))
+        .then(
+          () => 'applied',
+          (error: unknown) => String((error as { readonly code?: unknown }).code),
+        );
+      expect(refusal, edit).toBe('23001');
+    }
+    expect((await readPolicy()).json).toEqual(three.json);
   });
 
   it('C81 policy names what each service receives: no personal information to the model providers, the master Drive by public link, review media possibly overseas', async () => {
@@ -341,9 +360,51 @@ describe.skipIf(serverUrl === undefined)('C81 the overseas-services register', (
         expect(JSON.stringify(answer.body)).not.toContain(CANARY);
       }
     }
-    const undeclared = await set({ ...row(), source: 'a research note' });
-    expect(undeclared.status).toBe(400);
+    const undeclared = await set({ ...row(), region: 'Sydney' });
+    expect({ status: undeclared.status, code: undeclared.code }).toEqual({
+      status: 400,
+      code: 'COMMAND_BODY_INVALID',
+    });
     expect(await registerRows(harness.world.alpha)).toEqual(before);
+  });
+
+  it('C81 register change and approval at once: the approval waits for the change and is told the register changed', async () => {
+    const drafted = await draft();
+    const actorId = harness.world.ada.actorId as string;
+    // Two connections, so the two transactions truly overlap: the first sets
+    // a row and holds the register's lock for 300 ms before committing, and
+    // the approval arrives meanwhile.
+    const wide = connect(harness.world.db.appUrl, { source: 'runtime', max: 2 });
+    const change = row();
+    const first = wide.withBusiness(harness.world.alpha, async (tx) => {
+      await setOverseasService(
+        tx,
+        {
+          service: change.service,
+          receives: change.receives,
+          where: change.where,
+          trainsOnIt: change.trainsOnIt,
+          contract: change.contract,
+          toConfirm: false,
+          inUse: true,
+        },
+        actorId,
+      );
+      await tx.query('select pg_sleep(0.3)');
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const second = wide.withBusiness(
+      harness.world.alpha,
+      async (tx) =>
+        await approveLegalVersion(tx, drafted.versionId, digestOf(drafted.body), actorId),
+    );
+    const outcomes = await Promise.allSettled([first, second]).finally(
+      async () => await wide.close(),
+    );
+    expect(outcomes).toEqual([
+      { status: 'fulfilled', value: undefined },
+      { status: 'fulfilled', value: 'register-changed' },
+    ]);
   });
 
   it('C81 refusal privacy:manage: a holder of operations:read alone, a member and a client are refused the register, and nothing is written', async () => {

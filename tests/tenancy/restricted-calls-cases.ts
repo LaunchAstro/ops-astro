@@ -35,6 +35,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0034 (C81): a legal document version is drafted, then approved and
   // published by update; never deleted.
   ['siu', 'legal_document_versions'],
+  // 0035 (C81): a row of the overseas-services register is set by insert or
+  // update; never deleted.
+  ['siu', 'overseas_services'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],

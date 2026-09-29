@@ -99,6 +99,13 @@ export {
   type VersionRefusal,
 } from './operations/legal-documents.ts';
 export {
+  readRegister,
+  setOverseasService,
+  type ListedService,
+  type OverseasService,
+  type RegisterState,
+} from './operations/overseas-services.ts';
+export {
   isSettingRevisionStale,
   readBusinessSetting,
   readBusinessSettings,
