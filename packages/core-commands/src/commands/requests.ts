@@ -229,7 +229,9 @@ export type CommandRequest =
       readonly leaseId: string;
       readonly fence: number;
       readonly leaseSeconds?: number;
-    } & Envelope);
+    } & Envelope)
+  // Read by its own parser (`model-call.ts`), never by a person handler.
+  | ({ readonly command: 'model.call' } & Envelope);
 
 /**
  * The part of a request the register compares, which is everything except the
