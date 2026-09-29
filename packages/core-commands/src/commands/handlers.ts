@@ -24,6 +24,12 @@ import { clearCustodySecret, setCustodySecret } from './custody-secrets.ts';
 import { startConnectorRepair } from './connector-repair.ts';
 import { demoteClass, fileMandate, promoteClass, revokeStandingMandate } from './mandates.ts';
 import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
+import {
+  adoptActivationVersion,
+  revokeStandingApproval,
+  rollBackActivation,
+  turnOffActivationAsPerson,
+} from './automation-approvals.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
@@ -89,6 +95,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'graduation.demote': (tx, context, request) => demoteClass(tx, context, request),
   'activation.change': (tx, context, request) => changeActivationAsPerson(tx, context, request),
   'definition.release': (tx, context, request) => releaseDefinitionVersion(tx, context, request),
+  'activation.adopt': (tx, context, request) => adoptActivationVersion(tx, context, request),
+  'activation.roll_back': (tx, context, request) => rollBackActivation(tx, context, request),
+  'activation.turn_off': (tx, context, request) => turnOffActivationAsPerson(tx, context, request),
+  'approval.revoke': (tx, context, request) => revokeStandingApproval(tx, context, request),
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The two C33 requests, as the envelope hands them to `automations.ts`. Every
+// The C33 and C52-A requests, as the envelope hands them to `automations.ts`. Every
 // value but the identifiers is unknown here: the command checks each one and
 // names the field it refuses.
 
@@ -28,3 +28,36 @@ export type DefinitionReleaseRequest = {
   readonly operations?: unknown;
   readonly modes?: unknown;
 };
+
+export type ActivationAdoptRequest = {
+  readonly command: 'activation.adopt';
+  readonly activationId: string;
+  readonly versionId: string;
+  readonly expectedRevision?: unknown;
+};
+
+export type ActivationRollBackRequest = {
+  readonly command: 'activation.roll_back';
+  readonly activationId: string;
+  readonly expectedRevision?: unknown;
+};
+
+export type ActivationTurnOffRequest = {
+  readonly command: 'activation.turn_off';
+  readonly activationId: string;
+  readonly expectedRevision?: unknown;
+};
+
+export type ApprovalRevokeRequest = {
+  readonly command: 'approval.revoke';
+  readonly approvalId: string;
+};
+
+/** Every automation request, as the command union takes it. */
+export type AutomationRequest =
+  | ActivationChangeRequest
+  | DefinitionReleaseRequest
+  | ActivationAdoptRequest
+  | ActivationRollBackRequest
+  | ActivationTurnOffRequest
+  | ApprovalRevokeRequest;

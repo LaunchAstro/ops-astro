@@ -586,6 +586,16 @@ export interface ActivationView {
   readonly changedBy: string;
   readonly changedAt: string;
   readonly revision: number;
+  /** The standing approval the activation names (C52-A), revoked or not, or null. */
+  readonly approval: StandingApprovalView | null;
+}
+
+export interface StandingApprovalView {
+  readonly id: string;
+  readonly versionId: string;
+  readonly act: 'adopted' | 'rolled_back';
+  readonly decidedBy: string;
+  readonly revoked: boolean;
 }
 
 /**

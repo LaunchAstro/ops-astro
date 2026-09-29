@@ -79,7 +79,7 @@ describe('the surface as a table', () => {
     // `custody:manage`.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|secret|connection|connector|mandate|graduation|automation|activation|definition)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|secret|connection|connector|mandate|graduation|automation|activation|definition|approval)\/[a-z_]+$/u.test(
           path,
         ),
       ),
