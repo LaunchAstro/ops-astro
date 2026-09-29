@@ -6,7 +6,7 @@ import { declarationOf } from '../../packages/core-wire/src/surface.ts';
 import type { TenantQuery, Session } from '../../packages/core-records/src/index.ts';
 
 describe('INB-1 recipient attention', () => {
-  it('Sol proof, criterion 13: a shared-task recipient without membership can open their own item', async () => {
+  it('a shared-task recipient without membership can open their own item', async () => {
     const businessId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const session: Session = {
       businessId,

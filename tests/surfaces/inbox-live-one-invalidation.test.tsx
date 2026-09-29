@@ -9,7 +9,7 @@ import { mount, settle } from './mount.tsx';
 // eslint-disable-next-line max-lines-per-function -- one mounted screen and its fake server
 describe('SL04 live Tasks screen', () => {
   // eslint-disable-next-line max-lines-per-function -- one behavioural sequence with three projections
-  it('Sol proof, criterion 35: one live invalidation updates the open board, inbox and owed count', async () => {
+  it('one live invalidation updates the open board, inbox and owed count', async () => {
     let changed = false;
     const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
     const task = {

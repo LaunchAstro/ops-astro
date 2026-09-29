@@ -4,7 +4,7 @@ import { expect, it } from 'vitest';
 import { raiseEscalation } from '../../packages/core-records/src/inbox/raise.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 
-it('Sol proof, criterion 32: every newly eligible business decider gets an escalation item', async () => {
+it('every newly eligible business decider gets an escalation item', async () => {
   const businessId = '11111111-1111-4111-8111-111111111111';
   const gateId = '22222222-2222-4222-8222-222222222222';
   const taskId = '33333333-3333-4333-8333-333333333333';

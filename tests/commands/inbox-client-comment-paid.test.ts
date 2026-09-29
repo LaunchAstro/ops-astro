@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { raiseMentions, type TenantQuery } from '../../packages/core-records/src/index.ts';
 
 describe('INB-1 client comment', () => {
-  it('Sol proof, criterion 32: a paid outside client named in a client-visible comment receives an item', async () => {
+  it('a paid outside client named in a client-visible comment receives an item', async () => {
     const recipient = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const raised: { reason: unknown; recipient: unknown }[] = [];
     const tx: TenantQuery = {
