@@ -356,3 +356,19 @@ export interface CapabilitiesResult {
   readonly businessKey: string;
   readonly grants: readonly Grant[];
 }
+
+/** One outage's report, as `task.queue` carries it to the team (T3e2). */
+export interface OutageView {
+  readonly id: string;
+  readonly cause: string;
+  readonly fault: string;
+  readonly openedAt: string;
+  readonly lastDropAt: string;
+  readonly closedAt: string | null;
+  readonly runs: readonly { readonly taskId: string; readonly reactivated: boolean }[];
+}
+
+/** The queue read's answer, as far as the task page reads it. */
+export interface QueueResult {
+  readonly outages?: readonly OutageView[];
+}

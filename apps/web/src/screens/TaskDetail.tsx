@@ -82,7 +82,12 @@
 import { useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { Spill } from '@launchastro/ui';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
-import type { PersonListResult, TaskDetail as Task, TaskReadResult } from '../operations/shapes.ts';
+import type {
+  PersonListResult,
+  QueueResult,
+  TaskDetail as Task,
+  TaskReadResult,
+} from '../operations/shapes.ts';
 import { useRead } from '../data/use-read.ts';
 import { Proposals, type DecisionNote, type ProposeDraft } from '../views/proposals.tsx';
 import type { TopUpNote } from '../views/proposals.tsx';
@@ -96,6 +101,7 @@ import { Alerts } from './task/Alerts.tsx';
 import { Comments, type CommentDraft } from './task/Comments.tsx';
 import { DetailsForm } from './task/DetailsForm.tsx';
 import { History } from './task/History.tsx';
+import { Outages } from './task/Outages.tsx';
 import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 
 export interface TaskDetailProps {
@@ -395,6 +401,14 @@ function Loaded(props: LoadedProps): ReactElement {
     deps: [],
   });
 
+  // T3e2: the outage reports are the team's, read once from the queue.
+  const outages = useRead<QueueResult>({
+    grantKey: props.grantKey,
+    run: () => client.read<QueueResult>('task.queue', {}),
+    isEmpty: (value) => (value.outages ?? []).length === 0,
+    deps: [],
+  });
+
   /** One place every write lands, so every refusal is shown the same way. */
   const run = (
     work: () => Promise<CallResult<unknown>>,
@@ -635,6 +649,8 @@ function Loaded(props: LoadedProps): ReactElement {
       />
 
       <Alerts alerts={task.alerts} />
+
+      <Outages state={outages.state} taskId={task.id} />
 
       <History history={task.history} />
     </div>
