@@ -47,8 +47,8 @@ it('Sol proof, criterion 4: an API command redirected past its grant fails parit
     const apiPath = join(copy, 'apps/api/app.ts');
     const original = readFileSync(apiPath, 'utf8');
     const redirected = original.replace(
-      'const request = { ...body, command: declaration.name } as CommandRequest;',
-      "const request = { ...body, command: declaration.name === 'task.assign' ? 'task.update' : declaration.name } as CommandRequest;",
+      'command: name,',
+      "command: name === 'task.assign' ? 'task.update' : name,",
     );
     expect(redirected).not.toBe(original);
     writeFileSync(apiPath, redirected);
