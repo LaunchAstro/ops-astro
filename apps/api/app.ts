@@ -4,9 +4,8 @@
 // business from trusted authentication, and calls the domain operation that
 // owns the rule (`docs/platform-construction.md`, Web API).
 //
-// Ported from `ops-astro-t1-draft@60f2009 apps/api/app.ts`, with the business
-// taken from the path and the read half of the surface added. Three things
-// this file is careful not to be, all of them the draft's:
+// It serves the read half of the surface as well as the commands, with the
+// business taken from the path. Three things this file is careful not to be:
 //
 // It is not an authority. There is no permission check here and no record
 // read: every refusal in a response came back from the operation, which is
@@ -155,7 +154,7 @@ interface Admitted {
 }
 
 /**
- * The door, the same on both prefixes (Sol 6 SURFACE-1, AUTHORITY-1).
+ * The door, the same on both prefixes.
  *
  * An expired bearer is the re-login answer before the key or the body is
  * looked at. A malformed body is refused the same way whether the key names a
@@ -259,7 +258,7 @@ export function createApi(options: ApiOptions): Hono {
       // caller must not be able to post to one endpoint and have another
       // operation run. `operationId` is passed as the JSON carried it, absent
       // included: the envelope asks `typeof` itself and refuses anything that
-      // is not a string, so the rule lives in one place (Sol 6 AUTHORITY-4).
+      // is not a string, so the rule lives in one place.
       const result = await agentExecutor(
         options.database,
         businessId,
@@ -277,8 +276,8 @@ export function createApi(options: ApiOptions): Hono {
 
 /**
  * One way out for every refusal, so the ones the boundary raises itself go
- * through the register's constructor and the status table like any other. A
- * review of the draft found both of its own minting a code by hand.
+ * through the register's constructor and the status table like any other,
+ * and none of them mints a code by hand.
  */
 function refuse(context: Context, refusal: CommandRefusal): Response {
   // `refused: true` is the flag that makes this a refusal on the wire and not
@@ -306,8 +305,8 @@ export const MAX_BODY_BYTES = 1_048_576;
  *
  * So is one with no canonical form. `JSON.parse` reads a number too large for
  * a double, 1e400, as Infinity, and every entry takes the payload digest
- * before anything else, so that body faulted with nothing recorded (final
- * review round 1, #11). Here it is a malformed body like any other.
+ * before anything else, so that body would fault with nothing recorded.
+ * Here it is a malformed body like any other.
  */
 async function readObject(
   context: Context,

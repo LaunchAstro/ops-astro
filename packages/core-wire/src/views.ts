@@ -52,7 +52,7 @@ export interface TaskSummary {
  *
  * The shape is the same for both audiences and the *contents* are not: an
  * internal reader gets every comment in full, an external one gets the client
- * comments in the fields the catalogue marks `shared`, built by L2's
+ * comments in the fields the catalogue marks `shared`, built by
  * `externalCommentProjection`. The type is `unknown`-valued rather than a
  * fixed record because the external half is catalogue-driven — pinning the
  * keys here would put a second copy of the allowlist in the type, and the
@@ -103,8 +103,8 @@ export interface SharedTaskView {
    * The record's version, which `task.comment` requires as
    * `expectedRevision`. An external party with a provisioned `comment` grant
    * may write a client comment (AUTHORITY.md R4), and without this nothing it
-   * can read carries the revision the write needs (final review round 2,
-   * R2-AUTHORITY-36). It is the record's version, not a field value.
+   * can read carries the revision the write needs. It is the record's
+   * version, not a field value.
    */
   readonly revision: number;
   /**

@@ -19,10 +19,10 @@
 //
 // What a read *has* gained is the commands' D06 refusal. A payload naming a
 // fact the server owns -- `actor_id`, `business_id`, `updated_at` and the rest
-// of `prepare.ts`'s `SYSTEM_OWNED_FIELDS` -- used to be ignored here and is
-// now `FIELD_NOT_WRITABLE`, naming the keys. Ignoring it was the answer the
-// accepted ledger rules out: a client that believed it had set `actor_id` got
-// a `200` and no correction, so the bug lived in the client.
+// of `prepare.ts`'s `SYSTEM_OWNED_FIELDS` -- is `FIELD_NOT_WRITABLE`, naming
+// the keys. Ignoring it is the answer the accepted ledger rules out: a client
+// that believed it had set `actor_id` would get a `200` and no correction, so
+// the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type {

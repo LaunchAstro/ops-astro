@@ -2,11 +2,10 @@
 //
 // The budget arithmetic `decide` asks twice: once read-only before the first
 // write (preflight), and again inside `reserve` as the second barrier.
-// `handback` asks the cap half a third time, for a successor's ceiling. The two
-// used to be word-for-word copies of the cap SQL and the refusal texts, and
-// they had drifted on one point: `reserve` let a missing cap through where
-// preflight refused it. Thermo O2, lead ruling: both refuse it now, with the
-// code preflight already used, so the one copy here fails closed for both.
+// `handback` asks the cap half a third time, for a successor's ceiling. The
+// cap SQL and the refusal texts exist once, here, so the callers cannot drift:
+// a missing cap is refused by every one of them with the same code, and the
+// one copy fails closed for all.
 //
 // W05's two reasons stay distinct: `BUDGET_UNAVAILABLE` is "this envelope has
 // no room", `BUDGET_EXHAUSTED` is "the cap behind it has none". A caller told
@@ -116,8 +115,8 @@ export function envelopeVerdict(
  * Does `wanted` fit under the cap? `null` when it does.
  *
  * A missing cap is `BUDGET_UNAVAILABLE` for every caller: a ceiling that
- * cannot be read is not room (thermo O2, lead ruling). `currency` is the version's currency when the
- * caller binds it here, as preflight does (Sol 6 RUNTIME-1), and `null` when
+ * cannot be read is not room. `currency` is the version's currency when the
+ * caller binds it here, as preflight does, and `null` when
  * the caller does not, as `reserve` does not: `openEnvelope` has already bound
  * it at the write.
  */
@@ -135,7 +134,7 @@ export function capVerdict(of: {
       'Provision the cap before approving work that draws on it.',
     );
   }
-  // Sol 6 RUNTIME-1: the cap is a ceiling in one currency, and a version in
+  // The cap is a ceiling in one currency, and a version in
   // another is refused here, before the first write, with the code an
   // existing envelope in another currency already answers.
   if (of.currency !== null && cap.currency !== of.currency) {
@@ -156,7 +155,7 @@ export function capVerdict(of: {
 }
 
 /**
- * Sol 6 RUNTIME-2: would `adding` take `committed` past `limit`? All three are
+ * Would `adding` take `committed` past `limit`? All three are
  * exact minor units. The two totals arrive as SQL text and are compared as
  * `bigint`, because a valid cap above 2^53 rounds as a JavaScript number and
  * the rounding can let one approval, or one handback's successor, past the

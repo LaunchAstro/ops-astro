@@ -198,7 +198,7 @@ export async function handback(
   if (found === undefined) return refuseLease('not_owned', LEASE_FIXES.handback.not_owned);
   const locks = await lockHandback(tx, request.leaseId, found);
 
-  // Sol 6 RUNTIME-1 (9ddfa09): `now()` is when this transaction began, and a
+  // `now()` is when this transaction began, and a
   // handback that waited on these locks past the lease's expiry would still
   // see the lease live and settle work an expired lease cannot settle. The
   // expiry is judged on the clock read here, after the locks.
@@ -307,7 +307,7 @@ async function recheckOwner(
 }
 
 /**
- * Re-check the binding (F3). The lease is live and fenced, and that is still
+ * Re-check the binding. The lease is live and fenced, and that is still
  * not enough: the work it holds is bound to one reservation and one approved
  * version, and T4 re-reads "every parent link, active proposal version ... and
  * reservation eligibility after all locks are held". A version a person has
@@ -643,7 +643,7 @@ async function withinBounds(
     );
   }
 
-  // The one cap-sum read decide's preflight and reserve share (thermo NB1).
+  // The one cap-sum read decide's preflight and reserve share.
   // The cap is always there: the envelope was found by the discovery join and
   // `task_envelopes_cap_fkey` (0013) keeps its cap from being deleted. 0024's
   // `task_envelopes_cap_currency_fkey` makes the cap's currency the envelope's.
@@ -662,7 +662,7 @@ async function withinBounds(
     );
   }
 
-  // Sol 6 RUNTIME-2 (9ddfa09): exact, as approval is. A cap above 2^53 is
+  // Exact, as approval is. A cap above 2^53 is
   // valid, and as numbers its limit and committed total round, so a successor
   // could be admitted beyond the room that is really left.
   const wanted = BigInt(successor.maximumMinor);

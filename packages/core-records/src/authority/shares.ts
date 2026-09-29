@@ -104,7 +104,7 @@ export async function revokeShare(
 ): Promise<ShareDecision<number>> {
   // A trashed record's shares can still be withdrawn: the share outlives the
   // trash until a purge revokes it, so refusing here would leave its holder
-  // standing with nobody able to take it back (R2-AUTHORITY-60).
+  // standing with nobody able to take it back.
   const refused = await refuseShare(tx, sharer, request, 'live or trashed');
   if (refused !== undefined) return refused;
   const live = await liveShares(tx, request);

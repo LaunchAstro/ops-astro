@@ -265,7 +265,9 @@ const LIVE_VERSION = 'select id from public.proposal_versions where bu #820e3c4d
 const OPEN_ENVELOPE = 'select id, cap_id, currency, maximum_minor::text #eb3efe48';
 const HELD_BY_LINEAGE = 'select res.id as reservation_id, res.envelope_id #5168d3b0';
 const HELD_BY_DELEGATION = 'select res.id as reservation_id, res.envelope_id #2223e6d4';
-const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #31b71195';
+// The replay's statement text changed only in a SQL comment: CQ-9 dropped a
+// finding label from `-- F4. A revocation that committed ...` in classifier.ts.
+const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #296c97f7';
 const DEPENDENTS = 'with recursive revoked as ( select g.id, g.subje #c53e3eae';
 
 /**

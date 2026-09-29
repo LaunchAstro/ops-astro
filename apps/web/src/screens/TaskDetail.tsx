@@ -16,9 +16,9 @@
 // protected field posted to the wrong operation is refused by the server and
 // the refusal is what a person reads (N3).
 //
-// **An unsaved edit is resolved, never merged.** Two rounds of draft work tried
-// to keep typing alive across a refresh and each round found another way for it
-// to be lost or to overwrite somebody else. So this screen stops merging. While
+// **An unsaved edit is resolved, never merged.** Typing kept alive across a
+// refresh has more than one way to be lost or to overwrite somebody else, so
+// this screen does not merge. While
 // the title or due date is unsaved the screen has one question on it — Save or
 // Discard — and assignment, the lifecycle buttons and Refresh are disabled
 // until it is answered. Nothing reads a draft across a refresh because no
@@ -258,8 +258,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
               onSaved={(generation) => {
                 // Only the generation that was submitted. A save that settles
                 // after further typing has answered a question nobody is asking
-                // any more, and clearing the newer draft here is exactly how the
-                // person's newer text used to disappear.
+                // any more, and clearing the newer draft here would make the
+                // person's newer text disappear.
                 setDraft((current) =>
                   current !== null &&
                   current.identity === identity &&

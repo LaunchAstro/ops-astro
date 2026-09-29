@@ -49,9 +49,9 @@ export interface RegisteredAttempt {
  * Scoped to the actor and not to the business. The register is read before
  * authority is checked — a replay must not do the work again — so a
  * business-wide identity would let anyone who could name another caller's
- * identity be handed that caller's result. A cross-model review found exactly
- * that: a member with no grant at all, presenting a colleague's
- * `operation_id` and the same payload, received the colleague's handle.
+ * identity be handed that caller's result: a member with no grant at all,
+ * presenting a colleague's `operation_id` and the same payload, would receive
+ * the colleague's handle.
  */
 export async function lookupAttempt(
   tx: TenantQuery,

@@ -227,7 +227,7 @@ export async function defaultDenyConformance(
   // relation it makes lives in `pg_temp`, which OWN_SCHEMAS leaves out. A
   // temporary table outlives the transaction on a pooled backend, and the
   // next tenant's unqualified `from records` finds it before `public.records`,
-  // with no row security on it (R2-AUTHORITY-61). The login is asked, which
+  // with no row security on it. The login is asked, which
   // follows both the group and PUBLIC; PUBLIC is asked by name so the finding
   // says where the grant is.
   for (const role of ['public', ...applicationSide(roles)]) {

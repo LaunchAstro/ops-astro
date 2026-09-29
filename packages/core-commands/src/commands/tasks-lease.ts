@@ -3,8 +3,7 @@
 // Lease renewal on both entries, and the lease-seconds reader pickup shares.
 // The person's renewal and the agent's (`heartbeatLease`, which the agent path
 // reaches with the actor and delegation its credential resolved to) share
-// `renewLease`. Split out when the one task-runtime module was divided
-// (thermo review b483399, H2).
+// `renewLease`.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import {

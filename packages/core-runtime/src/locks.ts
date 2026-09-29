@@ -32,7 +32,7 @@
 // the list, also taken first: decide, pickup and cancellation hold theirs `for
 // share` (`holdCoveringGrants`) and `grant.revoke` its own `for update`, before
 // `acquire`. A handler that re-reads a row this set already holds, as
-// `task.propose` re-reads its task `for update` to compare the revision (F1),
+// `task.propose` re-reads its task `for update` to compare the revision,
 // takes no new lock.
 // Every advisory lock, the chain class included, is taken through the one
 // helper, `advisoryLock` in `core-records/src/tenancy/database.ts`.

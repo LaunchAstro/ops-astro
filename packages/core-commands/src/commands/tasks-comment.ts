@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // `task.comment`: one comment on one task, written through the comment record
-// type L2 installs.
+// type the task installer adds.
 //
 // The envelope has already required the identity, checked the `comment`
 // grant, locked the task and written the audit event, and none of that is
@@ -143,9 +143,8 @@ export async function writeTaskComment(
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['body'], BODY_FIXES));
   }
   // The person path refuses this at the door (`prepare.ts`); the agent entry
-  // does not pass that door, and reaches here. A NUL raised at the insert and
-  // an unpaired surrogate was written as U+FFFD (final review round 2,
-  // R2-SURFACE-9).
+  // does not pass that door, and reaches here. Past this line, Postgres would
+  // raise on a NUL and the driver would write an unpaired surrogate as U+FFFD.
   if (!storableText(body)) return refused(refuseUnstorable(['body']));
   if (typeof audience !== 'string' || !AUDIENCES.has(audience)) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['audience'], AUDIENCE_FIXES));

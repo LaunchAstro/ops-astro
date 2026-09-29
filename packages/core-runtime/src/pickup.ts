@@ -13,7 +13,7 @@
 // T3 line 66: "Person pickup uses the same work/lease contract without
 // pretending the person is an agent."
 //
-// - **Agent.** `pickup` mints the delegation through L2's `mintDelegation`
+// - **Agent.** `pickup` mints the delegation through `mintDelegation`
 //   with `expiresAt` equal to the lease expiry, so the agent's authority and
 //   its claim on the work end at the same instant. A delegation outliving its
 //   lease is an agent still holding narrowed authority over work somebody else
@@ -24,10 +24,11 @@
 //   agent is really a person is the collapse the agent path exists to prevent.
 //
 // The coordinator's recorded decision: minting checks the **delegating
-// person's** business-scope grants, which is L2's conservative reading. An
-// agent cannot choose the person, widen the purpose or mint from a bare
-// assignment; `authorisedByPersonId` is the person who authorised this work
-// and `mintedByActorId` is their acting identity, never the agent's.
+// person's** business-scope grants, which is the authority module's
+// conservative reading. An agent cannot choose the person, widen the purpose or
+// mint from a bare assignment; `authorisedByPersonId` is the person who
+// authorised this work and `mintedByActorId` is their acting identity, never
+// the agent's.
 
 import { randomUUID } from 'node:crypto';
 import { mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
@@ -75,7 +76,7 @@ export async function queue(tx: TenantQuery): Promise<readonly QueueEntry[]> {
        join public.proposal_lineages lin on lin.business_id = res.business_id and lin.id = run.lineage_id
        join public.gates g on g.business_id = res.business_id and g.version_id = res.version_id
        join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
-       -- Final review R1 #10: a trashed task's work is not handed out.
+       -- A trashed task's work is not handed out.
        join public.records task on task.business_id = run.business_id and task.id = run.task_id
                                and task.deleted_at is null
       where res.business_id = $1
@@ -167,8 +168,8 @@ export const DECLARED_INCOMPLETENESS: readonly string[] = [
 /**
  * The one answer for a reservation this caller may not claim, whichever reason
  * it is: none by that id, none approved, or one another holder already has.
- * The last used to name the holding lease, which told a caller with no claim
- * on the work whose claim it was (IDENT-AUDIT red 3). The command layer
+ * It never names the holding lease, which would tell a caller with no claim
+ * on the work whose claim it was. The command layer
  * answers the fabricated and foreign forms with these same two sentences.
  */
 export const NOT_CLAIMABLE_REASON =
@@ -234,7 +235,7 @@ export async function pickup(
   request: PickupRequest,
 ): Promise<RuntimeResult<PickedUp | PickedUpByPerson>> {
   const found = await findClaim(tx, request.reservationId);
-  // Final review R1 #10. A reservation on a trashed task is answered exactly
+  // A reservation on a trashed task is answered exactly
   // as one that does not exist, as a trashed task is to its readers: the same
   // two sentences the command layer gives for an unknown reservation, so the
   // answer says nothing about what was there. Restore brings the work back.
@@ -242,7 +243,7 @@ export async function pickup(
     return refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX);
   const { locks, found: taskLeases } = await lockClaim(tx, request, found);
 
-  // Sol 6 RUNTIME-1 (9ddfa09): `now()` is when this transaction began, and a
+  // `now()` is when this transaction began, and a
   // pickup that waited on these locks past a lease's expiry would still read
   // that lease as live and refuse the replacement. The clock read here, after
   // the locks, is the one instant every lease-expiry decision below and the new
@@ -308,7 +309,7 @@ async function findClaim(tx: TenantQuery, reservationId: string): Promise<Found 
 /**
  * Lock: the claimant's covering grants for share, then the complete set.
  *
- * Final review R1 #5. The task's live lease may be another reservation's,
+ * The task's live lease may be another reservation's,
  * and if it has expired this pickup fences it. Fencing it is the transition
  * that makes that lease's hold nonclaimable, so the hold is classified here
  * too (R5), which needs its reservation, run, lineage and accounting parents
@@ -449,8 +450,8 @@ async function claimHold(
  * rather than deleted, so a late report from it can still be retained. Read
  * live under the task lock, so the guard in `endLease` changes nothing here.
  * Its hold is classified in this transaction, under the locks taken for it,
- * rather than left counted until a restart replay finds it (final review R1
- * #5). A marked hold is quarantined by the classifier and stays with its
+ * rather than left counted until a restart replay finds it. A marked hold
+ * is quarantined by the classifier and stays with its
  * recorded owner; this pickup goes on.
  */
 async function fenceLiveLease(
@@ -492,15 +493,15 @@ async function fenceLiveLease(
  * own live grants on this task, and nobody else's -- not the approver's, and
  * not a body's choice. The approval is the recorded authorisation and was
  * checked above; this is the claimant's authority. At the locked instant
- * (final review R2-RUNTIME-4): a grant that lapsed while this waited on the
+ * a grant that lapsed while this waited on the
  * cap does not count.
  *
  * An agent: the delegation expires with the lease, minted against the
- * delegating person's live grants, which L2 reads for itself; nothing is
- * copied here. `purposeScope` is R5's one-task ceiling (coordinator addendum
- * 1). L2 reads the delegating person's grants through `now()`, the
+ * delegating person's live grants, which `mintDelegation` reads for itself;
+ * nothing is copied here. `purposeScope` is R5's one-task ceiling.
+ * `mintDelegation` reads the delegating person's grants through `now()`, the
  * transaction's start, so they are judged here first at the locked instant,
- * with L2's own refusal, and a grant that lapsed mints nothing.
+ * with `mintDelegation`'s own refusal, and a grant that lapsed mints nothing.
  */
 async function authoriseClaimant(
   tx: TenantQuery,
@@ -522,7 +523,8 @@ async function authoriseClaimant(
   }
   const actions = ['read', 'comment', 'write'] as const;
   for (const action of actions) {
-    // Sequential, as L2's own check is: one transaction, one connection.
+    // Sequential, as the authority module's own check is: one transaction,
+    // one connection.
     // oxlint-disable-next-line no-await-in-loop
     const delegable = await checkAuthorityAt(
       tx,
@@ -692,15 +694,15 @@ type ClaimPlan =
   | { readonly kind: 'refuse'; readonly refusal: RuntimeResult<never> };
 
 /**
- * R5. The expired-lease lifecycle starts at the first replacement below,
- * because this was the branch that made it unreachable: a reservation with a
- * non-null `lease_id` refused before anything looked at whether that lease had
- * expired, so the old identity was never fenced, its hold was never
- * classified, and the only expiry branch in the file applied to a *different*
- * unleased reservation on the same task. The replacement is a fresh hold on
+ * R5. The expired-lease lifecycle starts at the first replacement below. A
+ * reservation with a non-null `lease_id` is not refused until this branch has
+ * asked whether that lease expired; refused first, the old identity would
+ * never be fenced and its hold never classified, and the only other expiry
+ * branch applies to a *different* unleased reservation on the same task. The
+ * replacement is a fresh hold on
  * the still-approved version, which 0019 permits, because one active hold per
  * version is the accepted rule and one hold ever was not. Its approval is
- * checked here, before the caller writes anything (thermo O6).
+ * checked here, before the caller writes anything.
  *
  * R5, the remainder. A hold that ended without settling -- the authority
  * behind its lease was lost, and replay classified it -- leaves approved work
@@ -728,7 +730,7 @@ function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
         refusal: refuse('RESERVATION_NOT_CLAIMABLE', NOT_CLAIMABLE_REASON, NOT_CLAIMABLE_FIX),
       };
     }
-    // Thermo O6, lead ruling: asked before the fence, the classification and
+    // Asked before the fence, the classification and
     // the replacement hold write, as it is for every other branch.
     if (!approvalCurrent(state)) return { kind: 'refuse', refusal: approvalNotCurrent() };
     return { kind: 'replace', fence: state.lease_id };

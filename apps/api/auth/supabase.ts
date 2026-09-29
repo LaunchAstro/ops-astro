@@ -68,8 +68,7 @@ export type Verifier = (request: Context['req']) => Promise<Verified | undefined
  * Build the verifier the API is constructed with.
  *
  * It is a factory taking the secret rather than a module reading the
- * environment, for the reason the draft's boundary gives about its own
- * authentication seam: what an operator can set, an operator can set by
+ * environment, because what an operator can set, an operator can set by
  * accident. The composition root supplies the secret once.
  */
 export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifier {

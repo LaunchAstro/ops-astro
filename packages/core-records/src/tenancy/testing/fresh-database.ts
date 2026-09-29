@@ -83,8 +83,8 @@ function urlFor(serverUrl: string, database: string, user?: string, password?: s
  *
  * `DATABASE_ADMIN_URL` first, because creating a database and a login role is
  * the owner's work and the local contract gives `DATABASE_URL` to the runtime
- * role `app`, which owns nothing and may not create. `DATABASE_URL` remains the
- * fallback for the draft's own arrangement, where one URL was both.
+ * role `app`, which owns nothing and may not create. `DATABASE_URL` is the
+ * fallback for an arrangement where one URL is both.
  */
 export function databaseUrlFromEnvironment(): string | undefined {
   const url = process.env['DATABASE_ADMIN_URL'] ?? process.env['DATABASE_URL'];
@@ -142,7 +142,7 @@ export async function createEmptyDatabase(
     // table is created in `pg_temp`, outside every schema the application is
     // refused CREATE in, and on a pooled backend it outlives the transaction
     // and shadows `records` for the next tenant. Revoked where the database is
-    // made, so the application may create nothing at all (R2-AUTHORITY-61).
+    // made, so the application may create nothing at all.
     await server.execute(`revoke temporary on database ${identifier(name)} from public`);
     // Neither password can be a bound parameter in CREATE ROLE. Both are 24
     // random bytes in base64url, whose alphabet holds no quote, so there is

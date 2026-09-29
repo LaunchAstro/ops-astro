@@ -22,7 +22,7 @@ export interface LifecycleProps {
   /**
    * The task is completed. Start is then not offered: the server refuses it
    * with TRANSITION_NOT_PERMITTED, because only task.reopen, with its reason,
-   * clears the completion stamp (final review R2-RUNTIME-14).
+   * clears the completion stamp.
    */
   readonly completed?: boolean;
   readonly onLifecycle: (command: LifecycleCommand) => void;

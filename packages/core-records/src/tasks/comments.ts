@@ -20,8 +20,9 @@
 // forgotten field away from that. This one includes what the catalogue marks
 // `shared`, so a field nobody classified is absent rather than exposed.
 //
-// Comments are stored and are not yet projected through the API: the read that
-// serves them is L3's, built on `readTaskComments` and
+// A task read returns an internal reader every comment in full and an external
+// reader the allowlisted client projection. That read is the command layer's
+// (`core-commands/src/reads/tasks.ts`), built on `readTaskComments` and
 // `externalCommentProjection` below.
 
 import { randomUUID } from 'node:crypto';

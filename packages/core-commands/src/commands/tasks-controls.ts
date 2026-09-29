@@ -51,7 +51,7 @@ async function lineageOnTask(
   if (!isUuid(recordId)) {
     return refused(refuseNotFound());
   }
-  // Final review R2-AUTHORITY-33. The queries cast to uuid, which accepts any
+  // The queries cast to uuid, which accepts any
   // case and answers lower-case; the lineage's task is then compared as a
   // string. One spelling from here, so an upper-case id is the same task.
   const taskId = recordId.toLowerCase();
@@ -107,8 +107,8 @@ export async function cancelOnTask(
   const found = await lineageOnTask(tx, context, fields.recordId, fields.lineageId, 'reachable');
   if (isOutcome(found)) return found;
 
-  // Final review R2-RUNTIME-5: the envelope's write check ran before any
-  // lock, so the runtime holds the grant and reads it again under its locks.
+  // The envelope's write check runs before any lock, so the runtime holds
+  // the grant and reads it again under its locks.
   const result = await cancelAndClassify(tx, {
     lineageId: found.lineageId,
     reason,

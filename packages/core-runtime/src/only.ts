@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// "The row I just locked, inserted or updated exists." The runtime used to say
-// that with a cast, `rows[0] as Row`, and a cast that was ever wrong became an
-// `undefined` read a few lines later as a `TypeError` naming a property. `only`
-// says it once and fails loudly under its own name, naming what was expected.
+// "The row I just locked, inserted or updated exists." Said with a cast,
+// `rows[0] as Row`, a wrong assumption becomes an `undefined` read a few lines
+// later as a `TypeError` naming a property. `only` says it once and fails
+// loudly under its own name, naming what was expected.
 
 /** A runtime invariant that did not hold. Never a refusal: it aborts the transaction. */
 export class RuntimeInvariantError extends Error {
