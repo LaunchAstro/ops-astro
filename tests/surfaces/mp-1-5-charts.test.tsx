@@ -6,9 +6,11 @@
 // enters a point, the keyboard tabs onto the chart and moves along it. Width is
 // measured through the ResizeObserver the browser gives; jsdom has none, so a
 // stand-in records the observers and the test reports sizes through them. The
-// visual match at 1480, 900 and 390 runs on MP-1-7's harness and is `todo`
-// until the pages it names and T4b1's signed-in fixture exist.
+// visual match draws the gallery's chart units in a real browser at three
+// widths in both themes (mp-1-5-gallery-charts.ts); the pages the ticket
+// names wait on their slices.
 
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL, fileURLToPath } from 'node:url';
 import { type ReactElement } from 'react';
@@ -38,6 +40,10 @@ import {
   standInResizeObserver,
 } from './chart-driver.tsx';
 import { noChartLibrary } from './chart-library.ts';
+import type { ChartView } from './mp-1-5-gallery-charts.ts';
+
+type ChartsReport = { views: ChartView[]; sameInDark: string[] };
+const SEVEN = ['line', 'column', 'donut', 'gauge', 'dial', 'sparkline', 'funnel'];
 
 // Node's URL, not the document's: jsdom replaces the global one.
 const root = fileURLToPath(new NodeURL('../..', import.meta.url));
@@ -148,8 +154,40 @@ async function inlineShapes(): Promise<void> {
 }
 
 describe('MP-1-5 chart primitives', () => {
+  it('MP-1-5 visual match: the chart units on the gallery at 1480, 900 and 390, light and dark, in a browser: the seven shapes drawn inside the width, a line chart redrawn to its frame on resize, value tooltips on hover and focus, mono axis labels, dark unlike light', () => {
+    const script = new NodeURL('mp-1-5-gallery-charts.ts', import.meta.url).pathname;
+    const run = spawnSync(process.execPath, [script], { encoding: 'utf8', timeout: 900_000 });
+    expect(run.status, run.stderr.slice(-2000)).toBe(0);
+    const { views, sameInDark } = JSON.parse(run.stdout) as ChartsReport;
+    expect(views).toHaveLength(6);
+    for (const view of views) {
+      const width = Number(/@(\d+)-/u.exec(view.name)?.[1]);
+      expect(view.sideways, `${view.name} scrolls sideways`).toBe(0);
+      for (const [shape, box] of Object.entries(view.shapes)) {
+        expect(box.count, `${view.name} ${shape}`).toBeGreaterThan(0);
+        expect(box.width * box.height, `${view.name} ${shape} drawn at no size`).toBeGreaterThan(0);
+        expect(box.left, `${view.name} ${shape}`).toBeGreaterThanOrEqual(0);
+        expect(box.right, `${view.name} ${shape}`).toBeLessThanOrEqual(width);
+      }
+      expect(Object.keys(view.shapes).toSorted(), view.name).toEqual(SEVEN.toSorted());
+      expect(view.dashed, view.name).not.toBe('none');
+      expect(view.centreLabel, view.name).toBe('46');
+      expect(view.bands, view.name).toEqual(['is-ok', 'is-warn', 'is-bad']);
+      expect(view.axis.family, view.name).toMatch(/^"Chivo Mono"/u);
+      expect(view.axis, view.name).toMatchObject({ size: '10px', opacity: '0.45' });
+      expect(view.line.drawn, `${view.name} line drawn at its frame`).toBe(view.line.frame);
+      expect(view.line.narrowed.drawn, `${view.name} line redrawn`).toBe(view.line.narrowed.frame);
+      expect(view.line.narrowed.drawn, view.name).toBeLessThan(view.line.drawn);
+      expect(view.tip, view.name).toEqual({
+        hover: 'Jul\nRevenue $21,000',
+        focus: 'Jun\nRevenue $19,400',
+      });
+    }
+    expect(sameInDark, 'a chart unit draws the same in dark').toEqual([]);
+  }, 900_000);
+
   it.todo(
-    "MP-1-5 visual match: matches mockup /dashboard/executive/, /connections/site-health/ and /clients/:client/workbench/search-seo/ at 1480, 900 and 390, light and dark (MP-1-7 harness; waits on those pages, MP-14-3 and the workbench slices, and T4b1's signed-in fixture)",
+    "MP-1-5 /dashboard/executive/, /connections/site-health/ and /clients/:client/workbench/search-seo/ beside the mockup at 1480, 900 and 390, light and dark (waits on those pages, MP-14-3 and the workbench slices, and T4b1's signed-in fixture)",
   );
 });
 
