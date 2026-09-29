@@ -274,6 +274,7 @@
     "tests/runtime/t3f-lease-edges.test.ts",
     "tests/api/t3f-races.test.ts",
     "tests/db/inbox-records.test.ts",
+    "tests/db/inbox-conformance.test.ts",
     "tests/commands/inbox-raising.test.ts",
     "tests/commands/inbox-clearing.test.ts",
     "tests/commands/inbox-clearing-guards.test.ts",
