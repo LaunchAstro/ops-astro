@@ -240,18 +240,33 @@ describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three cros
   };
 
   it('MP-5-3 withheld count canary', async () => {
-    const answer = await read(world.noah);
-    expect(answer.status).toBe(200);
-    expect(rowsOf(answer).map((row) => row.id)).toEqual([ids.noahs]);
-    expect(answer.body['withheld']).toBe((await alphaBoardSize()) - 1);
-    expectNoneOf(answer, ['hidden', 'other', 'bravo']);
-    // A member holding the business grant is withheld nothing.
+    // A member holding task:read on the whole collection is told the count
+    // (SL07-B22-ANSWER); the collection grant reaches every task, so it is 0.
     const mia = await read(world.mia);
+    expect(mia.status).toBe(200);
     expect(mia.body['withheld']).toBe(0);
+    expect(rowsOf(mia)).toHaveLength(await alphaBoardSize());
+    expectNoneOf(mia, ['bravo']);
+    // Another business's tasks are neither listed nor counted.
+    const bea = await read(world.bea, 'bravo');
+    expect(bea.body['withheld']).toBe(0);
+    expectNoneOf(bea, ['noahs', 'hidden', 'other']);
     // Nobody with no grant at all is told a count.
     const orphan = await read(world.orphan);
     expect(orphan.status).toBeGreaterThanOrEqual(400);
     expect(orphan.body).not.toHaveProperty('withheld');
+  });
+
+  it('MP-5-3 record-scoped member gets no count', async () => {
+    // Noah's task:read is one record grant: a client login under owner answer
+    // 22. The board holds another client's task (shared with ext2); he gets
+    // his own task, no count field, and nothing of theirs anywhere.
+    const answer = await read(world.noah);
+    expect(answer.status).toBe(200);
+    expect(rowsOf(answer).map((row) => row.id)).toEqual([ids.noahs]);
+    expect(answer.body).not.toHaveProperty('withheld');
+    expect(JSON.stringify(answer.body)).not.toMatch(/withheld/u);
+    expectNoneOf(answer, ['hidden', 'other', 'bravo']);
   });
 
   it('MP-5-3 client login count', async () => {
