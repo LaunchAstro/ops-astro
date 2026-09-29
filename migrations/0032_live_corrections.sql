@@ -38,6 +38,7 @@ create table public.live_corrections (
   decided_by_actor_id    uuid,
   decided_by_person_id   uuid,
   decided_at             timestamptz,
+  decided_version_digest text,
   revision               integer     not null default 1,
   created_at             timestamptz not null default now(),
   updated_at             timestamptz not null default now(),
@@ -68,6 +69,8 @@ create table public.live_corrections (
   constraint live_corrections_decided_before_effect check (
     state in ('requested', 'cancelled') or decided_by_person_id is not null
   ),
+  constraint live_corrections_decided_version
+    check (decided_version_digest is null or decided_version_digest = version_digest),
   constraint live_corrections_no_self_approval
     check (decided_by_person_id is distinct from requested_by_person_id),
   constraint live_corrections_revision_positive check (revision >= 1)
