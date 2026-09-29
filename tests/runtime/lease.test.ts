@@ -51,18 +51,20 @@ if (serverUrl === undefined) {
 const hour = (): Date => new Date(Date.now() + 3_600_000);
 
 /** Propose, approve, and return every identity the cases below need. */
-async function approvedWork(
-  database: Database,
-  fixture: RuntimeFixture,
-  maximumMinor = 5_000,
-): Promise<{
+interface ApprovedWork {
   readonly gateId: string;
   readonly versionId: string;
   readonly lineageId: string;
   readonly reservationId: string;
   readonly attemptId: string;
   readonly envelopeId: string;
-}> {
+}
+
+async function approvedWork(
+  database: Database,
+  fixture: RuntimeFixture,
+  maximumMinor = 5_000,
+): Promise<ApprovedWork> {
   return await database.withBusiness(fixture.businessId, async (tx) => {
     const proposed = await propose(tx, {
       taskId: fixture.taskId,

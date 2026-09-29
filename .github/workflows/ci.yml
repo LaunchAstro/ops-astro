@@ -248,6 +248,9 @@ jobs:
       - run: pnpm run db:conformance
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          # T4a's clone past a reader dumps and restores inside the server's
+          # own container; the service container is not ops-astro-local-pg.
+          FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
 
   licences:
     name: OSI licence allowlist

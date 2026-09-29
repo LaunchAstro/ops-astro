@@ -239,9 +239,11 @@ SHOT_DIR="$PWD/.local/evidence/browser" DOCKER_BIN="$(command -v docker)" \
 defaults to `.local/evidence/browser` inside this checkout, and the harness
 creates the directory (`SHOTS` in `tests/browser/harness.mjs`). `DOCKER_BIN`
 defaults to `/usr/local/bin/docker`, which is not where every installation puts
-it. `WEB_URL` and `API_URL` override the two addresses if you moved them.
+it. `WEB_URL` and `API_URL` are required: the harness has no default address,
+so a run cannot reach the live pair by forgetting one, and it refuses a port
+another live browser run holds (`.local/ports/<port>.lock`).
 `node tests/browser/keyboard-and-widths.mjs` reads only `SHOT_DIR` and
-`WEB_URL` of the four.
+`WEB_URL` of the four, and refuses to run without `WEB_URL`.
 
 The command drives the browser acceptance cases through Playwright against the
 running application, so start the database, the identity service, the API and
@@ -357,12 +359,12 @@ is listening on.
 They prove different things and fail for different reasons. The usual mistake
 is to run the slowest one first.
 
-| Kind                 | Command                                                                                                                                      | Needs                                                                                                                                                                                    | Notes                                                                                                                                                              |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Mounted web tests    | `corepack pnpm exec vitest run tests/surfaces`                                                                                               | Nothing running                                                                                                                                                                          | Screens under jsdom, in about a second. The first thing to run.                                                                                                    |
-| HTTP                 | `corepack pnpm verify:slice`                                                                                                                 | Database, GoTrue, API                                                                                                                                                                    | Signs in for real and walks the create/start/complete path and the refusals. One line per case; `unrun` with a reason for a case that cannot run.                  |
-| Browser              | `mkdir -p .local/evidence/browser && SHOT_DIR="$PWD/.local/evidence/browser" DOCKER_BIN="$(command -v docker)" corepack pnpm verify:browser` | The whole stack, plus Playwright's Chromium downloaded                                                                                                                                   | Has side effects, below.                                                                                                                                           |
-| Database conformance | `corepack pnpm db:conformance`                                                                                                               | Docker, and both database URLs exported: `set -a; . ./.local/db.env; set +a` puts `DATABASE_URL` and `DATABASE_ADMIN_URL` in the environment ([DATA.md](DATA.md#roles-and-the-two-urls)) | Runs the suites named in `tests/db/named-suites.json` and fails a run in which one skipped. [What each of its two jobs proves](../agents/database-conformance.md). |
+| Kind                 | Command                                                                                                                                                                                                  | Needs                                                                                                                                                                                    | Notes                                                                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Mounted web tests    | `corepack pnpm exec vitest run tests/surfaces`                                                                                                                                                           | Nothing running                                                                                                                                                                          | Screens under jsdom, in about a second. The first thing to run.                                                                                                    |
+| HTTP                 | `corepack pnpm verify:slice`                                                                                                                                                                             | Database, GoTrue, API                                                                                                                                                                    | Signs in for real and walks the create/start/complete path and the refusals. One line per case; `unrun` with a reason for a case that cannot run.                  |
+| Browser              | `mkdir -p .local/evidence/browser && SHOT_DIR="$PWD/.local/evidence/browser" DOCKER_BIN="$(command -v docker)" WEB_URL=http://127.0.0.1:5190 API_URL=http://127.0.0.1:8790 corepack pnpm verify:browser` | The whole stack, plus Playwright's Chromium downloaded                                                                                                                                   | Has side effects, below.                                                                                                                                           |
+| Database conformance | `corepack pnpm db:conformance`                                                                                                                                                                           | Docker, and both database URLs exported: `set -a; . ./.local/db.env; set +a` puts `DATABASE_URL` and `DATABASE_ADMIN_URL` in the environment ([DATA.md](DATA.md#roles-and-the-two-urls)) | Runs the suites named in `tests/db/named-suites.json` and fails a run in which one skipped. [What each of its two jobs proves](../agents/database-conformance.md). |
 
 `chromium.launch()` in `tests/browser/slice-acceptance.mjs` needs a browser on
 disk, and installing the `playwright` package does not fetch one. Run
@@ -385,6 +387,43 @@ container publishes. Evidence goes to `.local/restart-legs-browser/<stamp>/`,
 or to `SHOT_DIR` when set. It holds `restart-legs-cases.jsonl` (one row per
 line as recorded), `MANIFEST.json` (rows and exit status) and screenshots. It
 exits 0 only when RL0 and RL-a to RL-d all pass.
+
+`corepack pnpm verify:journey` is the one command over the whole slice
+(T4b1). It refuses an occupied or another stack's port, and a pinned Postgres
+image that is not already on this machine, before it starts anything; it never
+pulls. Then it starts that image as a container of its own, migrates it,
+serves the API and the web app on its own ports (`--pg-port`, `--api-port`,
+`--web-port`; defaults 54430, 8830, 5230), and prints one line per case: the
+served identity at the start and the end, the whole journey through the app's
+own client and again through one command-line process per call with the facts
+compared (`journey_twice_same_facts`), the separation between two businesses,
+the live update within 2 s, every declaration through the command line, a full
+API and Postgres restart read back and replayed, T3d2's restart legs, the
+named suites, one verdict per protected component (domain model, tenancy
+wrapper, migrations, gate engine) read from that same run's conformance output,
+the built web bundle searched for any fixture selector
+(`tests/ci/fixture-bundle.ts`), and the worker's module graph checked for a
+database driver. A case this base cannot run prints `unrun` with its reason. Any
+line that is not `pass` fails the command. It then prints the budgets of the
+specification's section 10.2, each measured with a pass or fail beside it and
+never re-set (a missed budget does not fail the command), and writes the
+evidence bundle, `bundle.json` and `bundle.md`: the revision, the environment,
+every case line, the approval the journey applied (the digest of the decision
+row's exact payload, its identifiers shown), the budgets with the machine's load
+beside each, the crash points the restart legs recorded and the open completion
+items with their owner. Whatever a person wrote (a note, a body, a title) is
+carried only as a digest (`scripts/local/journey-withhold.ts`): the approval
+shows its identifiers and withholds the rest, and a case line's detail, being
+free text, is carried as its digest alone: no word in it is safe for how it is
+spelled. Beside it the bundle shows only the facts the command's own code typed
+for that case (an owner, a pull request, a time, a tree hash). The full detail
+stays in `cases.jsonl` beside the bundle, where the digest finds it. The end-to-end budget is timed only when
+the journey ran to its end. A run with no decision writes no bundle, and nothing
+in it claims acceptance. The
+database is kept for inspection unless `--remove`, and the last line says how
+to remove it. Evidence goes to `.local/journey/<stamp>/` (`cases.jsonl`, the
+run's stderr, `bundle.json`, `bundle.md`). `--only journey` skips the restart
+legs and the named suites, and says so as `unrun`.
 
 `corepack pnpm check` is the blocking gate, not a fifth kind. It runs the
 tooling checks and the test suite together, needs `DATABASE_URL` and

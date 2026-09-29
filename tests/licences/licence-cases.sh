@@ -102,6 +102,37 @@ case_is "a known exception passes" 0 '{"Apache-2.0 WITH LLVM-exception":[{"name"
 case_is "a known exception inside brackets passes" 0 '{"(GPL-3.0-only WITH Classpath-exception-2.0) OR MIT":[{"name":"a","version":"1"}]}'
 case_is "an unknown licence fails even when spelled like one" 1 '{"Invented-1.0":[{"name":"a","version":"1"}]}'
 
+# T4c, 29 September. Bundled fonts and icons are assets, not packages: each
+# carries a licence record (licence, source, permitted use) and its digest,
+# and one with no compatible licence is refused and reported, never bundled.
+# assets_case <label> <expected-exit> <assets-json>; the manifest sits beside
+# its licence text, OFL.txt. The bytes are pinned by address and digest.
+printf 'licence text' > "$TMP/OFL.txt"
+SHA="$(printf 'a%.0s' {1..64})"
+assets_case() {
+  local label="$1" expect="$2" json="$3"
+  printf '{"assets":%s}' "$json" > "$TMP/assets.json"
+  local actual
+  node "$CHECKER" --assets "$TMP/assets.json" >/dev/null 2>&1
+  actual=$?
+  if [ "$actual" = "$expect" ]; then pass "$label"; else fail "$label" "expected exit $expect, got $actual"; fi
+}
+PIN="\"file\":\"font.ttf\",\"url\":\"https://example.invalid/font.ttf\",\"sha256\":\"$SHA\""
+FONT="\"name\":\"F\",\"kind\":\"font\",$PIN,\"licenceFile\":\"OFL.txt\",\"source\":\"https://example.invalid/f\""
+ICON='"name":"I","kind":"icons","licence":"LicenseRef-Vendor","source":"https://example.invalid/i"'
+OK='"licence":"OFL-1.1","permittedUse":"bundle"'
+
+assets_case "a recorded OFL font passes" 0 "[{$FONT,$OK}]"
+assets_case "a refused icon set is reported, not an error" 0 "[{$FONT,$OK},{$ICON,\"refused\":\"no redistribution grant\"}]"
+assets_case "an empty asset list fails" 1 '[]'
+assets_case "a bundled asset with an incompatible licence fails" 1 "[{$FONT,\"licence\":\"LicenseRef-Vendor\",\"permittedUse\":\"bundle\"}]"
+assets_case "a refused asset that is still bundled fails" 1 "[{$FONT,$OK,\"refused\":\"no\"}]"
+assets_case "a font with no permitted use fails" 1 "[{$FONT,\"licence\":\"OFL-1.1\"}]"
+assets_case "a font with no source fails" 1 "[{\"name\":\"F\",\"kind\":\"font\",$PIN,\"licenceFile\":\"OFL.txt\",$OK}]"
+assets_case "a font with no pinned digest fails" 1 "[{$FONT,$OK,\"sha256\":\"\"}]"
+assets_case "a font with no https address fails" 1 "[{$FONT,$OK,\"url\":\"http://example.invalid/font.ttf\"}]"
+assets_case "a font with no licence text beside it fails" 1 "[{$FONT,$OK,\"licenceFile\":\"missing.txt\"}]"
+
 echo
 echo "licence cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]
