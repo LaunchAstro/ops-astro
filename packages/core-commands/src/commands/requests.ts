@@ -24,6 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { ActivationChangeRequest, DefinitionReleaseRequest } from './automation-requests.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -259,6 +260,9 @@ export type CommandRequest =
       readonly classId: string;
       readonly expectedRevision?: unknown;
     } & Envelope)
+  // Settings ▸ Workflow triggers (C33).
+  | (ActivationChangeRequest & Envelope)
+  | (DefinitionReleaseRequest & Envelope)
   | ({ readonly command: 'grant.revoke'; readonly grantId: string } & Envelope)
   | ({ readonly command: 'delegation.revoke'; readonly delegationId: string } & Envelope)
   | ({

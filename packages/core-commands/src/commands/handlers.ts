@@ -23,6 +23,7 @@ import { setBusinessSetting } from './settings-write.ts';
 import { clearCustodySecret, setCustodySecret } from './custody-secrets.ts';
 import { startConnectorRepair } from './connector-repair.ts';
 import { demoteClass, fileMandate, promoteClass, revokeStandingMandate } from './mandates.ts';
+import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
@@ -98,6 +99,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'mandate.revoke': (tx, context, request) => revokeStandingMandate(tx, context, request),
   'graduation.promote': (tx, context, request) => promoteClass(tx, context, request),
   'graduation.demote': (tx, context, request) => demoteClass(tx, context, request),
+  'activation.change': (tx, context, request) => changeActivationAsPerson(tx, context, request),
+  'definition.release': (tx, context, request) => releaseDefinitionVersion(tx, context, request),
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,

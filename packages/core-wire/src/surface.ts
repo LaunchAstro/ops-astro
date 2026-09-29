@@ -128,7 +128,13 @@ export type CommandName =
   | 'mandate.file'
   | 'mandate.revoke'
   | 'graduation.promote'
-  | 'graduation.demote';
+  | 'graduation.demote'
+  // Settings ▸ Workflow triggers (C33): the registry is one read by
+  // `settings:read`; changing an activation is `settings:manage` and releasing
+  // a definition version `automation:manage`, neither an agent's.
+  | 'automation.registry'
+  | 'activation.change'
+  | 'definition.release';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -290,6 +296,7 @@ const BILLING_COLLECTION = 'billing';
 const CUSTODY_COLLECTION = 'custody';
 const CONNECTION_COLLECTION = 'connection';
 const MANDATE_COLLECTION = 'mandate';
+const AUTOMATION_COLLECTION = 'automation';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -405,6 +412,27 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     expectedRevision: 'any',
   },
   'graduation.demote': { classId: 'id', expectedRevision: 'any' },
+  // Every value but the identifiers is checked in the command, which names the
+  // field it refuses; a version's modes against the activation's in the database.
+  'activation.change': {
+    activationId: 'id?',
+    versionId: 'id',
+    mode: 'any',
+    everyMinutes: 'any',
+    eventKind: 'any',
+    enabled: 'any',
+    expectedRevision: 'any',
+  },
+  'definition.release': {
+    definitionId: 'id?',
+    name: 'any',
+    kind: 'any',
+    contentDigest: 'any',
+    contentSize: 'any',
+    inputs: 'any',
+    operations: 'any',
+    modes: 'any',
+  },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -589,6 +617,21 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: MANDATE_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: ['classId'],
+  }),
+  // Settings ▸ Workflow triggers (C33). The registry is a business fact read
+  // like `settings.read`; an activation is changed under `settings:manage` and
+  // a version released under `automation:manage`, both business-wide and
+  // never an agent's (the key catalogue: owner and administrators).
+  read('automation.registry', SETTINGS_COLLECTION),
+  declare('activation.change', 'manage', {
+    collection: SETTINGS_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['activationId', 'versionId'],
+  }),
+  declare('definition.release', 'manage', {
+    collection: AUTOMATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['definitionId'],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this
