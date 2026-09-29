@@ -205,10 +205,12 @@ async function lockFacts(
        from public.leases where business_id = $1 and id = $2 for update`,
     [tx.businessId, request.leaseId],
   );
-  // Another business's lease, a made-up one and someone else's all read alike.
+  // Another business's lease, a made-up one, someone else's and one of our
+  // own under another delegation all read alike.
   if (
     lease === undefined ||
     lease.holder_actor_id !== caller.actorId ||
+    lease.delegation_id !== caller.delegationId ||
     lease.fence !== String(request.fence)
   ) {
     return { ok: false, code: 'LEASE_NOT_OWNED' };
