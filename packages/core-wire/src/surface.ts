@@ -348,7 +348,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
   'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
-  'model.call': { leaseId: 'any', fence: 'any', stepId: 'any', operation: 'any', fields: 'any' },
+  'model.call': { leaseId: 'any', fence: 'any', operation: 'any', fields: 'any' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -493,7 +493,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('model.call', 'write', {
     targetsExistingRecord: false,
     authorisedOn: 'claim',
-    untargetedIdentifiers: ['leaseId', 'stepId'],
+    untargetedIdentifiers: ['leaseId'],
     runtimeShaped: 'leaseId',
     agent: 'delegated',
   }),

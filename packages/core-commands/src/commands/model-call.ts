@@ -23,6 +23,7 @@
 // stored; a replay reports the call as the ledger has it now.
 
 import { payloadDigest } from '../../../core-digest/src/index.ts';
+import { isUuid } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -35,6 +36,7 @@ import {
   type AuditNote,
   type Broker,
   type ModelCaller,
+  type ModelCallRequest,
   type ModelCallResult,
   type Reservation,
   type ReservedCall,
@@ -44,7 +46,6 @@ import { executeAgentOperation } from './agent-envelope.ts';
 import { modelCallRow } from './agent-operations.ts';
 import { writeAuditEvent } from './audit.ts';
 import type { CommandContext } from './context.ts';
-import type { ModelCallOperands } from './model-call-operands.ts';
 import { refused, refusedRetaining, type HandlerOutcome, type Refused } from './outcome.ts';
 import { isCommandRefusal, refuseCommand } from './refusal.ts';
 import type { CommandHandle, CommandResult } from './register-store.ts';
@@ -64,7 +65,7 @@ export type ModelCallExecutor = (
 /** What the reserving transaction held, for the send after it commits. */
 interface Held {
   readonly caller: ModelCaller;
-  readonly operands: ModelCallOperands;
+  readonly request: ModelCallRequest;
   readonly reserved: ReservedCall;
   readonly broker: Broker;
 }
@@ -79,9 +80,15 @@ export function modelCallExecutor(broker: ModelBroker): ModelCallExecutor {
         attendedByPersonId: null,
       };
       const audited: Broker = { ...broker, audit: auditAs(call.session.actorId) };
-      const reservation = await reserveModelCall(tx, caller, operands, audited);
+      const stepId = await stepOfLease(tx, operands.leaseId);
+      const reservation = await reserveModelCall(tx, caller, { ...operands, stepId }, audited);
       if (!reservation.ok) return refusalOf(reservation);
-      held = { caller, operands, reserved: reservation.reserved, broker: audited };
+      held = {
+        caller,
+        request: { ...operands, stepId },
+        reserved: reservation.reserved,
+        broker: audited,
+      };
       return {
         recordId: null,
         revision: null,
@@ -108,12 +115,27 @@ export function modelCallExecutor(broker: ModelBroker): ModelCallExecutor {
       database,
       businessId,
       held.caller,
-      held.operands,
+      held.request,
       held.reserved,
       held.broker,
     );
     return await answerFrom(database, businessId, admitted, callId, sent);
   };
+}
+
+/**
+ * The run's step this call bills: the one the lease's attempt was reserved
+ * for, so the caller never names it. A lease that is not a lease here, or
+ * not bound to exactly one attempt, names none, and the broker refuses the
+ * made-up step as it refuses a made-up lease (`LEASE_NOT_OWNED`).
+ */
+async function stepOfLease(tx: TenantQuery, leaseId: string): Promise<string> {
+  if (!isUuid(leaseId)) return '';
+  const steps = await tx.query<{ step_id: string }>(
+    `select step_id from public.attempts where business_id = $1 and lease_id = $2 limit 2`,
+    [tx.businessId, leaseId],
+  );
+  return steps.length === 1 ? String(steps[0]?.step_id) : '';
 }
 
 /** The broker's events, as the caller's, in the broker's transaction. */

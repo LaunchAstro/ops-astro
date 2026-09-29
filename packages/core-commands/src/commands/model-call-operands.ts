@@ -16,7 +16,8 @@ import { refuseCommand } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import type { AgentRequest } from './agent-call.ts';
 
-export type ModelCallOperands = ModelCallRequest;
+/** The call as the body names it. The step is the lease's own attempt's, read under the lease. */
+export type ModelCallOperands = Omit<ModelCallRequest, 'stepId'>;
 
 const SOURCES: ReadonlySet<string> = new Set<FieldSource>([
   'business_internal',
@@ -27,7 +28,7 @@ const SOURCES: ReadonlySet<string> = new Set<FieldSource>([
 ]);
 
 const FIXES: readonly string[] = [
-  'Send leaseId, stepId and operation as strings, fence as the integer your pickup gave.',
+  'Send leaseId and operation as strings, fence as the integer your pickup gave.',
   'Send fields as a list of { name, source, value }, each a string, source one of business_internal, client_row, client_person, guest or outside.',
 ];
 
@@ -48,12 +49,11 @@ function fieldOf(entry: unknown): ModelCallRequest['fields'][number] | undefined
 }
 
 export function modelCallOperands(request: AgentRequest): ModelCallOperands | Refused {
-  const { leaseId, fence, stepId, operation, fields } = request as Record<string, unknown>;
+  const { leaseId, fence, operation, fields } = request as Record<string, unknown>;
   // A lease that is not a string names no lease, and is refused by the broker
   // as a made-up one is (`LEASE_NOT_OWNED`), in the same bytes.
   const lease = typeof leaseId === 'string' ? leaseId : '';
   if (typeof fence !== 'number' || !Number.isSafeInteger(fence)) return invalid('fence');
-  if (typeof stepId !== 'string') return invalid('stepId');
   if (typeof operation !== 'string') return invalid('operation');
   if (!Array.isArray(fields)) return invalid('fields');
   const parsed: ModelCallRequest['fields'][number][] = [];
@@ -62,5 +62,5 @@ export function modelCallOperands(request: AgentRequest): ModelCallOperands | Re
     if (field === undefined) return invalid('fields');
     parsed.push(field);
   }
-  return { leaseId: lease, fence, stepId, operation, fields: parsed };
+  return { leaseId: lease, fence, operation, fields: parsed };
 }

@@ -44,6 +44,19 @@ interface Answer {
   readonly body: Readonly<Record<string, unknown>>;
 }
 
+// No step: the call bills the step its lease's attempt was reserved for.
+const bodyFor = (
+  work: Work,
+  extra: Readonly<Record<string, unknown>> = {},
+): Readonly<Record<string, unknown>> => ({
+  operationId: randomUUID(),
+  leaseId: work.picked['leaseId'],
+  fence: work.picked['fence'],
+  operation: REPLAY_COMPOSE.key,
+  fields: [{ name: 'tone', source: 'business_internal', value: 'warm' }],
+  ...extra,
+});
+
 describe.skipIf(serverUrl === undefined)('AW-01 model.call through the boundary', () => {
   let s: Schedules;
   let world: CustodyWorld;
@@ -82,29 +95,6 @@ describe.skipIf(serverUrl === undefined)('AW-01 model.call through the boundary'
           }
         : {}),
     });
-
-  const stepOf = async (work: Work): Promise<string> => {
-    const [row] = await s.db.admin.execute<{ id: string }>(
-      `select st.id from public.planned_steps st join public.leases l on l.run_id = st.run_id
-        where l.id = $1 order by st.ordinal limit 1`,
-      [work.picked['leaseId']],
-    );
-    if (row === undefined) throw new Error('no step for the lease');
-    return row.id;
-  };
-
-  const bodyFor = async (
-    work: Work,
-    extra: Readonly<Record<string, unknown>> = {},
-  ): Promise<Readonly<Record<string, unknown>>> => ({
-    operationId: randomUUID(),
-    leaseId: work.picked['leaseId'],
-    fence: work.picked['fence'],
-    stepId: await stepOf(work),
-    operation: REPLAY_COMPOSE.key,
-    fields: [{ name: 'tone', source: 'business_internal', value: 'warm' }],
-    ...extra,
-  });
 
   const post = async (
     app: Hono,
@@ -162,7 +152,7 @@ describe.skipIf(serverUrl === undefined)('AW-01 model.call through the boundary'
     const work = await liveWork(s, 'one priced call', 2_000);
     world.provider.mode('answer');
     const seen = world.provider.seen.length;
-    const answer = await asAgent(work, await bodyFor(work));
+    const answer = await asAgent(work, bodyFor(work));
     expect(answer.status).toBe(200);
     expect(answer.body).toMatchObject({
       command: 'model.call',
@@ -191,10 +181,11 @@ describe.skipIf(serverUrl === undefined)('AW-01 model.call through the boundary'
     const claims = [
       [{ actorId: randomUUID() }, 'FIELD_NOT_WRITABLE'],
       [{ attendedByPersonId: randomUUID() }, 'COMMAND_BODY_INVALID'],
+      [{ stepId: randomUUID() }, 'COMMAND_BODY_INVALID'],
     ] as const;
     for (const [claimed, code] of claims) {
       // eslint-disable-next-line no-await-in-loop
-      const answer = await asAgent(work, await bodyFor(work, claimed));
+      const answer = await asAgent(work, bodyFor(work, claimed));
       expect(answer.body['code']).toBe(code);
       expect(answer.status).toBe(statusOf(code));
     }
@@ -205,7 +196,7 @@ describe.skipIf(serverUrl === undefined)('AW-01 model.call through the boundary'
   it('AW-01 model.call replay sends once', async () => {
     const work = await liveWork(s, 'one operation, one send', 2_000);
     world.provider.mode('answer');
-    const body = await bodyFor(work);
+    const body = bodyFor(work);
     const seen = world.provider.seen.length;
     const first = await asAgent(work, body);
     const again = await asAgent(work, body);
@@ -222,7 +213,7 @@ describe.skipIf(serverUrl === undefined)('AW-01 model.call through the boundary'
   it('AW-01 model.call concurrent repeat sends once', async () => {
     const work = await liveWork(s, 'two at once, one send', 2_000);
     world.provider.mode('answer');
-    const body = await bodyFor(work);
+    const body = bodyFor(work);
     const seen = world.provider.seen.length;
     const both = await Promise.all([asAgent(work, body), asAgent(work, body)]);
     for (const answer of both) expect([200, 409]).toContain(answer.status);
@@ -233,12 +224,12 @@ describe.skipIf(serverUrl === undefined)('AW-01 model.call through the boundary'
   it('AW-01 model.call refused before a delegation and on the person prefix', async () => {
     const work = await liveWork(s, 'not without the delegation', 2_000);
     const seen = world.provider.seen.length;
-    const bare = await post(brokered, 'a/b', await bodyFor(work), {
+    const bare = await post(brokered, 'a/b', bodyFor(work), {
       authorization: `Bearer ${agentToken}`,
     });
     expect(bare.status).toBe(403);
     expect(bare.body['code']).toBe('DELEGATION_EXCLUDES_OPERATION');
-    const person = await post(brokered, 'b', await bodyFor(work), {
+    const person = await post(brokered, 'b', bodyFor(work), {
       authorization: `Bearer ${personToken}`,
     });
     expect(person.status).toBe(403);
@@ -247,10 +238,26 @@ describe.skipIf(serverUrl === undefined)('AW-01 model.call through the boundary'
     expect(await callsOn(work)).toEqual([]);
   });
 
+  it('AW-01 model.call refused and recorded as a step', async () => {
+    // The reservation cannot cover the operation's priced maximum of 500.
+    const work = await liveWork(s, 'too small to cover', 300);
+    const body = bodyFor(work);
+    const seen = world.provider.seen.length;
+    const refused = await asAgent(work, body);
+    expect(refused.body['code']).toBe('BUDGET_UNAVAILABLE');
+    expect(refused.status).toBe(statusOf('BUDGET_UNAVAILABLE'));
+    // The broker's step survives the envelope's refusal, and a repeat adds none.
+    expect(await callsOn(work)).toMatchObject([{ state: 'refused', reserved_minor: '0' }]);
+    const again = await asAgent(work, body);
+    expect(again.body['code']).toBe('BUDGET_UNAVAILABLE');
+    expect(await callsOn(work)).toHaveLength(1);
+    expect(world.provider.seen.length).toBe(seen);
+  });
+
   it('AW-01 model.call with no broker configured', async () => {
     const work = await liveWork(s, 'no broker here', 2_000);
     const seen = world.provider.seen.length;
-    const answer = await asAgent(work, await bodyFor(work), unconfigured);
+    const answer = await asAgent(work, bodyFor(work), unconfigured);
     expect(answer.status).toBe(501);
     expect(answer.body['code']).toBe('DEPENDENCY_NOT_LANDED');
     expect(world.provider.seen.length).toBe(seen);

@@ -17,8 +17,10 @@
 // The five untargeted commands that `refuseIrrelevantTarget` never checked
 // were pinned as `unchecked` at 06ab232. Architecture observation 2 flipped
 // them, red first (`stray-identifiers.test.ts`): each now names the
-// identifiers its request type declares, and that change is the one
-// deliberate edit to this pin.
+// identifiers its request type declares, and that change was the first
+// deliberate edit to this pin. AW-01's `model.call` is the second: a new
+// untargeted lease write an agent reaches under its delegation, added to each
+// table it belongs in and to the handler map.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -108,16 +110,22 @@ vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (or
   cancelOnTask: recorder('cancelOnTask'),
   restartOnTask: recorder('restartOnTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/model-call.ts', async (original) => ({
+  ...(await original<object>()),
+  refuseModelCallAsPerson: recorder('refuseModelCallAsPerson'),
+}));
 
 const PINNED_RUNTIME_SHAPED = {
   'task.handback': 'leaseId',
   'task.heartbeat': 'leaseId',
   'task.pickup': 'reservationId',
+  'model.call': 'leaseId',
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
   'delegation.revoke': [],
   'grant.revoke': [],
+  'model.call': ['leaseId'],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'task.cancel': ['recordId', 'lineageId'],
@@ -134,6 +142,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'delegation.revoke',
   'grant.revoke',
+  'model.call',
   'person.list',
   'preset.plan',
   'session.capabilities',
@@ -155,6 +164,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 ];
 
 const PINNED_AGENT_SURFACE = [
+  'model.call',
   'session.capabilities',
   'task.comment',
   'task.decide',
@@ -230,6 +240,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
   { command: 'task.restart', operationId: 'op', recordId: 'r', lineageId: 'lin' },
   { command: 'task.heartbeat', operationId: 'op', leaseId: 'l', fence: 4 },
+  { command: 'model.call', operationId: 'op' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -272,6 +283,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.cancel': ['cancelOnTask', 'request'],
   'task.restart': ['restartOnTask', 'request'],
   'task.heartbeat': ['heartbeatOwnLease', 'request'],
+  'model.call': ['refuseModelCallAsPerson', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -296,7 +308,7 @@ const agentReach = (reach: readonly string[]) =>
     .toSorted();
 
 describe('the per-command tables at 06ab232', () => {
-  it('shapes the same runtime identifier for the same three commands', () => {
+  it('shapes the same runtime identifier for the same four commands', () => {
     expect({ ...RUNTIME_SHAPED }).toStrictEqual(PINNED_RUNTIME_SHAPED);
   });
 
@@ -311,13 +323,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty from an expected revision', () => {
+  it('exempts the same twenty-one from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same eight, two of them before a pickup', () => {
+  it('lets an agent reach the same nine, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);
