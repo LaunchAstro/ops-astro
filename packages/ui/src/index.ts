@@ -39,6 +39,7 @@ export * from './state/corpus.ts';
 export * from './state/project.ts';
 export * from './kit/controls.tsx';
 export * from './kit/gallery.tsx';
+export * from './kit/marks.tsx';
 export * from './primitives/Absence.tsx';
 export * from './primitives/BrandMark.tsx';
 export * from './primitives/Icon.tsx';
