@@ -21,7 +21,11 @@
 //
 // `run` takes one pg_dump of the product's schemas and `auth`, in a throwaway
 // container of staging's own pinned Postgres image, seals it (archive-seal.mjs)
-// and adds only the sealed artefact to the store. `expire` deletes every
+// and adds only the sealed artefact to the store. The dump streams through the
+// seal into the store in parts of 4 MiB, in one transaction, so neither the
+// dump nor the archive is ever held whole: an archive can be as large as the
+// store's cap (REV158S criterion 5). The job hashes the whole ciphertext as it
+// goes and completes the archive with that digest and its size. `expire` deletes every
 // backup past the store's window, then asks the store whether a restore drill
 // passed inside its window: yes pings the restore heartbeat, no stays silent,
 // and the watcher mails the owner and the second operator (heartbeat.mjs).
@@ -34,60 +38,73 @@
 // failed line names the stage and nothing else: an error from pg_dump or the
 // server can carry a host, a login or a password, so its text is never kept.
 
-import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { sealArchive } from './archive-seal.mjs';
+import { sealer } from './archive-seal.mjs';
+import { pgDump } from './backup-dump.mjs';
 import { stagingReach, value } from './backup-store-reach.mjs';
 import { ping } from './heartbeat.mjs';
 
+export { pgDump } from './backup-dump.mjs';
+
 const BACKUP_ROLE = 'ops_astro_backup';
 const RETENTION_ROLE = 'ops_astro_backup_retention';
-// The product's schemas and the auth server's sign-in data in the same database.
-const SCHEMAS = ['public', 'ops', 'auth'];
+// The store's part size (deploy/staging/backup-store.sql, backups.archive_parts).
+const PART = 4 * 1024 * 1024;
 
-const staging = JSON.parse(
-  readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
-);
+/** The dump's pieces, whether `dump` answered them as a stream or as one buffer. */
+async function* piecesOf(source) {
+  if (Buffer.isBuffer(source)) yield source;
+  else yield* source;
+}
 
 /**
- * pg_dump in a throwaway container on staging's network, as the backup
- * identity. The password reaches the container through the environment, never
- * the command line, and pg_dump's own messages are discarded.
+ * The store script for one archive, as pieces: the dump, sealed as it
+ * streams, in parts of `PART` bytes, then the archive completed with its size
+ * and the sha256 of its whole ciphertext, in one transaction. `failure.stage`
+ * names the step that failed if the dump or the seal throws.
  */
-export function pgDump(sourceUrl) {
-  const url = new URL(sourceUrl);
-  const args = [
-    'run',
-    '--rm',
-    `--name=${staging['x-ops-astro'].ownPrefix}-backup-${randomBytes(4).toString('hex')}`,
-    `--network=${staging.networks.staging.name}`,
-    '--env=PGPASSWORD',
-    '--env=PGSSLMODE',
-    staging.services.db.image,
-    'pg_dump',
-    '--format=custom',
-    `--role=${BACKUP_ROLE}`,
-    ...SCHEMAS.map((schema) => `--schema=${schema}`),
-    `--host=${url.hostname}`,
-    `--port=${url.port || '5432'}`,
-    `--username=${decodeURIComponent(url.username)}`,
-    `--dbname=${url.pathname.slice(1)}`,
-  ];
-  return new Promise((resolve, reject) => {
-    const child = spawn('docker', args, {
-      // TLS or no dump: the source's bytes are plaintext until the job seals them.
-      env: { ...process.env, PGPASSWORD: decodeURIComponent(url.password), PGSSLMODE: 'require' },
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    const chunks = [];
-    child.stdout.on('data', (chunk) => chunks.push(chunk));
-    child.on('error', () => reject(new Error('pg_dump did not start')));
-    child.on('close', (code) => {
-      if (code === 0 && chunks.length > 0) resolve(Buffer.concat(chunks));
-      else reject(new Error('pg_dump failed'));
-    });
-  });
+async function* upload(source, seal, failure) {
+  yield `set role ${BACKUP_ROLE};\nbegin;\n`;
+  const whole = createHash('sha256');
+  let [held, size, seq, bytes] = [[seal.header], seal.header.length, 0, 0];
+  function* part(bytesOut) {
+    whole.update(bytesOut);
+    bytes += bytesOut.length;
+    yield `select backups.add_part(${seq}, `;
+    yield* value(bytesOut, 'bytea');
+    yield ');\n';
+    seq += 1;
+  }
+  function* flush(all) {
+    // Whole parts only, until the end, when the last may be short.
+    const under = all ? 0 : PART - 1;
+    while (size > under) {
+      const joined = Buffer.concat(held);
+      const out = joined.subarray(0, PART);
+      held = [joined.subarray(out.length)];
+      size = joined.length - out.length;
+      yield* part(out);
+    }
+  }
+  const pieces = piecesOf(source)[Symbol.asyncIterator]();
+  for (;;) {
+    failure.stage = 'dump';
+    // oxlint-disable-next-line no-await-in-loop -- one piece at a time is the point
+    const next = await pieces.next();
+    failure.stage = 'seal';
+    if (next.done) break;
+    held.push(seal.update(next.value));
+    size += held.at(-1).length;
+    failure.stage = null;
+    yield* flush(false);
+  }
+  held.push(seal.final());
+  size += held.at(-1).length;
+  failure.stage = null;
+  yield* flush(true);
+  yield `select backups.complete_archive(${bytes}, '${whole.digest('hex')}');\ncommit;\n`;
+  failure.bytes = bytes;
 }
 
 /** A run's record when it fails: the stage only, never an error's text. */
@@ -105,27 +122,26 @@ export async function runBackup({
   reach = stagingReach,
 }) {
   const at = new Date().toISOString();
-  let body;
+  let source;
   try {
-    body = await dump();
+    source = await dump();
   } catch {
     return failed('backup run', 'dump');
   }
+  let seal;
   try {
-    body = sealArchive(body, publicKey);
+    seal = sealer(publicKey);
   } catch {
     return failed('backup run', 'seal');
   }
+  const failure = { stage: null, bytes: 0 };
   try {
-    // The server judges the insert as the backup identity, and stamps it.
-    await reach(
-      storeUrl,
-      `set role ${BACKUP_ROLE};\ninsert into backups.archives (body) values (${value(body, 'bytea')});\n`,
-    );
+    // The server judges each part as the backup identity, and stamps it.
+    await reach(storeUrl, upload(source, seal, failure));
   } catch {
-    return failed('backup run', 'store');
+    return failed('backup run', failure.stage ?? 'store');
   }
-  const record = { event: 'backup run', outcome: 'recorded', at, bytes: body.length };
+  const record = { event: 'backup run', outcome: 'recorded', at, bytes: failure.bytes };
   return { ...record, heartbeat: await send(heartbeat) };
 }
 
@@ -182,7 +198,12 @@ async function main(command) {
       return failed('backup run', 'config');
     }
     const heartbeat = env('OPS_BACKUP_HEARTBEAT_URL');
-    return await runBackup({ dump: () => pgDump(source), storeUrl, publicKey, heartbeat });
+    return await runBackup({
+      dump: () => pgDump(source),
+      storeUrl,
+      publicKey,
+      heartbeat,
+    });
   }
   if (command === 'expire') {
     const storeUrl = env('BACKUP_RETENTION_URL');

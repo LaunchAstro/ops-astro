@@ -13,27 +13,40 @@
 -- clusters do, the role migration 0034 made is left as it is.
 --
 -- Three identities, held apart by the server rather than by the job.
--- `ops_astro_backup` inserts a dump's bytes and nothing else: no list, count,
--- read, change or delete, and not the time it was taken.
--- `ops_astro_backup_retention` sees ids and times, never bytes, and deletes
--- only past the window. `ops_astro_backup_restore` (the restore drill, S0-3c)
--- takes the newest backup through `backups.read_latest()` and nothing else,
+-- `ops_astro_backup` adds a dump's sealed bytes through `backups.add_part` and
+-- `backups.complete_archive` and nothing else: no list, count, read, change or
+-- delete, and not the time it was taken. `ops_astro_backup_retention` sees ids
+-- and times, never bytes, and deletes only past the window.
+-- `ops_astro_backup_restore` (the restore drill, S0-3c) takes the newest backup
+-- through `backups.read_latest()` and `backups.read_part()` and nothing else,
 -- with the digest the store recorded when it took it; what it gets is sealed,
--- and only the operator's private key opens it. The
--- store writes a receipt for every add, read and delete: action, id, time,
--- size and login; no bytes, no fingerprint.
+-- and only the operator's private key opens it. The store writes a receipt for
+-- every add, read and delete: action, id, time, size and login; no bytes, no
+-- fingerprint.
 --
 -- The retention window, how old the last passed restore drill may be, and
 -- the most the store may hold are one row, `backups.settings`, here and
 -- nowhere else.
 --
+-- An archive can be as large as the cap, past what one value or the store's
+-- memory holds (REV158S criterion 5), so it is kept in parts of at most 4 MiB,
+-- `backups.archive_parts`, under one header row, `backups.archives`. The job
+-- adds them in order in one transaction and completes the archive with its
+-- size and the sha256 of its whole ciphertext, which it computes as the parts
+-- go out: SQL cannot hash across statements, so the store checks the size
+-- itself and hashes each part itself. An archive not completed in the
+-- transaction that opened it cannot commit, so no part of an unfinished upload
+-- is ever kept or seen.
+--
 -- The store is the one persistent place staging has (S0-1's disk row names its
--- volume as the only exception), so it bounds itself: an archive that would
--- take the stored total past `max_bytes` is refused (53400), whatever the job
--- does. The total is one row, `backups.stored`, that every insert updates only
--- while it stays within the cap: its row lock judges two archives written at
--- once one after the other, and a second that holds an older snapshot fails
--- rather than reading around the first. A delete gives its bytes back.
+-- volume as the only exception), so it bounds itself: a part that would take
+-- the stored total past `max_bytes` is refused (53400), whatever the job does,
+-- and the whole upload with it. The cap bounds archive bodies; receipts and
+-- drill rows are small and append-only. The total is one row,
+-- `backups.stored`, that every part updates only while it stays within the
+-- cap: its row lock judges two archives written at once one after the other,
+-- and a second that holds an older snapshot fails rather than reading around
+-- the first. A delete gives its archive's bytes back.
 
 create schema backups;
 revoke all on schema backups from public;
@@ -53,13 +66,27 @@ create table backups.stored (
 );
 insert into backups.stored (bytes) values (0);
 
+-- The time, the size and each part's digest are the store's; the whole
+-- digest is the job's, checked by every drill that reads the archive back.
 create table backups.archives (
   id uuid primary key default gen_random_uuid(),
   taken_at timestamptz not null default now(),
-  bytes bigint not null default 0,
+  bytes bigint not null default 0 check (bytes >= 0),
+  parts integer not null default 0 check (parts >= 0),
   sha256 text not null default '',
-  body bytea not null
+  complete boolean not null default false,
+  check (not complete or (parts > 0 and sha256 ~ '^[0-9a-f]{64}$'))
 );
+
+create table backups.archive_parts (
+  archive_id uuid not null references backups.archives on delete cascade,
+  seq integer not null check (seq >= 0),
+  sha256 text not null check (sha256 ~ '^[0-9a-f]{64}$'),
+  chunk bytea not null check (length(chunk) between 1 and 4194304),
+  primary key (archive_id, seq)
+);
+-- Sealed bytes do not compress; the server need not try.
+alter table backups.archive_parts alter column chunk set storage external;
 
 create table backups.receipts (
   id bigint generated always as identity primary key,
@@ -71,44 +98,78 @@ create table backups.receipts (
   actor text not null default session_user
 );
 
--- The time, size and fingerprint are the store's, never the writer's.
-create function backups.archive_stamped() returns trigger
-  language plpgsql set search_path = pg_catalog as $$
-begin
-  new.taken_at := now();
-  new.bytes := length(new.body);
-  new.sha256 := encode(sha256(new.body), 'hex');
-  return new;
-end $$;
-
-create function backups.archive_receipt() returns trigger
+-- Adds part `seq` of the archive this transaction is writing; part 0 opens
+-- it. Parts come in order from 0, none twice, each counted into the stored
+-- total under its row lock.
+create function backups.add_part(seq integer, chunk bytea) returns void
   language plpgsql security definer set search_path = pg_catalog as $$
+declare
+  writing backups.archives;
 begin
-  if tg_op = 'INSERT' then
-    insert into backups.receipts (action, archive_id, taken_at, bytes)
-    values ('backup recorded', new.id, new.taken_at, new.bytes);
-    return new;
+  if $2 is null or length($2) not between 1 and 4194304 then
+    raise exception 'a part is 1 byte to 4 MiB' using errcode = 'invalid_parameter_value';
   end if;
-  insert into backups.receipts (action, archive_id, taken_at, bytes)
-  values ('backup expired', old.id, old.taken_at, old.bytes);
-  return old;
-end $$;
-
--- Counts the archive's bytes in, or out, under the total's row lock.
-create function backups.archive_bounded() returns trigger
-  language plpgsql security definer set search_path = pg_catalog as $$
-begin
-  if tg_op = 'DELETE' then
-    update backups.stored set bytes = bytes - old.bytes;
-    return old;
+  -- Every committed archive is complete, and another transaction's open one
+  -- is not visible here, so an open archive is this transaction's own.
+  select a.* into writing from backups.archives a where not a.complete for update;
+  if $1 = 0 then
+    if found then
+      raise exception 'an archive is open already' using errcode = 'object_not_in_prerequisite_state';
+    end if;
+    insert into backups.archives default values returning * into writing;
+  elsif not found or $1 is distinct from writing.parts then
+    raise exception 'parts are added in order from 0, none twice' using errcode = 'invalid_parameter_value';
   end if;
-  update backups.stored set bytes = bytes + length(new.body)
-  where bytes + length(new.body) <= (select max_bytes from backups.settings);
+  update backups.stored set bytes = bytes + length($2)
+  where bytes + length($2) <= (select max_bytes from backups.settings);
   if not found then
     raise exception 'the backup store is full: this archive would take it past backups.settings.max_bytes'
       using errcode = 'configuration_limit_exceeded';
   end if;
-  return new;
+  insert into backups.archive_parts (archive_id, seq, sha256, chunk)
+  values (writing.id, $1, encode(sha256($2), 'hex'), $2);
+  update backups.archives a set parts = a.parts + 1, bytes = a.bytes + length($2)
+  where a.id = writing.id;
+end $$;
+
+-- Completes this transaction's archive: the size the job sent must be the one
+-- the store counted, and the digest is the whole ciphertext's.
+create function backups.complete_archive(bytes bigint, sha256 text) returns void
+  language plpgsql security definer set search_path = pg_catalog as $$
+declare
+  writing backups.archives;
+begin
+  select a.* into writing from backups.archives a where not a.complete for update;
+  if not found then
+    raise exception 'no archive is open' using errcode = 'object_not_in_prerequisite_state';
+  end if;
+  if $1 is distinct from writing.bytes or $2 is null or $2 !~ '^[0-9a-f]{64}$' then
+    raise exception 'the archive is not the one its parts make' using errcode = 'invalid_parameter_value';
+  end if;
+  update backups.archives a set complete = true, sha256 = $2 where a.id = writing.id;
+  insert into backups.receipts (action, archive_id, taken_at, bytes)
+  values ('backup recorded', writing.id, writing.taken_at, writing.bytes);
+end $$;
+
+-- At commit: an archive opened in this transaction was completed in it.
+create function backups.archive_completed() returns trigger
+  language plpgsql security definer set search_path = pg_catalog as $$
+begin
+  if exists (select from backups.archives a where a.id = new.id and not a.complete) then
+    raise exception 'an archive is completed in the transaction that opened it'
+      using errcode = 'object_not_in_prerequisite_state';
+  end if;
+  return null;
+end $$;
+
+-- A deleted archive gives its bytes back and leaves a receipt.
+create function backups.archive_expired() returns trigger
+  language plpgsql security definer set search_path = pg_catalog as $$
+begin
+  update backups.stored set bytes = bytes - old.bytes;
+  insert into backups.receipts (action, archive_id, taken_at, bytes)
+  values ('backup expired', old.id, old.taken_at, old.bytes);
+  return old;
 end $$;
 
 create function backups.receipts_append_only() returns trigger
@@ -117,19 +178,16 @@ begin
   raise exception 'backups.receipts is append-only' using errcode = 'insufficient_privilege';
 end $$;
 
-revoke execute on function backups.archive_stamped() from public;
-revoke execute on function backups.archive_receipt() from public;
-revoke execute on function backups.archive_bounded() from public;
+revoke execute on function backups.add_part(integer, bytea) from public;
+revoke execute on function backups.complete_archive(bigint, text) from public;
+revoke execute on function backups.archive_completed() from public;
+revoke execute on function backups.archive_expired() from public;
 revoke execute on function backups.receipts_append_only() from public;
 
-create trigger archive_stamped before insert on backups.archives
-  for each row execute function backups.archive_stamped();
-create trigger archive_receipt after insert or delete on backups.archives
-  for each row execute function backups.archive_receipt();
-create trigger archive_bounded before insert on backups.archives
-  for each row execute function backups.archive_bounded();
-create trigger archive_unbounded after delete on backups.archives
-  for each row execute function backups.archive_bounded();
+create constraint trigger archive_completed after insert on backups.archives
+  deferrable initially deferred for each row execute function backups.archive_completed();
+create trigger archive_expired after delete on backups.archives
+  for each row execute function backups.archive_expired();
 create trigger receipts_append_only before update or delete or truncate on backups.receipts
   for each statement execute function backups.receipts_append_only();
 
@@ -149,7 +207,7 @@ alter role ops_astro_backup_restore nologin nosuperuser nocreatedb nocreaterole 
 
 -- A read has no trigger, so the one way to read a backup is a function that
 -- writes its receipt first, on a connection of its own (dblink) that commits
--- before the bytes are returned: a reader that rolls back keeps its receipt.
+-- before anything is returned: a reader that rolls back keeps its receipt.
 -- dblink connects without a password only for a superuser, so the store is
 -- made by staging's admin, and its functions stay out of every other role's
 -- reach in a schema of their own.
@@ -157,13 +215,15 @@ create schema backups_audit;
 revoke all on schema backups_audit from public;
 create extension dblink schema backups_audit;
 
+-- The newest complete archive's header, its read logged.
 create function backups.read_latest()
-  returns table (id uuid, taken_at timestamptz, sha256 text, body bytea)
+  returns table (id uuid, taken_at timestamptz, bytes bigint, parts integer, sha256 text)
   language plpgsql security definer set search_path = pg_catalog as $$
 declare
   picked backups.archives;
 begin
-  select a.* into picked from backups.archives a order by a.taken_at desc, a.id desc limit 1;
+  select a.* into picked from backups.archives a
+  where a.complete order by a.taken_at desc, a.id desc limit 1;
   if not found then
     return;
   end if;
@@ -174,16 +234,38 @@ begin
       'backup read', picked.id, picked.taken_at, picked.bytes, session_user
     )
   );
-  return query select picked.id, picked.taken_at, picked.sha256, picked.body;
+  return query select picked.id, picked.taken_at, picked.bytes, picked.parts, picked.sha256;
 end $$;
 revoke execute on function backups.read_latest() from public;
 
+-- One part of a complete archive, with the digest the store took of it; only
+-- of an archive whose read the store logged for this same login inside the
+-- freshness window.
+create function backups.read_part(archive uuid, seq integer)
+  returns table (part_sha256 text, part bytea)
+  language plpgsql security definer set search_path = pg_catalog as $$
+begin
+  if not exists (
+    select from backups.receipts r
+    where r.action = 'backup read' and r.archive_id = $1 and r.actor = session_user
+      and r.at > now() - make_interval(days => (select restore_days from backups.settings))
+  ) then
+    raise exception 'no read of that archive by this login inside the window' using errcode = '42501';
+  end if;
+  return query select p.sha256, p.chunk from backups.archive_parts p
+    join backups.archives a on a.id = p.archive_id
+    where p.archive_id = $1 and p.seq = $2 and a.complete;
+end $$;
+revoke execute on function backups.read_part(uuid, integer) from public;
+
 grant usage on schema backups to ops_astro_backup, ops_astro_backup_retention;
-grant insert (body) on backups.archives to ops_astro_backup;
+grant execute on function backups.add_part(integer, bytea) to ops_astro_backup;
+grant execute on function backups.complete_archive(bigint, text) to ops_astro_backup;
 grant select (id, taken_at), delete on backups.archives to ops_astro_backup_retention;
 grant select on backups.settings to ops_astro_backup_retention;
 grant usage on schema backups to ops_astro_backup_restore;
 grant execute on function backups.read_latest() to ops_astro_backup_restore;
+grant execute on function backups.read_part(uuid, integer) to ops_astro_backup_restore;
 
 -- The restore drill's receipts (ticket S0-3, lines C4 to C6 and C10). The
 -- drill writes one row per run through `backups.record_drill`, as the restore
@@ -258,7 +340,7 @@ begin
       and r.at > now() - make_interval(days => (select restore_days from backups.settings))
   ) or not exists (
     select from backups.archives a
-    where date_trunc('milliseconds', a.taken_at) = $4 and a.sha256 = $10
+    where date_trunc('milliseconds', a.taken_at) = $4 and a.complete and a.sha256 = $10
   ) then
     raise exception 'no read of that archive, with that digest, by this login inside the window' using errcode = '42501';
   end if;
@@ -287,10 +369,11 @@ grant execute on function backups.restore_fresh() to ops_astro_backup_retention;
 
 -- Row security holds the window for the retention identity, and it is forced,
 -- so the backup identity's own bypass of row security on the source reads
--- nothing more here: it holds no select to bypass with.
+-- nothing more here: it holds no select to bypass with. The parts have no
+-- grant at all: they are reached only through the functions above, and go
+-- with their archive.
 alter table backups.archives enable row level security;
 alter table backups.archives force row level security;
-create policy backup_adds on backups.archives for insert to ops_astro_backup with check (true);
 create policy retention_sees on backups.archives for select to ops_astro_backup_retention using (true);
 create policy retention_deletes_expired on backups.archives for delete to ops_astro_backup_retention
   using (taken_at < now() - make_interval(days => (select retention_days from backups.settings)));
