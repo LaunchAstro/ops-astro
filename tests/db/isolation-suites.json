@@ -1,6 +1,7 @@
 {
   "invariant": [
     "tests/acceptance/external-party.test.ts",
+    "tests/acceptance/external-party-inbox.test.ts",
     "tests/identity/external-party.test.ts",
     "tests/tenancy/restricted-calls.test.ts",
     "tests/tenancy/restricted-calls-prefixes.test.ts",
