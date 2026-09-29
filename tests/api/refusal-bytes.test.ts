@@ -139,7 +139,9 @@ describe('a refusal crossing the boundary into the browser client', () => {
     // the server's; this case only requires that both reach the client.
     expect(describeRefusal(result)).toContain(result.code);
   });
+});
 
+describe('a refusal crossing the boundary into the browser client', () => {
   it('is a refusal even when the request body is not an object at all', async () => {
     const response = await api.fetch(
       new Request(`http://api.test/api/b/alpha/task/create`, {

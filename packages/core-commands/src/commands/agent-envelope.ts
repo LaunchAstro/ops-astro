@@ -225,8 +225,9 @@ async function runRow<O extends object>(
 
   const authorised = await authorise(tx, call, operation);
   if ('refusal' in authorised) {
-    await operation.onRefused?.(tx, call, operands, authorised.refusal);
-    return await settle(tx, session, request, digest, authorised.refusal);
+    const { refusal, attempted } = authorised;
+    await operation.onRefused?.(tx, call, operands, refusal);
+    return await settle(tx, session, request, digest, refusal, 'register', attempted);
   }
   // The body against its surface row, as the person prefix parses it and at
   // the same point: after authority, before the savepoint and any command

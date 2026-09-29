@@ -106,6 +106,9 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
 
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
+    // The task page also reads its run (T2g); none here.
+    if (at.endsWith('/task/execution'))
+      return json({ ok: true, execution: { outcome: 'no-run', runs: [], events: [] } });
     if (at.startsWith('http://identity.invalid/token')) {
       // A new hour. Everything the old token could not do, the new one can.
       reads = 'ok';
@@ -279,6 +282,9 @@ function byBearer(): {
   let deliver: ((response: Response) => void) | null = null;
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
+    // The task page also reads its run (T2g); none here.
+    if (at.endsWith('/task/execution'))
+      return json({ ok: true, execution: { outcome: 'no-run', runs: [], events: [] } });
     if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH_TOKEN });
     const headers = (init?.headers ?? {}) as Record<string, string>;
     const stale = headers['authorization'] === `Bearer ${SESSION.token}`;
@@ -363,6 +369,9 @@ const BRAVO = { token: 'the-hour-old-token', businessKey: 'bravo', email: 'bea@b
 function perBusiness(): typeof globalThis.fetch {
   return (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
+    // The task page also reads its run (T2g); none here.
+    if (at.endsWith('/task/execution'))
+      return json({ ok: true, execution: { outcome: 'no-run', runs: [], events: [] } });
     if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH_TOKEN });
     const headers = (init?.headers ?? {}) as Record<string, string>;
     if (headers['authorization'] === `Bearer ${BRAVO.token}`) return unknownLogin();

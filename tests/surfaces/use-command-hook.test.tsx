@@ -51,13 +51,13 @@ function Probe(props: {
 }
 
 const state = (page: { find: (selector: string) => Element | null }) => {
-  const probe = page.find('[data-busy]');
+  const probe = page.find('[data-busy]') as HTMLElement | null;
   return {
-    busy: probe?.getAttribute('data-busy'),
-    closed: probe?.getAttribute('data-closed'),
-    locked: probe?.getAttribute('data-locked'),
-    conflict: probe?.getAttribute('data-conflict'),
-    because: probe?.getAttribute('data-because'),
+    busy: probe?.dataset['busy'],
+    closed: probe?.dataset['closed'],
+    locked: probe?.dataset['locked'],
+    conflict: probe?.dataset['conflict'],
+    because: probe?.dataset['because'],
   };
 };
 

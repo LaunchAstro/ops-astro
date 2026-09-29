@@ -135,7 +135,9 @@ describe.skipIf(serverUrl === undefined)('gate negatives', () => {
         expect(await gateRow(proposal.gateId)).toStrictEqual(written);
       },
     );
+  });
 
+  describe('G01: the gate references a real run, step and pack of its own business and version', () => {
     // A same-business run, step or lineage of another proposal satisfies the
     // (business_id, x) keys above. The mismatch is the "fake fixture gate": the
     // gate's run must plan its version, its step must be a step of that run and

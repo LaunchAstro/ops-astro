@@ -47,6 +47,11 @@ if (serverUrl === undefined) {
 const onDisk = readMigrations('migrations');
 // Through T2a's 0032 run_events, which the runtime that seeds below writes to.
 const THROUGH_0032 = (version: string): boolean => version.slice(0, 4) <= '0032';
+// And T2h's 0036 alerts: that runtime raises an alert when it hands back.
+// 0036 reads nothing 0033 to 0035 add, and the runner applies whatever is
+// pending, so the upgrade below still applies 0033 onto these rows.
+const SEEDED = (version: string): boolean =>
+  THROUGH_0032(version) || version.slice(0, 4) === '0036';
 
 /** Proposes work on the task and approves it, answering the reservation the approval made. */
 async function approvedReservation(
@@ -158,7 +163,7 @@ describe.skipIf(serverUrl === undefined)('0033 the dispatch mark', () => {
     upgraded = await createEmptyDatabase({ part: 't2c1migup' });
     await applyMigrations(
       upgraded.admin,
-      onDisk.filter((m) => THROUGH_0032(m.version)),
+      onDisk.filter((m) => SEEDED(m.version)),
     );
     const seed = await buildFixture(upgraded.app, 't2c1-seed');
     await work(upgraded.app, seed, false);

@@ -196,7 +196,9 @@ describe('only a verified token says who is calling', () => {
     expect(answer.status).toBe(401);
     expect(answer.body['code']).toBe('AUTH_UNKNOWN_LOGIN');
   });
+});
 
+describe('only a verified token says who is calling', () => {
   it('does not read a token from anywhere but the Authorization header', async () => {
     const token = await tokenFor(MIA);
     const answer = await post(

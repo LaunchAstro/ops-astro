@@ -125,6 +125,7 @@ const SPLIT = [
   'apps/web/src/screens/SharedTaskDetail.tsx',
   ...sources('apps/web/src/screens/task').toSorted(),
   'apps/web/src/views/proposals.tsx',
+  'apps/web/src/views/gate-controls.tsx',
   'apps/web/src/views/proposal-record.tsx',
   'apps/web/src/views/propose-form.tsx',
 ];

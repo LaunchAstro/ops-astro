@@ -6,6 +6,7 @@
 
 import { revokeDelegation } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Subject } from '../../../core-records/src/index.ts';
+import { raiseAlert } from '../alerts.ts';
 import type { LockRequest, LockSet } from '../locks.ts';
 import { lockedInstant } from '../clock.ts';
 import { lockRediscovered } from '../rediscovery.ts';
@@ -328,14 +329,20 @@ export async function cancelAndClassify(
     }
   }
 
-  const updated = await tx.query<{ readonly id: string }>(
+  const updated = await tx.query<{ readonly task_id: string }>(
     `update public.proposal_lineages
         set state = 'cancelled', terminal_reason = $3, terminal_at = now()
       where business_id = $1 and id = $2 and state = 'live'
-      returning id`,
+      returning task_id`,
     [tx.businessId, request.lineageId, request.reason],
   );
   if (updated[0] === undefined) return terminal;
+  // T2h: the cancellation's one alert, on the lineage's task.
+  await raiseAlert(tx, {
+    taskId: updated[0].task_id,
+    causeId: request.lineageId,
+    raised: { kind: 'cancelled' },
+  });
 
   await retireWork(tx, workAfter, locks);
   // Nothing in this head dispatches, so the ordinary cancellation completes as

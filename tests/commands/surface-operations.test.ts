@@ -156,7 +156,9 @@ describe.skipIf(serverUrl === undefined)('the operations L2 made possible', () =
       );
       expect(isCommandRefusal(result) && result.code).toBe('SCOPE_NOT_GRANTED');
     });
+  });
 
+  describe('task.comment is a real command (I09)', () => {
     it('task.read carries the comments in full for an internal reader', async () => {
       await run({
         command: 'task.comment',

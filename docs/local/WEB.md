@@ -143,7 +143,7 @@ state as a revoked grant.
 ### How a write settles
 
 Every write on the task page, in the proposals view (`views/proposals.tsx` and
-the two files beside it) and
+the three files beside it) and
 on the board goes through `useCommand` in `apps/web/src/records/use-command.ts`.
 It sorts the answer once into one of five kinds:
 

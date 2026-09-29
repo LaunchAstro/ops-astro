@@ -219,7 +219,7 @@ async function press(page: Mounted, selector: string): Promise<void> {
 }
 
 const revisionOnPage = (page: Mounted): string | null | undefined =>
-  page.find('[data-revision]')?.getAttribute('data-revision');
+  (page.find('[data-revision]') as HTMLElement | null)?.dataset['revision'];
 
 describe('a stale comment or proposal rereads and keeps the text', () => {
   it('comment: VERSION_STALE rereads, keeps the body, and the next press is sent at the new revision', async () => {

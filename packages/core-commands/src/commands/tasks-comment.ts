@@ -35,7 +35,7 @@
 // is marked dispatched to this caller's own lease: no effect before its
 // dispatch, whichever entry sends it.
 
-import { writeComment } from '../../../core-records/src/index.ts';
+import { audienceNotPermitted, writeComment } from '../../../core-records/src/index.ts';
 import { acquire } from '../../../core-runtime/src/index.ts';
 import type {
   TenantQuery,
@@ -154,11 +154,7 @@ async function effectRefusal(
   const attemptId = effectAttemptOf(on.operationId);
   if (attemptId === undefined) return undefined;
   if (audience !== 'internal') {
-    return refuseCommand(
-      'AUDIENCE_NOT_PERMITTED',
-      ['audience'],
-      ['The effect is a team-only comment. Send audience as internal.'],
-    );
+    return audienceNotPermitted('The effect is a team-only comment. Send audience as internal.');
   }
   const found = await dispatchedToAuthor(tx, on, attemptId);
   if (found === undefined) return refuseCommand('EFFECT_NOT_DISPATCHED', [], EFFECT_FIXES);
@@ -226,10 +222,8 @@ export async function writeTaskComment(
   }
   if (!on.audiences.has(audience)) {
     return refused(
-      refuseCommand(
-        'AUDIENCE_NOT_PERMITTED',
-        ['audience'],
-        [`This caller writes in ${[...on.audiences].toSorted().join(' or ')} only.`],
+      audienceNotPermitted(
+        `This caller writes in ${[...on.audiences].toSorted().join(' or ')} only.`,
       ),
     );
   }
