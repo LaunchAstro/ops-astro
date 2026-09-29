@@ -36,13 +36,23 @@ const CITATIONS: readonly (readonly [string, RegExp])[] = [
   ['an earlier draft', /t1-draft|\bearlier draft\b|\bthis comment said\b/iu],
   [
     'a story of earlier handling',
-    /\bused to\b|\bwas once\b|\bthat way until\b|\bcame off\b|\bleft this list\b|\bthe old handler\b|\bis what found\b/iu,
+    /\bused to\b|\bwas once (?:derived|written|handled|computed|kept|claimed)\b|\bthat way until\b|\bcame off\b|\bleft this list\b|\bthe old handler\b|\bis what found\b/iu,
   ],
 ];
 
+/** The citation a comment makes and the words that make it, or undefined. */
+function citationIn(
+  comment: string,
+): { readonly label: string; readonly words: string } | undefined {
+  for (const [label, pattern] of CITATIONS) {
+    const match = pattern.exec(comment);
+    if (match !== null) return { label, words: match[0] };
+  }
+  return undefined;
+}
+
 /** Which citation a comment makes, or undefined. */
-const cites = (comment: string): string | undefined =>
-  CITATIONS.find(([, pattern]) => pattern.test(comment))?.[0];
+const cites = (comment: string): string | undefined => citationIn(comment)?.label;
 
 type CommentLine = { readonly line: number; readonly comment: string };
 
@@ -87,6 +97,27 @@ function readComments(
       .map((comment, offset) => ({ line: first + offset, comment }));
   });
   return { lines: lines.toSorted((a, b) => a.line - b.line), errors };
+}
+
+/**
+ * Consecutive comment lines as one passage each, numbered by its first line,
+ * with the comment markers and the wrapping folded out, so a phrase split
+ * across two lines reads as it was written.
+ */
+function passages(lines: readonly CommentLine[]): CommentLine[] {
+  const found: { line: number; comment: string }[] = [];
+  let previous = -1;
+  for (const { line, comment } of lines) {
+    const words = comment
+      .replace(/^\s*(?:\/\/+|\/\*+|\*|--|<!--)\s?/u, '')
+      .replace(/\s*(?:\*\/|-->)\s*$/u, '')
+      .trim();
+    const current = found.at(-1);
+    if (current !== undefined && line === previous + 1) current.comment += ` ${words}`;
+    else found.push({ line, comment: words });
+    previous = line;
+  }
+  return found;
 }
 
 /** The comment text on each line of `text`, with its line number. */
@@ -150,6 +181,7 @@ describe('a source comment cites no review round, lane or finding id', () => {
     ' * prove abandonment (case L10), and the restore leaves a record whose parent',
     '  // Page size is bounded, not optional (E19:363), and the evidence renderer is G07.',
     '  /** The old lease is fenced out by the new fence rather than deleted. */',
+    ' * stamp is a projection of the current state; the evidence that the task was once complete',
   ])('keeps %s', (comment) => {
     expect(cites(comment)).toBeUndefined();
   });
@@ -173,6 +205,18 @@ describe('a source comment cites no review round, lane or finding id', () => {
     expect(lines[0]?.comment).toBe("// the row's own key");
   });
 
+  it('reads a phrase that wraps from one comment line to the next', () => {
+    const source = [
+      '// the read is refused, which is the case this screen used',
+      '// to be in permanently.',
+      'const a = 1;',
+      '// a separate passage',
+    ].join('\n');
+    const read = passages(commentLines(source));
+    expect(read.map(({ line }) => line)).toEqual([1, 4]);
+    expect(cites(read[0]?.comment ?? '')).toBe('a story of earlier handling');
+  });
+
   it('reads stylesheet and HTML comments across lines', () => {
     const css = 'a { color: red; } /* first line\n R2-RUNTIME-4 */';
     expect(commentLines(css, 'x.css').map(({ line }) => line)).toEqual([1, 2]);
@@ -193,9 +237,11 @@ describe('a source comment cites no review round, lane or finding id', () => {
     for (const file of files) {
       const { lines, errors } = readComments(readFileSync(new URL(file, root), 'utf8'), file);
       if (errors.length > 0) unread.push(file);
-      for (const { line, comment } of lines) {
-        const citation = cites(comment);
-        if (citation !== undefined) found.push(`${file}:${line} ${citation}: ${comment.trim()}`);
+      for (const { line, comment } of passages(lines)) {
+        const citation = citationIn(comment);
+        if (citation !== undefined) {
+          found.push(`${file}:${line} ${citation.label}: "${citation.words}"`);
+        }
       }
     }
     expect(unread).toEqual([]);
