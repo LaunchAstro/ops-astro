@@ -110,7 +110,7 @@ function must(answer: Answer, what: string): Record<string, unknown> {
 }
 
 /** The delegation the worker acts under, minted as the seed mints one. */
-async function delegate(world: World, taskId: string): Promise<string> {
+export async function delegate(world: World, taskId: string): Promise<string> {
   return await world.db.app.withBusiness(world.alpha, async (tx) => {
     const minted = await mintDelegation(tx, {
       agentActorId: world.agent.actorId,
@@ -128,7 +128,7 @@ async function delegate(world: World, taskId: string): Promise<string> {
 }
 
 /** The person reads the proposed version and approves exactly that one. */
-async function approve(person: Person, taskId: string, gateId: string): Promise<void> {
+export async function approve(person: Person, taskId: string, gateId: string): Promise<void> {
   const read = must(await person('task.read', { recordId: taskId }), 'read');
   const task = read['task'] as { proposals: { versions: { versionId: string }[] }[] };
   const versionId = String(task.proposals[0]?.versions[0]?.versionId);

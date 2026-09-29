@@ -62,13 +62,26 @@ export interface ServedApi {
   stop(): Promise<void>;
 }
 
-/** The production server entry, on its own port, against the world's database. */
-export async function serveApi(world: World): Promise<ServedApi> {
-  const port = await freePort();
+/**
+ * The production server entry, on its own port, against the world's database.
+ * `port` fixes it, so a restart comes back where the web server proxies to
+ * (T4b1's journey); a fixed port that is denied or taken is refused.
+ */
+export async function serveApi(
+  world: World,
+  options: { readonly port?: number; readonly keys?: string; readonly recovery?: string } = {},
+): Promise<ServedApi> {
+  const port = options.port ?? (await freePort());
+  if (DENIED_PORTS.has(port) || (await health(`http://127.0.0.1:${String(port)}`))) {
+    throw new Error(
+      `cli-process: port ${String(port)} belongs to another stack or answers already`,
+    );
+  }
   const origin = `http://127.0.0.1:${String(port)}`;
   const admin = new URL(serverUrl as string);
   admin.pathname = `/${world.db.name}`;
-  const keys = mkdtempSync(join(tmpdir(), 'cli-process-keys-'));
+  // A restart keeps its keys: a delegation minted before it must still verify.
+  const keys = options.keys ?? mkdtempSync(join(tmpdir(), 'cli-process-keys-'));
   const child = spawn(process.execPath, ['apps/api/server.ts'], {
     cwd: ROOT,
     env: {
@@ -81,7 +94,7 @@ export async function serveApi(world: World): Promise<ServedApi> {
       GATE_SIGNING_KEY_ID: process.env['GATE_SIGNING_KEY_ID'] ?? '',
       GATE_SIGNING_SECRET: process.env['GATE_SIGNING_SECRET'] ?? '',
       DELEGATION_CREDENTIAL_KEY_FILE: join(keys, 'delegation-keys.json'),
-      RECOVERY_BUSINESS_KEYS: 'none',
+      RECOVERY_BUSINESS_KEYS: options.recovery ?? 'none',
     },
     stdio: 'ignore',
   });
@@ -115,7 +128,7 @@ export async function serveApi(world: World): Promise<ServedApi> {
       child.kill('SIGTERM');
       await gone;
       console.log(`cli-process: stopped apps/api/server.ts pid ${String(child.pid)}`);
-      rmSync(keys, { recursive: true, force: true });
+      if (options.keys === undefined) rmSync(keys, { recursive: true, force: true });
     },
   };
 }
