@@ -1,13 +1,16 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- Staging's backup store (ticket S0-3, lines C1 and C11). A database of its
--- own on staging's server, made once from the staging runbook:
+-- Staging's backup store (ticket S0-3, lines C1 and C11). The database
+-- `ops_astro_staging_backups` on its own server, `backups` in
+-- deploy/staging/compose.json, which publishes no port; made once from the
+-- restore runbook, as the store's admin:
 --
---   create database ops_astro_staging_backups;
---   \c ops_astro_staging_backups
 --   \i deploy/staging/backup-store.sql
 --
--- after the migrations have made `ops_astro_backup` on the same server.
+-- The store is a server apart from staging's database, so it makes
+-- `ops_astro_backup` itself when the server has none (no login, no bypass of
+-- row security: here it only adds). Where one server holds both, as the test
+-- clusters do, the role migration 0034 made is left as it is.
 --
 -- Three identities, held apart by the server rather than by the job.
 -- `ops_astro_backup` inserts a dump's bytes and nothing else: no list, count,
@@ -130,6 +133,9 @@ create trigger receipts_append_only before update or delete or truncate on backu
   for each statement execute function backups.receipts_append_only();
 
 do $$ begin
+  if not exists (select 1 from pg_roles where rolname = 'ops_astro_backup') then
+    create role ops_astro_backup nologin nosuperuser nocreatedb nocreaterole noreplication nobypassrls;
+  end if;
   if not exists (select 1 from pg_roles where rolname = 'ops_astro_backup_retention') then
     create role ops_astro_backup_retention nologin;
   end if;
