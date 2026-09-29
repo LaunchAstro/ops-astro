@@ -50,6 +50,7 @@ import { acquire, type LockSet } from './locks.ts';
 import { only, RuntimeInvariantError } from './only.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
 import { classifyUnderLocks, endLease, type Classification } from './recovery.ts';
+import { recordDrop, type DropCause } from './recovery/drop.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
@@ -77,7 +78,13 @@ export interface HandbackRequest {
   readonly leaseId: string;
   /** The fence the holder believes it owns. Compared under the locks. */
   readonly fence: number;
-  readonly outcome: 'completed' | 'failed';
+  readonly outcome: 'completed' | 'failed' | 'dropped';
+  /**
+   * T3e1: why the work dropped, when `outcome` is `dropped`: the provider did
+   * not answer, or the connection to it was lost. The worker's report of a
+   * failure under it, never of its own loss, which only the sweep names.
+   */
+  readonly dropCause?: DropCause;
   readonly report: Record<string, unknown>;
   /**
    * What the work actually cost, in minor units. `null` is the honest answer
@@ -439,11 +446,16 @@ async function settle(
   // Live and fenced under the lease lock, so the guard in `endLease` changes nothing here.
   await endLease(tx, request.leaseId, 'released');
   if (found.delegation_id !== null) await settleDelegation(tx, found.delegation_id);
-  await tx.query(
-    `update public.planned_runs set state = 'handed_back' where business_id = $1 and id = $2`,
-    [tx.businessId, found.run_id],
-  );
-  if (!attempt.marked) {
+  // T3e1: a drop is not the end of the run. The classifier releases or holds
+  // the step as for any hand-back, and `recordDrop` brings the work back.
+  const dropCause = request.outcome === 'dropped' ? request.dropCause : undefined;
+  if (dropCause === undefined) {
+    await tx.query(
+      `update public.planned_runs set state = 'handed_back' where business_id = $1 and id = $2`,
+      [tx.businessId, found.run_id],
+    );
+  }
+  if (!attempt.marked && dropCause === undefined) {
     await tx.query(
       `update public.attempts set state = 'handed_back', outcome = $3
         where business_id = $1 and id = $2`,
@@ -455,12 +467,16 @@ async function settle(
     { reservationId: found.reservation_id, cause: 'handback_completed', causeId: request.leaseId },
     locks,
   );
+  const settled = { reportId, attemptId: attempt.id, classification };
+  if (dropCause !== undefined) {
+    await recordDrop(tx, { attemptId: attempt.id, cause: dropCause, retire: false, locks });
+    return settled;
+  }
   await raiseAlert(tx, {
     taskId: found.task_id,
     causeId: attempt.id,
     raised: handedBack(request, classification),
   });
-  const settled = { reportId, attemptId: attempt.id, classification };
   await appendRunEvent(tx, handedBackEvent(request, found, settled), locks);
   return settled;
 }
@@ -602,7 +618,7 @@ export async function retainHistoricalReport(
     readonly refusalCode: string;
   },
 ): Promise<boolean> {
-  if (intake.outcome !== 'completed' && intake.outcome !== 'failed') return false;
+  if (!['completed', 'failed', 'dropped'].includes(intake.outcome)) return false;
   if (!Number.isSafeInteger(intake.fence)) return false;
   const leases = await tx.query<{ readonly reservation_id: string; readonly run_id: string }>(
     `select reservation_id, run_id from public.leases

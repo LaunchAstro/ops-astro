@@ -20,6 +20,10 @@
 // No timer path leaves that state: only a person's recorded outcome or
 // write-off does (T3c, T3d1).
 //
+// **A lease that ran out with nothing reported is our worker lost** (T3e1,
+// `drop.ts`): the drop is recorded with that cause, a person is told, and an
+// unmarked step is reserved again, so the work comes back by itself.
+//
 // **It races dispatch on the lease and reservation locks.** Dispatch takes
 // both; so does this. Whichever commits first wins: a sweep first fences the
 // lease, and dispatch then refuses it; a dispatch first commits its mark, and
@@ -36,6 +40,7 @@ import {
   type Affected,
   type Classification,
 } from './classifier.ts';
+import { recordDrop } from './drop.ts';
 import { endLease } from './lease-retirement.ts';
 
 /**
@@ -74,7 +79,7 @@ export async function sweepExpiredLeases(tx: TenantQuery): Promise<readonly Clas
     changed:
       'sweep: the expired set changed under discovery; roll back and sweep again on the next pass',
   });
-  return await classifyAll(
+  const classified = await classifyAll(
     tx,
     found,
     locks,
@@ -85,4 +90,18 @@ export async function sweepExpiredLeases(tx: TenantQuery): Promise<readonly Clas
       if (row.lease_id !== null) await endLease(tx, row.lease_id, 'expired');
     },
   );
+  // T3e1: the lease ran out on its own clock and nobody reported why, so our
+  // worker was lost. The drop is recorded, and unmarked work comes back.
+  for (const row of found) {
+    // Sequential: each reactivation reserves against the envelope the next may share.
+    // eslint-disable-next-line no-await-in-loop
+    const [attempt] = await tx.query<{ readonly id: string }>(
+      'select id from public.attempts where business_id = $1 and reservation_id = $2',
+      [tx.businessId, row.reservation_id],
+    );
+    if (attempt === undefined) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await recordDrop(tx, { attemptId: attempt.id, cause: 'worker_lost', retire: true, locks });
+  }
+  return classified;
 }

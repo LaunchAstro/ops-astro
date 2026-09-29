@@ -277,7 +277,8 @@ interface SuccessorRequest {
 interface HandbackRequest {
   leaseId;
   fence: number; // the fence it believes it owns
-  outcome: 'completed' | 'failed';
+  outcome: 'completed' | 'failed' | 'dropped';
+  dropCause?: 'provider_unavailable' | 'connection_lost'; // T3e1, with `dropped`
   report: Record<string, unknown>;
   actualMinor: number | null; // null is this head's honest answer
   successor?: SuccessorRequest; // optional: absent settles and proposes nothing
@@ -1273,11 +1274,25 @@ direct SQL.
   replay runs on the same interval, then the register is asked, under the
   step lock, whether an unknown step's effect happened. Present: settled
   once at the book's price for the one effect. Absent: the old hold stays
-  held for a person, marked `absence_proved_at` (0035), the old worker's
+  held for a person, marked `absence_proved_at` (0037), the old worker's
   delegation is revoked, and the step resumes on a new hold and attempt that
   dispatches through T2c1's recheck (dispatch marks the step again for it,
   once the prior attempt is fenced). No answer: nothing moves. Each phase is
   one transaction per business.
+  T3e1 names drops (`recovery/drop.ts`, 0038). A drop is never a person's
+  cancellation, and each keeps its cause on the attempt: `provider_unavailable`
+  (the provider's fault) and `connection_lost` (the network's), which a worker
+  reports by handing back `dropped` with `report.dropCause`, and `worker_lost`
+  (ours), which the sweep names when a lease runs out with nothing reported.
+  A silent run is running until then. The drop appends `dropped` to the run's
+  events and raises one `dropped` alert. An unmarked step ends `dropped`, its
+  hold released as before, and is reserved again as a new attempt on the same
+  run and step, through `reserve` and only on a live lineage whose approval is
+  current (T3d1's `resume`), with `reactivated` appended: the next pickup
+  continues the run's events rather than starting again. A marked step keeps
+  its whole hold `liability_unknown` with the cause, and only the
+  reconciliation pass's proof resumes it. A cancellation stays `abandoned`
+  and its terminal lineage never comes back.
 - **Open on the heartbeat.** The two bounds, 1 hour a beat and 8 hours in total,
   are lane constants (`MAXIMUM_RENEWAL_SECONDS` and
   `MAXIMUM_LEASE_LIFETIME_SECONDS`, `heartbeat.ts`), not an owner policy. They

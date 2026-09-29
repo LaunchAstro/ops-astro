@@ -7,7 +7,8 @@
 // an unpriced report) is not a transition and raises none.
 //
 // The raise points are T2d's settlement (`budget.ts`), hand-back's settlement
-// (`handback.ts`) and cancellation (`recovery/lease-retirement.ts`). A pending
+// (`handback.ts`), cancellation (`recovery/lease-retirement.ts`) and a drop
+// (`recovery/drop.ts`, T3e1), which tells a person as it reactivates the work. A pending
 // gate a proposal opens is the gate engine's (`propose.ts`), and raising there
 // is a gate-engine touch this part does not make.
 //
@@ -18,7 +19,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 
-export type AlertKind = 'settled' | 'failed' | 'cancelled' | 'awaiting_person';
+export type AlertKind = 'settled' | 'failed' | 'cancelled' | 'awaiting_person' | 'dropped';
 
 /** Why a person's move is the next one, on an `awaiting_person` alert. */
 export type WaitingReason = 'needs_approval' | 'liability_unknown' | 'quarantined';

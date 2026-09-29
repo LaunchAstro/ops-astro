@@ -66,6 +66,8 @@ describe('CQ-8 runtime structure', () => {
     expect(parts.map((file) => relative(RUNTIME, file)).toSorted()).toEqual([
       'recovery/authority-loss.ts',
       'recovery/classifier.ts',
+      // T3e1: a drop, and the work coming back from it.
+      'recovery/drop.ts',
       'recovery/lease-retirement.ts',
       // T3d1: a person's recorded outcome, and the pass's reconciliation phase.
       'recovery/outcome.ts',

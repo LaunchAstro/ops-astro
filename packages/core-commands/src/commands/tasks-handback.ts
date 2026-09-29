@@ -5,7 +5,12 @@
 // b483399, H2).
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { handback, type SuccessorRequest } from '../../../core-runtime/src/index.ts';
+import {
+  handback,
+  REPORTED_DROP_CAUSES,
+  type DropCause,
+  type SuccessorRequest,
+} from '../../../core-runtime/src/index.ts';
 import type { HandbackHolder } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isFieldMap, isIdentifier } from './operands.ts';
@@ -39,7 +44,7 @@ export interface HandbackFields {
   readonly successor?: unknown;
 }
 
-export const OUTCOMES: ReadonlySet<string> = new Set(['completed', 'failed']);
+export const OUTCOMES: ReadonlySet<string> = new Set(['completed', 'failed', 'dropped']);
 
 /**
  * The handback refusals that have already written a report row L4 keeps.
@@ -105,7 +110,11 @@ function holderOf(claimant: Claimant): HandbackHolder {
 /** An outcome that is not one. */
 export function refuseOutcome(outcome: unknown): Refused {
   return refused(
-    refuseCommand('FIELD_VALUE_INVALID', ['outcome'], ['An outcome is completed or failed.']),
+    refuseCommand(
+      'FIELD_VALUE_INVALID',
+      ['outcome'],
+      ['An outcome is completed, failed or dropped.'],
+    ),
     { outcome },
   );
 }
@@ -176,6 +185,25 @@ async function settle(
     successor = read.successor;
   }
 
+  // T3e1: a drop names why, and only a failure under the worker: the provider
+  // or the connection to it. Its own loss is the sweep's to name, and a drop
+  // asks for no successor, because the same work comes back.
+  const dropCause = fields.outcome === 'dropped' ? fields.report?.['dropCause'] : undefined;
+  if (
+    fields.outcome === 'dropped' &&
+    (!(REPORTED_DROP_CAUSES as readonly unknown[]).includes(dropCause) || successor !== undefined)
+  ) {
+    return refused(
+      refuseCommand(
+        'FIELD_VALUE_INVALID',
+        ['report'],
+        [
+          `A dropped hand-back names report.dropCause, one of ${REPORTED_DROP_CAUSES.join(', ')}, and asks for no successor.`,
+        ],
+      ),
+    );
+  }
+
   // Both claimants come through here. A lease id that cannot exist names
   // nothing, and answers in the runtime's own bytes for a lease that does not
   // exist (the not-found refusal in `handback`, `core-runtime/src/handback.ts`),
@@ -186,7 +214,8 @@ async function settle(
   const result = await handback(tx, {
     leaseId: fields.leaseId,
     fence: fields.fence,
-    outcome: fields.outcome as 'completed' | 'failed',
+    outcome: fields.outcome as 'completed' | 'failed' | 'dropped',
+    ...(dropCause === undefined ? {} : { dropCause: dropCause as DropCause }),
     report: { ...fields.report },
     actualMinor: null,
     ...(successor === undefined ? {} : { successor }),
