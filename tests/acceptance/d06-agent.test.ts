@@ -50,6 +50,7 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.comment',
   'task.propose',
   'task.heartbeat',
+  'task.dispatch',
   'task.pickup',
   'task.handback',
 ];
@@ -170,7 +171,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       };
       return { body: { operationId, ...body }, credential };
     }
-    if (name === 'task.heartbeat') {
+    if (name === 'task.heartbeat' || name === 'task.dispatch') {
       return { body: { operationId, leaseId: held.leaseId, fence: held.fence }, credential };
     }
     const outcome = { outcome: 'completed', report: { wrote: 'a draft' } };

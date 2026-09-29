@@ -203,7 +203,8 @@ describe.skipIf(serverUrl === undefined)('SOL-R3-2: TEMPORARY after an upgrade f
       await dropping;
 
       expect(await upgrading).toBe('migrated');
-      expect(await lastApplied(on)).toBe('0031');
+      // Every migration since is applied too; 0031 among them is what this case needs.
+      expect((await lastApplied(on)) >= '0031').toBe(true);
       const [held] = await on.admin.execute<{
         readonly first: boolean;
         readonly login: boolean;
