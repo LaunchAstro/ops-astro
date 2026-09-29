@@ -118,18 +118,33 @@ function select(request: PromotionRequest): { path: string; name: string } | str
   if (lines.length !== 1 || request.line.trim() === '' || request.line.length > LONGEST_LINE) {
     return `the owner's one line that they tried this build on staging is needed: one line, at most ${LONGEST_LINE} characters`;
   }
-  const name = artefactName(request.version);
-  const path = join(request.store, name);
+  return storedArtefact(request.version, request.store);
+}
+
+/**
+ * The stored artefact for one version, or why there is none: a clean build
+ * identifier, a directory by the definition's name, and a stamp naming that
+ * same version. The staging deploy (S0-6) and the promotion read it alike.
+ */
+export function storedArtefact(
+  version: string,
+  store: string,
+): { path: string; name: string } | string {
+  if (!CLEAN_BUILD.test(version)) {
+    return `${version} is not a clean build identifier (twelve hex digits, never -dirty)`;
+  }
+  const name = artefactName(version);
+  const path = join(store, name);
   let isDirectory = false;
   try {
     isDirectory = statSync(path).isDirectory();
   } catch {
     // Not there is refused below, the same as not a directory.
   }
-  if (!isDirectory) return `no artefact ${name} in ${request.store}; the step never builds one`;
+  if (!isDirectory) return `no artefact ${name} in ${store}; the step never builds one`;
   const carried = stampOf(path);
-  if (carried !== request.version) {
-    return `${name} carries ${carried ?? 'no stamp'}, not ${request.version}; production gets the build staging ran, never another`;
+  if (carried !== version) {
+    return `${name} carries ${carried ?? 'no stamp'}, not ${version}; production gets the build staging ran, never another`;
   }
   return { path, name };
 }
