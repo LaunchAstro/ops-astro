@@ -6,66 +6,38 @@
 // rule of its own: it builds the owning command's body, posts it once through
 // `createCli` and prints what came back, compactly (`render.ts`). A refusal is
 // the server's. *Map status*, *work this ticket* (`context`) and *changes*
-// join with API-4's reads.
+// join with API-4's reads; the wayfinder tracker's writes (API-5) with
+// `tracker-verbs.ts`.
 
 import { randomUUID } from 'node:crypto';
 import { createCli, isRefusal, type CliOptions } from './client.ts';
 import { pageText, refusalLine, select, text, writeLine } from './render.ts';
 import { COMMAND_SURFACE, type CommandName } from '../../packages/core-wire/src/index.ts';
+import { TRACKER_VERBS, UNAVAILABLE_VERBS } from './tracker-verbs.ts';
+import {
+  detail,
+  fields,
+  idList,
+  maybe,
+  need,
+  optional,
+  revision,
+  target,
+  UsageError,
+  type Body,
+  type Flags,
+  type VerbRow,
+} from './verb-args.ts';
+
+export type { VerbRow } from './verb-args.ts';
 
 export interface VerbAnswer {
   readonly exit: number;
   readonly out: string;
 }
 
-type Flags = Readonly<Record<string, string | true>>;
-type Body = Record<string, unknown>;
-
-export interface VerbRow {
-  readonly verb: string;
-  readonly command: CommandName;
-  /** The words after the verb, as the help shows them. */
-  readonly usage: string;
-  readonly body: (id: string | undefined, flags: Flags) => Body;
-}
-
 const EXIT = { ok: 0, refused: 1, usage: 2, transport: 3, fault: 4 } as const;
-const DETAILS = new Set(['brief', 'standard', 'full']);
 const SWITCHES = new Set(['json']);
-
-class UsageError extends Error {}
-
-const need = (flags: Flags, name: string): string => {
-  const value = flags[name];
-  if (typeof value !== 'string' || value === '') throw new UsageError(`--${name} is needed`);
-  return value;
-};
-const maybe = (flags: Flags, name: string): string | undefined =>
-  typeof flags[name] === 'string' ? flags[name] : undefined;
-const target = (id: string | undefined): string => {
-  if (id === undefined) throw new UsageError('name the task by its id');
-  return id;
-};
-const revision = (flags: Flags): number => {
-  const value = Number(need(flags, 'revision'));
-  if (!Number.isInteger(value)) throw new UsageError('--revision is a whole number');
-  return value;
-};
-const detail = (flags: Flags): string => {
-  const value = maybe(flags, 'detail') ?? 'standard';
-  if (!DETAILS.has(value)) throw new UsageError('--detail is brief, standard or full');
-  return value;
-};
-const fields = (flags: Flags): Body => {
-  const title = maybe(flags, 'title');
-  const description = maybe(flags, 'description');
-  return {
-    ...(title === undefined ? {} : { title }),
-    ...(description === undefined ? {} : { description }),
-  };
-};
-const optional = (key: string, value: string | undefined): Body =>
-  value === undefined ? {} : { [key]: value };
 
 export const VERB_TABLE: readonly VerbRow[] = [
   {
@@ -116,7 +88,7 @@ export const VERB_TABLE: readonly VerbRow[] = [
     body: (id, flags) => ({
       recordId: target(id),
       expectedRevision: revision(flags),
-      blockedBy: (maybe(flags, 'blocked-by') ?? '').split(',').filter((one) => one !== ''),
+      blockedBy: idList(flags, 'blocked-by'),
     }),
   },
   {
@@ -165,6 +137,7 @@ export const VERB_TABLE: readonly VerbRow[] = [
     usage: '<id> [--fields a,b] [--json]',
     body: (id) => ({ recordId: target(id) }),
   },
+  ...TRACKER_VERBS,
 ];
 
 /** The whole help, as an agent loads it: one line per verb. */
@@ -172,7 +145,7 @@ export function verbHelp(): string {
   return [
     'pnpm cli <verb> [args]. Writes print "ok <command> <id> r<revision>"; pass that revision',
     'to the next write. Refusals print one line; exit 0 ok, 1 refused, 2 usage, 3 no answer, 4 fault.',
-    ...VERB_TABLE.map((row) => `  ${row.verb} ${row.usage}`),
+    ...[...VERB_TABLE, ...UNAVAILABLE_VERBS].map((row) => `  ${row.verb} ${row.usage}`),
   ].join('\n');
 }
 
@@ -215,7 +188,12 @@ function shape(row: VerbRow, answered: Readonly<Record<string, unknown>>, flags:
   const body = isWrite(row.command) ? answered : unwrap(answered);
   const picked = maybe(flags, 'fields')?.split(',');
   const asJson = flags['json'] === true;
-  if (isWrite(row.command)) return asJson ? JSON.stringify(body) : writeLine(row.command, body);
+  if (isWrite(row.command)) {
+    if (asJson) return JSON.stringify(body);
+    const made = body['detail'];
+    const more = typeof made === 'object' && made !== null ? (row.more?.(made as Body) ?? '') : '';
+    return `${writeLine(row.command, body)}${more === '' ? '' : ` ${more}`}`;
+  }
   if (Array.isArray(body['page'])) {
     const items = (body['page'] as Readonly<Record<string, unknown>>[]).map((item) =>
       select(item, picked),
@@ -246,6 +224,9 @@ export function createVerbCli(options: CliOptions): {
         flags = parsed.flags;
         const [group = 'help', verb, id, ...extra] = parsed.words;
         if (group === 'help') return { exit: EXIT.ok, out: verbHelp() };
+        // An operation with no home yet answers so here, with nothing sent.
+        const unavailable = UNAVAILABLE_VERBS.find((one) => one.verb === `${group} ${verb ?? ''}`);
+        if (unavailable !== undefined) return { exit: EXIT.refused, out: unavailable.answer };
         row = VERB_TABLE.find((one) => one.verb === `${group} ${verb ?? ''}`);
         if (row === undefined) throw new UsageError(`no verb ${group} ${verb ?? ''}; run help`);
         if (extra.length > 0) throw new UsageError(`unexpected ${extra[0] as string}`);
