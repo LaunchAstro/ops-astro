@@ -18,3 +18,10 @@ export { lookupEffect } from './commands/register-store.ts';
 export { admitReads, executeRead, type Admission, type AdmissionAt } from './reads/execute.ts';
 export { isReadName } from './reads/catalogue.ts';
 export { type ReadRequest } from './reads/requests.ts';
+export {
+  createRollupCache,
+  readRollup,
+  type Rollup,
+  type RollupCache,
+  type RollupCacheOptions,
+} from './reads/rollup.ts';
