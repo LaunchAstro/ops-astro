@@ -96,7 +96,9 @@ const UNITS = [
     // (DS-PRIM-24), so the copy drawn outside a row has none. The label's line
     // height: 1.5 in the mockup, off the one type scale; the kit keeps its
     // eyebrow's 1.4 (drift, not copied). The word chip: the mockup's sheet has
-    // no rule for the kit's `.mocktag` (its own chip is `.unwired-tag`).
+    // no rule for the kit's `.mocktag` (its own chip is `.unwired-tag`). At
+    // 640 and under, the mockup's figure steps down to 28 px; MP-1-4 dropped
+    // that step so a stat never reflows.
   },
   {
     ticket: 'MP-1-6',
