@@ -9,8 +9,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { act } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
-import { BoardGallery, GALLERY_BOARD } from '../../packages/ui/src/board/gallery-fixture.tsx';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  BoardGallery,
+  GALLERY_BOARD,
+  GALLERY_FACETS,
+} from '../../packages/ui/src/board/gallery-fixture.tsx';
 import {
   widthsFromPreference,
   widthsToPreference,
@@ -216,5 +220,208 @@ describe('MP-5-6 on the gallery fixture', () => {
     await board.unmount();
     board = await open({ widths: load(), onWidths: persist });
     expect(shares(board)).toEqual(before);
+  });
+});
+
+const funnelLabels = (board: Mounted): readonly string[] =>
+  board.all('#cbd-menu [data-add]').map((one) => one.textContent ?? '');
+
+const rowCount = (board: Mounted): number => board.all('tbody tr[data-row]').length;
+
+describe('MP-5-7 on the gallery fixture', () => {
+  it('MP-5-7 funnel badge: counts the filters on that no chip on the bar shows', async () => {
+    const board = await open();
+    const funnel = (): Element | null => board.find('[data-funnel]');
+    expect(board.find('[data-funnel] [data-badge]')).toBeNull();
+    expect(funnel()?.getAttribute('aria-label')).toBe('Filters');
+    // A preset's chip shows its own filter: not counted.
+    await board.click('[data-preset="mine"]');
+    expect(board.find('[data-funnel] [data-badge]')).toBeNull();
+    // A filter from the menu and a typed word have no chip of their own.
+    await board.click('[data-funnel]');
+    const overdue = board.find('#cbd-menu [data-add="due:overdue"]');
+    await act(async () => {
+      overdue?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    });
+    await board.type('[data-board-search]', 'zebra');
+    await key(board.find('[data-board-search]') as Element, { key: 'Enter' });
+    expect(board.find('[data-funnel] [data-badge]')?.textContent).toBe('2');
+    expect(funnel()?.getAttribute('aria-label')).toBe('Filters, 2 on that this bar does not show');
+  });
+
+  it('MP-5-7 find a filter: narrows the controls, never the rows', async () => {
+    const board = await open();
+    await board.click('[data-funnel]');
+    expect(document.activeElement?.id).toBe('cbd-menu-q');
+    const rows = rowCount(board);
+    const line = board.find('.cbd__read')?.textContent ?? '';
+    await board.type('#cbd-menu-q', 'ada');
+    expect(funnelLabels(board)).toEqual(['Ada Park']);
+    expect(rowCount(board)).toBe(rows);
+    expect(board.find('.cbd__read')?.textContent ?? '').toBe(line);
+    await board.type('#cbd-menu-q', 'zzz');
+    expect(funnelLabels(board)).toEqual([]);
+    expect(board.find('#cbd-menu')?.textContent).toContain('No filter matches “zzz”.');
+    expect(rowCount(board)).toBe(rows);
+  });
+
+  it('MP-5-7 menu closes: on Escape, with focus back on the funnel, and on an outside click', async () => {
+    const board = await open();
+    const menu = (): Element | null => board.find('#cbd-menu');
+    await board.click('[data-funnel]');
+    expect(menu()?.hasAttribute('hidden')).toBe(false);
+    expect(board.find('[data-funnel]')?.getAttribute('aria-expanded')).toBe('true');
+    await key(board.find('#cbd-menu-q') as Element, { key: 'Escape' });
+    expect(menu()?.hasAttribute('hidden')).toBe(true);
+    expect(document.activeElement?.hasAttribute('data-funnel')).toBe(true);
+    // A click inside the menu keeps it open; one outside closes it.
+    await board.click('[data-funnel]');
+    await pointer(board.find('#cbd-menu .cbd__menuhd') as Element, 'pointerdown', 10);
+    expect(menu()?.hasAttribute('hidden')).toBe(false);
+    await pointer(document.body, 'pointerdown', 10);
+    expect(menu()?.hasAttribute('hidden')).toBe(true);
+    // The funnel toggles it.
+    await board.click('[data-funnel]');
+    await board.click('[data-funnel]');
+    expect(menu()?.hasAttribute('hidden')).toBe(true);
+  });
+
+  it('MP-5-7 gutter at 390: the menu spans the bar inside the page gutter, never past it', () => {
+    expect(SHEET).toMatch(/\.cbd__menu\s*\{[^}]*width:\s*min\(22rem,\s*calc\(100vw - 32px\)\)/u);
+    const narrow = /@media \(max-width: 480px\)\s*\{([\s\S]*?)\n\}/u.exec(SHEET)?.[1] ?? '';
+    expect(narrow).toMatch(/\.cbd__cmd\s*\{[^}]*position:\s*relative/u);
+    expect(narrow).toMatch(/\.cbd__funnelw\s*\{[^}]*position:\s*static/u);
+    expect(narrow).toMatch(/\.cbd__menu\s*\{[^}]*left:\s*0;[^}]*right:\s*0;[^}]*width:\s*auto/u);
+  });
+
+  it('MP-5-7 chip ladder: the chip row takes the first tier that fits one row', async () => {
+    const real = HTMLElement.prototype.getBoundingClientRect;
+    let fitsAt = '56px';
+    const spy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const row = this.closest<HTMLElement>('.cbd__filters');
+        if (row === null) return real.call(this);
+        const fits = row.style.getPropertyValue('--catw') === fitsAt;
+        const box = { x: 0, y: 0, left: 0, right: 80, width: 80, toJSON: () => ({}) };
+        if (this === row) return { ...box, top: 0, bottom: 44, height: 44 };
+        if (this === row.firstElementChild) return { ...box, top: 0, bottom: 30, height: 30 };
+        const top = fits ? 0 : 40;
+        return { ...box, top, bottom: top + 30, height: 30 };
+      });
+    try {
+      const board = await open();
+      const row = board.find('.cbd__filters') as HTMLElement;
+      expect(row.getAttribute('data-tier')).toBe('56');
+      expect(row.style.getPropertyValue('--catw')).toBe('56px');
+      fitsAt = 'never';
+      await board.render(<BoardGallery width={1100} viewport={1480} />);
+      expect(row.getAttribute('data-tier')).toBe('icons');
+      expect(row.style.getPropertyValue('--catw')).toBe('');
+      // The icon tier keeps each chip's name for a screen reader.
+      expect(board.find('[data-preset="mine"]')?.getAttribute('aria-label')).toBe('Ada Park');
+      expect(SHEET).toMatch(/\[data-tier='icons'\] \.cbd__presetw\s*\{[^}]*display:\s*none/u);
+      expect(SHEET).toMatch(/max-width:\s*var\(--catw\)/u);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('MP-5-7 sticky heads: the chip row sticks under the chrome and the heads under the chip row', async () => {
+    const spy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const height = this.classList.contains('cbd__filters') ? 44 : 0;
+        return {
+          x: 0,
+          y: 0,
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: height,
+          width: 0,
+          height,
+          toJSON: () => ({}),
+        };
+      });
+    try {
+      const board = await open();
+      const root = board.find('.cbd') as HTMLElement;
+      expect(root.style.getPropertyValue('--catbar-h')).toBe('44px');
+    } finally {
+      spy.mockRestore();
+    }
+    expect(SHEET).toMatch(
+      /\.cbd__filters\s*\{[^}]*position:\s*sticky;[^}]*top:\s*var\(--chrome-h, 0px\)/u,
+    );
+    expect(SHEET).toMatch(
+      /\.cbd__tbl thead th\s*\{[^}]*position:\s*sticky;[^}]*top:\s*calc\(var\(--chrome-h, 0px\) \+ var\(--catbar-h, 0px\)\)/u,
+    );
+    // A scroll container would pin the heads to itself, not the page.
+    expect(SHEET).toMatch(/\.cbd__wrap\s*\{[^}]*overflow-x:\s*clip/u);
+  });
+
+  it('MP-5-7 board only: the bar sits in the title row and leaves it with the board', async () => {
+    const title = document.createElement('div');
+    document.body.append(title);
+    try {
+      const board = await open({ bar: title });
+      expect(title.querySelector('[data-funnel]')).not.toBeNull();
+      expect(title.querySelector('[data-board-search]')).not.toBeNull();
+      expect(board.find('.cbd [data-funnel]')).toBeNull();
+      // Another panel is showing: the board is hidden and its bar goes with it.
+      await board.render(<BoardGallery width={1200} viewport={1480} bar={title} hidden />);
+      expect(title.childElementCount).toBe(0);
+      expect(board.find('.cbd')?.hasAttribute('hidden')).toBe(true);
+      await board.render(<BoardGallery width={1200} viewport={1480} bar={title} />);
+      expect(title.querySelector('[data-funnel]')).not.toBeNull();
+    } finally {
+      title.remove();
+    }
+  });
+
+  it('MP-5-7 no sync button: the freshness stamp is an indicator, derived from the newest record', async () => {
+    const now = new Date('2026-09-29T12:00:00Z');
+    const board = await open({ changedAt: '2026-09-29T10:00:00Z', now });
+    const stamp = board.find('[data-freshness]') as HTMLElement;
+    expect(stamp.textContent).toContain('Updated 2 hours ago');
+    expect(stamp.textContent).toContain('2h ago');
+    expect(stamp.tagName).not.toBe('BUTTON');
+    expect(stamp.querySelector('button, a, [tabindex]')).toBeNull();
+    expect(stamp.hasAttribute('tabindex')).toBe(false);
+    const buttons = board.all('button').map((one) => one.textContent ?? '');
+    expect(buttons.some((text) => /sync/iu.test(text))).toBe(false);
+    expect(board.text()).not.toMatch(/sync/iu);
+    await board.render(<BoardGallery width={1200} viewport={1480} changedAt={null} now={now} />);
+    expect(board.find('[data-freshness]')).toBeNull();
+  });
+
+  it('MP-5-7 owner check: chips and heads stay in view, and the funnel lists every filter', async () => {
+    const board = await open();
+    await board.click('[data-funnel]');
+    expect(funnelLabels(board)).toHaveLength(5);
+    const more = board.find('#cbd-menu [data-showall]');
+    expect(more?.textContent).toBe(`Show all filters (${String(GALLERY_FACETS.length - 5)} more)`);
+    await board.click('#cbd-menu [data-showall]');
+    expect([...funnelLabels(board)].toSorted()).toEqual(
+      GALLERY_FACETS.map((one) => one.label).toSorted(),
+    );
+    expect(board.find('#cbd-menu [data-showall]')?.textContent).toBe('Show fewer filters');
+    // Ranked by rows: no filter holds more rows than the one above it.
+    const counts = board
+      .all('#cbd-menu [data-add]')
+      .map((one) => Number(one.getAttribute('data-count')));
+    // Within each kind's group the order is by count.
+    const groups = board.all('#cbd-menu .cbd__menugrp');
+    for (const group of groups) {
+      const inGroup = [...group.querySelectorAll('[data-add]')].map((one) =>
+        Number(one.getAttribute('data-count')),
+      );
+      expect(inGroup).toEqual([...inGroup].toSorted((a, b) => b - a));
+    }
+    expect(counts.length).toBe(GALLERY_FACETS.length);
+    // The chip row and the heads are the sticky pair.
+    expect(board.find('.cbd__filters')).not.toBeNull();
+    expect(board.find('thead')).not.toBeNull();
   });
 });
