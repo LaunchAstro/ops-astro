@@ -862,6 +862,26 @@ first, the lock `conversation.message` takes:
   over `retention_window_days`. A purged conversation answers `replayed`, with
   no second audit event (`conversation.purge`, actor the business's worker).
 
+Both compare a wrap-up's `activity_through` with the conversation's
+`last_activity_at` in SQL, so the covering check holds to the microsecond.
+`sweepConversations` (`commands/conversation-sweep.ts`) is one pass over one
+business: the wrap-up for each quiet conversation without one, then the purge
+for each whose covering wrap-up existed before the pass, never both in one
+pass. Each conversation is its own transaction under a lock timeout, so a
+failure is that conversation's alone, reported with its body kept; an
+unreadable window stops the purge for the business and the report says so.
+The purge's operation identity is derived from the conversation and its last
+activity, so a retried pass asks for the same purge. Nothing schedules the
+pass yet, and raising a failure as an inbox item is INB-1's.
+
+Which conversation created a task is a fact of the task's creation audit
+event: `audit_events.origin_conversation_id` (0034), a same-business
+reference to `conversations`, in the chain's one hash formula
+(`audit_event_hash`, thirteen arguments). A null adds nothing to the hashed
+text, so events without one hash as they did before 0034. The command that
+creates a task from a conversation sets it; until that command exists, the
+wrap-up's "tasks created" item says no task records the conversation.
+
 ## Source-to-route manifest
 
 Every route is generated from `COMMAND_SURFACE`
