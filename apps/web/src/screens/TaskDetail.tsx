@@ -140,7 +140,11 @@ interface SaveAttempt {
 export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const client = props.client;
   const [draft, setDraft] = useState<Draft | null>(null);
-  const { state, reload } = useRead<TaskReadResult>({
+  const {
+    state,
+    reload,
+    held: changed,
+  } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
     deps: [props.taskKey],
@@ -193,6 +197,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
               grantKey={props.grantKey}
               task={value.task}
               draft={held}
+              changed={changed}
               note={note}
               onDecided={setNote}
               commentRefusal={commentRefusal}
@@ -476,6 +481,8 @@ interface LoadedProps {
   readonly task: Task;
   /** The unsaved edit, or nothing. Its presence is what "dirty" means. */
   readonly draft: Draft | null;
+  /** The task changed while the edit was unsaved (C4 live-sync 4). */
+  readonly changed: boolean;
   /** What the server said about the last decision, or nothing. */
   readonly note: DecisionNote | null;
   readonly onDecided: (note: DecisionNote | null) => void;
@@ -571,7 +578,7 @@ function Loaded(props: LoadedProps): ReactElement {
         onDiscard={props.onDiscard}
       />
 
-      <UnsavedBar dirty={dirty} busy={busy} onDiscard={props.onDiscard} />
+      <UnsavedBar dirty={dirty} changed={props.changed} busy={busy} onDiscard={props.onDiscard} />
 
       <Lifecycle
         disabled={busy || dirty}
