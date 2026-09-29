@@ -27,6 +27,7 @@
 import type { PresetField, PresetPlan } from '../../../core-records/src/index.ts';
 import type { ProposalView } from './proposals.ts';
 import type { QueuedWork } from './queue.ts';
+import type { TaskExecution } from './execution.ts';
 import type { SettingView } from './settings.ts';
 import type { Capability } from './capabilities.ts';
 import type { Alert, Receipt } from '../../../core-runtime/src/index.ts';
@@ -148,6 +149,11 @@ export interface ReadOperands {
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
   /**
+   * The task's runs and their progress events after `cursor`, a position the
+   * caller already holds (0 for the start). See `reads/execution.ts`.
+   */
+  readonly 'task.execution': { readonly recordId: string; readonly cursor: number };
+  /**
    * What a preset would do to this business's model, computed without doing
    * any of it. It is a read because it writes nothing — including on success,
    * which is D05's whole claim — and it asks for `manage` on presets rather
@@ -207,6 +213,7 @@ export type ReadResult =
   | { readonly ok: true; readonly tasks: readonly TaskSummary[] }
   | { readonly ok: true; readonly persons: readonly PersonView[] }
   | { readonly ok: true; readonly queue: readonly QueuedWork[]; readonly alerts: readonly Alert[] }
+  | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly plan: PresetPlan }
   | { readonly ok: true; readonly settings: readonly SettingView[] }
   | { readonly ok: true; readonly receipt: Receipt }

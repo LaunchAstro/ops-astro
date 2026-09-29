@@ -134,10 +134,13 @@ interface SaveAttempt {
 
 export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const client = props.client;
+  const [draft, setDraft] = useState<Draft | null>(null);
   const { state, reload } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
     deps: [props.taskKey],
+    live: (signal) => client.openLive(props.taskKey, signal),
+    paused: draft !== null,
   });
 
   // **The draft lives above the read.** `RecordState` unmounts `Loaded` while a
@@ -147,7 +150,6 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   // authority would be stale authorised data left on the screen, which is the
   // thing that must not happen.
   const identity = `${props.grantKey}\u0000${props.taskKey}`;
-  const [draft, setDraft] = useState<Draft | null>(null);
   if (draft !== null && (draft.identity !== identity || state.outcome === 'denied')) {
     setDraft(null);
   }

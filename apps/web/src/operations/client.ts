@@ -79,6 +79,8 @@ export const READ_NAMES = [
   'preset.plan',
   // What an observed effect came from (T2c2); the task page draws it in T2g.
   'task.receipt',
+  // A task's runs and their progress events (T2a).
+  'task.execution',
 ] as const;
 
 /**
@@ -254,6 +256,23 @@ export class OperationsClient {
       payload['expectedRevision'] = options.expectedRevision;
     }
     return this.#post<CommandOutcome>(name, payload);
+  }
+
+  /** The task's live channel (T2f), or nothing if the join is refused or unreachable. */
+  async openLive(
+    recordId: string,
+    signal: AbortSignal,
+  ): Promise<ReadableStream<Uint8Array> | null> {
+    const { origin, businessKey, token } = this.#options;
+    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live/task/${encodeURIComponent(recordId)}`;
+    const headers: Record<string, string> =
+      token === null ? {} : { authorization: `Bearer ${token}` };
+    try {
+      const response = await this.#options.fetch(url, { headers, signal });
+      return response.ok ? response.body : null;
+    } catch {
+      return null;
+    }
   }
 
   async #post<T>(

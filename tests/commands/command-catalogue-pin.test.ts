@@ -169,6 +169,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.create',
   'task.decide',
   'task.dispatch',
+  'task.execution',
   'task.handback',
   'task.heartbeat',
   'task.observe',
@@ -361,13 +362,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-five from an expected revision', () => {
+  it('exempts the same twenty-six from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same eleven, two of them before a pickup', () => {
+  it('lets an agent reach the same twelve, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

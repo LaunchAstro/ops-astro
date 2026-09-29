@@ -76,6 +76,7 @@ export {
   type OutcomeRecorded,
   type RecordedOutcome,
 } from './recovery/outcome.ts';
+export { appendRunEvent, type RunEvent, type RunEventKind } from './run-events.ts';
 export {
   cancelAndClassify,
   classifyUnderLocks,

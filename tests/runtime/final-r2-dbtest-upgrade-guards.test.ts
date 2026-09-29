@@ -20,6 +20,7 @@
 // with its rows as they were, and the ledger does not record 0031.
 
 import { randomUUID } from 'node:crypto';
+import { readdirSync } from 'node:fs';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   APPLICATION_ROLE,
@@ -203,8 +204,12 @@ describe.skipIf(serverUrl === undefined)('SOL-R3-2: TEMPORARY after an upgrade f
       await dropping;
 
       expect(await upgrading).toBe('migrated');
-      // Every migration since is applied too; 0031 among them is what this case needs.
-      expect((await lastApplied(on)) >= '0031').toBe(true);
+      // Every migration on disk, whichever is the head, not 0031 by name.
+      const head = readdirSync('migrations')
+        .filter((f) => f.endsWith('.sql'))
+        .toSorted()
+        .at(-1);
+      expect(await lastApplied(on)).toBe(head?.slice(0, 4));
       const [held] = await on.admin.execute<{
         readonly first: boolean;
         readonly login: boolean;

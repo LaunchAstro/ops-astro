@@ -31,6 +31,7 @@ import {
 } from './tasks.ts';
 import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
+import { readTaskExecution } from './execution.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
@@ -223,7 +224,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // answer. `null` is the list of tasks on no board and is not a lookup.
       if (
         typeof operands.board === 'string' &&
-        !(await boardExists(tx, spine.taskTypeId, operands.board))
+        !(await liveTask(tx, spine.taskTypeId, operands.board))
       ) {
         return refuseNotFound();
       }
@@ -254,6 +255,36 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       queue: await readQueue(tx),
       alerts: isInternalReader(session.roleKey) ? await readAlerts(tx) : [],
     }),
+  },
+  // The task's runs, after the grant at the task's record scope. It is
+  // internal work: an external party is answered as for a task it cannot see,
+  // whether or not a share lets it read the task itself.
+  'task.execution': {
+    identifiers: ['recordId'],
+    parse({ recordId, cursor }) {
+      if (typeof recordId !== 'string') {
+        return rejected('recordId', 'Send recordId as the task’s identifier or its key.');
+      }
+      if (cursor === undefined) return parsed({ recordId, cursor: 0 });
+      return Number.isSafeInteger(cursor) && Number(cursor) >= 0
+        ? parsed({ recordId, cursor: Number(cursor) })
+        : rejected('cursor', 'Send cursor as a whole number of at least 0, or leave it out.');
+    },
+    spine: true,
+    subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
+    authority: 'declared',
+    outsiderNotFound: true,
+    async serve(tx, session, operands, { spine, recordId }) {
+      // Not there, in another business or trashed: one answer, as `task.read` gives.
+      if (
+        recordId === undefined ||
+        !isInternalReader(session.roleKey) ||
+        !(await liveTask(tx, spine.taskTypeId, recordId))
+      ) {
+        return refuseNotFound();
+      }
+      return { ok: true, execution: await readTaskExecution(tx, recordId, operands.cursor) };
+    },
   },
   'preset.plan': {
     identifiers: [],
@@ -348,13 +379,13 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   },
 };
 
-/** Whether `board` names a live task in the caller's business: `task.move`'s own check. */
-async function boardExists(tx: TenantQuery, taskTypeId: string, board: string): Promise<boolean> {
-  if (!isUuid(board)) return false;
+/** Whether `id` names a live task in the caller's business: `task.move`'s own check. */
+async function liveTask(tx: TenantQuery, taskTypeId: string, id: string): Promise<boolean> {
+  if (!isUuid(id)) return false;
   const found = await tx.query<{ readonly id: string }>(
     `select id from records
       where business_id = $1 and record_type_id = $2 and id = $3 and deleted_at is null`,
-    [tx.businessId, taskTypeId, board],
+    [tx.businessId, taskTypeId, id],
   );
   return found.length > 0;
 }

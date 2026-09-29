@@ -40,11 +40,12 @@ import { Hono } from 'hono';
 import {
   connect,
   connectAsAdmin,
+  connectListener,
   isBusinessId,
   KEY_FILE_VARIABLE,
 } from '../../packages/core-records/src/index.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
-import { createApi, type ReadExecutor } from './app.ts';
+import { createApi, type LiveOptions, type ReadExecutor } from './app.ts';
 import {
   executeAgentCommand,
   describeFault,
@@ -59,6 +60,7 @@ import {
 } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createSupabaseVerifier } from './auth/supabase.ts';
+import { startLiveTopics } from './live.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import {
   describeRecovered,
@@ -179,6 +181,8 @@ export interface ApiConfig {
   readonly executeRead?: ReadExecutor;
   /** Read once at process start (`identity.ts`); absent, the identity route is not mounted. */
   readonly identity?: ServedIdentity;
+  /** The live task channel, started by `main`; absent, the event route is not mounted. */
+  readonly live?: LiveOptions;
 }
 
 export interface ComposedApi {
@@ -208,8 +212,12 @@ export function composeApi(config: ApiConfig): ComposedApi {
   server.get('/api/health', async (context) => {
     let reachable = false;
     let detail = '';
+    let notificationQueue: number | null = null;
     try {
-      await admin.execute('select 1 as ok');
+      const [row] = await admin.execute<{ usage: number }>(
+        'select pg_notification_queue_usage() as usage',
+      );
+      notificationQueue = row?.usage ?? null;
       reachable = true;
     } catch (cause) {
       detail = cause instanceof Error ? cause.message : 'unknown';
@@ -219,6 +227,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
         ok: reachable,
         database: reachable ? 'reachable' : 'unreachable',
         reads: 'mounted',
+        ...(config.live === undefined
+          ? {}
+          : { live: config.live.topics.listening ? 'listening' : 'down', notificationQueue }),
         detail,
       },
       reachable ? 200 : 503,
@@ -249,6 +260,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
       executeRead,
       executeCommand,
       executeAgentCommand,
+      ...(config.live === undefined ? {} : { live: config.live }),
     }),
   );
 
@@ -312,6 +324,10 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // LISTEN needs a direct or session-mode connection: hosted, `DATABASE_LISTEN_URL`.
+  const listenUrl = environment['DATABASE_LISTEN_URL'] ?? (databaseUrl as string);
+  const topics = await startLiveTopics(connectListener(listenUrl));
+
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
   // keys through the same resolver the requests will.
@@ -322,6 +338,7 @@ async function main(): Promise<void> {
     secret: secret as string,
     issuer: issuer as string,
     keys,
+    live: { topics },
   });
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
@@ -339,7 +356,7 @@ async function main(): Promise<void> {
   const recovered = await withRuntimeKeys(keys, recovery);
   if (!recovered.ok) {
     console.error(`api: ${recovered.problem}`);
-    await Promise.allSettled([database.close(), admin.close()]);
+    await Promise.allSettled([database.close(), admin.close(), topics.close()]);
     process.exit(1);
   }
   for (const business of recovered.businesses) console.log(describeRecovered(business));
@@ -362,7 +379,9 @@ async function main(): Promise<void> {
 
   const stop = (): void => {
     sweeper.stop();
-    void Promise.allSettled([database.close(), admin.close()]).then(() => process.exit(0));
+    void Promise.allSettled([database.close(), admin.close(), topics.close()]).then(() =>
+      process.exit(0),
+    );
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
