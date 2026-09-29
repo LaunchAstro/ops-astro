@@ -326,6 +326,26 @@ describe.skipIf(url === undefined)('T3d1: the reconciliation pass', { timeout: 6
     expect(await h.t3b.money(w)).toMatchObject({ envelope_held: '0' });
   });
 
+  it('Sol proof, criterion 2: a happened outcome stops an absence-proof replacement before dispatch', async () => {
+    const original = await h.unknownStep({ applied: false, room: true });
+    expect(await h.reconcile()).toMatchObject([
+      { attemptId: original.attemptId, answer: 'absent' },
+    ]);
+    const picked = await pickup(s, await h.replacement(original));
+    const replacement = {
+      ...original,
+      picked,
+      credential: String(picked['credential']),
+      attemptId: String(picked['attemptId']),
+    };
+
+    appliedDetail(await h.outcome(original, 'happened'), 'budget.record_outcome');
+    const before = await h.t3b.snapshot();
+    expect(codeOf(await h.t2d.held(replacement, { command: 'task.dispatch' }))).not.toBe('applied');
+    expect(await h.t3b.snapshot()).toStrictEqual(before);
+    expect(await h.effects(original)).toBe(0);
+  });
+
   it('T3 isolation and authority: an agent, a person without the grant, another client and another business record nothing', async () => {
     // Client to client: an external client on its own shared task, holding a
     // money grant there that R4 never lets it use, records nothing anywhere;
