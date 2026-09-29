@@ -111,6 +111,8 @@
   --dur-fast: 0.12s;
   --dur: 0.18s;
   --dur-1: 220ms;
+  /* The rail's fold and the dock's seat and float: 420ms (SIDEBAR DS-SIDE-11). */
+  --dur-2: 420ms;
 
   /* -- Spacing. The 8px rhythm at 4px granularity. ----------------------- */
   --s-1: 0.25rem;
