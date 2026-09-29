@@ -563,3 +563,60 @@ td[data-tight] {
 .brn.is-over .brn__fig {
   color: var(--danger);
 }
+
+/* The Projects row's controls (MP-5-9, P-30, P-32, P-33). The tick sits
+   before the name; the rename input is sized to the cell so the row keeps
+   its height; the hover box shows on row hover or focus, and at rest below
+   900, where there is no hover. */
+.cbd__tick {
+  flex: none;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.cbd__rename {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 1.6em;
+  padding: 0 4px;
+  font: inherit;
+}
+
+.cbd__routes--pop {
+  display: none;
+  flex: none;
+  gap: 2px;
+  margin-left: auto;
+}
+
+tr:hover .cbd__routes--pop,
+tr:focus-within .cbd__routes--pop {
+  display: inline-flex;
+}
+
+@media (max-width: 900px) {
+  .cbd__routes--pop {
+    display: inline-flex;
+  }
+}
+
+.cbd__route {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 0.8em;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cbd__route:hover {
+  border-color: var(--text);
+  color: var(--text);
+}
