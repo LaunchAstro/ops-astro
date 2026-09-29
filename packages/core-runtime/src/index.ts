@@ -70,15 +70,13 @@ export {
 } from './handback.ts';
 export { AffectedSetChanged, requireUnchanged } from './rediscovery.ts';
 export { appendRunEvent, type RunEvent, type RunEventKind } from './run-events.ts';
+export { reconcileUnknown, type EffectLookup, type Reconciled } from './recovery/reconcile.ts';
 export {
-  reconcileUnknown,
   recordOutcome,
   RECORDED_OUTCOMES,
-  type EffectLookup,
   type OutcomeRecorded,
-  type Reconciled,
   type RecordedOutcome,
-} from './recovery/reconcile.ts';
+} from './recovery/outcome.ts';
 export {
   cancelAndClassify,
   classifyUnderLocks,
