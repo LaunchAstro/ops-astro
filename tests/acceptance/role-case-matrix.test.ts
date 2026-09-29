@@ -190,8 +190,11 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
               caller.name,
               'e-no-grant',
               declaration.name,
-              'not applicable: self-scoped preference:write; another person’s item ' +
-                'is NOT_FOUND in tests/reads/inbox.test.ts',
+              declaration.name === 'notifications.set_channel'
+                ? 'not applicable: self-scoped preference:write; the setting is only ever ' +
+                    'the caller’s own, refused by its rule in tests/commands/inbox-unattended.test.ts'
+                : 'not applicable: self-scoped preference:write; another person’s item ' +
+                    'is NOT_FOUND in tests/reads/inbox.test.ts',
             );
             continue;
           }

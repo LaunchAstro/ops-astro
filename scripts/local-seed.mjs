@@ -101,6 +101,10 @@ const GRANTS_BY_ROLE = {
     // stays `manage` above; this is the half that lets a screen show the
     // four-eyes band instead of guessing at it.
     ['settings', 'read'],
+    // The operations view's key (C55): owner and administrators by install
+    // default, never a member, never an agent. `inbox.unattended` asks it
+    // (INB-1e), and it names other people's items.
+    ['operations', 'read'],
   ],
   member: [
     ['task', 'read'],

@@ -84,6 +84,7 @@ export {
   type Mentioned,
 } from './inbox/raise.ts';
 export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
+export { readUnattended, type UnattendedItem } from './inbox/unattended.ts';
 export {
   isSettingRevisionStale,
   readBusinessSetting,

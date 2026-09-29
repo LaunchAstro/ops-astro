@@ -14,7 +14,7 @@
 // permission-checked list and count are later parts' (INB-1b to INB-1d); this
 // module is the record they call.
 
-import { effectiveGrants, type Scope, type Subject } from '../authority/grants.ts';
+import { effectiveGrants, type Action, type Scope, type Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /** Why the item is owed to the recipient: CS-16.8's reasons, one each. */
@@ -245,16 +245,37 @@ async function accessOf(
   trashed: boolean,
   clientId: string | null,
 ): Promise<InboxAccess> {
+  if (!(await holds(tx, subjects, taskId, clientId, 'read'))) return 'withheld';
+  return trashed ? 'gone' : 'readable';
+}
+
+/**
+ * Whether a person holds `task:<action>` on a task now (INB-1e), through the
+ * same walk access takes: an unattended item asks read of every recipient,
+ * and decide of a decision's.
+ */
+export async function holdsOnTask(
+  tx: TenantQuery,
+  personId: string,
+  task: { readonly id: string; readonly clientId: string | null },
+  action: Action,
+): Promise<boolean> {
+  return await holds(tx, await recipientSubjects(tx, personId), task.id, task.clientId, action);
+}
+
+async function holds(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+  taskId: string,
+  clientId: string | null,
+  action: Action,
+): Promise<boolean> {
   const scopes: Scope[] = [{ kind: 'record', id: taskId }];
   if (clientId !== null) scopes.push({ kind: 'party', id: clientId });
   for (const scope of scopes) {
     // oxlint-disable-next-line no-await-in-loop
-    const grants = await effectiveGrants(tx, subjects, {
-      collection: 'task',
-      action: 'read',
-      scope,
-    });
-    if (grants.length > 0) return trashed ? 'gone' : 'readable';
+    const grants = await effectiveGrants(tx, subjects, { collection: 'task', action, scope });
+    if (grants.length > 0) return true;
   }
-  return 'withheld';
+  return false;
 }
