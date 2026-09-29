@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The error sink (ticket S0-2; GlitchTip, decided C29-3) and how an alert
-// reaches it, the security detections' included. The boundary is this code, before the first copy (tracing
-// contract 9.2): an event is built from an allowlist, the error's class, its
-// in-app frames, the release and the plain words, and never the error's
-// message, which may hold anything. The sink mails each event at once to the
-// owner and the second operator from its own mail, so the product sends no
-// mail and holds no address. A sink that is down never fails a request.
+// The error sink (ticket S0-2; GlitchTip, decided C29-3) and how an alert,
+// the security detections' included, reaches it. The boundary is this code,
+// before the first copy (tracing contract 9.2): an event is built from an
+// allowlist, a standard error class, the file and line of each in-app frame,
+// the release and the plain words. Never the error's message, a custom class
+// name or a function name, which code or a message may fill with anything,
+// and building an event never throws. The sink mails each event at once to
+// the owner and the second operator from its own mail, so the product sends
+// no mail and holds no address. A sink that is down never fails a request.
 
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -15,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { plainAlert, type AlertKind, type Where } from './catalogue.ts';
 import { createDetector, type SecuritySignal } from './detect.ts';
 
-export type Frame = { filename: string; function: string; lineno: number; in_app: true };
+export type Frame = { filename: string; lineno: number; in_app: true };
 
 /** The sink's store event, as far as this code fills it. */
 export interface SinkEvent {
@@ -49,9 +51,10 @@ export interface Alerts {
   readonly settled: () => Promise<void>;
 }
 
-const NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/u;
-const FUNCTION = /^[A-Za-z_$<][\w$.<>]{0,127}$/u;
-const FRAME = /^\s*at (?:(.+?) \()?(.+?):(\d+):\d+\)?$/u;
+// The standard classes only: any other name is set by code and could carry anything.
+const STANDARD = new Set(['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError']);
+STANDARD.add('URIError').add('EvalError').add('AggregateError');
+const FRAME = /^\s*at (?:.+? \()?(.+?):(\d+):\d+\)?$/u;
 const RELEASE = /^[0-9a-f]{12}(?:-dirty)?$/u;
 
 function base(level: SinkEvent['level'], alert: AlertKind, where: Where, release?: string) {
@@ -70,23 +73,42 @@ function base(level: SinkEvent['level'], alert: AlertKind, where: Where, release
 function framesOf(stack: string, root: string): Frame[] {
   const frames: Frame[] = [];
   for (const line of stack.split('\n').slice(1)) {
-    const [, name, location = '', lineno = '0'] = FRAME.exec(line) ?? [];
-    const path = location.startsWith('file://') ? fileURLToPath(location) : location;
-    const filename = relative(root, path).split(sep).join('/');
-    // Only a file of ours that exists: a message can forge a frame line, never a file.
-    const ours = !filename.startsWith('..') && !filename.includes('node_modules');
-    if (!path.startsWith('/') || !ours || !existsSync(path)) continue;
-    const fn = name !== undefined && FUNCTION.test(name) ? name : '?';
-    frames.push({ filename, function: fn, lineno: Number(lineno), in_app: true });
+    // A frame is a file of ours that exists and a line number, nothing more: a message
+    // can forge a frame line, never a file, and a function name is not sent at all.
+    // A line that cannot be read is skipped: building the event never throws.
+    try {
+      const [, location = '', lineno = '0'] = FRAME.exec(line) ?? [];
+      const path = location.startsWith('file://') ? fileURLToPath(location) : location;
+      const filename = relative(root, path).split(sep).join('/');
+      const ours = !filename.startsWith('..') && !filename.includes('node_modules');
+      if (!path.startsWith('/') || !ours || !existsSync(path)) continue;
+      frames.push({ filename, lineno: Number(lineno), in_app: true });
+    } catch {
+      continue;
+    }
   }
   // The sink reads frames oldest first; a stack prints newest first.
   return frames.toReversed();
 }
 
+/** A string property of a thrown value, or empty: a getter that throws is read as nothing. */
+function text(read: () => unknown): string {
+  try {
+    const value = read();
+    return typeof value === 'string' ? value : '';
+  } catch {
+    return '';
+  }
+}
+
 export function errorEvent(cause: unknown, place: Place): SinkEvent {
   const error = cause instanceof Error ? cause : undefined;
-  const type = error !== undefined && NAME.test(error.name) ? error.name : 'Error';
-  const frames = framesOf(error?.stack ?? '', place.root);
+  const name = text(() => error?.name);
+  const type = STANDARD.has(name) ? name : 'Error';
+  const frames = framesOf(
+    text(() => error?.stack),
+    place.root,
+  );
   const value = plainAlert('app-error', place.where).text;
   return {
     ...base('error', 'app-error', place.where, place.release),

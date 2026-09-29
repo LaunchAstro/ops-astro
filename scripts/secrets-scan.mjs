@@ -121,4 +121,25 @@ try {
   rmSync(mirror, { recursive: true, force: true });
 }
 
-if (status !== 0) fail(`gitleaks exited ${status}. A file that can be committed carries a secret.`);
+if (status !== 0) {
+  await raiseAlert();
+  fail(`gitleaks exited ${status}. A file that can be committed carries a secret.`);
+}
+
+/**
+ * A failed scan where the error sink is set (staging's and production's
+ * runs, ticket S0-2) raises the owner's alert, in plain words and naming no
+ * file. Loaded only then, so a copy of this script outside the repository
+ * still scans. An alert that cannot be raised never turns the failure into a pass.
+ */
+async function raiseAlert() {
+  if (!process.env['OPS_ERROR_SINK_DSN']) return;
+  try {
+    const { createAlerts, sinkFrom } = await import('../apps/api/alerts/sink.ts');
+    const alerts = createAlerts({ ...sinkFrom(process.env), root });
+    alerts.observe({ kind: 'secret-scan-failed' });
+    await alerts.settled();
+  } catch {
+    console.error('secrets: the alert could not be raised; the scan still fails.');
+  }
+}

@@ -6,7 +6,8 @@
 //   node scripts/ops/alerts.mjs test
 //
 // `plan` prints what the off-box watcher (UptimeRobot) and the error sink
-// (GlitchTip) are set up with: each check, named in plain words, and who is
+// (GlitchTip) are set up with: each check, its name and its alert message in
+// plain words (what broke, what it affects, what happens next), and who is
 // mailed; it registers nothing. `--test` mails the agreed test address instead,
 // for case R8. `test` sends one test alert through the sink. Settings come from
 // the environment (deploy/staging/README.md); exit 1 names a bad one, never its value.
@@ -42,7 +43,8 @@ function watched(name) {
 
 function monitorsFor(where, base) {
   const check = (watch, type, url, kind) => {
-    return { environment: where, watch, type, url, name: plainAlert(kind, where).title };
+    const { title, text } = plainAlert(kind, where);
+    return { environment: where, watch, type, url, name: title, message: text };
   };
   return [
     check('web', 'http', base, 'web-down'),
@@ -61,8 +63,14 @@ function plan(test) {
     monitors.push(...monitorsFor('production', watched('OPS_WATCH_PRODUCTION_URL')));
   }
   const sink = new URL(dsn);
-  const name = plainAlert('sink-down', 'staging').title;
-  monitors.push({ watch: 'error sink', type: 'http', url: `${sink.origin}/_health/`, name });
+  const { title: name, text: message } = plainAlert('sink-down', 'staging');
+  monitors.push({
+    watch: 'error sink',
+    type: 'http',
+    url: `${sink.origin}/_health/`,
+    name,
+    message,
+  });
   const every = 'every minute; mail at once when a check fails and when it is back';
   const rule = 'every event, at once, by email';
   const out = { channel: 'email', recipients, every, monitors, sink: { rule, recipients } };

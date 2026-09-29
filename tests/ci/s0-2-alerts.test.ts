@@ -81,13 +81,8 @@ describe('S0-2 errors land in the error sink', () => {
     expect(exception?.type).toBe('TypeError');
     expect(exception?.value).toBe(plainAlert('app-error', 'staging').text);
     expect(exception?.stacktrace.frames).toEqual([
-      { filename: 'apps/api/app.ts', function: '?', lineno: 231, in_app: true },
-      {
-        filename: 'packages/core-commands/src/reads/execute.ts',
-        function: 'readTask',
-        lineno: 40,
-        in_app: true,
-      },
+      { filename: 'apps/api/app.ts', lineno: 231, in_app: true },
+      { filename: 'packages/core-commands/src/reads/execute.ts', lineno: 40, in_app: true },
     ]);
     expect(event).toMatchObject({
       level: 'error',
@@ -108,13 +103,37 @@ describe('S0-2 errors land in the error sink', () => {
     expect(sink.events[0]?.exception?.values[0]?.stacktrace.frames.length).toBeGreaterThan(0);
   });
 
-  it('a thrown value that is not an Error, or a class name that is not a name, is reported as Error', () => {
+  it('a thrown value that is not an Error, or a class name that is not a standard one, is reported as Error', () => {
     const odd = new Error('x');
     odd.name = 'Refused for jo@example.com';
-    for (const cause of [odd, 'a string', { secret: 'x' }, undefined]) {
+    const named = new Error('x');
+    named.name = 'PlantedWordsLettersOnly';
+    class Custom extends Error {}
+    for (const cause of [odd, named, new Custom('x'), 'a string', { secret: 'x' }, undefined]) {
       const event = errorEvent(cause, { where: 'production', root: ROOT });
       expect(event.exception?.values[0]?.type).toBe('Error');
     }
+  });
+
+  it('a thrown value whose name or stack cannot be read still reaches the sink, with no frames', async () => {
+    const sink = fakeSink();
+    const alerts = createAlerts({ send: sink.send, where: 'staging', root: ROOT });
+    const hostile = new Error('x');
+    Object.defineProperty(hostile, 'stack', {
+      get: () => {
+        throw new Error('no');
+      },
+    });
+    Object.defineProperty(hostile, 'name', {
+      get: () => {
+        throw new Error('no');
+      },
+    });
+    const malformed = new Error('x');
+    malformed.stack = 'Error: x\n    at f (file://%:1:1)\n    at g (file:///%E0%A4%A:2:2)';
+    await alerts.fault(hostile);
+    await alerts.fault(malformed);
+    expect(sink.events.map((e) => e.exception?.values[0]?.stacktrace.frames)).toEqual([[], []]);
   });
 
   it('the transport posts to the sink store named by the DSN, the key in the auth header only', async () => {
@@ -236,9 +255,9 @@ describe('S0-2 security alerts (TR-SEC-9): one detection each', () => {
 
   it('S0-2 security: unusual export or download volume raises one alert', () => {
     const d = detectorFor();
-    d.observe({ kind: 'export', ...alpha, client: 'c1', items: 150 });
+    d.observe({ kind: 'export', ...alpha, who: 'c1', items: 4000 });
     expect(d.raised).toEqual([]);
-    d.observe({ kind: 'export', ...alpha, client: 'c1', items: 50 });
+    d.observe({ kind: 'export', ...alpha, who: 'c1', items: 1000 });
     expect(d.raised).toEqual(['export-volume']);
   });
 

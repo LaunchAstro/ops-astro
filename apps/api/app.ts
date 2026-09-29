@@ -222,8 +222,12 @@ export function createApi(options: ApiOptions): Hono {
         const admitted = await admit(options, context, entry);
         const response =
           admitted instanceof Response ? admitted : await run(context, declaration, admitted);
-        const signal = options.observe && signalOf(outcomeOf(context, declaration));
+        const outcome = outcomeOf(context, declaration);
+        const signal = options.observe && signalOf(outcome);
         if (signal) options.observe?.(signal);
+        // Download volume (TR-SEC-9): the records each read handed out, per business and reader.
+        const { business, person: who, items } = outcome;
+        if (items > 0) options.observe?.({ kind: 'export', business, who, items });
         return response;
       });
     }
@@ -244,6 +248,7 @@ export function createApi(options: ApiOptions): Hono {
         read: declaration.name,
       } as ReadRequest);
       if (isCommandRefusal(read)) return refuse(context, read);
+      context.set(HANDED_OUT, recordsIn(read));
       return context.json(read, 200);
     }
 
@@ -311,6 +316,15 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
 
 const PRESENTED = 'presented';
 const REFUSAL = 'refusal';
+const HANDED_OUT = 'handed-out';
+
+/** How many records a read handed out: a task is one, a list is its length. */
+function recordsIn(read: object): number {
+  const lists = ['tasks', 'persons', 'queue'].map((key) => (read as Record<string, unknown>)[key]);
+  const listed = lists.find((list): list is readonly unknown[] => Array.isArray(list));
+  if (listed !== undefined) return listed.length;
+  return 'task' in read || 'sharedTask' in read ? 1 : 0;
+}
 /** The answer's outcome, as the detector reads it: no content, only scopes and a code. */
 function outcomeOf(context: Context, declaration: CommandDeclaration): Outcome {
   const presented = context.get(PRESENTED) as VerifiedSubject | undefined;
@@ -318,6 +332,7 @@ function outcomeOf(context: Context, declaration: CommandDeclaration): Outcome {
     business: context.req.param('businessKey') ?? '',
     person: presented === undefined ? '' : `${presented.provider}\u0000${presented.subject}`,
     refusal: context.get(REFUSAL) as string | undefined,
+    items: (context.get(HANDED_OUT) as number | undefined) ?? 0,
     command: declaration.name,
   };
 }
