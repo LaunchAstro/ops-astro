@@ -351,7 +351,13 @@ export type TaskReadResult = InternalTaskRead | SharedTaskRead;
 
 export interface TaskBoardResult {
   readonly ok: true;
+  /** The board's tasks the caller's grants reach. */
   readonly tasks: readonly TaskSummary[];
+  /**
+   * How many of this board's tasks in the caller's business their grants do
+   * not reach: a count, never which (B-22). Zero under a business grant.
+   */
+  readonly withheld: number;
 }
 
 export interface PersonListResult {

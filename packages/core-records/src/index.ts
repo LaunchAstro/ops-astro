@@ -36,11 +36,13 @@ export {
 export {
   checkAuthority,
   effectiveGrants,
+  readableScope,
   revokeGrant,
   subjectsOf,
   type Action,
   type Decision,
   type EffectiveGrant,
+  type ReadableScope,
   type Scope,
   type ScopeKind,
   type ScopeRequest,

@@ -199,11 +199,17 @@ async function serveRead<K extends ReadName>(
     subjectRecordId: recordId ?? null,
   });
 
-  if (row.authority !== 'holds-any-grant') {
+  // A list read decides a member's admission in its own `serve`, from the one
+  // read of their grants that also filters its rows, so no grant can change
+  // between the decision and the answer. An external party is checked here:
+  // a share is a record-scoped read, and it opens the shared task, not a list.
+  const listsWithin = row.authority === 'declared-within' && session.roleKey !== null;
+  if (row.authority !== 'holds-any-grant' && !listsWithin) {
+    const declared = row.authority === 'declared' || row.authority === 'declared-within';
     const authorised = await checkAuthority(tx, subjectsOf(session), {
       // The action is the declaration's, and so is the collection unless the
       // row names the one the request is really about (`preset.plan`).
-      collection: row.authority === 'declared' ? declaration.collection : row.authority(operands),
+      collection: declared ? declaration.collection : row.authority(operands),
       action: declaration.action,
       // A record-scoped grant is checked against the record named, exactly as
       // a targeted command's is. A business-scoped grant covers both, which is
