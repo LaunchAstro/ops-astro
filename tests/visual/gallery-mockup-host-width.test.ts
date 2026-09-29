@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// @vitest-environment jsdom
 //
 // MP-1-3: a component with no width of its own (the meter fills its host) is
 // drawn on the mockup page at the width the gallery draws it, so the two
 // pictures compare the same shape. Before, the copy sat in a host that shrank
 // to its content, so the meter drew at 0 px and could not be photographed;
 // the meter, alone of the units, is made to fill that host, as its own page
-// host fills it.
+// host fills it. The harness's own drawing function runs here in a document,
+// and the host it builds is read back.
 
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -43,8 +45,15 @@ vi.mock('./capture.ts', () => ({
         if (fn.name === 'textFamilies') return Promise.resolve(['Funnel Sans']);
         if (fn.name === 'markupOf') return Promise.resolve('<span class="meter"></span>');
         if (fn.name === 'place') {
-          placed.push(value);
-          width = (value as { width?: number }).width ?? 0;
+          (fn as unknown as (copy: unknown) => unknown)(value);
+          const host = document.querySelector<HTMLElement>('#mockup-compare');
+          const copy = host?.firstElementChild;
+          placed.push({
+            width: host?.style.width,
+            sizing: host?.style.boxSizing,
+            flex: copy instanceof HTMLElement ? copy.style.flex : '',
+          });
+          width = Number.parseFloat(host?.style.width ?? '') || 0;
           return Promise.resolve({ x: 0, y: 0, width, height: 6 });
         }
         throw new Error(`Unexpected browser evaluation: ${fn.name}`);
@@ -98,9 +107,11 @@ afterAll(() => {
 
 it("MP-1-3 the mockup copy is drawn at the gallery component's width, so the meter is photographed", () => {
   expect(placed.length).toBeGreaterThan(0);
-  for (const value of placed) expect(value).toMatchObject({ width: GALLERY_WIDTH });
+  // Content-box: the mockup's sheet sizes borders in, which would take the padding off the width.
+  for (const value of placed)
+    expect(value).toMatchObject({ width: `${String(GALLERY_WIDTH)}px`, sizing: 'content-box' });
   // The meter alone fills its host; a button or chip keeps its own width.
-  const fills = placed.filter((value) => (value as { fills?: boolean }).fills === true);
+  const fills = placed.filter((value) => (value as { flex: string }).flex === '1 1 auto');
   expect(fills).toHaveLength(1);
   expect(summary).toContain('ok MP-1-3 meter@390-light');
   expect(summary).not.toContain('not photographed');
