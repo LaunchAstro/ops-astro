@@ -876,6 +876,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.board`                       | `readBoard` (`reads/tasks.ts`)                                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `task.queue`                       | `readQueue` (`reads/queue.ts`)                                                            | served before a pickup (`BEFORE_PICKUP`, `serve`)                                               |
 | `person.list`                      | `listPeople` (`reads/people.ts`)                                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.search`                      | `searchTasks` (`reads/search.ts`)                                                         | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `preset.plan`                      | `planPresetSync` (`records/preset-plan.ts`)                                               | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `settings.read`                    | `readSettings` (`reads/settings.ts`)                                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `session.capabilities`             | `readCapabilities` (`reads/capabilities.ts`)                                              | served under a live delegation (`authorise`, `capabilitiesOf`)                                  |
@@ -1182,8 +1183,8 @@ same bytes as a missing task.
 
 ## Reads
 
-`task.read`, `task.board`, `task.queue`, `person.list`, `preset.plan`,
-`settings.read` and `session.capabilities` are declared in `COMMAND_SURFACE`
+`task.read`, `task.board`, `task.queue`, `task.search`, `person.list`,
+`preset.plan`, `settings.read` and `session.capabilities` are declared in `COMMAND_SURFACE`
 with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
@@ -1334,9 +1335,9 @@ lived in the client and the server looked fine. The attempted values go to
 the audit row's `attempted` column and never to the response.
 
 **A read takes only its own identifier.** `task.read` takes `recordId` and
-`task.board` takes `board`; `task.queue`, `person.list`, `preset.plan`,
-`settings.read` and `session.capabilities` take none. Any other identifier
-field, a `recordId` on those five included, is `COMMAND_BODY_INVALID` 400 naming
+`task.board` takes `board`; `task.queue`, `task.search`, `person.list`,
+`preset.plan`, `settings.read` and `session.capabilities` take none. Any other
+identifier field, a `recordId` on those six included, is `COMMAND_BODY_INVALID` 400 naming
 it, audited, and the same answer for an own, a foreign and a fabricated id
 (the row's `identifiers` in `READ_CATALOGUE`, `reads/catalogue.ts`, checked in
 `serveRead` after the system fields, `reads/dispatch.ts`).
@@ -1351,8 +1352,25 @@ successful and refused alike (I13). Its `operation_id` is null: a read has
 nothing to replay. A read of one task carries that task as the subject, which
 is what makes "who looked at this" answerable. The task's own `history`
 excludes the reads, because a history is what happened _to_ the task.
-`settings.read` and `session.capabilities` carry a null subject: neither is
-about one record, and naming one would make "who read this record" false.
+`settings.read`, `session.capabilities` and `task.search` carry a null
+subject: none is about one record, and naming one would make "who read this
+record" false.
+
+**`task.search` puts the caller's scope in the statement that finds
+candidates** (ticket C1). The body is `{ query }`: up to 200 characters with at
+least one word of letters or digits in them, else `FIELD_VALUE_INVALID` 422
+naming `query`. The first eight words reach the index, each as a prefix, all of
+them required; nothing else of the query reaches `to_tsquery`. `heldScopes`
+(`authority/grants.ts`) asks the grant model's own live expression which
+`task:read` scopes the caller holds. The statement is handed the whole business
+or the named records, and never reads a task outside them into the process.
+The answer is `{ ok: true, hits: [{ id, key, title }] }`, at most 20, with no
+count; `[]` means nothing in scope matched. A member holding no `task:read` is
+refused `SCOPE_NOT_GRANTED` 403, never answered with an empty list. An external
+party is refused `SCOPE_NOT_GRANTED` too, before anything is read: the portal
+has no search until a client search is designed. `searchTasks`
+(`reads/search.ts`) is the one function every caller of the index uses.
+`tests/reads/search.test.ts` holds it.
 
 ## Open items
 

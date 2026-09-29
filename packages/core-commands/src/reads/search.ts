@@ -68,15 +68,13 @@ export async function searchTasks(
       where r.business_id = $1
         and r.record_type_id = $2
         and r.deleted_at is null
-        and r.search_tsv @@ to_tsquery('english', $3)
-      order by ts_rank(r.search_tsv, to_tsquery('english', $3)) desc, r.txt_1
+        and ($3::boolean or r.id = any($4::uuid[]))
+        and r.search_tsv @@ to_tsquery('english', $5)
+      order by ts_rank(r.search_tsv, to_tsquery('english', $5)) desc, r.txt_1
       limit ${HIT_LIMIT}`,
-    [tx.businessId, target.taskTypeId, words.join(' & ')],
+    [tx.businessId, target.taskTypeId, wholeBusiness, records, words.join(' & ')],
   );
-  // Red on purpose: every match is read, then filtered here (C1a commit 1).
-  const held = new Set(records);
-  const inScope = rows.filter((row) => wholeBusiness || held.has(row.id));
-  return { ok: true, hits: inScope.map(hitOf) };
+  return { ok: true, hits: rows.map(hitOf) };
 }
 
 function hitOf(row: HitRow): SearchHit {
