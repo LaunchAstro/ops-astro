@@ -120,7 +120,9 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
   async function signedIn(session: Session, storage: StorageLike, heard: Heard[]) {
     storage.setItem('ops-astro.session', JSON.stringify(session));
     const through = (async (url: string | URL, init?: RequestInit) => {
+      inFlight.add(heard);
       const response = await api.fetch(new Request(`http://api.test${String(url)}`, init));
+      inFlight.delete(heard);
       heard.push({
         path: String(url),
         body: typeof init?.body === 'string' ? init.body : '',
@@ -341,7 +343,21 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
   });
 });
 
-/** Waits until no request has been made for ten rounds: every read answered and drawn. */
+/** How many requests each page has sent and not yet had answered, keyed by its log. */
+const pending = new Map<readonly Heard[], number>();
+const inFlight = {
+  add: (heard: readonly Heard[]): void => {
+    pending.set(heard, (pending.get(heard) ?? 0) + 1);
+  },
+  delete: (heard: readonly Heard[]): void => {
+    pending.set(heard, (pending.get(heard) ?? 1) - 1);
+  },
+};
+
+/**
+ * Waits until nothing is in flight and nothing new has been asked for ten
+ * rounds: every read answered and drawn, however slow the machine is.
+ */
 async function quiet(heard: readonly Heard[]): Promise<void> {
   let still = 0;
   let last = -1;
@@ -350,7 +366,8 @@ async function quiet(heard: readonly Heard[]): Promise<void> {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 25));
     });
-    still = heard.length === last ? still + 1 : 0;
+    const settled = (pending.get(heard) ?? 0) === 0 && heard.length === last;
+    still = settled ? still + 1 : 0;
     last = heard.length;
   }
 }
