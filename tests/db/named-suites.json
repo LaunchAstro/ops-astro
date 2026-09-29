@@ -286,7 +286,8 @@
     "tests/fixture/snapshot-clone-and-privileges.test.ts",
     "tests/db/inbox-records.test.ts",
     "tests/commands/inbox-raising.test.ts",
-    "tests/commands/inbox-clearing.test.ts"
+    "tests/commands/inbox-clearing.test.ts",
+    "tests/commands/inbox-clearing-guards.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
