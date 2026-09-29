@@ -193,6 +193,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         {
           commentTypeId: spine.taskCommentTypeId,
           internal: true,
+          actorId: session.actorId,
         },
         // The rank's pool is every open task this reader's grants reach.
         { kind: 'grants', subjects: subjectsOf(session) },

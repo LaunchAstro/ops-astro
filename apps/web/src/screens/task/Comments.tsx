@@ -40,13 +40,21 @@
 // refused `VERSION_STALE` rereads the task, keeps the text, and quotes the
 // refusal, so the next press goes out against the revision the page now shows.
 // `task.comment` leaves the revision alone, so there is nothing to merge.
+//
+// **A reply is the same box, pointed at one message** (R42). Pressing Reply on
+// a message holds its id with the draft; the post then carries `parentId` and
+// goes to that message's audience, whichever tab is showing, since the message
+// already says who may read what answers it. The thread itself, the pencil and
+// the ×, and the signals are drawn by `Thread.tsx`; an edit or a delete goes
+// out through its own command and the task is read again, as a post is.
 
 import { useRef, type KeyboardEvent, type ReactElement } from 'react';
-import { CountBadge, PaneEmpty, TabPanel, TabStrip } from '@launchastro/ui';
+import { CountBadge, TabPanel, TabStrip } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { PanelDoorButton, type PanelDoor } from './Perspectives.tsx';
+import { CommentThread, type RowActions } from './Thread.tsx';
 
 export interface CommentsProps {
   readonly client: OperationsClient;
@@ -74,6 +82,8 @@ export interface CommentDraft {
   readonly body: string;
   /** The tab showing, which is also the audience a post goes to. */
   readonly tab: ConversationTab;
+  /** The message this is a reply to, or null for a new message. */
+  readonly replyTo: string | null;
   readonly pending: PendingComment | null;
   /** The server's `VERSION_STALE`, quoted across the reread it caused. */
   readonly stale: string | null;
@@ -82,6 +92,7 @@ export interface CommentDraft {
 const EMPTY: CommentDraft = {
   body: '',
   tab: 'internal',
+  replyTo: null,
   pending: null,
   stale: null,
 };
@@ -102,12 +113,18 @@ export interface PendingComment {
   readonly body: string;
   readonly audience: string;
   readonly kind: string;
+  readonly parentId: string | null;
 }
 
 export function Comments(props: CommentsProps): ReactElement {
   const current = props.draft ?? EMPTY;
   const { body, tab, pending } = current;
-  const { audience, kind } = POSTS[tab === 'client' ? 'client' : 'internal'];
+  // A reply names a message still on the task; one deleted since is dropped.
+  const parent = props.comments.find(
+    (comment) => comment.id === current.replyTo && (comment.parent ?? null) === null,
+  );
+  const parentId = parent?.id ?? null;
+  const { audience, kind } = POSTS[(parent?.audience ?? tab) === 'client' ? 'client' : 'internal'];
   const put = (next: Partial<CommentDraft>): void => {
     props.onDraft({ ...current, ...next });
   };
@@ -115,7 +132,8 @@ export function Comments(props: CommentsProps): ReactElement {
     attempt !== null &&
     attempt.body === body &&
     attempt.audience === audience &&
-    attempt.kind === kind;
+    attempt.kind === kind &&
+    attempt.parentId === parentId;
   // `closed` is set when the server has said this reader may not comment. It
   // disables the control rather than merely reporting, so the same refusal is
   // not fetched again on the next press. Only an authority refusal closes the
@@ -124,8 +142,13 @@ export function Comments(props: CommentsProps): ReactElement {
   const command = useCommand();
   const busy = command.busy;
   const closed = command.closed || props.refusal !== null;
-  // On All nobody has said who may read a post, so there is nothing to post.
-  const locked = busy || closed || tab === 'all';
+  // On All nobody has said who may read a post, so there is nothing to post,
+  // unless it is a reply, which goes where its message is.
+  const picking = tab === 'all' && parentId === null;
+  const locked = busy || closed || picking;
+  const rows = useRowActions(props, (commentId) => {
+    put({ replyTo: commentId, pending: null });
+  });
   const because = command.because ?? props.refusal;
   const run = command.run;
   const form = useRef<HTMLFormElement>(null);
@@ -141,13 +164,20 @@ export function Comments(props: CommentsProps): ReactElement {
           body,
           audience,
           kind,
+          parentId,
         };
     put({ pending: attempt, stale: null });
     run(
       () =>
         props.client.mutate(
           'task.comment',
-          { recordId: props.recordId, body, audience, commentType: kind },
+          {
+            recordId: props.recordId,
+            body,
+            audience,
+            commentType: kind,
+            ...(parentId === null ? {} : { parentId }),
+          },
           { expectedRevision: attempt.revision, operationId: attempt.operationId },
         ),
       (settlement) => {
@@ -183,31 +213,18 @@ export function Comments(props: CommentsProps): ReactElement {
       <Conversation
         comments={props.comments}
         tab={tab}
+        actions={rows.actions}
         onTab={(next) => {
           put({ tab: next });
         }}
       />
+      {rows.because === null ? null : (
+        <p className="field__error" role="alert" data-comment="row-refusal">
+          {rows.because}
+        </p>
+      )}
 
-      {because === null ? null : (
-        <p className="field__error" role="alert" data-comment="refusal">
-          {because}
-        </p>
-      )}
-      {current.stale === null ? null : (
-        <div role="alert" data-comment="stale">
-          <p className="field__error">{current.stale}</p>
-          <p className="card__sub">
-            Somebody else moved this task on before your comment was stored, so it was not. The task
-            has been read again and your comment is still here: post it again if it still applies.
-          </p>
-        </div>
-      )}
-      {busy || !same(pending) ? null : (
-        <p className="card__sub" data-comment="unresolved">
-          This comment may already have been stored. Posting again sends the same attempt, so the
-          server answers with the original result rather than storing it twice.
-        </p>
-      )}
+      <PostNotices because={because} stale={current.stale} unresolved={!busy && same(pending)} />
 
       <form
         id="task-comment"
@@ -218,8 +235,16 @@ export function Comments(props: CommentsProps): ReactElement {
           post();
         }}
       >
+        {parent === undefined ? null : (
+          <ReplyingTo
+            body={parent.body}
+            onCancel={() => {
+              put({ replyTo: null, pending: null });
+            }}
+          />
+        )}
         <CommentBody body={body} locked={locked} onPut={put} onSend={post} />
-        {tab === 'all' ? (
+        {picking ? (
           <p className="card__sub" data-comment="pick">
             Pick Internal or Client to post, so it is clear who may read it.
           </p>
@@ -235,6 +260,50 @@ export function Comments(props: CommentsProps): ReactElement {
       </form>
       <PanelDoorButton door="reply" onOpenPanel={props.onOpenPanel} />
     </section>
+  );
+}
+
+/** Why the last post did not land, or may have. */
+function PostNotices(props: {
+  readonly because: string | null;
+  readonly stale: string | null;
+  readonly unresolved: boolean;
+}): ReactElement {
+  return (
+    <>
+      {props.because === null ? null : (
+        <p className="field__error" role="alert" data-comment="refusal">
+          {props.because}
+        </p>
+      )}
+      {props.stale === null ? null : (
+        <div role="alert" data-comment="stale">
+          <p className="field__error">{props.stale}</p>
+          <p className="card__sub">
+            Somebody else moved this task on before your comment was stored, so it was not. The task
+            has been read again and your comment is still here: post it again if it still applies.
+          </p>
+        </div>
+      )}
+      {props.unresolved ? (
+        <p className="card__sub" data-comment="unresolved">
+          This comment may already have been stored. Posting again sends the same attempt, so the
+          server answers with the original result rather than storing it twice.
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/** Which message the box is replying to, and a way out of replying. */
+function ReplyingTo(props: { readonly body: string; readonly onCancel: () => void }): ReactElement {
+  return (
+    <p className="card__sub" data-comment="replying">
+      Replying to “{excerpt(props.body)}”{' '}
+      <button type="button" className="btn btn--ghost" onClick={props.onCancel}>
+        Cancel reply
+      </button>
+    </p>
   );
 }
 
@@ -259,6 +328,7 @@ function shownOn(
 function Conversation(props: {
   readonly comments: CommentsProps['comments'];
   readonly tab: ConversationTab;
+  readonly actions: RowActions;
   readonly onTab: (next: ConversationTab) => void;
 }): ReactElement {
   const count = (tab: 'internal' | 'client'): number =>
@@ -286,45 +356,15 @@ function Conversation(props: {
           {/* Only the chosen tab draws its thread: a comment on both Internal
               and All would otherwise be in the page twice. */}
           {tab === props.tab ? (
-            <CommentThread comments={shownOn(tab, props.comments)} empty={TAB_WORDS[tab].empty} />
+            <CommentThread
+              comments={shownOn(tab, props.comments)}
+              empty={TAB_WORDS[tab].empty}
+              actions={props.actions}
+            />
           ) : null}
         </TabPanel>
       ))}
     </>
-  );
-}
-
-/** The comments on the task, oldest first, each with who may read it. */
-function CommentThread(props: {
-  readonly comments: CommentsProps['comments'];
-  readonly empty: string;
-}): ReactElement {
-  return props.comments.length === 0 ? (
-    <PaneEmpty say={props.empty} />
-  ) : (
-    <div className="thread" data-comments="list">
-      {props.comments.map((comment) => (
-        <article
-          className={`msg msg--${comment.audience}`}
-          data-comment-id={comment.id}
-          data-audience={comment.audience}
-          key={comment.id}
-        >
-          <div className="sbact__meta">
-            {/* The audience is drawn on every comment, because "who may
-                read this" is the one thing a person writing the next one
-                needs to know and the one thing a colour cannot say. */}
-            <span className="sb__state" data-comment-audience={comment.audience}>
-              {audienceWord(comment.audience)}
-            </span>
-            <span> · {comment.comment_type}</span>
-            <span> · {comment.author}</span>
-            <span> · {comment.posted_at}</span>
-          </div>
-          <p className="card__body">{comment.body}</p>
-        </article>
-      ))}
-    </div>
   );
 }
 
@@ -361,11 +401,54 @@ function CommentBody(props: {
   );
 }
 
-/** The audience in the words a person reads, and the server's own word kept. */
-function audienceWord(audience: string): string {
-  if (audience === 'internal') return 'Internal';
-  if (audience === 'client') return 'Client';
-  // A word this build does not know is printed as it arrived. Inventing a
-  // label for it would hide the fact that something new is being stored.
-  return audience;
+/** The start of a message, enough to say which one a reply answers. */
+function excerpt(body: string): string {
+  const line = body.replaceAll(/\s+/gu, ' ').trim();
+  return line.length <= 60 ? line : `${line.slice(0, 59)}…`;
+}
+
+/**
+ * Editing and deleting a row: each goes out through its own command against
+ * the task, and the task is read again whatever the answer, so what is drawn
+ * is what the server has. A lost answer is not retried as the same attempt:
+ * sending the same words again, or deleting what is already gone, changes
+ * nothing, and the reread shows which happened.
+ */
+function useRowActions(
+  props: CommentsProps,
+  onReply: (commentId: string) => void,
+): { readonly actions: RowActions; readonly because: string | null } {
+  const command = useCommand();
+  const send = (name: 'task.edit_comment' | 'task.delete_comment', operands: object): void => {
+    command.run(
+      () =>
+        props.client.mutate(
+          name,
+          { recordId: props.recordId, ...operands },
+          { expectedRevision: props.revision },
+        ),
+      (settlement) => {
+        if (
+          settlement.kind === 'ok' ||
+          settlement.kind === 'unknown' ||
+          settlement.kind === 'stale'
+        ) {
+          props.onPosted();
+        }
+      },
+    );
+  };
+  return {
+    because: command.because,
+    actions: {
+      busy: command.busy,
+      onReply,
+      onEdit: (commentId, body) => {
+        send('task.edit_comment', { commentId, body });
+      },
+      onDelete: (commentId) => {
+        send('task.delete_comment', { commentId });
+      },
+    },
+  };
 }

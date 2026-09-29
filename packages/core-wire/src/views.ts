@@ -186,6 +186,12 @@ export type InternalCommentView = {
    * or `answered`; null on an internal note and on a reply.
    */
   readonly signal: 'answered' | 'owed' | 'not_acknowledged' | null;
+  /**
+   * Whether the reader's own actor wrote it, so a screen draws the edit and
+   * delete controls on those rows only (CS-4.34). The commands check the
+   * author again; this only saves offering a control that would be refused.
+   */
+  readonly own: boolean;
 };
 
 export interface EvidenceView {

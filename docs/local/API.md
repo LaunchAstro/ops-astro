@@ -953,7 +953,9 @@ answers nothing. Seen waits on a client read receipt, which the portal
 records. Internal notes and replies carry `null`. Authors rewrite and delete
 their own messages and replies through `task.edit_comment` and
 `task.delete_comment`; a deleted comment leaves every read and its replies
-stay. An @ in a comment notifies nobody yet: there is no notification model.
+stay. An internal reader's comments also carry `own`, true where the
+reader's own actor wrote it, so the page draws the edit and delete controls
+on those rows only; the two commands check the author again. An @ in a comment notifies nobody yet: there is no notification model.
 
 For the agent bundles, `readConversation` (`reads/conversation.ts`) reads a
 task's thread at three detail levels in one statement each: `brief` (the

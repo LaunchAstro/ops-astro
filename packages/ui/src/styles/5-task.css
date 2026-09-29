@@ -454,3 +454,40 @@
   font-family: var(--font-mono);
   font-size: var(--fs-mono-sm);
 }
+
+/* MP-4-5 thread: replies one level under their message (R42); the pencil and
+   the × revealed on hover or keyboard focus, and at rest below 900px where
+   there is no hover (DT-17); the client message signal a label (DT-19). */
+.msg__replies {
+  margin: var(--s-2) 0 0 var(--s-4);
+  padding-left: var(--s-3);
+  border-left: 1px solid var(--border);
+}
+.msg--deleted > .card__body {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.msg__acts {
+  display: flex;
+  gap: var(--s-2);
+}
+.msg__acts [data-comment-act='edit'],
+.msg__acts [data-comment-act='delete'] {
+  opacity: 0;
+}
+.msg:hover > .msg__acts [data-comment-act],
+.msg__acts [data-comment-act]:focus-visible {
+  opacity: 1;
+}
+@media (width < 900px) {
+  .msg__acts [data-comment-act='edit'],
+  .msg__acts [data-comment-act='delete'] {
+    opacity: 1;
+  }
+}
+.msg__signal {
+  color: var(--text-muted);
+}
+.msg__signal[data-signal='owed'] {
+  color: var(--warning);
+}
