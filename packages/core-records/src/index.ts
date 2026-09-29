@@ -39,6 +39,7 @@ export {
   effectiveGrants,
   revokeGrant,
   subjectsOf,
+  EFFECTIVE_GRANTS_CTE,
   type Action,
   type Decision,
   type EffectiveGrant,

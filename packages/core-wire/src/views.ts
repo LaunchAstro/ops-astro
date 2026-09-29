@@ -268,6 +268,42 @@ export interface CheckView {
   readonly recordedAt: string;
 }
 
+/** One grant a delegation draws on, for the link to it in the access ledger (R71). */
+export interface CoveringGrantView {
+  readonly id: string;
+  readonly collection: string;
+  readonly action: string;
+  /** `business`, or `record` for a grant on this task alone. */
+  readonly scopeKind: string;
+}
+
+/**
+ * What a run was allowed to touch (MP-6-4, CS-6.1), set by the broker when the
+ * lease was taken and read-only here: the lease's own delegation, never the
+ * task's fields. A lease a person holds carries no delegation.
+ */
+export interface RunScopeView {
+  readonly leaseId: string;
+  /** When the lease was taken: the moment the run's context was pinned. */
+  readonly acquiredAt: string;
+  readonly delegation: {
+    readonly id: string;
+    readonly purpose: string;
+    /** The one resource the delegation was minted for (the one-task ceiling). */
+    readonly scope: { readonly kind: string; readonly id: string };
+    readonly collections: readonly string[];
+    readonly actions: readonly string[];
+    readonly grantedAt: string;
+    readonly expiresAt: string;
+    /** `live`, or why it no longer is: `expired`, `revoked` or `settled`. */
+    readonly state: string;
+    /** The person whose live grants are its ceiling. */
+    readonly delegatePersonId: string;
+    /** That person's live grants it draws on now; empty when they hold none. */
+    readonly grants: readonly CoveringGrantView[];
+  } | null;
+}
+
 export interface ProposalView {
   readonly lineageId: string;
   readonly state: string;
@@ -275,6 +311,8 @@ export interface ProposalView {
   readonly versions: readonly ProposalVersionView[];
   readonly decisions: readonly DecisionLink[];
   readonly reservations: readonly ReservationView[];
+  /** The scope of each lease the lineage's runs took, oldest first (MP-6-4). */
+  readonly scopes: readonly RunScopeView[];
 }
 
 export interface QueuedWork {

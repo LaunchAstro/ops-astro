@@ -32,7 +32,8 @@
 // the display is the one thing a gate cannot survive.
 //
 // **The whole answer is one snapshot.** The versions, their gates, the
-// decisions and the reservations are read in one statement, the one that reads
+// decisions, the reservations and each lease's scope (`run-scopes.ts`) are
+// read in one statement, the one that reads
 // the decision chain (`readVerifiedProjection`). Read separately, a
 // `task.decide` committed between them answers a gate `pending` beside its
 // own verified `approve`, and the page offers to decide a gate already
@@ -55,6 +56,7 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { keyResolver, gateSigningKey } from '../../../core-runtime/src/index.ts';
 import type { KeyResolver, SigningKey } from '../../../core-runtime/src/index.ts';
 import { readVerifiedProjection, type VerifiedDecision } from './verified-decisions.ts';
+import { SCOPES, scopesOf, type ScopeRow } from './run-scopes.ts';
 import type { DecisionLink, ProposalView } from '../../../core-wire/src/index.ts';
 import { asReservation, asVersion } from './proposal-rows.ts';
 import type { CheckRow, ReservationRow, VersionRow } from './proposal-rows.ts';
@@ -166,7 +168,7 @@ export async function readTaskProposals(
     tx,
     {
       lineages: LINEAGES,
-      rows: { versions: VERSIONS, reservations: RESERVATIONS, checks: CHECKS },
+      rows: { versions: VERSIONS, reservations: RESERVATIONS, checks: CHECKS, scopes: SCOPES },
       parameter: taskId,
     },
     signingKey,
@@ -174,6 +176,7 @@ export async function readTaskProposals(
   const versions = (snapshot.rows['versions'] ?? []) as readonly VersionRow[];
   const reservations = (snapshot.rows['reservations'] ?? []) as readonly ReservationRow[];
   const checks = (snapshot.rows['checks'] ?? []) as readonly CheckRow[];
+  const scopes = (snapshot.rows['scopes'] ?? []) as readonly ScopeRow[];
   const decisions = snapshot.decisions;
   if (versions.length === 0) return [];
 
@@ -192,6 +195,7 @@ export async function readTaskProposals(
       reservations: reservations
         .filter((row) => row.lineage_id === lineageId)
         .map((row) => asReservation(row)),
+      scopes: scopesOf(scopes, lineageId),
     };
   });
 }
