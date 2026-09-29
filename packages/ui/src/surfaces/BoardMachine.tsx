@@ -71,8 +71,15 @@ export interface BoardMachineProps<Row> {
   readonly facets: readonly Facet<Row>[];
   readonly presets?: readonly Preset[];
   readonly modes?: readonly BoardMode<Row>[];
-  /** Rows grouped under banners in this order; sorting happens within groups. */
-  readonly groups?: { readonly order: readonly string[]; readonly of: (row: Row) => string };
+  /**
+   * Rows grouped under banners in this order; sorting happens within groups.
+   * `reason` is the quiet words after a banner's heading, from its own rows.
+   */
+  readonly groups?: {
+    readonly order: readonly string[];
+    readonly of: (row: Row) => string;
+    readonly reason?: (rows: readonly Row[]) => string | null;
+  };
   readonly rowKey: (row: Row) => string;
   readonly cell: (row: Row, key: string) => ReactNode;
   /** What a free word is matched against. */
@@ -663,10 +670,14 @@ function Table<Row>(props: {
     for (const group of order) {
       const rows = props.rows.filter((row) => grouped.of(row) === group);
       if (rows.length === 0) continue;
+      const reason = grouped.reason?.(rows) ?? null;
       body.push(
         <tr className="cbd__grp" key={`group:${group}`}>
           <td colSpan={props.layout.length}>
-            <span className="cbd__grpb">{group}</span>
+            <span className="cbd__grpb">
+              {group}
+              {reason === null ? null : <span className="cbd__grpr">{reason}</span>}
+            </span>
           </td>
         </tr>,
       );
