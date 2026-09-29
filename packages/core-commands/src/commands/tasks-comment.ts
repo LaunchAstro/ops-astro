@@ -132,9 +132,12 @@ const EFFECT_FIXES: readonly string[] = [
  * would contradict it (Sol review 1 on #124, criterion 2). A retried effect is
  * unaffected: the register replays it before this runs.
  *
- * The attempt's step is locked first, through the one lock helper, and held to
- * commit: observe takes the same lock, so it cannot settle the attempt between
- * this check and the comment's write (Sol review 2 on #124, criterion 2).
+ * The step is found only through an attempt whose lease binds it to this task
+ * and this author, so another client's attempt is refused before anything of
+ * its is locked or waited on (Sol review 3 on #124, criterion 3). That step is
+ * then locked through the one lock helper and held to commit, and the check
+ * runs again under it: observe takes the same lock, so it cannot settle the
+ * attempt between this check and the comment's write (Sol review 2, criterion 2).
  */
 async function effectRefusal(
   tx: TenantQuery,
@@ -150,22 +153,28 @@ async function effectRefusal(
       ['The effect is a team-only comment. Send audience as internal.'],
     );
   }
-  const step = await tx.query<{ readonly step_id: string }>(
-    'select step_id from public.attempts where business_id = $1 and id = $2',
-    [tx.businessId, attemptId],
-  );
-  const stepId = step[0]?.step_id;
-  if (stepId === undefined) return refuseCommand('EFFECT_NOT_DISPATCHED', [], EFFECT_FIXES);
-  await acquire(tx, [{ lockClass: 'step', id: stepId }]);
-  const rows = await tx.query(
-    `select 1 from public.attempts att
+  const found = await dispatchedToAuthor(tx, on, attemptId);
+  if (found === undefined) return refuseCommand('EFFECT_NOT_DISPATCHED', [], EFFECT_FIXES);
+  await acquire(tx, [{ lockClass: 'step', id: found.step_id }]);
+  const held = await dispatchedToAuthor(tx, on, attemptId);
+  return held === undefined ? refuseCommand('EFFECT_NOT_DISPATCHED', [], EFFECT_FIXES) : undefined;
+}
+
+/** The attempt's step, when the attempt is dispatched to the author's own lease on this task. */
+async function dispatchedToAuthor(
+  tx: TenantQuery,
+  on: CommentTarget,
+  attemptId: string,
+): Promise<{ readonly step_id: string } | undefined> {
+  const rows = await tx.query<{ readonly step_id: string }>(
+    `select att.step_id from public.attempts att
        join public.leases l on l.business_id = att.business_id and l.id = att.lease_id
       where att.business_id = $1 and att.id = $2 and att.dispatch_marker
         and att.state = 'dispatched' and l.task_id = $3
         and l.holder_actor_id = $4 and l.delegation_id is not distinct from $5::uuid`,
     [tx.businessId, attemptId, on.target.id, on.authorActorId, on.delegationId],
   );
-  return rows.length === 0 ? refuseCommand('EFFECT_NOT_DISPATCHED', [], EFFECT_FIXES) : undefined;
+  return rows[0];
 }
 
 /**
