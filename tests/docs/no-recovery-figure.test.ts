@@ -33,7 +33,9 @@ const RESTORE = String.raw`\b(?:recover(?:y|ies|s|ed|ing)?|restor(?:e|es|ed|ing|
  * figure, and a false match costs a rewording.
  */
 const RECOVERY_FIGURES: readonly RegExp[] = [
-  new RegExp(String.raw`\b(?:RTO|RPO)\b[^.]{0,40}?\d`, 'u'),
+  // RTO and RPO take FIGURE, so an amount in words gets the same check as a
+  // restore wording (Sol review 3), case-insensitive like the rest; a bare digit still counts.
+  new RegExp(String.raw`\b(?:RTO|RPO)\b[^.]{0,40}?(?:${FIGURE}|\d)`, 'iu'),
   new RegExp(String.raw`${RESTORE}[^.]{0,60}?${FIGURE}`, 'iu'),
   new RegExp(String.raw`${FIGURE}[^.]{0,40}?${RESTORE}`, 'iu'),
   new RegExp(String.raw`${FIGURE}\s+(?:of\s+)?(?:data\s+loss|downtime)`, 'iu'),
@@ -82,6 +84,7 @@ describe('S0-3 no recovery figure', () => {
       'Plan for 3 hours to restore the database.',
       'Restores finish in an hour.',
       'A four-hour restore window.',
+      'The RPO is half an hour.',
     ]) {
       expect(recoveryFigures(planted)).toStrictEqual([planted]);
     }
@@ -99,6 +102,11 @@ describe('S0-3 no recovery figure', () => {
       recoveryFigures(inWords).length > 0,
       recoveryFigures(wrapped).length > 0,
     ]).toStrictEqual([true, true]);
+  });
+
+  it('Sol proof, criterion 11: a worded RTO is found', () => {
+    const planted = 'Our RTO is four hours.';
+    expect(recoveryFigures(planted)).toStrictEqual([planted]);
   });
 
   it('passes sentences that quote no recovery figure', () => {
