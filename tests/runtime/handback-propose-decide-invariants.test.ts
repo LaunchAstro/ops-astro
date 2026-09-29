@@ -95,7 +95,7 @@ async function decideOn(
     readonly capId?: string;
   } = {},
 ) {
-  return await database.app.withBusiness(fixture.businessId, async (tx) =>
+  return await database.app.withBusiness(fixture.businessId, (tx) =>
     decide(tx, {
       gateId: of.gateId,
       versionId: of.versionId,
@@ -138,7 +138,7 @@ async function claim(
   fixture: RuntimeFixture,
   reservationId: string,
 ): Promise<{ readonly leaseId: string; readonly fence: number }> {
-  const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
+  const claimed = await database.app.withBusiness(fixture.businessId, (tx) =>
     pickup(tx, {
       claimant: 'agent',
       reservationId,
@@ -165,7 +165,7 @@ async function settle(
   fixture: RuntimeFixture,
   claimed: { readonly leaseId: string; readonly fence: number },
 ): Promise<void> {
-  const settled = await database.app.withBusiness(fixture.businessId, async (tx) =>
+  const settled = await database.app.withBusiness(fixture.businessId, (tx) =>
     handback(tx, {
       leaseId: claimed.leaseId,
       fence: claimed.fence,
@@ -201,7 +201,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
     assertApproved(decided);
 
-    const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const claimed = await database.app.withBusiness(fixture.businessId, (tx) =>
       pickup(tx, {
         claimant: 'agent',
         reservationId: decided.value.reservationId as string,
@@ -214,7 +214,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     );
     if (!claimed.ok) throw new Error(`pickup refused ${claimed.refusal.code}`);
 
-    const settled = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const settled = await database.app.withBusiness(fixture.businessId, (tx) =>
       handback(tx, {
         leaseId: claimed.value.leaseId,
         fence: claimed.value.fence,
@@ -241,7 +241,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     expect(after).toEqual({ lease_state: 'live', res_state: 'held' });
 
     // The honest handback still works, and it is the only one that does.
-    const honest = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const honest = await database.app.withBusiness(fixture.businessId, (tx) =>
       handback(tx, {
         leaseId: claimed.value.leaseId,
         fence: claimed.value.fence,
@@ -264,7 +264,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
     assertApproved(decided);
 
-    const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const claimed = await database.app.withBusiness(fixture.businessId, (tx) =>
       pickup(tx, {
         claimant: 'agent',
         reservationId: decided.value.reservationId as string,
@@ -277,7 +277,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     );
     if (!claimed.ok) throw new Error(`pickup refused ${claimed.refusal.code}`);
 
-    const settled = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const settled = await database.app.withBusiness(fixture.businessId, (tx) =>
       handback(tx, {
         leaseId: claimed.value.leaseId,
         fence: claimed.value.fence,
@@ -306,7 +306,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     expect(stored?.report).toEqual({ draft: 'the brief, 200 words', words: 200 });
 
     // A stale fence cannot settle, and its report is retained anyway.
-    const late = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const late = await database.app.withBusiness(fixture.businessId, (tx) =>
       handback(tx, {
         leaseId: claimed.value.leaseId,
         fence: claimed.value.fence,
@@ -432,7 +432,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     assertApproved(decided);
     const claimed = await claim(database, fixture, decided.value.reservationId as string);
 
-    const settled = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const settled = await database.app.withBusiness(fixture.businessId, (tx) =>
       handback(tx, {
         leaseId: claimed.leaseId,
         fence: claimed.fence,
@@ -549,7 +549,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
 
     try {
       await expect(
-        database.app.withBusiness(fixture.businessId, async (tx) =>
+        database.app.withBusiness(fixture.businessId, (tx) =>
           handback(tx, {
             leaseId: claimed.leaseId,
             fence: claimed.fence,
@@ -606,7 +606,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
 
     // And with the arranged failure gone the same handback settles and proposes,
     // so the rollback above was the trigger's doing and not an unreachable path.
-    const settled = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const settled = await database.app.withBusiness(fixture.businessId, (tx) =>
       handback(tx, {
         leaseId: claimed.leaseId,
         fence: claimed.fence,
@@ -634,7 +634,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
       readonly maximumMinor?: number;
       readonly currency?: string;
     }): Promise<string> => {
-      const outcome = await database.app.withBusiness(fixture.businessId, async (tx) =>
+      const outcome = await database.app.withBusiness(fixture.businessId, (tx) =>
         handback(tx, {
           leaseId: claimed.leaseId,
           fence: claimed.fence,
@@ -702,7 +702,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     if (!approved.ok) throw new Error(`decide refused ${approved.refusal.code}`);
     assertApproved(approved);
     const heldThird = await claim(database, fixture, approved.value.reservationId as string);
-    const third = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const third = await database.app.withBusiness(fixture.businessId, (tx) =>
       handback(tx, {
         leaseId: heldThird.leaseId,
         fence: heldThird.fence,
@@ -729,7 +729,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     assertApproved(decided);
     const claimed = await claim(database, fixture, decided.value.reservationId as string);
 
-    const stale = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const stale = await database.app.withBusiness(fixture.businessId, (tx) =>
       handback(tx, {
         leaseId: claimed.leaseId,
         fence: claimed.fence + 1,
@@ -772,7 +772,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const other = await newTask(database.app, fixture.businessId, fixture.decider);
     const onOther = await proposeOn(database, fixture, { taskId: other });
 
-    const crossed = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const crossed = await database.app.withBusiness(fixture.businessId, (tx) =>
       propose(tx, {
         taskId: fixture.taskId,
         collection: TASK_COLLECTION,
@@ -808,7 +808,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const onOther = await proposeOn(database, fixture, { taskId: other });
 
     await expect(
-      database.app.withBusiness(fixture.businessId, async (tx) =>
+      database.app.withBusiness(fixture.businessId, (tx) =>
         tx.query(`update public.planned_runs set task_id = $3 where business_id = $1 and id = $2`, [
           fixture.businessId,
           onOther.runId,
@@ -867,11 +867,11 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     if (!decided.ok) throw new Error(`decide refused ${decided.refusal.code}`);
     assertApproved(decided);
     const envelopeId = decided.value.envelopeId as string;
-    const before = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const before = await database.app.withBusiness(fixture.businessId, (tx) =>
       envelopeTotals(tx, envelopeId),
     );
 
-    const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const claimed = await database.app.withBusiness(fixture.businessId, (tx) =>
       pickup(tx, {
         claimant: 'agent',
         reservationId: decided.value.reservationId as string,
@@ -890,7 +890,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
       [decided.value.attemptId as string],
     );
 
-    const settled = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const settled = await database.app.withBusiness(fixture.businessId, (tx) =>
       handback(tx, {
         leaseId: claimed.value.leaseId,
         fence: claimed.value.fence,
@@ -903,7 +903,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     if (!settled.ok) return;
     expect(settled.value.reservationState).toBe('quarantined');
 
-    const after = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const after = await database.app.withBusiness(fixture.businessId, (tx) =>
       envelopeTotals(tx, envelopeId),
     );
     expect(after.held).toBe(before.held);
@@ -1004,7 +1004,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     expect(state?.state).toBe('abandoned');
     expect(state?.cause).toBe('version_superseded');
 
-    const totals = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const totals = await database.app.withBusiness(fixture.businessId, (tx) =>
       envelopeTotals(tx, envelopeId),
     );
     expect(totals.held).toBe(0);
@@ -1027,7 +1027,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const rejected = await decideOn(database, fixture, second, { decision: 'reject' });
     expect(rejected.ok).toBe(true);
 
-    const totals = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const totals = await database.app.withBusiness(fixture.businessId, (tx) =>
       envelopeTotals(tx, envelopeId),
     );
     expect(totals.held).toBe(0);
@@ -1044,7 +1044,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const envelopeId = decided.value.envelopeId as string;
     const first = decided.value.reservationId as string;
 
-    const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const claimed = await database.app.withBusiness(fixture.businessId, (tx) =>
       pickup(tx, {
         claimant: 'agent',
         reservationId: first,
@@ -1066,7 +1066,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
       claimed.value.delegation.delegation.id,
     ]);
 
-    const again = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const again = await database.app.withBusiness(fixture.businessId, (tx) =>
       pickup(tx, {
         claimant: 'agent',
         reservationId: first,
@@ -1105,7 +1105,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     expect(state[1]?.state).toBe('held');
 
     // One hold's worth of the envelope, not two.
-    const totals = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const totals = await database.app.withBusiness(fixture.businessId, (tx) =>
       envelopeTotals(tx, envelopeId),
     );
     expect(totals.held).toBe(5_000);
@@ -1126,7 +1126,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     assertApproved(decided);
     const reservationId = decided.value.reservationId as string;
 
-    const claimed = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const claimed = await database.app.withBusiness(fixture.businessId, (tx) =>
       pickup(tx, {
         claimant: 'agent',
         reservationId,
@@ -1146,7 +1146,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
       [claimed.value.leaseId],
     );
 
-    const replayed = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const replayed = await database.app.withBusiness(fixture.businessId, (tx) =>
       replayRecordedTransitions(tx),
     );
     const mine = replayed.find((one) => one.reservationId === reservationId);

@@ -145,7 +145,7 @@ describe.skipIf(serverUrl === undefined)('two writers against one revision', () 
   });
 
   const titleOf = async (recordId: string): Promise<string | undefined> => {
-    const rows = await db.app.withBusiness(business, async (tx) =>
+    const rows = await db.app.withBusiness(business, (tx) =>
       tx.query<{ readonly title: string }>(
         `select data ->> 'title' as title from records where business_id = $1 and id = $2`,
         [business, recordId],

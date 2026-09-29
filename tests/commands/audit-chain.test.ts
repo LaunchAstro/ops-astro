@@ -62,7 +62,7 @@ describe.skipIf(serverUrl === undefined)('the audit chain', () => {
     event: Partial<Parameters<typeof writeAuditEvent>[1]> = {},
   ): Promise<{ readonly seq: string; readonly hash: string }> =>
     await db.app
-      .withBusiness(which, async (tx) =>
+      .withBusiness(which, (tx) =>
         writeAuditEvent(tx, {
           actorId: who,
           command: 'task.create',
@@ -111,7 +111,7 @@ describe.skipIf(serverUrl === undefined)('the audit chain', () => {
 
   it('writes the position and the hash itself, whatever a caller supplies', async () => {
     const forged = '0'.repeat(64);
-    const written = await db.app.withBusiness(business, async (tx) =>
+    const written = await db.app.withBusiness(business, (tx) =>
       writeAuditEvent(tx, {
         actorId: actor,
         command: 'task.update',
@@ -149,7 +149,7 @@ describe.skipIf(serverUrl === undefined)('the audit chain', () => {
 
   it('holds no update or delete privilege for the application role', async () => {
     await expect(
-      db.app.withBusiness(business, async (tx) =>
+      db.app.withBusiness(business, (tx) =>
         tx.query('update audit_events set command = $1 where business_id = $2', [
           'task.forged',
           business,
@@ -157,7 +157,7 @@ describe.skipIf(serverUrl === undefined)('the audit chain', () => {
       ),
     ).rejects.toThrow(/permission denied/iu);
     await expect(
-      db.app.withBusiness(business, async (tx) =>
+      db.app.withBusiness(business, (tx) =>
         tx.query('delete from audit_events where business_id = $1', [business]),
       ),
     ).rejects.toThrow(/permission denied/iu);
@@ -248,7 +248,7 @@ describe.skipIf(serverUrl === undefined)('the audit chain', () => {
       // simply shortening the chain. A gap is the break a per-row hash cannot
       // see: every surviving row still hashes to its own stored hash.
       await write(business, actor, { command: 'task.complete' });
-      const kept = await db.app.withBusiness(business, async (tx) =>
+      const kept = await db.app.withBusiness(business, (tx) =>
         tx.query<Record<string, unknown>>(
           'select * from audit_events where business_id = $1 and seq = $2',
           [business, target.seq],

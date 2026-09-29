@@ -89,7 +89,7 @@ describe.skipIf(serverUrl === undefined)('two callers at once', () => {
     // other was handed the answer.
     expect(again).toStrictEqual(first);
 
-    const rows = await db.app.withBusiness(business, async (tx) =>
+    const rows = await db.app.withBusiness(business, (tx) =>
       tx.query<{ readonly count: string }>(
         `select count(*)::text as count from records
           where business_id = $1 and data ->> 'title' = 'raced'`,
@@ -107,7 +107,7 @@ describe.skipIf(serverUrl === undefined)('two callers at once', () => {
     for (const outcome of [left, right]) {
       expect(isCommandRefusal(outcome) ? outcome.code : 'applied').toBe('applied');
     }
-    const keys = await db.app.withBusiness(business, async (tx) =>
+    const keys = await db.app.withBusiness(business, (tx) =>
       tx.query<{ readonly key: string }>(
         `select data ->> 'key' as key from records
           where business_id = $1 and data ->> 'title' = any($2::text[]) order by 1`,
@@ -170,7 +170,7 @@ describe.skipIf(serverUrl === undefined)('an attempt that raised', () => {
 
     // And the record itself did not land: the transaction that raised took
     // everything with it, including the register row.
-    const rows = await db.app.withBusiness(business, async (tx) =>
+    const rows = await db.app.withBusiness(business, (tx) =>
       tx.query<{ readonly count: string }>(
         `select count(*)::text as count from operations where business_id = $1`,
         [business],

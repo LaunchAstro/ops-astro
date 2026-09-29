@@ -143,7 +143,7 @@ describe.skipIf(serverUrl === undefined)(
 
         // The stamp is a projection of the current state. The evidence that the
         // task was once complete is not, and it is in the chain.
-        const history = await db.app.withBusiness(business, async (tx) =>
+        const history = await db.app.withBusiness(business, (tx) =>
           readRecordAudit(tx, made.recordId ?? ''),
         );
         expect(history.map((event) => event.command)).toStrictEqual([
@@ -225,7 +225,7 @@ describe.skipIf(serverUrl === undefined)(
           beforeId: second.recordId,
         });
         if (isCommandRefusal(ranked)) throw new Error(`rank refused ${ranked.code}`);
-        const ranks = await db.app.withBusiness(business, async (tx) =>
+        const ranks = await db.app.withBusiness(business, (tx) =>
           tx.query<{ readonly id: string; readonly rank: string }>(
             `select id, num_2::text as rank from records
             where business_id = $1 and id = any($2::uuid[]) order by num_2`,

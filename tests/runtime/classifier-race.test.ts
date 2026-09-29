@@ -175,7 +175,7 @@ async function approveOn(
   fixture: RuntimeFixture,
   of: Proposed,
 ): Promise<{ readonly reservationId: string; readonly envelopeId: string }> {
-  const decided = await database.app.withBusiness(fixture.businessId, async (tx) =>
+  const decided = await database.app.withBusiness(fixture.businessId, (tx) =>
     decide(tx, {
       gateId: of.gateId,
       versionId: of.versionId,
@@ -312,7 +312,7 @@ describe.skipIf(serverUrl === undefined)('two classifiers on one reservation', (
 
   /** The envelope's two totals and the terminal facts both cases assert. */
   async function terminalFacts(work: RacedHold): Promise<TerminalRow> {
-    const rows = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const rows = await database.app.withBusiness(fixture.businessId, (tx) =>
       tx.query<TerminalRow>(
         `select res.state, res.classified_cause as cause, res.classified_cause_id::text as cause_id,
                 att.state as attempt_state, att.outcome as attempt_outcome,
@@ -339,7 +339,7 @@ describe.skipIf(serverUrl === undefined)('two classifiers on one reservation', (
     readonly actual: number;
     readonly maximum: number;
   }> {
-    return await database.app.withBusiness(fixture.businessId, async (tx) =>
+    return await database.app.withBusiness(fixture.businessId, (tx) =>
       envelopeTotals(tx, work.envelopeId),
     );
   }

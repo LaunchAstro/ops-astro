@@ -12,6 +12,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "lint": "oxlint",
+    "lint:ratchet": "node scripts/lint-ratchet.mjs",
+    "lint:baseline": "node scripts/lint-ratchet.mjs --write",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",

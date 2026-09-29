@@ -146,7 +146,7 @@ async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
 }
 
 async function readDirect(world: World, taskId: string) {
-  return await world.db.app.withBusiness(world.alpha, async (tx) => readTaskProposals(tx, taskId));
+  return await world.db.app.withBusiness(world.alpha, (tx) => readTaskProposals(tx, taskId));
 }
 
 /** The HTTP answer is the named fault, and the direct read names where it broke. */
