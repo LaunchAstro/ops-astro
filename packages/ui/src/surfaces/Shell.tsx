@@ -99,6 +99,11 @@ export function Shell(props: ShellProps): ReactElement {
                 with redistribution rights is resolved, rather than an emoji,
                 which the design system forbids outright. */}
             <span aria-hidden="true">{tab.label.slice(0, 1)}</span>
+            {/* The callout names the tab on hover and focus. The button's
+                label already says it, so the callout is hidden from it. */}
+            <span className="dock__tablabel" aria-hidden="true">
+              {tab.label}
+            </span>
           </button>
         ))}
         {props.panel}

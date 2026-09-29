@@ -7,8 +7,9 @@
 // win where they exist and every reference is substituted after that, so an
 // alias declared only in `:root` still follows a primitive the dark block
 // flips. Each expected token is then compared, as text with its whitespace
-// collapsed, to what that resolution gives. A token that is missing or differs
-// is named with both values and the run exits 1.
+// collapsed and one spelling per number and hex, to what that resolution
+// gives. A token that is missing or differs is named with both values and the
+// run exits 1.
 //
 //   node scripts/token-diff.mjs [--css <file>] [--expected <file>]
 //   node scripts/token-diff.mjs --print [--css <file>]   the resolved sets as JSON
@@ -62,6 +63,14 @@ export function resolveTokens(css) {
   return { light: resolve(light), dark: resolve(dark) };
 }
 
+/** One spelling per value: hex in lower case, no trailing zeros, as the formatter writes it. */
+const spelling = (value) =>
+  value
+    .replace(/#[0-9a-f]+\b/giu, (hex) => hex.toLowerCase())
+    .replace(/(\d)\.(\d*?)0+\b/gu, (_whole, whole, digits) =>
+      digits ? `${whole}.${digits}` : whole,
+    );
+
 /** One line per expected token that is missing or differs, in either theme. */
 export function diffTokens(css, expected) {
   const got = resolveTokens(css);
@@ -69,7 +78,8 @@ export function diffTokens(css, expected) {
   for (const theme of ['light', 'dark']) {
     for (const [name, want] of Object.entries(expected[theme] ?? {})) {
       const have = got[theme][name];
-      if (have !== want) problems.push(`${theme} ${name}: want ${want}, got ${have ?? 'nothing'}`);
+      if (have === undefined || spelling(have) !== spelling(want))
+        problems.push(`${theme} ${name}: want ${want}, got ${have ?? 'nothing'}`);
     }
   }
   return problems;
