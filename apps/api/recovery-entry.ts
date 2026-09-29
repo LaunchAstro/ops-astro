@@ -34,7 +34,7 @@ import {
   replayRecordedTransitions,
   sweepExpiredLeases,
 } from '../../packages/core-runtime/src/index.ts';
-import type { Classification } from '../../packages/core-runtime/src/index.ts';
+import type { Classification, EffectLookup } from '../../packages/core-runtime/src/index.ts';
 
 /** The setting's name, in the environment or `.local/recovery.env`. */
 export const RECOVERY_SCOPE_SETTING = 'RECOVERY_BUSINESS_KEYS';
@@ -228,4 +228,18 @@ function describeSwept(business: RecoveredBusiness): void {
   console.log(
     `sweep: ${business.key} committed, ${String(released)} released, ${String(unknown)} held as unknown liabilities`,
   );
+}
+
+/** T3d1, red first: the register's answer, not wired yet. */
+export const registerEffectLookup: EffectLookup = async () =>
+  await Promise.reject(new Error('T3d1: registerEffectLookup is not built yet'));
+
+/** T3d1, red first: the whole pass, not built yet. */
+export async function passDeployment(
+  _database: Database,
+  _resolveBusiness: (businessKey: string) => Promise<string | undefined>,
+  _keys: readonly string[],
+  _lookup: EffectLookup,
+): Promise<RecoveryOutcome> {
+  return await Promise.reject(new Error('T3d1: passDeployment is not built yet'));
 }
