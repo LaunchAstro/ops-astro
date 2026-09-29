@@ -26,6 +26,7 @@ function task(fields: { readonly title: string | null; readonly capCurrency?: st
     revision: 3,
     description: null,
     history: [],
+    board: null,
     comments: [],
     proposals: [],
     ...(fields.capCurrency === undefined ? {} : { capCurrency: fields.capCurrency }),

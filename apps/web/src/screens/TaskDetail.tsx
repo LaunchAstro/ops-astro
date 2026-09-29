@@ -89,7 +89,9 @@ import type {
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
-import { ConflictNotice, MovedNotice, TaskHeader, UnsavedBar } from './task/Notices.tsx';
+import { ConflictNotice, MovedNotice, UnsavedBar } from './task/Notices.tsx';
+import { TaskHeader } from './task/Header.tsx';
+import { TaskUnknown } from './task/Absent.tsx';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { RunProgress } from '../views/run-progress.tsx';
@@ -181,82 +183,90 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   return (
     <div className="stack">
       <RefreshRow held={held !== null} onRefresh={reload} />
-      <RecordState state={state} subject="task" onRetry={reload}>
-        {(value) =>
-          'sharedTask' in value ? (
-            <SharedTaskDetail task={value.sharedTask} />
-          ) : (
-            <Loaded
-              client={client}
-              grantKey={props.grantKey}
-              task={value.task}
-              draft={held}
-              note={note}
-              onDecided={setNote}
-              commentRefusal={commentRefusal}
-              onCommentRefused={setCommentRefusal}
-              proposeRefusal={proposeRefusal}
-              onProposeRefused={setProposeRefusal}
-              moved={moved}
-              onMoved={setMoved}
-              commentDraft={commentDraft}
-              onCommentDraft={setCommentDraft}
-              proposeDraft={proposeDraft}
-              onProposeDraft={setProposeDraft}
-              topUpNote={topUpNote}
-              onTopUpNote={setTopUpNote}
-              onAttempt={(attempt) => {
-                setDraft((current) =>
-                  current !== null && current.identity === identity
-                    ? { ...current, attempt }
-                    : current,
-                );
-              }}
-              onDraft={(next, base) => {
-                if (next === null) {
+      {/*
+        An id nothing is filed under is said as that, quoting the id as typed
+        (MP-4-1). Every other refusal is the denied state, quoting its code.
+      */}
+      {state.outcome === 'denied' && state.refusal.code === 'NOT_FOUND' ? (
+        <TaskUnknown typed={props.taskKey} refusal={state.refusal} />
+      ) : (
+        <RecordState state={state} subject="task" onRetry={reload}>
+          {(value) =>
+            'sharedTask' in value ? (
+              <SharedTaskDetail task={value.sharedTask} />
+            ) : (
+              <Loaded
+                client={client}
+                grantKey={props.grantKey}
+                task={value.task}
+                draft={held}
+                note={note}
+                onDecided={setNote}
+                commentRefusal={commentRefusal}
+                onCommentRefused={setCommentRefusal}
+                proposeRefusal={proposeRefusal}
+                onProposeRefused={setProposeRefusal}
+                moved={moved}
+                onMoved={setMoved}
+                commentDraft={commentDraft}
+                onCommentDraft={setCommentDraft}
+                proposeDraft={proposeDraft}
+                onProposeDraft={setProposeDraft}
+                topUpNote={topUpNote}
+                onTopUpNote={setTopUpNote}
+                onAttempt={(attempt) => {
+                  setDraft((current) =>
+                    current !== null && current.identity === identity
+                      ? { ...current, attempt }
+                      : current,
+                  );
+                }}
+                onDraft={(next, base) => {
+                  if (next === null) {
+                    setDraft(null);
+                    return;
+                  }
+                  setDraft((current) =>
+                    current !== null && current.identity === identity
+                      ? {
+                          ...current,
+                          title: next.title,
+                          due: next.due,
+                          generation: current.generation + 1,
+                        }
+                      : {
+                          identity,
+                          generation: 1,
+                          base,
+                          title: next.title,
+                          due: next.due,
+                          attempt: null,
+                        },
+                  );
+                }}
+                onSaved={(generation) => {
+                  // Only the generation that was submitted. A save that settles
+                  // after further typing has answered a question nobody is asking
+                  // any more, and clearing the newer draft here would make the
+                  // person's newer text disappear.
+                  setDraft((current) =>
+                    current !== null &&
+                    current.identity === identity &&
+                    current.generation === generation
+                      ? null
+                      : current,
+                  );
+                }}
+                onDiscard={() => {
                   setDraft(null);
-                  return;
-                }
-                setDraft((current) =>
-                  current !== null && current.identity === identity
-                    ? {
-                        ...current,
-                        title: next.title,
-                        due: next.due,
-                        generation: current.generation + 1,
-                      }
-                    : {
-                        identity,
-                        generation: 1,
-                        base,
-                        title: next.title,
-                        due: next.due,
-                        attempt: null,
-                      },
-                );
-              }}
-              onSaved={(generation) => {
-                // Only the generation that was submitted. A save that settles
-                // after further typing has answered a question nobody is asking
-                // any more, and clearing the newer draft here would make the
-                // person's newer text disappear.
-                setDraft((current) =>
-                  current !== null &&
-                  current.identity === identity &&
-                  current.generation === generation
-                    ? null
-                    : current,
-                );
-              }}
-              onDiscard={() => {
-                setDraft(null);
-                reload();
-              }}
-              onChanged={reload}
-            />
-          )
-        }
-      </RecordState>
+                  reload();
+                }}
+                onChanged={reload}
+              />
+            )
+          }
+        </RecordState>
+      )}
     </div>
   );
 }

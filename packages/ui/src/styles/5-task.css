@@ -25,6 +25,8 @@
   font-weight: var(--weight-medium);
   font-size: var(--text-h1);
   line-height: var(--lh-title);
+  /* A long name wraps at 390 rather than clipping (MP-4-1). */
+  overflow-wrap: anywhere;
 }
 .tpr__facts {
   display: grid;

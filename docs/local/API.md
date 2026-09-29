@@ -961,6 +961,19 @@ was shared is not left visible to the old client's people. Both take
 own name (`share grant created`, `share grant revoked`). The shared view
 carries no `clientAccess`.
 
+## The board on a task
+
+`task.read` carries `board` (MP-4-1, CS-4.38), the board the task sits on as
+its page's crumb reads it: null when it sits on none, `{ readable: true,
+title }` when the reader may read that board, and `{ readable: false }`
+otherwise (`reads/board-crumb.ts`). A board is a task, so the check is the
+single-record `task:read` check `task.read` makes, asked of the id in the
+`board` slot before the board row is read; a reader refused it is told only
+that there is a board. The title is read from the board's own row at every
+read, filtered by the business, so a slot naming another business's record
+reads as no board. An agent's pool is its one task, so an agent always gets
+`{ readable: false }`. The shared view carries no `board`.
+
 ## Proposal projection
 
 `task.read` carries every proposal on the task under `proposals`, newest

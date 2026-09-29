@@ -1,40 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The task page's heading and the notices above its controls. `TaskDetail.tsx`
-// holds the state each one draws and says why a stale press and a stale draft
-// are told apart.
+// The notices above the task page's controls. `TaskDetail.tsx` holds the
+// state each one draws and says why a stale press and a stale draft are told
+// apart; the heading is `Header.tsx`.
 
 import type { ReactElement } from 'react';
-import { Spill } from '@launchastro/ui';
-import type { InternalTaskDetail } from '../../../../../packages/core-wire/src/index.ts';
 import type { WireRefusal } from '../../operations/client.ts';
 import { describeRefusal } from '../../records/submit.ts';
-import { pathTo } from '../../routes.ts';
-import { drawTaskState } from '../../views/task-state.ts';
-import { titleOf } from '../../views/task-title.ts';
-
-/** The crumb, the title (or the placeholder for a task with none) and the revision. */
-export function TaskHeader(props: { readonly task: InternalTaskDetail }): ReactElement {
-  const { task } = props;
-  return (
-    <header className="tpr">
-      <div className="tpr__crumb">
-        <a className="sb__addr" href={pathTo('agency:projects-board')}>
-          Projects
-        </a>
-        <span aria-hidden="true">›</span>
-        <span>No board</span>
-        <span className="sbact__meta">· {task.key}</span>
-        <Spill state={drawTaskState(task.state)} />
-      </div>
-      <h2 className="tpr__title">{titleOf(task.title)}</h2>
-      <div className="card__sub">
-        Revision {task.revision} ·{' '}
-        {task.completedAt === null ? 'not completed' : `completed ${task.completedAt}`}
-      </div>
-    </header>
-  );
-}
 
 /** A stale lifecycle or assignee press, quoted across the reread it caused. */
 export function MovedNotice(props: { readonly because: string | null }): ReactElement | null {

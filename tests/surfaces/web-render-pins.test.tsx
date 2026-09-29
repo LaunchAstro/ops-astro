@@ -68,6 +68,7 @@ function taskWith(gate: { readonly state: string; readonly expired: boolean }) {
     completedAt: null,
     revision: 3,
     history: [{ at: '2026-09-22T01:00:00.000Z', actorId: 'p-1', operation: 'task.create' }],
+    board: null,
     comments: [
       {
         id: 'c-1',
