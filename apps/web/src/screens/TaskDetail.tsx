@@ -96,6 +96,7 @@ import { RecordState } from '../views/record-state.tsx';
 import { submitEdit } from '../records/submit.ts';
 import { useCommand } from '../records/use-command.ts';
 import { SharedTaskDetail } from './SharedTaskDetail.tsx';
+import { Alerts } from './task/Alerts.tsx';
 import { Comments, type CommentDraft } from './task/Comments.tsx';
 import { DetailsForm } from './task/DetailsForm.tsx';
 import { History } from './task/History.tsx';
@@ -617,6 +618,7 @@ function Loaded(props: LoadedProps): ReactElement {
       />
 
       <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
+      <Alerts alerts={task.alerts} />
 
       <History history={task.history} />
     </div>

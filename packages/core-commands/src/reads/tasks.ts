@@ -30,6 +30,7 @@ import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './re
 import type { InternalCommentView } from '../../../core-wire/src/index.ts';
 import { openEnvelopeOf } from '../../../core-runtime/src/index.ts';
 import { READS } from '../../../core-wire/src/index.ts';
+import { readAlerts } from '../../../core-runtime/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
 
@@ -257,6 +258,7 @@ export async function readTaskDetail(
     proposals: await readTaskProposals(tx, row.id),
     capCurrency: await taskCapCurrency(tx, row.id),
     envelope: envelopeOf(await openEnvelopeOf(tx, row.id)),
+    alerts: await readAlerts(tx, row.id),
   };
 }
 

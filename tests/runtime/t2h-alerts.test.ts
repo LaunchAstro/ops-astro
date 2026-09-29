@@ -135,12 +135,14 @@ describe.skipIf(serverUrl === undefined)('T2h the alert record', () => {
     await held(w, { command: 'task.observe', attemptId: w.attemptId, ...extra });
 
   const alertsOn = async (taskId: string): Promise<readonly AlertRow[]> =>
-    await rows<AlertRow>(
-      s,
-      `select kind, waiting_reason from public.alerts
-        where business_id = $1 and task_id = $2 order by raised_at, id`,
-      [s.business, taskId],
-    );
+    (
+      await rows<AlertRow>(
+        s,
+        `select kind, waiting_reason from public.alerts
+          where business_id = $1 and task_id = $2 order by raised_at, id`,
+        [s.business, taskId],
+      )
+    ).map((row) => ({ kind: row.kind, waiting_reason: row.waiting_reason }));
 
   const read = async (who: Member, body: object, business = s.business) =>
     (await executeRead(s.db.app, business, who.presented, body as never)) as Record<

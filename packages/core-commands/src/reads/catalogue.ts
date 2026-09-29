@@ -15,6 +15,7 @@
 // inventory read. This row says only how the check is asked.
 
 import { planPresetSync, isUuid } from '../../../core-records/src/index.ts';
+import { readAlerts } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import type { TaskSpine } from '../commands/context.ts';
@@ -238,14 +239,20 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   },
   // No subject record: the queue is about the business's outstanding work
   // rather than about one task, and naming one of the tasks on it in the
-  // audit row would make "who read this record" false for the others.
+  // audit row would make "who read this record" false for the others. The
+  // alerts beside it are the team's (T2h): a reader outside it is shown none,
+  // and an agent's queue (`agent-operations.ts`) carries none.
   'task.queue': {
     identifiers: [],
     parse: NONE,
     spine: false,
     authority: 'declared',
     outsiderNotFound: false,
-    serve: async (tx) => ({ ok: true, queue: await readQueue(tx) }),
+    serve: async (tx, session) => ({
+      ok: true,
+      queue: await readQueue(tx),
+      alerts: isInternalReader(session.roleKey) ? await readAlerts(tx) : [],
+    }),
   },
   // The task's runs, after the grant at the task's record scope. It is
   // internal work: an external party is answered as for a task it cannot see,

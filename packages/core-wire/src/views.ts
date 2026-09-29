@@ -89,6 +89,18 @@ export interface TaskDetail extends TaskSummary {
   readonly capCurrency: string | null;
   /** The task's open envelope, which a top-up raises (T2e); null when none is open. */
   readonly envelope: TaskEnvelope | null;
+  /** The task's alerts, newest first (T2h). The detail is the team's, and so are they. */
+  readonly alerts: readonly TaskAlert[];
+}
+
+/** One alert as `task.read` and `task.queue` carry it (`core-runtime/src/alerts.ts`). */
+export interface TaskAlert {
+  readonly id: string;
+  readonly taskId: string;
+  readonly kind: string;
+  readonly waitingReason: string | null;
+  readonly causeId: string;
+  readonly raisedAt: string;
 }
 
 /** An open envelope as the task read carries it (T2e). */
@@ -345,10 +357,14 @@ export interface PersonListResult {
   readonly persons: readonly PersonView[];
 }
 
-/** `task.queue`'s answer. An empty queue is `[]` beside `ok`, never a refusal. */
+/**
+ * `task.queue`'s answer. An empty queue is `[]` beside `ok`, never a refusal.
+ * `alerts` are the team's (T2h); a reader outside the team is sent none.
+ */
 export interface QueueResult {
   readonly ok: true;
   readonly queue: readonly QueuedWork[];
+  readonly alerts: readonly TaskAlert[];
 }
 
 /** `preset.plan`'s answer: a dry-run plan that installs and approves nothing. */

@@ -54,6 +54,7 @@ export type {
   SettingView,
   SharedTaskRead,
   SharedTaskView,
+  TaskAlert,
   TaskBoardResult,
   TaskDetail,
   TaskEnvelope,

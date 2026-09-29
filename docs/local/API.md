@@ -492,6 +492,18 @@ lease is written (`queue` and `pickup`, `core-runtime/src/pickup.ts`).
 Restoring the task brings the work back.
 `tests/runtime/trashed-task-work-and-notes.test.ts` holds it.
 
+**Alerts (T2h).** A run's transition into settled, failed or cancelled, or
+into a wait only a person can end, raises one alert on its task in the same
+transaction: T2d's settlement (`settled`, `failed`, or `awaiting_person` with
+`liability_unknown` when the cost is above the hold), a hand-back (`settled`,
+`failed`, or `awaiting_person` with `needs_approval` for a successor or
+`quarantined` for a kept hold) and `task.cancel` (`cancelled`). Progress
+raises none. `task.read` carries a task's `alerts`, newest first, to the team
+only, and `task.queue` carries every live task's beside the queue, to the team
+only; an agent's queue carries none. Nothing delivers them. Each is
+`{ id, taskId, kind, waitingReason, causeId, raisedAt }`, one per cause and
+kind (`migrations/0034_alerts.sql`). `tests/runtime/t2h-alerts.test.ts` holds it.
+
 `task.propose` answers `FIELD_VALUE_INVALID` 422 for the two shapes its columns
 constrain, before the write rather than at it: a `purpose` outside
 `^[a-z][a-z0-9_]{0,62}$` names `purpose`, and a `step` that is not

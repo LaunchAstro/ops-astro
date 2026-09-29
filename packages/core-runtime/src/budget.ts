@@ -23,6 +23,7 @@ import { lockedInstant } from './clock.ts';
 import { acquire } from './locks.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
 import { checkAuthorityAt, holdCoveringGrants } from './recovery/classifier.ts';
+import { raiseAlert } from './alerts.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /** A cap's ceiling and everything its envelopes hold or spent, as exact SQL text. */
@@ -212,11 +213,13 @@ export function settledAt(heldMinor: bigint, spentMinor: bigint): Settlement {
  * event after them, so a failure in any rolls back all. The envelope gives
  * back the hold and takes the cost, which releases the difference to the cap.
  * No lease, run or task state moves: money settles on its own (an expired
- * lease included).
+ * lease included). Settling, failing or keeping the hold for a person raises
+ * the attempt's one alert (T2h).
  */
 export async function settleAtObserved(
   tx: TenantQuery,
   of: {
+    readonly taskId: string;
     readonly attemptId: string;
     readonly reservationId: string;
     readonly envelopeId: string;
@@ -230,6 +233,11 @@ export async function settleAtObserved(
       `update public.attempts set state = 'liability_unknown' where business_id = $1 and id = $2`,
       [tx.businessId, of.attemptId],
     );
+    await raiseAlert(tx, {
+      taskId: of.taskId,
+      causeId: of.attemptId,
+      raised: { kind: 'awaiting_person', waitingReason: 'liability_unknown' },
+    });
     return {
       state: 'liability_unknown',
       heldMinor: Number(of.heldMinor),
@@ -253,6 +261,11 @@ export async function settleAtObserved(
       where business_id = $1 and id = $2`,
     [tx.businessId, of.envelopeId, of.heldMinor.toString(), cost],
   );
+  await raiseAlert(tx, {
+    taskId: of.taskId,
+    causeId: of.attemptId,
+    raised: { kind: of.outcome === 'failed' ? 'failed' : 'settled' },
+  });
   return settledAt(of.heldMinor, of.costMinor);
 }
 
