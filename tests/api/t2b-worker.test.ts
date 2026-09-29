@@ -14,23 +14,22 @@
 // own business; a sibling task, a foreign delegation and another business key
 // are refused; the person routes refuse an agent login.
 //
-// `T2 identity local`: the identity route answers on loopback only.
+// `T2 identity local` is `t2b-identity-route.test.ts`.
 // `T2 canary token`, the command-line half: neither credential the worker was
 // handed reaches its output.
 
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { serve, type ServerType } from '@hono/node-server';
 import type { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
-import { readMigrations } from '../../packages/core-records/src/tenancy/migrate.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
-import { migrationHead, readIdentity } from '../../apps/api/identity.ts';
-import { enrol, grantTo } from '../commands/fixture.ts';
+import { readIdentity } from '../../apps/api/identity.ts';
+import { enrol, grantTo, type Member } from '../commands/fixture.ts';
+import { cq8World, type Party } from '../runtime/cq-8-world.ts';
 import {
   authorised,
   BUSINESS_KEY,
@@ -40,6 +39,7 @@ import {
   type Answer,
   type ApiFixture,
 } from './fixture.ts';
+import { detailOf, proposal, runWorker, type Ran } from './t2b-support.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -49,41 +49,6 @@ if (serverUrl === undefined) {
 }
 
 type Name = Parameters<typeof pathOf>[0];
-
-const detailOf = (answer: Answer): Record<string, unknown> =>
-  (answer.body['detail'] as Record<string, unknown> | undefined) ?? {};
-
-const proposal = (recordId: string, expectedRevision: number) => ({
-  operationId: randomUUID(),
-  recordId,
-  expectedRevision,
-  purpose: 'synthetic_comment',
-  maximumMinor: 2_500,
-  currency: 'AUD',
-  payload: { instruction: 'a synthetic change' },
-  step: { kind: 'synthetic_comment', payload: {} },
-});
-
-interface Ran {
-  readonly code: number | null;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
-/** The worker, as its own process, with only what its environment hands it. */
-async function runWorker(env: Record<string, string>): Promise<Ran> {
-  const child = spawn(process.execPath, [join(ROOT, 'apps/worker/main.ts'), '--once'], {
-    env: { PATH: process.env['PATH'] ?? '', ...env },
-  });
-  let stdout = '';
-  let stderr = '';
-  child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString('utf8')));
-  child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')));
-  const code = await new Promise<number | null>((done) => {
-    child.on('close', done);
-  });
-  return { code, stdout, stderr };
-}
 
 describe.skipIf(serverUrl === undefined)(
   'T2b: the worker and task.propose on the agent route',
@@ -339,32 +304,91 @@ describe.skipIf(serverUrl === undefined)(
       });
     });
 
-    describe('T2 identity local: the served-identity route', () => {
-      const get = async (env?: object) =>
-        await api.fetch(new Request('http://api.test/api/identity'), env);
+    describe('T2 isolation: each boundary the proposal crosses', () => {
+      let other: Party;
+      let first: Member;
+      let second: Member;
+      const read = async (who: Member, recordId: string) =>
+        await asPerson('task.read', { recordId }, await tokenFor(who.presented.subject));
 
-      it('answers loopback with the process, the tree and the ledger’s migration head', async () => {
-        const response = await get({ incoming: { socket: { remoteAddress: '127.0.0.1' } } });
-        expect(response.status).toBe(200);
-        const body = (await response.json()) as Record<string, unknown>;
-        const here = readIdentity(ROOT);
-        expect(body).toMatchObject({ pid: process.pid, checkout: ROOT, tree: here.tree });
-        expect(body['migrationHead']).toBe(migrationHead(readMigrations(join(ROOT, 'migrations'))));
-      });
+      beforeAll(async () => {
+        const { db, business, member, agent, agentActorId } = fixture;
+        const world = cq8World({ db, business, decider: member, agent, agentActorId, capId: '' });
+        other = await world.party('t2bother');
+        await db.app.withBusiness(business, async (tx) => await grantTo(tx, member, 'share'));
+        first = await world.client(business, member, 't2b-client-1', task.worker.id);
+        second = await world.client(business, member, 't2b-client-2', task.sibling.id);
+      }, 60_000);
 
-      it('answers a real loopback socket through the node server', async () => {
-        const response = await fetch(`${origin}/api/identity`);
-        expect(response.status).toBe(200);
-        expect(((await response.json()) as { pid: number }).pid).toBe(process.pid);
-      });
-
-      it('refuses anything that is not loopback, and an unknown peer', async () => {
-        const answers = await Promise.all(
-          [{ incoming: { socket: { remoteAddress: '10.0.0.2' } } }, undefined].map(get),
+      it('T2 isolation: business to business', async () => {
+        const [theirs] = other.tasks;
+        const named = await asAgent(
+          'task.propose',
+          proposal(String(theirs?.id), 1),
+          credential.worker,
         );
-        for (const response of answers) expect(response.status).toBe(404);
-        const texts = await Promise.all(answers.map(async (response) => await response.text()));
-        for (const text of texts) expect(text).not.toContain(ROOT);
+        expect(named.body).toMatchObject({ refused: true, code: 'DELEGATION_OUT_OF_PURPOSE' });
+        const there = await asAgent(
+          'task.propose',
+          proposal(String(theirs?.id), 1),
+          credential.worker,
+          't2bother',
+        );
+        expect(there.body).toMatchObject({ refused: true, code: 'AUTH_NO_AGENT_IDENTITY' });
+        const theirMember = await read(other.member, task.worker.id);
+        expect(theirMember.body['refused']).toBe(true);
+        // The worker's own task is the control: the query does find a lineage.
+        const ids = [task.worker.id, ...other.tasks.map((one) => one.id)];
+        const lineages = await fixture.db.admin.execute<{ task_id: string }>(
+          'select task_id from public.proposal_lineages where task_id = any($1::uuid[])',
+          [ids],
+        );
+        expect(lineages.map((row) => row.task_id)).toStrictEqual([task.worker.id]);
+      });
+
+      it('T2 isolation: client to client', async () => {
+        expect((await read(first, task.worker.id)).status).toBe(200);
+        for (const [who, recordId] of [
+          [first, task.sibling.id],
+          [second, task.worker.id],
+          [other.tasks[0]?.client as Member, task.worker.id],
+        ] as const) {
+          // oxlint-disable-next-line no-await-in-loop
+          const crossed = await read(who, recordId);
+          expect(crossed.body['refused'], recordId).toBe(true);
+          expect(JSON.stringify(crossed.body)).not.toContain('synthetic_comment');
+        }
+        const token = await tokenFor(first.presented.subject);
+        const proposed = await asPerson('task.propose', proposal(task.worker.id, 1), token);
+        expect(proposed.body['refused']).toBe(true);
+      });
+
+      it('T2 isolation: person to person', async () => {
+        const narrow = await enrol(fixture.db.app, fixture.business, 'narrow');
+        const own = { kind: 'record', id: task.sibling.id } as const;
+        const held = await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+          await grantTo(tx, narrow, 'read', own);
+          await grantTo(tx, narrow, 'write', own);
+          const minted = await mintDelegation(tx, {
+            agentActorId: fixture.agentActorId,
+            delegatePersonId: narrow.personId,
+            mintedByActorId: narrow.actorId,
+            purpose: 'person_to_person',
+            collections: ['task'],
+            actions: ['read', 'comment', 'write'],
+            purposeScope: { kind: 'record', id: task.route.id },
+            expiresAt: new Date(Date.now() + 3_600_000),
+          });
+          return minted.ok ? minted.value.credential : minted.refusal.code;
+        });
+        const before = await proposalsOn(task.route.id);
+        const borrowed = await asAgent('task.propose', proposal(task.route.id, 2), held);
+        expect(borrowed.body['refused']).toBe(true);
+        const token = await tokenFor(narrow.presented.subject);
+        const direct = await asPerson('task.propose', proposal(task.route.id, 2), token);
+        expect(direct.body['refused']).toBe(true);
+        expect(await proposalsOn(task.route.id)).toStrictEqual(before);
+        expect((await read(narrow, task.sibling.id)).status).toBe(200);
       });
     });
   },
