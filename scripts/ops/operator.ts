@@ -115,6 +115,17 @@ export async function requireOperator(environment: Environment = process.env): P
   if (unset.length > 0)
     return refused(`${unset.join(', ')} not set, so the sign-in cannot be checked`);
   const env = environment as Readonly<Record<string, string>>;
+  // Every refusal that needs no lookup comes first. The database lookup is the
+  // last check: it commits only when it admits the operator, so no refused run
+  // leaves a row behind.
+  const records = env['OPS_ASTRO_DEPLOYMENTS'] ?? '';
+  if (records === '') {
+    return {
+      ok: false,
+      reason:
+        'OPS_ASTRO_DEPLOYMENTS is not set: name the folder the deployment record goes to. Nothing was done.',
+    };
+  }
 
   const verify = createSupabaseVerifier({
     secret: env['SUPABASE_JWT_SECRET']!,
@@ -135,14 +146,6 @@ export async function requireOperator(environment: Environment = process.env): P
     return refused(
       `this sign-in is not a person of ${business} holding ${KEY} over the whole business`,
     );
-  }
-  const records = env['OPS_ASTRO_DEPLOYMENTS'] ?? '';
-  if (records === '') {
-    return {
-      ok: false,
-      reason:
-        'OPS_ASTRO_DEPLOYMENTS is not set: name the folder the deployment record goes to. Nothing was done.',
-    };
   }
   return { ok: true, operator: { personId, business }, records };
 }
