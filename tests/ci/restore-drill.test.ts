@@ -138,7 +138,7 @@ async function fixtureDump(): Promise<Buffer> {
     expect(dump.code).toBe(0);
     return dump.stdout;
   } finally {
-    await run(['rm', '-f', name]);
+    await run(['rm', '-f', '-v', name]);
   }
 }
 
@@ -313,7 +313,10 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
         expect(['exec', 'rm']).toContain(call[0]);
         expect(call).toContain(name);
       }
-      expect(rest.at(-1)).toEqual(['rm', '-f', name]);
+      // Removed with its volumes, and its data kept in memory.
+      expect(rest.at(-1)).toEqual(['rm', '-f', '-v', name]);
+      expect(first?.[first.indexOf('--tmpfs') + 1]).toBe('/var/lib/postgresql/drill');
+      expect(first).toContain('PGDATA=/var/lib/postgresql/drill');
       // No call names a host, a port or a connection string: there is no
       // target to point anywhere else.
       expect(calls.flat().join(' ')).not.toMatch(/postgres(ql)?:\/\/|--host|supabase/iu);
