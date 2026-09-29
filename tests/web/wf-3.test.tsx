@@ -8,7 +8,7 @@
 // width-and-theme harness MP-1-7) and an agent's edit as a reviewable change
 // are held in `wf-3-held.test.tsx`.
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { cliWorld, type CliWorld } from '../cli/api-3-world.ts';
 import { must } from '../wayfinder/world.ts';
@@ -40,10 +40,16 @@ describe.skipIf(serverUrl === undefined)('WF-3 the map view', () => {
     lead = await w.member('lead', ['read', 'write', 'assign', 'comment', 'decide']);
   }, 180_000);
 
-  afterAll(async () => {
-    await Promise.all(open.map(async (mounted) => await mounted.unmount()));
-    await w?.drop();
+  // Each case's pages go with it, so no two pages share the document; one at
+  // a time, since overlapping act() calls leave the next render unflushed.
+  afterEach(async () => {
+    for (const mounted of open.splice(0)) {
+      // oxlint-disable-next-line no-await-in-loop
+      await mounted.unmount();
+    }
   });
+
+  afterAll(async () => await w?.drop());
 
   const at = async (id: string) => ({ recordId: id, expectedRevision: await w.revisionOf(id) });
 

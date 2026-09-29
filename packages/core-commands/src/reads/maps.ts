@@ -39,6 +39,8 @@ interface TicketRow {
   readonly category: string | null;
   readonly gist: string | null;
   readonly closed_at: Date | null;
+  readonly revision: string;
+  readonly blocked_by: readonly string[];
 }
 
 interface VersionRow {
@@ -98,6 +100,8 @@ function mapView(
       title: ticket.title,
       type: ticket.type ?? 'task',
       state: ticket.state,
+      revision: Number(ticket.revision),
+      blockedBy: ticket.blocked_by,
     })),
     versions: versions.map((row) => ({
       version: row.version,
@@ -116,7 +120,16 @@ async function readMapTickets(
   return await tx.query<TicketRow>(
     `select c.id, c.txt_1 as key, c.txt_4 as title, coalesce(c.data ->> 'type', 'task') as type,
             s.data ->> 'key' as state, s.data ->> 'machine_category' as category,
-            c.data ->> 'gist' as gist, c.ts_2 as closed_at
+            c.data ->> 'gist' as gist, c.ts_2 as closed_at, c.revision::text as revision,
+            -- Its blockers: only live tickets of this same map (a blocks link
+            -- from any other record is never shown under a task grant).
+            coalesce((select array_agg(l.from_record_id::text order by l.from_record_id)
+                        from public.record_links l
+                        join public.records o on o.business_id = l.business_id
+                         and o.id = l.from_record_id
+                       where l.business_id = c.business_id and l.to_record_id = c.id
+                         and l.link_type = 'blocks' and o.record_type_id = c.record_type_id
+                         and o.uuid_4 = c.uuid_4 and o.deleted_at is null), '{}') as blocked_by
        from public.records c
        left join public.records s on s.business_id = c.business_id and s.id = c.uuid_1
       where c.business_id = $1 and c.uuid_4 = $2 and c.record_type_id = $3
