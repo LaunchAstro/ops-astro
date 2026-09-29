@@ -78,7 +78,8 @@
     "MP-4-10a (SL08) names task-adhoc: the Ad hoc mark command invariant (bool_2 reserved in 0033, task:write, the audit, the time default adHocDefault reads, and the three crossings: another business, another client's task under a record grant, an agent under a live delegation).",
     "MP-4-10b (SL08) names task-client-access: Client access as a share grant (task.share_with_client and task.revoke_client_share under access:share, never an agent; the tick on task.read; one share per person under the task lock; the audit) and its three crossings (another business, another client in the same business, an agent under a live delegation).",
     "MP-4-1 (SL08) names task-board-crumb: the board on task.read for the task page crumb (the board's own title, read at read and never copied; null for no board) and its three crossings (another business's board planted in the slot reads as no board; another client's board in the same business is withheld with no title; an agent under a live delegation is told only that there is one).",
-    "MP-4-2 (SL08) names task-facts: the stage and the client mark on task.read for the facts band, each the task's own record, and its three crossings (another business's task not found with its stage absent; another client's task in the same business refused with its stage absent; an agent under a live delegation reads its own task's facts and none of another's)."
+    "MP-4-2 (SL08) names task-facts: the stage and the client mark on task.read for the facts band, each the task's own record, and its three crossings (another business's task not found with its stage absent; another client's task in the same business refused with its stage absent; an agent under a live delegation reads its own task's facts and none of another's).",
+    "MP-4-3 (SL08) names task-perspectives: the Team and Agent counts worked out from one task's own task.read (an open gate on another task is never counted) and its three crossings (another business's task not found with its title absent; another client's task in the same business refused, its gate never counted and its proposal's canary never sent to a reader of client A's task; an agent under a live delegation counts its own task and reads nothing of another)."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -229,7 +230,8 @@
     "tests/commands/task-adhoc.test.ts",
     "tests/commands/task-client-access.test.ts",
     "tests/reads/task-board-crumb.test.ts",
-    "tests/reads/task-facts.test.ts"
+    "tests/reads/task-facts.test.ts",
+    "tests/reads/task-perspectives.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
