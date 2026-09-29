@@ -149,11 +149,6 @@ export interface Mentioned {
   readonly readable: boolean;
   /** Staff, as opposed to an outside party with no membership. */
   readonly member: boolean;
-  /**
-   * An outside party holding a live login here: a paid client, since a person
-   * grants that login and a free contact has none (client portal, CS-16.8).
-   */
-  readonly paidClient: boolean;
 }
 
 /**
@@ -167,19 +162,11 @@ export async function readMentions(
   comment: { readonly taskId: string; readonly audience: string },
   personIds: readonly string[],
 ): Promise<readonly Mentioned[]> {
-  const people = await tx.query<{
-    readonly id: string;
-    name: string;
-    member: boolean;
-    login: boolean;
-  }>(
+  const people = await tx.query<{ readonly id: string; name: string; member: boolean }>(
     `select p.id, p.display_name as name,
             exists (select 1 from public.memberships m
                      where m.business_id = p.business_id and m.person_id = p.id and m.active)
-              as member,
-            exists (select 1 from public.person_logins l
-                     where l.business_id = p.business_id and l.person_id = p.id and l.active)
-              as login
+              as member
        from public.people p where p.business_id = $1 and p.id = any($2::uuid[])`,
     [tx.businessId, personIds],
   );
@@ -196,7 +183,6 @@ export async function readMentions(
       label: person?.name ?? personId,
       readable,
       member: person?.member ?? false,
-      paidClient: person !== undefined && !person.member && person.login,
     });
   }
   return named;
@@ -204,16 +190,17 @@ export async function readMentions(
 
 /**
  * A comment saved: each staff member it names is raised a mention, never the
- * comment's own author. An outside party is raised a client comment only
- * when the comment is client-visible and the client is a paid client
- * (CS-16.8); otherwise the comment still names them and raises nothing.
+ * comment's own author. An outside party is raised nothing. CS-16.8's client
+ * comment is owed only to a paid client, which is a stored entitlement on the
+ * client's party, not a login (a login authenticates and entitles nothing).
+ * This head stores no such entitlement and carries no party model, so no
+ * client comment is raised until one lands.
  */
 export async function raiseMentions(
   tx: TenantQuery,
   comment: {
     readonly taskId: string;
     readonly commentId: string;
-    readonly audience: string;
     readonly authorActorId: string;
   },
   named: readonly Mentioned[],
@@ -224,14 +211,12 @@ export async function raiseMentions(
   );
   const author = authors[0]?.person_id ?? null;
   for (const person of named) {
-    if (person.personId === author) continue;
-    const toClient = comment.audience === 'client' && person.paidClient;
-    if (!person.member && !toClient) continue;
+    if (person.personId === author || !person.member) continue;
     // oxlint-disable-next-line no-await-in-loop
     await raiseInboxItem(tx, {
       recipientPersonId: person.personId,
       subjectRecordId: comment.taskId,
-      reason: person.member ? 'mention' : 'client_comment',
+      reason: 'mention',
       fact: { kind: 'record', id: comment.commentId },
     });
   }
