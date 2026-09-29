@@ -88,6 +88,21 @@ through `admit` (`apps/api/app.ts`), which asks in this order:
    `identity/agent-login.ts`.
 5. Anything else reaches the executor, and login resolution runs there,
    inside the serving transaction.
+6. Once login resolution admits the caller, the call is charged to its quotas
+   (API-3, `identity/quota.ts`): requests in a window and calls at once, each
+   per credential (the login), per person (for an agent, the agent actor) and
+   per business. One over is `QUOTA_EXCEEDED` 429, its names the quota and
+   whose (`["requests", "credential"]`), its one fix a plain reason with when
+   to send again. It is recorded as a refused `authentication_attempts` row in
+   the call's own transaction, and nothing else runs. A refused call is not
+   charged, a request is charged once however many times the envelope retries,
+   and its concurrent slot is given back when the request ends
+   (`withQuotaScope`, installed on every request by `composeApi`). The limits,
+   and the page size a list read may ask for, are the one table `QUOTAS`;
+   `composeApi` takes another table and clock only as the `quota` option.
+   Charging comes after the door on purpose: before it, a caller the business
+   does not admit could use up the business's quota. The counters are the API
+   process's own.
 
 `tests/api/boundary-body-admission.test.ts` holds the body refusal and what it
 writes. `tests/api/admission-enumeration.test.ts` compares the raw bytes for a

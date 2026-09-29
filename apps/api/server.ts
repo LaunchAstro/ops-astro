@@ -39,6 +39,8 @@ import { Hono } from 'hono';
 import {
   connect,
   connectAsAdmin,
+  createQuotaGate,
+  withQuotaScope,
   isBusinessId,
   KEY_FILE_VARIABLE,
   readEnvFile,
@@ -179,6 +181,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
   const server = new Hono();
   // This app's keys, for this request only: no other composition can replace them.
   server.use(async (_context, next) => await withRuntimeKeys(config.keys, next));
+  // Each request charged once to its quotas, after login resolution admits it.
+  const quota = createQuotaGate(config.quota);
+  server.use(async (_context, next) => await withQuotaScope(quota, next));
 
   // Measured, not assumed. `reachable` is the result of a statement that ran.
   server.get('/api/health', async (context) => {

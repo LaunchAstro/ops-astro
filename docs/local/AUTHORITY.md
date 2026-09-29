@@ -215,6 +215,7 @@ code on this head, and where that is shown.
 | ---------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                                    |
 | `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                                       |
+| `QUOTA_EXCEEDED`                                                             | 429    | yes, on both prefixes, after login resolution (`identity/quota.ts`, API-3)                                             |
 | `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                                    |
 | `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                                         |
 | `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                                    |

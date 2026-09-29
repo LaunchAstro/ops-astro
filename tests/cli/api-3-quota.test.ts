@@ -199,7 +199,9 @@ describe.skipIf(serverUrl === undefined)('API-3 quota', () => {
     // Another business's quota is its own: bravo answers, and nothing is
     // recorded against it.
     const bravoBefore = await refusedAttempts(w.bravo);
-    expect((await call(api, bea, '/task/board', board, { business: 'bravo' })).status).toBe(200);
+    expect(
+      (await call(api, bea, '/task/board', board, { business: 'api3quota-bravo' })).status,
+    ).toBe(200);
     expect(await refusedAttempts(w.bravo)).toBe(bravoBefore);
   });
 
