@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/// <reference lib="dom" />
 /* oxlint-disable no-await-in-loop -- widths, themes and pages run one at a time,
-   in order: one browser context at a time, and each report line in a fixed order. */
+   in order: one width and theme at a time, and each report line in a fixed order. */
 //
 // Every page the app registers, drawn in a real browser at each width in each
 // theme: a picture file and its sideways scroll, for the width-and-theme
 // report (MP-1-7) that MP-1-1's harness-captures test reads, with the regions
-// the catalogue masks (`states.json`). The session is
-// made up (`made-up-session.json`): the pages ask for one before they draw,
-// and none of them needs a record to draw its frame.
+// the catalogue masks (`states.json`). A public page (sign-in) is drawn signed
+// out; a working page is drawn signed in with the made-up session
+// (`made-up-session.json`), with no API behind the app, so a page that reads
+// records draws its own frame in its could-not-be-read state (the records wait
+// on T4b1's fixture). Each picture counts only when the page drew its own
+// screen, never the sign-in form or a gate.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,15 +20,21 @@ import { createServer } from 'vite';
 import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
 import type { Packet, Theme } from './packet.ts';
-import { addressOf, builtPages, overflowOf, type PageShot } from './report.ts';
+import { addressOf, builtPages, needsSession, overflowOf, type PageShot } from './report.ts';
 
 /** The app served from source by its own Vite config, at a free local port. */
 export async function serveApp(): Promise<{ app: URL; close: () => Promise<void> }> {
+  // No API behind it on any machine: its proxy points at a closed port, never at
+  // an API another run left listening on the default one.
+  const api = process.env['API_ORIGIN'];
+  process.env['API_ORIGIN'] = 'http://127.0.0.1:9';
   const server = await createServer({
     configFile: new URL('../../apps/web/vite.config.ts', import.meta.url).pathname,
     logLevel: 'silent',
     server: { port: 0, strictPort: false },
   });
+  if (api === undefined) delete process.env['API_ORIGIN'];
+  else process.env['API_ORIGIN'] = api;
   await server.listen();
   return { app: new URL(server.resolvedUrls?.local[0] ?? ''), close: () => server.close() };
 }
@@ -58,20 +68,32 @@ export async function captureBuiltPages(options: {
   const shots: PageShot[] = [];
   for (const width of options.widths) {
     for (const theme of options.themes) {
-      const side = await openSide(browser, packet, width, { app, session, colorScheme: theme });
+      // A public page (sign-in) is drawn signed out, a working page signed in.
+      const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
+      const signedIn = await openSide(browser, packet, width, { app, session, colorScheme: theme });
       try {
-        shots.push(...(await capturePages(side, { ...options, mask, width, theme })));
+        const sides = { signedOut, signedIn };
+        shots.push(...(await capturePages(sides, { ...options, mask, width, theme })));
       } finally {
-        await side.context.close();
+        await Promise.all([signedOut.context.close(), signedIn.context.close()]);
       }
     }
   }
   return shots;
 }
 
-/** Every built page on one side, at its width in its theme. */
+/** Which screen the app drew: its sign-in form, a gate, or the page itself. */
+function screenOf(): string {
+  if (document.querySelector('.signin__form') !== null) return 'the sign-in form';
+  const title = document.querySelector('.readstate .empty__title')?.textContent ?? '';
+  if (title.startsWith('You are already signed in')) return 'the already-signed-in gate';
+  if (title.startsWith('No screen is registered')) return 'the not-found gate';
+  return 'the page';
+}
+
+/** Every built page at one width in one theme, each on the side its route asks for. */
 async function capturePages(
-  side: Side,
+  sides: { signedOut: Side; signedIn: Side },
   at: { packet: Packet; app: URL; width: number; theme: Theme; mask: string[]; out: string },
 ): Promise<PageShot[]> {
   const { packet, app, width, theme, mask, out } = at;
@@ -79,13 +101,18 @@ async function capturePages(
   for (const id of builtPages()) {
     const name = `${id}@${width}-${theme}`;
     const address = addressOf(id, { key: 'T-1' }) ?? '/';
+    const side = needsSession(id) ? sides.signedIn : sides.signedOut;
     const page = await load(side, packet, new URL(address, app).href);
+    // The intended screen is checked before the picture counts.
+    const intended = needsSession(id) ? 'the page' : 'the sign-in form';
+    const drew = await page.evaluate(screenOf);
     const [shot] = await shoot(page, name, { page: 'viewport' }, mask);
     const overflow = overflowOf(await page.evaluate(scrollMetrics));
     await page.close();
     const picture = shot === undefined ? null : join(out, `${name}.page.png`);
     if (shot !== undefined && picture !== null) writeFileSync(picture, shot.png);
-    shots.push({ page: id, width, theme, picture, overflow });
+    const wrong = drew === intended ? {} : { wrongScreen: `drew ${String(drew)}, not ${intended}` };
+    shots.push({ page: id, width, theme, picture, overflow, ...wrong });
   }
   return shots;
 }

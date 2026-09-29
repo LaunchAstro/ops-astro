@@ -27,6 +27,8 @@ export type PageShot = {
   /** The picture file's path; null when nothing was captured. */
   picture: string | null;
   overflow: number;
+  /** Set when the page drew another screen than its route's (a gate, the sign-in form). */
+  wrongScreen?: string | undefined;
 };
 
 export const DARK_PENDING = 'waiting for the dark theme (U04, MP-1-1)';
@@ -93,6 +95,10 @@ function shotLine(
       pictured: false,
       sideways: false,
     };
+  }
+  if (shot.wrongScreen !== undefined) {
+    const line = `FAIL ${name}: ${shot.wrongScreen}`;
+    return { line, failed: true, pictured: false, sideways: false };
   }
   if (shot.overflow > 0) {
     return {
