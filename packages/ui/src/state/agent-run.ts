@@ -13,66 +13,9 @@
 // Nothing here decides anything. A gate's staleness is a comparison of
 // versions (the gate's version is not the lineage's head, or its deadline has
 // passed on the server's clock, which the read already derived), never a
-// timer in the browser.
+// timer in the browser. What the run staged is read in `agent-staged.ts`.
 
-// This package imports no `core-*` package, so the shapes it reads are its own,
-// the fields of `task.read`'s proposal projection the pane draws. The web
-// passes the projection itself; TypeScript holds the two to the same fields.
-
-export interface RunCheck {
-  readonly id: string;
-  readonly name: string;
-  readonly outcome: string;
-  readonly note: string | null;
-  readonly performedByActorId: string;
-  readonly recordedAt: string;
-}
-
-export interface RunGate {
-  readonly id: string;
-  readonly state: string;
-  readonly round: number;
-  readonly expiresAt: string | null;
-  readonly expired: boolean;
-  readonly payloadDigest: string;
-}
-
-export interface RunVersion {
-  readonly versionId: string;
-  readonly version: number;
-  readonly purpose: string;
-  readonly maximumMinor: number;
-  readonly currency: string;
-  readonly payloadDigest: string;
-  readonly payload: unknown;
-  readonly supersededAt: string | null;
-  readonly runId: string | null;
-  readonly evidence: { readonly digest: string; readonly body: unknown } | null;
-  readonly gate: RunGate | null;
-  readonly checks: readonly RunCheck[];
-}
-
-export interface RunReservation {
-  readonly state: string;
-  readonly heldMinor: number;
-  readonly actualMinor: number | null;
-  readonly classifiedCause: string | null;
-  readonly lease: { readonly state: string } | null;
-  readonly attempt: { readonly state: string } | null;
-}
-
-export interface RunLineage {
-  readonly lineageId: string;
-  readonly state: string;
-  /** Newest first. */
-  readonly versions: readonly RunVersion[];
-  readonly decisions: readonly {
-    readonly decision: string;
-    readonly decidedByPersonId: string;
-    readonly decidedAt: string;
-  }[];
-  readonly reservations: readonly RunReservation[];
-}
+import type { RunCheck, RunLineage, RunReservation, RunVersion } from './run-projection.ts';
 
 export type RunTone = 'gate' | 'run' | 'done' | 'bad';
 
@@ -232,13 +175,13 @@ function gateBox(lineage: RunLineage, head: RunVersion, state: RunState): GateBo
     state: expired ? 'expired' : gate.state,
     round: gate.round,
     expiresAt: gate.expiresAt,
-    invalidatedBy: !stale
-      ? null
-      : expired
+    invalidatedBy: stale
+      ? expired
         ? 'Its deadline passed with no decision.'
         : onHead && gate.state !== 'superseded'
           ? 'The run moved on without it.'
-          : `A newer version, v${String(head.version)}, replaced v${String(gated.version)}.`,
+          : `A newer version, v${String(head.version)}, replaced v${String(gated.version)}.`
+      : null,
   };
 }
 
@@ -282,7 +225,7 @@ function jobsOf(head: RunVersion, state: RunState, box: GateBox): readonly Job[]
   return [
     {
       key: 'work',
-      title: head.purpose.replace(/_/gu, ' '),
+      title: head.purpose.replaceAll('_', ' '),
       meta: `WORK · typed output v${String(head.version)}`,
       state: worked,
       group: null,
@@ -342,137 +285,6 @@ export function runStories(proposals: readonly RunLineage[] | undefined): readon
       },
     ];
   });
-}
-
-/** The four staged output kinds (DA-05), read from the stored evidence as it is. */
-export type Staged =
-  | { readonly kind: 'diff'; readonly where: string; readonly was: string; readonly will: string }
-  | {
-      readonly kind: 'pr';
-      readonly repo: string;
-      readonly number: number;
-      readonly title: string;
-      readonly files: number;
-      readonly adds: number;
-      readonly dels: number;
-      readonly checks: string;
-      readonly href: string;
-    }
-  | {
-      readonly kind: 'ad';
-      readonly account: string;
-      readonly groups: readonly {
-        readonly name: string;
-        readonly paused: boolean;
-        readonly band: string;
-      }[];
-      readonly spend: string;
-    }
-  | {
-      readonly kind: 'preview';
-      readonly url: string;
-      readonly built: string;
-      readonly note: string;
-    };
-
-export interface Shipped {
-  readonly at: string;
-  readonly artefact: string;
-  readonly snapshot: string;
-  readonly rolledBackAt: string | null;
-}
-
-/**
- * A link the pane may draw from stored evidence, or null. The evidence is the
- * agent's own writing, so a `javascript:` or `data:` address in it would run
- * in the reader's session on a click. Only an absolute http or https address
- * parsed by the URL parser is a link; anything else is drawn as text.
- */
-export function safeHref(value: string): string | null {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
-const record = (value: unknown): Readonly<Record<string, unknown>> | null =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-const text = (value: unknown): string => (typeof value === 'string' ? value : '');
-const count = (value: unknown): number => (typeof value === 'number' ? value : 0);
-
-/**
- * What the version staged, if its evidence says so in one of the four kinds.
- * Anything else is not guessed at: the pane says nothing was staged.
- */
-export function stagedOf(version: RunVersion): Staged | null {
-  const staged = record(record(version.evidence?.body)?.['staged']);
-  if (staged === null) return null;
-  switch (staged['kind']) {
-    case 'diff':
-      return {
-        kind: 'diff',
-        where: text(staged['where']),
-        was: text(staged['was']),
-        will: text(staged['will']),
-      };
-    case 'pr':
-      return {
-        kind: 'pr',
-        repo: text(staged['repo']),
-        number: count(staged['number']),
-        title: text(staged['title']),
-        files: count(staged['files']),
-        adds: count(staged['adds']),
-        dels: count(staged['dels']),
-        checks: text(staged['checks']),
-        href: text(staged['href']),
-      };
-    case 'ad':
-      return {
-        kind: 'ad',
-        account: text(staged['account']),
-        groups: (Array.isArray(staged['groups']) ? staged['groups'] : []).flatMap(
-          (group: unknown) => {
-            const row = record(group);
-            return row === null
-              ? []
-              : [
-                  {
-                    name: text(row['name']),
-                    paused: row['paused'] === true,
-                    band: text(row['band']),
-                  },
-                ];
-          },
-        ),
-        spend: text(staged['spend']),
-      };
-    case 'preview':
-      return {
-        kind: 'preview',
-        url: text(staged['url']),
-        built: text(staged['built']),
-        note: text(staged['note']),
-      };
-    default:
-      return null;
-  }
-}
-
-/** The shipped record and its snapshot, if the evidence carries one (DA-06). */
-export function shippedOf(version: RunVersion): Shipped | null {
-  const shipped = record(record(version.evidence?.body)?.['shipped']);
-  if (shipped === null) return null;
-  return {
-    at: text(shipped['at']),
-    artefact: text(shipped['artefact']),
-    snapshot: text(shipped['snapshot']),
-    rolledBackAt: typeof shipped['rolledBackAt'] === 'string' ? shipped['rolledBackAt'] : null,
-  };
 }
 
 /** How many request-changes rounds a gate allows before Escalate takes the place (CS-6.4). */

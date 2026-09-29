@@ -36,7 +36,9 @@ import './styles/6-agent.css';
 
 export * from './state/corpus.ts';
 export * from './state/project.ts';
+export * from './state/run-projection.ts';
 export * from './state/agent-run.ts';
+export * from './state/agent-staged.ts';
 export * from './primitives/Absence.tsx';
 export * from './primitives/Status.tsx';
 export * from './primitives/Tabs.tsx';

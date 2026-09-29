@@ -124,10 +124,10 @@ export function createPositiveBody(
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
         return { body: { board: null } };
-      case 'task.queue':
       // The pending gates the admin may decide: the admin holds `decide` on
       // the whole business, so the list answers.
       case 'gate.pending':
+      case 'task.queue':
       case 'person.list':
       // Both take an empty body and neither carries an `expectedRevision`:
       // `settings.read` because `business_settings` has no revision column to

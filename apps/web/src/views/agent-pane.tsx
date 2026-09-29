@@ -25,22 +25,25 @@ export interface AgentSectionProps {
   readonly onChanged: () => void;
 }
 
-export function AgentSection(props: AgentSectionProps): ReactElement {
+interface AgentControls {
+  readonly busy: boolean;
+  readonly refusal: string | null;
+  readonly decide: (
+    gate: { readonly gateId: string; readonly versionId: string },
+    decision: GateDecision | 'reject',
+  ) => void;
+  readonly cancel: (lineageId: string) => void;
+}
+
+/** The pane's controls on the real commands, each ending in a reread. */
+function useAgentControls(props: AgentSectionProps): AgentControls {
   const { busy, run } = useCommand();
   const [refusal, setRefusal] = useState<string | null>(null);
-  // The person's own choice for this view. It is saved through the one
-  // preference store once that store is in (MP-2-11); until then it lasts
-  // as long as the page.
-  const [jobListOpen, setJobListOpen] = useState(false);
-
   const settle = (settlement: Settlement): void => {
     setRefusal(settlement.kind === 'ok' ? null : settlement.because);
     props.onChanged();
   };
-  const decide = (
-    gate: { readonly gateId: string; readonly versionId: string },
-    decision: GateDecision | 'reject',
-  ): void => {
+  const decide: AgentControls['decide'] = (gate, decision) => {
     if (busy) return;
     run(
       () =>
@@ -53,6 +56,27 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
       settle,
     );
   };
+  const cancel = (lineageId: string): void => {
+    if (busy) return;
+    run(
+      () =>
+        props.client.mutate('task.cancel', {
+          recordId: props.recordId,
+          lineageId,
+          reason: 'Cancelled from the Agent pane.',
+        }),
+      settle,
+    );
+  };
+  return { busy, refusal, decide, cancel };
+}
+
+export function AgentSection(props: AgentSectionProps): ReactElement {
+  const { busy, refusal, decide, cancel } = useAgentControls(props);
+  // The person's own choice for this view. It is saved through the one
+  // preference store once that store is in (MP-2-11); until then it lasts
+  // as long as the page.
+  const [jobListOpen, setJobListOpen] = useState(false);
   const nameOf = (personId: string): string =>
     props.people.find((person) => person.personId === personId)?.name ?? 'a person';
 
@@ -70,18 +94,7 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onReject={(gate) => {
           decide(gate, 'reject');
         }}
-        onCancel={(lineageId) => {
-          if (busy) return;
-          run(
-            () =>
-              props.client.mutate('task.cancel', {
-                recordId: props.recordId,
-                lineageId,
-                reason: 'Cancelled from the Agent pane.',
-              }),
-            settle,
-          );
-        }}
+        onCancel={cancel}
       />
     </section>
   );
