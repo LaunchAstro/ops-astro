@@ -35,6 +35,8 @@ export type Catalogue = {
   screenshots: string;
   mask: string[];
   drift: { state: string; control: string; token: string };
+  /** The app-only drift mode's page (a route id), control, token and theme. */
+  appDrift: { page: string; control: string; token: string; theme: string; note: string };
   states: State[];
 };
 export type Side = {
@@ -111,17 +113,48 @@ export function contextOptions(packet: Packet, width: number, theme: Theme): Bro
   };
 }
 
+/**
+ * A signed-in local fixture session (T4b1), given as a Playwright storage-state
+ * file. The app keeps its session in `sessionStorage`, which storage state does
+ * not carry, so the file's storage entries for the app's own origin are the
+ * session store's contents: they are set in `sessionStorage` before the app's
+ * first script runs, and never in `localStorage`. Its cookies are kept.
+ */
+function sessionOf(
+  file: string,
+  origin: string,
+): { cookies: StorageState['cookies']; entries: [string, string][] } {
+  const state = JSON.parse(readFileSync(file, 'utf8')) as StorageState;
+  const entries = state.origins
+    .filter((one) => one.origin === origin)
+    .flatMap((one) => one.localStorage.map((item): [string, string] => [item.name, item.value]));
+  if (entries.length === 0) {
+    throw new Error(`visual: the session file holds no session for ${origin}`);
+  }
+  return { cookies: state.cookies, entries };
+}
+type StorageState = {
+  cookies: Exclude<BrowserContextOptions['storageState'], string | undefined>['cookies'];
+  origins: { origin: string; localStorage: { name: string; value: string }[] }[];
+};
+
 /** One side of the comparison: the mockup, or the app at a local address. */
 export async function openSide(
   browser: Browser,
   packet: Packet,
   width: number,
-  theme: Theme,
-  source: { mockupDir: string; tree: string } | { app: URL; session?: string | undefined },
+  source:
+    | { mockupDir: string; tree: string; theme?: Theme | undefined }
+    | { app: URL; session?: string | undefined; colorScheme?: Theme | undefined },
 ): Promise<Side> {
+  // Light unless the side names its theme (the app's by colour scheme, the mockup's by its key).
+  const theme: Theme = ('app' in source ? source.colorScheme : source.theme) ?? 'light';
+  const session =
+    'app' in source && source.session !== undefined
+      ? sessionOf(source.session, source.app.origin)
+      : undefined;
   const context = await browser.newContext({
-    // A signed-in local fixture session (T4b1), as Playwright storage state.
-    ...('app' in source && source.session !== undefined ? { storageState: source.session } : {}),
+    ...(session === undefined ? {} : { storageState: { cookies: session.cookies, origins: [] } }),
     ...contextOptions(packet, width, theme),
   });
   const side: Side = { context, theme, external: new Set(), unresolved: new Set() };
@@ -145,6 +178,15 @@ export async function openSide(
     side.unresolved.add(url.href);
     return route.abort('blockedbyclient');
   });
+  if (session !== undefined && 'app' in source) {
+    await context.addInitScript(
+      ({ origin, entries }: { origin: string; entries: [string, string][] }) => {
+        if (location.origin !== origin) return;
+        for (const [key, value] of entries) sessionStorage.setItem(key, value);
+      },
+      { origin: source.app.origin, entries: session.entries },
+    );
+  }
   // The mockup takes its theme from its own stored key.
   if ('mockupDir' in source) {
     await context.addInitScript(

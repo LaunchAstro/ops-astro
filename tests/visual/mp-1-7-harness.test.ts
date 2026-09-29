@@ -4,9 +4,11 @@
 // line and per supporting checklist line. These run in the required checks
 // without a browser. The same harness in the pinned renderer, against the
 // pinned mockup, is `node tests/visual/run.ts --prove-drift`, run locally
-// where the mockup is (T4c's split).
+// where the mockup is (T4c's split); drift on the app's own page, with no
+// mockup, is `run.ts --app-drift`, which the `visual drift` CI job runs on
+// Linux with its own cases (`app-drift-cases.ts`).
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PNG } from 'pngjs';
@@ -42,21 +44,25 @@ function capture(width: number, control: { x: number; colour: Rgb }): Buffer {
 const WIDTHS = [1480, 900, 390, 1279, 1649, 1650, 1700];
 
 let packet: Packet;
+/** Real picture files, one per page and width, as the harness writes them. */
 let pictures: string;
 beforeAll(() => {
   packet = readPacket();
-  pictures = mkdtempSync(join(tmpdir(), 'mp-1-7-pictures-'));
+  pictures = mkdtempSync(join(tmpdir(), 'mp-1-7-'));
+  for (const page of builtPages()) {
+    for (const width of packet.widths) {
+      for (const theme of themesOf(packet)) {
+        writeFileSync(pictureOf(page, width, theme), capture(width, { x: 40, colour: TOKEN }));
+      }
+    }
+  }
 });
 afterAll(() => {
   rmSync(pictures, { recursive: true, force: true });
 });
 
-/** A picture file as wide as its width, written once: the report reads the file, not the name. */
-function picture(page: string, width: number, theme: string): string {
-  const path = join(pictures, `${page}@${width}-${theme}.png`);
-  if (!existsSync(path)) writeFileSync(path, capture(width, { x: 0, colour: WHITE }));
-  return path;
-}
+const pictureOf = (page: string, width: number, theme = 'light'): string =>
+  join(pictures, `${page.replace(':', '_')}@${width}-${theme}.page.png`);
 
 const everyShot = (widths: readonly number[], overflow = 0, of: Packet = packet): PageShot[] =>
   builtPages().flatMap((page) =>
@@ -65,7 +71,7 @@ const everyShot = (widths: readonly number[], overflow = 0, of: Packet = packet)
         page,
         width,
         theme,
-        picture: picture(page, width, theme),
+        picture: pictureOf(page, width, theme),
         overflow,
       })),
     ),
@@ -108,12 +114,15 @@ describe('MP-1-7', () => {
   it('MP-1-7 renderer pinned: a capture from a different browser mode is refused until it is measured', () => {
     const pinned = packet.renderer;
     expect(() => checkRenderer(packet, { ...pinned })).not.toThrow();
-    // Headed Chromium, or its new headless mode, is not the pinned headless shell.
+    // Headed Chromium, or its new headless mode, is not the pinned headless shell,
+    // and neither is the other: each names its mode.
     const headed = rendererOf(pinned, { headless: false });
-    expect(headed.browser).toBe('chromium');
+    expect(headed.browser).toBe('chromium headed');
     expect(() => checkRenderer(packet, headed)).toThrow(/browser/u);
     const channel = rendererOf(pinned, { headless: true, channel: 'chromium' });
+    expect(channel.browser).toBe('chromium new-headless');
     expect(() => checkRenderer(packet, channel)).toThrow(/browser/u);
+    expect(() => checkRenderer({ ...packet, renderer: headed }, channel)).toThrow(/browser/u);
     expect(rendererOf(pinned, { headless: true })).toEqual(pinned);
     expect(() => checkRenderer(packet, { ...pinned, deviceScaleFactor: 2 })).toThrow(
       /deviceScaleFactor/u,
@@ -161,6 +170,24 @@ describe('MP-1-7 report', () => {
     expect(planted.lines).toContain('FAIL agency:planted@1480-light: no picture');
     expect(planted.lines).toContain('FAIL agency:planted@1480-dark: no picture');
     expect(planted.failed).toBe(2 * (1 + packet.widths.length));
+    // A picture counts only when its file is there, as a PNG as wide as its width.
+    const faked = everyShot(packet.widths);
+    const swapped: Record<number, string> = {
+      390: join(pictures, 'no-such.png'),
+      900: pictureOf('agency:sign-in', 390),
+      1480: new URL(import.meta.url).pathname,
+    };
+    for (const shot of faked) {
+      if (shot.page === 'agency:sign-in' && shot.theme === 'light')
+        shot.picture = swapped[shot.width] ?? shot.picture;
+    }
+    const counted = report(packet, builtPages(), faked);
+    expect(counted.lines).toContain('FAIL agency:sign-in@390-light: no picture');
+    expect(counted.lines).toContain(
+      'FAIL agency:sign-in@900-light: picture is 390 px wide, not 900',
+    );
+    expect(counted.lines).toContain('FAIL agency:sign-in@1480-light: picture is not a PNG');
+    expect(counted.failed).toBe(3);
   });
 });
 

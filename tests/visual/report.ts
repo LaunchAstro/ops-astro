@@ -22,7 +22,8 @@ const { ROUTES } = (await import(registry)) as {
 export type PageShot = {
   page: string;
   width: number;
-  theme: Theme;
+  /** The theme it was drawn in; light when not given (a light-only capture). */
+  theme?: Theme | undefined;
   /** The picture file's path; null when nothing was captured. */
   picture: string | null;
   overflow: number;
@@ -51,6 +52,10 @@ export function addressOf(
 
 /** Whether drawing the page needs a signed-in session. */
 export const needsSession = (page: string): boolean => ROUTES[page]?.authenticated ?? false;
+
+/** The registered page an address draws, or undefined when none does. */
+export const pageAt = (path: string): string | undefined =>
+  Object.keys(ROUTES).find((page) => ROUTES[page]?.path === path);
 
 /** Why a picture file does not count for its width, or undefined when it does. */
 export function pictureFault(picture: string, width: number): string | undefined {
@@ -117,7 +122,7 @@ export function report(
       for (const theme of themes) {
         const name = `${page}@${width}-${theme}`;
         const shot = shots.find(
-          (one) => one.page === page && one.width === width && one.theme === theme,
+          (one) => one.page === page && one.width === width && (one.theme ?? 'light') === theme,
         );
         const verdict = shotLine(name, width, shot);
         lines.push(verdict.line);
