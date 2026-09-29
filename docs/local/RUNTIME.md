@@ -1283,7 +1283,8 @@ direct SQL.
   cancellation, and each keeps its cause on the attempt: `provider_unavailable`
   (the provider's fault) and `connection_lost` (the network's), which a worker
   reports by handing back `dropped` with `report.dropCause`, and `worker_lost`
-  (ours), which the sweep names when a lease runs out with nothing reported.
+  (ours), which the pass's sweep (`sweepLostWorkers`) names when a lease runs
+  out with nothing reported.
   A silent run is running until then. The drop appends `dropped` to the run's
   events and raises one `dropped` alert. An unmarked step ends `dropped`, its
   hold released as before, and is reserved again as a new attempt on the same
