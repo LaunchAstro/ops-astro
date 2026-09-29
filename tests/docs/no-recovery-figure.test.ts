@@ -16,21 +16,21 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const UNIT = String.raw`(?:seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?)`;
+const UNIT = String.raw`(?:seconds?|secs?|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?)`;
 const FIGURE = String.raw`\d+(?:\.\d+)?\s*${UNIT}\b`;
+const RESTORE = String.raw`\b(?:recover(?:y|ies|s|ed|ing)?|restor(?:e|es|ed|ing|ation|ations))\b`;
 
-/** A recovery figure: a number with a unit, bound to recovery, restore or data loss. */
+/**
+ * A recovery figure: a number with a time unit in the same sentence as a
+ * recovery or restore word, either way round, or RTO and RPO with a number.
+ * Broad on purpose (Sol, criterion 11): a figure in any phrasing is still a
+ * figure, and a false match costs a rewording.
+ */
 const RECOVERY_FIGURES: readonly RegExp[] = [
   new RegExp(String.raw`\b(?:RTO|RPO)\b[^.\n]{0,40}?\d`, 'u'),
-  new RegExp(String.raw`recovery[ -](?:time|point)[^.\n]{0,60}?${FIGURE}`, 'iu'),
-  new RegExp(
-    String.raw`\b(?:recover(?:y|s|ed)?|restor(?:e|es|ed|ing))\b[^.\n]{0,40}?\b(?:in|within|under|takes?|of)\s+(?:about\s+|around\s+|up to\s+)?${FIGURE}`,
-    'iu',
-  ),
-  new RegExp(
-    String.raw`${FIGURE}\s+(?:of\s+)?(?:data\s+loss|downtime|to\s+(?:recover|restore))`,
-    'iu',
-  ),
+  new RegExp(String.raw`${RESTORE}[^.\n]{0,60}?${FIGURE}`, 'iu'),
+  new RegExp(String.raw`${FIGURE}[^.\n]{0,40}?${RESTORE}`, 'iu'),
+  new RegExp(String.raw`${FIGURE}\s+(?:of\s+)?(?:data\s+loss|downtime)`, 'iu'),
 ];
 
 function recoveryFigures(text: string): readonly string[] {
@@ -67,9 +67,16 @@ describe('S0-3 no recovery figure', () => {
       'You can recover within 30 minutes of an outage.',
       'At most 24 hours of data loss.',
       'The recovery point is 1 day behind.',
+      'Restoration takes 4h.',
+      'Plan for 3 hours to restore the database.',
     ]) {
       expect(recoveryFigures(planted)).toStrictEqual([planted]);
     }
+  });
+
+  it('Sol proof, criterion 11: a restoration time quoted in plain English is found', () => {
+    const planted = 'The restoration time is 4 hours.';
+    expect(recoveryFigures(planted)).toStrictEqual([planted]);
   });
 
   it('passes sentences that quote no recovery figure', () => {
