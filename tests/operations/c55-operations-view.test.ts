@@ -186,6 +186,33 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
     expect(await incidentRows(harness.world.alpha)).toEqual([{ n: (before[0]?.n ?? 0) + 1 }]);
   });
 
+  it('C55 records: a NUL or a lone surrogate in a text field is refused by name, and no driver error carries the words to a log', async () => {
+    const before = await incidentRows(harness.world.alpha);
+    const logged: string[] = [];
+    const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
+    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation(capture),
+    );
+    try {
+      for (const field of ['whatHappened', 'foundBy', 'affected']) {
+        for (const bad of [`${CANARY}\u0000`, `${CANARY}\uD800`]) {
+          // oxlint-disable-next-line no-await-in-loop
+          const answer = await record(incident({ [field]: bad }));
+          expect({ status: answer.status, code: answer.code }, field).toEqual({
+            status: 422,
+            code: 'FIELD_VALUE_INVALID',
+          });
+          expect(JSON.stringify(answer.body), field).toContain(field);
+          expect(JSON.stringify(answer.body), field).not.toContain(CANARY);
+        }
+      }
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+    expect(logged.join('\n')).not.toContain(CANARY);
+    expect(await incidentRows(harness.world.alpha)).toEqual(before);
+  });
+
   it('C55 refusal privacy:manage: a holder of operations:read alone, a member and a client are refused, and nothing is recorded', async () => {
     const before = await incidentRows(harness.world.alpha);
     for (const token of [harness.world.noah.token, harness.world.mia.token, clientToken]) {
