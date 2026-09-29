@@ -8,8 +8,9 @@
 // opening the closed items or scrolling leave every count where it was. The
 // owed figure is always `inbox.count`'s, never a tally of the rows drawn.
 
-import { useState, type MouseEvent, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { TabPanel, TabStrip } from '../primitives/Tabs.tsx';
+import { follow, type OpenHow } from './gesture.ts';
 import {
   bandHeads,
   bandOf,
@@ -23,10 +24,7 @@ import {
   type InboxTab,
 } from '../state/inbox.ts';
 
-export interface OpenHow {
-  /** Shift: open beside what is open, rather than in its place. */
-  readonly beside: boolean;
-}
+export type { OpenHow } from './gesture.ts';
 
 export interface NotificationsProps {
   /** `inbox.read`'s items, as it returned them. */
@@ -58,16 +56,6 @@ const BAND_HEAD: Readonly<Record<Exclude<InboxBand, 'done'>, string>> = {
   owe: 'Owed a response',
   fyi: 'No response needed',
 };
-
-/**
- * The gesture law on a link: a plain press opens in place, Shift opens beside,
- * and a press the browser owns (Ctrl, Cmd, Alt, a middle button) is left to it.
- */
-function follow(event: MouseEvent<HTMLAnchorElement>, open: (how: OpenHow) => void): void {
-  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey) return;
-  event.preventDefault();
-  open({ beside: event.shiftKey });
-}
 
 const when = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short' });
 
