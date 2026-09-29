@@ -47,3 +47,4 @@ export * from './surfaces/Shell.tsx';
 export * from './surfaces/Board.tsx';
 export * from './surfaces/TaskPage.tsx';
 export * from './surfaces/AgentPane.tsx';
+export * from './surfaces/AssistantPanel.tsx';
