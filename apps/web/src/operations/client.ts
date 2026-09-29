@@ -75,6 +75,8 @@ export const READ_NAMES = [
   // server's `reads/dispatch.ts` asks it, not this list.
   'task.queue',
   'preset.plan',
+  // Custody's rows as set or not set (C31).
+  'secret.list',
 ] as const;
 
 /**

@@ -881,6 +881,9 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `session.capabilities`             | `readCapabilities` (`reads/capabilities.ts`)                                              | served under a live delegation (`authorise`, `capabilitiesOf`)                                  |
 | `settings.set_four_eyes_threshold` | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `settings.set_client_sign_off`     | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `secret.list`                      | `listCustodySecrets` (`reads/custody.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `secret.set`                       | `setCustodySecret` (`commands/custody-secrets.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `secret.clear`                     | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
@@ -1391,3 +1394,16 @@ identity, a reused one, a stale revision, generic writes to protected fields, a
 spoofed system field, and a body and headers carrying an actor and a business
 that reach nothing. One line per case with the status and the code it observed;
 a case that cannot run yet prints `unrun` with its reason.
+
+## Custody (C31)
+
+Three rows, `custody:manage` each and never an agent. [CUSTODY.md](CUSTODY.md)
+has the table, the sealing and the compromise runbook.
+
+| Operation      | Route           | Body                                                                    | Answer or refusals                                                                                                                                  |
+| -------------- | --------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `secret.list`  | `/secret/list`  | `{}`                                                                    | `{ ok: true, secrets: [{ id, name, clientId, state, setAt, lastUsedAt, revision }] }`; `SCOPE_NOT_GRANTED` 403                                      |
+| `secret.set`   | `/secret/set`   | `operationId`, `name`, `value` (text), `clientId?`, `expectedRevision?` | `detail: { secretId, name, clientId, state }`; `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422, `DEPENDENCY_NOT_LANDED` 501 |
+| `secret.clear` | `/secret/clear` | `operationId`, `secretId`, `expectedRevision?`                          | `detail: { secretId, state }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `VERSION_STALE` 409                                                        |
+
+No answer carries a value, and a refusal names the field, never what was sent.

@@ -76,6 +76,8 @@ export interface IdentWorld {
     picked: Picked;
     batchId: string;
     grantId: string;
+    /** A key bravo's admin set in custody (C31). */
+    secretId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
@@ -218,6 +220,15 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
   const trashable = await taskOf(bravoAdmin, 'a bravo task in the trash', 'bravo');
   const trashBody = { recordId: trashable.id, expectedRevision: trashable.revision };
   const trashed = need(await person(bravoAdmin, 'task.trash', trashBody, 'bravo'), 'task.trash');
+  const bravoSecret = need(
+    await person(
+      bravoAdmin,
+      'secret.set',
+      { name: 'bravo.key', value: `bravo-${randomUUID()}` },
+      'bravo',
+    ),
+    'secret.set',
+  );
   const bravoGrants = await world.db.admin.execute<{ readonly id: string }>(
     `select id from public.grants
       where business_id = $1 and subject_kind = 'person' and subject_id = $2
@@ -254,6 +265,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       picked: bravoPicked,
       batchId: String(trashed['batchId']),
       grantId: String(bravoGrants[0]?.id),
+      secretId: String(bravoSecret['secretId']),
     },
     otherPicked,
     rhea,

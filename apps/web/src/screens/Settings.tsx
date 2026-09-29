@@ -40,6 +40,7 @@ import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { CapabilityBanner, ConflictBlock, ReadBanner, ValueLine } from './settings/panels.tsx';
 import { useSettings, type StorageLike, type Which } from './settings/use-settings.ts';
+import { KeysPanel } from './settings/keys.tsx';
 
 export type { StorageLike } from './settings/use-settings.ts';
 
@@ -251,6 +252,18 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
           {model.busy === 'sign-off' ? 'Saving…' : 'Save sign-off'}
         </button>
       </section>
+
+      {/*
+        Keys (C31) only for a caller the server says holds custody:manage.
+        Custody is owner and administrator only, so an absent or refused
+        capability read shows nothing rather than a panel that is refused.
+      */}
+      {(model.capabilities.outcome === 'ready' || model.capabilities.outcome === 'empty') &&
+      model.capabilities.value.grants.some(
+        (grant) => grant.collection === 'custody' && grant.action === 'manage',
+      ) ? (
+        <KeysPanel client={props.client} />
+      ) : null}
     </div>
   );
 }

@@ -64,6 +64,7 @@ import {
 export { ACCEPTANCE_ISSUER, ACCEPTANCE_SECRET, tokenFor } from './cast.ts';
 export type { AgentIdentity, Caller } from './cast.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
+import { generateSealingPair } from '../../packages/core-records/src/custody/index.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
@@ -101,6 +102,12 @@ export interface World {
 export async function createWorld(part: string): Promise<World> {
   process.env['GATE_SIGNING_KEY_ID'] ??= `test/acceptance@1`;
   process.env['GATE_SIGNING_SECRET'] ??= randomUUID();
+  // The broker's public key custody seals to (C31). The world holds no private
+  // half: nothing in a proof opens a secret.
+  if (process.env['CUSTODY_PUBLIC_KEY'] === undefined) {
+    process.env['CUSTODY_KEY_ID'] = 'test/acceptance@1';
+    process.env['CUSTODY_PUBLIC_KEY'] = generateSealingPair('test/acceptance@1').publicRaw;
+  }
 
   const db = await createFreshDatabase({ part });
   const alpha = (await insertBusiness(db.app, 'alpha')) as BusinessId;

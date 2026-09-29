@@ -259,6 +259,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       cells.push(
         ['task.restore', pair('batchId', f.batchId, (batchId) => ({ batchId }))],
         ['grant.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
+        ['secret.clear', pair('secretId', f.secretId, (secretId) => ({ secretId }))],
         [
           'delegation.revoke',
           pair('delegationId', f.picked.delegationId, (delegationId) => ({ delegationId })),
@@ -369,7 +370,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   it(
     CASE.targetFree,
     async () => {
-      // The nine that name no identifier (`cd-alternatives.ts`, where the matrix
+      // The eleven that name no identifier (`cd-alternatives.ts`, where the matrix
       // reads its not-applicable rows from): a positive request moves and shows
       // nothing of bravo's, and a target it would ignore is refused. The reading
       // is TRANSACTION-CONTRACT line 113, accepted by root ruling 3. Each aimed

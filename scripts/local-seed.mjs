@@ -95,6 +95,10 @@ const GRANTS_BY_ROLE = {
     // stays `manage` above; this is the half that lets a screen show the
     // four-eyes band instead of guessing at it.
     ['settings', 'read'],
+    // Custody (C31): the key catalogue gives `custody:manage` to the owner and
+    // administrators, never an agent. Without it no seeded identity could set
+    // or clear a key on Settings ▸ Keys.
+    ['custody', 'manage'],
   ],
   member: [
     ['task', 'read'],
