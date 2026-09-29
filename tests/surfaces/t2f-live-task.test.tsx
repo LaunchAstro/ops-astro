@@ -153,15 +153,50 @@ describe('T2f the live task page', () => {
       await pause();
     });
     expect(valueOf(view.host, '#task-title')).toBe('My unsaved title');
-    expect(api.reads).toHaveLength(1);
+    // The change is read under the draft (C4 live-sync 4, ORCH-DECISION
+    // 29 Sep 19:01Z) so the regions not being edited keep updating; the
+    // draft is not read over. Once per change: the named test below.
+    expect(api.reads).toHaveLength(2);
 
-    // Resolved by the person, the held invalidation reads once.
+    // Resolved by the person, discarding reads the task and shows the change.
     await view.click('[data-draft-resolve="discard"]');
     await until(
       'the held re-read',
       () => valueOf(view.host, '#task-title') === api.task.title,
       Date.now() + 2_000,
     );
+    await view.unmount();
+  });
+
+  it('T2f draft never overwritten: each live change under an unsaved edit re-reads once and leaves the draft as typed', async () => {
+    const api = server();
+    const view = await mount(
+      <TaskDetailScreen client={client(api.fetch)} grantKey="alpha:mia" taskKey={TASK.id} />,
+    );
+    await until(
+      'the task and the stream',
+      () => api.joins.length === 1 && view.find('#task-title') !== null,
+      Date.now() + 2_000,
+    );
+    await view.type('#task-title', 'My unsaved title');
+
+    const change = async (reads: number, title: string): Promise<void> => {
+      api.task.title = title;
+      await act(async () => {
+        api.send('invalidate');
+        await pause();
+      });
+      await until('the re-read', () => api.reads.length === reads, Date.now() + 2_000);
+      await act(async () => {
+        await pause();
+        await pause();
+      });
+      expect(api.reads).toHaveLength(reads);
+      expect(valueOf(view.host, '#task-title')).toBe('My unsaved title');
+      expect(view.find('[data-draft-resolve="choice"]')).not.toBeNull();
+    };
+    await change(2, 'Somebody else moved it');
+    await change(3, 'And moved it again');
     await view.unmount();
   });
 
