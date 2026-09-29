@@ -30,6 +30,11 @@ const git = (cwd: string, ...args: string[]): string =>
   execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 
 describe('S0-1 version stamp', () => {
+  versionStampCases1();
+  versionStampCases2();
+});
+
+function versionStampCases1() {
   it('names the commit, and says so when the tree differs from it', () => {
     const repo = join(scratch, 'repo');
     mkdirSync(repo);
@@ -72,7 +77,9 @@ describe('S0-1 version stamp', () => {
     writeFileSync(join(artefact, STAMP_FILE), '{"build":"0123456789ab-dirty"}\n');
     expect(readStamp(artefact)).toBe('0123456789ab-dirty');
   });
+}
 
+function versionStampCases2() {
   it('the web build writes its identifier into its artefact, its page and its bundle', async () => {
     const outDir = join(scratch, 'dist');
     await build({
@@ -95,4 +102,4 @@ describe('S0-1 version stamp', () => {
       .join('\n');
     expect(code).toContain(JSON.stringify(expected));
   }, 60_000);
-});
+}

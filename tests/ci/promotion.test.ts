@@ -98,6 +98,11 @@ const fixture = (name: string, text: string): string => {
 // ---- S0-1 promotion same artefact (the invariant) --------------------------
 
 describe('S0-1 promotion same artefact', () => {
+  promotionSameArtefactCases1();
+  promotionSameArtefactCases2();
+});
+
+function promotionSameArtefactCases1() {
   it('the dry run picks the artefact the staging definition names and records its stamp', () => {
     const { calls, effects } = watched([]);
     const outcome = promote(request({ dryRun: true }), effects);
@@ -143,7 +148,9 @@ describe('S0-1 promotion same artefact', () => {
       expect(calls).toEqual([]);
     }
   });
+}
 
+function promotionSameArtefactCases2() {
   it('the command dry-runs over a store and prints the record, and nothing else', () => {
     const artefacts = STORE();
     const result = run(
@@ -166,7 +173,7 @@ describe('S0-1 promotion same artefact', () => {
     ]);
     expect(refused.status, refused.out).toBe(1);
   });
-});
+}
 
 // ---- S0-1 promotion refuses running app -----------------------------------
 

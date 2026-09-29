@@ -111,6 +111,12 @@ function effects(over: Partial<DeployEffects> = {}): Watched {
 // ---- S0-6 image pins ------------------------------------------------------
 
 describe('S0-6 image pins', () => {
+  imagePinsCases1();
+  imagePinsCases2();
+  imagePinsCases3();
+});
+
+function imagePinsCases1() {
   it('every service staging runs, the auth server included, is named by a recorded digest', () => {
     expect(imagePinProblems(definition, record)).toStrictEqual([]);
     const pinned = Object.entries(definition.services).filter(
@@ -130,7 +136,9 @@ describe('S0-6 image pins', () => {
       ).not.toStrictEqual([]);
     }
   });
+}
 
+function imagePinsCases2() {
   it('a movable, unrecorded, hostile or missing image is refused', () => {
     const digest = 'b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24';
     const hostile = [
@@ -173,7 +181,9 @@ describe('S0-6 image pins', () => {
       expect(imagePinProblems(def, record), JSON.stringify(extra)).toHaveLength(1);
     }
   });
+}
 
+function imagePinsCases3() {
   it('a digest recorded only in prose, not in a pin row, is not recorded', () => {
     const prose = `The table below lists pins. postgres 17-alpine sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24.`;
     expect(
@@ -201,7 +211,7 @@ describe('S0-6 image pins', () => {
     );
     expect(outcome.kind).toBe('failed');
   });
-});
+}
 
 // ---- S0-6 services unchanged ----------------------------------------------
 

@@ -58,6 +58,13 @@ describe('S0-2 plain words: each alert names what broke, what it affects and wha
 });
 
 describe('S0-2 errors land in the error sink', () => {
+  errorsLandInCases1();
+  errorsLandInCases2();
+  errorsLandInCases3();
+  errorsLandInCases4();
+});
+
+function errorsLandInCases1() {
   it('an application error becomes one event: its class, in-app frames and the plain words, never its message', async () => {
     const sink = fakeSink();
     const alerts = createAlerts({
@@ -102,7 +109,9 @@ describe('S0-2 errors land in the error sink', () => {
     expect(JSON.stringify(sink.events).includes('Juniper'), 'forged content').toBe(false);
     expect(sink.events[0]?.exception?.values[0]?.stacktrace.frames.length).toBeGreaterThan(0);
   });
+}
 
+function errorsLandInCases2() {
   it('a thrown value that is not an Error, or a class name that is not a standard one, is reported as Error', () => {
     const odd = new Error('x');
     odd.name = 'Refused for jo@example.com';
@@ -135,7 +144,9 @@ describe('S0-2 errors land in the error sink', () => {
     await alerts.fault(malformed);
     expect(sink.events.map((e) => e.exception?.values[0]?.stacktrace.frames)).toEqual([[], []]);
   });
+}
 
+function errorsLandInCases3() {
   it('the transport posts to the sink store named by the DSN, the key in the auth header only', async () => {
     const calls: { url: string; init: RequestInit }[] = [];
     const fetchStub = ((url: string, init: RequestInit) => {
@@ -180,7 +191,9 @@ describe('S0-2 errors land in the error sink', () => {
       expect(String(error)).not.toContain('ftp');
     }
   });
+}
 
+function errorsLandInCases4() {
   it('a sink that is down never fails the request that reported to it', async () => {
     const alerts = createAlerts({
       send: () => Promise.reject(new Error('sink down')),
@@ -189,11 +202,16 @@ describe('S0-2 errors land in the error sink', () => {
     });
     await expect(alerts.fault(new Error('boom'))).resolves.toBeUndefined();
   });
-});
+}
+
+const alpha = { business: 'alpha' } as const;
 
 describe('S0-2 security alerts (TR-SEC-9): one detection each', () => {
-  const alpha = { business: 'alpha' } as const;
+  securityAlertsTrCases1();
+  securityAlertsTrCases2();
+});
 
+function securityAlertsTrCases1() {
   it('S0-2 security: repeated failed sign-ins raise one alert', () => {
     const d = detectorFor();
     const failed: SecuritySignal = { kind: 'sign-in-failed', ...alpha, person: 'mia' };
@@ -236,7 +254,9 @@ describe('S0-2 security alerts (TR-SEC-9): one detection each', () => {
     d.observe({ kind: 'secret-scan-failed' });
     expect(d.raised).toEqual(['secret-scan-failed']);
   });
+}
 
+function securityAlertsTrCases2() {
   it('S0-2 security: a burst of cross-scope refusals raises one alert', () => {
     const d = detectorFor();
     for (let i = 0; i < 9; i += 1)
@@ -283,4 +303,4 @@ describe('S0-2 security alerts (TR-SEC-9): one detection each', () => {
     expect(d.raised).toEqual([]);
     expect(d.detector.tracked()).toBeLessThanOrEqual(10_001);
   });
-});
+}

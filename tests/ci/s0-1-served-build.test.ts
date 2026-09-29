@@ -21,6 +21,12 @@ const source = (path: string): string => readFileSync(`${root}${path}`, 'utf8');
 const STAMP = '0123456789ab';
 
 describe('S0-1 served build', () => {
+  servedBuildCases1();
+  servedBuildCases2();
+  servedBuildCases3();
+});
+
+function servedBuildCases1() {
   it('matches when the page, its served document and the checkout agree', () => {
     const verdict = servedBuildVerdict({
       label: 'i10',
@@ -66,7 +72,9 @@ describe('S0-1 served build', () => {
       expect(verdict.line).toMatch(/MISMATCH$/u);
     }
   });
+}
 
+function servedBuildCases2() {
   it('is red when the stamp to match against is unknown', () => {
     const verdict = servedBuildVerdict({
       label: 'i10',
@@ -104,7 +112,9 @@ describe('S0-1 served build', () => {
     // No row checks a page of its own making instead.
     expect(source('tests/browser/slice-acceptance.mjs')).not.toContain('servedBuild');
   });
+}
 
+function servedBuildCases3() {
   it('the harness row calls servedIdentity on the page it is given and records the row', () => {
     const harness = source('tests/browser/harness.mjs');
     const at = harness.indexOf('export async function servedBuild(page, row)');
@@ -115,4 +125,4 @@ describe('S0-1 served build', () => {
     expect(body).toContain('servedBuildVerdict(');
     expect(body).toMatch(/record\(\{\s*case: `S0-1 served build \$\{row\}`/u);
   });
-});
+}

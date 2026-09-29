@@ -136,6 +136,11 @@ afterEach(() => {
 });
 
 describe('S0-6 refetch then refuse', () => {
+  refetchThenRefuseCases1();
+  refetchThenRefuseCases2();
+});
+
+function refetchThenRefuseCases1() {
   it('fetches once for an unknown key after the cooldown, refuses, and a second unknown key inside the cooldown fetches nothing', async () => {
     const source = provider(keySet(current));
     const verify = verifierOver(source.fetch);
@@ -172,7 +177,9 @@ describe('S0-6 refetch then refuse', () => {
     expect((await verify(await tokenFor(stranger))).outcome).toBe('refused');
     expect(source.fetch).toHaveBeenCalledTimes(1);
   });
+}
 
+function refetchThenRefuseCases2() {
   it('holds a burst of unknown keys to one fetch between them', async () => {
     const source = provider(keySet(current));
     const verify = verifierOver(source.fetch);
@@ -186,7 +193,7 @@ describe('S0-6 refetch then refuse', () => {
     expect(verdicts.every((verdict) => verdict.outcome === 'refused')).toBe(true);
     expect(source.fetch).toHaveBeenCalledTimes(2);
   });
-});
+}
 
 describe('S0-6 unknown key refused', () => {
   it('refuses a token signed by a key not in the set', async () => {
@@ -376,7 +383,49 @@ describe('S0-6 expired genuine', () => {
   });
 });
 
+type Case = readonly [string, () => Response, KeySetRefusal['reason']];
+const hostile: Case[] = [
+  [
+    'a redirect',
+    () => new Response(null, { status: 302, headers: { location: 'https://evil.example.test/' } }),
+    'status',
+  ],
+  ['a server error', () => new Response('no', { status: 500 }), 'status'],
+  ['a body that is not JSON', () => new Response('<html>'), 'shape'],
+  ['a body with no keys', () => Response.json({ items: [] }), 'shape'],
+  ['keys that are not a list', () => Response.json({ keys: {} }), 'shape'],
+  ['an empty key list', () => Response.json({ keys: [] }), 'shape'],
+  [
+    'a declared length over the cap',
+    () => new Response('{}', { headers: { 'content-length': String(KEY_SET_MAX_BYTES + 1) } }),
+    'too_large',
+  ],
+  [
+    'a body over the cap with no declared length',
+    () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            const chunk = new TextEncoder().encode(' '.repeat(16 * 1024));
+            for (let sent = 0; sent <= KEY_SET_MAX_BYTES; sent += chunk.length) {
+              controller.enqueue(chunk);
+            }
+            controller.close();
+          },
+        }),
+      ),
+    'too_large',
+  ],
+];
+
 describe('S0-6 hostile provider', () => {
+  hostileProviderCases1();
+  hostileProviderCases2();
+  hostileProviderCases3();
+  hostileProviderCases4();
+});
+
+function hostileProviderCases1() {
   it('Sol proof, criterion 6: malformed key rejects the whole provider set', async () => {
     const refusals: KeySetRefusal[] = [];
     const source = provider(() =>
@@ -403,7 +452,9 @@ describe('S0-6 hostile provider', () => {
     expect(source.calls[0]?.init?.signal).toBeInstanceOf(AbortSignal);
     expect(source.calls[0]?.init?.headers).toBeUndefined();
   });
+}
 
+function hostileProviderCases2() {
   it('refuses at construction an address that is not a published key set, or not pinned to TLS', () => {
     const fetch = provider(keySet(current)).fetch;
     for (const keySetUrl of [
@@ -428,42 +479,6 @@ describe('S0-6 hostile provider', () => {
     ).not.toThrow();
   });
 
-  type Case = readonly [string, () => Response, KeySetRefusal['reason']];
-  const hostile: Case[] = [
-    [
-      'a redirect',
-      () =>
-        new Response(null, { status: 302, headers: { location: 'https://evil.example.test/' } }),
-      'status',
-    ],
-    ['a server error', () => new Response('no', { status: 500 }), 'status'],
-    ['a body that is not JSON', () => new Response('<html>'), 'shape'],
-    ['a body with no keys', () => Response.json({ items: [] }), 'shape'],
-    ['keys that are not a list', () => Response.json({ keys: {} }), 'shape'],
-    ['an empty key list', () => Response.json({ keys: [] }), 'shape'],
-    [
-      'a declared length over the cap',
-      () => new Response('{}', { headers: { 'content-length': String(KEY_SET_MAX_BYTES + 1) } }),
-      'too_large',
-    ],
-    [
-      'a body over the cap with no declared length',
-      () =>
-        new Response(
-          new ReadableStream({
-            start(controller) {
-              const chunk = new TextEncoder().encode(' '.repeat(16 * 1024));
-              for (let sent = 0; sent <= KEY_SET_MAX_BYTES; sent += chunk.length) {
-                controller.enqueue(chunk);
-              }
-              controller.close();
-            },
-          }),
-        ),
-      'too_large',
-    ],
-  ];
-
   hostile.forEach(([name, answer, reason]) => {
     it(`refuses and records ${name}, and verifies nothing from it`, async () => {
       const refusals: KeySetRefusal[] = [];
@@ -484,7 +499,9 @@ describe('S0-6 hostile provider', () => {
     expect((await verify(await tokenFor(current))).outcome).toBe('refused');
     expect(refusals).toEqual([{ reason: 'private_key' }]);
   });
+}
 
+function hostileProviderCases3() {
   it('refuses a key set that names one kid twice', async () => {
     const refusals: KeySetRefusal[] = [];
     const source = provider(() =>
@@ -519,7 +536,9 @@ describe('S0-6 hostile provider', () => {
     expect(refusals).toEqual([{ reason: 'timeout' }]);
     expect(KEY_SET_TIMEOUT_MS).toBeLessThanOrEqual(5_000);
   });
+}
 
+function hostileProviderCases4() {
   it('keeps the good cached set when a refetch answers with something hostile', async () => {
     const refusals: KeySetRefusal[] = [];
     const source = provider(keySet(current));
@@ -544,4 +563,4 @@ describe('S0-6 hostile provider', () => {
     expect(written).not.toContain('example.test');
     expect(Object.keys(refusals[0] ?? {})).toEqual(['reason']);
   });
-});
+}

@@ -92,6 +92,12 @@ afterAll(() => {
 });
 
 describe.skipIf(serverUrl === undefined)('S0-3 upgrade drill', () => {
+  upgradeDrillCases1();
+  upgradeDrillCases2();
+  upgradeDrillCases3();
+});
+
+function upgradeDrillCases1() {
   it('upgrades a database seeded at 0023 to the head with every row unchanged', () => {
     const { status, result } = drill('0023');
     expect(result?.differences).toStrictEqual([]);
@@ -128,7 +134,9 @@ describe.skipIf(serverUrl === undefined)('S0-3 upgrade drill', () => {
     expect(output).toMatch(/public\.records: 1 row changed or lost/u);
     expect(output).not.toMatch(/canary-7f3a/u);
   }, 180_000);
+}
 
+function upgradeDrillCases2() {
   it('turns red when a migration deletes a row, and when it drops a table', () => {
     const planted = withPlanted(
       '9999_planted_loss.sql',
@@ -169,7 +177,9 @@ describe.skipIf(serverUrl === undefined)('S0-3 upgrade drill', () => {
     expect(status).toBe(1);
     expect(output).not.toContain('sol-canary-record-4');
   }, 180_000);
+}
 
+function upgradeDrillCases3() {
   it('stays green when a migration only adds a column, which changes no stored value', () => {
     const planted = withPlanted(
       '9999_planted_column.sql',
@@ -188,7 +198,7 @@ describe.skipIf(serverUrl === undefined)('S0-3 upgrade drill', () => {
     expect(atHead.status).toBe(2);
     expect(atHead.output).toMatch(/nothing to upgrade/u);
   }, 60_000);
-});
+}
 
 describe('S0-3 upgrade drill in CI', () => {
   it('runs in database conformance on a pull request that adds a migration, from the base', () => {

@@ -201,20 +201,77 @@ const person = async (
   return id;
 };
 
-describe.skipIf(serverUrl === undefined)('S0-1 gated stop', () => {
-  let db: FreshDatabase;
-  let alphaBusiness = '';
-  let operatorPerson = '';
-  let secondOperator = '';
-  const subjects = {
-    operator: `op-${randomUUID()}`,
-    second: `op2-${randomUUID()}`,
-    keyless: `kl-${randomUUID()}`,
-    client: `cl-${randomUUID()}`,
-    agent: `ag-${randomUUID()}`,
-    betaOperator: `bo-${randomUUID()}`,
-  };
+let db: FreshDatabase;
 
+let alphaBusiness = '';
+
+let operatorPerson = '';
+
+let secondOperator = '';
+
+const subjects = {
+  operator: `op-${randomUUID()}`,
+  second: `op2-${randomUUID()}`,
+  keyless: `kl-${randomUUID()}`,
+  client: `cl-${randomUUID()}`,
+  agent: `ag-${randomUUID()}`,
+  betaOperator: `bo-${randomUUID()}`,
+};
+
+const adminUrl = (): string => {
+  const url = new URL(serverUrl as string);
+  url.pathname = `/${db.name}`;
+  return url.toString();
+};
+
+const environment = (at: Fake, own: Record<string, string>): Record<string, string> => ({
+  PATH: at.path,
+  OPS_ASTRO_BUSINESS: 'alpha',
+  OPS_ASTRO_DEPLOYMENTS: at.records,
+  DATABASE_URL: db.appUrl,
+  DATABASE_ADMIN_URL: adminUrl(),
+  SUPABASE_KEY_SET_URL: keySetUrl,
+  GOTRUE_URL: ISSUER,
+  ...own,
+});
+
+const signIns = async (): Promise<number> =>
+  await db.app.withBusiness(alphaBusiness, async (tx) => {
+    const rows = await tx.query<{ n: number }>(
+      'select count(*)::int as n from authentication_attempts where business_id = $1',
+      [tx.businessId],
+    );
+    return rows[0]!.n;
+  });
+
+// Each caller names the separation its refusal proves.
+const CALLERS: Record<string, () => Promise<Record<string, string>>> = {
+  'an agent credential (person to agent)': async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.agent),
+  }),
+  "the operator's own sign-in under a delegation (person to delegate)": async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.operator),
+    OPS_ASTRO_DELEGATION: CANARY,
+  }),
+  "the operator's own sign-in with a saved delegation (person to delegate)": async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.operator),
+    OPS_ASTRO_DELEGATION_FILE: join(scratch, 'delegation'),
+  }),
+  'a person without the key, operations:read only (person to person)': async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.keyless),
+  }),
+  'a person holding the key for one client only (client to client)': async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.client),
+  }),
+  "another business's operator (business to business)": async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.betaOperator),
+  }),
+  'a forged sign-in': async () => ({
+    OPS_ASTRO_TOKEN: await token(subjects.operator, true),
+  }),
+};
+
+describe.skipIf(serverUrl === undefined)('S0-1 gated stop', () => {
   beforeAll(async () => {
     keySet = await serveTestKeySetApart();
     keySetUrl = keySet.url;
@@ -250,57 +307,11 @@ describe.skipIf(serverUrl === undefined)('S0-1 gated stop', () => {
     rmSync(scratch, { recursive: true, force: true });
   });
 
-  const adminUrl = (): string => {
-    const url = new URL(serverUrl as string);
-    url.pathname = `/${db.name}`;
-    return url.toString();
-  };
-  const environment = (at: Fake, own: Record<string, string>): Record<string, string> => ({
-    PATH: at.path,
-    OPS_ASTRO_BUSINESS: 'alpha',
-    OPS_ASTRO_DEPLOYMENTS: at.records,
-    DATABASE_URL: db.appUrl,
-    DATABASE_ADMIN_URL: adminUrl(),
-    SUPABASE_KEY_SET_URL: keySetUrl,
-    GOTRUE_URL: ISSUER,
-    ...own,
-  });
-  const signIns = async (): Promise<number> =>
-    await db.app.withBusiness(alphaBusiness, async (tx) => {
-      const rows = await tx.query<{ n: number }>(
-        'select count(*)::int as n from authentication_attempts where business_id = $1',
-        [tx.businessId],
-      );
-      return rows[0]!.n;
-    });
+  gatedStopCases1();
+  gatedStopCases2();
+});
 
-  // Each caller names the separation its refusal proves.
-  const CALLERS: Record<string, () => Promise<Record<string, string>>> = {
-    'an agent credential (person to agent)': async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.agent),
-    }),
-    "the operator's own sign-in under a delegation (person to delegate)": async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.operator),
-      OPS_ASTRO_DELEGATION: CANARY,
-    }),
-    "the operator's own sign-in with a saved delegation (person to delegate)": async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.operator),
-      OPS_ASTRO_DELEGATION_FILE: join(scratch, 'delegation'),
-    }),
-    'a person without the key, operations:read only (person to person)': async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.keyless),
-    }),
-    'a person holding the key for one client only (client to client)': async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.client),
-    }),
-    "another business's operator (business to business)": async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.betaOperator),
-    }),
-    'a forged sign-in': async () => ({
-      OPS_ASTRO_TOKEN: await token(subjects.operator, true),
-    }),
-  };
-
+function gatedStopCases1() {
   for (const [callerName, caller] of Object.entries(CALLERS)) {
     it(`run by ${callerName}: refused, stops nothing and writes nothing`, async () => {
       const before = await signIns();
@@ -340,7 +351,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 gated stop', () => {
     expect(records[0]).not.toContain(signIn);
     expect(result.out).not.toContain(signIn);
   });
+}
 
+function gatedStopCases2() {
   it('a stop the service manager does not complete says so and writes no record', async () => {
     const at = fake(1);
     const result = spawn(
@@ -385,4 +398,4 @@ describe.skipIf(serverUrl === undefined)('S0-1 gated stop', () => {
     expect(existsSync(current)).toBe(false);
     expect(readdirSync(at.records)).toEqual([]);
   });
-});
+}

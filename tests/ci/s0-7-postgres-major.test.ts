@@ -65,6 +65,11 @@ const required = (
 const LOOKAHEAD_JOB = 'database look-ahead, Postgres 18 (not required)';
 
 describe('S0-7 CI on the hosted major', () => {
+  ciOnTheCases1();
+  ciOnTheCases2();
+});
+
+function ciOnTheCases1() {
   it('production major and the digest are stated once, in staging', () => {
     expect(PRODUCTION_MAJOR).toBe(17);
     expect(staging.services.db.image).toMatch(/^postgres:17-alpine@sha256:[0-9a-f]{64}$/u);
@@ -108,7 +113,9 @@ describe('S0-7 CI on the hosted major', () => {
       expect(job(name), name).not.toMatch(/continue-on-error/u);
     }
   });
+}
 
+function ciOnTheCases2() {
   it('S0-7 a Postgres 18 look-ahead runs on every pull request, not required, its failure reported', () => {
     const block = job(LOOKAHEAD_JOB);
     const pins = read('docs/supply-chain-pins.md');
@@ -136,7 +143,7 @@ describe('S0-7 CI on the hosted major', () => {
       /When the provider offers Postgres 18, one ticket moves production, staging, CI and the restore drill \(S0-3\) to it together\./u,
     );
   });
-});
+}
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) {
@@ -144,10 +151,11 @@ if (serverUrl === undefined) {
 }
 const EXPECTED_MAJOR = Number(process.env[LOOKAHEAD] ?? PRODUCTION_MAJOR);
 
-describe.skipIf(serverUrl === undefined)('S0-7 the database under test', () => {
-  let db: FreshDatabase;
-  const scratch: string[] = [];
+let db: FreshDatabase;
 
+const scratch: string[] = [];
+
+describe.skipIf(serverUrl === undefined)('S0-7 the database under test', () => {
   beforeAll(async () => {
     db = await createFreshDatabase({ part: 's07' });
   }, 180_000);
@@ -156,6 +164,10 @@ describe.skipIf(serverUrl === undefined)('S0-7 the database under test', () => {
     for (const directory of scratch) rmSync(directory, { recursive: true, force: true });
   });
 
+  theDatabaseUnderCases();
+});
+
+function theDatabaseUnderCases() {
   it('runs the major this job names', async () => {
     const [row] = await db.admin.execute<{ n: string }>(
       `select current_setting('server_version_num') as n`,
@@ -197,4 +209,4 @@ describe.skipIf(serverUrl === undefined)('S0-7 the database under test', () => {
       expect(await table()).toBe('s0_7_planted');
     }
   }, 180_000);
-});
+}
