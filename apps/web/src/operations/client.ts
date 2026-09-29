@@ -76,6 +76,8 @@ export const READ_NAMES = [
   // server's `reads/dispatch.ts` asks it, not this list.
   'task.queue',
   'preset.plan',
+  // Search over what the caller may read (C1); the ⌘K surface is C1b's.
+  'task.search',
 ] as const;
 
 /**

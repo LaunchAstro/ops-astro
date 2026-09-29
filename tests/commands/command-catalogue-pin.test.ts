@@ -152,6 +152,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.read',
   'task.restart',
   'task.restore',
+  'task.search',
 ];
 
 const PINNED_AGENT_SURFACE = [
