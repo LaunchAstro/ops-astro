@@ -19,7 +19,11 @@ import { Empty, ProjectsBoard, type BoardRow, type ProjectRow } from '@launchast
 import type { OperationsClient } from '../operations/client.ts';
 import { rowActions } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
-import type { BoardTask, TaskBoardResult } from '../../../../packages/core-wire/src/index.ts';
+import type {
+  BoardTask,
+  PersonListResult,
+  TaskBoardResult,
+} from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { useCommand } from '../records/use-command.ts';
@@ -61,6 +65,17 @@ export function Projects(props: ProjectsProps): ReactElement {
     isEmpty: (value) => value.tasks.length === 0,
     deps: [],
   });
+
+  // The people the assignee editor offers (MP-5-10); until they answer, the
+  // assignee cell draws no editor.
+  const people = useRead<PersonListResult>({
+    grantKey: props.grantKey,
+    run: () => client.read<PersonListResult>('person.list', {}),
+    // An answer without its list offers nobody, rather than breaking the board.
+    isEmpty: (value) => !Array.isArray(value.persons) || value.persons.length === 0,
+    deps: [],
+  });
+  const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
 
   // The same attempt while the asked-for task is the same one, a new attempt
   // when the person has changed what they are asking for. Retrying an unknown
@@ -189,6 +204,7 @@ export function Projects(props: ProjectsProps): ReactElement {
             actions={rowActions({
               client,
               tasks: value.tasks,
+              people: persons,
               href: (key) => pathTo('agency:task-detail', { key }),
               reload,
             })}
