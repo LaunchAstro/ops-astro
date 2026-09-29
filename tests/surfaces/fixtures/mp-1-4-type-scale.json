@@ -1,0 +1,236 @@
+{
+  "source": "docs/design-system/TOKENS.md, Canonical text styles (DS-TOK-107 to DS-TOK-129), roadmap b1cd148",
+  "styles": [
+    {
+      "id": "DS-TOK-107",
+      "name": "--type-display",
+      "composition": "Display 44/1.1 500 -0.03em",
+      "font": "var(--weight-medium) var(--text-display)/var(--lh-title) var(--font-display)",
+      "tracking": "var(--tracking-display)",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-108",
+      "name": "--type-section",
+      "composition": "Display 28/1.1 500 -0.01em",
+      "font": "var(--weight-medium) var(--fs-title)/var(--lh-title) var(--font-display)",
+      "tracking": "var(--tracking-tight)",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-109",
+      "name": "--type-title",
+      "composition": "Display 24/1.1 500 -0.01em",
+      "font": "var(--weight-medium) var(--text-h1)/var(--lh-title) var(--font-display)",
+      "tracking": "var(--tracking-tight)",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-110",
+      "name": "--type-heading",
+      "composition": "Display 20/1.1 500 -0.01em",
+      "font": "var(--weight-medium) var(--text-h2)/var(--lh-title) var(--font-display)",
+      "tracking": "var(--tracking-tight)",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-111",
+      "name": "--type-subheading",
+      "composition": "Display 16/1.1 500 -0.01em",
+      "font": "var(--weight-medium) var(--text-h3)/var(--lh-title) var(--font-display)",
+      "tracking": "var(--tracking-tight)",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-112",
+      "name": "--type-rail-label",
+      "composition": "Display 13/1.1 500 0.02em UPPER",
+      "font": "var(--weight-medium) var(--text-sm)/var(--lh-title) var(--font-display)",
+      "tracking": "var(--tracking-label)",
+      "case": "uppercase"
+    },
+    {
+      "id": "DS-TOK-113",
+      "name": "--type-num-lg",
+      "composition": "Display 34/1 500 -0.03em",
+      "font": "var(--weight-medium) var(--text-num-lg)/var(--leading-none) var(--font-display)",
+      "tracking": "var(--tracking-display)",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-114",
+      "name": "--type-num-md",
+      "composition": "Display 26/1 400 0.01em",
+      "font": "var(--weight-regular) var(--text-num-md)/var(--leading-none) var(--font-display)",
+      "tracking": "0.01em",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-115",
+      "name": "--type-num-sm",
+      "composition": "Display 22/1 400 0.01em",
+      "font": "var(--weight-regular) var(--text-num-sm)/var(--leading-none) var(--font-display)",
+      "tracking": "0.01em",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-116",
+      "name": "--type-body-lg",
+      "composition": "Sans 15/1.55 400 0em",
+      "font": "var(--weight-regular) var(--text-body-lg)/var(--leading-normal) var(--font-sans)",
+      "tracking": "0",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-117",
+      "name": "--type-body",
+      "composition": "Sans 14/1.55 400 0em",
+      "font": "var(--weight-regular) var(--text-body)/var(--leading-normal) var(--font-sans)",
+      "tracking": "0",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-118",
+      "name": "--type-body-strong",
+      "composition": "Sans 14/1.55 500 0em",
+      "font": "var(--weight-medium) var(--text-body)/var(--leading-normal) var(--font-sans)",
+      "tracking": "0",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-119",
+      "name": "--type-card-title",
+      "composition": "Sans 15/1.1 600 0em",
+      "font": "var(--weight-semibold) var(--text-body-lg)/var(--lh-title) var(--font-sans)",
+      "tracking": "0",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-120",
+      "name": "--type-small",
+      "composition": "Sans 13/1.55 400 0em",
+      "font": "var(--weight-regular) var(--text-sm)/var(--leading-normal) var(--font-sans)",
+      "tracking": "0",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-121",
+      "name": "--type-small-strong",
+      "composition": "Sans 13/1.55 500 0em",
+      "font": "var(--weight-medium) var(--text-sm)/var(--leading-normal) var(--font-sans)",
+      "tracking": "0",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-122",
+      "name": "--type-caption",
+      "composition": "Sans 12/1.55 400 0em",
+      "font": "var(--weight-regular) var(--text-label)/var(--leading-normal) var(--font-sans)",
+      "tracking": "0",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-123",
+      "name": "--type-button",
+      "composition": "Sans 12/1 500 -0.01em",
+      "font": "var(--weight-medium) var(--text-label)/var(--leading-none) var(--font-sans)",
+      "tracking": "var(--tracking-tight)",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-124",
+      "name": "--type-data",
+      "composition": "Mono 12/1.55 400 0em",
+      "font": "var(--weight-regular) var(--text-label)/var(--leading-normal) var(--font-mono)",
+      "tracking": "0",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-125",
+      "name": "--type-mono",
+      "composition": "Mono 14/1.55 400 0em",
+      "font": "var(--weight-regular) var(--text-body)/var(--leading-normal) var(--font-mono)",
+      "tracking": "0",
+      "case": "none"
+    },
+    {
+      "id": "DS-TOK-126",
+      "name": "--type-eyebrow",
+      "composition": "Mono 12/1.4 300 0.02em UPPER",
+      "font": "var(--weight-light) var(--text-label)/var(--lh-body) var(--font-mono)",
+      "tracking": "var(--tracking-label)",
+      "case": "uppercase"
+    },
+    {
+      "id": "DS-TOK-127",
+      "name": "--type-tag",
+      "composition": "Mono 14/1.55 300 0.02em UPPER",
+      "font": "var(--weight-light) var(--text-body)/var(--leading-normal) var(--font-mono)",
+      "tracking": "var(--tracking-label)",
+      "case": "uppercase"
+    },
+    {
+      "id": "DS-TOK-128",
+      "name": "--type-chip",
+      "composition": "Mono 11/1 400 0.06em UPPER",
+      "font": "var(--weight-regular) var(--text-overline)/var(--leading-none) var(--font-mono)",
+      "tracking": "var(--tracking-caps)",
+      "case": "uppercase"
+    },
+    {
+      "id": "DS-TOK-129",
+      "name": "--type-badge",
+      "composition": "Mono 10/1 400 0em",
+      "font": "var(--weight-regular) var(--text-micro)/var(--leading-none) var(--font-mono)",
+      "tracking": "0",
+      "case": "none"
+    }
+  ],
+  "numberStyles": ["--type-num-lg", "--type-num-md", "--type-num-sm"],
+  "primitives": {
+    "--text-display": "clamp(28px, 4vw, 44px)",
+    "--fs-title": "clamp(1.5rem, 2.4vw, 1.75rem)",
+    "--text-h1": "24px",
+    "--text-h2": "20px",
+    "--text-h3": "16px",
+    "--text-num-lg": "34px",
+    "--text-num-md": "26px",
+    "--text-num-sm": "22px",
+    "--text-body-lg": "15px",
+    "--text-body": "14px",
+    "--text-sm": "13px",
+    "--text-label": "12px",
+    "--text-overline": "11px",
+    "--text-micro": "10px",
+    "--lh-title": "1.1",
+    "--leading-none": "1",
+    "--leading-normal": "1.55",
+    "--lh-body": "1.4",
+    "--weight-light": "300",
+    "--weight-regular": "400",
+    "--weight-medium": "500",
+    "--weight-semibold": "600",
+    "--tracking-display": "-0.03em",
+    "--tracking-tight": "-0.01em",
+    "--tracking-label": "0.02em",
+    "--tracking-caps": "0.06em"
+  },
+  "exceptions": [
+    {
+      "selector": "b, strong",
+      "ruling": "DS-TOK-118"
+    },
+    {
+      "selector": ".btn--md",
+      "ruling": "DS-TOK-123"
+    },
+    {
+      "selector": ".btn--lg",
+      "ruling": "DS-TOK-123"
+    },
+    {
+      "selector": ".tph__n",
+      "ruling": "DR-6"
+    }
+  ]
+}
