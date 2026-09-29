@@ -2,9 +2,12 @@
 //
 // C4 (#429): *changes since* on the live change record (migration 0036,
 // CS-15.19), for API-4. The tasks stamped after a point, filtered inside the
-// one query by the caller's live `task:read` grants, at business scope or on
-// the task itself. The answer names tasks, never what changed: the caller
-// re-reads each through its own checked read.
+// one query by the caller's live `task:read` grants exactly as `task.read`
+// admits them: at business scope, on the task itself, or on the map the task
+// is a ticket of (W12: a map is a task of type `map`, its tickets are its
+// children, and a map under a map is its own, as `wayfinderFacts` reads it).
+// The answer names tasks, never what changed: the caller re-reads each
+// through its own checked read.
 //
 // A point is the oldest transaction still open when the last read ran, so a
 // write open at that moment comes back next time instead of being skipped. A
@@ -48,7 +51,18 @@ const CHANGES_SINCE = `${EFFECTIVE},
                       and c.changed_xid >= $3::xid8
                       and (exists (select 1 from readable r where r.scope_kind = 'business')
                            or c.subject_id in (select r.scope_id from readable r
-                                                where r.scope_kind = 'record'))),
+                                                where r.scope_kind = 'record')
+                           or exists (select 1
+                                        from public.records t
+                                        join public.records p
+                                          on p.business_id = t.business_id and p.id = t.uuid_4
+                                         and p.record_type_id = t.record_type_id
+                                       where t.business_id = c.business_id
+                                         and t.id = c.subject_id
+                                         and coalesce(t.data ->> 'type', '') <> 'map'
+                                         and p.data ->> 'type' = 'map'
+                                         and p.id in (select r.scope_id from readable r
+                                                       where r.scope_kind = 'record')))),
                   '[]'::json) as changes`;
 
 interface Row {
