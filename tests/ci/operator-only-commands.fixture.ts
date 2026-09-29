@@ -121,6 +121,27 @@ export const COMMANDS: Record<string, Command> = {
       DRILL_PERSON_ID: randomUUID(),
       ...env,
     }),
+  // S0-3e operator only: the carried archive's three steps. A refused export
+  // writes no file (it would land in the record folder); a refused carried
+  // drill or record never reads its file, which holds only the canary.
+  'the archive export': (env, at) =>
+    spawn(DRILL, ['--export', join(at.records, 'archive.sealed')], {
+      RESTORE_STORE_URL: `postgres://drill:${CANARY}@127.0.0.1:1/never`,
+      ...env,
+    }),
+  'the carried-archive drill': (env) =>
+    spawn(DRILL, ['--drill', '--archive', drillKey()], {
+      RESTORE_KEY_FILE: drillKey(),
+      DRILL_BUSINESS_ID: randomUUID(),
+      DRILL_CLIENT_ID: randomUUID(),
+      DRILL_PERSON_ID: randomUUID(),
+      ...env,
+    }),
+  'the carried receipt record': (env) =>
+    spawn(DRILL, ['--record', drillKey()], {
+      RESTORE_STORE_URL: `postgres://drill:${CANARY}@127.0.0.1:1/never`,
+      ...env,
+    }),
   // S0-6 operator only: a deploy of a stored build to staging.
   'the staging deploy': (env) => spawn(DEPLOY, ['--version', STAGED, '--artefacts', store()], env),
   'the promotion step': (env, at) =>
