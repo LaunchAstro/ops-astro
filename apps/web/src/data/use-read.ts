@@ -81,9 +81,9 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
 
   // The last answer's topic, kept while a re-read is in flight or denied, so a
   // revoked page still hears the channel that tells it so.
-  const topicRef = useRef<string | undefined>(undefined);
+  const topicRef = useRef<string | null>(null);
   if (state.outcome === 'ready' || state.outcome === 'empty') {
-    topicRef.current = options.live?.topic(state.value);
+    topicRef.current = options.live?.topic(state.value) ?? null;
   }
   const topic = topicRef.current;
   const hub = options.live?.hub;
@@ -92,7 +92,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
   const heldRef = useRef(false);
 
   useEffect(() => {
-    if (hub === undefined || topic === undefined) return;
+    if (hub === undefined || topic === null) return;
     return hub.follow(topic, (change) => {
       if (pausedRef.current && change === 'changed') heldRef.current = true;
       else reload();

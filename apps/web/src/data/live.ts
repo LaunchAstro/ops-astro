@@ -66,95 +66,119 @@ async function readEvents(
   }
 }
 
+/** The tab's stream and the pages following it; each part a short method. */
+class TabStream implements LiveHub {
+  readonly #followers = new Map<string, Set<OnChange>>();
+  readonly #closed = new Set<string>();
+  #joined: { readonly topics: string; readonly abort: AbortController } | null = null;
+  #floor: ReturnType<typeof setInterval> | undefined;
+  #downSince: number | null = null;
+
+  readonly #open: OpenTopics;
+  readonly #visible: () => boolean;
+  readonly #now: () => number;
+
+  constructor(open: OpenTopics, visible: () => boolean, now: () => number) {
+    this.#open = open;
+    this.#visible = visible;
+    this.#now = now;
+  }
+
+  get downSince(): number | null {
+    return this.#downSince;
+  }
+
+  follow(topic: string, onChange: OnChange): () => void {
+    if (this.#followers.size === 0) this.#listen(true);
+    this.#followers.set(topic, (this.#followers.get(topic) ?? new Set()).add(onChange));
+    // Joined once a render's follows and stops have all landed.
+    queueMicrotask(this.#rejoin);
+    return () => {
+      const each = this.#followers.get(topic);
+      each?.delete(onChange);
+      if (each?.size === 0) {
+        this.#followers.delete(topic);
+        this.#closed.delete(topic);
+      }
+      queueMicrotask(this.#rejoin);
+    };
+  }
+
+  #tell(topic: string, change: LiveChange): void {
+    for (const onChange of this.#followers.get(topic) ?? []) onChange(change);
+  }
+
+  readonly #refresh = (): void => {
+    if (this.#visible()) for (const topic of this.#followers.keys()) this.#tell(topic, 'changed');
+  };
+
+  readonly #onEvent = (name: string, topic: string): void => {
+    if (name !== 'closed') {
+      if (this.#visible()) this.#tell(topic, 'changed');
+      return;
+    }
+    this.#closed.add(topic);
+    this.#tell(topic, 'closed');
+  };
+
+  #listen(on: boolean): void {
+    const method = on ? 'addEventListener' : 'removeEventListener';
+    document[method]('visibilitychange', this.#refresh);
+    window[method]('online', this.#refresh);
+  }
+
+  #up(): void {
+    clearInterval(this.#floor);
+    this.#floor = undefined;
+    this.#downSince = null;
+  }
+
+  #down(refused: boolean): void {
+    this.#downSince ??= this.#now();
+    if (refused) this.#floor ??= setInterval(this.#refresh, FLOOR_MS);
+  }
+
+  #wanted(): string[] {
+    return [...this.#followers.keys()].filter((topic) => !this.#closed.has(topic)).toSorted();
+  }
+
+  readonly #rejoin = (): void => {
+    const topics = this.#wanted().join(' ');
+    if (this.#joined?.topics === topics) return;
+    this.#joined?.abort.abort();
+    this.#joined = null;
+    if (this.#followers.size === 0) {
+      this.#up();
+      this.#listen(false);
+      return;
+    }
+    const abort = new AbortController();
+    this.#joined = { topics, abort };
+    void this.#run(abort);
+  };
+
+  async #run(abort: AbortController): Promise<void> {
+    const topics = this.#wanted();
+    const body =
+      topics.length === 0 ? null : await this.#open(topics, abort.signal).catch(() => null);
+    if (abort.signal.aborted) return;
+    if (body === null) this.#down(true);
+    else {
+      this.#up();
+      await readEvents(body, this.#onEvent, abort.signal).catch(() => {});
+      if (abort.signal.aborted) return;
+      this.#down(false);
+    }
+    await wait(body === null ? FLOOR_MS : REJOIN_MS, abort.signal);
+    if (!abort.signal.aborted) await this.#run(abort);
+  }
+}
+
 export function createLiveHub(
   open: OpenTopics,
   { visible = () => document.visibilityState === 'visible', now = Date.now }: HubOptions = {},
 ): LiveHub {
-  const followers = new Map<string, Set<OnChange>>();
-  const closed = new Set<string>();
-  let joined: { readonly topics: string; readonly abort: AbortController } | null = null;
-  let floor: ReturnType<typeof setInterval> | undefined;
-  let downSince: number | null = null;
-
-  const tell = (topic: string, change: LiveChange): void => {
-    for (const onChange of followers.get(topic) ?? []) onChange(change);
-  };
-  const refresh = (): void => {
-    if (visible()) for (const topic of followers.keys()) tell(topic, 'changed');
-  };
-  const onEvent = (name: string, topic: string): void => {
-    if (name !== 'closed') {
-      if (visible()) tell(topic, 'changed');
-      return;
-    }
-    closed.add(topic);
-    tell(topic, 'closed');
-  };
-  const up = (): void => {
-    clearInterval(floor);
-    floor = undefined;
-    downSince = null;
-  };
-  const down = (refused: boolean): void => {
-    downSince ??= now();
-    if (refused) floor ??= setInterval(refresh, FLOOR_MS);
-  };
-  const wanted = (): string[] => [...followers.keys()].filter((t) => !closed.has(t)).toSorted();
-
-  const run = async (abort: AbortController): Promise<void> => {
-    const topics = wanted();
-    const body = topics.length === 0 ? null : await open(topics, abort.signal).catch(() => null);
-    if (abort.signal.aborted) return;
-    if (body === null) down(true);
-    else {
-      up();
-      await readEvents(body, onEvent, abort.signal).catch(() => {});
-      if (abort.signal.aborted) return;
-      down(false);
-    }
-    await wait(body === null ? FLOOR_MS : REJOIN_MS, abort.signal);
-    if (!abort.signal.aborted) await run(abort);
-  };
-
-  const rejoin = (): void => {
-    const topics = wanted().join(' ');
-    if (joined?.topics === topics) return;
-    joined?.abort.abort();
-    joined = null;
-    if (followers.size === 0) {
-      up();
-      document.removeEventListener('visibilitychange', refresh);
-      window.removeEventListener('online', refresh);
-      return;
-    }
-    const abort = new AbortController();
-    joined = { topics, abort };
-    void run(abort);
-  };
-
-  return {
-    follow(topic, onChange) {
-      if (followers.size === 0) {
-        document.addEventListener('visibilitychange', refresh);
-        window.addEventListener('online', refresh);
-      }
-      followers.set(topic, (followers.get(topic) ?? new Set()).add(onChange));
-      // Joined once a render's follows and stops have all landed.
-      queueMicrotask(rejoin);
-      return () => {
-        const each = followers.get(topic);
-        each?.delete(onChange);
-        if (each?.size === 0) {
-          followers.delete(topic);
-          closed.delete(topic);
-        }
-        queueMicrotask(rejoin);
-      };
-    },
-    get downSince() {
-      return downSince;
-    },
-  };
+  return new TabStream(open, visible, now);
 }
 
 const hubs = new WeakMap<object, LiveHub>();
