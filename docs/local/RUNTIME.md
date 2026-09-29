@@ -1534,24 +1534,70 @@ calls on one run reaching the ceiling at once stop it once.
   The reservation stays `held`: the approved ceiling is kept for the answer.
 - **No machine path out.** `planned_runs.state` gains `waiting_budget`, entered
   from `claimed` only. The trigger `planned_runs_budget_wait_holds` refuses
-  any change out of it (23514). Restart recovery (`discoverEligible`) does not
+  any change out of it (23514) except by a person's answer (below). Restart recovery (`discoverEligible`) does not
   classify a waiting run's hold on its ended lease or retired delegation:
   neither is a transition to classify, and the wait is not a clock. A
   cancelled, rejected or superseded lineage is still classified.
-- **Built ahead, not here yet.** The answers (a top-up under the four-eyes
-  threshold, and the one-click end that parks the task), the question in the
-  conversation where the plan was approved (AW-04's origin, SL12's drawer),
-  and the second-factor check on a money answer (C59).
+- **Built ahead, not here yet.** The answers' routes on the app, API and
+  command line (parity), the question in the conversation where the plan was
+  approved (AW-04's origin, SL12's drawer), and the second-factor check on a
+  money answer (C59).
+
+## The answers at the budget stop
+
+A waiting run leaves the wait only by a person's answer to its latest ask
+(AW-05; `0035_budget_answers`, numbered again at the rebase;
+`core-runtime/src/budget-answer.ts`). The trigger lets it become `planned`
+only when that ask has a `top_up` answer, and `cancelled` only when it has an
+`end`. `budget_answers` (one per ask) and `budget_approvals` (one per person
+per ask) are append-only: the application may insert and read, never update
+or delete.
+
+- **Found, then locked, then decided.** An answer finds its rows first and
+  takes no authority from them. The grants are held `for share`, then the cap,
+  envelope, task, run, lineage and reservation are locked in the contract's
+  order and everything is read again: the run still waiting, its latest ask
+  unanswered, the grant live at the locked instant. The four-eyes threshold
+  is read `for share` under those locks, so a change in flight is waited on.
+  Two answers at once meet on the run lock and the second is refused
+  `TRANSITION_NOT_PERMITTED`. Every write is in one transaction: a failure at
+  any step applies nothing.
+- **The top-up** (`topUpAtBudgetStop`, `billing:decide` on the task, a
+  person). An agent is refused `DELEGATION_EXCLUDES_DECISION`. The plan's
+  lineage must be live (`LINEAGE_TERMINAL`), the currency the envelope's
+  (`CAP_BINDING_MISMATCH`) and the amount within the business cap
+  (`BUDGET_EXHAUSTED`): the cap is the hard ceiling and no answer raises it.
+  The plan approver approves where they still hold `billing:decide`,
+  otherwise any holder (`SCOPE_NOT_GRANTED` names the approver). Above
+  `four_eyes_threshold` (T2e's stored setting, in the envelope currency's
+  major unit; no stored row fails closed) the first approval is recorded and
+  applies nothing, the same person again is `FOUR_EYES_REQUIRED` naming the
+  threshold, a different amount is `FIELD_VALUE_INVALID`, and a second,
+  distinct holder approving the same amount completes it. Completing raises
+  the envelope's maximum by the amount, moves the spend to date from held to
+  actual, sets the reservation's hold to the raised ceiling less that spend,
+  and sends the run back to `planned`. Pickup's replacement branch then fences
+  the released lease, classifies the old hold and re-holds that amount on a
+  fresh reservation, so the run spends the raised ceiling once and the cap
+  counts the spend once.
+- **The end** (`endAtBudgetStop`, `gate:decide` on the task, a person). One
+  call with no confirmation (U7). The hold becomes `abandoned` with the cause
+  `budget_stop_ended`; the envelope releases the unspent part and keeps the
+  spend to date as actual. The run becomes `cancelled`. The task is not
+  written: it stays open for a person. A hold a lineage cancel already
+  classified is not released again.
+- **The spend to date** is counted as the broker counts it: settled calls at
+  their actual, calls still open at the maximum they hold.
 
 ## What is not here
 
 - **No machine write-off.** The worker (`apps/worker/`, T2b), effect
-  activation (T2c1, T2c2), the top-up (T2e, `topUp` in `budget.ts`), the sweep
-  (T3b), the reconciliation pass with a person's recorded outcome
-  (`budget.record_outcome`, T3d1) and a person's write-off
-  (`budget.write_off`, `recovery/write-off.ts`, T3c) are built. An unknown
-  liability the register cannot answer waits for a person's outcome or
-  write-off; no timer, pass or worker reaches either.
+  activation (T2c1, T2c2), the top-up (T2e, `topUp` in `budget.ts`), AW-05's
+  top-up at the budget stop (above), the sweep (T3b), the reconciliation pass
+  with a person's recorded outcome (`budget.record_outcome`, T3d1) and a
+  person's write-off (`budget.write_off`, `recovery/write-off.ts`, T3c) are
+  built. An unknown liability the register cannot answer waits for a person's
+  outcome or write-off; no timer, pass or worker reaches either.
 - **No audit row from this package.** `audit_events` is written through L3's
   command envelope, which owns the actor and the operation identity. The first
   attempt to write one from `handback.ts` aborted the whole transaction on a

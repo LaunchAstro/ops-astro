@@ -1382,8 +1382,9 @@ rather than keeping a copy; the two are told apart by the key.
 business fact every member works against, and changing one is an authority
 change. The four-eyes band is stored and shown. `settings.set_four_eyes_threshold` writes it
 (`commands/settings-write.ts`) and `settings.read` returns it. Its consumers
-are the top-up (`budget.top_up`, T2e) and the write-off (`budget.write_off`,
-T3c), which produce `FOUR_EYES_REQUIRED`. `task.decide` produces
+are the top-up (`budget.top_up`, T2e), the write-off (`budget.write_off`,
+T3c) and AW-05's top-up at the budget stop (`core-runtime/src/budget-answer.ts`,
+[RUNTIME.md](RUNTIME.md)), which produce `FOUR_EYES_REQUIRED`. `task.decide` produces
 `FOUR_EYES_REQUIRED` without the band since T2g: the person a task is assigned
 to may not decide its gate. The seed gives
 `settings:read` to `admin` and to `member`; the write stays with `admin`.

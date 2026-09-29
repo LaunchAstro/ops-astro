@@ -148,8 +148,8 @@ export {
   endAtBudgetStop,
   topUpAtBudgetStop,
   type EndOutcome,
+  type BudgetStopTopUpRequest,
   type TopUpOutcome,
-  type TopUpRequest,
 } from './budget-answer.ts';
 export type {
   BudgetAnswerCode,

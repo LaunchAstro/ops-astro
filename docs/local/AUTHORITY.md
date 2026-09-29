@@ -525,9 +525,10 @@ body naming `olderThanDays` is refused `COMMAND_BODY_INVALID`
 and no accepted source names one for the work window (C122-1's seven-day floor
 is the conversation window's). `conversation_window_days` and
 `client_sign_off_required` still have no consumer among the first slice's
-operations. `four_eyes_threshold` has one: above it, `budget.top_up` needs a
+operations. `four_eyes_threshold` has two: above it, `budget.top_up` needs a
 second approver, a different person holding `billing:decide` on the task
-(T2e, `core-runtime/src/budget.ts`).
+(T2e, `core-runtime/src/budget.ts`), and so does AW-05's top-up at the budget
+stop, which reads it under its locks ([RUNTIME.md](RUNTIME.md)).
 
 **Every setting has a revision** (0020), for the reason a record has one: two
 administrators editing one row from two browser tabs both wrote, and the second

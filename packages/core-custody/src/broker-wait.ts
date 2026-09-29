@@ -22,7 +22,8 @@
 //   reserved for the person's answer, and restart recovery leaves a waiting
 //   run's hold alone (`core-runtime/src/recovery/classifier.ts`).
 // - The run is `waiting_budget`. Migration 0034 lets nothing take it out of
-//   the wait: only a person's answer, which the next increment builds.
+//   the wait; 0035 lets only a person's answer to the latest ask do so
+//   (`core-runtime/src/budget-answer.ts`).
 
 import { randomUUID } from 'node:crypto';
 import { revokeDelegation, type TenantQuery } from '../../core-records/src/index.ts';
