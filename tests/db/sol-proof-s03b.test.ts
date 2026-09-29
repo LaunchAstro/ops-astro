@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Review proofs for the S0-3b backup job at cad2f8b.
+// Sol's proof bodies stay byte-for-byte, and the dump stand-in is an EventEmitter
+// because the child process it replaces is one, so this one rule is off here only.
+/* oxlint-disable unicorn/prefer-event-target */
 
 import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';

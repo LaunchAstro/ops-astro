@@ -78,7 +78,7 @@ describe.skipIf(serverUrl === undefined)('the agent boundary passes operationId 
     await fixture?.drop();
   });
 
-  for (const [label, body] of NOT_A_STRING) {
+  NOT_A_STRING.forEach(([label, body]) => {
     it(`${label} is OPERATION_ID_REQUIRED 422 and registers nothing`, async () => {
       const before = await registered();
       const answer = await send(api, body);
@@ -86,7 +86,7 @@ describe.skipIf(serverUrl === undefined)('the agent boundary passes operationId 
       expect(answer.body).toMatchObject({ refused: true, code: 'OPERATION_ID_REQUIRED' });
       expect(await registered()).toBe(before);
     });
-  }
+  });
 
   it('hands the envelope the raw value, not a rewritten one', async () => {
     const seen: AgentRequest[] = [];

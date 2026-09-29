@@ -12,7 +12,10 @@ import { NOT_PLAIN } from './s0-2-plain.ts';
 
 const MODULE = '../../scripts/ops/heartbeat.mjs';
 const heartbeat = async () =>
-  (await import(/* @vite-ignore */ MODULE)) as {
+  (await import(
+    /* @vite-ignore */
+    MODULE
+  )) as {
     ping: (address: string | undefined, get?: typeof fetch) => Promise<string>;
   };
 

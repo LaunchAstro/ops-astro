@@ -48,7 +48,10 @@ const job = async (): Promise<{
   }) => Promise<Record<string, unknown>>;
 }> => {
   const path = '../../scripts/ops/backup.mjs';
-  return await import(/* @vite-ignore */ path);
+  return await import(
+    /* @vite-ignore */
+    path
+  );
 };
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -71,14 +74,20 @@ const drill = async (): Promise<{
   }) => Promise<{ outcome: string; stage?: string }>;
 }> => {
   const path = '../../scripts/ops/restore-drill.mjs';
-  return await import(/* @vite-ignore */ path);
+  return await import(
+    /* @vite-ignore */
+    path
+  );
 };
 const seal = async (): Promise<{
   openArchive: (sealed: Buffer, privateKey: string) => Buffer;
   sealArchive: (dump: Buffer, publicKey: string) => Buffer;
 }> => {
   const path = '../../scripts/ops/archive-seal.mjs';
-  return await import(/* @vite-ignore */ path);
+  return await import(
+    /* @vite-ignore */
+    path
+  );
 };
 const read = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');

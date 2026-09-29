@@ -464,7 +464,7 @@ describe('S0-6 hostile provider', () => {
     ],
   ];
 
-  for (const [name, answer, reason] of hostile) {
+  hostile.forEach(([name, answer, reason]) => {
     it(`refuses and records ${name}, and verifies nothing from it`, async () => {
       const refusals: KeySetRefusal[] = [];
       const source = provider(answer);
@@ -475,7 +475,7 @@ describe('S0-6 hostile provider', () => {
       });
       expect(refusals).toEqual([{ reason }]);
     });
-  }
+  });
 
   it('refuses a key set that publishes private key material, and records it', async () => {
     const refusals: KeySetRefusal[] = [];

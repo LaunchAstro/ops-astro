@@ -113,14 +113,14 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and re
 
   afterAll(async () => await fixture?.drop());
 
-  for (const path of ['/api/b/alpha/task/create', '/api/a/b/alpha/task/queue']) {
-    for (const [name, bearer, code] of CASES) {
+  ['/api/b/alpha/task/create', '/api/a/b/alpha/task/queue'].forEach((path) => {
+    CASES.forEach(([name, bearer, code]) => {
       it(`${name} (${path})`, async () => {
         const answer = await send(api, path, '{}', await bearer());
         expect(JSON.parse(answer.text).code).toBe(code);
       });
-    }
-  }
+    });
+  });
 
   it('CQ-1 body limit boundary: exactly 1 MiB is accepted and runs', async () => {
     const body = padded(MIB, { operationId: randomUUID(), fields: { title: 'at-the-limit' } });
