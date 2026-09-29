@@ -147,18 +147,18 @@ describe('MP-4-1 run line shapes', () => {
     ).toStrictEqual([['running', 'Attempt 2 · running']]);
   });
 
-  it('a finished task says how many attempts ran and that they are done', async () => {
+  it('a finished task says every run has finished', async () => {
     expect(
       await runLine({ proposals: [proposalWith('handed_back', 'abandoned', 'handed_back')] }),
-    ).toStrictEqual([['finished', 'Attempt 3 · finished']]);
+    ).toStrictEqual([['finished', 'Every run on this task has finished.']]);
   });
 
   it('a task no agent has worked says so', async () => {
     expect(await runLine({ proposals: [] })).toStrictEqual([
-      ['none', 'No agent has worked on this task'],
+      ['none', 'No agent has run this task. It is a person’s work so far.'],
     ]);
     expect(await runLine({ proposals: [proposalWith()] })).toStrictEqual([
-      ['none', 'No agent has worked on this task'],
+      ['none', 'No agent has run this task. It is a person’s work so far.'],
     ]);
   });
 });

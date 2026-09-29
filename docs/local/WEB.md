@@ -116,8 +116,9 @@ the title and the run line. Copy link copies this origin plus `/task/<key>`,
 shows its tick for 1.2 s only after the clipboard said yes, and says so in
 words, with the address, when it said no or there is no clipboard. The run
 line counts the attempts on the task's proposals: `Attempt N · running`
-while one is reserved or dispatched, `Attempt N · finished` once all have
-ended, and "No agent has worked on this task" with none. An id `task.read`
+while one is reserved or dispatched, "Every run on this task has finished."
+once all have ended, and "No agent has run this task. It is a person's work
+so far." with none (TP-07). An id `task.read`
 refuses `NOT_FOUND` is said as "No task is filed under" that id, quoted as
 typed, with the refusal and a link to the board (`screens/task/Absent.tsx`);
 any other refusal is the denied state. Neither draws another task.
