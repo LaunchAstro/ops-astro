@@ -392,7 +392,9 @@ describe.skipIf(serverUrl === undefined)('C81 the overseas-services register', (
       );
       await tx.query('select pg_sleep(0.3)');
     });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 100);
+    });
     const second = wide.withBusiness(
       harness.world.alpha,
       async (tx) =>

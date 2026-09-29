@@ -42,7 +42,7 @@ const FIXES: Readonly<Record<string, readonly string[]>> = {
 function text(value: unknown, most: number): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
-  return trimmed.length >= 1 && trimmed.length <= most ? trimmed : undefined;
+  return trimmed.length > 0 && trimmed.length <= most ? trimmed : undefined;
 }
 
 export async function setService(
