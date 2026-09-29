@@ -55,6 +55,7 @@ import {
 const OPERATOR = new URL('../../scripts/ops/operator.mjs', import.meta.url).pathname;
 const PROMOTE = new URL('../../scripts/ops/promote.mjs', import.meta.url).pathname;
 const DRILL = new URL('../../scripts/ops/restore-drill.mjs', import.meta.url).pathname;
+const DEPLOY = new URL('../../scripts/ops/deploy.mjs', import.meta.url).pathname;
 const definition = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
 ) as { 'x-ops-astro': { artefact: string } };
@@ -155,6 +156,8 @@ const COMMANDS: Record<string, Command> = {
       DRILL_PERSON_ID: randomUUID(),
       ...env,
     }),
+  // S0-6 operator only: a deploy of a stored build to staging.
+  'the staging deploy': (env) => spawn(DEPLOY, ['--version', STAGED, '--artefacts', store()], env),
   'the promotion step': (env, at) =>
     spawn(
       PROMOTE,
@@ -334,7 +337,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
         expect(result.status, result.out).toBe(1);
         expect(result.out).toMatch(/operations:manage/u);
         expect(result.out).not.toMatch(
-          /db-migrate|promotion recorded|staging prepared|restore drill recorded|"outcome"/u,
+          /db-migrate|promotion recorded|staging prepared|deploy recorded|restore drill recorded|"outcome"/u,
         );
         for (const secret of [CANARY, own['OPS_ASTRO_TOKEN'] ?? CANARY]) {
           expect(result.out).not.toContain(secret);
@@ -536,6 +539,57 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
     expect(result.out).not.toMatch(/db-migrate|ECONNREFUSED/iu);
     expect(readlinkSync(at.current)).toBe(join(scratch, 'previous-build'));
   });
+
+  it('the operator deploys a stored build to staging: one record names the version, the image and the operator', async () => {
+    const fake = manager(false);
+    const at = marks(fake);
+    // The deploy's own calls: a build that prints its image id, Compose, and
+    // inspects that answer each staging container on the image it should run.
+    const built = `sha256:${'a'.repeat(64)}`;
+    const pinned = `sha256:${'e'.repeat(64)}`;
+    const bin = join(fake.path.split(':')[0]!);
+    writeFileSync(
+      join(bin, 'docker'),
+      [
+        '#!/bin/sh',
+        `echo "docker $*" >> '${at.calls}'`,
+        'case "$1 $2" in',
+        `  "build "*) echo ${built} ;;`,
+        '  "compose "*) ;;',
+        `  "image inspect") echo ${pinned} ;;`,
+        '  "inspect --format")',
+        '    shift 3',
+        '    for c in "$@"; do',
+        `      case "$c" in *-api|*-web) echo "/$c ${built}" ;; *) echo "/$c ${pinned}" ;; esac`,
+        '    done ;;',
+        '  "ps "*) echo api-id ;;',
+        `  "inspect "*) printf '%s\\n' '[{"Name":"/prod-api","State":{"Running":true,"StartedAt":"t1"},"HostConfig":{}}]' ;;`,
+        '  *) exit 2 ;;',
+        'esac',
+        '',
+      ].join('\n'),
+    );
+    const signIn = await token(subjects.operator);
+    const result = COMMANDS['the staging deploy']!(
+      environment(at, fake.path, { OPS_ASTRO_TOKEN: signIn }),
+      at,
+    );
+    expect(result.status, result.out).toBe(0);
+    const calls = readFileSync(at.calls, 'utf8');
+    expect(calls).toMatch(/^docker build .*Dockerfile/mu);
+    expect(calls).toMatch(/^docker compose .*compose\.json.* up --detach --wait/mu);
+    const records = readFileSync(join(at.records, 'deployments.jsonl'), 'utf8').trim().split('\n');
+    expect(records).toHaveLength(1);
+    expect(JSON.parse(records[0]!)).toMatchObject({
+      action: 'deploy recorded',
+      version: STAGED,
+      image: built,
+      business: 'alpha',
+      operator: operatorPerson,
+    });
+    expect(records[0]).not.toContain(signIn);
+    expect(result.out).not.toContain(signIn);
+  }, 60_000);
 
   it('the operator promotes a stopped app: migrated, pointed, started, and one record names the operator', async () => {
     const fake = manager(false);
