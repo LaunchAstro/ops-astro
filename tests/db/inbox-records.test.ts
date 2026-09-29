@@ -261,6 +261,47 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
     expect(withheld).not.toHaveProperty('factId');
   });
 
+  it('Sol proof, criterion 3: withheld client decider identity is redacted', async () => {
+    await grantRead({ kind: 'party', id: clientA });
+    await inAlpha(async (tx) => {
+      const [task] = await tx.query<{ readonly clientId: string }>(
+        `select uuid_7 as "clientId" from public.records where business_id = $1 and id = $2`,
+        [tx.businessId, taskB],
+      );
+      if (task === undefined) throw new Error('client B task missing');
+      const granted = await issueGrant(tx, [], {
+        subject: { kind: 'person', id: bea },
+        scope: { kind: 'party', id: task.clientId },
+        collection: 'task',
+        action: 'read',
+        parentGrantId: null,
+        grantedByActorId: adaActor,
+      });
+      if (!granted.ok) throw new Error('client B reviewer grant refused');
+    });
+    const hiddenItem = await inAlpha(
+      async (tx) =>
+        await raiseInboxItem(tx, {
+          recipientPersonId: ada,
+          subjectRecordId: taskB,
+          reason: 'decision',
+          fact: { kind: 'gate', id: randomUUID() },
+        }),
+    );
+    await inAlpha(async (tx) => {
+      await tx.query(
+        `update public.inbox_items
+            set work_state = 'cleared', closed_at = now(), closed_by_person_id = $3
+          where business_id = $1 and id = $2`,
+        [tx.businessId, hiddenItem, bea],
+      );
+    });
+    const read = await inAlpha(async (tx) => await readInboxItems(tx, ada));
+    const withheld = read.find((item) => item.id === hiddenItem);
+    expect(withheld?.access).toBe('withheld');
+    expect(withheld).not.toHaveProperty('closedByPersonId');
+  });
+
   it('Sol proof, criterion 5: delivery observations read in causal order', async () => {
     const item = await inAlpha(
       async (tx) =>
