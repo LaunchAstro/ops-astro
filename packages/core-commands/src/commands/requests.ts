@@ -76,7 +76,7 @@ export type CommandRequest =
       readonly taskType?: unknown;
     } & Envelope)
   // Wayfinder (WF-1). Each operand is `any` on its row and checked by value
-  // in `wayfinder.ts`, so the refusal names the operand in its own words.
+  // in its `wayfinder*.ts` handler, so the refusal names the operand in its own words.
   | ({ readonly command: 'task.set_type'; readonly taskType: unknown } & Targeted)
   | ({
       readonly command: 'map.revise';

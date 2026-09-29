@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Wayfinder commands (WF-1): the ticket type, the map's components and its
+// Wayfinder commands (WF-1): the ticket type, its owner rule and the map's
 // client scope. A map is a task of type `map` and its tickets are its
 // subtasks (W2, W3), so each command here targets a task the envelope has
 // already authorised, locked and revision-checked; what is left is the rule
-// that belongs to the type.
+// that belongs to the type. The map's revisions are `wayfinder-revision.ts`;
+// WF-2's working commands are `wayfinder-chart.ts`, `wayfinder-blocking.ts`
+// and `wayfinder-resolve.ts`.
 
-import { randomUUID } from 'node:crypto';
 import {
   checkAuthority,
   isTaskType,
@@ -22,17 +23,24 @@ import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 
-type RequestOf<K extends CommandRequest['command']> = Extract<CommandRequest, { command: K }>;
+export type RequestOf<K extends CommandRequest['command']> = Extract<
+  CommandRequest,
+  { command: K }
+>;
 
-const BODY_LIMIT = 4000;
+export const BODY_LIMIT = 4000;
 const TYPE_FIXES = [`A ticket type is one of: ${TASK_TYPES.join(', ')}.`];
 
-function invalid(names: readonly string[], fixes: readonly string[]): HandlerOutcome {
+export function invalid(names: readonly string[], fixes: readonly string[]): HandlerOutcome {
   return refused(refuseCommand('FIELD_VALUE_INVALID', names, fixes));
 }
 
-function notPermitted(names: readonly string[], fixes: readonly string[]): HandlerOutcome {
+export function notPermitted(names: readonly string[], fixes: readonly string[]): HandlerOutcome {
   return refused(refuseCommand('TRANSITION_NOT_PERMITTED', names, fixes));
+}
+
+export function textOk(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '' && value.length <= BODY_LIMIT;
 }
 
 /** The type a create names, or the refusal; `task` when it names none. */
@@ -82,6 +90,35 @@ export async function holdsDecide(
   return false;
 }
 
+/** What the owner rule says when it refuses: the decide line, then the owner line. */
+export interface OwnerRuleFixes {
+  readonly decide: string;
+  readonly owner: string;
+}
+
+/**
+ * The owner rule on a grilling, prototype or map ticket: `task:decide` at the
+ * ticket or its map, and the map's owner. A map with no owner recorded passes
+ * the owner half unless `ownerless` says to refuse it.
+ */
+export async function refuseUnlessOwner(
+  tx: TenantQuery,
+  context: CommandContext,
+  facts: WayfinderFacts,
+  fixes: OwnerRuleFixes,
+  ownerless: 'pass' | 'refuse' = 'pass',
+): Promise<CommandRefusal | undefined> {
+  if (!(await holdsDecide(tx, context, facts))) {
+    return refuseCommand('SCOPE_NOT_GRANTED', ['task:decide'], [fixes.decide]);
+  }
+  const owner = facts.mapOwner;
+  if (owner === null && ownerless === 'pass') return undefined;
+  if (owner !== context.session.personId) {
+    return refuseCommand('SCOPE_NOT_GRANTED', ['map owner'], [fixes.owner]);
+  }
+  return undefined;
+}
+
 /**
  * `ticket type changed`. A retype between research, task and build is the
  * row's `task:write`. To or from grilling, prototype or map it is the map
@@ -104,31 +141,30 @@ export async function setTaskType(
   if (from === to) {
     return notPermitted([`type=${from}`], ['The ticket already has this type.']);
   }
-
-  const guarded = OWNER_TYPES.has(from) || OWNER_TYPES.has(to);
-  if (guarded) {
-    if (!(await holdsDecide(tx, context, facts))) {
-      return refused(
-        refuseCommand(
-          'SCOPE_NOT_GRANTED',
-          ['task:decide'],
-          ['Retyping to or from grilling, prototype or map needs task:decide.'],
-        ),
-      );
-    }
-    if (facts.mapOwner !== null && facts.mapOwner !== context.session.personId) {
-      return refused(
-        refuseCommand(
-          'SCOPE_NOT_GRANTED',
-          ['map owner'],
-          ["Only the map's owner retypes to or from grilling, prototype or map."],
-        ),
-      );
-    }
+  if (OWNER_TYPES.has(from) || OWNER_TYPES.has(to)) {
+    const refusal = await refuseUnlessOwner(tx, context, facts, {
+      decide: 'Retyping to or from grilling, prototype or map needs task:decide.',
+      owner: "Only the map's owner retypes to or from grilling, prototype or map.",
+    });
+    if (refusal !== undefined) return refused(refusal);
   }
+  const rows = await tx.query<{ readonly revision: string }>(
+    `update records set data = data || $3::jsonb, updated_at = now()
+      where business_id = $1 and id = $2 returning revision::text as revision`,
+    [tx.businessId, target.id, retypeChange(context, from, to)],
+  );
+  return applied(target.id, Number(rows[0]?.revision), { type: to, from });
+}
 
-  const history = Array.isArray(target.data['type_history'])
-    ? (target.data['type_history'] as readonly unknown[])
+/** The data a retype writes: the type, one more history entry, and an owner for a new map. */
+function retypeChange(
+  context: CommandContext,
+  from: TaskType,
+  to: TaskType,
+): Record<string, unknown> {
+  const data = context.target?.data ?? {};
+  const history = Array.isArray(data['type_history'])
+    ? (data['type_history'] as readonly unknown[])
     : [];
   const change: Record<string, unknown> = {
     type: to,
@@ -137,15 +173,10 @@ export async function setTaskType(
       { from, to, actor: context.session.actorId, at: new Date().toISOString() },
     ],
   };
-  if (to === 'map' && typeof target.data['map_owner'] !== 'string') {
+  if (to === 'map' && typeof data['map_owner'] !== 'string') {
     change['map_owner'] = context.session.personId;
   }
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records set data = data || $3::jsonb, updated_at = now()
-      where business_id = $1 and id = $2 returning revision::text as revision`,
-    [tx.businessId, target.id, change],
-  );
-  return applied(target.id, Number(rows[0]?.revision), { type: to, from });
+  return change;
 }
 
 /**
@@ -163,268 +194,16 @@ export async function refuseOwnerTicketMove(
   const facts = await wayfinderFacts(tx, recordId);
   if (facts === undefined || facts.type === 'map' || !OWNER_TYPES.has(facts.type)) return undefined;
   if (facts.mapId === null || facts.mapId === parentId) return undefined;
-  if (!(await holdsDecide(tx, context, facts))) {
-    return refuseCommand(
-      'SCOPE_NOT_GRANTED',
-      ['task:decide'],
-      ['Moving a grilling or prototype ticket off its map needs task:decide.'],
-    );
-  }
-  if (facts.mapOwner !== context.session.personId) {
-    return refuseCommand(
-      'SCOPE_NOT_GRANTED',
-      ['map owner'],
-      ["Only the map's owner moves a grilling or prototype ticket off the map."],
-    );
-  }
-  return undefined;
-}
-
-interface OutOfScopeItem {
-  readonly text: string;
-  readonly ticketId: string | null;
-}
-
-export interface Revision {
-  readonly destination?: string;
-  readonly notes?: string;
-  readonly addFog: readonly string[];
-  readonly addOutOfScope: readonly OutOfScopeItem[];
-  readonly retire: readonly string[];
-}
-
-export function textOk(value: unknown): value is string {
-  return typeof value === 'string' && value.trim() !== '' && value.length <= BODY_LIMIT;
-}
-
-/** The revision a body asks for, or the names of the operands that are wrong. */
-/** The operands a revision is read from: `map.revise`'s, or a chart's. */
-export interface RevisionOperands {
-  readonly destination?: unknown;
-  readonly notes?: unknown;
-  readonly addFog?: unknown;
-  readonly addOutOfScope?: unknown;
-  readonly retire?: unknown;
-}
-
-export function parseRevision(
-  request: RevisionOperands,
-  allowEmpty = false,
-): Revision | readonly string[] {
-  const wrong: string[] = [];
-  const text = (name: 'destination' | 'notes'): string | undefined => {
-    const value = request[name];
-    if (value === undefined) return undefined;
-    if (!textOk(value)) wrong.push(name);
-    return value as string;
-  };
-  const list = <T>(name: string, value: unknown, item: (v: unknown) => T | null): T[] => {
-    if (value === undefined) return [];
-    if (!Array.isArray(value) || value.length > 100) {
-      wrong.push(name);
-      return [];
-    }
-    const out: T[] = [];
-    for (const entry of value as readonly unknown[]) {
-      const parsed = item(entry);
-      if (parsed === null) {
-        wrong.push(name);
-        return [];
-      }
-      out.push(parsed);
-    }
-    return out;
-  };
-  const destination = text('destination');
-  const notes = text('notes');
-  const addFog = list('addFog', request.addFog, (v) => (textOk(v) ? v : null));
-  const addOutOfScope = list('addOutOfScope', request.addOutOfScope, (v) => {
-    if (typeof v !== 'object' || v === null || Array.isArray(v)) return null;
-    const { text: line, ticketId } = v as { text?: unknown; ticketId?: unknown };
-    if (!textOk(line)) return null;
-    if (ticketId !== undefined && ticketId !== null && !isUuid(ticketId)) return null;
-    return { text: line, ticketId: typeof ticketId === 'string' ? ticketId.toLowerCase() : null };
-  });
-  const retire = list('retire', request.retire, (v) => (isUuid(v) ? v.toLowerCase() : null));
-  if (wrong.length > 0) return [...new Set(wrong)].toSorted();
-  const empty =
-    destination === undefined &&
-    notes === undefined &&
-    addFog.length + addOutOfScope.length + retire.length === 0;
-  if (empty && !allowEmpty) return ['destination', 'notes', 'addFog', 'addOutOfScope', 'retire'];
-  return {
-    ...(destination === undefined ? {} : { destination }),
-    ...(notes === undefined ? {} : { notes }),
-    addFog,
-    addOutOfScope,
-    retire,
-  };
-}
-
-async function insertComponent(
-  tx: TenantQuery,
-  map: string,
-  version: number,
-  kind: string,
-  body: string,
-  ticketId: string | null,
-): Promise<string> {
-  const id = randomUUID();
-  await tx.query(
-    `insert into map_components
-       (business_id, id, map_id, kind, body, ticket_id, position, created_version)
-     values ($1, $2, $3, $4, $5, $6,
-             coalesce((select max(position) + 1 from map_components
-                        where business_id = $1 and map_id = $3 and kind = $4), 0), $7)`,
-    [tx.businessId, id, map, kind, body.trim(), ticketId, version],
+  return await refuseUnlessOwner(
+    tx,
+    context,
+    facts,
+    {
+      decide: 'Moving a grilling or prototype ticket off its map needs task:decide.',
+      owner: "Only the map's owner moves a grilling or prototype ticket off the map.",
+    },
+    'refuse',
   );
-  return id;
-}
-
-async function retireComponents(
-  tx: TenantQuery,
-  map: string,
-  version: number,
-  where: { readonly ids?: readonly string[]; readonly kind?: string },
-): Promise<readonly string[]> {
-  const rows = await tx.query<{ readonly id: string }>(
-    `update map_components set retired_version = $3
-      where business_id = $1 and map_id = $2 and retired_version is null
-        and ($4::uuid[] is null or id = any($4::uuid[]))
-        and ($5::text is null or kind = $5)
-      returning id`,
-    [tx.businessId, map, version, where.ids ?? null, where.kind ?? null],
-  );
-  return rows.map((row) => row.id);
-}
-
-/** A patch leaving the fog for the tickets it became (WF-2). */
-export interface Graduation {
-  readonly patchId: string;
-  readonly tickets: readonly string[];
-}
-
-/**
- * Write one numbered version of a map: retire, replace and add components,
- * record which ones changed, and move the map's revision. The caller has
- * already checked every operand, and holds the map lock (`wayfinder.map`).
- */
-export async function applyRevision(
-  tx: TenantQuery,
-  context: CommandContext,
-  mapId: string,
-  parsed: Revision,
-  graduation?: Graduation,
-): Promise<{
-  readonly version: number;
-  readonly changed: readonly string[];
-  readonly revision: number;
-}> {
-  const numbered = await tx.query<{ readonly next: number }>(
-    `select coalesce(max(version), 0) + 1 as next from map_versions
-      where business_id = $1 and map_id = $2`,
-    [tx.businessId, mapId],
-  );
-  const version = Number(numbered[0]?.next ?? 1);
-  const changed: string[] = [
-    ...(await retireComponents(tx, mapId, version, { ids: parsed.retire })),
-  ];
-  if (graduation !== undefined) {
-    await tx.query(
-      `update map_components set retired_version = $3, graduated_into = $4::uuid[]
-        where business_id = $1 and id = $2`,
-      [tx.businessId, graduation.patchId, version, graduation.tickets],
-    );
-    changed.push(graduation.patchId);
-  }
-  for (const kind of ['destination', 'notes'] as const) {
-    const body = parsed[kind];
-    if (body === undefined) continue;
-    // In order: retire the current one, then write its successor.
-    // oxlint-disable-next-line no-await-in-loop
-    const retired = await retireComponents(tx, mapId, version, { kind });
-    // oxlint-disable-next-line no-await-in-loop
-    const written = await insertComponent(tx, mapId, version, kind, body, null);
-    changed.push(...retired, written);
-  }
-  for (const line of parsed.addFog) {
-    // oxlint-disable-next-line no-await-in-loop
-    changed.push(await insertComponent(tx, mapId, version, 'fog', line, null));
-  }
-  for (const item of parsed.addOutOfScope) {
-    const { text, ticketId } = item;
-    // oxlint-disable-next-line no-await-in-loop
-    changed.push(await insertComponent(tx, mapId, version, 'out_of_scope', text, ticketId));
-  }
-  await tx.query(
-    `insert into map_versions (business_id, id, map_id, version, changed, actor_id)
-     values ($1, $2, $3, $4, $5::uuid[], $6)`,
-    [tx.businessId, randomUUID(), mapId, version, changed, context.session.actorId],
-  );
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records set data = data || jsonb_build_object('map_version', $3::int), updated_at = now()
-      where business_id = $1 and id = $2 returning revision::text as revision`,
-    [tx.businessId, mapId, version],
-  );
-  return { version, changed, revision: Number(rows[0]?.revision) };
-}
-
-/**
- * `map revised (version, components)`: one numbered version per revision,
- * recording every component it added or retired. A replaced Destination or
- * Notes is retired, not overwritten, so a version's body stays readable.
- */
-export async function reviseMap(
-  tx: TenantQuery,
-  context: CommandContext,
-  request: RequestOf<'map.revise'>,
-): Promise<HandlerOutcome> {
-  const target = context.target;
-  if (target === undefined) throw new Error('reviseMap: the envelope read no target');
-  if (target.data['type'] !== 'map') {
-    return notPermitted(['type'], ['Only a task of type map has components to revise.']);
-  }
-  const revision = parseRevision(request);
-  if (Array.isArray(revision)) {
-    return invalid(revision as readonly string[], [
-      `Destination and notes are 1 to ${String(BODY_LIMIT)} characters.`,
-      'addFog is a list of lines; addOutOfScope a list of { text, ticketId? }; retire a list of component ids.',
-    ]);
-  }
-  const parsed = revision as Revision;
-
-  const linked = parsed.addOutOfScope.flatMap((item) =>
-    item.ticketId === null ? [] : [item.ticketId],
-  );
-  if (linked.length > 0) {
-    const children = await tx.query<{ readonly id: string }>(
-      `select id from records
-        where business_id = $1 and id = any($2::uuid[]) and uuid_4 = $3
-          and record_type_id = $4`,
-      [tx.businessId, linked, target.id, context.spine.taskTypeId],
-    );
-    if (children.length !== new Set(linked).size) {
-      return refused(refuseCommand('NOT_FOUND', ['addOutOfScope'], ['Link a ticket of this map.']));
-    }
-  }
-  if (parsed.retire.length > 0) {
-    const current = await tx.query<{ readonly id: string }>(
-      `select id from map_components
-        where business_id = $1 and map_id = $2 and retired_version is null and id = any($3::uuid[])`,
-      [tx.businessId, target.id, parsed.retire],
-    );
-    if (current.length !== new Set(parsed.retire).size) {
-      return refused(
-        refuseCommand('NOT_FOUND', ['retire'], ['Retire a current component of this map.']),
-      );
-    }
-  }
-
-  const written = await applyRevision(tx, context, target.id, parsed);
-  return applied(target.id, written.revision, {
-    version: written.version,
-    changed: written.changed,
-  });
 }
 
 /**

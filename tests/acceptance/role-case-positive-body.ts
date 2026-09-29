@@ -19,9 +19,8 @@ import {
   ownLease,
   ownAppliedEffect,
   ownUnknownAttempt,
-  freshMap,
-  chartedMap,
 } from './role-case-bodies.ts';
+import { WAYFINDER_BODIES } from './role-case-wayfinder.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -220,56 +219,12 @@ export function createPositiveBody(
         if (observed.code !== 'ok') throw new Error(`matrix: observe refused ${observed.code}`);
         return { body: { attemptId: applied.attemptId } };
       }
-      // Wayfinder (WF-1). An unguarded retype is `write` on the task; the
-      // three map rows need a task of type map, filed through the route.
-      case 'task.set_type':
-        return { body: { ...(await target()), taskType: 'build' } };
-      case 'map.revise':
-        return { body: { ...(await freshMap(context)), notes: 'the admin revises it' } };
-      case 'map.scope':
-        return { body: { ...(await freshMap(context)), client: randomUUID() } };
-      case 'map.view':
-        return { body: { recordId: (await freshMap(context)).recordId } };
-      case 'map.frontier':
-        return { body: { recordId: (await freshMap(context)).recordId } };
-      // Wayfinder (WF-2), each on a map and ticket filed through the routes.
-      case 'map.chart':
-        return {
-          body: {
-            title: 'a charted map',
-            tickets: [{ ref: 'a', title: 'a ticket', type: 'research' }],
-            fog: ['a patch'],
-          },
-        };
-      case 'task.set_blocking': {
-        const chart = await chartedMap(context, 2);
-        return { body: { ...chart.at[1], blockedBy: [chart.tickets[0]] } };
-      }
-      case 'task.claim':
-        return { body: (await chartedMap(context, 1)).at[0] ?? {} };
-      case 'task.resolve':
-        return {
-          body: {
-            ...(await chartedMap(context, 1)).at[0],
-            answer: 'found',
-            gist: 'found it',
-          },
-        };
-      case 'task.close_out_of_scope':
-        return { body: { ...(await chartedMap(context, 1)).at[0], reason: 'not now' } };
-      case 'map.graduate': {
-        const chart = await chartedMap(context, 0);
-        return {
-          body: {
-            recordId: chart.map,
-            expectedRevision: chart.revision,
-            patchId: chart.patch,
-            tickets: [{ title: 'from the fog', type: 'task' }],
-          },
-        };
-      }
-      default:
+      default: {
+        // Wayfinder (WF-1, WF-2) keeps its recipes beside this table.
+        const wayfinder = WAYFINDER_BODIES[declaration.name];
+        if (wayfinder !== undefined) return { body: await wayfinder(context, target) };
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
+      }
     }
   };
 }

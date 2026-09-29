@@ -45,6 +45,79 @@ function componentView(row: ComponentRow): MapComponentView {
   return { id: row.id, kind: row.kind, text: row.body, ticketId: row.ticket_id };
 }
 
+/** Decisions so far: the map's completed tickets in closing order, rendered, never stored. */
+function decisionsSoFar(tickets: readonly TicketRow[]): MapView['decisions'] {
+  return tickets
+    .filter((ticket) => ticket.category === 'completed')
+    .toSorted(
+      (a, b) =>
+        (a.closed_at?.getTime() ?? 0) - (b.closed_at?.getTime() ?? 0) || a.id.localeCompare(b.id),
+    )
+    .map((ticket) => ({
+      ticketId: ticket.id,
+      key: ticket.key,
+      title: ticket.title,
+      gist: ticket.gist,
+      closedAt: ticket.closed_at?.toISOString() ?? null,
+    }));
+}
+
+function mapView(
+  mapId: string,
+  map: MapRow,
+  components: readonly ComponentRow[],
+  tickets: readonly TicketRow[],
+  versions: readonly VersionRow[],
+): MapView {
+  const of = (kind: MapComponentView['kind']) =>
+    components.filter((row) => row.kind === kind).map((row) => componentView(row));
+  return {
+    id: mapId,
+    key: map.key,
+    title: map.title,
+    type: 'map',
+    owner: map.owner,
+    client: map.client,
+    version: map.version ?? 0,
+    destination: of('destination')[0] ?? null,
+    notes: of('notes')[0] ?? null,
+    fog: of('fog'),
+    outOfScope: of('out_of_scope'),
+    decisions: decisionsSoFar(tickets),
+    tickets: tickets.map((ticket) => ({
+      id: ticket.id,
+      key: ticket.key,
+      title: ticket.title,
+      type: ticket.type ?? 'task',
+      state: ticket.state,
+    })),
+    versions: versions.map((row) => ({
+      version: row.version,
+      changed: row.changed,
+      actorId: row.actor_id,
+      at: row.created_at.toISOString(),
+    })),
+  };
+}
+
+async function readMapTickets(
+  tx: TenantQuery,
+  taskTypeId: string,
+  mapId: string,
+): Promise<readonly TicketRow[]> {
+  return await tx.query<TicketRow>(
+    `select c.id, c.txt_1 as key, c.txt_4 as title, coalesce(c.data ->> 'type', 'task') as type,
+            s.data ->> 'key' as state, s.data ->> 'machine_category' as category,
+            c.data ->> 'gist' as gist, c.ts_2 as closed_at
+       from public.records c
+       left join public.records s on s.business_id = c.business_id and s.id = c.uuid_1
+      where c.business_id = $1 and c.uuid_4 = $2 and c.record_type_id = $3
+        and c.deleted_at is null
+      order by c.num_2 nulls last, c.created_at, c.id`,
+    [tx.businessId, mapId, taskTypeId],
+  );
+}
+
 /** The map, or undefined when the id names no live map of this business. */
 export async function readMapView(
   tx: TenantQuery,
@@ -62,72 +135,19 @@ export async function readMapView(
   );
   const map = maps[0];
   if (map === undefined) return undefined;
-
   const components = await tx.query<ComponentRow>(
     `select id, kind, body, ticket_id from public.map_components
       where business_id = $1 and map_id = $2 and retired_version is null
       order by kind, position`,
     [tx.businessId, mapId],
   );
-  const tickets = await tx.query<TicketRow>(
-    `select c.id, c.txt_1 as key, c.txt_4 as title, coalesce(c.data ->> 'type', 'task') as type,
-            s.data ->> 'key' as state, s.data ->> 'machine_category' as category,
-            c.data ->> 'gist' as gist, c.ts_2 as closed_at
-       from public.records c
-       left join public.records s on s.business_id = c.business_id and s.id = c.uuid_1
-      where c.business_id = $1 and c.uuid_4 = $2 and c.record_type_id = $3
-        and c.deleted_at is null
-      order by c.num_2 nulls last, c.created_at, c.id`,
-    [tx.businessId, mapId, taskTypeId],
-  );
+  const tickets = await readMapTickets(tx, taskTypeId, mapId);
   const versions = await tx.query<VersionRow>(
     `select version, changed, actor_id, created_at from public.map_versions
       where business_id = $1 and map_id = $2 order by version`,
     [tx.businessId, mapId],
   );
-
-  const of = (kind: MapComponentView['kind']) =>
-    components.filter((row) => row.kind === kind).map((row) => componentView(row));
-  const closed = tickets
-    .filter((ticket) => ticket.category === 'completed')
-    .toSorted(
-      (a, b) =>
-        (a.closed_at?.getTime() ?? 0) - (b.closed_at?.getTime() ?? 0) || a.id.localeCompare(b.id),
-    );
-
-  return {
-    id: mapId,
-    key: map.key,
-    title: map.title,
-    type: 'map',
-    owner: map.owner,
-    client: map.client,
-    version: map.version ?? 0,
-    destination: of('destination')[0] ?? null,
-    notes: of('notes')[0] ?? null,
-    fog: of('fog'),
-    outOfScope: of('out_of_scope'),
-    decisions: closed.map((ticket) => ({
-      ticketId: ticket.id,
-      key: ticket.key,
-      title: ticket.title,
-      gist: ticket.gist,
-      closedAt: ticket.closed_at?.toISOString() ?? null,
-    })),
-    tickets: tickets.map((ticket) => ({
-      id: ticket.id,
-      key: ticket.key,
-      title: ticket.title,
-      type: ticket.type ?? 'task',
-      state: ticket.state,
-    })),
-    versions: versions.map((row) => ({
-      version: row.version,
-      changed: row.changed,
-      actorId: row.actor_id,
-      at: row.created_at.toISOString(),
-    })),
-  };
+  return mapView(mapId, map, components, tickets, versions);
 }
 
 /**

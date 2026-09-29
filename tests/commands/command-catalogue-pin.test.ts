@@ -97,15 +97,24 @@ vi.mock('../../packages/core-commands/src/commands/tasks-handback.ts', async (or
 vi.mock('../../packages/core-commands/src/commands/wayfinder.ts', async (original) => ({
   ...(await original<object>()),
   setTaskType: recorder('setTaskType'),
-  reviseMap: recorder('reviseMap'),
   scopeMap: recorder('scopeMap'),
 }));
-vi.mock('../../packages/core-commands/src/commands/wayfinder-flow.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/wayfinder-revision.ts', async (original) => ({
+  ...(await original<object>()),
+  reviseMap: recorder('reviseMap'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-chart.ts', async (original) => ({
   ...(await original<object>()),
   chartMap: recorder('chartMap'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-blocking.ts', async (original) => ({
+  ...(await original<object>()),
   setBlocking: recorder('setBlocking'),
   claimTicket: recorder('claimTicket'),
   graduateFog: recorder('graduateFog'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-resolve.ts', async (original) => ({
+  ...(await original<object>()),
   resolveTicket: recorder('resolveTicket'),
   closeOutOfScope: recorder('closeOutOfScope'),
 }));

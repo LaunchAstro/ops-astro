@@ -32,15 +32,11 @@ import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
-import { reviseMap, scopeMap, setTaskType } from './wayfinder.ts';
-import {
-  chartMap,
-  claimTicket,
-  closeOutOfScope,
-  graduateFog,
-  resolveTicket,
-  setBlocking,
-} from './wayfinder-flow.ts';
+import { scopeMap, setTaskType } from './wayfinder.ts';
+import { reviseMap } from './wayfinder-revision.ts';
+import { chartMap } from './wayfinder-chart.ts';
+import { claimTicket, graduateFog, setBlocking } from './wayfinder-blocking.ts';
+import { closeOutOfScope, resolveTicket } from './wayfinder-resolve.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
