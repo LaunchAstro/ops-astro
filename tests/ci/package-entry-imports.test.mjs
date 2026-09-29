@@ -10,6 +10,9 @@ import test from 'node:test';
 const root = resolve(import.meta.dirname, '../..');
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const base = 'cf802d63e6016133250a1a3b3515c0de35bcc123';
+// CQ-4's own change ends at its merged head. Later tickets rename and edit
+// tests, so the body comparison reads that head rather than the tree.
+const head = '7df17eb3e2e49ed1a195c3aefcfec18d0a06503c';
 const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' });
 const withoutImports = (source) => source.replaceAll(/^import\s[\s\S]*?;\n/gmu, '');
 
@@ -71,7 +74,7 @@ test('existing test bodies change only at moved source paths', () => {
     'diff',
     '--find-renames=50%',
     '--name-status',
-    `${base}...HEAD`,
+    `${base}...${head}`,
     '--',
     'packages',
   )
@@ -80,7 +83,7 @@ test('existing test bodies change only at moved source paths', () => {
     .map((line) => line.split('\t'))
     .filter(([status]) => status?.startsWith('R'))
     .map(([, from, to]) => [from, to]);
-  const changed = git('diff', '--name-only', `${base}...HEAD`, '--', 'tests')
+  const changed = git('diff', '--name-only', `${base}...${head}`, '--', 'tests')
     .trim()
     .split('\n')
     .filter((path) => /\.test\.(?:ts|tsx|js|mjs)$/u.test(path));
@@ -102,7 +105,7 @@ test('existing test bodies change only at moved source paths', () => {
       .replaceAll('commands/register.ts', 'core-records/src/register.ts')
       .replaceAll('read(`${C}/register.ts`)', "read('packages/core-records/src/register.ts')");
     assert.equal(
-      withoutImports(read(path)),
+      withoutImports(git('show', `${head}:${path}`)),
       withoutImports(before),
       `${path} changed outside imports and paths to moved source files`,
     );
