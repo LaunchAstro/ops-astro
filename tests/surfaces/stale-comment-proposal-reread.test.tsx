@@ -123,48 +123,50 @@ function server(options: ServerOptions = {}) {
   const register = new Map<string, unknown>();
   let minted = 0;
 
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     const operation = at.slice(at.lastIndexOf('/', at.lastIndexOf('/') - 1) + 1);
     (sent[operation] ??= []).push(body);
     const index = (sent[operation]?.length ?? 1) - 1;
-    if (operation === 'person/list') return json({ ok: true, persons: [] });
-    if (operation === 'task/read') return json({ ok: true, task });
+    if (operation === 'person/list') return Promise.resolve(json({ ok: true, persons: [] }));
+    if (operation === 'task/read') return Promise.resolve(json({ ok: true, task }));
     if (operation === 'task/update') {
       const id = String(body['operationId']);
       // The register: a known attempt replays its stored answer, whatever the
       // revision is now.
       const stored = register.get(id);
-      if (stored !== undefined) return json(stored);
-      if (Number(body['expectedRevision']) !== task.revision) return refusal('VERSION_STALE', 409);
+      if (stored !== undefined) return Promise.resolve(json(stored));
+      if (Number(body['expectedRevision']) !== task.revision)
+        return Promise.resolve(refusal('VERSION_STALE', 409));
       const fields = body['fields'] as { title?: string };
       task.title = fields.title ?? task.title;
       task.revision += 1;
       const result = { recordId: TASK_ID, revision: task.revision };
       register.set(id, result);
       const reply = answer(options.update, index);
-      if (reply === 'lost') return new Response('bad gateway', { status: 502 });
-      if (reply === 'dropped') throw new TypeError('Failed to fetch');
-      return json(result);
+      if (reply === 'lost') return Promise.resolve(new Response('bad gateway', { status: 502 }));
+      if (reply === 'dropped') return Promise.reject(new TypeError('Failed to fetch'));
+      return Promise.resolve(json(result));
     }
     if (operation === 'task/propose' || operation === 'task/comment') {
-      if (Number(body['expectedRevision']) !== task.revision) return refusal('VERSION_STALE', 409);
+      if (Number(body['expectedRevision']) !== task.revision)
+        return Promise.resolve(refusal('VERSION_STALE', 409));
       const reply = answer(operation === 'task/propose' ? options.propose : options.comment, index);
       // The commit happened, or did not; either way the answer is lost.
-      if (reply === 'lost') return new Response('bad gateway', { status: 502 });
-      if (reply === 'dropped') throw new TypeError('Failed to fetch');
-      return json({ recordId: TASK_ID, revision: task.revision });
+      if (reply === 'lost') return Promise.resolve(new Response('bad gateway', { status: 502 }));
+      if (reply === 'dropped') return Promise.reject(new TypeError('Failed to fetch'));
+      return Promise.resolve(json({ recordId: TASK_ID, revision: task.revision }));
     }
     if (operation === 'task/decide') {
       if (options.decide !== undefined) {
         // Another actor moved the lineage on before this press arrived.
         task.proposals = options.decide.after.map(lineageOf);
-        return refusal(options.decide.code, 409);
+        return Promise.resolve(refusal(options.decide.code, 409));
       }
-      return json({ recordId: TASK_ID, revision: task.revision });
+      return Promise.resolve(json({ recordId: TASK_ID, revision: task.revision }));
     }
-    throw new Error(`unrouted ${at}`);
+    return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
 
   const client = new OperationsClient({

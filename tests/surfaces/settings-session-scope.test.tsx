@@ -51,41 +51,47 @@ const MIA: Session = { businessKey: 'alpha', email: 'mia@alpha.local' };
 type ReadAnswer = 'rows' | 'denied' | 'unavailable';
 
 function api(read: ReadAnswer): typeof globalThis.fetch {
-  return (async (url: string | URL) => {
+  return ((url: string | URL) => {
     const at = String(url);
     if (at.endsWith('/session/capabilities')) {
-      return json({
-        ok: true,
-        personId: 'p',
-        businessKey: 'alpha',
-        grants: [{ collection: 'settings', action: 'manage' }],
-      });
+      return Promise.resolve(
+        json({
+          ok: true,
+          personId: 'p',
+          businessKey: 'alpha',
+          grants: [{ collection: 'settings', action: 'manage' }],
+        }),
+      );
     }
     if (at.endsWith('/settings/read')) {
       if (read === 'denied') {
-        return json(
-          { refused: true, code: 'SCOPE_NOT_GRANTED', names: ['settings:read'], fixes: [] },
-          403,
+        return Promise.resolve(
+          json(
+            { refused: true, code: 'SCOPE_NOT_GRANTED', names: ['settings:read'], fixes: [] },
+            403,
+          ),
         );
       }
-      if (read === 'unavailable') return json({ error: 'not found' }, 404);
-      return json({
-        ok: true,
-        settings: [
-          {
-            key: 'four_eyes_threshold',
-            value: 500,
-            valueType: 'number',
-            updatedAt: '2026-09-23T02:15:00.000Z',
-            updatedByActorId: 'actor-ada',
-          },
-        ],
-      });
+      if (read === 'unavailable') return Promise.resolve(json({ error: 'not found' }, 404));
+      return Promise.resolve(
+        json({
+          ok: true,
+          settings: [
+            {
+              key: 'four_eyes_threshold',
+              value: 500,
+              valueType: 'number',
+              updatedAt: '2026-09-23T02:15:00.000Z',
+              updatedByActorId: 'actor-ada',
+            },
+          ],
+        }),
+      );
     }
     if (at.endsWith('/settings/set_four_eyes_threshold')) {
-      return json({ recordId: 'row', revision: null, detail: { value: 7777 } });
+      return Promise.resolve(json({ recordId: 'row', revision: null, detail: { value: 7777 } }));
     }
-    throw new Error(`unrouted ${at}`);
+    return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
 }
 

@@ -225,7 +225,7 @@ describe.skipIf(serverUrl === undefined)('I10: a read admitted during revocation
     readerApi = createApi({
       database: reader,
       verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
-      resolveBusiness: async (key: string) => (key === 'alpha' ? world.alpha : undefined),
+      resolveBusiness: (key: string) => Promise.resolve(key === 'alpha' ? world.alpha : undefined),
       executeCommand,
       executeRead,
       executeAgentCommand,

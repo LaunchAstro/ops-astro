@@ -25,9 +25,11 @@ const ADDRESS = `https://heartbeat.example.test/api/push/${TOKEN}`;
 /** A fetch that answers `status` and keeps what it was asked. */
 function answering(status: number) {
   const asked: { url: string; init: RequestInit | undefined }[] = [];
-  const get = (async (url: URL | string, init?: RequestInit) => {
+  const get = ((url: URL | string, init?: RequestInit) => {
     asked.push({ url: String(url), init });
-    return new Response('ignored', { status, headers: { location: 'https://elsewhere.test/' } });
+    return Promise.resolve(
+      new Response('ignored', { status, headers: { location: 'https://elsewhere.test/' } }),
+    );
   }) as typeof fetch;
   return { get, asked };
 }

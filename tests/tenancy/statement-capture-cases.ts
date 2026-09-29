@@ -82,7 +82,7 @@ export function observe(world: World): Observed {
   const api = createApi({
     database,
     verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
-    resolveBusiness: async (key: string) => byKey[key],
+    resolveBusiness: (key: string) => Promise.resolve(byKey[key]),
     executeCommand,
     executeRead,
     executeAgentCommand,

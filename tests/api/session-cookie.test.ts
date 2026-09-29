@@ -57,16 +57,18 @@ async function bearerFor(subject = 'mia', jti?: string): Promise<string> {
 }
 
 function build() {
-  const executeRead = vi.fn(async (_db: unknown, _business: string, presented: unknown) => ({
-    ok: true as const,
-    presented,
-  }));
-  const executeCommand = vi.fn(async () => ({ recordId: 'r-1', revision: 1 }));
+  const executeRead = vi.fn((_db: unknown, _business: string, presented: unknown) =>
+    Promise.resolve({
+      ok: true as const,
+      presented,
+    }),
+  );
+  const executeCommand = vi.fn(() => Promise.resolve({ recordId: 'r-1', revision: 1 }));
   const api = createApi({
     database,
     verify: createSupabaseVerifier(testSignIn(ISSUER)),
-    resolveBusiness: async (key) =>
-      key === 'alpha' || key === 'bravo' ? `business-${key}` : undefined,
+    resolveBusiness: (key) =>
+      Promise.resolve(key === 'alpha' || key === 'bravo' ? `business-${key}` : undefined),
     executeRead: executeRead as never,
     executeCommand: executeCommand as never,
   });

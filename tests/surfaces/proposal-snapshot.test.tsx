@@ -146,15 +146,14 @@ function clientServing(taskId: string, proposals: readonly ProposalView[]): Oper
     comments: [],
     proposals: JSON.parse(JSON.stringify(proposals)) as unknown,
   };
-  const fetch = (async (url: string | URL) => {
+  const fetch = ((url: string | URL) => {
     const at = String(url);
-    if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
-    if (at.endsWith('/task/read')) return json({ ok: true, task });
-    return new Response(
-      JSON.stringify({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }),
-      {
+    if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
+    if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task }));
+    return Promise.resolve(
+      new Response(JSON.stringify({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }), {
         status: 404,
-      },
+      }),
     );
   }) as unknown as typeof globalThis.fetch;
   return new OperationsClient({

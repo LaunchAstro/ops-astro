@@ -885,9 +885,9 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
       ).expireBackups({
         storeUrl: retentionLogin.url,
         restoreHeartbeat: address,
-        send: async (to: string | undefined) => {
+        send: (to: string | undefined) => {
           sent.push(to ?? '');
-          return 'sent';
+          return Promise.resolve('sent');
         },
       });
     const age = async (days: number) => {

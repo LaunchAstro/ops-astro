@@ -118,16 +118,16 @@ function taskServer(
   gate: { readonly state: string; readonly expired: boolean },
   writes: Readonly<Record<string, Response>> = {},
 ) {
-  const fetch = (async (url: string | URL) => {
+  const fetch = ((url: string | URL) => {
     const at = String(url);
     if (at.endsWith('/person/list')) {
-      return json({ ok: true, persons: [{ personId: 'p-1', name: 'Ada' }] });
+      return Promise.resolve(json({ ok: true, persons: [{ personId: 'p-1', name: 'Ada' }] }));
     }
-    if (at.endsWith('/task/read')) return json({ ok: true, task: taskWith(gate) });
+    if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: taskWith(gate) }));
     for (const [suffix, response] of Object.entries(writes)) {
-      if (at.endsWith(suffix)) return response.clone();
+      if (at.endsWith(suffix)) return Promise.resolve(response.clone());
     }
-    return refused('NOT_FOUND', 404);
+    return Promise.resolve(refused('NOT_FOUND', 404));
   }) as unknown as typeof globalThis.fetch;
   return new OperationsClient({
     origin: '',

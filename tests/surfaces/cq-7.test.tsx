@@ -34,17 +34,22 @@ function task(fields: { readonly title: string | null; readonly capCurrency?: st
 
 function client(detail: ReturnType<typeof task>) {
   const proposed: Record<string, unknown>[] = [];
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-    if (at.endsWith('/task/board')) return Response.json({ ok: true, tasks: [detail] });
-    if (at.endsWith('/person/list')) return Response.json({ ok: true, persons: [] });
-    if (at.endsWith('/task/read')) return Response.json({ ok: true, task: detail });
+    if (at.endsWith('/task/board'))
+      return Promise.resolve(Response.json({ ok: true, tasks: [detail] }));
+    if (at.endsWith('/person/list'))
+      return Promise.resolve(Response.json({ ok: true, persons: [] }));
+    if (at.endsWith('/task/read'))
+      return Promise.resolve(Response.json({ ok: true, task: detail }));
     if (at.endsWith('/task/propose')) {
       proposed.push(body);
-      return Response.json({ recordId: TASK_ID, revision: 3, detail: { versionId: 'v-1' } });
+      return Promise.resolve(
+        Response.json({ recordId: TASK_ID, revision: 3, detail: { versionId: 'v-1' } }),
+      );
     }
-    return Response.json({ ok: true });
+    return Promise.resolve(Response.json({ ok: true }));
   }) as typeof globalThis.fetch;
   const operations = new OperationsClient({
     origin: '',

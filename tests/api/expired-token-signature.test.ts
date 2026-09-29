@@ -44,7 +44,7 @@ function build() {
   return createApi({
     database: unreachable,
     verify: createSupabaseVerifier(testSignIn(GOTRUE.iss)),
-    resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
+    resolveBusiness: (key) => Promise.resolve(key === 'alpha' ? ALPHA : undefined),
     executeCommand,
     executeRead,
     executeAgentCommand,
