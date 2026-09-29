@@ -179,18 +179,20 @@ describe.skipIf(serverUrl === undefined)('FR2-RUNTIME: final review round 2', ()
   async function holderOf(action: 'decide' | 'write'): Promise<{
     readonly member: Member;
     readonly grantId: string;
+    readonly decideGrantId: string;
   }> {
     const member = await enrol(c.fixture.db.app, c.fixture.business, `${action}-${randomUUID()}`);
     let grantId = '';
+    let decideGrantId = '';
     await c.fixture.db.app.withBusiness(c.fixture.business, async (tx) => {
       await grantTo(tx, member, 'read');
       // T3a: cancel is `decide` on the task, and its runtime still asks
       // `write` under its locks; a write holder here holds decide beside it,
       // so the revocation of `write` is what these cases race.
-      if (action === 'write') await grantTo(tx, member, 'decide');
+      if (action === 'write') decideGrantId = await grantTo(tx, member, 'decide');
       grantId = await grantTo(tx, member, action);
     });
-    return { member, grantId };
+    return { member, grantId, decideGrantId };
   }
 
   const gateDecisions = async (gateId: unknown): Promise<number> =>
@@ -321,6 +323,39 @@ describe.skipIf(serverUrl === undefined)('FR2-RUNTIME: final review round 2', ()
           [proposal['lineageId'], grantId],
         ),
       ).toBe(1);
+    }, 60_000);
+  });
+
+  describe('T3a task.cancel and a revocation of the canceller’s decide', () => {
+    it('a revocation that locks the decide grant first is seen with the grants held: SCOPE_NOT_GRANTED', async () => {
+      const task = await c.createTask('decide revoked while the cancel waits');
+      const proposal = await c.propose(task.id, task.revision);
+      const { member, decideGrantId } = await holderOf('write');
+      const blocker = hold(owner, async (sql) => {
+        await sql`select 1 from public.grants where id = ${decideGrantId} for update`;
+      });
+      const [revoking, cancelling] = await whileHeld(blocker, async () => {
+        await sleep(50);
+        const revokingRequest = c.asPerson('grant.revoke', { grantId: decideGrantId });
+        await waitersReach(owner, 1);
+        const cancellingRequest = second.asPerson(
+          'task.cancel',
+          { recordId: task.id, lineageId: proposal['lineageId'], reason: 'stand down' },
+          member,
+        );
+        await waitersReach(owner, 2);
+        return [revokingRequest, cancellingRequest] as const;
+      });
+
+      const [cancelled, revoked] = await Promise.all([cancelling, revoking]);
+      expect([revoked.status, revoked.body['code']]).toStrictEqual([200, undefined]);
+      expect(cancelled.body['code'], JSON.stringify(cancelled.body)).toBe('SCOPE_NOT_GRANTED');
+      expect(
+        await c.fixture.db.admin.execute<{ readonly state: string }>(
+          `select state from public.proposal_lineages where id = $1`,
+          [proposal['lineageId']],
+        ),
+      ).toEqual([{ state: 'live' }]);
     }, 60_000);
   });
 
