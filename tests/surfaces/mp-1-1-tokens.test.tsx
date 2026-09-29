@@ -131,6 +131,19 @@ describe('MP-1-1 tokens', () => {
     expect(bitten.status).toBe(1);
     expect(bitten.stderr).toContain('dark --surface-2');
     expect(bitten.stderr.trim().split('\n')).toHaveLength(1);
+
+    // Lookalikes ahead of the real blocks are not read: a commented-out block,
+    // and rules whose selectors only start with or contain the real one.
+    const lookalikes = [
+      "/* [data-theme='dark'] { --surface-2: oklch(0.1 0 0); } :root { --bg: #000; } */",
+      ":root:not([data-theme='light']) .x { --bg: oklch(0.1 0 0); }",
+      "[data-theme='dark'] .card { --surface-2: oklch(0.2 0 0); }",
+      '',
+    ].join('\n');
+    const tricked = join(scratch, 'lookalikes.css');
+    writeFileSync(tricked, lookalikes + read(tokensCss));
+    expect(run('--css', tricked)).toMatchObject({ status: 0, stderr: '' });
+    expect(JSON.parse(run('--print', '--css', tricked).stdout)).toEqual(resolved());
   });
 
   it('MP-1-1 light unchanged', () => {

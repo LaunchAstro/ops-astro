@@ -21,13 +21,19 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const DEFAULT_CSS = `${root}packages/ui/src/styles/1-tokens.css`;
 const DEFAULT_EXPECTED = `${root}tests/surfaces/fixtures/mp-1-1-tokens.json`;
 
-/** The declarations of the first block whose selector is exactly `selector`. */
+/**
+ * The declarations of the first block whose selector is exactly `selector`:
+ * a block opens at the start of the sheet or after a `}`, and its selector is
+ * compared as text, never built into a pattern.
+ */
 function block(css, selector) {
   const bare = css.replace(/\/\*[\s\S]*?\*\//gu, '');
-  const start = bare.search(new RegExp(`(^|\\})\\s*${selector}\\s*\\{`, 'u'));
-  if (start < 0) return new Map();
-  const open = bare.indexOf('{', start + 1);
-  const body = bare.slice(open + 1, bare.indexOf('}', open));
+  const chunk = bare.split('}').find((part) => {
+    const open = part.indexOf('{');
+    return open >= 0 && part.slice(0, open).trim() === selector;
+  });
+  if (chunk === undefined) return new Map();
+  const body = chunk.slice(chunk.indexOf('{') + 1);
   const declared = new Map();
   for (const line of body.split(';')) {
     const at = line.indexOf(':');
@@ -59,7 +65,7 @@ function resolve(declared) {
 /** The resolved light and dark sets of a token file's text. */
 export function resolveTokens(css) {
   const light = block(css, ':root');
-  const dark = new Map([...light, ...block(css, "\\[data-theme='dark'\\]")]);
+  const dark = new Map([...light, ...block(css, "[data-theme='dark']")]);
   return { light: resolve(light), dark: resolve(dark) };
 }
 
