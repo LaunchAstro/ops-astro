@@ -27,7 +27,6 @@
 // refused before building anything. `--json` adds the result as a last line.
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
@@ -37,6 +36,7 @@ import {
   readMigrations,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
 import { createEmptyDatabase } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { executeCommand, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
@@ -70,10 +70,7 @@ function printable(error) {
 function serverUrl() {
   const set = process.env.DATABASE_ADMIN_URL || process.env.DATABASE_URL;
   if (set) return set;
-  const file = `${root}.local/db.env`;
-  if (!existsSync(file)) return;
-  const match = /^DATABASE_ADMIN_URL=(.+)$/mu.exec(readFileSync(file, 'utf8'));
-  return match?.[1];
+  return readEnvFile(`${root}.local/db.env`)['DATABASE_ADMIN_URL'] || undefined;
 }
 
 /** A business and one person who may sign in and work its tasks, written as the application. */
