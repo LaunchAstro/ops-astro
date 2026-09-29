@@ -164,7 +164,7 @@ describe.skipIf(url === undefined)('T3e1: drops are not cancellations', { timeou
   it('drop_is_not_cancel: our worker was lost, our fault; the run stays running until its lease runs out', async () => {
     const w = await work(s, 1);
     const before = await attempts(s, w.taskId);
-    expect(before).toMatchObject([{ state: 'reserved', held: 'held' }]);
+    expect(before).toMatchObject([{ state: 'dispatched', held: 'held' }]);
     await new Promise((resolve) => {
       setTimeout(resolve, 1_300);
     });
@@ -192,8 +192,8 @@ describe.skipIf(url === undefined)('T3e1: drops are not cancellations', { timeou
     // Replayed by its operation identity: the same answer, nothing new.
     appliedDetail(await asPerson(s, cancel), 'task.cancel');
     await sweep(s);
-    expect(await attempts(s, w.taskId)).toStrictEqual([
-      expect.objectContaining({ state: 'abandoned', drop_cause: null, held: 'abandoned' }),
+    expect(await attempts(s, w.taskId)).toMatchObject([
+      { state: 'abandoned', drop_cause: null, held: 'abandoned' },
     ]);
     expect((await events(s, w.taskId)).map((one) => one.kind)).toStrictEqual(['claimed']);
     expect(await alerts(s, w.taskId)).toStrictEqual(['cancelled']);
@@ -208,7 +208,7 @@ describe.skipIf(url === undefined)('T3e1: drops are not cancellations', { timeou
       // eslint-disable-next-line no-await-in-loop
       expect(codeOf(await dropBack(w, report))).toBe('FIELD_VALUE_INVALID');
     }
-    expect(await attempts(s, w.taskId)).toMatchObject([{ state: 'reserved', drop_cause: null }]);
+    expect(await attempts(s, w.taskId)).toMatchObject([{ state: 'dispatched', drop_cause: null }]);
     expect((await events(s, w.taskId)).map((one) => one.kind)).toStrictEqual(['claimed']);
     expect(await alerts(s, w.taskId)).toStrictEqual([]);
   });
@@ -229,12 +229,8 @@ describe.skipIf(url === undefined)('T3e1: drops are not cancellations', { timeou
       'task.dispatch',
     );
     appliedDetail(await dropBack(w, { dropCause: 'provider_unavailable' }), 'task.handback');
-    expect(await attempts(s, w.taskId)).toStrictEqual([
-      expect.objectContaining({
-        state: 'liability_unknown',
-        drop_cause: 'provider_unavailable',
-        held: 'held',
-      }),
+    expect(await attempts(s, w.taskId)).toMatchObject([
+      { state: 'liability_unknown', drop_cause: 'provider_unavailable', held: 'held' },
     ]);
     // Only proof resumes it (T3d1): no reactivation here.
     expect((await events(s, w.taskId)).map((one) => one.kind)).toStrictEqual([
@@ -253,7 +249,7 @@ describe.skipIf(url === undefined)('T3e1: drops are not cancellations', { timeou
     await sweep(s);
     appliedDetail(await dropBack(await work(s), { dropCause: 'connection_lost' }), 'task.handback');
     expect(await digest(other)).toStrictEqual(before);
-    expect(await attempts(other, away.taskId)).toMatchObject([{ state: 'reserved' }]);
+    expect(await attempts(other, away.taskId)).toMatchObject([{ state: 'dispatched' }]);
     expect((await attempts(s, w.taskId))[0]).toMatchObject({ drop_cause: 'worker_lost' });
   });
 });

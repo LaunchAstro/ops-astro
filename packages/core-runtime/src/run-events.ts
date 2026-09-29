@@ -2,10 +2,11 @@
 //
 // T2a: the one writer of a run's progress record.
 //
-// Pickup and hand-back call it as a named step inside their own transaction,
-// so an event commits with its transition or not at all. A refused call
-// returns before this step and keeps only its audit event: `run_events` is
-// what happened to the run (the coordinator's ruling on T2a's open question).
+// Pickup, hand-back and a drop (T3e1) call it as a named step inside their
+// own transaction, so an event commits with its transition or not at all. A
+// refused call returns before this step and keeps only its audit event:
+// `run_events` is what happened to the run (the coordinator's ruling on T2a's
+// open question).
 // The task lock is required, not taken: the position is read and written
 // under it, and a caller without it is a bug (`LockSet.require`).
 
@@ -13,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import type { LockSet } from './locks.ts';
 
-export type RunEventKind = 'claimed' | 'handed_back';
+export type RunEventKind = 'claimed' | 'handed_back' | 'dropped' | 'reactivated';
 
 export interface RunEvent {
   readonly kind: RunEventKind;
