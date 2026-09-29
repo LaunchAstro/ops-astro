@@ -132,7 +132,12 @@ link, Handling) in a frame of 5, 2 and 1 columns. An empty value reads "not
 set" and an empty Page link "nothing yet"; Estimate, Category and Page link
 have no value on the record yet, and Client says "On file" until the client
 model names it. Every mark here is inert: no tab stop, role or handler, and
-the default cursor. The ticks that change them are the dock panel's.
+the default cursor. The ticks that change them are the dock panel's:
+`HandlingTicks` (`screens/task/Ticks.tsx`, MP-4-10), which the dock task
+panel (MP-4-8) mounts. Each is a checkbox a person can tab to, turned by a
+press, Space or Enter, through `task.set_adhoc` or `task.share_with_client`
+and `task.revoke_client_share` at the task's revision; a success rereads
+the task and a refusal is quoted with the tick left as the server has it.
 
 The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
 goes to `/settings`. An open dock tab is announced as "Close Settings"

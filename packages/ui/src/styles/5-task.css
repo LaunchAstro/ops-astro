@@ -81,6 +81,28 @@
 .tpr__mark[data-on='yes'] {
   border-color: var(--accent);
 }
+/* The live ticks (MP-4-10, DP-16, DP-17): the dock panel's, which do turn. */
+.tpr__tick {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 18px;
+  block-size: 18px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+}
+.tpr__tick:hover,
+.tpr__tick[aria-checked='true'] {
+  border-color: var(--accent);
+}
+.tpr__tick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tpr__tick[aria-disabled='true'] {
+  cursor: progress;
+}
 .tpr__chip {
   display: inline-block;
   margin-inline-end: var(--s-2);
