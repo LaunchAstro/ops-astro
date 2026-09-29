@@ -30,6 +30,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // AW-01: the model-call ledger, and the copy register, which is append only.
   ['siu', 'model_calls'],
   ['si', 'copy_registrations'],
+  // AW-02: the pin and the read ledger are never rewritten; the audit copy is
+  // kept and never read back by a run role.
+  ['si', 'bootstrap_reads run_definition_pins'],
+  ['i', 'bootstrap_bytes'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],

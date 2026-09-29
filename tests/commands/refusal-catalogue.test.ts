@@ -5,7 +5,7 @@
 // Written before the catalogue was folded into one table (architecture review
 // d8746a2, candidate 2), and green before and after. Two things are pinned:
 // every registered code with its status and visibility, in register order,
-// plus the twenty the runtime calls its own; and the exact bytes of one
+// plus the twenty-four the runtime calls its own; and the exact bytes of one
 // refusal from each road a refusal takes to a caller. A refactor that moved a
 // status, dropped a code, reordered a fix or renamed a key fails here before
 // any caller sees it.
@@ -109,6 +109,11 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['CAP_BINDING_MISMATCH', 409, 'caller'],
   ['ACTUAL_EXPENDITURE_UNSUPPORTED', 422, 'caller'],
   ['SUCCESSOR_OUT_OF_BOUNDS', 409, 'caller'],
+  // AW-02, instruction files pinned by digest.
+  ['ACTIVATION_MODE_NOT_PERMITTED', 403, 'caller'],
+  ['DELEGATION_EXCLUDES_ACTIVATION', 403, 'caller'],
+  ['DEFINITION_DIGEST_MISMATCH', 409, 'caller'],
+  ['DEFINITION_UNAVAILABLE', 409, 'caller'],
   ['AUTHORITY_LOST', 409, 'caller'],
   ['DECISION_STALE', 409, 'caller'],
   ['EFFECT_NOT_RECONCILABLE', 409, 'caller'],
@@ -127,8 +132,12 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['LIABILITY_UNKNOWN', 409, 'caller'],
 ];
 
-/** The runtime's own twenty-six, as `core-runtime` names them; T2c1 added three, T2c2 one, T2g one, T3d1 one. */
+/**
+ * The runtime's own thirty, as `core-runtime` names them; T2c1 added three,
+ * T2c2 one, T2g one, T3d1 one, AW-02 four.
+ */
 const RUNTIME = [
+  'ACTIVATION_MODE_NOT_PERMITTED',
   'ACTUAL_EXPENDITURE_UNSUPPORTED',
   'AUTHORITY_LOST',
   'BUDGET_EXHAUSTED',
@@ -136,6 +145,9 @@ const RUNTIME = [
   'CAP_BINDING_MISMATCH',
   'CHANGE_ROUNDS_EXHAUSTED',
   'DECISION_STALE',
+  'DEFINITION_DIGEST_MISMATCH',
+  'DEFINITION_UNAVAILABLE',
+  'DELEGATION_EXCLUDES_ACTIVATION',
   'EFFECT_NOT_OBSERVED',
   'EFFECT_NOT_RECONCILABLE',
   'EVIDENCE_MISMATCH',
@@ -164,7 +176,7 @@ describe('the refusal catalogue', () => {
     ).toStrictEqual(CATALOGUE);
   });
 
-  it('names the same twenty-six as the runtime’s own, each under its register status', () => {
+  it('names the same thirty as the runtime’s own, each under its register status', () => {
     expect(Object.keys(SUGGESTED_STATUS).toSorted()).toStrictEqual(RUNTIME);
     for (const [code, status] of Object.entries(SUGGESTED_STATUS)) {
       expect(status, code).toBe(CATALOGUE.find(([listed]) => listed === code)?.[1]);
