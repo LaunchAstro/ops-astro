@@ -11,3 +11,7 @@ tests/gate/canary.txt
 .claude/skills
 .codex
 skills-lock.json
+
+# The public edition of the design system is a checked copy, kept byte for byte as it
+# crossed (ticket C82); docs/design-system/COPY-RECORD.md holds each digest.
+docs/design-system
