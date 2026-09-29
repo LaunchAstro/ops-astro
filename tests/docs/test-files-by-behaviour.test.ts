@@ -330,6 +330,10 @@ function importsOf(file: string, text: string, packages: ReadonlyMap<string, str
 const NO_PRODUCT_IMPORTER_YET = new Map([
   ['apps/api/server.ts', 'the API process entry, started by node rather than imported'],
   [
+    'apps/worker/main.ts',
+    'the worker process entry (`pnpm worker`), started by node rather than imported',
+  ],
+  [
     'packages/core-records/src/identity/identifier-resolution.ts',
     'kept, tested, for its named callers MP-8-6 and C48 (docs/current-decisions.md, 28 September 2026)',
   ],
