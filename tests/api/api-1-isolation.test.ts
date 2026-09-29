@@ -87,6 +87,8 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
   /** A second Alpha person's own claims: one approved and held, one picked up and live. */
   let foreignLease: { leaseId: string; fence: unknown };
   let foreignReservation: string;
+  let foreignPersonId = '';
+  let foreignTaskId = '';
   let attemptedForeignLeaseId = '';
   let attemptedForeignReservationId = '';
   /** Raw id or title to its label, so a leak is named and no record value is printed. */
@@ -149,6 +151,7 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
     });
     ({ agentToken, delegation, delegatedTask } = await pickUp(alphaToken));
     const otherPerson = await enrol(fixture.db.app, fixture.business, 'other-decider');
+    foreignPersonId = otherPerson.personId;
     labels.set(otherPerson.personId, '<other person>').set(otherPerson.actorId, '<other person>');
     await fixture.db.app.withBusiness(fixture.business, async (tx) => {
       for (const action of ['read', 'write', 'decide', 'assign', 'comment'] as const) {
@@ -181,6 +184,7 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
       );
     });
     const theirs = await pickUp(otherToken, secondAgent);
+    foreignTaskId = theirs.delegatedTask;
     foreignLease = { leaseId: theirs.leaseId, fence: theirs.fence };
   }, 120_000);
 
@@ -478,6 +482,18 @@ describe.skipIf(serverUrl === undefined)('API-1 isolation', () => {
       )
       .toBeDefined();
     expect(reservations[0]?.person_id).not.toBe(fixture.member.personId);
+  });
+
+  it("Sol proof, criterion API-1 4: another person's identifiers remain detectable", () => {
+    const refused: Heard[] = [
+      {
+        status: 403,
+        code: 'DELEGATION_OUT_OF_PURPOSE',
+        body: label({ personId: foreignPersonId, recordId: foreignTaskId }),
+      },
+    ];
+    expect.soft(foreign(refused, null)).toContain('other');
+    expect.soft(label(foreignTaskId)).not.toEqual(label(delegatedTask));
   });
 
   it('API-1 isolation: a successful read carrying the other client record is caught', async () => {
