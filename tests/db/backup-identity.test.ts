@@ -712,7 +712,7 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
           r.sourceMajor,
           r.targetMajor,
           r.tables,
-          JSON.stringify(r.timings),
+          r.timings,
         ],
       ] as [string, unknown[]];
 
@@ -758,6 +758,20 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
         const [text, values] = call(passed);
         expect(await attempt(reader, text, values.with(5, null))).toBe('23514');
         expect(await attempt(reader, text, values.with(4, 18))).toBe('23514');
+        // Timings are stage names and milliseconds, and nothing else. Each is
+        // sent as the drill sends it (`sql.json`), so none is a jsonb string
+        // refused for its type alone; the last is that string.
+        for (const timings of [
+          { fetch: 'made-up record text' },
+          { note: 4 },
+          [1, 2],
+          { open: { x: 1 } },
+          'made-up record text',
+        ]) {
+          const label = JSON.stringify(timings);
+          // oxlint-disable-next-line no-await-in-loop
+          expect(await attempt(reader, text, values.with(8, timings)), label).toBe('23514');
+        }
       } finally {
         await reader.end();
       }

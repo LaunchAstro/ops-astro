@@ -90,6 +90,8 @@ const A2 = {
 };
 // A root grant over A2.derived, revoked, and a grant A.person holds from it.
 const ROOT = randomUUID();
+// An agent's actor acting for A.person under a live delegation (migration 0008).
+const AGENT = randomUUID();
 
 const hasDocker = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
 if (!hasDocker) console.warn('ci/restore-drill: Docker is not running, so nothing below ran.');
@@ -199,9 +201,13 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
         ('${A.business}', 'person', '${A.person}', 'party', '${A2.wrongCollection}', 'task', 'read'),
         ('${A.business}', 'person', '${A2.manager}', 'business', null, 'person', 'manage'),
         ('${A.business}', 'person', '${A2.taskManager}', 'business', null, 'task', 'manage');
+      create table public.delegations (business_id uuid not null, id uuid primary key default gen_random_uuid(),
+        agent_actor_id uuid not null, delegate_person_id uuid not null, revoked_at timestamptz);
+      insert into public.delegations (business_id, agent_actor_id, delegate_person_id) values
+        ('${A.business}', '${AGENT}', '${A.person}');
       create table public.tasks (business_id uuid not null, id int primary key, title text);
       insert into public.tasks select '${A.business}', g, repeat('made-up task ', 20) from generate_series(1, 4000) g;
-      ${['businesses', 'people', 'memberships', 'grants', 'tasks'].map(barrier).join('\n')}`;
+      ${['businesses', 'people', 'memberships', 'grants', 'delegations', 'tasks'].map(barrier).join('\n')}`;
     const created = await run(
       ['exec', '-i', name, 'psql', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'fixture'],
       Buffer.from(sql),
@@ -220,7 +226,7 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
       'fixture',
     ]);
     expect(dump.code).toBe(0);
-    const unbar = ['businesses', 'people', 'memberships', 'grants', 'tasks']
+    const unbar = ['businesses', 'people', 'memberships', 'grants', 'delegations', 'tasks']
       .map(
         (t) =>
           `alter table public.${t} no force row level security; alter table public.${t} disable row level security;`,
@@ -410,7 +416,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
         sourceMajor: PRODUCTION_MAJOR,
         targetMajor: PRODUCTION_MAJOR,
         productionMajor: PRODUCTION_MAJOR,
-        tables: 6,
+        tables: 7,
         readAs: 'ops_astro_app',
       });
       const timings = record['timings'] as Record<string, number>;
@@ -477,7 +483,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
           return docker(args, input);
         },
       });
-      expect(record).toMatchObject({ outcome: 'passed', readAs: 'ops_astro_app', tables: 6 });
+      expect(record).toMatchObject({ outcome: 'passed', readAs: 'ops_astro_app', tables: 7 });
       // Every statement that reads the copy's tables runs as the tenancy role
       // under the named business; the owner session never reads one.
       const reads = calls.filter(
@@ -546,6 +552,56 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
         expect(await drill(scope)).toMatchObject({ outcome: 'failed', stage: 'check' });
       }
     }, 300_000);
+
+    it('S0-3 isolation: three crossings, each failed at the check, beside the one that passes', async () => {
+      const { restoreDrill } = await drillModule();
+      const drill = async (scope: Scope): Promise<DrillRecord> =>
+        await restoreDrill({
+          fetchArchive: async () => ({ takenAt, body: sealed }),
+          privateKey: keys.privateKey,
+          scope,
+        });
+      expect(await drill(A)).toMatchObject({ outcome: 'passed' });
+      const crossings: Record<string, Scope> = {
+        'another business': { ...A, client: B.client },
+        'another client in the same business': { ...A, client: A2.client },
+        'another person under a live delegation': { ...A, person: AGENT },
+      };
+      for (const [name, scope] of Object.entries(crossings)) {
+        // oxlint-disable-next-line no-await-in-loop
+        const record = await drill(scope);
+        expect(record, name).toMatchObject({ outcome: 'failed', stage: 'check' });
+        expect(record, name).not.toHaveProperty('tables');
+      }
+    }, 300_000);
+
+    it('S0-3 canary: no record content, name or id reaches a passed or a failed receipt', async () => {
+      const { restoreDrill } = await drillModule();
+      const records = [];
+      for (const scope of [A, { ...A, client: B.client }]) {
+        // oxlint-disable-next-line no-await-in-loop
+        const record = await restoreDrill({
+          fetchArchive: async () => ({ takenAt, body: sealed }),
+          privateKey: keys.privateKey,
+          scope,
+        });
+        records.push(record);
+      }
+      expect(records.map((r) => r.outcome)).toStrictEqual(['passed', 'failed']);
+      const text = JSON.stringify(records);
+      for (const planted of [
+        MADE_UP,
+        'made-up',
+        AGENT,
+        ROOT,
+        ...Object.values(A),
+        ...Object.values(A2),
+        ...Object.values(B),
+      ]) {
+        expect(text).not.toContain(planted);
+      }
+      expect(text).not.toMatch(/PRIVATE KEY|postgres:\/\/|\/Users\/|\/var\/|\/tmp\//u);
+    }, 180_000);
 
     it('fails a copy where the business barrier did not survive', async () => {
       const { restoreDrill } = await drillModule();
