@@ -95,6 +95,12 @@ export interface TaskDetail extends TaskSummary {
   readonly rank: RankView;
   /** The Ad hoc mark (MP-4-10, CS-4.9): billing reads it, and new time entries default to it. */
   readonly adHoc: boolean;
+  /**
+   * Client access (MP-4-10, CS-4.10, R45): true exactly when the task is
+   * shared with at least one of its client's people. The tick draws this and
+   * nothing stored beside it.
+   */
+  readonly clientAccess: boolean;
 }
 
 /** One alert as `task.read` and `task.queue` carry it (`core-runtime/src/alerts.ts`). */

@@ -54,6 +54,8 @@ export type CommandName =
   | 'task.move'
   | 'task.set_scores'
   | 'task.set_adhoc'
+  | 'task.share_with_client'
+  | 'task.revoke_client_share'
   // The mechanics specification 14.2 and 14.3 name.
   | 'task.rank'
   | 'task.trash'
@@ -266,6 +268,7 @@ function declare(
 }
 
 const TASK_COLLECTION = 'task';
+const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
@@ -355,6 +358,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.set_audience': FIELDS,
   'task.set_scores': FIELDS,
   'task.set_adhoc': FIELDS,
+  'task.share_with_client': TARGET,
+  'task.revoke_client_share': TARGET,
   'task.reparent': { ...TARGET, parentId: 'any' },
   'task.move': { ...TARGET, board: 'any', boardSection: 'any' },
   'task.rank': { ...TARGET, afterId: 'id?|null', beforeId: 'id?|null' },
@@ -446,6 +451,12 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // The Ad hoc mark (MP-4-10, CS-4.9): `task:write`, and an agent sets it on
   // its own task inside its delegation.
   declare('task.set_adhoc', 'write', { agent: 'delegated' }),
+  // Client access (MP-4-10, CS-4.10, R45): the task's share grants to its
+  // client's people, created and withdrawn under `access:share`, which an
+  // agent never holds (contract 2.3 to 2.6). The target row is the lock, so
+  // two at once on one task leave one share per person.
+  declare('task.share_with_client', 'share', { collection: ACCESS_COLLECTION }),
+  declare('task.revoke_client_share', 'share', { collection: ACCESS_COLLECTION }),
 
   declare('task.rank', 'write'),
   declare('task.trash', 'write'),
