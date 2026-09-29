@@ -35,10 +35,10 @@ import {
   select,
   started,
   takeOut,
-  type AskEntry,
   type AssistantState,
   type Chat,
 } from '../assistant/chats.ts';
+import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { modelOffer, subjectFor, type ModelChoice, type Subject } from '../assistant/subject.ts';
 import type { CallResult, CommandOutcome, OperationsClient } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
@@ -54,8 +54,8 @@ export interface AssistantViewProps {
   readonly route: RouteId;
   /** The address of the page being drawn: what "Add page to context" points at. */
   readonly here: string;
-  /** The last ask from an entry point, if the drawer was opened by one. */
-  readonly entry: AskEntry | null;
+  /** The entry point the drawer was last opened from, if any: asked through the one seam. */
+  readonly entry: EntryPoint | null;
   readonly onClose: () => void;
 }
 
@@ -204,8 +204,8 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
   const store = useStore();
   const { state, update } = store;
   useEffect(() => {
-    const { entry } = props;
-    if (entry !== null) update((current) => ask(current, entry));
+    const made = props.entry === null ? null : entryFor(props.entry);
+    if (made !== null) update((current) => ask(current, made));
     // The store's `update` is a fresh function each render and changes nothing
     // the ask reads; only a new entry is a new ask.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
