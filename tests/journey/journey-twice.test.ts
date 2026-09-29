@@ -92,7 +92,7 @@ describe.skipIf(serverUrl === undefined)('journey_twice_same_facts: app and CLI'
     expect(passes.app?.taskId).not.toBe(passes.cli?.taskId);
   });
 
-  it('three crossings refused on each surface, each beside its positive control', async () => {
+  it('four crossings refused on each surface, each beside its positive control', async () => {
     const ran = [passes.app, passes.cli].filter((pass) => pass !== undefined);
     expect(ran).toHaveLength(2);
     expect(await crossings(context, cast, ran)).toStrictEqual([]);
