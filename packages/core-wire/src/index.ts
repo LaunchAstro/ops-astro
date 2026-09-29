@@ -13,6 +13,7 @@ export {
   effectOperationId,
   DELEGATION_HEADER,
   pathOf,
+  ACCOUNT_AVAILABILITY_PATH,
   PREFIX,
   READS,
   type CommandDeclaration,

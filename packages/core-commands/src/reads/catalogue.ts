@@ -252,7 +252,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: true,
     serve: async (tx, session) =>
       isInternalReader(session.roleKey)
-        ? { ok: true, people: await listTeam(tx) }
+        ? { ok: true, you: session.personId, people: await listTeam(tx) }
         : refuseNotFound(),
   },
   // No subject record: the queue is about the business's outstanding work

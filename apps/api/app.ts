@@ -52,6 +52,7 @@ import {
   viewerOf,
 } from '../../packages/core-commands/src/index.ts';
 import {
+  ACCOUNT_AVAILABILITY_PATH,
   COMMAND_SURFACE,
   DELEGATION_HEADER,
   PREFIX,
@@ -367,7 +368,7 @@ export function createApi(options: ApiOptions): Hono {
 
   // MP-7-10: the person's own availability, on the person prefix alone (their
   // own account; no agent holds it), audited with its row.
-  api.post(`${PREFIX.person}:businessKey/account/availability`, async (context) => {
+  api.post(`${PREFIX.person}:businessKey${ACCOUNT_AVAILABILITY_PATH}`, async (context) => {
     const admitted = await admit(options, context, PERSON);
     if (admitted instanceof Response) return admitted;
     const { database } = options;

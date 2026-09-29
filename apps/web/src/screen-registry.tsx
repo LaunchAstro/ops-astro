@@ -14,6 +14,7 @@ import type { OperationsClient } from './operations/client.ts';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
+import { TeamScreen } from './screens/Team.tsx';
 
 /** What the application hands whichever screen the address resolves to. */
 export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRouteId> {
@@ -42,6 +43,7 @@ export const SCREENS: {
   'agency:settings': (context) => (
     <SettingsScreen client={context.client} grantKey={context.grantKey} storage={context.storage} />
   ),
+  'agency:team': (context) => <TeamScreen client={context.client} grantKey={context.grantKey} />,
   'agency:task-detail': (context) => (
     <TaskDetailScreen
       client={context.client}
