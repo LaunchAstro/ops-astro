@@ -63,6 +63,12 @@ export interface BodyContext {
   readonly assigneePersonId: string;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
+  /**
+   * A task on a client with one person standing on it, which is what
+   * `task.share_with_client` needs to succeed (MP-4-10). Absent where a case
+   * only needs the body shape, and the share is refused on authority anyway.
+   */
+  clientTask?(title: string): Promise<Task>;
 }
 
 const batchOf = (answer: Answer): string =>
@@ -154,6 +160,13 @@ export function createPositiveBody(
         return { body: { ...(await target()), fields: { impact: 7, confidence: 9, ease: 8 } } };
       case 'task.set_adhoc':
         return { body: { ...(await target()), fields: { ad_hoc: true } } };
+      case 'task.share_with_client': {
+        if (context.clientTask === undefined) return { body: await target() };
+        const task = await context.clientTask('a task the admin shares with its client');
+        return { body: { recordId: task.id, expectedRevision: task.revision } };
+      }
+      case 'task.revoke_client_share':
+        return { body: await target() };
       case 'task.set_party':
         // The party link takes a uuid and nothing in this tree resolves one:
         // the party model is not installed, and `tasks-state.ts` says so where

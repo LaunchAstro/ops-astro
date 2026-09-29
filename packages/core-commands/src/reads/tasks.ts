@@ -261,7 +261,7 @@ export async function readTaskDetail(
     capCurrency: await taskCapCurrency(tx, row.id),
     rank: await readTaskRank(tx, taskTypeId, row.id, rankPool),
     adHoc: row.ad_hoc === true,
-    clientAccess: false,
+    clientAccess: (await outsideHolders(tx, row.id)).length > 0,
   };
 }
 
@@ -356,4 +356,30 @@ export async function adHocDefault(
     [tx.businessId, taskTypeId, recordId],
   );
   return rows[0]?.ad_hoc === true;
+}
+
+/**
+ * Everyone outside the business's membership holding a live read share on
+ * this task. Client access (MP-4-10, R45) is on exactly when this is not
+ * empty: the tick on the task read and the withdrawal in
+ * `commands/tasks-client-access.ts` read this one list.
+ */
+export async function outsideHolders(
+  tx: TenantQuery,
+  recordId: string,
+): Promise<readonly string[]> {
+  const rows = await tx.query<{ readonly person_id: string }>(
+    `select distinct g.subject_id as person_id
+       from public.grants g
+      where g.business_id = $1 and g.subject_kind = 'person'
+        and g.scope_kind = 'record' and g.scope_id = $2
+        and g.collection = 'task' and g.action = 'read'
+        and g.revoked_at is null and (g.expires_at is null or g.expires_at > now())
+        and not exists (select 1 from public.memberships m
+                         where m.business_id = g.business_id and m.person_id = g.subject_id
+                           and m.active)
+      order by 1`,
+    [tx.businessId, recordId],
+  );
+  return rows.map((row) => row.person_id);
 }

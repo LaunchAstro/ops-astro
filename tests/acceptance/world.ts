@@ -53,6 +53,7 @@ import {
   ACCEPTANCE_SECRET,
   ADMIN_ACTIONS,
   ADMIN_COLLECTIONS,
+  ADMIN_EXTRA_PAIRS,
   MEMBER_ACTIONS,
   enrolAgent,
   enrolCaller,
@@ -125,6 +126,7 @@ export async function createWorld(part: string): Promise<World> {
     membership: true,
     actions: ADMIN_ACTIONS,
     collections: ADMIN_COLLECTIONS,
+    extraPairs: ADMIN_EXTRA_PAIRS,
   });
   const mia = await enrolCaller(db, alpha, 'alpha', 'mia', {
     membership: true,

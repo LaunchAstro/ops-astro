@@ -75,7 +75,8 @@
     "FR8-0031 adds a case to final-r2-dbtest-upgrade-guards: a member of the application group dropped by another session after 0031's role loop has read it, on a fixed schedule (the loop blocks on a row lock the dropping session holds until the drop commits), no longer fails the upgrade, and every surviving member still has TEMPORARY revoked.",
     "MP-4-9a names task-scores: the MP-4-9 marks command invariant (the three marks, their range in the command and in 0032, task:write, the audit, and the API, command line and agent entries), and Sol's review 1 proof on #141 beside it.",
     "MP-4-9b (SL08) names task-rank: the rank on task.read (rank or not ranked, the calc line, a mark changed is the next read's number) and its three crossings (another business, another client's task under a record grant, an agent under a live delegation) with inherited scope. task-rank-derivation.test.ts is a pure unit suite and must not be named.",
-    "MP-4-10a (SL08) names task-adhoc: the Ad hoc mark command invariant (bool_2 reserved in 0033, task:write, the audit, the time default adHocDefault reads, and the three crossings: another business, another client's task under a record grant, an agent under a live delegation)."
+    "MP-4-10a (SL08) names task-adhoc: the Ad hoc mark command invariant (bool_2 reserved in 0033, task:write, the audit, the time default adHocDefault reads, and the three crossings: another business, another client's task under a record grant, an agent under a live delegation).",
+    "MP-4-10b (SL08) names task-client-access: Client access as a share grant (task.share_with_client and task.revoke_client_share under access:share, never an agent; the tick on task.read; one share per person under the task lock; the audit) and its three crossings (another business, another client in the same business, an agent under a live delegation)."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -223,7 +224,8 @@
     "tests/commands/task-scores.test.ts",
     "tests/commands/sol-proof-mp-4-9a.test.ts",
     "tests/reads/task-rank.test.ts",
-    "tests/commands/task-adhoc.test.ts"
+    "tests/commands/task-adhoc.test.ts",
+    "tests/commands/task-client-access.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

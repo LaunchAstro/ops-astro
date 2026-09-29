@@ -47,6 +47,7 @@ export {
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { issueShare, withdrawShares } from './authority/shares.ts';
 export {
   EXPIRED_FIXES,
   NO_AGENT_FIXES,
