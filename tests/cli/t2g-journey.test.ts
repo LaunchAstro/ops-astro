@@ -186,7 +186,8 @@ describe.skipIf(serverUrl === undefined)('T2g journey_parity_cli', () => {
             detail(approved)['decisionId'],
           version:
             (receiptBody['version'] as Record<string, unknown> | undefined)?.['id'] === versionId,
-          settled: receiptBody['settledMinor'] ?? null,
+          // The money line as the receipt carries it (T2d): held, spent, released.
+          settlement: receiptBody['settlement'] ?? null,
         },
         execution: { outcome: run['outcome'], kinds: events.map((e) => e.kind) },
         decisions: decisions.map((row) => ({
@@ -229,6 +230,19 @@ describe.skipIf(serverUrl === undefined)('T2g journey_parity_cli', () => {
     expect(cli.facts.approved).toBe(true);
     expect(cli.facts.twice).toBe('GATE_ALREADY_DECIDED');
     expect(cli.facts.receipt).toMatchObject({ ok: true, decision: true, version: true });
+    // Real money on both legs: the hold settles at the smaller observed cost
+    // and the rest is released, and the two legs' amounts are the same numbers.
+    const money = cli.facts.receipt.settlement as {
+      state: string;
+      heldMinor: number;
+      spentMinor: number;
+      releasedMinor: number;
+    } | null;
+    expect(money?.state).toBe('settled');
+    expect(money?.spentMinor).toBeGreaterThan(0);
+    expect(money?.spentMinor).toBeLessThan(money?.heldMinor ?? 0);
+    expect(money?.releasedMinor).toBe((money?.heldMinor ?? 0) - (money?.spentMinor ?? 0));
+    expect(app.facts.receipt.settlement).toStrictEqual(cli.facts.receipt.settlement);
     expect(cli.facts.execution.outcome).toBe('ready');
     expect(cli.facts.execution.kinds.length).toBeGreaterThan(0);
     // One decision, Mia's own, with no delegation acting: a person's actor.
