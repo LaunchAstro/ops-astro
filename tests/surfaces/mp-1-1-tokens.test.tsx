@@ -4,17 +4,22 @@
 //
 // The token sets are read through `scripts/token-diff.mjs`, the same resolver
 // the diff runs, so the tests and the script cannot disagree about what a token
-// resolves to. The visual legs, on MP-1-7's width-and-theme harness, are in
-// mp-1-1-harness.test.tsx.
+// resolves to. The harness captures run here in a real browser, on MP-1-7's
+// width-and-theme harness; the other visual legs are in mp-1-1-harness.test.tsx.
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
+import { captureBuiltPages, madeUpSession, serveApp } from '../visual/app-pages.ts';
+import { comparePng } from '../visual/compare.ts';
+import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
+import { builtPages, report } from '../visual/report.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const script = `${root}scripts/token-diff.mjs`;
@@ -250,4 +255,41 @@ describe('MP-1-1 tokens', () => {
     expect(html).toContain('<span class="dock__tablabel" aria-hidden="true">Assistant</span>');
     expect(html).toContain('<span class="dock__tablabel" aria-hidden="true">Clients</span>');
   });
+});
+
+describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
+  it('MP-1-1 harness captures: every built page in light and dark at 1480, 900 and 390', async () => {
+    const packet = readPacket();
+    // Dark is captured from here, where the dark theme lands; no longer pending.
+    expect(packet.themes.dark).toBe('captured');
+    const widths = [1480, 900, 390];
+    await fetchAssets(readAssets(), packet);
+    // No browser, no capture: the launch fails the test, never skips it.
+    const browser = await chromium.launch(MODE);
+    const { app, close } = await serveApp();
+    try {
+      const out = join(scratch, 'captures');
+      const session = madeUpSession(app, out);
+      const themes = themesOf(packet);
+      const shots = await captureBuiltPages({ browser, packet, app, session, widths, themes, out });
+      // The report reads each picture file the browser wrote: a PNG as wide as its width.
+      const all = report({ ...packet, widths }, builtPages(), shots);
+      expect(all.failed).toBe(0);
+      // Each dark picture is drawn in dark: it differs from its light one.
+      const file = (page: string, width: number, theme: string): Buffer =>
+        readFileSync(join(out, `${page}@${width}-${theme}.page.png`));
+      for (const page of builtPages())
+        for (const width of widths) {
+          expect(all.lines).toContain(
+            `ok ${page}@${width}-dark: ${page}@${width}-dark.page.png; no sideways scroll`,
+          );
+          const name = `${page}@${width}`;
+          const same = comparePng(name, file(page, width, 'light'), file(page, width, 'dark'));
+          expect(same.pass, `${name} dark draws the same as light`).toBe(false);
+        }
+    } finally {
+      await browser.close();
+      await close();
+    }
+  }, 600_000);
 });

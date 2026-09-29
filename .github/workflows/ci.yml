@@ -167,6 +167,8 @@ jobs:
           rm -f "${RUNNER_TEMP}/${archive}"
           "$bin/gitleaks" version
           echo "$bin" >> "$GITHUB_PATH"
+      - name: The pinned headless shell for MP-1-1's harness captures, which pnpm check runs
+        run: pnpm exec playwright install --with-deps --only-shell chromium
       - run: pnpm check
       - name: Semgrep p/default on the supply-chain settings, image pinned by digest (CQ-3)
         run: bash scripts/local/semgrep-settings.sh
