@@ -910,7 +910,7 @@ refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
 `task.read` carries `capCurrency`: the currency of the cap an approval on the
 task would draw on, which is the open envelope's cap, or the business's cap
 before the task has an envelope. `task.propose` refuses a proposal in another
-currency with `PROPOSAL_OUT_OF_SCOPE` and `task.decide` a version in another
+currency with `PROPOSAL_SCOPE_EXCEEDED` and `task.decide` a version in another
 with `CAP_BINDING_MISMATCH`, so a client offers this currency and no list of
 its own. It is `null` when the business has no cap. It is read inside the task
 read, so a caller refused the task is told nothing about the cap
