@@ -11,6 +11,7 @@ import { admitReads, executeRead } from '../../packages/core-commands/src/index.
 import { runtimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import type { LiveTopics } from '../../apps/api/live.ts';
+import type { LivePresence } from '../../apps/api/live-presence.ts';
 import type { Schedules } from '../runtime/schedules-harness.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { authorised, ISSUER, SECRET } from './fixture.ts';
@@ -184,6 +185,7 @@ export function liveApi(
   pool: Database,
   topics: LiveTopics,
   onRead: () => void,
+  presence?: LivePresence,
 ): Hono {
   return composeApi({
     database: pool,
@@ -198,10 +200,27 @@ export function liveApi(
     live: {
       topics,
       recheckMs: 200,
+      ...(presence === undefined ? {} : { presence }),
       admit: async (...args) => {
         onRead();
         return await admitReads(...args);
       },
     },
   }).app;
+}
+
+/** The row count of every table in the database, by name: any row written anywhere shows. */
+export async function rowCounts(s: Schedules): Promise<Record<string, number>> {
+  const tables = await s.db.admin.execute<{ name: string }>(
+    `select format('%I.%I', table_schema, table_name) as name from information_schema.tables
+      where table_type = 'BASE TABLE' and table_schema not in ('pg_catalog', 'information_schema')
+      order by 1`,
+  );
+  const counted: Record<string, number> = {};
+  for (const { name } of tables) {
+    // eslint-disable-next-line no-await-in-loop -- one admin connection, table by table.
+    const [row] = await s.db.admin.execute<{ n: string }>(`select count(*) as n from ${name}`);
+    counted[name] = Number(row?.n);
+  }
+  return counted;
 }

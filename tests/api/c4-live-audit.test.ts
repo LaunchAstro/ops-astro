@@ -26,7 +26,16 @@ import { PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { startLiveTopics, type LiveTopics } from '../../apps/api/live.ts';
 import { authorised, post, tokenFor } from './fixture.ts';
-import { count, join, liveApi, sleep, topic, within, type Joined } from './c4-live-support.ts';
+import {
+  count,
+  join,
+  liveApi,
+  rowCounts,
+  sleep,
+  topic,
+  within,
+  type Joined,
+} from './c4-live-support.ts';
 import { enrol, grantTo } from '../commands/fixture.ts';
 import { createTask, openSchedules, type Schedules } from '../runtime/schedules-harness.ts';
 
@@ -43,22 +52,6 @@ let listener: Listener;
 let topics: LiveTopics;
 let api: Hono;
 const opened: Joined[] = [];
-
-/** The row count of every table in the database, by name: any row written anywhere shows. */
-async function rows(): Promise<Record<string, number>> {
-  const tables = await s.db.admin.execute<{ name: string }>(
-    `select format('%I.%I', table_schema, table_name) as name from information_schema.tables
-      where table_type = 'BASE TABLE' and table_schema not in ('pg_catalog', 'information_schema')
-      order by 1`,
-  );
-  const counted: Record<string, number> = {};
-  for (const { name } of tables) {
-    // eslint-disable-next-line no-await-in-loop -- one admin connection, table by table.
-    const [row] = await s.db.admin.execute<{ n: string }>(`select count(*) as n from ${name}`);
-    counted[name] = Number(row?.n);
-  }
-  return counted;
-}
 
 const changed = (before: Record<string, number>, after: Record<string, number>) =>
   Object.fromEntries(
@@ -87,7 +80,7 @@ async function rereadWritesOneEvent(
     authorised(token),
   );
   expect(reread.status).toBe(200);
-  expect(changed(since, await rows())).toEqual({
+  expect(changed(since, await rowCounts(s))).toEqual({
     'public.audit_events': 1,
     'public.authentication_attempts': 1,
   });
@@ -116,20 +109,20 @@ async function liveSync6(): Promise<void> {
     async (tx) => await grantTo(tx, reader, 'read', { kind: 'record', id: taskId }),
   );
   const token = await tokenFor(reader.presented.subject);
-  const before = await rows();
+  const before = await rowCounts(s);
 
   const tab = await join(api, key, [topic(taskId), topic(unreadable)], token);
   opened.push(tab);
   expect(tab.status).toBe(200);
   await within(2_000, () => count(tab, 'resync', topic(taskId)) === 1, 'joined');
   expect(count(tab, 'closed', topic(unreadable))).toBe(1);
-  const door = await rows();
+  const door = await rowCounts(s);
   expect(changed(before, door)).toEqual({ 'public.authentication_attempts': 1 });
   await touch(taskId);
   await within(2_000, () => count(tab, 'invalidate', topic(taskId)) === 1, 'invalidated');
   // Five rechecks at 200 ms, each asking the grant model again.
   await sleep(1_000);
-  expect(changed(door, await rows())).toEqual({});
+  expect(changed(door, await rowCounts(s))).toEqual({});
 
   await rereadWritesOneEvent(token, taskId, reader.actorId, door);
 

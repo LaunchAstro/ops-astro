@@ -86,7 +86,8 @@
     "C4 (U26) names c4-live-stream as an invariant (one event stream per tab: every topic it names on one stream, each asked about at join and before each delivery; a refused topic closed alone and all refused the first refusal; hostile topic sets refused whole before any read; an ended session closes every topic; two browsers on one task within 1 s at p95; isolation across another business, another client in the same business and another person under a delegated grant that is then revoked).",
     "C4 (U26) names c4-live-audit as an invariant (live-sync 6: the live channel adds no audit entry and no view record of its own; opening a stream records the login's one authentication attempt however many topics it names; each delivery's check and the per-topic recheck write no row anywhere in the database; a page re-read after an invalidation writes exactly one read event and its own attempt; a revoked grant is still closed by the recheck).",
     "C4 (U26) names c4-changes-map as an invariant (changes since answers exactly what task.read would let its caller read: a record grant on a map covers the map and its tickets, W12; a reader of another map, a grant on a ticket or on a task that is no map, and a map filed under the map read only their own; isolation across another business, another client in the same business and another person under a delegation of the map grant that is then revoked; split from c4-change-record for the per-file cap).",
-    "C4 (U26) names c4-rollup-scope as an invariant (C4 rollup scope, CS-1.2, RA-20: the one team-only rollup read keys its cache by business and viewer and the viewer's live grants, so one viewer never receives another's rollup; within the lifetime each viewer's answer is reused and only theirs; a grant narrowed, a delegation's parent revoked inside the lifetime is answered afresh; another business refused at the door; a client of the business refused NOT_FOUND with nothing computed; the cache is bounded)."
+    "C4 (U26) names c4-rollup-scope as an invariant (C4 rollup scope, CS-1.2, RA-20: the one team-only rollup read keys its cache by business and viewer and the viewer's live grants, so one viewer never receives another's rollup; within the lifetime each viewer's answer is reused and only theirs; a grant narrowed, a delegation's parent revoked inside the lifetime is answered afresh; another business refused at the door; a client of the business refused NOT_FOUND with nothing computed; the cache is bounded).",
+    "C2 (U26) names c2-presence-live as an invariant (C2 through C4's one stream per tab: a stream is handed a seat and each watched task seats it; two teammates each see the other, and who is changing which field, with the leaving at once and nothing held once everyone has gone; the mark route refuses unknown field names, unknown body keys, malformed seats and topics, another person's seat and a seat not on that topic; presence reads, marks and events write no row anywhere; isolation across another business, two clients of the business who are neither seen nor see, and a person under a delegation who is gone once it is revoked)."
   ],
   "invariant": [
     "tests/runtime/run-progress-read.test.ts",
@@ -95,6 +96,7 @@
     "tests/api/c4-change-record.test.ts",
     "tests/api/c4-changes-map.test.ts",
     "tests/api/c4-rollup-scope.test.ts",
+    "tests/api/c2-presence-live.test.ts",
     "tests/api/c4-live-stream.test.ts",
     "tests/api/c4-live-audit.test.ts",
     "tests/runtime/t2c1-dispatch.test.ts",
