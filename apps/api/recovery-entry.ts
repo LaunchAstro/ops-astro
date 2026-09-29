@@ -149,3 +149,14 @@ export function describeRecovered(business: RecoveredBusiness): string {
   const quarantined = business.classified.filter((one) => one.state === 'quarantined').length;
   return `restart recovery: ${business.key} committed, ${String(business.classified.length)} classified, ${String(released)} released, ${String(quarantined)} quarantined`;
 }
+
+/** T3b: the sweep over the configured businesses. Not built on this commit. */
+export async function sweepDeployment(
+  database: Database,
+  resolveBusiness: (businessKey: string) => Promise<string | undefined>,
+  keys: readonly string[],
+): Promise<RecoveryOutcome> {
+  throw new Error(
+    `sweepDeployment: not built (${String(keys.length)}, ${typeof database}, ${typeof resolveBusiness})`,
+  );
+}

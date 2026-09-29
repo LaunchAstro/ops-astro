@@ -46,6 +46,7 @@ export {
   replayRecordedTransitions,
   retireWork,
 } from './recovery/lease-retirement.ts';
+export { sweepExpiredLeases } from './recovery/sweep.ts';
 export {
   classifyAuthorityLoss,
   type AuthorityLoss,
