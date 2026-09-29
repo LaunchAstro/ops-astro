@@ -34,6 +34,7 @@ import {
   asRole,
   attempt,
   dropLogins,
+  hostReach,
 } from './backup-identity.fixture.ts';
 
 /** The job's upsert of the restore challenge (scripts/ops/backup.mjs). */
@@ -219,8 +220,14 @@ function identityScopeCases3() {
     const client = await asRole(login.url, BACKUP);
     const [first, second] = [randomBytes(32).toString('hex'), randomBytes(32).toString('hex')];
     try {
-      await client.query(UPSERT, [first]);
-      await client.query(UPSERT, [second]);
+      // The job's own write, as it sends it (bound), then again over it.
+      const path = '../../scripts/ops/backup.mjs';
+      const { writeRestoreChallenge } = (await import(
+        /* @vite-ignore */
+        path
+      )) as { writeRestoreChallenge: (url: string, c: string, reach: unknown) => Promise<void> };
+      await writeRestoreChallenge(login.url, first, hostReach);
+      await writeRestoreChallenge(login.url, second, hostReach);
       for (const bad of ['', 'AB'.repeat(32), `${first}'; drop table ops.restore_challenge; --`]) {
         // oxlint-disable-next-line no-await-in-loop
         expect(await attempt(client, UPSERT, [bad])).toBe('23514');
