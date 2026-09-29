@@ -43,7 +43,7 @@ const withThread = async (comments: readonly unknown[] = THREAD): Promise<Mounte
 const shown = (view: Mounted): string[] =>
   view
     .all('[role="tabpanel"][id^="conversation-panel-"]:not([hidden]) [data-comment-id]')
-    .map((row) => row.getAttribute('data-comment-id') ?? '');
+    .map((row) => (row as HTMLElement).dataset['commentId'] ?? '');
 
 const tabBadge = (view: Mounted, tab: string): string | null =>
   view.find(`#conversation-tab-${tab} .cbadge`)?.textContent ?? null;
