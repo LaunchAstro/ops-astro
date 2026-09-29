@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// S0-2: alerts in plain words and the error sink.
+// S0-2: alerts in plain words, the error sink and the security detections.
 //
 // One case per line of the ticket's supporting checklist that code can hold.
 // The watcher and the sink are the owner's services (UptimeRobot and
@@ -15,6 +15,7 @@ import {
   type SinkEvent,
 } from '../../apps/api/alerts/sink.ts';
 import { NOT_PLAIN } from './s0-2-plain.ts';
+import { createDetector, type SecuritySignal } from '../../apps/api/alerts/detect.ts';
 
 const ROOT = process.cwd();
 
@@ -24,6 +25,13 @@ function fakeSink(): {
 } {
   const events: SinkEvent[] = [];
   return { events, send: (event) => Promise.resolve(void events.push(event)) };
+}
+
+function detectorFor(start = 0) {
+  let now = start;
+  const raised: string[] = [];
+  const detector = createDetector((kind) => raised.push(kind), { now: () => now });
+  return { raised, observe: detector.observe, detector, advance: (ms: number) => (now += ms) };
 }
 
 describe('S0-2 plain words: each alert names what broke, what it affects and what happens next', () => {
@@ -139,5 +147,88 @@ describe('S0-2 errors land in the error sink', () => {
       root: ROOT,
     });
     await expect(alerts.fault(new Error('boom'))).resolves.toBeUndefined();
+  });
+});
+
+describe('S0-2 security alerts (TR-SEC-9): one detection each', () => {
+  const alpha = { business: 'alpha' } as const;
+
+  it('S0-2 security: repeated failed sign-ins raise one alert', () => {
+    const d = detectorFor();
+    const failed: SecuritySignal = { kind: 'sign-in-failed', ...alpha, person: 'mia' };
+    for (let i = 0; i < 4; i += 1) d.observe(failed);
+    expect(d.raised).toEqual([]);
+    d.observe(failed);
+    expect(d.raised).toEqual(['sign-in-failures']);
+    d.observe(failed);
+    expect(d.raised, 'one alert per burst, not one per attempt').toHaveLength(1);
+  });
+
+  it('S0-2 security: failed sign-ins spread past the window raise nothing', () => {
+    const d = detectorFor();
+    for (let i = 0; i < 10; i += 1) {
+      d.observe({ kind: 'sign-in-failed', ...alpha, person: 'mia' });
+      d.advance(4 * 60_000);
+    }
+    expect(d.raised).toEqual([]);
+  });
+
+  it('S0-2 security: a permission, grant or custody change raises an alert at once', () => {
+    const d = detectorFor();
+    d.observe({ kind: 'authority-changed', ...alpha });
+    expect(d.raised).toEqual(['authority-changed']);
+  });
+
+  it('S0-2 security: a failed secret scan raises an alert at once', () => {
+    const d = detectorFor();
+    d.observe({ kind: 'secret-scan-failed' });
+    expect(d.raised).toEqual(['secret-scan-failed']);
+  });
+
+  it('S0-2 security: a burst of cross-scope refusals raises one alert', () => {
+    const d = detectorFor();
+    for (let i = 0; i < 9; i += 1)
+      d.observe({ kind: 'cross-scope-refusal', ...alpha, person: 'mia' });
+    expect(d.raised).toEqual([]);
+    d.observe({ kind: 'cross-scope-refusal', ...alpha, person: 'mia' });
+    expect(d.raised).toEqual(['cross-scope-burst']);
+  });
+
+  it('S0-2 security: repeated webhook signature failures raise one alert', () => {
+    const d = detectorFor();
+    const bad: SecuritySignal = { kind: 'webhook-signature-failed', ...alpha, source: 'xero' };
+    for (let i = 0; i < 5; i += 1) d.observe(bad);
+    expect(d.raised).toEqual(['webhook-signature-failures']);
+  });
+
+  it('S0-2 security: unusual export or download volume raises one alert', () => {
+    const d = detectorFor();
+    d.observe({ kind: 'export', ...alpha, client: 'c1', items: 150 });
+    expect(d.raised).toEqual([]);
+    d.observe({ kind: 'export', ...alpha, client: 'c1', items: 50 });
+    expect(d.raised).toEqual(['export-volume']);
+  });
+
+  it('each raised detection reaches the sink as a warning in plain words', async () => {
+    const sink = fakeSink();
+    const alerts = createAlerts({ send: sink.send, where: 'production', root: ROOT });
+    alerts.observe({ kind: 'secret-scan-failed' });
+    await alerts.settled();
+    expect(sink.events).toHaveLength(1);
+    expect(sink.events[0]).toMatchObject({
+      level: 'warning',
+      message: { formatted: plainAlert('secret-scan-failed', 'production').text },
+      tags: { alert: 'secret-scan-failed' },
+    });
+  });
+
+  it('the detector forgets expired scopes, so many one-off callers cannot grow it without bound', () => {
+    const d = detectorFor();
+    for (let i = 0; i < 20_000; i += 1) {
+      d.observe({ kind: 'sign-in-failed', ...alpha, person: `p${i}` });
+      if (i % 1000 === 0) d.advance(60 * 60_000);
+    }
+    expect(d.raised).toEqual([]);
+    expect(d.detector.tracked()).toBeLessThanOrEqual(10_001);
   });
 });

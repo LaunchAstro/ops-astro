@@ -63,6 +63,7 @@ import type {
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
 import type { LiveSignal, LiveTopics } from './live.ts';
+import type { SecuritySignal } from './alerts/detect.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -116,6 +117,7 @@ export interface ApiOptions {
    */
   readonly executeAgentCommand?: AgentExecutor;
   readonly live?: LiveOptions;
+  readonly observe?: (signal: SecuritySignal) => void;
 }
 
 /** The live task channel (T2f); absent, unmounted. `recheckMs`: how often a quiet stream re-asks. */
