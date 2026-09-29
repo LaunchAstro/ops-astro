@@ -157,9 +157,7 @@ scripts outside `tests/` included. A recorded reason is required for either
 waiver: `size-waiver-mechanical` for mechanical changes, or
 `size-waiver-coherence` for a change that must be reviewed together. The
 maintainer decides a coherence waiver. One file may not contain more than 400
-hand-written changed lines in a pull request; generated files such as lock files,
-and the design system's checked copy in `docs/design-system/`, are exempt from that
-cap by pattern, never by label, and still count towards the total. Lines git marks as moved between
+hand-written changed lines in a pull request. Lines git marks as moved between
 non-test files, indentation changes allowed, count towards neither limit, and
 the report lists them per file; a moved line that is then edited counts. Split
 work names the invariant test that verifies the integrated result.

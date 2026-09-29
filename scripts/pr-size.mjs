@@ -52,10 +52,6 @@ const GENERATED = [
   /\.snap$/u,
   /(^|\/)dist\//u,
   /\.generated\.[a-z]+$/u,
-  // The design system's public edition: a checked copy built from the private
-  // design-system source (C82). tests/docs/c82-design-system-copy.test.ts holds
-  // each file to the digest in its COPY-RECORD.md, so a hand edit there fails.
-  /^docs\/design-system\//u,
 ];
 
 const TEST = [/^tests\//u, /(^|\/)[^/]+\.(test|spec)\.[^/]+$/u];
