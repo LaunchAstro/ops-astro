@@ -48,6 +48,7 @@ export {
   type FetchOptions,
   type Fetched,
 } from './capture/fence.ts';
+export { capturePage, type CaptureOptions } from './capture/page.ts';
 export {
   CONNECTOR_HOSTS,
   SITE_OPERATIONS,
