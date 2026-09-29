@@ -30,6 +30,7 @@ import {
   type Caller,
 } from './cast.ts';
 import { agentPath, bearer, call, personPath, type World } from './world.ts';
+import { DELEGATION_HEADER } from '../../packages/core-wire/src/index.ts';
 
 /**
  * Where a measured count goes.
@@ -226,6 +227,30 @@ async function receiptOf(
     'the replay carries the first answer',
   ).toBe(true);
   return again.text;
+}
+
+/**
+ * AW-01: the journey's agent makes one priced call, through the broker the
+ * world mounts, so the ledger and the copy register hold rows the product
+ * wrote.
+ */
+export async function callModelOnTheJourney(
+  world: World,
+  walked: { readonly leaseId: string; readonly fence: number; readonly credential: string },
+): Promise<void> {
+  const called = await call(
+    world.api,
+    agentPath('alpha', '/model/call'),
+    {
+      operationId: randomUUID(),
+      leaseId: walked.leaseId,
+      fence: walked.fence,
+      operation: 'model.replay_compose',
+      fields: [{ name: 'tone', source: 'business_internal', value: 'plain' }],
+    },
+    { ...bearer(world.agent.token), [DELEGATION_HEADER]: walked.credential },
+  );
+  if (called.code !== 'ok') throw new Error(`the journey's model call refused ${called.code}`);
 }
 
 /** propose → decide → pickup, as a person and then as the agent. */
