@@ -26,6 +26,7 @@ import type { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
+import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { readIdentity } from '../../apps/api/identity.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
@@ -192,16 +193,6 @@ describe.skipIf(serverUrl === undefined)(
           expect(ran.stderr).not.toContain(secret);
         }
       });
-
-      it('starts with no delegation only to refuse, naming the missing setting', async () => {
-        const refused = await runWorker({
-          OPS_ASTRO_API_URL: origin,
-          OPS_ASTRO_BUSINESS: BUSINESS_KEY,
-          OPS_ASTRO_TOKEN: agentToken,
-        });
-        expect(refused.code).toBe(2);
-        expect(refused.stderr).toContain('OPS_ASTRO_DELEGATION');
-      });
     });
 
     describe('T2 propose key: task.propose on the agent route', () => {
@@ -364,11 +355,15 @@ describe.skipIf(serverUrl === undefined)(
       });
 
       it('T2 isolation: person to person', async () => {
+        // A second person mints a live delegation, then keeps grants on the sibling only.
         const narrow = await enrol(fixture.db.app, fixture.business, 'narrow');
         const own = { kind: 'record', id: task.sibling.id } as const;
         const held = await fixture.db.app.withBusiness(fixture.business, async (tx) => {
-          await grantTo(tx, narrow, 'read', own);
-          await grantTo(tx, narrow, 'write', own);
+          const wide: string[] = [];
+          for (const action of ['read', 'comment', 'write'] as const) {
+            // oxlint-disable-next-line no-await-in-loop
+            wide.push(await grantTo(tx, narrow, action), await grantTo(tx, narrow, action, own));
+          }
           const minted = await mintDelegation(tx, {
             agentActorId: fixture.agentActorId,
             delegatePersonId: narrow.personId,
@@ -376,19 +371,27 @@ describe.skipIf(serverUrl === undefined)(
             purpose: 'person_to_person',
             collections: ['task'],
             actions: ['read', 'comment', 'write'],
-            purposeScope: { kind: 'record', id: task.route.id },
+            purposeScope: own,
             expiresAt: new Date(Date.now() + 3_600_000),
           });
-          return minted.ok ? minted.value.credential : minted.refusal.code;
+          if (!minted.ok) throw new Error(`fixture: mint refused ${minted.refusal.code}`);
+          // oxlint-disable-next-line no-await-in-loop
+          for (const grant of wide.filter((_, at) => at % 2 === 0)) await revokeGrant(tx, grant);
+          return minted.value.credential;
         });
+        const live = await asAgent(
+          'task.read',
+          { operationId: randomUUID(), recordId: task.sibling.id },
+          held,
+        );
+        expect(live.status, 'the delegation is live on its own task').toBe(200);
         const before = await proposalsOn(task.route.id);
         const borrowed = await asAgent('task.propose', proposal(task.route.id, 2), held);
-        expect(borrowed.body['refused']).toBe(true);
+        expect(borrowed.body).toMatchObject({ refused: true, code: 'DELEGATION_OUT_OF_PURPOSE' });
         const token = await tokenFor(narrow.presented.subject);
         const direct = await asPerson('task.propose', proposal(task.route.id, 2), token);
-        expect(direct.body['refused']).toBe(true);
+        expect(direct.body).toMatchObject({ refused: true, code: 'SCOPE_NOT_GRANTED' });
         expect(await proposalsOn(task.route.id)).toStrictEqual(before);
-        expect((await read(narrow, task.sibling.id)).status).toBe(200);
       });
     });
   },

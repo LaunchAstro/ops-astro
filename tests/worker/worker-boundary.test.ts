@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DECLINING_REPORTER } from '../support/declining-reporter.ts';
+import { runWorker } from '../api/t2b-support.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const WORKER_ENTRY = 'apps/worker/main.ts';
@@ -66,6 +67,12 @@ describe('worker_boundary: the structure', () => {
   it('the worker entry exists and is its own process entry', () => {
     expect(existsSync(join(ROOT, WORKER_ENTRY))).toBe(true);
     expect(readFileSync(join(ROOT, WORKER_ENTRY), 'utf8')).toMatch(/import\.meta\.main/u);
+  });
+
+  it('starts with no delegation only to refuse, naming the missing setting', async () => {
+    const refused = await runWorker({ OPS_ASTRO_BUSINESS: 'alpha', OPS_ASTRO_TOKEN: 'a-bearer' });
+    expect(refused.code).toBe(2);
+    expect(refused.stderr).toContain('OPS_ASTRO_DELEGATION');
   });
 
   it('reaches no database module and no postgres driver', () => {
