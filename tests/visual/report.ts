@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The width-and-theme check report (MP-1-7): every page built so far has a
-// picture at each width in the packet, in light; each dark picture waits for
-// the dark theme (U04, MP-1-1); and no page scrolls sideways. A page is built
-// once its route is registered, so a route added without pictures fails here.
-// A picture counts only when its file is there: a PNG as wide as the width it
-// was taken at.
+// picture at each width in the packet, in light and, from U04 (MP-1-1), where
+// the dark theme lands, in dark; while the packet marks dark pending, each
+// dark picture prints as waiting; and no page scrolls sideways in either
+// theme. A page is built once its route is registered, so a route added
+// without pictures fails here. A picture counts only when its file is there:
+// a PNG as wide as the width it was taken at.
 
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { PNG } from 'pngjs';
-import type { Packet, Theme } from './packet.ts';
+import { themesOf, type Packet, type Theme } from './packet.ts';
 
 // Read at run time: the web app's own types sit outside this program (`tsconfig.web.json`).
 const registry = new URL('../../apps/web/src/routes.ts', import.meta.url).href;
@@ -82,39 +83,48 @@ export function report(
   pages: readonly string[],
   shots: readonly PageShot[],
 ): { lines: string[]; failed: number } {
+  const themes = themesOf(packet);
+  const darkPending = !themes.includes('dark');
   const lines: string[] = [];
   let failed = 0;
-  let pictures = 0;
+  const pictures: Record<Theme, number> = { light: 0, dark: 0 };
   let sideways = 0;
   for (const page of pages) {
     for (const width of packet.widths) {
-      const name = `${page}@${width}`;
-      const shot = shots.find((one) => one.page === page && one.width === width);
-      const fault =
-        shot?.picture === undefined || shot.picture === null
-          ? 'no picture'
-          : pictureFault(shot.picture, width);
-      if (shot === undefined || fault !== undefined) {
-        failed += 1;
-        lines.push(`FAIL ${name}-light: ${fault ?? 'no picture'}`);
-      } else if (shot.overflow > 0) {
-        failed += 1;
-        sideways += 1;
-        pictures += 1;
-        lines.push(`FAIL ${name}-light: scrolls sideways by ${shot.overflow} px`);
-      } else {
-        pictures += 1;
-        lines.push(`ok ${name}-light: ${basename(shot.picture ?? '')}; no sideways scroll`);
+      for (const theme of themes) {
+        const name = `${page}@${width}-${theme}`;
+        const shot = shots.find(
+          (one) => one.page === page && one.width === width && (one.theme ?? 'light') === theme,
+        );
+        const fault =
+          shot?.picture === undefined || shot.picture === null
+            ? 'no picture'
+            : pictureFault(shot.picture, width);
+        if (shot === undefined || fault !== undefined) {
+          failed += 1;
+          lines.push(`FAIL ${name}: ${fault ?? 'no picture'}`);
+        } else if (shot.overflow > 0) {
+          failed += 1;
+          sideways += 1;
+          pictures[theme] += 1;
+          lines.push(`FAIL ${name}: scrolls sideways by ${shot.overflow} px`);
+        } else {
+          pictures[theme] += 1;
+          lines.push(`ok ${name}: ${basename(shot.picture ?? '')}; no sideways scroll`);
+        }
       }
-      lines.push(`pending ${name}-dark: ${packet.themes.dark}`);
+      if (darkPending) lines.push(`pending ${page}@${width}-dark: ${packet.themes.dark}`);
     }
   }
   const expected = pages.length * packet.widths.length;
-  const missing = expected - pictures;
+  const missing = expected * themes.length - pictures.light - pictures.dark;
+  const drawn = darkPending
+    ? `${pictures.light} light picture(s)`
+    : `${pictures.light} light and ${pictures.dark} dark picture(s)`;
   lines.push(
     `width-and-theme check: ${pages.length} page(s) at ${packet.widths.length} width(s): ` +
-      `${pictures} light picture(s), ${missing === 0 ? 'none' : missing} missing; ` +
-      `${expected} dark waiting for the dark theme; ` +
+      `${drawn}, ${missing === 0 ? 'none' : missing} missing; ` +
+      (darkPending ? `${expected} dark waiting for the dark theme; ` : '') +
       `${sideways === 0 ? 'none scrolls' : `${sideways} scroll`} sideways`,
   );
   return { lines, failed };

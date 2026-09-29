@@ -48,7 +48,8 @@ export type Packet = {
 export type Theme = 'light' | 'dark';
 
 /** The themes captured at every width: light, and dark once the dark theme lands (U04, MP-1-1). */
-export const themesOf = (_packet: Packet): Theme[] => ['light'];
+export const themesOf = (packet: Packet): Theme[] =>
+  packet.themes.dark === 'captured' ? ['light', 'dark'] : ['light'];
 
 export type Asset = {
   name: string;

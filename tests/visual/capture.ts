@@ -39,7 +39,12 @@ export type Catalogue = {
   appDrift: { page: string; control: string; token: string; theme: string; note: string };
   states: State[];
 };
-export type Side = { context: BrowserContext; external: Set<string>; unresolved: Set<string> };
+export type Side = {
+  context: BrowserContext;
+  theme: Theme;
+  external: Set<string>;
+  unresolved: Set<string>;
+};
 
 export const MOCKUP_ORIGIN = 'http://mockup.invalid';
 const ASSET_ORIGIN = 'http://assets.invalid';
@@ -95,15 +100,12 @@ function serveMockup(
 }
 
 /** The browser context one capture draws in: the packet's viewport at one width, in one theme. */
-export function contextOptions(
-  packet: Packet,
-  width: number,
-  _theme: Theme,
-): BrowserContextOptions {
+export function contextOptions(packet: Packet, width: number, theme: Theme): BrowserContextOptions {
   return {
     viewport: { width, height: packet.height },
     deviceScaleFactor: 1,
-    colorScheme: 'light',
+    // The app takes its theme from the system setting before first paint (MP-1-1).
+    colorScheme: theme,
     reducedMotion: 'reduce',
     locale: 'en-AU',
     timezoneId: 'Australia/Brisbane',
@@ -137,8 +139,8 @@ type StorageState = {
 };
 
 type SideSource =
-  | { mockupDir: string; tree: string }
-  | { app: URL; session?: string | undefined; colorScheme?: 'light' | 'dark' };
+  | { mockupDir: string; tree: string; theme?: Theme | undefined }
+  | { app: URL; session?: string | undefined; colorScheme?: Theme | undefined };
 
 /** Each request a side makes: bundled fonts, pinned sheets, its own origin, or refused. */
 function routeOf(packet: Packet, source: SideSource, side: Side): (route: Route) => Promise<void> {
@@ -171,21 +173,17 @@ export async function openSide(
   width: number,
   source: SideSource,
 ): Promise<Side> {
+  // Light unless the side names its theme (the app's by colour scheme, the mockup's by its key).
+  const theme: Theme = ('app' in source ? source.colorScheme : source.theme) ?? 'light';
   const session =
     'app' in source && source.session !== undefined
       ? sessionOf(source.session, source.app.origin)
       : undefined;
   const context = await browser.newContext({
     ...(session === undefined ? {} : { storageState: { cookies: session.cookies, origins: [] } }),
-    viewport: { width, height: packet.height },
-    deviceScaleFactor: 1,
-    colorScheme: 'app' in source ? (source.colorScheme ?? 'light') : 'light',
-    reducedMotion: 'reduce',
-    locale: 'en-AU',
-    timezoneId: 'Australia/Brisbane',
-    serviceWorkers: 'block',
+    ...contextOptions(packet, width, theme),
   });
-  const side: Side = { context, external: new Set(), unresolved: new Set() };
+  const side: Side = { context, theme, external: new Set(), unresolved: new Set() };
   await context.route('**/*', routeOf(packet, source, side));
   if (session !== undefined && 'app' in source) {
     await context.addInitScript(
@@ -196,16 +194,17 @@ export async function openSide(
       { origin: source.app.origin, entries: session.entries },
     );
   }
+  // The mockup takes its theme from its own stored key.
   if ('mockupDir' in source) {
     await context.addInitScript(
-      (key: string) => localStorage.setItem(key, 'light'),
-      packet.themeKey,
+      ([key, value]: [string, Theme]) => localStorage.setItem(key, value),
+      [packet.themeKey, theme] as [string, Theme],
     );
   }
   return side;
 }
 
-/** Loads a page at the fixed clock, with the bundled faces proved in use. */
+/** Loads a page at the fixed clock, with the bundled faces and the side's theme proved in use. */
 export async function load(
   side: Side,
   packet: Packet,
@@ -230,6 +229,16 @@ export async function load(
   }, families);
   if (missing.length > 0) {
     throw new Error(`visual: ${url} did not resolve ${missing.join(', ')} to a bundled face`);
+  }
+  // Each capture is proved to draw in its side's theme: the mockup marks the
+  // body, the app the root element, before first paint.
+  const drawn = await page.evaluate(
+    () =>
+      document.body.getAttribute('data-theme') ??
+      document.documentElement.getAttribute('data-theme'),
+  );
+  if (drawn !== side.theme) {
+    throw new Error(`visual: ${url} drew in ${String(drawn)}, not ${side.theme}`);
   }
   // A state behind a tab or a disclosure is opened the way a person would.
   if (prep.open !== undefined) await page.locator(prep.open).first().click();

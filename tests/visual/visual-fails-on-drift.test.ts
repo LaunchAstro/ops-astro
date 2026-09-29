@@ -144,8 +144,8 @@ describe('the pins refuse', () => {
     expect(() => checkAssets(packet, manifest)).toThrow(/asset records/u);
   });
 
-  it('lists every width in light and prints dark as waiting for the dark theme, owned by U04', () => {
+  it('lists every width in light, and dark as captured now U04 has landed the dark theme (MP-1-1)', () => {
     expect(packet.widths.slice(0, 3)).toEqual([1480, 900, 390]);
-    expect(packet.themes.dark).toBe('waiting for the dark theme (U04, MP-1-1)');
+    expect(packet.themes.dark).toBe('captured');
   });
 });

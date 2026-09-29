@@ -8,8 +8,10 @@
 // (`tests/visual`), which captures dark from here, where the dark theme lands:
 // these tests hold the harness's dark report and planted drift in the required
 // checks, and `node tests/visual/run.ts --prove-drift` runs the same drift in
-// the pinned renderer against the pinned mockup. The app's own /dashboard/
-// match waits on the page (MP-14-1) and T4b1's signed-in fixture.
+// the pinned renderer against the pinned mockup. The /dashboard/ match waits
+// on the page (MP-14-1) and T4b1's signed-in fixture; the harness serves the
+// mockup by file path, so its canonical addresses need the mockup's route
+// manifest when that page lands.
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -287,7 +289,7 @@ function capture(width: number, ground: Rgb, control: { x: number; colour: Rgb }
 const catalogue = (): Catalogue => JSON.parse(read(`${root}tests/visual/states.json`)) as Catalogue;
 
 describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
-  it('MP-1-1 harness captures: every built page and the mockup /dashboard/ in light and dark at 1480, 900 and 390', () => {
+  it('MP-1-1 harness captures: every built page in light and dark at 1480, 900 and 390', () => {
     const packet = readPacket();
     // Dark is captured from here, where the dark theme lands; no longer pending.
     expect(packet.themes.dark).toBe('captured');
@@ -300,11 +302,6 @@ describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
       viewport: { width: 390, height: packet.height },
     });
     expect(contextOptions(packet, 1480, 'light')).toMatchObject({ colorScheme: 'light' });
-
-    // The mockup's Dashboard is a harness state, drawn from its pinned source page.
-    const dashboard = catalogue().states.find((state) => state.id === 'dashboard');
-    expect(dashboard).toMatchObject({ mockup: '/route-home/', regions: { page: 'viewport' } });
-    expect(dashboard?.app).toMatch(/MP-14-1.*T4b1/u);
 
     // Every built page has a light and a dark picture at every width.
     const shots: PageShot[] = builtPages().flatMap((page) =>
