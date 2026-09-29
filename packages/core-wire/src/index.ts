@@ -29,6 +29,7 @@ export type {
   AttemptView,
   Capability,
   CapabilitiesResult,
+  SessionPersonResult,
   CommentView,
   DecisionLink,
   EvidenceView,

@@ -902,6 +902,8 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `session.capabilities`             | `readCapabilities` (`reads/capabilities.ts`)                                              | served under a live delegation (`authorise`, `capabilitiesOf`)                                  |
 | `settings.set_four_eyes_threshold` | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `settings.set_client_sign_off`     | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `session.person`                   | `readOwnName` (`reads/people.ts`)                                                         | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `session.end`                      | `endOwnSession` (`commands/session-end.ts`)                                               | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
@@ -1287,10 +1289,25 @@ case (g) carries the rows. The server declares the two answers as
 (`packages/core-wire/src/views.ts`), and the web imports that type
 rather than keeping a copy; the two are told apart by the key.
 
-| Read                   | Route                   | Body                     | Answer                                                                                       | Refusals it can answer                                                                                  |
-| ---------------------- | ----------------------- | ------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }` | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                             |
-| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                      | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
+| Read                   | Route                   | Body                     | Answer                                                                                       | Refusals it can answer                                                                                     |
+| ---------------------- | ----------------------- | ------------------------ | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }` | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                                |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                      | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401    |
+| `session.person`       | `/session/person`       | `{}`; it takes no fields | `{ ok: true, person: { name } }`, the caller's own name                                      | `FIELD_NOT_WRITABLE` 422, `COMMAND_BODY_INVALID` 400, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
+
+`session.person` and the command `session.end` are the person menu's (C23).
+Neither asks the grant model: `session.person` answers anyone signed in with
+their own name, a member holding no grant and a client outside the business
+included, and `session.end` is `account:write` on the caller's own account,
+which every signed-in person holds and nobody holds on another's
+(`authorisedOn: 'self'`, `packages/core-wire/src/surface.ts`). Neither takes an
+identifier, so a body naming a person, an actor or an account is refused rather
+than read. `session.end` takes only `operationId`, answers
+`{ recordId: null, detail: { ended: 'sign-out' } }`, and writes nothing but its
+audit event, `session.end` on the business's chain naming the actor; the
+browser ends the credential itself at the identity provider, with
+`logout?scope=local`, so the person's other sessions stay signed in. Neither is
+an agent's.
 
 `settings.read` takes `read` on `settings` while the two settings commands take
 `manage` on the same collection. The asymmetry is deliberate. A setting is a

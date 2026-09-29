@@ -32,6 +32,7 @@ import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
+import { endOwnSession } from './session-end.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -106,6 +107,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.heartbeat': heartbeatOwnLease,
   'task.dispatch': dispatchOwnLease,
   'task.observe': observeOwnLease,
+  'session.end': endOwnSession,
   'task.handback': handbackOwnLease,
 
   // T2e. A person's money decision; no agent route reaches it.

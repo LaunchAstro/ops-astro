@@ -70,3 +70,31 @@ function messageOf(value: unknown): string | null {
   }
   return null;
 }
+
+export interface SignOutRequest {
+  readonly gotrueUrl: string;
+  /** The ended session's own bearer, never whichever session is current by then. */
+  readonly token: string;
+  readonly fetch: typeof globalThis.fetch;
+}
+
+/**
+ * Ends this session at the identity provider, and only this one (C23).
+ *
+ * `scope=local` is the whole point: GoTrue's default logout is `global`, which
+ * would end every session the person has, on every device, when they asked to
+ * leave this tab. Nothing is answered: the tab has already forgotten the
+ * session, and a provider that did not hear is no reason to keep the person
+ * signed in here.
+ */
+export async function endIdentitySession(request: SignOutRequest): Promise<void> {
+  const url = `${request.gotrueUrl.replace(/\/$/u, '')}/logout?scope=local`;
+  try {
+    await request.fetch(url, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${request.token}` },
+    });
+  } catch {
+    /* Signed out here already; see above. */
+  }
+}

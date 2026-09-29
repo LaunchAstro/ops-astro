@@ -23,7 +23,7 @@ import {
 } from '../../packages/core-commands/src/commands/audit.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import type { ReadRequest } from '../../packages/core-commands/src/reads/requests.ts';
-import { declarationOf, type CommandName } from '../../packages/core-wire/src/index.ts';
+import { declarationOf } from '../../packages/core-wire/src/index.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -86,7 +86,7 @@ describe.skipIf(serverUrl === undefined)('C23 session.end and session.person', (
 
   describe('C23 the command that causes each tracked action writes it in the same transaction, and appends it to the audit chain', () => {
     it('session.end is declared a write on the account collection, own account only, never an agent’s', () => {
-      const row = declarationOf('session.end' as CommandName);
+      const row = declarationOf('session.end');
       expect(row).toMatchObject({
         kind: 'write',
         collection: 'account',

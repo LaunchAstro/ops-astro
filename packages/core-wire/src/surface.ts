@@ -84,6 +84,11 @@ export type CommandName =
   // why it takes no grant beyond membership: every pair in it is a pair the
   // caller already holds, so returning them confers nothing.
   | 'session.capabilities'
+  // Who is signed in (C23): the caller's own name and nothing else, for the
+  // person menu. Like `session.capabilities` it is about the caller, so it takes
+  // no grant; unlike it, it answers a person who holds none, because anyone
+  // signed in may see their own name.
+  | 'session.person'
   // The two settings the model classifies `operation`. A setting that decides
   // who must agree before money moves or before work completes is an authority
   // change wearing configuration's clothes, so it is not reachable through a
@@ -112,7 +117,12 @@ export type CommandName =
   // A person records what an unknown effect came to: one of three (T3d1).
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
-  | 'budget.write_off';
+  | 'budget.write_off'
+  // Sign-out (C23, CS-2.9): records `session ended (sign-out)` on the audit
+  // chain. `account:write`, which every signed-in person holds on their own
+  // account and nobody holds on another's, so it names no one: the account is
+  // the caller's, always.
+  | 'session.end';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -162,8 +172,12 @@ export interface CommandDeclaration {
    * - `claim`: the task the body's reservation or lease belongs to, so a
    *   record-scoped writer works their own lease on that task. Own-lease work
    *   names its task only through the claim and writes no task revision.
+   * - `self`: the caller's own account. No grant row is asked: the catalogue
+   *   gives every signed-in person this action on their own account and on
+   *   nobody else's, and the command takes no identifier that could name
+   *   another (`account:write`, C23).
    */
-  readonly authorisedOn: 'record' | 'business' | 'target' | 'claim';
+  readonly authorisedOn: 'record' | 'business' | 'target' | 'claim' | 'self';
   /**
    * Who locks a targeted task. `command`: the envelope locks it and compares
    * the revision before the handler runs, the ordinary task-write path.
@@ -271,6 +285,7 @@ const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const ACCOUNT_COLLECTION = 'account';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -389,6 +404,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  'session.end': {},
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -481,6 +497,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // delegation's purpose; before a pickup it is refused like every other
   // operation outside the two (minimum contract 8.2 case 9).
   read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated' }),
+  // The caller's own name, served without a grant (`reads/dispatch.ts`). Never
+  // an agent's: the person menu is a person's.
+  read('session.person', SESSION_COLLECTION),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was
@@ -580,6 +599,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
+  }),
+  // Sign-out: the caller's own account, never anyone else's and never an
+  // agent's. It targets no record and takes no identifier, so a body naming a
+  // person, an actor or an account is refused rather than ignored.
+  declare('session.end', 'write', {
+    collection: ACCOUNT_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: [],
   }),
 ];
 

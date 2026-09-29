@@ -21,10 +21,10 @@ import { createHarness, type Harness } from '../acceptance/role-case-harness.ts'
 import { enrolCaller, type Caller } from '../acceptance/cast.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
 import type { CommandName } from '../../packages/core-wire/src/index.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
-// Named before they exist, so this file is red on its assertions, not its types.
-const END = 'session.end' as CommandName;
-const PERSON = 'session.person' as CommandName;
+const END: CommandName = 'session.end';
+const PERSON: CommandName = 'session.person';
 
 type Body = Readonly<Record<string, unknown>>;
 
@@ -32,7 +32,7 @@ const nameOf = (body: Body): string =>
   String((body['person'] as Readonly<Record<string, unknown>> | undefined)?.['name']);
 
 // eslint-disable-next-line max-lines-per-function -- one world, the three crossings
-describe('C23 isolation', () => {
+describe.skipIf(databaseUrlFromEnvironment() === undefined)('C23 isolation', () => {
   let harness: Harness;
   let adaName: string;
   let miaName: string;
@@ -105,7 +105,7 @@ describe('C23 isolation', () => {
     const mine = await harness.asPerson(PERSON, {}, 'alpha', cleo);
     expect(mine.status).toBe(200);
     const cleoName = nameOf(mine.body);
-    expect(mine.body).toEqual({ person: { name: cleoName } });
+    expect(mine.body).toEqual({ ok: true, person: { name: cleoName } });
     const doraName = nameOf((await harness.asPerson(PERSON, {}, 'alpha', dora)).body);
     expect(doraName).not.toBe(cleoName);
     const body = JSON.stringify(mine.body);
@@ -150,7 +150,10 @@ describe('C23 isolation', () => {
         expect(body, name).not.toContain(String(world.ada.personId));
       }
     }
-    expect(await signOuts('alpha', String(world.agent.actorId))).toEqual([]);
+    // Every attempt is on the chain, so the agent's are there, each refused.
+    const agentAttempts = await signOuts('alpha', String(world.agent.actorId));
+    expect(agentAttempts.length).toBeGreaterThan(0);
+    expect(agentAttempts.every((outcome) => outcome === 'refused')).toBe(true);
     expect(await signOuts('alpha', String(world.ada.actorId))).toEqual(adaBefore);
     expect((await harness.asPerson(PERSON, {})).status).toBe(200);
   });

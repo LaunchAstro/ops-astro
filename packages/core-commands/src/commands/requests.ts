@@ -213,6 +213,8 @@ export type CommandRequest =
   // terminal lineage's last version, proposed again under a new lineage.
   | ({ readonly command: 'grant.revoke'; readonly grantId: string } & Envelope)
   | ({ readonly command: 'delegation.revoke'; readonly delegationId: string } & Envelope)
+  // Sign-out names nothing: the account is the caller's (C23).
+  | ({ readonly command: 'session.end' } & Envelope)
   | ({
       readonly command: 'task.cancel';
       readonly recordId: string;

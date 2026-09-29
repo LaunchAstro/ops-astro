@@ -27,6 +27,7 @@
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type {
   CapabilitiesResult,
+  SessionPersonResult,
   PersonListResult,
   PresetPlanResult,
   QueueResult,
@@ -105,6 +106,8 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /** Who is signed in: the caller's own name (C23). It takes no grant either. */
+  readonly 'session.person': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -131,4 +134,5 @@ export type ReadResult =
   | SettingsReadResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
-  | CapabilitiesResult;
+  | CapabilitiesResult
+  | SessionPersonResult;

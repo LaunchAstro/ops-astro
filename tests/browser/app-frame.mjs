@@ -13,6 +13,9 @@
 //   above, and scrolls away at 900 and below.
 // - MP-2-6 no page wider than the viewport at 390.
 // - MP-2-5 search hidden at 900 and below, Back and Forward at 640 and below.
+// - C23 the person circle round and 22 across at the strip's far right; its
+//   menu opens under it inside the viewport, with the name, the settings link
+//   and Sign out.
 //
 // Screenshots go to SHOT_DIR (default `.local/evidence/app-frame`). Exit 1 on
 // any failed line. The client workspace cannot be opened in the real app until
@@ -48,6 +51,54 @@ const check = (line, ok, detail = '') => {
   process.stdout.write(`${ok ? 'PASS' : 'FAIL'} ${line}${detail === '' ? '' : ` (${detail})`}\n`);
 };
 
+/** C23: the circle at the strip's far right, and its menu inside the viewport. */
+async function personMenu(page, width, at) {
+  await page.waitForSelector('.who__trigger[aria-label="Mia Hart, signed in"]');
+  const circle = await page.$eval('.who__trigger .av', (el) => {
+    const box = el.getBoundingClientRect();
+    const strip = document.querySelector('.appbar').getBoundingClientRect();
+    return {
+      width: box.width,
+      height: box.height,
+      radius: getComputedStyle(el).borderRadius,
+      gap: strip.right - box.right,
+      within: box.top >= strip.top && box.bottom <= strip.bottom,
+    };
+  });
+  check(
+    `C23 circle round, 22 across, at the strip's far right, ${at}`,
+    circle.width === 22 &&
+      circle.height === 22 &&
+      circle.radius === '50%' &&
+      circle.within &&
+      circle.gap < 30,
+    JSON.stringify(circle),
+  );
+  await page.click('.who__trigger');
+  const menu = await page.$eval('.who__menu', (el) => {
+    const box = el.getBoundingClientRect();
+    return {
+      left: box.left,
+      right: box.right,
+      top: box.top,
+      strip: document.querySelector('.appbar').getBoundingClientRect().bottom,
+      items: [...el.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent),
+      name: el.querySelector('.who__name')?.textContent,
+    };
+  });
+  check(
+    `C23 menu under the strip, inside the viewport, name, settings and Sign out, ${at}`,
+    menu.left >= 0 &&
+      menu.right <= width &&
+      menu.top >= menu.strip - 1 &&
+      menu.name === 'Mia Hart' &&
+      menu.items.join('|') === 'Your settings|Sign out',
+    JSON.stringify(menu),
+  );
+  await page.screenshot({ path: `${SHOTS}/person-menu-${width}-${at.split(' ')[1]}.png` });
+  await page.keyboard.press('Escape');
+}
+
 const SESSION = JSON.stringify({ token: 'held', businessKey: 'alpha', email: 'mia@alpha.local' });
 const browser = await chromium.launch();
 try {
@@ -65,6 +116,10 @@ try {
       await page.route('**/api/**', () => {
         /* held: nothing is read */
       });
+      // The person menu's name is the one read answered (C23).
+      await page.route('**/api/b/alpha/session/person', (route) =>
+        route.fulfill({ json: { ok: true, person: { name: 'Mia Hart' } } }),
+      );
       const at = `${width} ${theme}`;
       await page.goto(`${WEB}/dashboard/`);
       await page.waitForSelector('.shell');
@@ -173,6 +228,7 @@ try {
         const open = await page.$eval('.shell', (el) => el.getAttribute('data-nav'));
         check(`MP-2-8 Escape closes it, ${at}`, open === null);
       }
+      await personMenu(page, width, at);
       await context.close();
     }
   }
