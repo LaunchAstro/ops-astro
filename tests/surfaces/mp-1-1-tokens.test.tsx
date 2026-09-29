@@ -303,16 +303,17 @@ describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
     });
     expect(contextOptions(packet, 1480, 'light')).toMatchObject({ colorScheme: 'light' });
 
-    // Every built page has a light and a dark picture at every width.
+    // Every built page has a light and a dark picture file at every width,
+    // each a PNG as wide as that width; the report reads the files.
+    const sets = resolved();
+    const ground = { light: rgbOf(sets.light['--bg']), dark: rgbOf(sets.dark['--bg']) };
     const shots: PageShot[] = builtPages().flatMap((page) =>
       packet.widths.flatMap((width) =>
-        themesOf(packet).map((theme) => ({
-          page,
-          width,
-          theme,
-          picture: `${page}@${width}-${theme}.page.png`,
-          overflow: 0,
-        })),
+        themesOf(packet).map((theme) => {
+          const picture = join(scratch, `${page}@${width}-${theme}.page.png`);
+          writeFileSync(picture, capture(width, ground[theme], { x: 40, colour: ground[theme] }));
+          return { page, width, theme, picture, overflow: 0 };
+        }),
       ),
     );
     const all = report(packet, builtPages(), shots);
@@ -324,17 +325,23 @@ describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
           `ok ${page}@${width}-dark: ${page}@${width}-dark.page.png; no sideways scroll`,
         );
 
-    // A missing dark picture, and a dark page that scrolls sideways, each fail by name.
-    const planted = shots.filter(
-      (s) => !(s.page === 'agency:sign-in' && s.width === 390 && s.theme === 'dark'),
-    );
-    const wide = planted.find(
-      (s) => s.page === 'agency:gallery' && s.width === 900 && s.theme === 'dark',
-    );
-    if (wide !== undefined) wide.overflow = 8;
-    const bad = report(packet, builtPages(), planted);
-    expect(bad.failed).toBe(2);
+    // A dark picture whose file is gone, one taken at another width, a file
+    // that is not an image, and a dark page that scrolls sideways each fail by name.
+    const at = (page: string, width: number): PageShot => {
+      const shot = shots.find((s) => s.page === page && s.width === width && s.theme === 'dark');
+      if (shot === undefined) throw new Error(`no ${page}@${width}-dark shot`);
+      return shot;
+    };
+    rmSync(at('agency:sign-in', 390).picture ?? '');
+    const narrow = at('agency:settings', 1480).picture ?? '';
+    writeFileSync(narrow, capture(390, ground.dark, { x: 40, colour: ground.dark }));
+    writeFileSync(at('agency:projects-board', 390).picture ?? '', 'no image here');
+    at('agency:gallery', 900).overflow = 8;
+    const bad = report(packet, builtPages(), shots);
+    expect(bad.failed).toBe(4);
+    expect(bad.lines).toContain('FAIL agency:projects-board@390-dark: picture is not a PNG');
     expect(bad.lines).toContain('FAIL agency:sign-in@390-dark: no picture');
+    expect(bad.lines).toContain('FAIL agency:settings@1480-dark: picture is 390 px wide, not 1480');
     expect(bad.lines).toContain('FAIL agency:gallery@900-dark: scrolls sideways by 8 px');
   });
 
