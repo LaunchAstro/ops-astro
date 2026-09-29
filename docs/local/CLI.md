@@ -175,6 +175,7 @@ pnpm cli task link <id> --revision n --blocked-by <id,id>
 pnpm cli task comment <id> --revision n --text <t> [--audience internal|client]
 pnpm cli task resolve <id> --revision n --answer <a> --gist <one line>
 pnpm cli map view <id>
+pnpm cli map status <id> [--detail brief|standard|full]
 pnpm cli map frontier <id>
 ```
 
@@ -194,5 +195,12 @@ pnpm cli map frontier <id>
   joins a later page, and none repeats.
 - The API takes the same `detail`, `limit` and `page` body fields on
   `task.read` and `task.board`. Without them it answers as before.
-- _Map status_, _work this ticket_ (`context`) and _changes since_ join with
+- `task list` takes at most 100 a page, and every call counts against the
+  caller's quotas (`identity/quota.ts`): past one, the call is refused
+  `QUOTA_EXCEEDED` with when to send again.
+- `map status` (API-4, `map.status`) is the map's frontier, fog and counts in
+  one call, from one query on the map's read models, so it is current after
+  any write. `full` carries every id; `standard` names a frontier ticket by
+  key, title and type; `brief` keeps the counts and the keys.
+- _Work this ticket_ (`context`) and _changes since_ join with the rest of
   API-4.
