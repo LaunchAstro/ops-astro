@@ -10,7 +10,12 @@
 // another (R3's rule, the one `propose` enforces). Neither writes the task
 // record, which is why neither takes an `expectedRevision`.
 
-import { isUuid, raiseDecision, subjectsOf } from '../../../core-records/src/index.ts';
+import {
+  isUuid,
+  raiseDecision,
+  raiseIncident,
+  subjectsOf,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { cancelAndClassify, restart } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
@@ -119,6 +124,7 @@ export async function cancelOnTask(
     },
   });
   if (!result.ok) return refused(result.refusal);
+  await raiseIncident(tx, result.value);
   return applied(found.taskId, null, {
     lineageId: found.lineageId,
     state: 'cancelled',
