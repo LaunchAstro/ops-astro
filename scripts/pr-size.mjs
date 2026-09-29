@@ -49,7 +49,15 @@ const base = process.env.BASE_SHA;
 const head = process.env.HEAD_SHA;
 if (!base || !head) throw new Error('BASE_SHA and HEAD_SHA must both be set.');
 
-const git = (args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 1024 ** 3 });
+// git's stderr is captured, not inherited: on a failure it reaches the log
+// only inside the one-line warning above, so nothing git echoes back, such
+// as a revision holding a line break, can start a workflow command.
+const git = (args) =>
+  execFileSync('git', args, {
+    encoding: 'utf8',
+    maxBuffer: 1024 ** 3,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 
 // The merge base, not the base branch tip, or every commit that landed on
 // main since the branch started would be counted against the author.
