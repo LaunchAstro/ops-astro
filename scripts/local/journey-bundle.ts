@@ -13,7 +13,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { availableParallelism, loadavg } from 'node:os';
-import { approvalOf, digestOf, scrub, withhold } from './journey-withhold.ts';
+import { approvalOf, digestOf, privateDetail, scrub, withhold } from './journey-withhold.ts';
 
 export interface Approval {
   readonly taskId: string;
@@ -178,7 +178,8 @@ export function writeBundle(raw: BundleInput): Bundle {
     ...raw,
     identity: withhold(raw.identity, held),
     environment: fields(raw.environment),
-    cases: raw.cases.map((line) => ({ ...line, detail: withhold(line.detail, held) })),
+    // A case detail is free text: private at this boundary, JSON or not (Sol, review 3).
+    cases: raw.cases.map((line) => ({ ...line, detail: privateDetail(line.detail) })),
     budgets: raw.budgets.map((row) => fields(row)),
   };
   const shown = approvalOf(approval, held);

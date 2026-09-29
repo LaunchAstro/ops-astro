@@ -412,9 +412,11 @@ every case line, the approval the journey applied (the digest of the decision
 row's exact payload, its identifiers shown), the budgets with the machine's load
 beside each, the crash points the restart legs recorded and the open completion
 items with their owner. Whatever a person wrote (a note, a body, a title) is
-carried only as a digest, wherever it arrives: in the approval, in a case line
-that quotes an answer or a failed comparison, or anywhere else
-(`scripts/local/journey-withhold.ts`). The end-to-end budget is timed only when
+carried only as a digest (`scripts/local/journey-withhold.ts`): the approval
+shows its identifiers and withholds the rest, and a case line's detail, being
+free text, is carried as its digest and only its safe tokens (identifiers,
+refusal codes, ticket names, repository paths, times). The full detail stays
+in `cases.jsonl` beside it, where the digest finds it. The end-to-end budget is timed only when
 the journey ran to its end. A run with no decision writes no bundle, and nothing
 in it claims acceptance. The
 database is kept for inspection unless `--remove`, and the last line says how
