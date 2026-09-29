@@ -360,6 +360,10 @@ export interface TaskExecution {
   readonly outcome: 'ready' | 'no-run' | 'stale';
   readonly runs: readonly ExecutionRun[];
   readonly events: readonly ExecutionEvent[];
+  /** Whether `events` reaches the task's last recorded event. */
+  readonly complete: boolean;
+  /** The cursor for the rest, or null when nothing was left out. */
+  readonly next: number | null;
 }
 
 /** `task.receipt`: what an observed effect came from, and what it cost (T2c2, T2d). */

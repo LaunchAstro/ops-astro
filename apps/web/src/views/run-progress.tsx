@@ -12,7 +12,12 @@
 
 import type { ReactElement } from 'react';
 import { drawRunState, Empty, PaneEmpty, Spill } from '@launchastro/ui';
-import type { OperationsClient } from '../operations/client.ts';
+import {
+  isRefusal,
+  isUnavailable,
+  type CallResult,
+  type OperationsClient,
+} from '../operations/client.ts';
 import type {
   ExecutionRun,
   ExecutionEvent,
@@ -36,7 +41,7 @@ export function RunProgress(props: RunProgressProps): ReactElement {
   const { client, taskKey } = props;
   const { state } = useRead<TaskExecutionResult>({
     grantKey: props.grantKey,
-    run: () => client.read<TaskExecutionResult>('task.execution', { recordId: taskKey }),
+    run: async () => await wholeExecution(client, taskKey),
     deps: [taskKey, props.readOf],
   });
   const value =
@@ -86,6 +91,37 @@ export function RunProgress(props: RunProgressProps): ReactElement {
       )}
     </section>
   );
+}
+
+/**
+ * Every page of `task.execution`, followed through `next` until the answer is
+ * complete (a page holds at most 200 events), so event 201 is never dropped.
+ * The events are joined in order; the runs and the outcome are the last
+ * page's, which is the newest reading. A refusal or an outage on any page is
+ * the answer, never a partial run. A `next` that does not move forward ends
+ * the walk rather than asking for the same page again, and so does an answer
+ * that carries no `next` at all.
+ */
+async function wholeExecution(
+  client: OperationsClient,
+  recordId: string,
+): Promise<CallResult<TaskExecutionResult>> {
+  let answer = await client.read<TaskExecutionResult>('task.execution', { recordId });
+  const events: ExecutionEvent[] = [];
+  let cursor = 0;
+  for (;;) {
+    if (isRefusal(answer) || isUnavailable(answer)) return answer;
+    const page = answer.value.execution;
+    if (page === undefined || !Array.isArray(page.events)) return answer;
+    events.push(...page.events);
+    if (page.complete === true || typeof page.next !== 'number' || page.next <= cursor) {
+      return { ok: true, value: { execution: { ...page, events } } };
+    }
+    cursor = page.next;
+    // One page at a time: each asks from where the last one ended.
+    // eslint-disable-next-line no-await-in-loop
+    answer = await client.read<TaskExecutionResult>('task.execution', { recordId, cursor });
+  }
 }
 
 function Run(props: {
