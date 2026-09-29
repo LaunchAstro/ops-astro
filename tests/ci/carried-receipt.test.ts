@@ -65,14 +65,19 @@ function keptCases() {
       archiveFile: file,
       privateKey: keys.privateKey,
       scope,
-      drill: () =>
-        Promise.resolve({ event: 'restore drill', at: new Date().toISOString(), ...PASSED }),
+      drill: async (options: { fetchArchive: () => Promise<unknown> }) => {
+        await options.fetchArchive();
+        return { event: 'restore drill', at: new Date().toISOString(), ...PASSED };
+      },
       reach: noStore,
     });
     expect(Object.keys(receipt).toSorted()).toStrictEqual([...RECEIPT_FIELDS].toSorted());
+    // Off the machine it is not a passed drill: the store checks the archive when it is recorded.
+    const held = JSON.parse(readFileSync(file, 'utf8')) as { sha256: string };
     expect(receipt).toMatchObject({
-      outcome: 'passed',
+      outcome: 'pending',
       ranOn: 'carried archive',
+      archiveDigest: held.sha256,
       lastTestedRestore: null,
       operator,
     });
@@ -92,6 +97,8 @@ function refusedCases() {
     const good: Receipt = {
       ...Object.fromEntries(RECEIPT_FIELDS.map((field) => [field, null])),
       ...PASSED,
+      outcome: 'pending',
+      archiveDigest: 'ab'.repeat(32),
       action: 'restore drill recorded',
       at: TAKEN,
       business: 'made-up',
@@ -110,6 +117,8 @@ function refusedCases() {
       'a prototype key': `{"__proto__":{"outcome":"passed"},${JSON.stringify(good).slice(1)}`,
       'a major that is not a number': JSON.stringify({ ...good, sourceMajor: '17' }),
       'an outcome of its own': JSON.stringify({ ...good, outcome: 'maybe' }),
+      'a pass the store never checked': JSON.stringify({ ...good, outcome: 'passed' }),
+      'a digest that is not one': JSON.stringify({ ...good, archiveDigest: 'AB'.repeat(32) }),
       'two receipts': `${JSON.stringify(good)}\n${JSON.stringify(good)}`,
       'not JSON': 'passed',
     };
