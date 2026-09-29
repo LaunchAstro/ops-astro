@@ -346,9 +346,8 @@ async function replay(
 ): Promise<CommandResult> {
   // The command name is part of the compared payload, so one identity used
   // for two different commands differs here without a second comparison. A
-  // separate check on `seen.command` was written first and then removed: a
-  // mutation showed it could not fail, which means it was a claim about the
-  // digest rather than a check on the request.
+  // separate check on `seen.command` could not fail under mutation, so it
+  // would be a claim about the digest rather than a check on the request.
   if (seen.payload_digest !== digest) {
     const refusal = refuseCommand('OPERATION_ID_REUSED', [seen.command], REUSED_FIXES);
     // The register already holds this identity, so nothing is written to it.
