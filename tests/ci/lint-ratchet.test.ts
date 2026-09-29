@@ -226,3 +226,34 @@ describe('CQ-12 No product source file is over 1,000 lines on this head, and the
     expect(ratchet(dir, base).status).toBe(0);
   });
 });
+
+it('Sol proof, criterion 4: a malformed baseline cannot hide a new warning', () => {
+  const { dir, base } = repo({ 'src/a.mjs': useless(1), [BASELINE]: baseline({ [RULE]: 1 }) });
+  write(dir, {
+    'src/a.mjs': useless(2),
+    [BASELINE]: JSON.stringify({ rules: { [RULE]: 'invalid' } }),
+  });
+  const run = ratchet(dir, base);
+  expect(run.status).toBe(1);
+  expect(run.out).toContain(RULE);
+});
+
+it('Sol proof, criterion 6: production CSS over 1,000 lines fails', () => {
+  const { dir, base } = repo({ 'src/a.mjs': 'export const a = 1;\n', [BASELINE]: baseline({}) });
+  const path = 'apps/web/src/styles/too-big.css';
+  write(dir, { [path]: '.x { color: red; }\n'.repeat(1001) });
+  const run = ratchet(dir, base);
+  expect(run.status).toBe(1);
+  expect(run.out).toContain(path);
+});
+
+it('Sol proof, criterion 6: trailing blank lines count toward the 1,000-line limit', () => {
+  const { dir, base } = repo({
+    'packages/p/src/ok.ts': lines(1000),
+    [BASELINE]: baseline({ [MAX]: 1 }),
+  });
+  write(dir, { 'packages/p/src/ok.ts': `${lines(1000)}\n` });
+  const run = ratchet(dir, base);
+  expect(run.status).toBe(1);
+  expect(run.out).toContain('packages/p/src/ok.ts: 1001 lines');
+});

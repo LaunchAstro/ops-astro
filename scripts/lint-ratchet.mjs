@@ -8,8 +8,8 @@
 //      baseline does not name counts as 0);
 //   2. lint-baseline.json holds more for any rule than the base branch's copy,
 //      because the baseline can only be lowered;
-//   3. a product source file (apps/ and packages/, tests excluded) is over
-//      1,000 lines;
+//   3. a product source file (scripts, styles and pages under apps/ and
+//      packages/, tests excluded) is over 1,000 physical lines;
 //   4. oxlint linted no file, or the base branch cannot be read. Either would
 //      otherwise pass having compared nothing.
 //
@@ -72,7 +72,28 @@ function baseRules() {
   }
   if (!commit) fail(`cannot read the base ${ref}; set BASE_SHA to the base branch's commit.`);
   const text = git('show', `${commit}:${BASELINE}`);
-  return text === undefined ? undefined : JSON.parse(text).rules;
+  return text === undefined ? undefined : parseRules(text, `${BASELINE} on the base`);
+}
+
+/**
+ * A baseline's counts, each a whole number of at least 0. Anything else fails, because a
+ * count that is not a number compares false against every warning and so would hide them.
+ */
+function parseRules(text, where) {
+  let rules;
+  try {
+    ({ rules } = JSON.parse(text));
+  } catch {
+    fail(`${where} is not JSON.`);
+  }
+  if (typeof rules !== 'object' || rules === null || Array.isArray(rules)) {
+    fail(`${where} has no \`rules\` object.`);
+  }
+  for (const [rule, n] of Object.entries(rules)) {
+    if (!Number.isInteger(n) || n < 0)
+      fail(`${where}: ${rule} is ${JSON.stringify(n)}, not a count.`);
+  }
+  return rules;
 }
 
 /** Each rule whose count in `next` is above its count in `base`. */
@@ -82,6 +103,11 @@ function rises(next, base) {
     .map(([rule, n]) => ({ rule, n, was: base[rule] ?? 0 }));
 }
 
+/** Lines as an editor numbers them: every newline ends one, and text after the last is one more. */
+function physicalLines(text) {
+  return text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
+}
+
 function oversizeProductFiles() {
   const listed =
     git('ls-files', '--cached', '--others', '--exclude-standard', '--', 'apps', 'packages') ?? '';
@@ -89,11 +115,11 @@ function oversizeProductFiles() {
     .split('\n')
     .filter(
       (f) =>
-        /\.[cm]?[jt]sx?$/u.test(f) &&
+        /\.(?:[cm]?[jt]sx?|css|html)$/u.test(f) &&
         !/(?:^|\/)tests\/|\.(?:test|spec)\./u.test(f) &&
         existsSync(f),
     )
-    .map((f) => ({ f, lines: readFileSync(f, 'utf8').trimEnd().split('\n').length }))
+    .map((f) => ({ f, lines: physicalLines(readFileSync(f, 'utf8')) }))
     .filter(({ lines }) => lines > MAX_LINES);
 }
 
@@ -122,7 +148,7 @@ if (write) {
 }
 
 if (!existsSync(BASELINE)) fail(`${BASELINE} is missing. Write it with \`pnpm lint:baseline\`.`);
-const recorded = JSON.parse(readFileSync(BASELINE, 'utf8')).rules;
+const recorded = parseRules(readFileSync(BASELINE, 'utf8'), BASELINE);
 
 for (const { rule, n, was } of base ? rises(recorded, base) : []) {
   problems.push(`the baseline can only be lowered: ${rule}: ${n} here, ${was} on the base.`);
