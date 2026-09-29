@@ -132,14 +132,19 @@ describe('the surface as a table', () => {
     expect(declarationOf('settings.read').action).toBe('read');
     expect(declarationOf('settings.set_four_eyes_threshold').action).toBe('manage');
     expect(collections.get('session.capabilities')).toBe('session');
-    // AW-05's answers: a top-up is money, the end is a gate, and both decide.
-    expect(collections.get('run.top_up')).toBe('billing');
-    expect(collections.get('run.end_at_budget_stop')).toBe('gate');
-    expect(declarationOf('run.top_up').action).toBe('decide');
-    expect(declarationOf('run.end_at_budget_stop').action).toBe('decide');
     for (const command of COMMAND_SURFACE) {
       expect(command.collection, command.name).toMatch(/^[a-z][a-z_]*$/u);
     }
+  });
+});
+
+describe("AW-05's answers at the budget stop", () => {
+  it('asks decide on billing for a top-up and on gate for the end', () => {
+    // A top-up is money, the end is a gate, and both decide.
+    expect(declarationOf('run.top_up').collection).toBe('billing');
+    expect(declarationOf('run.end_at_budget_stop').collection).toBe('gate');
+    expect(declarationOf('run.top_up').action).toBe('decide');
+    expect(declarationOf('run.end_at_budget_stop').action).toBe('decide');
   });
 });
 

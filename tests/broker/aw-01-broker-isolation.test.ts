@@ -111,20 +111,11 @@ it('AW-01 copy register: every sent prompt was registered first, and a registrat
   );
 });
 
-it('AW-01 isolation: another business, another client, another person under a live delegation', async () => {
-  world.provider.mode('answer');
-  const mine = await liveWork(s, 'alpha work', 2_000);
-  await stepOf(mine);
-  const madeUp = await call(mine, { leaseId: randomUUID() });
-  const before = await callCount();
-  const seen = world.provider.seen.length;
-  const refusedAlike = (result: unknown): void => {
-    expect(result).toEqual(madeUp);
-    expect(result).toEqual({ ok: false, code: 'LEASE_NOT_OWNED', callId: null });
-  };
-  expect(statusOf('LEASE_NOT_OWNED')).toBe(403);
-
-  // 1. Another business: its lease, presented here, reads as made up; and ours, there.
+/** Crossing 1: another business's lease presented here, and our lease presented there. */
+async function acrossBusiness(
+  mine: Awaited<ReturnType<typeof liveWork>>,
+  refusedAlike: (result: unknown) => void,
+): Promise<void> {
   const bravo = await openSchedules('aw01bravo', 1_000_000);
   try {
     const theirs = await liveWork(bravo, 'bravo work', 2_000);
@@ -151,25 +142,10 @@ it('AW-01 isolation: another business, another client, another person under a li
   } finally {
     await bravo.db.drop();
   }
+}
 
-  // 2. Another client in the same business: client X, on its own shared task, presents the lease on client Y's.
-  const taskX = await createTask(s, 'client X task');
-  // As in CQ-7: a person outside the staff holding one record-scoped grant on its own task (R4).
-  const clientX = await enrol(s.db.app, s.business, 'client-x');
-  await s.db.app.withBusiness(s.business, async (tx) => {
-    await grantTo(tx, clientX, 'read', { kind: 'record', id: taskX });
-  });
-  refusedAlike(
-    await callModel(
-      s.db.app,
-      s.business,
-      { ...caller(mine), actorId: clientX.actorId },
-      requestFor(mine),
-      broker,
-    ),
-  );
-
-  // 3. Another person's agent, under its own live delegation, presents our agent's lease.
+/** Crossing 3's caller: another person's agent holding a live delegation of its own. */
+async function otherAgentUnderLiveDelegation(): Promise<string> {
   const other = await enrol(s.db.app, s.business, 'other-decider');
   const otherSubject = `agent-${randomUUID()}`;
   const otherAgent = randomUUID();
@@ -212,6 +188,44 @@ it('AW-01 isolation: another business, another client, another person under a li
     [otherAgent],
   );
   expect(live[0]?.n).toBe('1');
+  return otherAgent;
+}
+
+it('AW-01 isolation: another business, another client, another person under a live delegation', async () => {
+  world.provider.mode('answer');
+  const mine = await liveWork(s, 'alpha work', 2_000);
+  await stepOf(mine);
+  const madeUp = await call(mine, { leaseId: randomUUID() });
+  const before = await callCount();
+  const seen = world.provider.seen.length;
+  const refusedAlike = (result: unknown): void => {
+    expect(result).toEqual(madeUp);
+    expect(result).toEqual({ ok: false, code: 'LEASE_NOT_OWNED', callId: null });
+  };
+  expect(statusOf('LEASE_NOT_OWNED')).toBe(403);
+
+  // 1. Another business: its lease, presented here, reads as made up; and ours, there.
+  await acrossBusiness(mine, refusedAlike);
+
+  // 2. Another client in the same business: client X, on its own shared task, presents the lease on client Y's.
+  const taskX = await createTask(s, 'client X task');
+  // As in CQ-7: a person outside the staff holding one record-scoped grant on its own task (R4).
+  const clientX = await enrol(s.db.app, s.business, 'client-x');
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    await grantTo(tx, clientX, 'read', { kind: 'record', id: taskX });
+  });
+  refusedAlike(
+    await callModel(
+      s.db.app,
+      s.business,
+      { ...caller(mine), actorId: clientX.actorId },
+      requestFor(mine),
+      broker,
+    ),
+  );
+
+  // 3. Another person's agent, under its own live delegation, presents our agent's lease.
+  const otherAgent = await otherAgentUnderLiveDelegation();
   refusedAlike(
     await callModel(
       s.db.app,

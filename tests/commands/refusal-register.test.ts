@@ -117,15 +117,15 @@ describe('the refusal register', () => {
       'WRONG_BUSINESS',
     ]);
   });
+});
 
+describe('the refusal register', () => {
   it('keeps every unproduced code inside the register', () => {
     for (const code of UNPRODUCED_CODES) {
       expect(registeredRefusal(code), code).toBeDefined();
     }
   });
-});
 
-describe('the refusal register', () => {
   it('registers the code for a value of the wrong type, which the trigger would raise on', () => {
     expect(registeredRefusal('FIELD_VALUE_INVALID')).toBeDefined();
   });
