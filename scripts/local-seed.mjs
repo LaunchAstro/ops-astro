@@ -101,6 +101,8 @@ const GRANTS_BY_ROLE = {
     ['custody', 'manage'],
     // The connector fleet on Connections & signal (MP-14-7a).
     ['connection', 'read'],
+    // Standing mandates (MP-14-10a): the owner's and administrators', never an agent's.
+    ['mandate', 'manage'],
   ],
   member: [
     ['task', 'read'],

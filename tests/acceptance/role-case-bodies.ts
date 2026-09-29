@@ -26,6 +26,7 @@
 import { randomUUID } from 'node:crypto';
 import type { CommandDeclaration, CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
+import { connectionsBody, type ConnectionsContext } from './role-case-connections.ts';
 
 /** The proposal every case that needs a gate proposes, spelled once. */
 export const PROPOSAL = {
@@ -56,18 +57,13 @@ export interface Task {
 }
 
 /** What a recipe needs from the world, and nothing else. */
-export interface BodyContext {
+export interface BodyContext extends ConnectionsContext {
   /** The task every case can name, for the reads that only need one. */
   readonly alphaTaskId: string;
   /** A person of this business, for the one field that must name one. */
   readonly assigneePersonId: string;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
-  /**
-   * A broken connection to repair (MP-14-7a), owner-written. A context that
-   * cannot write one leaves it out and the body names a fabricated one.
-   */
-  brokenConnection?(): Promise<string>;
 }
 
 const batchOf = (answer: Answer): string =>
@@ -115,6 +111,8 @@ export function createPositiveBody(
 ): (declaration: CommandDeclaration) => Promise<Prepared> {
   // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
   return async function positiveBody(declaration: CommandDeclaration): Promise<Prepared> {
+    const connections = await connectionsBody(declaration.name, context);
+    if (connections !== undefined) return connections;
     const target = async (): Promise<Record<string, unknown>> => {
       const task = await context.freshTask(`a task for ${declaration.name}`);
       return { recordId: task.id, expectedRevision: task.revision };
@@ -244,14 +242,6 @@ export function createPositiveBody(
           body: { secretId: String((set.body['detail'] as Record<string, unknown>)['secretId']) },
         };
       }
-      // The connector fleet (MP-14-7a): the admin reads it and starts a repair.
-      case 'connection.fleet':
-      case 'connection.signal':
-        return { body: {} };
-      case 'connector.repair':
-        return {
-          body: { connectionId: (await context.brokenConnection?.()) ?? randomUUID() },
-        };
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');

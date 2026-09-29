@@ -66,6 +66,13 @@ const pair = (
 const actorOf = (by: Presenter): string =>
   by.kind === 'person' ? (by.caller.actorId as string) : by.identity.actorId;
 
+// A standing mandate's limits (MP-14-10a): the same bytes in both forms.
+const MANDATE_LIMITS = {
+  ceiling: { amountMinor: 100, currency: 'AUD' },
+  expiresAt: '2099-01-01T00:00:00.000Z',
+} as const;
+const MANDATE = { classes: ['*'], ...MANDATE_LIMITS, label: 'a mandate aimed abroad' } as const;
+
 describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () => {
   let w: IdentWorld;
   let alpha: string;
@@ -268,6 +275,13 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           'delegation.revoke',
           pair('delegationId', f.picked.delegationId, (delegationId) => ({ delegationId })),
         ],
+        ['mandate.file', pair('clientId', f.clientId, (clientId) => ({ clientId, ...MANDATE }))],
+        ['mandate.revoke', pair('mandateId', f.mandateId, (mandateId) => ({ mandateId }))],
+        [
+          'graduation.promote',
+          pair('classId', f.classId, (classId) => ({ classId, ...MANDATE_LIMITS })),
+        ],
+        ['graduation.demote', pair('classId', f.classId, (classId) => ({ classId }))],
       );
       for (const [op, { operand, forms }] of cells) {
         // eslint-disable-next-line no-await-in-loop

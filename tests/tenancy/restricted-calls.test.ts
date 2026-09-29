@@ -47,7 +47,7 @@ import {
 } from './restricted-calls-cases.ts';
 
 /**
- * One owner-written row per business in the nine tables the journey leaves
+ * One owner-written row per business in the eleven tables the journey leaves
  * empty, so their filtering is asked of rows that exist (TC:108). Written by
  * this suite's own setup rather than the shared world, so no other suite's
  * world assertions move.
@@ -108,6 +108,16 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, round_on, at, tone, what, who, say)
      values ($1, gen_random_uuid(), date '2026-09-29', timestamptz '2026-09-28 23:00:00+00',
              'plain', 'restricted calls', 'restricted calls', 'restricted calls') returning 1`,
+  // Graduation and standing mandates (MP-14-10a): the journey files none.
+  'public.graduation_classes': `insert into public.graduation_classes
+       (business_id, id, client_id, client_label, action_class, class_label, earned)
+     values ($1, gen_random_uuid(), gen_random_uuid(), 'restricted calls client',
+             'restricted.calls', 'restricted calls', 'ready') returning 1`,
+  'public.standing_mandates': `insert into public.standing_mandates
+       (business_id, id, client_id, classes, refuses, expires_at, label, authored_by_actor_id)
+     select $1, gen_random_uuid(), gen_random_uuid(), '{*}', true, now() + interval '1 day',
+            'restricted calls', a.id
+       from public.actors a where a.business_id = $1 order by a.id limit 1 returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */

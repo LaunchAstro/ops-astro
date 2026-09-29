@@ -887,6 +887,11 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `connection.fleet`                 | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `connector.repair`                 | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `connection.signal`                | `readConnectionSignal` (`reads/signal.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `connection.graduation`            | `readConnectionGraduation` (`reads/graduation.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `mandate.file`                     | `fileMandate` (`commands/mandates.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `mandate.revoke`                   | `revokeStandingMandate` (`commands/mandates.ts`)                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `graduation.promote`               | `promoteClass` (`commands/mandates.ts`)                                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `graduation.demote`                | `demoteClass` (`commands/mandates.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
@@ -1450,3 +1455,38 @@ role only reads them.
 | Operation           | Route                | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------- | -------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `connection.signal` | `/connection/signal` | `{}` | `{ ok: true, leases: [{ id, agentId, purpose, collections, access: 'read' \| 'exec', client: { id, label } \| null, grantedAt, expiresAt, endedAt, revocationCause, state: 'live' \| 'ran_out' \| 'taken_back', redemptions }], leaseCounts: { live, ranOut, takenBack, liveExec }, tripwires: [...], tripwireCounts: { armed, cannotBeArmed }, nightRound: { roundOn, steps: [{ id, at, tone, what, who, say, cite }], notClean } \| null, roster: [{ agentId, active, liveGrants }] }`; `SCOPE_NOT_GRANTED` 403 |
+
+## Graduation and standing mandates (MP-14-10a)
+
+The per-client region of Connections & signal: one read on `connection:read`,
+never an agent, and four changes on `mandate:manage` held business-wide
+(owner and administrators; a mandate carries a spend ceiling), never an agent.
+The read brings every client the caller's scopes reach, so choosing a client
+on the scope bar asks the server nothing. A client-scoped reader sees only
+their clients' rows and mandates.
+
+A standing mandate is structured (owner answer 13): action classes picked from
+the client's scope list (`*`, a family such as `social.*`, or one class), one
+client, a ceiling in whole minor units of one currency, an expiry after now,
+and a sentence that is its label only. A refusal carries no ceiling and holds
+the classes it matches. A mandate is filed and revoked, never edited
+(`standing_mandates`, migration 0035). Graduation rows are written by the
+agent loops as decisions land (`graduation_classes`); the application role
+reads them and bumps their revision. A row's `state` is derived: a live
+matching refusal holds a ready or promoted class; a live mandate a promote
+filed for that class makes it `promoted`; otherwise it is what its record
+earned.
+
+Core's check is `standingMandateVerdict` (`core-runtime/src/mandates.ts`),
+asked inside the transaction that applies an effect. It share-locks the
+client's mandates, so a revocation waits for an effect already checking and
+the next check no longer sees it. A matching live refusal wins; an approval
+covers the effect only in its currency and within its ceiling.
+
+| Operation               | Route                    | Body                                                                                            | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------- | ------------------------ | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.graduation` | `/connection/graduation` | `{}`                                                                                            | `{ ok: true, clients: [{ id, label, scopes }], rows: [{ id, clientId, actionClass, classLabel, clearance, state, heldBy, neverWhy, promotedAt, approved, edited, rejected, since, note, revision }], mandates: [{ id, clientId, classes, refuses, ceiling: { amountMinor, currency } \| null, expiresAt, expired, label, graduationClass, authoredBy, createdAt, revision }] }`; `SCOPE_NOT_GRANTED` 403 |
+| `mandate.file`          | `/mandate/file`          | `{ clientId, classes, refuses?, ceiling: { amountMinor, currency } \| null, expiresAt, label }` | `{ mandateId, refuses }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404 for a client not in the list                                                                                                                                                                                                                                                                                       |
+| `mandate.revoke`        | `/mandate/revoke`        | `{ mandateId, expectedRevision? }`                                                              | `{ mandateId, state: 'revoked' }`; `VERSION_STALE` 409; `TRANSITION_NOT_PERMITTED` 409 when already revoked; `NOT_FOUND` 404                                                                                                                                                                                                                                                                             |
+| `graduation.promote`    | `/graduation/promote`    | `{ classId, ceiling: { amountMinor, currency }, expiresAt, expectedRevision? }`                 | `{ classId, mandateId, state: 'promoted' }`; `TRANSITION_NOT_PERMITTED` 409 unless the class is ready and held by nothing; `VERSION_STALE` 409                                                                                                                                                                                                                                                           |
+| `graduation.demote`     | `/graduation/demote`     | `{ classId, expectedRevision? }`                                                                | `{ classId, mandateId, state: 'ready' }`; `TRANSITION_NOT_PERMITTED` 409 unless promoted                                                                                                                                                                                                                                                                                                                 |

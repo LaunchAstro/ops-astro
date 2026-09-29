@@ -75,10 +75,8 @@ export const READ_NAMES = [
   // server's `reads/dispatch.ts` asks it, not this list.
   'task.queue',
   'preset.plan',
-  // Custody's rows as set or not set (C31).
+  // Custody (C31); Connections & signal: fleet, signal, graduation (MP-14-7a, MP-14-8, MP-14-10a).
   'secret.list',
-  // Connections & signal: the fleet (MP-14-7a), then grants, tripwires and the night round (MP-14-8),
-  // then graduation and standing mandates per client (MP-14-10a).
   'connection.fleet',
   'connection.signal',
   'connection.graduation',

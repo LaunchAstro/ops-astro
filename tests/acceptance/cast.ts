@@ -101,6 +101,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'custody',
   // The connector fleet (MP-14-7a): `connection:read`.
   'connection',
+  // Standing mandates (MP-14-10a): `mandate:manage` is the owner's and administrators'.
+  'mandate',
 ];
 
 export async function tokenFor(
