@@ -33,6 +33,7 @@ import { listCustodySecrets } from './custody.ts';
 import { readConnectionFleet } from './connections.ts';
 import { readConnectionSignal } from './signal.ts';
 import { readConnectionGraduation } from './graduation.ts';
+import { readAutomationRegistry } from './automations.ts';
 import { readCapabilities } from './capabilities.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
@@ -339,6 +340,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'holds-any-grant',
     outsiderNotFound: false,
     serve: async (tx, session) => await readConnectionGraduation(tx, session),
+  },
+  // The business's definitions, versions and activations (C33): asked like
+  // `settings.read`, at the business, since no row carries a client.
+  'automation.registry': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => await readAutomationRegistry(tx),
   },
   'settings.read': {
     identifiers: [],

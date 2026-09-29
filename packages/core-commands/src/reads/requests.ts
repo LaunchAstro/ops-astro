@@ -35,6 +35,7 @@ import type {
   ConnectionFleetResult,
   ConnectionSignalResult,
   ConnectionGraduationResult,
+  AutomationRegistryResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
@@ -99,6 +100,8 @@ export interface ReadOperands {
   readonly 'connection.signal': NoOperands;
   /** Graduation rows and standing mandates per client, same scopes (MP-14-10a). */
   readonly 'connection.graduation': NoOperands;
+  /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
+  readonly 'automation.registry': NoOperands;
   /**
    * What the caller may do here. The one read whose answer is about the caller
    * rather than about the business, and the one that takes no grant: every
@@ -132,4 +135,5 @@ export type ReadResult =
   | ConnectionFleetResult
   | ConnectionSignalResult
   | ConnectionGraduationResult
+  | AutomationRegistryResult
   | CapabilitiesResult;
