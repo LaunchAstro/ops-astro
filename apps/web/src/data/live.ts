@@ -191,3 +191,13 @@ export function hubOf(client: { openLive: OpenTopics }): LiveHub {
   hubs.set(client, hub);
   return hub;
 }
+
+/** The floor for pages no topic reaches (C4 CS-1.2): agency-wide rollups. */
+export interface RollupFloor {
+  /** Re-read on the floor until the returned function is called. */
+  follow(onRefresh: () => void): () => void;
+}
+
+export function createRollupFloor(_options: HubOptions = {}): RollupFloor {
+  return { follow: () => () => {} };
+}
