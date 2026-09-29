@@ -44,6 +44,9 @@ export const READ_NAMES = [
   // the command line serve; the working minimum draws them in INB-1g.
   'inbox.read',
   'inbox.count',
+  // Items no path reaches (INB-1e), for `operations:read`; the operations view
+  // (C55) draws them.
+  'inbox.unattended',
 ] as const;
 
 /**

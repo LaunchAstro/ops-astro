@@ -98,6 +98,10 @@ const GRANTS_BY_ROLE = {
     // A top-up is a money decision on `billing` (T2e, the permission
     // catalogue's `billing:decide`): the owner and administrators hold it.
     ['billing', 'decide'],
+    // The operations view's key (C55): owner and administrators by install
+    // default, never a member, never an agent. `inbox.unattended` asks it
+    // (INB-1e), and it names other people's items.
+    ['operations', 'read'],
   ],
   member: [
     ['task', 'read'],
