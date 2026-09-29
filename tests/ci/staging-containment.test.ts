@@ -9,7 +9,7 @@
 // limit, checking the stand-in's health after each. It needs Docker: skipped
 // on a machine without it, and failing in CI, where Docker is always present.
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -72,12 +72,15 @@ const writable = (def: Definition, service: Service): [string, number][] => [
     const [path, options = ''] = entry.split(/:(.*)/su);
     return [`tmpfs ${path}`, sizeOption(options)];
   }),
-  ...(service.volumes ?? []).map((entry): [string, number] => {
-    const source = entry.split(':')[0]!;
-    const volume = def.volumes?.[source];
-    const tmpfs = volume?.driver_opts?.['type'] === 'tmpfs';
-    return [`volume ${source}`, tmpfs ? sizeOption(volume.driver_opts?.['o'] ?? '') : Number.NaN];
-  }),
+  // A read-only mount (the database's certificate) is not a place to write.
+  ...(service.volumes ?? [])
+    .filter((entry) => !entry.endsWith(':ro'))
+    .map((entry): [string, number] => {
+      const source = entry.split(':')[0]!;
+      const volume = def.volumes?.[source];
+      const tmpfs = volume?.driver_opts?.['type'] === 'tmpfs';
+      return [`volume ${source}`, tmpfs ? sizeOption(volume.driver_opts?.['o'] ?? '') : Number.NaN];
+    }),
 ];
 
 type Row = {
@@ -145,7 +148,7 @@ const REFUSALS: Row[] = [
     name: "production's sockets and files: named staging volumes only, no bind mount",
     check: (def) =>
       each(def, all(def), (s) =>
-        (s.volumes ?? []).every((v) => /^ops-astro-staging-[a-z-]+:\/[^:]*$/u.test(v))
+        (s.volumes ?? []).every((v) => /^ops-astro-staging-[a-z-]+:\/[^:]*(?::ro)?$/u.test(v))
           ? null
           : `volumes ${String(s.volumes)}`,
       ),
@@ -327,7 +330,10 @@ live('S0-1 containment and resource limits, live', () => {
           Object.keys(load().services).map((s) => [s, { container_name: names(s) }]),
         ),
         networks: { staging: { name: names('staging') } },
-        volumes: { 'ops-astro-staging-pgdata': { name: names('pgdata') } },
+        volumes: {
+          'ops-astro-staging-pgdata': { name: names('pgdata') },
+          'ops-astro-staging-tls': { name: names('tls') },
+        },
       }),
     );
     // The stand-in production service: the same image, none of staging's limits,
@@ -353,6 +359,41 @@ live('S0-1 containment and resource limits, live', () => {
       image,
     ]);
     expect(started.status, started.out).toBe(0);
+    // The database serves TLS only; the runbook provisions its certificate, and
+    // this run gives it a throwaway one in its own volume.
+    const tls = join(scratch, 'tls');
+    mkdirSync(tls);
+    const made = spawnSync('openssl', [
+      'req',
+      '-x509',
+      '-newkey',
+      'ec',
+      '-pkeyopt',
+      'ec_paramgen_curve:prime256v1',
+      '-nodes',
+      '-subj',
+      '/CN=staging-db',
+      '-days',
+      '1',
+      '-keyout',
+      join(tls, 'server.key'),
+      '-out',
+      join(tls, 'server.crt'),
+    ]);
+    expect(made.status).toBe(0);
+    const filled = docker([
+      'run',
+      '--rm',
+      '-v',
+      `${names('tls')}:/tls`,
+      '-v',
+      `${tls}:/src:ro`,
+      image,
+      'sh',
+      '-c',
+      'cp /src/server.crt /src/server.key /tls/ && chown 70:70 /tls/* && chmod 600 /tls/server.key',
+    ]);
+    expect(filled.status, filled.out).toBe(0);
     const up = compose(['up', '-d', '--wait', 'db']);
     expect(up.status, up.out).toBe(0);
     await settle(prodPort, 60);

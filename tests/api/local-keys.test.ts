@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Context } from 'hono';
 import { createKeySetVerifier } from '../../apps/api/auth/jwks.ts';
+import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { signBearer, TEST_KEY_SET, TEST_KEY_SET_URL, testSignIn } from '../support/sign-in.ts';
 // @ts-expect-error -- a local tool in plain JavaScript, with no declarations
@@ -150,11 +151,13 @@ describe('S0-6 local keys', () => {
     });
 
     it('leaves no shared secret and no key in the file the API reads', () => {
-      const env = readFileSync(join(sandbox.root, '.local/auth.env'), 'utf8');
-      expect(env).not.toContain('SUPABASE_JWT_SECRET');
-      expect(env).not.toContain(OLD_SECRET);
-      expect(env).not.toContain('"d"');
-      expect(env).toContain('GOTRUE_URL=http://127.0.0.1:54391');
+      const env = readEnvFile(join(sandbox.root, '.local/auth.env'), { required: true });
+      expect(Object.keys(env)).not.toContain('SUPABASE_JWT_SECRET');
+      for (const value of Object.values(env)) {
+        expect(value).not.toContain(OLD_SECRET);
+        expect(value).not.toContain('"d"');
+      }
+      expect(env['GOTRUE_URL']).toBe('http://127.0.0.1:54391');
     });
 
     it('keeps the key on a second run: a new one would end every session issued', () => {
