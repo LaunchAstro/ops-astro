@@ -139,6 +139,19 @@ press, Space or Enter, through `task.set_adhoc` or `task.share_with_client`
 and `task.revoke_client_share` at the task's revision; a success rereads
 the task and a refusal is quoted with the tick left as the server has it.
 
+Below the facts, the Team and Agent perspectives (`screens/task/Perspectives.tsx`,
+MP-4-3): Team holds the lifecycle, assignee, details, subtasks, time, comments
+and history; Agent holds the proposals and their gates. The panes are hidden,
+never unmounted, so a draft survives a switch, and the side showing is held
+above the read so a write's reread keeps it. `perspectiveCounts` is the one
+counting rule for the page and the dock task panel: Team counts unfinished live
+subtasks, Agent counts open gates (the live version's pending gate), else one
+for unshipped staged output; zero draws no badge. Subtasks and staged output
+are not on the read yet, so Team counts nothing until MP-4-4. The doors ("Open
+this task in the panel", "Add the first one in the task panel", "Log time in
+the task panel", "Start the timer in the task panel") call the screen's
+`onOpenPanel`; with none given they are drawn disabled.
+
 The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
 goes to `/settings`. An open dock tab is announced as "Close Settings"
 (`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and

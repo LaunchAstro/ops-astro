@@ -10,8 +10,8 @@
 // wired by MP-4-8. The harness captures (`MP-4-3 visual match`) wait on
 // MP-1-7.
 
-import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { act, type ReactElement } from 'react';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { ProposalView } from '../../packages/core-wire/src/index.ts';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
@@ -20,8 +20,37 @@ import {
   perspectiveCounts,
   type PanelDoor,
 } from '../../apps/web/src/screens/task/Perspectives.tsx';
-import { mount, type Mounted } from '../surfaces/mount.tsx';
-import { found, page, server, task, tick } from './task-page-stub.tsx';
+import { mount as mountOnce, type Mounted } from '../surfaces/mount.tsx';
+import { found, page as pageOnce, server, task, tick, type Answers } from './task-page-stub.tsx';
+
+// A test that fails before its own unmount leaves its page mounted, and a
+// page left behind can disturb the next test's reads. Every view is unmounted
+// after its test, whichever way the test ended.
+const live = new Set<Mounted>();
+
+const kept = (view: Mounted): Mounted => {
+  live.add(view);
+  return {
+    ...view,
+    unmount: async () => {
+      if (!live.delete(view)) return;
+      await view.unmount();
+    },
+  };
+};
+
+const mount = async (element: ReactElement): Promise<Mounted> => kept(await mountOnce(element));
+
+const page = async (taskKey: string, answers: Answers): Promise<Mounted> =>
+  kept(await pageOnce(taskKey, answers));
+
+afterEach(async () => {
+  for (const view of live) {
+    live.delete(view);
+    // eslint-disable-next-line no-await-in-loop -- one page at a time
+    await view.unmount();
+  }
+});
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -149,10 +178,24 @@ describe('MP-4-3 CS-4.8 switch perspectives', () => {
     expect(view.find('#perspective-tab-agent')?.getAttribute('aria-selected')).toBe('true');
     expect(paneHidden(view, 'team')).toBe(true);
     expect(paneHidden(view, 'agent')).toBe(false);
+    // Hidden, never unmounted: the other side is still in the page.
+    expect(view.find('#perspective-panel-team #task-fields')).not.toBeNull();
 
     await press(view, '#perspective-tab-agent', 'ArrowLeft');
     expect(paneHidden(view, 'team')).toBe(false);
     expect(paneHidden(view, 'agent')).toBe(true);
+    await view.unmount();
+  });
+});
+
+describe('MP-4-3 CS-4.8 the side showing belongs to this reading', () => {
+  it('a reread keeps the side the reader chose', async () => {
+    const view = await page('Proj-Verity-Pacing', found());
+    await view.click('#perspective-tab-agent');
+    await view.click('[data-refresh="task"]');
+    await tick();
+    expect(view.find('#perspective-tab-agent')?.getAttribute('aria-selected')).toBe('true');
+    expect(paneHidden(view, 'agent')).toBe(false);
     await view.unmount();
   });
 });
