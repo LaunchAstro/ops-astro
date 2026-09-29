@@ -85,6 +85,16 @@ export const ROUTES = {
   // rather than a letter it would be borrowing. It carries a rail entry
   // because it is a place a person goes to deliberately, and the panel
   // registry carries the same destination for the dock.
+  // Connections & signal, the fleet (MP-14-7a). The mockup's `/connections/`
+  // page; it has no pinned surface letter, so `surface` is `none`.
+  'agency:connections': {
+    namespace: 'agency',
+    path: '/connections/',
+    title: 'Connections & signal',
+    surface: 'none',
+    rail: true,
+    authenticated: true,
+  },
   'agency:settings': {
     namespace: 'agency',
     path: '/settings',

@@ -215,9 +215,9 @@ describe('MP-14-7a Connections & signal fleet', () => {
   it('MP-14-7a a row click expands its detail (several may be open)', async () => {
     const { page } = await open();
     await page.click('[data-connection="c-11"]');
-    await page.click('[data-connection="c-12"]');
+    await page.click('[data-connection="c-08"]');
     expect(page.find('[data-connection="c-11"]')?.getAttribute('aria-expanded')).toBe('true');
-    expect(page.find('[data-connection="c-12"]')?.getAttribute('aria-expanded')).toBe('true');
+    expect(page.find('[data-connection="c-08"]')?.getAttribute('aria-expanded')).toBe('true');
     expect(page.all('[data-connection-detail]')).toHaveLength(2);
     const detail = page.find('[data-connection-detail="c-11"]')?.textContent ?? '';
     expect(detail).toContain('12 clients connected');
@@ -260,6 +260,7 @@ describe('MP-14-7a Connections & signal fleet', () => {
 
   it('MP-14-7a Sync now shows only on a stuck source, and it, re-authorise and test stay visibly unavailable', async () => {
     const { page } = await open();
+    await page.click('[data-fleet-more]');
     await page.click('[data-connection="c-00"]');
     await page.click('[data-connection="c-11"]');
     expect(page.find('[data-connection-detail="c-00"] [data-action="sync"]')).toBeNull();

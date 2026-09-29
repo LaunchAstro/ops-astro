@@ -67,7 +67,7 @@ import {
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
 
-/** Rows for the four tables the journey leaves empty; foreign keys are off when they are written. */
+/** Rows for the seven tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'public.person_identifiers': {
     person_id: randomUUID(),
@@ -92,6 +92,22 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     name: 'restricted-calls.seed',
     scope_kind: 'business',
     scope_id: null,
+  },
+  // The connector fleet (MP-14-7a, 0033): nothing the journey does writes one.
+  'public.connections': {
+    connector_key: 'restricted-calls',
+    label: 'restricted calls',
+    status: 'active',
+  },
+  'public.connection_clients': {
+    connection_id: randomUUID(),
+    client_id: randomUUID(),
+    client_label: 'restricted calls client',
+  },
+  'public.connection_repairs': {
+    connection_id: randomUUID(),
+    connection_revision: 1,
+    started_by_actor_id: randomUUID(),
   },
 };
 

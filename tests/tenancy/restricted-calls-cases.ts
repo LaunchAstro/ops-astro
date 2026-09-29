@@ -45,6 +45,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // columns. A count is admitted and a sealed column is refused, which
   // `tests/custody/c31-credentials.test.ts` proves by name (C31).
   ['siu', 'custody_secrets'],
+  // 0033: the fleet is read here and written by MP-13-5 and the broker, and a
+  // repair is recorded once and never changed (MP-14-7a).
+  ['s', 'connection_clients connections'],
+  ['si', 'connection_repairs'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(

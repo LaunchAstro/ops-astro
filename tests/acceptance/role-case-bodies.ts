@@ -63,6 +63,11 @@ export interface BodyContext {
   readonly assigneePersonId: string;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
+  /**
+   * A broken connection to repair (MP-14-7a), owner-written. A context that
+   * cannot write one leaves it out and the body names a fabricated one.
+   */
+  brokenConnection?(): Promise<string>;
 }
 
 const batchOf = (answer: Answer): string =>
@@ -239,6 +244,13 @@ export function createPositiveBody(
           body: { secretId: String((set.body['detail'] as Record<string, unknown>)['secretId']) },
         };
       }
+      // The connector fleet (MP-14-7a): the admin reads it and starts a repair.
+      case 'connection.fleet':
+        return { body: {} };
+      case 'connector.repair':
+        return {
+          body: { connectionId: (await context.brokenConnection?.()) ?? randomUUID() },
+        };
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');
