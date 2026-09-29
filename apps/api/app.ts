@@ -281,7 +281,7 @@ export function createApi(options: ApiOptions): Hono {
         const outcome = outcomeOf(context, declaration);
         const signal = options.observe && signalOf(outcome);
         if (signal) options.observe?.(signal);
-        // Download volume (TR-SEC-9): the records each read handed out, per business and reader.
+        // Download volume (security line 9): the records each read handed out, per business and reader.
         const { business, person: who, items } = outcome;
         if (items > 0) options.observe?.({ kind: 'export', business, who, items });
         return response;
@@ -341,7 +341,7 @@ export function createApi(options: ApiOptions): Hono {
         { ...body, command: declaration.name },
       );
       if (isCommandRefusal(result)) return refuse(context, result);
-      // An agent's read hands out records too (TR-SEC-9 download volume): its queue, a task.
+      // An agent's read hands out records too (security line 9, download volume): its queue, a task.
       if (declaration.kind === 'read') context.set(HANDED_OUT, recordsIn(result.detail ?? {}));
       return context.json(agentAnswer(declaration.name, result), 200);
     });
