@@ -22,7 +22,7 @@
     {
       "id": "font-chivo-mono",
       "kind": "font",
-      "package": "@fontsource/chivo-mono",
+      "package": "@fontsource-variable/chivo-mono",
       "version": "5.3.0",
       "licence": "OFL-1.1",
       "licenceFile": "licences/OFL-chivo-mono.txt",
