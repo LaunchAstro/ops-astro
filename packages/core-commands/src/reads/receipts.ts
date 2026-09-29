@@ -8,27 +8,44 @@
 // observed effect has no receipt. The receipt is the runtime's derived view
 // (`core-runtime/src/receipt.ts`) and names no operation to undo it.
 
-import { isUuid } from '../../../core-records/src/index.ts';
-import { readReceipt, receiptTask } from '../../../core-runtime/src/index.ts';
+import { isUuid, type TenantQuery } from '../../../core-records/src/index.ts';
+import { readReceipt, receiptTask, type Receipt } from '../../../core-runtime/src/index.ts';
 import { effectOperationId } from '../../../core-wire/src/index.ts';
-import { refuseNotFound } from '../commands/refusal.ts';
+import { refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import { invalid } from '../commands/operands.ts';
-import type { SpineRow } from './catalogue.ts';
 
-export const RECEIPT_READ: SpineRow<'task.receipt'> = {
-  identifiers: ['attemptId'],
-  parse: ({ attemptId }) =>
-    typeof attemptId === 'string'
-      ? { ok: true, operands: { attemptId } }
-      : { ok: false, refusal: invalid('attemptId', 'Send attemptId as the observed attempt.') },
-  spine: true,
-  subject: async (tx, _spine, { attemptId }) =>
-    isUuid(attemptId) ? await receiptTask(tx, attemptId) : undefined,
-  authority: 'declared',
-  outsiderNotFound: true,
-  async serve(tx, _session, { attemptId }, { recordId }) {
-    if (recordId === undefined) return refuseNotFound();
-    const receipt = await readReceipt(tx, attemptId, effectOperationId(attemptId));
-    return receipt === undefined ? refuseNotFound() : { ok: true, receipt };
-  },
-};
+type Operands = { readonly attemptId: string };
+
+export function parseReceipt(
+  body: Readonly<Record<string, unknown>>,
+):
+  | { readonly ok: true; readonly operands: Operands }
+  | { readonly ok: false; readonly refusal: CommandRefusal } {
+  const { attemptId } = body;
+  return typeof attemptId === 'string'
+    ? { ok: true, operands: { attemptId } }
+    : {
+        ok: false,
+        refusal: invalid('attemptId', 'Send attemptId as the observed attempt.'),
+      };
+}
+
+/** The attempt's task, before the grant check; a malformed id names none. */
+export async function receiptSubject(
+  tx: TenantQuery,
+  _spine: unknown,
+  { attemptId }: Operands,
+): Promise<string | undefined> {
+  return isUuid(attemptId) ? await receiptTask(tx, attemptId) : undefined;
+}
+
+export async function serveReceipt(
+  tx: TenantQuery,
+  _session: unknown,
+  { attemptId }: Operands,
+  { recordId }: { readonly recordId: string | undefined },
+): Promise<{ readonly ok: true; readonly receipt: Receipt } | CommandRefusal> {
+  if (recordId === undefined) return refuseNotFound();
+  const receipt = await readReceipt(tx, attemptId, effectOperationId(attemptId));
+  return receipt === undefined ? refuseNotFound() : { ok: true, receipt };
+}
