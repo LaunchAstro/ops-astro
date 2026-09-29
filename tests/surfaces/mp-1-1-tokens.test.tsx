@@ -45,9 +45,9 @@ afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-/** Every token the product declares that is not colour, spacing, radius, shadow or motion (icon sizes from MP-1-2). */
+/** Every token the product declares that is not colour, spacing, radius, shadow or motion (icon sizes from MP-1-2, the type scale from MP-1-4). */
 const OTHER_GROUPS =
-  /^--(font-|icon-|text-(h\d|body|sm|label|overline)$|fs-|leading-|lh-|tracking-|weight-|rail-w$|dock-w$|aip-dock$|content-floor$|scheme$)/u;
+  /^--(font-|icon-|text-(h\d|body|body-lg|sm|label|overline|display|micro|num-(lg|md|sm))$|type-|fs-|leading-|lh-|tracking-|weight-|rail-w$|dock-w$|aip-dock$|content-floor$|scheme$)/u;
 /** Kept legacy names the canonical set maps onto another token (buttons, radius, brand). */
 const ALIASES = new Set([
   '--brand',

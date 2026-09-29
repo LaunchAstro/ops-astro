@@ -678,6 +678,13 @@ places this build does not yet reach it.
   and Chivo Mono under the SIL Open Font License, Lucide's icons under ISC,
   and the project's own wordmark and planet mark. The build copies the record
   and the licence texts into its output.
+- Text is set in the 23 styles of the declared scale, `--type-<name>` in
+  `packages/ui/src/styles/1-tokens.css` (MP-1-4). A rule sets text with the
+  style's `font`, `letter-spacing` and `text-transform` together, or not at
+  all; `pnpm type:census` refuses any other size, weight, family, line height,
+  tracking or case, and lists the four exceptions a ruling keeps (strong text
+  at the medium weight, the two larger button labels, the run hero's mono
+  figure). A stat number keeps one size at every width.
 - Layouts are written for 1480, 900 and 390. Photographed at all three, light
   and dark, on 2026-09-23 with `node tests/browser/keyboard-and-widths.mjs`,
   which writes `width-<w>-<theme>-<page>.png` into `SHOT_DIR`; that run's

@@ -20,10 +20,9 @@
 }
 .cbd__flabel {
   margin-right: 0.3rem;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   color: var(--ink-faint);
 }
 .cbd__tag {
@@ -32,13 +31,14 @@
   gap: 0.3rem;
   padding: 0.2rem 0.5rem;
   border: 1px solid var(--border);
-  font-size: var(--text-label);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .cbd__tagk {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   color: var(--ink-faint);
 }
 .cbd__tagx {
@@ -46,7 +46,9 @@
   background: none;
   color: var(--text-muted);
   cursor: pointer;
-  line-height: 1;
+  font: var(--type-button);
+  letter-spacing: var(--type-button-tracking);
+  text-transform: var(--type-button-case);
 }
 .cbd__wrap {
   overflow-x: auto;
@@ -56,7 +58,9 @@
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 0.875rem;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 /* The head cells are the one table head (`.table th`, MP-1-3); the label
    only adds its ellipsis. */
@@ -64,7 +68,6 @@
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1;
 }
 .cbd__tbl td {
   padding: 0.5rem var(--s-3);
@@ -84,16 +87,17 @@
   border-bottom: 1px solid var(--border-strong);
 }
 .cbd__grpb {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   color: var(--text);
 }
 .cbd__grpr {
   margin-left: 0.6rem;
   color: var(--text-muted);
-  text-transform: none;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .cbd__name {
   display: flex;
@@ -106,10 +110,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: var(--weight-medium);
+  font: var(--type-body-strong);
+  letter-spacing: var(--type-body-strong-tracking);
+  text-transform: var(--type-body-strong-case);
 }
 .cbd__rank {
-  font-family: var(--font-mono);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .cbd__dim {
   color: var(--text-dim);
@@ -121,12 +129,14 @@
   width: 1.6rem;
   height: 1.6rem;
   border: 1px solid var(--border-strong);
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
 }
 .tl__due {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .tl__due.is-now {
   color: var(--warning);
