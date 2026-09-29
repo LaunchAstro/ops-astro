@@ -13,6 +13,7 @@
 // api-1-isolation-world.ts; the three surfaces and the leak check are in
 // api-1-isolation-surfaces.ts.
 
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { CatalogueRow } from '../../packages/core-wire/src/index.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -144,6 +145,16 @@ function delegationCrossing(): void {
         report: { wrote: 'made-up' },
       }),
       'task.pickup': () => ({ reservationId: attemptedForeignReservationId }),
+      'task.propose': (record) => ({
+        recordId: record,
+        purpose: 'api_1_isolation',
+        maximumMinor: 2_500,
+        currency: 'AUD',
+        payload: { instruction: 'made-up' },
+        step: { kind: 'compose', payload: { tone: 'plain' } },
+      }),
+      'task.dispatch': () => ({ ...notOwnLease }),
+      'task.observe': () => ({ ...notOwnLease, attemptId: randomUUID(), outcome: 'completed' }),
       'task.queue': () => null,
       'session.capabilities': () => null,
     };
@@ -153,6 +164,8 @@ function delegationCrossing(): void {
     const reason: Record<string, string> = {
       'task.heartbeat': 'DELEGATION_OUT_OF_PURPOSE',
       'task.handback': 'DELEGATION_OUT_OF_PURPOSE',
+      'task.dispatch': 'DELEGATION_OUT_OF_PURPOSE',
+      'task.observe': 'DELEGATION_OUT_OF_PURPOSE',
       'task.pickup': 'DELEGATION_ALREADY_LIVE',
     };
     for (const row of agentRows) {
