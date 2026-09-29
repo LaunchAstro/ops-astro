@@ -91,15 +91,16 @@ export interface Detector {
   readonly tracked: () => number;
 }
 
+/** A scope as a JSON array: no business key or subject can spell another scope. */
 function scopeOf(signal: SecuritySignal): string {
   switch (signal.kind) {
     case 'sign-in-failed':
     case 'cross-scope-refusal':
-      return `${signal.business}\u0000${signal.person}`;
+      return JSON.stringify([signal.business, signal.person]);
     case 'webhook-signature-failed':
-      return `${signal.business}\u0000${signal.source}`;
+      return JSON.stringify([signal.business, signal.source]);
     case 'export':
-      return `${signal.business}\u0000${signal.client}`;
+      return JSON.stringify([signal.business, signal.client]);
     case 'authority-changed':
       return signal.business;
     case 'secret-scan-failed':
