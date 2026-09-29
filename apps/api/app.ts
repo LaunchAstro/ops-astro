@@ -62,6 +62,7 @@ import {
 import {
   settleAccessEndings,
   type FactorProvider,
+  type HealthSources,
   type LoginProvider,
 } from '../../packages/core-commands/src/index.ts';
 import {
@@ -141,6 +142,12 @@ export interface ApiOptions {
    * and no agent holds `account:write`.
    */
   readonly factors?: FactorProvider;
+  /**
+   * The installation's service-health sources (C34): the watcher, the error
+   * sink and, where switched on, tracing. Read for `operations.read` after its
+   * grant check, outside the serving transaction.
+   */
+  readonly health?: HealthSources;
   /**
    * The sign-in provider's calls for a login whose access has ended (C58),
    * `auth/logins.ts` in a deployment. `access.end` ends access locally either

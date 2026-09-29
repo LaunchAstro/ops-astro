@@ -17,6 +17,14 @@ export { type CommandRequest } from './commands/requests.ts';
 export { lookupEffect } from './commands/register-store.ts';
 export { executeRead } from './reads/execute.ts';
 export { isReadName } from './reads/catalogue.ts';
+export {
+  HEALTH_STALE_SECONDS,
+  readServiceHealth,
+  type HealthSource,
+  type HealthSources,
+  type ServiceObservation,
+  type SourceAnswer,
+} from './reads/service-health.ts';
 export { type ReadRequest } from './reads/requests.ts';
 export {
   enrolSecondFactor,
