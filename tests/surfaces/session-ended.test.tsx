@@ -43,6 +43,11 @@ const TASK = {
   revision: 3,
   history: [],
   board: null,
+  rank: { number: null, score: null, calc: '' },
+  adHoc: false,
+  clientAccess: false,
+  stage: null,
+  clientSet: false,
   // `task.read` carries the task's comments. This stub is not about them, so
   // the list is the empty one the read gives a task nobody has spoken on — an
   // absent key would be a shape the API never sends.

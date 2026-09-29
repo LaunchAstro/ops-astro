@@ -974,6 +974,12 @@ read, filtered by the business, so a slot naming another business's record
 reads as no board. An agent's pool is its one task, so an agent always gets
 `{ readable: false }`. The shared view carries no `board`.
 
+`task.read` also carries `stage`, the stage as `task.set_stage` stored it
+(null for none), and `clientSet`, true when the task is put under a client
+(`task.set_party`), for the task page's facts band (MP-4-2). The client's
+name waits on the client model. Both are the task's own record; the shared
+view carries neither.
+
 ## Proposal projection
 
 `task.read` carries every proposal on the task under `proposals`, newest

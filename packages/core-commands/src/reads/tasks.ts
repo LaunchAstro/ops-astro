@@ -53,6 +53,8 @@ interface TaskRowRead {
   readonly assignee_name: string | null;
   readonly ad_hoc: boolean | null;
   readonly board_id: string | null;
+  readonly stage: string | null;
+  readonly client_set: boolean;
 }
 
 // The task's state record, by the slot the trigger keeps (`uuid_1`). One copy
@@ -81,7 +83,9 @@ const SELECT = `
          p.id as assignee_id,
          p.display_name as assignee_name,
          r.bool_2 as ad_hoc,
-         r.uuid_5 as board_id
+         r.uuid_5 as board_id,
+         r.txt_5 as stage,
+         r.uuid_7 is not null as client_set
     from public.records r${STATE_JOIN}
     left join public.people p
       on p.business_id = r.business_id and p.id = r.uuid_2`;
@@ -270,8 +274,8 @@ export async function readTaskDetail(
     adHoc: row.ad_hoc === true,
     clientAccess: (await outsideHolders(tx, row.id)).length > 0,
     board: await readBoardCrumb(tx, taskTypeId, row.board_id, rankPool),
-    stage: null,
-    clientSet: false,
+    stage: row.stage,
+    clientSet: row.client_set,
   };
 }
 
