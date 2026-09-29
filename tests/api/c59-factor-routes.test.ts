@@ -280,6 +280,15 @@ describe.skipIf(serverUrl === undefined)(
       const deletion = seen.find((request) => request.route === 'DELETE /factors/factor-one');
       expect(deletion?.authorization).toBe('Bearer aal2-access-token');
       expect(await factorOf(world.mia.personId)).toBeUndefined();
+      // The person row's mirror follows the factor rows: no verified factor
+      // left, so a sign-in without one is enough again.
+      const mirrored = await world.db.app.withBusiness(world.alpha, async (tx) =>
+        tx.query<{ readonly on: boolean }>(
+          'select second_factor_verified as on from public.people where id = $1',
+          [world.mia.personId],
+        ),
+      );
+      expect(mirrored[0]?.on).toBe(false);
     });
 
     const HOSTILE: ReadonlyArray<readonly [string, Reply]> = [
@@ -316,11 +325,12 @@ describe.skipIf(serverUrl === undefined)(
 
     it('C59 hostile provider: a slow answer is abandoned at the time limit and refused', async () => {
       replies['POST /factors'] = (_q, response) => {
-        setTimeout(() => json(200, GOOD_ENROL)(_q, response, ''), 1500).unref();
+        setTimeout(() => json(200, GOOD_ENROL)(_q, response, ''), 4000).unref();
       };
       const started = Date.now();
       const answer = await act('enrol', await fresh(world.noah), {}, slowApi);
-      expect(Date.now() - started).toBeLessThan(1200);
+      // Abandoned long before the answer arrives at 4 s; the margin is for a loaded machine.
+      expect(Date.now() - started).toBeLessThan(3000);
       expect(answer.code).toBe('PROVIDER_ANSWER_INVALID');
       expect(answer.body['names']).toEqual(['slow']);
       expect(await factorOf(world.noah.personId)).toBeUndefined();

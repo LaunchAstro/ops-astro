@@ -4,8 +4,10 @@
 // records it (C59, migration 0032).
 //
 // The provider holds the factor and its secret. These rows hold only that the
-// person has one and where it stands, which is what login resolution reads to
-// refuse a sign-in made without it. Every function takes the serving
+// person has one and where it stands. Whether the person has a *verified* one
+// is mirrored onto `people.second_factor_verified` in the same statement set,
+// because login resolution asks it on every call and reads it inside the one
+// query it already makes (`login-resolution.ts`). Every function takes the serving
 // transaction, so the record and the audit event of the act that caused it
 // commit together.
 
@@ -59,25 +61,6 @@ export async function liveFactor(
   return row === undefined ? undefined : shaped(row);
 }
 
-/**
- * Whether a sign-in without the second factor is no longer enough for this
- * person.
- *
- * **A database from before 0032 has no factor table, and the answer there is
- * no.** Nobody in it can have recorded a factor, so this is the true answer
- * and not a way round the check. It matters because login resolution asks on
- * every call below `aal2`, and the upgrade proofs seed a database built to an
- * earlier migration through the real command path (`tests/runtime/fixture.ts`),
- * which is this path. A production upgrade migrates before the API restarts.
- */
-export async function hasVerifiedFactor(tx: TenantQuery, personId: string): Promise<boolean> {
-  const table = await tx.query<{ readonly present: boolean }>(
-    `select to_regclass('public.second_factors') is not null as present`,
-  );
-  if (table[0]?.present !== true) return false;
-  return (await liveFactor(tx, personId))?.status === 'verified';
-}
-
 /** A first enrolment: the provider has issued a factor that is not yet verified. */
 export async function recordFactorEnrolled(
   tx: TenantQuery,
@@ -103,12 +86,14 @@ export async function recordFactorVerified(
   tx: TenantQuery,
   factor: { readonly personId: string; readonly factorId: string },
 ): Promise<void> {
-  await tx.query(
+  const verified = await tx.query(
     `update public.second_factors
         set status = 'verified', verified_at = coalesce(verified_at, now())
-      where business_id = $1 and person_id = $2 and id = $3 and status <> 'removed'`,
+      where business_id = $1 and person_id = $2 and id = $3 and status <> 'removed'
+      returning id`,
     [tx.businessId, factor.personId, factor.factorId],
   );
+  if (verified.length > 0) await mirror(tx, factor.personId);
 }
 
 /** Replacing or removing a factor ends its row; the row is kept. */
@@ -121,5 +106,19 @@ export async function recordFactorRemoved(
         set status = 'removed', removed_at = now()
       where business_id = $1 and person_id = $2 and id = $3 and status <> 'removed'`,
     [tx.businessId, factor.personId, factor.factorId],
+  );
+  await mirror(tx, factor.personId);
+}
+
+/** The person row's copy of "has a verified factor", recomputed from the factor rows. */
+async function mirror(tx: TenantQuery, personId: string): Promise<void> {
+  await tx.query(
+    `update public.people p
+        set second_factor_verified = exists (
+              select 1 from public.second_factors f
+               where f.business_id = p.business_id and f.person_id = p.id
+                 and f.status = 'verified')
+      where p.business_id = $1 and p.id = $2`,
+    [tx.businessId, personId],
   );
 }
