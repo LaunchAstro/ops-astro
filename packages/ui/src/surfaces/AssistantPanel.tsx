@@ -162,7 +162,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
   const chat = props.chats.find((each) => each.key === props.selected);
   const sendable = !(props.offer.models.length === 0 && props.offer.waiting !== null);
   return (
-    <section className="aip" data-assistant="panel" aria-label="Agent">
+    <section className="aipanel" data-assistant="panel" aria-label="Agent">
       <Head
         chat={chat}
         offer={props.offer}
