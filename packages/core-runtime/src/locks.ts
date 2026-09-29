@@ -37,6 +37,8 @@
 // A model call (AW-01) takes none of these: its run's task `for share` (the
 // `task` class, so a `task.set_party` cannot move the task's client while the
 // call is decided, C60; it is also the one row a bound field reads, S3),
+// then its run `for update` (the `run` class: a call that reaches the
+// ceiling moves the run into the budget wait, AW-05, `broker-wait.ts`),
 // then its lease, delegation and reservation rows in that order
 // (`core-custody/src/broker-facts.ts`), then its ceiling key per business and
 // operation, then its route's key, which every business shares

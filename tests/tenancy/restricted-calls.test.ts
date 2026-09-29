@@ -106,6 +106,23 @@ const UNREACHED: Readonly<Record<string, string>> = {
             p.content_size, true
        from public.run_definition_pins p where p.business_id = $1 order by p.run_id limit 1
      returning 1`,
+  // AW-05: an ask stands on a lease the journey made, with its run and
+  // reservation, and a decision; a business with none gets made-up ids, which
+  // the owner's seed writes with foreign keys off.
+  'public.budget_asks': `insert into public.budget_asks
+       (business_id, id, run_id, reservation_id, lease_id, decision_id, ask_number, kind,
+        ceiling_minor, spent_minor, currency)
+     select $1, gen_random_uuid(),
+            coalesce((select run_id from public.leases where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select reservation_id from public.leases where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select id from public.leases where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select id from public.gate_decisions where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            1, 'stop', 400, 0, 'AUD'
+     returning 1`,
   'public.bootstrap_bytes': `insert into public.bootstrap_bytes
        (business_id, content_digest, content_size, bytes)
      values ($1, encode(sha256('seed'::bytea), 'hex'), 4, 'seed'::bytea) returning 1`,

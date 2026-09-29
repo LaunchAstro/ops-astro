@@ -1438,6 +1438,38 @@ writes its ledger row, the audit copy and its one audit event before it returns
 the bytes, so a read that cannot be recorded fails the transaction and returns
 nothing. `setDigest` is the path-sorted set digest over a run's reads.
 
+## The budget wait
+
+The approved ceiling is the stop (AW-05; `0034_budget_wait`, numbered again
+at the rebase). A model call whose priced maximum does not fit in what the
+run's reservation has left is refused `BUDGET_UNAVAILABLE`, and in the same
+transaction the run stops and asks (`raiseBudgetWait`,
+`core-custody/src/broker-wait.ts`). The reserve holds the run's task, the run,
+the lease, the delegation and the reservation in the contract's order, so two
+calls on one run reaching the ceiling at once stop it once.
+
+- **The ask.** `budget_asks`, one row per stop: the run, the reservation, the
+  lease that reached it, the decision that approved the plan, the ceiling (the
+  reservation's hold), the spend to date (what the reservation has committed)
+  and the currency. The rows are the persisted count. A run asks three times
+  at most and the third is the consolidated decision (execution decisions
+  15.2); a stop after it raises no fourth ask and is refused with words that
+  say so. The application may insert and read an ask, never update or delete
+  one; worker and broker hold nothing on it.
+- **Nothing spends.** The lease ends (`released`) and its delegation is
+  retired (`work_retired`), so a later call on it is refused before any hold.
+  The reservation stays `held`: the approved ceiling is kept for the answer.
+- **No machine path out.** `planned_runs.state` gains `waiting_budget`, entered
+  from `claimed` only. The trigger `planned_runs_budget_wait_holds` refuses
+  any change out of it (23514). Restart recovery (`discoverEligible`) does not
+  classify a waiting run's hold on its ended lease or retired delegation:
+  neither is a transition to classify, and the wait is not a clock. A
+  cancelled, rejected or superseded lineage is still classified.
+- **Built ahead, not here yet.** The answers (a top-up under the four-eyes
+  threshold, and the one-click end that parks the task), the question in the
+  conversation where the plan was approved (AW-04's origin, SL12's drawer),
+  and the second-factor check on a money answer (C59).
+
 ## What is not here
 
 - **No worker, sweeper, top-up, write-off or effect activation.** `apps/worker/`

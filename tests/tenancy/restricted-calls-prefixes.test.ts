@@ -115,6 +115,18 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     content_size: 4,
     is_entry: true,
   },
+  // AW-05: nothing raises an ask before a run reaches its ceiling.
+  'public.budget_asks': {
+    run_id: randomUUID(),
+    reservation_id: randomUUID(),
+    lease_id: randomUUID(),
+    decision_id: randomUUID(),
+    ask_number: 1,
+    kind: 'stop',
+    ceiling_minor: 400,
+    spent_minor: 0,
+    currency: 'AUD',
+  },
   'public.bootstrap_bytes': {
     content_digest: SEED_DIGEST,
     content_size: 4,

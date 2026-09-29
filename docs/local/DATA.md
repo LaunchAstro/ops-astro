@@ -177,7 +177,8 @@ identity, grant, record and command-envelope spine ported from
 delegation migrations, and [RUNTIME.md](RUNTIME.md) covers the proposal, gate,
 decision, budget, lease and attempt migrations, and the model-call ledger and
 copy register (`0032_model_calls`), and the pinned instruction files
-(`0033_bootstrap_pins`). Read `ls migrations/` for the current set.
+(`0033_bootstrap_pins`), and the budget wait (`0034_budget_wait`). Read
+`ls migrations/` for the current set.
 
 There is no `tasks` table. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field

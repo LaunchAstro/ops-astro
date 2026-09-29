@@ -96,6 +96,18 @@ async function lockTask(
   };
 }
 
+/**
+ * The run, after its task and before its lease (the contract's order): a call
+ * that reaches the ceiling moves it into the budget wait (AW-05,
+ * `broker-wait.ts`), so two calls on one run stop it once.
+ */
+async function lockRun(tx: TenantQuery, runId: string): Promise<void> {
+  await tx.query(
+    `select 1 from public.planned_runs where business_id = $1 and id = $2 for update`,
+    [tx.businessId, runId],
+  );
+}
+
 /** The lease, next in the lock order. Another business's, a made-up one, someone else's and one of our own under another delegation all read alike. */
 async function lockLease(
   tx: TenantQuery,
@@ -193,6 +205,7 @@ export async function lockFacts(
   }
   const task = await lockTask(tx, request.leaseId);
   if (task === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  await lockRun(tx, task.runId);
   const leased = await lockLease(tx, caller, request);
   if (!leased.ok) return leased;
   const { lease } = leased;

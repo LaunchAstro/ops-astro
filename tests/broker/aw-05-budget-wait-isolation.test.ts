@@ -27,6 +27,7 @@ import {
   liveWork,
   propose,
   seedSchedules,
+  type Work,
 } from '../runtime/schedules-harness.ts';
 import {
   broker,
@@ -104,53 +105,56 @@ const waitOf = async (leaseId: unknown) =>
     )
   )[0];
 
-it('AW-05 isolation', async () => {
-  const mine = await liveWork(s, 'aw05 alpha at its ceiling', AT_THE_CEILING);
-  await stepOf(mine);
-  const untouched = { run: 'claimed', lease: 'live', asks: '0' };
-
-  // 1. Another business's agent presents the lease.
-  const bravo = await seedSchedules(s.db, 'aw05bravo', 1_000_000);
+/** The lease's holder swapped for `actorId`, in `businessId`: refused as a made-up lease, and the run untouched. */
+async function crossing(mine: Work, businessId: BusinessId, actorId: string): Promise<void> {
   refusedAlike(
-    await callModel(
-      s.db.app,
-      bravo.business,
-      { ...caller(mine), actorId: bravo.agentActorId },
-      requestFor(mine),
-      broker,
-    ),
+    await callModel(s.db.app, businessId, { ...caller(mine), actorId }, requestFor(mine), broker),
   );
-  expect(await waitOf(mine.picked['leaseId'])).toEqual(untouched);
+  expect(await waitOf(mine.picked['leaseId'])).toEqual({
+    run: 'claimed',
+    lease: 'live',
+    asks: '0',
+  });
+}
 
-  // 2. A person of the same business, holding one record-scoped grant on their own task.
+/** A person of the same business, holding one record-scoped grant on their own task. */
+async function recordScopedPerson(): Promise<string> {
   const ownTask = await createTask(s, 'aw05 client X task');
   const clientX = await enrol(s.db.app, s.business, 'aw05-client-x');
   await s.db.app.withBusiness(s.business, async (tx) => {
     await grantTo(tx, clientX, 'read', { kind: 'record', id: ownTask });
   });
-  refusedAlike(
-    await callModel(
-      s.db.app,
-      s.business,
-      { ...caller(mine), actorId: clientX.actorId },
-      requestFor(mine),
-      broker,
-    ),
-  );
-  expect(await waitOf(mine.picked['leaseId'])).toEqual(untouched);
+  return clientX.actorId;
+}
 
-  // 3. Another person's agent, under its own live delegation.
-  const otherAgent = await otherPersonsAgent();
-  refusedAlike(
-    await callModel(
-      s.db.app,
-      s.business,
-      { ...caller(mine), actorId: otherAgent },
-      requestFor(mine),
-      broker,
-    ),
+/** Bravo reads and counts none of alpha's asks, and cannot plant one on alpha's run. */
+async function bravoSeesNone(bravo: BusinessId, mine: Work): Promise<void> {
+  const [alphaAsk] = await s.db.admin.execute<Record<string, unknown>>(
+    `select a.* from public.budget_asks a join public.leases l on l.run_id = a.run_id where l.id = $1`,
+    [mine.picked['leaseId']],
   );
-  expect(await waitOf(mine.picked['leaseId'])).toEqual(untouched);
+  const asBravo = async (sql: string, params: readonly unknown[]): Promise<string> =>
+    await s.db.app
+      .withBusiness(bravo, async (tx) => JSON.stringify(await tx.query(sql, params)))
+      .catch((error: unknown) => String((error as { code?: string }).code));
+  expect(await asBravo(`select count(*)::int as n from public.budget_asks`, [])).toBe('[{"n":0}]');
+  const plant = `insert into public.budget_asks
+       (business_id, id, run_id, reservation_id, lease_id, decision_id, ask_number, kind,
+        ceiling_minor, spent_minor, currency)
+     values ($1, $2, $3, $4, $5, $6, 2, 'stop', 400, 0, 'AUD')`;
+  const ids = ['run_id', 'reservation_id', 'lease_id', 'decision_id'].map((key) => alphaAsk?.[key]);
+  expect(await asBravo(plant, [s.business, randomUUID(), ...ids])).toBe('42501');
+}
+
+it('AW-05 isolation', async () => {
+  const mine = await liveWork(s, 'aw05 alpha at its ceiling', AT_THE_CEILING);
+  await stepOf(mine);
+  // 1. Another business's agent; 2. a record-scoped person of this business;
+  // 3. another person's agent under its own live delegation.
+  const bravo = await seedSchedules(s.db, 'aw05bravo', 1_000_000);
+  await crossing(mine, bravo.business, bravo.agentActorId);
+  await crossing(mine, s.business, await recordScopedPerson());
+  await crossing(mine, s.business, await otherPersonsAgent());
 
   // The run's own agent stops it, once.
   expect((await call(mine)).ok).toBe(false);
@@ -159,33 +163,5 @@ it('AW-05 isolation', async () => {
     lease: 'released',
     asks: '1',
   });
-
-  // Bravo reads and counts none of alpha's asks, and cannot plant one on alpha's run.
-  const [alphaAsk] = await s.db.admin.execute<Record<string, unknown>>(
-    `select a.* from public.budget_asks a join public.leases l on l.run_id = a.run_id where l.id = $1`,
-    [mine.picked['leaseId']],
-  );
-  const asBravo = async (sql: string, params: readonly unknown[]): Promise<string> =>
-    await s.db.app
-      .withBusiness(bravo.business as BusinessId, async (tx) =>
-        JSON.stringify(await tx.query(sql, params)),
-      )
-      .catch((error: unknown) => String((error as { code?: string }).code));
-  expect(await asBravo(`select count(*)::int as n from public.budget_asks`, [])).toBe('[{"n":0}]');
-  expect(
-    await asBravo(
-      `insert into public.budget_asks
-         (business_id, id, run_id, reservation_id, lease_id, decision_id, ask_number, kind,
-          ceiling_minor, spent_minor, currency)
-       values ($1, $2, $3, $4, $5, $6, 2, 'stop', 400, 0, 'AUD')`,
-      [
-        s.business,
-        randomUUID(),
-        alphaAsk?.['run_id'],
-        alphaAsk?.['reservation_id'],
-        alphaAsk?.['lease_id'],
-        alphaAsk?.['decision_id'],
-      ],
-    ),
-  ).toBe('42501');
+  await bravoSeesNone(bravo.business, mine);
 });
