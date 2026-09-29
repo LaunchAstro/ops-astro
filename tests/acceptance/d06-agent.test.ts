@@ -48,6 +48,8 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'session.capabilities',
   'task.read',
   'task.comment',
+  // The three marks (MP-4-9), which an agent sets on its own task inside its delegation.
+  'task.set_scores',
   'task.heartbeat',
   'task.pickup',
   'task.handback',
@@ -141,6 +143,16 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     if (name === 'task.read') return { body: { operationId, recordId: held.taskId }, credential };
     if (name === 'task.comment') {
       const body = { recordId: held.taskId, body: 'the agent notes it', audience: 'internal' };
+      return { body: { operationId, ...body }, credential };
+    }
+    if (name === 'task.set_scores') {
+      // Read, not carried: each control moves the task's revision.
+      const rows = await harness.world.db.admin.execute<{ readonly revision: string }>(
+        `select revision::text as revision from public.records where id = $1`,
+        [held.taskId],
+      );
+      const expectedRevision = Number(rows[0]?.revision ?? '0');
+      const body = { recordId: held.taskId, expectedRevision, fields: { impact: 5 } };
       return { body: { operationId, ...body }, credential };
     }
     if (name === 'task.heartbeat') {
