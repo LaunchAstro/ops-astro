@@ -53,6 +53,7 @@ import {
   callFor,
   catalogueFunctions,
   catalogueTables,
+  columnUpdateFindings,
   copyStatement,
   describeOutcome,
   expectedOutcome,
@@ -336,6 +337,10 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
           if (before !== after) wrong.push(`${line}, the table changed`);
         }
       }
+
+      wrong.push(
+        ...(await columnUpdateFindings(db.admin, callers, activeCallers, alpha, migration.version)),
+      );
 
       for (const fn of functions) {
         for (const caller of [...activeCallers, 'owner'] as const) {

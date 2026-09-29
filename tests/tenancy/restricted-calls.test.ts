@@ -34,6 +34,7 @@ import {
   catalogueFunctions,
   catalogueTables,
   classify,
+  columnUpdateFindings,
   copyStatement,
   describeOutcome,
   expectedOutcome,
@@ -249,6 +250,11 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
     expect(executed.length).toBe(tables.length * OPERATIONS.length * TABLE_CALLERS.length);
   }, 120_000);
+
+  it('grants update column by column only as the contract says, and answers every caller on it', async () => {
+    const wrong = await columnUpdateFindings(world.db.admin, callers, TABLE_CALLERS, world.alpha);
+    expect(wrong).toStrictEqual([]);
+  });
 
   it('refuses a whole own-business row re-sent by every other caller, and it does not land', async () => {
     const wrong: string[] = [];

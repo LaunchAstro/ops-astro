@@ -43,7 +43,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'bootstrap_reads run_definition_pins'],
   ['i', 'bootstrap_bytes'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
-  ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
+  ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
+  // AW-02: a historical run is never rewritten; the application moves its
+  // state alone, by the column grant in COLUMN_UPDATES.
+  ['si', 'planned_runs'],
   ['siu', 'reservations task_envelopes'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
@@ -66,7 +69,106 @@ export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromE
 const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
   'public.person_logins': { from: '0028', letters: 'd' },
   'public.person_merges': { from: '0028', letters: 'd' },
+  // 0033 takes back update on the whole run and grants it on `state` alone.
+  'public.planned_runs': { from: '0033', letters: 'u' },
 };
+
+/**
+ * Update granted column by column: the table, the columns, and the first
+ * migration that grants them. Every other column-level privilege, to any
+ * role, is outside the contract.
+ */
+const COLUMN_UPDATES: Readonly<
+  Record<string, { readonly from: string; readonly columns: readonly string[] }>
+> = {
+  'public.planned_runs': { from: '0033', columns: ['state'] },
+};
+
+/** The `table.column` pairs the application group may update after `at`, or at the full schema. */
+export function columnUpdatesAt(at?: string): readonly string[] {
+  return Object.entries(COLUMN_UPDATES)
+    .filter(([, grant]) => at === undefined || at.slice(0, 4) >= grant.from)
+    .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
+    .toSorted();
+}
+
+/** Every column-level privilege on the cluster's schema, as `grantee PRIVILEGE table.column`. */
+export async function catalogueColumnGrants(admin: AdminConnection): Promise<readonly string[]> {
+  const rows = await admin.execute<{ line: string }>(
+    `select pg_get_userbyid(acl.grantee) || ' ' || acl.privilege_type || ' ' ||
+            n.nspname || '.' || c.relname || '.' || a.attname as line
+       from pg_attribute a
+       join pg_class c on c.oid = a.attrelid
+       join pg_namespace n on n.oid = c.relnamespace
+       cross join lateral aclexplode(a.attacl) acl
+      where a.attacl is not null and n.nspname in ('public', 'ops')
+      order by 1`,
+  );
+  return rows.map((row) => row.line);
+}
+
+/**
+ * The column grants held against the contract, then an actual update of each
+ * granted column by every caller: the own business moves its own rows, every
+ * other application position touches none, and every other role is refused.
+ * Returns what is wrong, one line each; an empty list is the contract met.
+ */
+export async function columnUpdateFindings(
+  admin: AdminConnection,
+  callers: Callers,
+  active: readonly CallerName[],
+  business: string,
+  at?: string,
+): Promise<string[]> {
+  const pairs = columnUpdatesAt(at);
+  const held = await catalogueColumnGrants(admin);
+  const wanted = pairs.map((pair) => `${APPLICATION_ROLE} UPDATE ${pair}`);
+  const wrong = held.join(', ') === wanted.join(', ') ? [] : [`column grants: ${held.join(', ')}`];
+  for (const pair of pairs) {
+    // One table at a time: the callers share their connections.
+    // oxlint-disable-next-line no-await-in-loop
+    wrong.push(...(await columnCalls(admin, callers, active, business, pair)));
+  }
+  return wrong;
+}
+
+/** A column update's answer: the own business its own rows, other application positions none. */
+function columnExpected(caller: CallerName, own: string): string {
+  if (!APPLICATION_CALLERS.has(caller)) return 'denied';
+  return caller === 'login in the wrapper, own tenant' ? own : 'rows 0';
+}
+
+async function columnCalls(
+  admin: AdminConnection,
+  callers: Callers,
+  active: readonly CallerName[],
+  business: string,
+  pair: string,
+): Promise<string[]> {
+  const table = pair.slice(0, pair.lastIndexOf('.'));
+  const column = pair.slice(pair.lastIndexOf('.') + 1);
+  const text = `update ${table} set "${column}" = "${column}" where business_id = $1 returning 1`;
+  const [counted] = await admin.execute<{ n: number }>(
+    `select count(*)::int as n from ${table} where business_id = $1`,
+    [business],
+  );
+  const own = `rows ${String(counted?.n ?? 0)}`;
+  const wrong: string[] = [];
+  for (const caller of active) {
+    // One statement at a time, each read against the state the last one left.
+    // oxlint-disable-next-line no-await-in-loop
+    const before = await fingerprint(admin, table);
+    // oxlint-disable-next-line no-await-in-loop
+    const outcome = describeOutcome(await callers.call(caller, text, [business]));
+    // oxlint-disable-next-line no-await-in-loop
+    const after = await fingerprint(admin, table);
+    const expected = columnExpected(caller, own);
+    const line = `${pair} update ${caller}: ${outcome}`;
+    if (outcome !== expected) wrong.push(`${line}, expected ${expected}`);
+    if (before !== after) wrong.push(`${line}, the table changed`);
+  }
+  return wrong;
+}
 
 /**
  * What the application group holds on a table after the migration `at` (its
