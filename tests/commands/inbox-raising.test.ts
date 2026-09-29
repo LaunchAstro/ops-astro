@@ -20,10 +20,14 @@
 // their own act).
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Hono } from 'hono';
 import {
+  raiseIncident,
+  raiseMentions,
   readInboxItems,
+  readMentions,
   type InboxItem,
   type InboxReason,
 } from '../../packages/core-records/src/index.ts';
@@ -299,6 +303,25 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
     expect(await allItems()).toBe(before);
   });
 
+  it('Sol proof, criterion 32: incident has a transition raiser', () => {
+    const raising = readFileSync('packages/core-records/src/inbox/raise.ts', 'utf8');
+    expect(raising).toMatch(/reason:\s*'incident'/);
+  });
+
+  it('raises an incident item for each task:manage holder, and nobody else', async () => {
+    const task = await newTask('incident on me');
+    const incidentId = randomUUID();
+    await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+      await grantTo(tx, reviewer, 'manage', { kind: 'record', id: task.id });
+      await raiseIncident(tx, { taskId: task.id, incidentId });
+    });
+    expect(await open(reviewer.personId, 'incident')).toMatchObject([
+      { subjectRecordId: task.id, factKind: 'record', factId: incidentId, owed: true },
+    ]);
+    expect(await open(writer.personId, 'incident')).toStrictEqual([]);
+    expect(await open(fixture.member.personId, 'incident')).toStrictEqual([]);
+  });
+
   describe('INB-1 mention', () => {
     const comment = async (
       task: { id: string; rev: number },
@@ -358,13 +381,30 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       expect(await allItems()).toBe(before);
     });
 
-    it('raises a client comment for an outside party named in a client-visible comment', async () => {
+    it('raises a client comment for an outside party only when the client is paid', async () => {
       const onA = await newTask('client A visible', clientA);
-      ok(await comment(onA, [outsider], 'client'));
+      const commentId = detailOf(ok(await comment(onA, [outsider], 'client')))['commentId'];
+      expect(await open(outsider, 'mention')).toStrictEqual([]);
+      await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+        const named = await readMentions(tx, { taskId: onA.id, audience: 'client' }, [outsider]);
+        const raised = { taskId: onA.id, commentId: String(commentId), audience: 'client' };
+        await raiseMentions(
+          tx,
+          { ...raised, authorActorId: writer.actorId, paidClient: true },
+          named,
+        );
+      });
       expect(await open(outsider, 'client_comment')).toMatchObject([
         { subjectRecordId: onA.id, owed: true, access: 'readable' },
       ]);
-      expect(await open(outsider, 'mention')).toStrictEqual([]);
+    });
+
+    it('Sol proof, criterion 32: an outside party without paid-client status gets no client comment item', async () => {
+      const onA = await newTask('client A without paid status', clientA);
+      ok(await comment(onA, [outsider], 'client'));
+      expect(
+        (await open(outsider, 'client_comment')).filter((i) => i.subjectRecordId === onA.id),
+      ).toStrictEqual([]);
     });
 
     it('refuses a mentions operand that is not a list of identifiers', async () => {

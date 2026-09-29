@@ -7,10 +7,11 @@
 //
 // Each recipient comes from a fact the transition already holds: decide
 // grants on the task for a decision, the person who authorised the lease for
-// a settled run, the new assignee, the people a comment names. Nobody is told
-// of their own assignment or mention. A decision goes to every holder, the
-// proposer included, because authority and not authorship decides who owes
-// it, and a decision a person is responsible for is never switched off.
+// a settled run, the new assignee, the people a comment names, the task's
+// managers for an incident. Nobody is told of their own assignment or
+// mention. A decision goes to every holder, the proposer included, because
+// authority and not authorship decides who owes it, and a decision a person is
+// responsible for is never switched off.
 
 import { grantHolders } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -100,6 +101,31 @@ export async function raiseAssignment(
   });
 }
 
+/**
+ * An incident on a task (CS-16.8). The incident record is C55's; its creating
+ * transition calls this in its own transaction. Everyone holding `task:manage`
+ * on the task is raised one item pointing at the incident record.
+ */
+export async function raiseIncident(
+  tx: TenantQuery,
+  incident: { readonly taskId: string; readonly incidentId: string },
+): Promise<void> {
+  const holders = await grantHolders(tx, {
+    collection: 'task',
+    action: 'manage',
+    scope: { kind: 'record', id: incident.taskId },
+  });
+  for (const person of holders) {
+    // oxlint-disable-next-line no-await-in-loop
+    await raiseInboxItem(tx, {
+      recipientPersonId: person,
+      subjectRecordId: incident.taskId,
+      reason: 'incident',
+      fact: { kind: 'record', id: incident.incidentId },
+    });
+  }
+}
+
 /** A person a comment names, as this business knows them. */
 export interface Mentioned {
   readonly personId: string;
@@ -148,9 +174,10 @@ export async function readMentions(
 }
 
 /**
- * A comment saved: each person it names is raised one item, a client comment
- * for an outside party in a client-visible comment and a mention otherwise,
- * never for the comment's own author.
+ * A comment saved: each staff member it names is raised a mention, never the
+ * comment's own author. An outside party is raised a client comment only
+ * when the comment is client-visible and the client is a paid client
+ * (CS-16.8); otherwise the comment still names them and raises nothing.
  */
 export async function raiseMentions(
   tx: TenantQuery,
@@ -159,6 +186,7 @@ export async function raiseMentions(
     readonly commentId: string;
     readonly audience: string;
     readonly authorActorId: string;
+    readonly paidClient: boolean;
   },
   named: readonly Mentioned[],
 ): Promise<void> {
@@ -169,11 +197,13 @@ export async function raiseMentions(
   const author = authors[0]?.person_id ?? null;
   for (const person of named) {
     if (person.personId === author) continue;
+    const toClient = comment.audience === 'client' && comment.paidClient;
+    if (!person.member && !toClient) continue;
     // oxlint-disable-next-line no-await-in-loop
     await raiseInboxItem(tx, {
       recipientPersonId: person.personId,
       subjectRecordId: comment.taskId,
-      reason: comment.audience === 'client' && !person.member ? 'client_comment' : 'mention',
+      reason: person.member ? 'mention' : 'client_comment',
       fact: { kind: 'record', id: comment.commentId },
     });
   }
