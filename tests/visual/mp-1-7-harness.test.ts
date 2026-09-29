@@ -110,7 +110,9 @@ describe('MP-1-7', () => {
     for (const line of dark)
       expect(line).toMatch(/^pending .+@\d+-dark: waiting for the dark theme/u);
   });
+});
 
+describe('MP-1-7', () => {
   it('MP-1-7 renderer pinned: a capture from a different browser mode is refused until it is measured', () => {
     const pinned = packet.renderer;
     expect(() => checkRenderer(packet, { ...pinned })).not.toThrow();
@@ -142,7 +144,9 @@ describe('MP-1-7 report', () => {
     expect(lines).toContain('FAIL agency:task-detail@390-light: scrolls sideways by 12 px');
     expect(report(packet, builtPages(), everyShot(packet.widths)).failed).toBe(0);
   });
+});
 
+describe('MP-1-7 report', () => {
   it('MP-1-7 every page built so far: each registered route has a picture at each width', () => {
     // The wave 0 pages and the others already built: the route registry's
     // four, and the component gallery (MP-1-3, U04).

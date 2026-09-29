@@ -14,7 +14,7 @@
 // is measured, and the page itself must not scroll sideways.
 
 import { writeFileSync } from 'node:fs';
-import { chromium } from 'playwright';
+import { chromium, type Browser } from 'playwright';
 import { load, openSide, shoot, type Side } from './capture.ts';
 import { comparePng } from './compare.ts';
 import { proveDrift, scrollMetrics, type Say } from './drift.ts';
@@ -26,6 +26,7 @@ import {
   MODE,
   readAssets,
   readPacket,
+  type Packet,
 } from './packet.ts';
 import { overflowOf } from './report.ts';
 
@@ -61,67 +62,106 @@ export async function appDrift(options: {
     const url = new URL(drift.address, app).href;
     const regions = { page: 'viewport' };
     for (const width of packet.widths) {
-      const name = `${drift.label}@${width}-${drift.theme}`;
-      const side = await openSide(browser, packet, width, {
+      await driftAt(width, {
+        browser,
+        packet,
         app,
         session,
-        colorScheme: drift.theme,
-      });
-      sides.push(side);
-      const page = await load(side, packet, url);
-      const asked = await page.evaluate(
-        (theme) => matchMedia(`(prefers-color-scheme: ${theme})`).matches,
-        drift.theme,
-      );
-      if (!asked) say(`FAIL ${name}: the page was not drawn in ${drift.theme}`, true);
-      const base = await shoot(page, name, regions, mask);
-      for (const shot of base) writeFileSync(`${out}/${fileOf(shot.name)}.app.png`, shot.png);
-      if (drift.theme === 'dark') {
-        // A page with no dark theme draws the same in either scheme: that is not dark drift.
-        const light = await openSide(browser, packet, width, {
-          app,
-          session,
-          colorScheme: 'light',
-        });
-        sides.push(light);
-        const lightPage = await load(light, packet, url);
-        const [drawn] = await shoot(lightPage, `${name}-as-light`, regions, mask);
-        await lightPage.close();
-        const same = comparePng(
-          name,
-          drawn?.png ?? Buffer.alloc(0),
-          base[0]?.png ?? Buffer.alloc(0),
-        );
-        say(
-          same.pass
-            ? `FAIL ${name}: draws the same as light; the page has no dark theme`
-            : `ok ${name}: drawn in dark, not as light`,
-          same.pass,
-        );
-      }
-      await proveDrift(
-        page,
-        name,
-        { regions, mask, base },
-        { control: drift.control, token: drift.token, bites: 'page' },
+        drift,
+        mask,
+        out,
         say,
-      );
-      const overflow = overflowOf(await page.evaluate(scrollMetrics));
-      say(
-        overflow === 0
-          ? `ok ${name}: no sideways scroll`
-          : `FAIL ${name}: scrolls sideways by ${overflow} px`,
-        overflow > 0,
-      );
-      await page.close();
-      if (side.unresolved.size > 0) {
-        say(`FAIL ${name}: unresolved ${[...side.unresolved].join(' ')}`, true);
-      }
+        sides,
+        url,
+        regions,
+      });
     }
   } finally {
     await Promise.all(sides.map((side) => side.context.close()));
     await browser.close();
   }
+}
+
+/** One width's run: where it draws, what it reports to and the sides it opens. */
+type DriftAt = {
+  browser: Browser;
+  packet: Packet;
+  app: URL;
+  session: string | undefined;
+  drift: AppDrift;
+  mask: string[];
+  out: string;
+  say: Say;
+  sides: Side[];
+  url: string;
+  regions: Record<string, string>;
+};
+
+/**
+ * The drift proof at one width: drawn in the asked theme, dark not as light,
+ * drift bites, no sideways scroll.
+ */
+async function driftAt(width: number, at: DriftAt): Promise<void> {
+  const { browser, packet, app, session, drift, mask, out, say, sides, url, regions } = at;
+  const name = `${drift.label}@${width}-${drift.theme}`;
+  const side = await openSide(browser, packet, width, {
+    app,
+    session,
+    colorScheme: drift.theme,
+  });
+  sides.push(side);
+  const page = await load(side, packet, url);
+  const asked = await page.evaluate(
+    (theme) => matchMedia(`(prefers-color-scheme: ${theme})`).matches,
+    drift.theme,
+  );
+  if (!asked) say(`FAIL ${name}: the page was not drawn in ${drift.theme}`, true);
+  const base = await shoot(page, name, regions, mask);
+  for (const shot of base) writeFileSync(`${out}/${fileOf(shot.name)}.app.png`, shot.png);
+  if (drift.theme === 'dark') await notAsLight(name, base, { ...at, width });
+  await proveDrift(
+    page,
+    name,
+    { regions, mask, base },
+    { control: drift.control, token: drift.token, bites: 'page' },
+    say,
+  );
+  const overflow = overflowOf(await page.evaluate(scrollMetrics));
+  say(
+    overflow === 0
+      ? `ok ${name}: no sideways scroll`
+      : `FAIL ${name}: scrolls sideways by ${overflow} px`,
+    overflow > 0,
+  );
+  await page.close();
+  if (side.unresolved.size > 0) {
+    say(`FAIL ${name}: unresolved ${[...side.unresolved].join(' ')}`, true);
+  }
+}
+
+/** A page with no dark theme draws the same in either scheme: that is not dark drift. */
+async function notAsLight(
+  name: string,
+  base: { png: Buffer }[],
+  at: DriftAt & { width: number },
+): Promise<void> {
+  const { browser, packet, app, session, mask, say, sides, url, regions, width } = at;
+  const light = await openSide(browser, packet, width, {
+    app,
+    session,
+    colorScheme: 'light',
+  });
+  sides.push(light);
+  const lightPage = await load(light, packet, url);
+  const [drawn] = await shoot(lightPage, `${name}-as-light`, regions, mask);
+  await lightPage.close();
+  const same = comparePng(name, drawn?.png ?? Buffer.alloc(0), base[0]?.png ?? Buffer.alloc(0));
+  say(
+    same.pass
+      ? `FAIL ${name}: draws the same as light; the page has no dark theme`
+      : `ok ${name}: drawn in dark, not as light`,
+    same.pass,
+  );
 }
 
 const fileOf = (capture: string): string => capture.replaceAll(/[^\w@.-]/gu, '_');

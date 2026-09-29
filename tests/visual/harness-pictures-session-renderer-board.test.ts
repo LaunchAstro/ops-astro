@@ -21,7 +21,9 @@ describe('MP-1-7 pictures, session, renderer and board', () => {
     );
     expect(report(packet, builtPages(), shots).failed).toBeGreaterThan(0);
   });
+});
 
+describe('MP-1-7 pictures, session, renderer and board', () => {
   it('MP-1-7 supplied state initialises the app session store', async () => {
     const addInitScript = vi.fn();
     const context = { route: vi.fn(), addInitScript };
@@ -60,7 +62,9 @@ describe('MP-1-7 pictures, session, renderer and board', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
 
+describe('MP-1-7 pictures, session, renderer and board', () => {
   it('MP-1-7 headed and new-headless Chromium have distinct renderer identities', () => {
     const pinned = readPacket().renderer;
     expect(rendererOf(pinned, { headless: false, channel: 'chromium' })).not.toEqual(

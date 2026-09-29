@@ -138,6 +138,33 @@ type StorageState = {
   origins: { origin: string; localStorage: { name: string; value: string }[] }[];
 };
 
+/** Where one request of a side goes: bundled fonts, known externals, the side's own origin. */
+function routeOne(
+  route: Route,
+  packet: Packet,
+  source: { mockupDir: string; tree: string } | { app: URL },
+  side: Side,
+  blobs: Map<string, Buffer>,
+): Promise<void> {
+  const url = new URL(route.request().url());
+  const known = packet.external[url.href];
+  if (url.origin === ASSET_ORIGIN) {
+    const bytes = readFileSync(`${fontCache}/${url.pathname.slice(1)}`);
+    return route.fulfill({ body: bytes, contentType: typeOf(url.pathname) });
+  }
+  if (known !== undefined) {
+    side.external.add(url.href);
+    const body = known === 'bundled fonts' ? fontCss() : `/* ${known} */`;
+    return route.fulfill({ body, contentType: 'text/css' });
+  }
+  if ('app' in source && url.origin === source.app.origin) return route.continue();
+  if ('mockupDir' in source && url.origin === MOCKUP_ORIGIN) {
+    return serveMockup(route, url, source, blobs, side);
+  }
+  side.unresolved.add(url.href);
+  return route.abort('blockedbyclient');
+}
+
 /** One side of the comparison: the mockup, or the app at a local address. */
 export async function openSide(
   browser: Browser,
@@ -159,25 +186,7 @@ export async function openSide(
   });
   const side: Side = { context, theme, external: new Set(), unresolved: new Set() };
   const blobs = new Map<string, Buffer>();
-  await context.route('**/*', (route: Route) => {
-    const url = new URL(route.request().url());
-    const known = packet.external[url.href];
-    if (url.origin === ASSET_ORIGIN) {
-      const bytes = readFileSync(`${fontCache}/${url.pathname.slice(1)}`);
-      return route.fulfill({ body: bytes, contentType: typeOf(url.pathname) });
-    }
-    if (known !== undefined) {
-      side.external.add(url.href);
-      const body = known === 'bundled fonts' ? fontCss() : `/* ${known} */`;
-      return route.fulfill({ body, contentType: 'text/css' });
-    }
-    if ('app' in source && url.origin === source.app.origin) return route.continue();
-    if ('mockupDir' in source && url.origin === MOCKUP_ORIGIN) {
-      return serveMockup(route, url, source, blobs, side);
-    }
-    side.unresolved.add(url.href);
-    return route.abort('blockedbyclient');
-  });
+  await context.route('**/*', (route: Route) => routeOne(route, packet, source, side, blobs));
   if (session !== undefined && 'app' in source) {
     await context.addInitScript(
       ({ origin, entries }: { origin: string; entries: [string, string][] }) => {
