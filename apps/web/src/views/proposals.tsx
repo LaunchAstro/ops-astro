@@ -208,6 +208,7 @@ function Lineage(props: LineageProps): ReactElement {
         <span className="sb__k">Lineage</span>
         <span className="sb__state">{lineage.state}</span>
         <span className="sbact__meta">{lineage.lineageId}</span>
+        <RejectProposal {...props} />
       </div>
       {props.noteAt === 'lineage' && props.note?.lineageId === lineage.lineageId ? (
         <Refusal note={props.note} />
@@ -232,6 +233,52 @@ function Lineage(props: LineageProps): ReactElement {
       <Chain decisions={lineage.decisions} />
       <Reservations reservations={lineage.reservations} />
     </article>
+  );
+}
+
+/**
+ * "Reject this proposal" (T3a, package 2 item 4): the lineage's own action on
+ * its header, outside the gate card, and on offer whenever the lineage is live
+ * and its newest version's gate is open, the revision bound included. It is
+ * `task.decide`'s reject on that gate and version, at parity with the API and
+ * the command line; the server decides under its locks, and a reject there
+ * ends the lineage for good. A terminal lineage draws none.
+ */
+function RejectProposal(props: LineageProps): ReactElement | null {
+  const { busy, run } = useCommand();
+  const { lineage } = props;
+  const head = lineage.versions[0];
+  const gate = head?.gate ?? null;
+  if (lineage.state !== 'live' || head === undefined || gate === null) return null;
+  if (gate.state !== 'pending' || lapsed(gate) || props.note?.closed === true) return null;
+  const reject = (): void => {
+    if (busy) return;
+    props.onDecided(null);
+    run(
+      () =>
+        props.client.mutate('task.decide', {
+          gateId: gate.id,
+          versionId: head.versionId,
+          decision: 'reject',
+          note: 'Rejected from the task page.',
+        }),
+      (settlement) => {
+        settled(settlement, { ...props, gate, lineageId: lineage.lineageId });
+      },
+    );
+  };
+  return (
+    <button
+      className="btn"
+      data-lineage-action="reject"
+      data-reject-gate={gate.id}
+      data-reject-version={head.versionId}
+      disabled={busy}
+      onClick={reject}
+      type="button"
+    >
+      Reject this proposal
+    </button>
   );
 }
 
@@ -471,7 +518,12 @@ function Refusal(props: { readonly note: DecisionNote | null }): ReactElement | 
  * because the reservation the approval created is the server's, not this
  * screen's guess at what an approval does.
  */
-function settled(settlement: Settlement, props: DecideProps): void {
+function settled(
+  settlement: Settlement,
+  props: Pick<DecideProps, 'onDecided' | 'onChanged' | 'lineageId'> & {
+    readonly gate: { readonly id: string };
+  },
+): void {
   if (settlement.kind === 'ok') {
     props.onDecided(null);
     props.onChanged();
