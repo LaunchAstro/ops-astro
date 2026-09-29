@@ -58,6 +58,7 @@ export type {
   SharedTaskView,
   TaskAlert,
   OutageView,
+  StepView,
   TaskBoardResult,
   TaskDetail,
   TaskEnvelope,
