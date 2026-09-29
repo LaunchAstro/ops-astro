@@ -19,3 +19,4 @@ docs/design-system
 # A reviewer's proof test, committed byte-for-byte as it arrived (printed at
 # the default width); the review names it by its bytes.
 tests/surfaces/funnel-visible-at-phone-width.test.ts
+tests/surfaces/gallery-visual-legs-active.test.ts
