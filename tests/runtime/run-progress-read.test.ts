@@ -14,7 +14,12 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { connect, type BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
+import {
+  connect,
+  type BusinessId,
+  type Database,
+  type TenantQuery,
+} from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { executeRead, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
 import { insertBusiness } from '../identity/fixture.ts';
@@ -27,6 +32,7 @@ import {
   handbackBody,
   liveWork,
   openSchedules,
+  racer,
   revisionOf,
   scalar,
   type Detail,
@@ -176,6 +182,68 @@ describe.skipIf(serverUrl === undefined)('T2a run progress on a real database', 
     expect(execution.runs[1]).toMatchObject({ state: 'planned' });
   });
 
+  it('Sol proof, criterion 2: task.execution reports every run present at its event head', async () => {
+    const work = await liveWork(s, `sol-t2a-snapshot-${randomUUID()}`, 1_000);
+    const otherPool = racer(s);
+    let successorRunId: unknown;
+    try {
+      const interleavedDb: Database = {
+        log: s.db.app.log,
+        close: async () => {},
+        withBusiness: async <T>(id: BusinessId, run: (tx: TenantQuery) => Promise<T>): Promise<T> =>
+          await s.db.app.withBusiness(
+            id,
+            async (tx) =>
+              await run({
+                businessId: tx.businessId,
+                async query<Row>(
+                  sql: string,
+                  parameters?: readonly unknown[],
+                ): Promise<readonly Row[]> {
+                  const rows = await tx.query<Row>(sql, parameters);
+                  if (successorRunId === undefined && sql.includes('planned_runs')) {
+                    const successor: Detail = {
+                      purpose: 'draft_the_reply',
+                      maximumMinor: 500,
+                      currency: 'AUD',
+                      payload: { instruction: 'a second pass' },
+                      step: { kind: 'compose', payload: { tone: 'plain' } },
+                    };
+                    const handed = appliedDetail(
+                      await asAgent(
+                        s,
+                        { ...handbackBody(work.picked), successor },
+                        String(work.picked['credential']),
+                        otherPool,
+                      ),
+                      'task.handback',
+                    );
+                    successorRunId = handed['successorRunId'];
+                  }
+                  return rows;
+                },
+              }),
+          ),
+      };
+      const execution = executionOf(
+        await executeRead(interleavedDb, s.business, s.decider.presented, {
+          read: 'task.execution',
+          recordId: work.taskId,
+        } as never),
+        'interleaved read',
+      );
+      expect(successorRunId).toBeTypeOf('string');
+      if (execution.sourceRevision === 2) {
+        expect(execution.runs.map((run) => run['runId'])).toContain(successorRunId);
+      } else {
+        expect(execution).toMatchObject({ sourceRevision: 1, complete: true });
+        expect(execution.events.map((event) => event['kind'])).toEqual(['claimed']);
+      }
+    } finally {
+      await otherPool.close();
+    }
+  });
+
   it('T2a durable events: progress is readable mid-run and identical after an API restart', async () => {
     const work = await liveWork(s, `t2a-restart-${randomUUID()}`, 1_000);
     const before = await readAs(s.decider, { recordId: work.taskId });
@@ -286,5 +354,47 @@ describe.skipIf(serverUrl === undefined)('T2a run progress on a real database', 
         await tx.query<{ readonly n: string }>('select count(*)::text as n from public.run_events'),
     );
     expect(seen[0]?.n).toBe('0');
+  });
+
+  it('Sol proof, criterion 3: T2 isolation crosses two clients with one grant each in both businesses', async () => {
+    const clients = await s.db.admin.execute<{
+      readonly business_id: string;
+      readonly subject_id: string;
+      readonly grants: number;
+      readonly crossed: number;
+    }>(
+      `select g.business_id, g.subject_id, count(distinct g.id)::int as grants,
+              count(distinct e.subject_record_id)::int as crossed
+         from public.grants g
+         join public.actors a on a.business_id = g.business_id
+                             and a.person_id = g.subject_id and a.kind = 'person'
+         left join public.memberships m on m.business_id = g.business_id
+                                        and m.person_id = g.subject_id and m.active
+         left join public.audit_events e on e.business_id = g.business_id
+                                        and e.actor_id = a.id
+                                        and e.command = 'task.execution'
+                                        and e.outcome = 'refused'
+                                        and e.refusal_code = 'NOT_FOUND'
+                                        and e.subject_record_id in (
+                                          select peer.scope_id from public.grants peer
+                                           where peer.business_id = g.business_id
+                                             and peer.subject_id <> g.subject_id
+                                             and peer.collection = 'task' and peer.action = 'read'
+                                             and peer.scope_kind = 'record'
+                                        )
+        where g.subject_kind = 'person' and g.collection = 'task' and g.action = 'read'
+          and g.scope_kind = 'record' and g.revoked_at is null and m.id is null
+        group by g.business_id, g.subject_id`,
+    );
+    const businesses = new Set(clients.map((client) => client.business_id));
+    expect(businesses.size).toBe(2);
+    for (const business of businesses) {
+      const pair = clients.filter((client) => client.business_id === business);
+      expect(pair).toHaveLength(2);
+      for (const client of pair) {
+        expect(client.grants).toBe(1);
+        expect(client.crossed).toBe(1);
+      }
+    }
   });
 });
