@@ -8,8 +8,9 @@
 // evidence column for W06 asks for a **real process restart**, so this starts
 // `apps/api/server.ts` — the composition root a person's browser reaches —
 // with `node`, on a loopback port given by `L5_RESTART_API_PORT`, against the
-// suite's own throwaway database. It is stopped with SIGTERM, observed to have
-// exited and to have released its port, and started again as a new process.
+// suite's own throwaway database. It is stopped with SIGKILL, a hard stop with
+// no shutdown handler run (T3d2, spike RN-02), observed to have exited and to
+// have released its port, and started again as a new process.
 //
 // Split out of `restart-harness.ts` for the per-file cap, and like that file
 // it asserts nothing about the product: it starts, stops and reads.
@@ -28,6 +29,8 @@ export interface RunningApi {
   readonly port: string;
   /** Everything the process wrote to stdout so far, restart recovery's lines among it. */
   output(): string;
+  /** The signal it ended by, once it has: SIGKILL when `stop` ended it. */
+  exited(): Promise<NodeJS.Signals | null>;
   stop(): Promise<void>;
 }
 
@@ -65,7 +68,15 @@ export function declaredApiPort(): string {
   return port;
 }
 
-export async function startApi(world: World, port: string): Promise<RunningApi> {
+/**
+ * `appName` is the process's `PGAPPNAME`, so the kill harness finds its
+ * backends in `pg_stat_activity` by name (T3d2).
+ */
+export async function startApi(
+  world: World,
+  port: string,
+  appName = 'ops-astro-api',
+): Promise<RunningApi> {
   if (await answers(port)) throw new Error(`something already answers on 127.0.0.1:${port}`);
   const admin = new URL(serverUrl as string);
   admin.pathname = `/${world.db.name}`;
@@ -80,6 +91,7 @@ export async function startApi(world: World, port: string): Promise<RunningApi> 
       GATE_SIGNING_KEY_ID: process.env['GATE_SIGNING_KEY_ID'] ?? '',
       GATE_SIGNING_SECRET: process.env['GATE_SIGNING_SECRET'] ?? '',
       RECOVERY_BUSINESS_KEYS: WORLD_BUSINESS_KEYS,
+      PGAPPNAME: appName,
     },
     stdio: ['ignore', 'pipe', 'ignore'],
   });
@@ -92,8 +104,11 @@ export async function startApi(world: World, port: string): Promise<RunningApi> 
   const pidFile = process.env['L5_RESTART_PIDFILE'];
   if (pidFile !== undefined && child.pid !== undefined) appendFileSync(pidFile, `${child.pid}\n`);
   let exited = false;
-  child.once('exit', () => {
-    exited = true;
+  const ended = new Promise<NodeJS.Signals | null>((resolve) => {
+    child.once('exit', (_code, signal) => {
+      exited = true;
+      resolve(signal);
+    });
   });
   for (let attempt = 0; attempt < 100; attempt += 1) {
     if (exited) break;
@@ -110,13 +125,10 @@ export async function startApi(world: World, port: string): Promise<RunningApi> 
     pid: child.pid as number,
     port,
     output: () => written,
+    exited: async () => await ended,
     stop: async () => {
-      const gone = new Promise<void>((resolve) => {
-        if (exited) resolve();
-        else child.once('exit', () => resolve());
-      });
       child.kill('SIGTERM');
-      await gone;
+      await ended;
       // Exited is not the same as gone from the port. A process that left a
       // listener behind would let the "restarted" reads reach the old one.
       if (await answers(port)) throw new Error(`127.0.0.1:${port} still answers after exit`);
