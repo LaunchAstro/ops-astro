@@ -167,11 +167,22 @@ export async function resolveLogin(
     roleKey: found.role_key,
     assurance,
   };
-  // The attempt and what it resolved to commit together with whatever the
-  // caller goes on to do. I13 asks for every attempt, which includes the ones
-  // that succeeded and the ones whose transaction later rolled back — those
-  // roll back with it, and a recorded attempt for work that never happened
-  // would be the worse trail.
+  await recordResolved(tx, presented, session);
+  return session;
+}
+
+/**
+ * The attempt and what it resolved to commit together with whatever the
+ * caller goes on to do. I13 asks for every attempt, which includes the ones
+ * that succeeded and the ones whose transaction later rolled back — those
+ * roll back with it, and a recorded attempt for work that never happened
+ * would be the worse trail.
+ */
+async function recordResolved(
+  tx: TenantQuery,
+  presented: VerifiedSubject,
+  session: Session,
+): Promise<void> {
   await recordAuthenticationAttempt(tx, {
     owner: 'person_login',
     presented,
@@ -180,7 +191,6 @@ export async function resolveLogin(
     actorId: session.actorId,
     personId: session.personId,
   });
-  return session;
 }
 
 // An external party's standing, read under the same snapshot as the mapping.

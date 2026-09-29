@@ -82,7 +82,9 @@ describe('CQ-8 runtime structure', () => {
     });
     expect(takers).toEqual(['packages/core-records/src/tenancy/database.ts']);
   });
+});
 
+describe('CQ-8 runtime structure', () => {
   it('CQ-8 one lock path: the runtime, the envelope and placement take advisory locks only through the helper', () => {
     // A lock taken outside `acquire` or `advisoryLock` fails the scan above;
     // this names the callers, so a new one is a decision rather than a drift.

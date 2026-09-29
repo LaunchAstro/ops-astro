@@ -51,21 +51,21 @@ const ADMISSION = 'insert into public.authentication_attempts';
 
 function stubDatabase(seen: Seen[], admissions: unknown[][] = []): Database {
   return {
-    log: { record: () => undefined, statements: () => [] } as unknown as Database['log'],
+    log: { record: () => {}, statements: () => [] } as unknown as Database['log'],
     withBusiness: async (businessId, run) => {
       seen.push({ businessId, presented: { provider: 'recorded', subject: businessId } });
       return await run({
         businessId,
-        query: async <Row>(text: string, parameters: readonly unknown[] = []) => {
+        query: <Row>(text: string, parameters: readonly unknown[] = []) => {
           if (!text.trimStart().startsWith(ADMISSION)) {
-            throw new Error('the stub database has no rows');
+            return Promise.reject(new Error('the stub database has no rows'));
           }
           admissions.push([...parameters]);
-          return [] as readonly Row[];
+          return Promise.resolve([] as readonly Row[]);
         },
       });
     },
-    close: async () => undefined,
+    close: () => Promise.resolve(),
   };
 }
 
@@ -88,7 +88,7 @@ function build(overrides: Partial<Parameters<typeof createApi>[0]> = {}, seen: S
   return createApi({
     database: stubDatabase(seen),
     verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
-    resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
+    resolveBusiness: (key) => Promise.resolve(key === 'alpha' ? ALPHA : undefined),
     executeCommand,
     executeRead,
     ...overrides,
@@ -196,7 +196,9 @@ describe('only a verified token says who is calling', () => {
     expect(answer.status).toBe(401);
     expect(answer.body['code']).toBe('AUTH_UNKNOWN_LOGIN');
   });
+});
 
+describe('only a verified token says who is calling', () => {
   it('does not read a token from anywhere but the Authorization header', async () => {
     const token = await tokenFor(MIA);
     const answer = await post(
@@ -255,7 +257,9 @@ describe('the business is named in the path and verified (N7)', () => {
     expect(answer.status).toBe(403);
     expect(answer.body['code']).toBe('AUTH_NO_MEMBERSHIP');
   });
+});
 
+describe('the business is named in the path and verified (N7)', () => {
   it('refuses before it reads the body, so a bad body cannot tell you a business exists', async () => {
     const seen: Seen[] = [];
     const token = await tokenFor(MIA);
@@ -286,9 +290,9 @@ describe('a body that is not an object', () => {
   });
 });
 
-describe('the read half of the surface', () => {
-  const declared = COMMAND_SURFACE.filter((one) => one.kind === 'read');
+const declared = COMMAND_SURFACE.filter((one) => one.kind === 'read');
 
+describe('the read half of the surface', () => {
   it('names the read from the route, not from the body', async () => {
     const first = declared[0];
     if (first === undefined) {
@@ -328,7 +332,9 @@ describe('the read half of the surface', () => {
       },
     ]);
   });
+});
 
+describe('the read half of the surface', () => {
   it('passes a read through without an operation identity or a revision', async () => {
     const seenRequests: Array<Readonly<Record<string, unknown>>> = [];
     const passing: ReadExecutor = async (_database, _businessId, _presented, request) => {

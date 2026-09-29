@@ -13,186 +13,44 @@
 // alone; Mia holds neither; Bea is bravo's owner and holds `privacy:manage`
 // there. A client of alpha holds a share and nothing else, and the agent acts
 // under a live delegation from Ada. Every service below is made up.
+//
+// The world is `c81-register-world.ts`; the race, the refusals, the three
+// crossings and the canary are in `c81-register-isolation.test.ts`.
 
-import { createHash, randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { approveLegalVersion } from '../../packages/core-records/src/operations/legal-documents.ts';
-import { setOverseasService } from '../../packages/core-records/src/operations/overseas-services.ts';
-import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
-import { tokenFor } from '../acceptance/cast.ts';
-import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { serverUrl } from '../acceptance/world.ts';
 import {
-  agentPath,
-  bearer,
-  call,
-  personPath,
-  serverUrl,
-  type Answer,
-} from '../acceptance/world.ts';
-import { grantTo, shareWithClient, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
-
-const CANARY = 'CANARY-c81-register-to-confirm-5b91e2';
+  approve,
+  CANARY,
+  closeRegister,
+  detailOf,
+  draft,
+  harness,
+  listed,
+  openRegister,
+  publish,
+  readPolicy,
+  registerRows,
+  releasePolicy,
+  row,
+  set,
+  setOk,
+} from './c81-register-world.ts';
 
 if (serverUrl === undefined) {
   console.warn('operations/c81-register: DATABASE_URL is unset, so nothing below ran.');
 }
 
-const SET = '/privacy/set_overseas_service';
+beforeAll(async () => {
+  if (serverUrl !== undefined) await openRegister('c81_register');
+}, 120_000);
 
-const digestOf = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
-
-/** A world caller as the fixture's member, which carries the same ids. */
-const member = (caller: unknown) => caller as Member;
-
-const detailOf = (answer: Answer) => (answer.body['detail'] ?? {}) as Record<string, unknown>;
-
-/** A made-up version label no other case in this file uses. */
-let minor = 0;
-const nextVersion = () => `1.${String((minor += 1))}`;
-
-/** A made-up register row, in use and confirmed unless overridden. */
-const row = (overrides: Readonly<Record<string, unknown>> = {}) => ({
-  operationId: `c81r-${randomUUID()}`,
-  service: `Made-up service ${randomUUID().slice(0, 8)}`,
-  receives: 'recipient address and name',
-  where: 'Japan and the United States',
-  trainsOnIt: 'no',
-  contract: 'the provider business terms',
-  toConfirm: false,
-  inUse: true,
-  ...overrides,
-});
-
-/** The fields of a row as the public policy lists it. */
-const listed = (sent: ReturnType<typeof row>) => ({
-  service: sent.service,
-  receives: sent.receives,
-  where: sent.where,
-  trainsOnIt: sent.trainsOnIt,
-  contract: sent.contract,
+afterAll(async () => {
+  if (serverUrl !== undefined) await closeRegister();
 });
 
 describe.skipIf(serverUrl === undefined)('C81 the overseas-services register', () => {
-  let harness: Harness;
-  let credential: string;
-  let clientToken: string;
-
-  const set = async (
-    body: Readonly<Record<string, unknown>>,
-    token = harness.world.ada.token,
-    businessKey = 'alpha',
-  ) => await call(harness.world.api, personPath(businessKey, SET), body, bearer(token));
-
-  /** Set a row and expect it applied. */
-  const setOk = async (
-    body: Readonly<Record<string, unknown>>,
-    token = harness.world.ada.token,
-    businessKey = 'alpha',
-  ) => {
-    const answer = await set(body, token, businessKey);
-    expect(answer.status, 'set').toBe(200);
-    return answer;
-  };
-
-  const draft = async (
-    document = 'privacy-policy',
-    token = harness.world.ada.token,
-    businessKey = 'alpha',
-  ) => {
-    const body = `# ${document}\n\nMade-up text ${randomUUID()}.\n`;
-    const answer = await call(
-      harness.world.api,
-      personPath(businessKey, '/legal/draft_version'),
-      { operationId: `c81r-${randomUUID()}`, document, version: nextVersion(), body },
-      bearer(token),
-    );
-    expect(answer.status, 'drafted').toBe(200);
-    return { versionId: String(detailOf(answer)['versionId']), body };
-  };
-
-  const approve = async (
-    drafted: { readonly versionId: string; readonly body: string },
-    token = harness.world.ada.token,
-    businessKey = 'alpha',
-  ) =>
-    await call(
-      harness.world.api,
-      personPath(businessKey, '/legal/approve_version'),
-      {
-        operationId: `c81r-${randomUUID()}`,
-        versionId: drafted.versionId,
-        digest: digestOf(drafted.body),
-      },
-      bearer(token),
-    );
-
-  const publish = async (
-    versionId: string,
-    token = harness.world.ada.token,
-    businessKey = 'alpha',
-  ) =>
-    await call(
-      harness.world.api,
-      personPath(businessKey, '/legal/publish_version'),
-      { operationId: `c81r-${randomUUID()}`, versionId },
-      bearer(token),
-    );
-
-  /** Draft, approve and publish a privacy policy; answers what the public reads. */
-  const releasePolicy = async (token = harness.world.ada.token, businessKey = 'alpha') => {
-    const drafted = await draft('privacy-policy', token, businessKey);
-    expect((await approve(drafted, token, businessKey)).status, 'approved').toBe(200);
-    expect((await publish(drafted.versionId, token, businessKey)).status, 'published').toBe(200);
-    return await readPolicy(businessKey);
-  };
-
-  const readPolicy = async (businessKey = 'alpha') => {
-    const response = await harness.world.api.request(
-      `/api/public/b/${businessKey}/legal/privacy-policy`,
-    );
-    const text = await response.text();
-    return { status: response.status, text, json: JSON.parse(text) as Record<string, unknown> };
-  };
-
-  const registerRows = async (businessId: string) =>
-    await harness.world.db.app.withBusiness(
-      businessId,
-      async (tx) =>
-        await tx.query<{ readonly row: string }>(
-          `select to_jsonb(s)::text as row from public.overseas_services s order by s.id`,
-        ),
-    );
-
-  beforeAll(async () => {
-    harness = await createHarness('c81_register');
-    const { world } = harness;
-    await world.db.app.withBusiness(world.alpha, async (tx) => {
-      await grantTo(tx, member(world.noah), 'read', WHOLE_BUSINESS, false, 'operations');
-    });
-    await world.db.app.withBusiness(world.bravo, async (tx) => {
-      await grantTo(tx, member(world.bea), 'manage', WHOLE_BUSINESS, false, 'privacy');
-    });
-    const client = await shareWithClient(
-      world.db.app,
-      world.alpha,
-      member(world.ada),
-      harness.alphaTask.id,
-    );
-    clientToken = await tokenFor(client.presented.subject);
-
-    const { decided } = await harness.approvedReservation();
-    expect(decided.code, 'the decision a pickup needs').toBe('ok');
-    const reservationId = (decided.body['detail'] as Record<string, unknown>)['reservationId'];
-    const picked = await harness.asAgent('task.pickup', { reservationId });
-    expect(picked.code, 'the pickup').toBe('ok');
-    credential = String((picked.body['detail'] as Record<string, unknown>)['credential']);
-  }, 120_000);
-
-  afterAll(async () => {
-    await harness?.close();
-  });
-
   it('C81 register complete in the policy: a row added is in the next policy, and a row to confirm or a change since the draft leaves the policy not ready', async () => {
     const first = row();
     await setOk(first);
@@ -366,154 +224,5 @@ describe.skipIf(serverUrl === undefined)('C81 the overseas-services register', (
       code: 'COMMAND_BODY_INVALID',
     });
     expect(await registerRows(harness.world.alpha)).toEqual(before);
-  });
-
-  it('C81 register change and approval at once: the approval waits for the change and is told the register changed', async () => {
-    const drafted = await draft();
-    const actorId = harness.world.ada.actorId as string;
-    // Two connections, so the two transactions truly overlap: the first sets
-    // a row and holds the register's lock for 300 ms before committing, and
-    // the approval arrives meanwhile.
-    const wide = connect(harness.world.db.appUrl, { source: 'runtime', max: 2 });
-    const change = row();
-    const first = wide.withBusiness(harness.world.alpha, async (tx) => {
-      await setOverseasService(
-        tx,
-        {
-          service: change.service,
-          receives: change.receives,
-          where: change.where,
-          trainsOnIt: change.trainsOnIt,
-          contract: change.contract,
-          toConfirm: false,
-          inUse: true,
-        },
-        actorId,
-      );
-      await tx.query('select pg_sleep(0.3)');
-    });
-    await new Promise((resolve) => {
-      setTimeout(resolve, 100);
-    });
-    const second = wide.withBusiness(
-      harness.world.alpha,
-      async (tx) =>
-        await approveLegalVersion(tx, drafted.versionId, digestOf(drafted.body), actorId),
-    );
-    const outcomes = await Promise.allSettled([first, second]).finally(
-      async () => await wide.close(),
-    );
-    expect(outcomes).toEqual([
-      { status: 'fulfilled', value: undefined },
-      { status: 'fulfilled', value: 'register-changed' },
-    ]);
-  });
-
-  it('C81 refusal privacy:manage: a holder of operations:read alone, a member and a client are refused the register, and nothing is written', async () => {
-    const before = await registerRows(harness.world.alpha);
-    for (const token of [harness.world.noah.token, harness.world.mia.token, clientToken]) {
-      // oxlint-disable-next-line no-await-in-loop
-      const answer = await set(row(), token);
-      expect({ status: answer.status, code: answer.code }).toEqual({
-        status: 403,
-        code: 'SCOPE_NOT_GRANTED',
-      });
-    }
-    expect(await registerRows(harness.world.alpha)).toEqual(before);
-  });
-
-  it('C81 isolation: another business, another client and a delegated agent never read or change the register', async () => {
-    const alphaRow = row({ service: `alpha only ${randomUUID()}` });
-    await setOk(alphaRow);
-    const alphaBefore = await registerRows(harness.world.alpha);
-
-    // Another business: bravo's register is bravo's; its rows never reach
-    // alpha's policy, and alpha's never reach bravo's.
-    const bravoRow = row({ service: `bravo only ${randomUUID()}` });
-    await setOk(bravoRow, harness.world.bea.token, 'bravo');
-    const bravoPolicy = await releasePolicy(harness.world.bea.token, 'bravo');
-    expect(bravoPolicy.json['services']).toEqual([listed(bravoRow)]);
-    // A draft of alpha's is not changed by bravo's register moving.
-    const alphaDraft = await draft();
-    await setOk(row(), harness.world.bea.token, 'bravo');
-    expect((await approve(alphaDraft)).status).toBe(200);
-    expect((await publish(alphaDraft.versionId)).status).toBe(200);
-    const alphaPolicy = await readPolicy('alpha');
-    expect(alphaPolicy.text).not.toContain(bravoRow.service);
-    expect(bravoPolicy.text).not.toContain(alphaRow.service);
-
-    // Bea on alpha's prefix is no member of alpha.
-    const across = await set(row(), harness.world.bea.token, 'alpha');
-    expect({ status: across.status, code: across.code }).toEqual({
-      status: 403,
-      code: 'AUTH_NO_MEMBERSHIP',
-    });
-
-    // Another client in the same business: a share does not reach it.
-    const client = await set(
-      { ...alphaRow, operationId: randomUUID(), receives: 'x' },
-      clientToken,
-    );
-    expect(client.status).toBe(403);
-    expect(JSON.stringify(client.body)).not.toContain(alphaRow.service);
-
-    // Another person under a live delegation: the agent acting for Ada, who
-    // holds privacy:manage, is refused on the agent prefix.
-    const agent = await call(harness.world.api, agentPath('alpha', SET), row(), {
-      ...bearer(harness.world.agent.token),
-      [DELEGATION_HEADER]: credential,
-    });
-    expect({ status: agent.status, code: agent.code }).toEqual({
-      status: 403,
-      code: 'DELEGATION_EXCLUDES_OPERATION',
-    });
-
-    expect(await registerRows(harness.world.alpha)).toEqual(alphaBefore);
-  });
-
-  it('C81 isolation: a row still to confirm reaches no log, audit row, operation register row, refusal or public read', async () => {
-    const logged: string[] = [];
-    const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
-    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
-      vi.spyOn(console, level).mockImplementation(capture),
-    );
-    const secret = row({ service: `service ${CANARY}`, receives: CANARY, toConfirm: true });
-    try {
-      await setOk(secret);
-      const drafted = await draft();
-      const answers = [
-        await set(row({ receives: CANARY }), harness.world.mia.token),
-        await set(row({ receives: CANARY }), harness.world.bea.token, 'alpha'),
-        await approve(drafted),
-        await publish(drafted.versionId),
-      ];
-      for (const answer of answers) {
-        expect(answer.status).toBeGreaterThanOrEqual(400);
-        expect(JSON.stringify(answer.body)).not.toContain(CANARY);
-      }
-      for (const key of ['alpha', 'bravo']) {
-        // oxlint-disable-next-line no-await-in-loop
-        expect((await readPolicy(key)).text).not.toContain(CANARY);
-      }
-    } finally {
-      for (const spy of spies) spy.mockRestore();
-      // Leave the register confirmed for any case after this one.
-      await set({ ...secret, operationId: randomUUID(), inUse: false });
-    }
-    expect(logged.join('\n')).not.toContain(CANARY);
-
-    const stored = await harness.world.db.app.withBusiness(
-      harness.world.alpha,
-      async (tx) =>
-        await tx.query<{ readonly row: string }>(
-          `select to_jsonb(e)::text as row from public.audit_events e
-          where command in ('privacy.set_overseas_service', 'legal.draft_version')
-         union all
-         select to_jsonb(o)::text from public.operations o
-          where command in ('privacy.set_overseas_service', 'legal.draft_version')`,
-        ),
-    );
-    expect(stored.length).toBeGreaterThan(0);
-    expect(stored.map((found) => found.row).join('\n')).not.toContain(CANARY);
   });
 });

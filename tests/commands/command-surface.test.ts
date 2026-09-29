@@ -85,7 +85,9 @@ describe('the surface as a table', () => {
       ),
     ).toBe(true);
   });
+});
 
+describe('the surface as a table', () => {
   it('declares the ten reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
       'access.read',
@@ -110,7 +112,9 @@ describe('the surface as a table', () => {
       }
     }
   });
+});
 
+describe('the surface as a table', () => {
   it('gives every declaration the collection its authority is checked against', () => {
     // The collection used to be written into `prepareCommand` as `'task'`,
     // which was true while every operation was a task operation. A caller
@@ -155,33 +159,35 @@ describe('the surface as a table', () => {
   });
 });
 
+let db: FreshDatabase;
+let business: string;
+let named: readonly string[];
+
+beforeAll(async () => {
+  if (serverUrl === undefined) return;
+  db = await createFreshDatabase({ part: 'f' });
+  business = await insertBusiness(db.app, 'surface');
+  const spine = await installSpine(db.app, business);
+  const fields = await db.app.withBusiness(
+    business,
+    async (tx) => await readFieldDefinitions(tx, spine.taskTypeId),
+  );
+  // Both columns: the operation that owns a field always, and the one that
+  // owns it when the write crosses a containment boundary.
+  const operations = new Set<string>();
+  for (const field of fields) {
+    for (const name of field.owningOperation?.split(' ') ?? []) operations.add(name);
+    if (field.escalatingOperation !== null) operations.add(field.escalatingOperation);
+  }
+  named = [...operations].toSorted();
+}, 60_000);
+
+afterAll(async () => {
+  if (serverUrl === undefined) return;
+  await db?.drop();
+});
+
 describe.skipIf(serverUrl === undefined)('the surface against the installed model', () => {
-  let db: FreshDatabase;
-  let business: string;
-  let named: readonly string[];
-
-  beforeAll(async () => {
-    db = await createFreshDatabase({ part: 'f' });
-    business = await insertBusiness(db.app, 'surface');
-    const spine = await installSpine(db.app, business);
-    const fields = await db.app.withBusiness(
-      business,
-      async (tx) => await readFieldDefinitions(tx, spine.taskTypeId),
-    );
-    // Both columns: the operation that owns a field always, and the one that
-    // owns it when the write crosses a containment boundary.
-    const operations = new Set<string>();
-    for (const field of fields) {
-      for (const name of field.owningOperation?.split(' ') ?? []) operations.add(name);
-      if (field.escalatingOperation !== null) operations.add(field.escalatingOperation);
-    }
-    named = [...operations].toSorted();
-  }, 60_000);
-
-  afterAll(async () => {
-    await db?.drop();
-  });
-
   it('finds every operation the model names in the surface', () => {
     const declared = new Set<string>(COMMAND_SURFACE.map((command) => command.name));
     const missing = named.filter((name) => !declared.has(name));

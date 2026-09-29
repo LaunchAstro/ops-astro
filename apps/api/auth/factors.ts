@@ -11,7 +11,12 @@
 // `ProviderFault`, never a partial success, and the fault names only its kind:
 // the provider's own words, which could carry anything, go nowhere.
 
-import type { FactorProvider, ProviderAnswer } from '../../../packages/core-commands/src/index.ts';
+import type {
+  FactorProvider,
+  FactorSession,
+  IssuedFactor,
+  ProviderAnswer,
+} from '../../../packages/core-commands/src/index.ts';
 
 export interface GoTrueFactorOptions {
   /** GoTrue's own URL, `GOTRUE_URL`. The only destination this adapter calls. */
@@ -29,18 +34,30 @@ const DEFAULT_MAX_BYTES = 16 * 1024;
 
 type Json = Readonly<Record<string, unknown>>;
 
+/** One call to the provider, its answer shaped to a JSON object or a fault. */
+type Call = (
+  method: 'POST' | 'DELETE',
+  path: string,
+  accessToken: string,
+  body?: Json,
+) => Promise<ProviderAnswer<Json>>;
+
 export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvider {
+  const call = callGoTrue(options);
+  return {
+    enrol: (accessToken) => enrol(call, accessToken),
+    verify: (accessToken, factorId, code) => verify(call, accessToken, factorId, code),
+    remove: (accessToken, factorId) => remove(call, accessToken, factorId),
+  };
+}
+
+function callGoTrue(options: GoTrueFactorOptions): Call {
   const base = new URL(options.baseUrl);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
   const send = options.fetch ?? fetch;
 
-  async function call(
-    method: 'POST' | 'DELETE',
-    path: string,
-    accessToken: string,
-    body?: Json,
-  ): Promise<ProviderAnswer<Json>> {
+  return async (method, path, accessToken, body) => {
     // The path is built here from fixed segments and provider ids already
     // shaped by the caller; the origin is the configured one, never the answer's.
     // GoTrue may be served under a path (`/auth/v1` on a hosted project), so
@@ -79,65 +96,68 @@ export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvide
     if (response.status >= 400 && response.status < 500) return { ok: false, fault: 'refused' };
     if (!response.ok) return { ok: false, fault: 'unreachable' };
     return { ok: true, value: parsed as Json };
-  }
-
-  return {
-    async enrol(accessToken) {
-      const answer = await call('POST', '/factors', accessToken, { factor_type: 'totp' });
-      if (!answer.ok) return answer;
-      const id = answer.value['id'];
-      const totp = answer.value['totp'];
-      if (!isFactorId(id) || typeof totp !== 'object' || totp === null) {
-        return { ok: false, fault: 'malformed' };
-      }
-      const { qr_code: qrCode, secret, uri } = totp as Json;
-      if (
-        !isBoundedText(qrCode, 8192) ||
-        !isBoundedText(secret, 128) ||
-        !isBoundedText(uri, 1024)
-      ) {
-        return { ok: false, fault: 'malformed' };
-      }
-      return { ok: true, value: { factorId: id, qrCode, secret, uri } };
-    },
-
-    async verify(accessToken, factorId, code) {
-      if (!isFactorId(factorId)) return { ok: false, fault: 'refused' };
-      const challenge = await call('POST', `/factors/${factorId}/challenge`, accessToken, {});
-      if (!challenge.ok) return challenge;
-      const challengeId = challenge.value['id'];
-      if (!isFactorId(challengeId)) return { ok: false, fault: 'malformed' };
-      const verified = await call('POST', `/factors/${factorId}/verify`, accessToken, {
-        challenge_id: challengeId,
-        code,
-      });
-      if (!verified.ok) return verified;
-      const access = verified.value['access_token'];
-      const refresh = verified.value['refresh_token'];
-      const expiresIn = verified.value['expires_in'];
-      if (
-        !isBoundedText(access, 8192) ||
-        !isBoundedText(refresh, 512) ||
-        !Number.isSafeInteger(expiresIn) ||
-        (expiresIn as number) <= 0
-      ) {
-        return { ok: false, fault: 'malformed' };
-      }
-      return {
-        ok: true,
-        value: { accessToken: access, refreshToken: refresh, expiresIn: expiresIn as number },
-      };
-    },
-
-    async remove(accessToken, factorId) {
-      if (!isFactorId(factorId)) return { ok: false, fault: 'refused' };
-      const answer = await call('DELETE', `/factors/${factorId}`, accessToken);
-      if (!answer.ok) return answer;
-      return answer.value['id'] === factorId
-        ? { ok: true, value: undefined }
-        : { ok: false, fault: 'malformed' };
-    },
   };
+}
+
+async function enrol(call: Call, accessToken: string): Promise<ProviderAnswer<IssuedFactor>> {
+  const answer = await call('POST', '/factors', accessToken, { factor_type: 'totp' });
+  if (!answer.ok) return answer;
+  const id = answer.value['id'];
+  const totp = answer.value['totp'];
+  if (!isFactorId(id) || typeof totp !== 'object' || totp === null) {
+    return { ok: false, fault: 'malformed' };
+  }
+  const { qr_code: qrCode, secret, uri } = totp as Json;
+  if (!isBoundedText(qrCode, 8192) || !isBoundedText(secret, 128) || !isBoundedText(uri, 1024)) {
+    return { ok: false, fault: 'malformed' };
+  }
+  return { ok: true, value: { factorId: id, qrCode, secret, uri } };
+}
+
+async function verify(
+  call: Call,
+  accessToken: string,
+  factorId: string,
+  code: string,
+): Promise<ProviderAnswer<FactorSession>> {
+  if (!isFactorId(factorId)) return { ok: false, fault: 'refused' };
+  const challenge = await call('POST', `/factors/${factorId}/challenge`, accessToken, {});
+  if (!challenge.ok) return challenge;
+  const challengeId = challenge.value['id'];
+  if (!isFactorId(challengeId)) return { ok: false, fault: 'malformed' };
+  const verified = await call('POST', `/factors/${factorId}/verify`, accessToken, {
+    challenge_id: challengeId,
+    code,
+  });
+  if (!verified.ok) return verified;
+  const access = verified.value['access_token'];
+  const refresh = verified.value['refresh_token'];
+  const expiresIn = verified.value['expires_in'];
+  if (
+    !isBoundedText(access, 8192) ||
+    !isBoundedText(refresh, 512) ||
+    !Number.isSafeInteger(expiresIn) ||
+    (expiresIn as number) <= 0
+  ) {
+    return { ok: false, fault: 'malformed' };
+  }
+  return {
+    ok: true,
+    value: { accessToken: access, refreshToken: refresh, expiresIn: expiresIn as number },
+  };
+}
+
+async function remove(
+  call: Call,
+  accessToken: string,
+  factorId: string,
+): Promise<ProviderAnswer<void>> {
+  if (!isFactorId(factorId)) return { ok: false, fault: 'refused' };
+  const answer = await call('DELETE', `/factors/${factorId}`, accessToken);
+  if (!answer.ok) return answer;
+  return answer.value['id'] === factorId
+    ? { ok: true, value: undefined }
+    : { ok: false, fault: 'malformed' };
 }
 
 /** A provider identifier: the shape the `second_factors` row will accept. */
@@ -175,7 +195,9 @@ async function readBounded(
       // oxlint-disable-next-line no-await-in-loop
       const next = await Promise.race([
         reader.read(),
-        new Promise<'slow'>((resolve) => setTimeout(() => resolve('slow'), remaining).unref()),
+        new Promise<'slow'>((resolve) => {
+          setTimeout(() => resolve('slow'), remaining).unref();
+        }),
       ]);
       if (next === 'slow') return { fault: 'slow' };
       if (next.done) break;
@@ -186,7 +208,7 @@ async function readBounded(
   } catch (cause) {
     return { fault: isTimeout(cause) ? 'slow' : 'unreachable' };
   } finally {
-    reader.cancel().catch(() => undefined);
+    reader.cancel().catch(() => {});
   }
   return { text: new TextDecoder().decode(Buffer.concat(chunks)) };
 }

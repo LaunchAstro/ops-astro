@@ -238,7 +238,9 @@ describe('one refusal from each road, byte for byte', () => {
       '{"refused":true,"code":"FIELD_UNKNOWN","names":["colour"],"fixes":["Use a field it has."]}',
     ]);
   });
+});
 
+describe('one refusal from each road, byte for byte', () => {
   it('an identity refusal, person and agent, carries no names', () => {
     expect(wire(refuseCommand('ACTOR_INACTIVE', [], ['Ask an admin.']))).toStrictEqual([
       403,
@@ -286,18 +288,18 @@ const MIA = '22222222-2222-4222-8222-222222222222';
 /** Answers the boundary's own admission insert with nothing; anything else throws. */
 const stubDatabase = (): Database =>
   ({
-    log: { record: () => undefined, statements: () => [] },
+    log: { record: () => {}, statements: () => [] },
     withBusiness: async (businessId: string, run: (tx: unknown) => Promise<unknown>) =>
       await run({
         businessId,
-        query: async (text: string) => {
+        query: (text: string) => {
           if (!text.trimStart().startsWith('insert into public.authentication_attempts')) {
-            throw new Error('the stub database has no rows');
+            return Promise.reject(new Error('the stub database has no rows'));
           }
-          return [];
+          return Promise.resolve([]);
         },
       }),
-    close: async () => undefined,
+    close: () => Promise.resolve(),
   }) as unknown as Database;
 
 const api = createApi({
@@ -305,7 +307,7 @@ const api = createApi({
   executeCommand,
   executeRead,
   verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
-  resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
+  resolveBusiness: (key) => Promise.resolve(key === 'alpha' ? ALPHA : undefined),
 });
 
 async function raw(
@@ -326,9 +328,9 @@ async function raw(
   return [response.status, await response.text()];
 }
 
-describe('the boundary’s own refusals, as the HTTP response carries them', () => {
-  const create = '{"operationId":"33333333-3333-4333-8333-333333333333","fields":{"title":"x"}}';
+const create = '{"operationId":"33333333-3333-4333-8333-333333333333","fields":{"title":"x"}}';
 
+describe('the boundary’s own refusals, as the HTTP response carries them', () => {
   it('answers an unsigned request, a non-object body and an unknown business the same way', async () => {
     const token = await sign(
       {
