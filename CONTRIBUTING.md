@@ -79,8 +79,8 @@ Whoever invokes the merge answers these first:
    is missing or bound to an earlier revision. No findings is not the same as
    no review.
 5. Did the required security review run?
-6. Has the size report been read? The size is reported, not limited, and is
-   never a reason to split.
+6. Has the size report been read? About 400 changed lines is a guide for a
+   readable chunk, never a gate.
 7. Which layer should have caught each finding, and what check now covers it?
 
 The review-evidence check reads question four's answer out of the pull
@@ -150,8 +150,11 @@ currently a draft and no signing service is active.
 ## Keep changes reviewable
 
 The size checker counts product code only, and the size is reported, not
-limited (owner, 29 September 2026). Nothing is split to meet a size. The
-check prints the changed lines of non-test code, in total and per file, and
+limited (owner, 29 September 2026). About 400 changed lines is a guide for a
+readable chunk, a commit or a pull request, never a gate: smaller chunks are
+easier to review and to diagnose. Nothing is split into separate sessions,
+lanes or review queues to meet a size, and a big change can land as several
+such chunks reviewed together. The check prints the changed lines of non-test code, in total and per file, and
 always passes; no waiver label is needed, and none changes anything. Test
 files are listed in the report but never count: a path under `tests/`, or a
 file named `*.test.*` or `*.spec.*`. Everything else counts, fixtures and

@@ -2,12 +2,13 @@
 // The pull request size report.
 //
 // It measures and prints; it never blocks. The owner dropped the 400-line
-// limit on 29 September 2026 (FU-400): the size is reported, not limited,
-// and nothing is split to meet a size. The script always exits 0, even when
-// it cannot measure, so the required check 'pull request size' keeps its
-// name and never fails a pull request. Waiver labels and the per-file cap
-// are gone; the report stays, for the rate data a reviewer or a planner can
-// use.
+// limit on 29 September 2026 (FU-400): the size is reported, not limited.
+// About 400 lines stays a guide for a readable chunk, never a gate, and
+// nothing is split into separate sessions, lanes or review queues to meet
+// it. The script always exits 0, even when it cannot measure, so the
+// required check 'pull request size' keeps its name and never fails a pull
+// request. Waiver labels and the per-file cap are gone; the report stays,
+// for the rate data a reviewer or a planner can use.
 //
 // Test files are listed but never counted, in the total or per file (CQ-16,
 // the owner's process fix of 29 September 2026). A test file is a path under
