@@ -103,19 +103,25 @@ function rises(next, base) {
     .map(([rule, n]) => ({ rule, n, was: base[rule] ?? 0 }));
 }
 
-/** Lines as an editor numbers them: every newline ends one, and text after the last is one more. */
+/**
+ * Lines as an editor numbers them: every line ending (LF, CRLF or a bare CR) ends one, and text
+ * after the last is one more.
+ */
 function physicalLines(text) {
-  return text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
+  return text.split(/\r\n|\r|\n/u).length - (/[\r\n]$/u.test(text) ? 1 : 0);
 }
 
 function oversizeProductFiles() {
+  // -z: without it git quotes a name holding a tab or a non-ASCII byte, and the quoted
+  // name is not a path, so the file would be skipped.
   const listed =
-    git('ls-files', '--cached', '--others', '--exclude-standard', '--', 'apps', 'packages') ?? '';
+    git('ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', 'apps', 'packages') ??
+    '';
   return listed
-    .split('\n')
+    .split('\0')
     .filter(
       (f) =>
-        /\.(?:[cm]?[jt]sx?|css|html)$/u.test(f) &&
+        /\.(?:[cm]?[jt]sx?|css|html)$/iu.test(f) &&
         !/(?:^|\/)tests\/|\.(?:test|spec)\./u.test(f) &&
         existsSync(f),
     )
