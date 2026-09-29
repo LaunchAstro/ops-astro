@@ -24,10 +24,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
 import { executeRead } from '../../packages/core-commands/src/index.ts';
-import {
-  replayRecordedTransitions,
-  sweepExpiredLeases,
-} from '../../packages/core-runtime/src/index.ts';
+import { sweepExpiredLeases } from '../../packages/core-runtime/src/index.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import { sweepDeployment } from '../../apps/api/recovery-entry.ts';
 import { DECLINING_REPORTER } from '../support/declining-reporter.ts';
@@ -49,7 +46,19 @@ import {
   type Schedules,
 } from './schedules-harness.ts';
 import { cq8World } from './t2d-harness.ts';
-import { onLease, openSecond, t3bHarness } from './t3b-harness.ts';
+import { resolve as resolvePath } from 'node:path';
+import { readIdentity } from '../../apps/api/identity.ts';
+import { createApiFixture, type ApiFixture } from '../api/fixture.ts';
+import {
+  onLease,
+  openSecond,
+  recordingTransactions,
+  t3bHarness,
+  workerWorld,
+  type WorkerWorld,
+} from './t3b-harness.ts';
+
+const ROOT = resolvePath(import.meta.dirname, '../..');
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -70,52 +79,6 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
 
   afterAll(async () => {
     await s?.db.drop();
-  });
-
-  it('unknown_stays_unknown: a dispatched, unreported attempt is held unknown at its maximum, and every timer past every window leaves it so', async () => {
-    const w = await alpha.work();
-    await alpha.reported(w, DECLINING_REPORTER);
-    const capBefore = await capCommitted(s);
-    await alpha.expire(w);
-
-    const swept = await alpha.sweep();
-    expect(swept).toStrictEqual([
-      expect.objectContaining({ released: false, state: 'liability_unknown' }),
-    ]);
-    const unknown = await alpha.money(w);
-    expect(unknown).toMatchObject({
-      state: 'held',
-      held: '2500',
-      actual: null,
-      attempt_state: 'liability_unknown',
-      envelope_held: '2500',
-      envelope_actual: '0',
-      lease_state: 'expired',
-    });
-
-    // Every timer past every window: the gate, the delegation and the lease,
-    // then the sweep, the restart replay and the sweep again.
-    await s.db.admin.execute(
-      `update public.delegations
-          set granted_at = least(granted_at, clock_timestamp() - interval '2 seconds'),
-              expires_at = clock_timestamp() - interval '1 second'
-        where business_id = $1`,
-      [s.business],
-    );
-    await s.db.admin.execute(
-      `update public.gates set expires_at = clock_timestamp() - interval '1 second'
-        where business_id = $1`,
-      [s.business],
-    );
-    for (let pass = 0; pass < 3; pass += 1) {
-      // Sequential: each pass reads what the one before committed.
-      // eslint-disable-next-line no-await-in-loop
-      expect(await alpha.sweep()).toStrictEqual([]);
-      // eslint-disable-next-line no-await-in-loop
-      await s.db.app.withBusiness(s.business, async (tx) => await replayRecordedTransitions(tx));
-    }
-    expect(await alpha.money(w)).toStrictEqual(unknown);
-    expect(await capCommitted(s)).toBe(capBefore);
   });
 
   it('the synthetic reporter settles, and the sweep leaves a settled attempt settled', async () => {
@@ -296,8 +259,16 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
     ]);
     const resolve = async (key: string): Promise<string | undefined> =>
       await Promise.resolve(keys.get(key));
-    const outcome = await sweepDeployment(s.db.app, resolve, ['bravo']);
-    expect(outcome).toMatchObject({ ok: true, businesses: [{ key: 'bravo' }] });
+    const homeTwo = await alpha.work();
+    await alpha.dispatched(homeTwo);
+    await alpha.expire(homeTwo);
+    const pass = recordingTransactions(s.db.app);
+    const outcome = await sweepDeployment(pass.database, resolve, ['alpha', 'bravo']);
+    expect(outcome).toMatchObject({ ok: true, businesses: [{ key: 'alpha' }, { key: 'bravo' }] });
+    // One transaction per business, each opened under its own business.
+    expect(pass.opened.map((one) => one.businessId)).toStrictEqual([s.business, other.business]);
+    expect(new Set(pass.opened.map((one) => one.txid)).size).toBe(2);
+    expect(await alpha.money(homeTwo)).toMatchObject({ attempt_state: 'liability_unknown' });
     expect(await bravo.money(away)).toMatchObject({ attempt_state: 'liability_unknown' });
     const unknownIn = async (business: string) =>
       await rows(
@@ -320,6 +291,14 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
         recordId,
       } as never);
     expect(JSON.stringify(await readAs(s.decider))).toContain('"state":"liability_unknown"');
+
+    // Business to business: another business's member names this task from home.
+    const foreign = await executeRead(s.db.app, other.business, other.decider.presented, {
+      read: 'task.read',
+      recordId: w.taskId,
+    } as never);
+    expect(foreign).toMatchObject({ code: 'NOT_FOUND' });
+    expect(JSON.stringify(foreign)).not.toMatch(/liability_unknown|2500/u);
 
     const idle = await enrol(s.db.app, s.business, `t3b-idle-${randomUUID()}`);
     expect(await readAs(idle)).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
@@ -344,5 +323,61 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
     const crossed = await readAs(wrong);
     expect(crossed).toMatchObject({ code: 'NOT_FOUND' });
     expect(JSON.stringify(crossed)).not.toMatch(/liability_unknown|2500/u);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('unknown_stays_unknown through the worker', () => {
+  let fixture: ApiFixture;
+  let world: WorkerWorld;
+
+  beforeAll(async () => {
+    fixture = await createApiFixture('t3b_worker');
+    world = workerWorld(fixture, fixture.compose(undefined, readIdentity(ROOT)));
+  }, 120_000);
+
+  afterAll(async () => {
+    await fixture?.db.drop();
+  });
+
+  it('unknown_stays_unknown: a dispatched, unreported attempt is held unknown at its maximum, and every timer past every window leaves it so', async () => {
+    // The worker is constructed with the declining reporter: it dispatches,
+    // applies the one comment and observes, and its reporter never says what
+    // the step cost, so nothing settles.
+    const taskId = await world.applies({ reporter: DECLINING_REPORTER });
+    expect(await world.money(taskId)).toMatchObject({
+      state: 'held',
+      attempt_state: 'dispatched',
+      dispatch_marker: true,
+      observed: true,
+      lease_state: 'live',
+    });
+
+    await world.pastEveryWindow();
+    expect(await world.sweep()).toStrictEqual([
+      expect.objectContaining({ released: false, state: 'liability_unknown' }),
+    ]);
+    const unknown = await world.money(taskId);
+    expect(unknown).toMatchObject({
+      state: 'held',
+      held: '2500',
+      actual: null,
+      attempt_state: 'liability_unknown',
+      envelope_held: '2500',
+      envelope_actual: '0',
+      lease_state: 'expired',
+    });
+
+    // Every timer past every window again, then the sweep and the restart
+    // replay, three times over: no timer path settles or releases it.
+    for (let round = 0; round < 3; round += 1) {
+      // Sequential: each round reads what the one before committed.
+      // eslint-disable-next-line no-await-in-loop
+      await world.pastEveryWindow();
+      // eslint-disable-next-line no-await-in-loop
+      expect(await world.sweep()).toStrictEqual([]);
+      // eslint-disable-next-line no-await-in-loop
+      expect(await world.replay()).toStrictEqual([]);
+    }
+    expect(await world.money(taskId)).toStrictEqual(unknown);
   });
 });
