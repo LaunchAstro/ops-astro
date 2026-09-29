@@ -28,6 +28,7 @@ const STEPS = [
   ['brand:cases', 'the actual product name CLI'],
   ['typecheck', 'types'],
   ['lint', 'lint'],
+  ['lint:ratchet', 'no new lint warning, no product source file over 1,000 lines'],
   ['format:check', 'format'],
   ['test', 'tests'],
   ['gate:selftest', 'the gate proves itself'],
