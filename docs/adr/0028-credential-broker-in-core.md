@@ -4,7 +4,15 @@ Accepted 6 September 2026; implementation pending. **Amended 10 September
 2026**: the engineer review this record required was withdrawn and replaced by
 the component's conformance proof, per
 [ADR 0049](0049-senior-engineer-signed-engagement-stop-authority.md). That
-proof is pending too.
+proof is pending too. **Amended 29 September 2026** (AW-01): the broker is
+built as two halves. Custody is its own forked process and the only holder of
+credentials; it loads them from its own credential file and sends each only to
+its own listed destination. The broker's half runs in the API process: it
+holds the money under row locks and runs the operation adapters, which build
+the request and price the answer and never run in custody's process. So an
+SDK that needs a credential value has no place yet; an adapter that needs one
+waits on a contract for it. Credentials are file-held until the Postgres store
+with external key custody lands.
 
 A dedicated broker service owns credential custody and provider calls under
 its own process identity. It holds the credential-store key and has a narrowly

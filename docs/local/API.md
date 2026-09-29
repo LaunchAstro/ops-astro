@@ -291,6 +291,18 @@ so they run the wiring the server listens with rather than a copy of it. A
 test that hands the boundary its own executor or recorder calls `createApi`
 directly.
 
+`main()` also starts the credential broker (AW-01) when all four of
+`MODEL_BROKER_CREDENTIALS_FILE`, `MODEL_BROKER_DESTINATIONS`,
+`MODEL_BROKER_ROUTES` and `MODEL_BROKER_INSTALLATION` are set
+(`brokerSettings` and `startModelBroker`, `apps/api/model-broker.ts`): custody's
+own process, forked with only its credential file and destination list, and
+the `model.call` executor over it, handed to `composeApi` as
+`executeModelCall`. None set is no broker, and `model.call` answers
+`DEPENDENCY_NOT_LANDED` 501. Some of them, or a malformed one, stops the server
+with a problem naming the setting, never its value. The model operations and
+their adapters are registered in code there, not configured: the replay
+provider is the only one until the real-provider run.
+
 ## Task, board and people operations
 
 The everyday task writes, and the two reads the web's board and task page
@@ -802,10 +814,57 @@ What each one does:
   operations' classifier ([RUNTIME.md](RUNTIME.md)). Both bounds are open items
   below.
 
+## The model call
+
+`model.call` (AW-01) is one priced model call, made by the lease holder
+through the credential broker. The caller names the lease, its fence, a
+catalogued operation and the prompt's fields; it never names a destination, a
+credential, a price, the run's step or itself. The step is the one the lease's
+attempt was reserved for, read under the lease (`stepOfLease`).
+
+| Route                              | Body                                                                                      | Authority                                                                                                            |
+| ---------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `/api/a/b/:key/model/call` (agent) | `operationId`, `leaseId`, `fence`, `operation`, `fields` (each `name`, `source`, `value`) | the delegation the pickup minted, on the lease's task (`write`); then the broker's six facts, from rows, under locks |
+| `/api/b/:key/model/call` (person)  | as above                                                                                  | refused `SCOPE_NOT_GRANTED`: the call is the run's worker's, not a person's                                          |
+
+It runs in two parts (`commands/model-call.ts`). The agent entry runs the row
+`modelCallRow` (`commands/agent-operations.ts`) through
+`executeAgentOperation` (`commands/agent-envelope.ts`) unchanged: the login,
+the register and its replay, the operands, the delegation and the surface row.
+Its serve is the broker's reserve (`reserveModelCall`,
+`core-custody/src/broker.ts`) in the same transaction, so the hold at the
+operation's priced maximum, the prompt copy's registration, the register row
+and the audit event commit together. A repeat of the operation id replays the
+register row and sends nothing; two at once cannot both hold, because the
+second loses the register's identity key and replays. After that commit the
+broker starts the call, sends it through custody and settles it
+(`sendReservedCall`), re-reading the lease, the delegation and the reservation
+under their locks, so authority lost in between refuses the call when its
+effect applies.
+
+The answer is the call as its ledger row stands: `callId`, `state`,
+`reservedMinor`, `actualMinor`, `observedMinor`, `drop`, and `text`, the
+model's words, only on the request that made them. The words are never stored,
+so a replay answers the ledger's state without them. A reserve refusal is the
+register's code (`LEASE_NOT_OWNED`, `LEASE_EXPIRED`, `AUTHORITY_LOST`,
+`DECISION_STALE`, `OPERATION_NOT_CATALOGUED`, `EFFECT_NOT_RECONCILABLE`,
+`LOCAL_MODEL_REQUIRED` 501, the three `SUBSCRIPTION_` codes, `RATE_LIMITED`
+with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
+`model_calls` row. A malformed operand is `FIELD_VALUE_INVALID` by name, and
+its value is never echoed into the audit. Where no broker is configured the
+agent envelope's own `model.call` row answers `DEPENDENCY_NOT_LANDED` 501 after
+the delegation check (`AGENT_OPERATIONS`).
+
+A field's `source` is the caller's statement of where it read the value. It
+can only narrow: `business_internal` reaches a cloud route only where the
+operation also declares the field business-internal, and any other source
+keeps the field local (`effectiveClass`, `core-connectors/src/data-class.ts`).
+Binding a source to the row it was read from is C60's.
+
 ## Source-to-route manifest
 
 Every route is generated from `COMMAND_SURFACE`
-(`packages/core-wire/src/surface.ts`, 28 writes and 7 reads) by
+(`packages/core-wire/src/surface.ts`, 29 writes and 7 reads) by
 `mountSurface` in `createApi` (`apps/api/app.ts`), once for the person prefix
 and once for the agent prefix, with the path from `pathOf` in the same file.
 The command line builds its verbs from the same table (`VERBS`,
@@ -1055,16 +1114,16 @@ answers `DELEGATION_NARROWED` (R-B). A name outside `AGENT_SURFACE` is refused
 delegation on the spot: the collection, the action, and a `scope` that must be
 exactly the one task it was minted for.
 
-| Answer                          | Status | When                                                                                                                                                                                                                                                     |
-| ------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                         |
-| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed                                                                                                                                                                                                 |
-| `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                |
-| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry                                                                                                                                                                                     |
-| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                         |
-| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always: at the envelope with no credential, and from L4's `decideAsAgent` asking L2 under a delegation                                                                                                                                    |
-| `DELEGATION_EXCLUDES_OPERATION` | 403    | any name not in `AGENT_SURFACE`, whose eight members are the queue, a pickup, a handback, a heartbeat, `task.read`, `task.comment`, `task.decide` and `session.capabilities`; or, with no credential, any name but the queue, a pickup and `task.decide` |
-| `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                              |
+| Answer                          | Status | When                                                                                                                                                                                                                                                                  |
+| ------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                                      |
+| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed                                                                                                                                                                                                              |
+| `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                             |
+| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry                                                                                                                                                                                                  |
+| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                                      |
+| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always: at the envelope with no credential, and from L4's `decideAsAgent` asking L2 under a delegation                                                                                                                                                 |
+| `DELEGATION_EXCLUDES_OPERATION` | 403    | any name not in `AGENT_SURFACE`, whose nine members are the queue, a pickup, a handback, a heartbeat, `task.read`, `task.comment`, `task.decide`, `session.capabilities` and `model.call`; or, with no credential, any name but the queue, a pickup and `task.decide` |
+| `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                                           |
 
 A handback or heartbeat names a lease, not a task, so the task it is checked
 against is read from the lease (`namedTaskId`). A handback naming a lease on

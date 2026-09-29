@@ -175,8 +175,8 @@ identity, grant, record and command-envelope spine ported from
 `ops-astro-t1-draft@60f2009`. Two companion files describe the later ones.
 [AUTHORITY.md](AUTHORITY.md) covers the agent-authority, settings and
 delegation migrations, and [RUNTIME.md](RUNTIME.md) covers the proposal, gate,
-decision, budget, lease and attempt migrations. Read `ls migrations/` for the
-current set.
+decision, budget, lease and attempt migrations, and the model-call ledger and
+copy register (`0032_model_calls`). Read `ls migrations/` for the current set.
 
 There is no `tasks` table. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field
