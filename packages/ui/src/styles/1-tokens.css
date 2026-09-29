@@ -175,6 +175,96 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
+  /* The rest of the scale's parts (DS-TOK-31, 35, 40, 45 to 49, 51, 53, 56). */
+  --text-display: clamp(28px, 4vw, 44px);
+  --text-num-lg: 34px;
+  --text-num-md: 26px;
+  --text-num-sm: 22px;
+  --text-body-lg: 15px;
+  --text-micro: 10px;
+  --leading-none: 1;
+  --lh-body: 1.4;
+  --weight-light: 300;
+  --tracking-display: -0.03em;
+  --tracking-caps: 0.06em;
+
+  /* -- The 23 text styles (DS-TOK-107 to 129, MP-1-4). A rule sets text by
+        one style and only that way: `font: var(--type-x)` with
+        `letter-spacing: var(--type-x-tracking)` and
+        `text-transform: var(--type-x-case)` beside it, so nothing leaks in
+        from a parent. `scripts/type-census.mjs` refuses any other size,
+        weight, family, line height, tracking or case. The three figure
+        sizes (`--type-num-*`) are kept apart from body text so a stat
+        never reflows. ------------------------------------------------------ */
+  --type-display: var(--weight-medium) var(--text-display)/var(--lh-title) var(--font-display);
+  --type-display-tracking: var(--tracking-display);
+  --type-display-case: none;
+  --type-section: var(--weight-medium) var(--fs-title)/var(--lh-title) var(--font-display);
+  --type-section-tracking: var(--tracking-tight);
+  --type-section-case: none;
+  --type-title: var(--weight-medium) var(--text-h1)/var(--lh-title) var(--font-display);
+  --type-title-tracking: var(--tracking-tight);
+  --type-title-case: none;
+  --type-heading: var(--weight-medium) var(--text-h2)/var(--lh-title) var(--font-display);
+  --type-heading-tracking: var(--tracking-tight);
+  --type-heading-case: none;
+  --type-subheading: var(--weight-medium) var(--text-h3)/var(--lh-title) var(--font-display);
+  --type-subheading-tracking: var(--tracking-tight);
+  --type-subheading-case: none;
+  --type-rail-label: var(--weight-medium) var(--text-sm)/var(--lh-title) var(--font-display);
+  --type-rail-label-tracking: var(--tracking-label);
+  --type-rail-label-case: uppercase;
+  --type-num-lg: var(--weight-medium) var(--text-num-lg)/var(--leading-none) var(--font-display);
+  --type-num-lg-tracking: var(--tracking-display);
+  --type-num-lg-case: none;
+  --type-num-md: var(--weight-regular) var(--text-num-md)/var(--leading-none) var(--font-display);
+  --type-num-md-tracking: 0.01em;
+  --type-num-md-case: none;
+  --type-num-sm: var(--weight-regular) var(--text-num-sm)/var(--leading-none) var(--font-display);
+  --type-num-sm-tracking: 0.01em;
+  --type-num-sm-case: none;
+  --type-body-lg: var(--weight-regular) var(--text-body-lg)/var(--leading-normal) var(--font-sans);
+  --type-body-lg-tracking: 0;
+  --type-body-lg-case: none;
+  --type-body: var(--weight-regular) var(--text-body)/var(--leading-normal) var(--font-sans);
+  --type-body-tracking: 0;
+  --type-body-case: none;
+  --type-body-strong: var(--weight-medium) var(--text-body)/var(--leading-normal) var(--font-sans);
+  --type-body-strong-tracking: 0;
+  --type-body-strong-case: none;
+  --type-card-title: var(--weight-semibold) var(--text-body-lg)/var(--lh-title) var(--font-sans);
+  --type-card-title-tracking: 0;
+  --type-card-title-case: none;
+  --type-small: var(--weight-regular) var(--text-sm)/var(--leading-normal) var(--font-sans);
+  --type-small-tracking: 0;
+  --type-small-case: none;
+  --type-small-strong: var(--weight-medium) var(--text-sm)/var(--leading-normal) var(--font-sans);
+  --type-small-strong-tracking: 0;
+  --type-small-strong-case: none;
+  --type-caption: var(--weight-regular) var(--text-label)/var(--leading-normal) var(--font-sans);
+  --type-caption-tracking: 0;
+  --type-caption-case: none;
+  --type-button: var(--weight-medium) var(--text-label)/var(--leading-none) var(--font-sans);
+  --type-button-tracking: var(--tracking-tight);
+  --type-button-case: none;
+  --type-data: var(--weight-regular) var(--text-label)/var(--leading-normal) var(--font-mono);
+  --type-data-tracking: 0;
+  --type-data-case: none;
+  --type-mono: var(--weight-regular) var(--text-body)/var(--leading-normal) var(--font-mono);
+  --type-mono-tracking: 0;
+  --type-mono-case: none;
+  --type-eyebrow: var(--weight-light) var(--text-label)/var(--lh-body) var(--font-mono);
+  --type-eyebrow-tracking: var(--tracking-label);
+  --type-eyebrow-case: uppercase;
+  --type-tag: var(--weight-light) var(--text-body)/var(--leading-normal) var(--font-mono);
+  --type-tag-tracking: var(--tracking-label);
+  --type-tag-case: uppercase;
+  --type-chip: var(--weight-regular) var(--text-overline)/var(--leading-none) var(--font-mono);
+  --type-chip-tracking: var(--tracking-caps);
+  --type-chip-case: uppercase;
+  --type-badge: var(--weight-regular) var(--text-micro)/var(--leading-none) var(--font-mono);
+  --type-badge-tracking: 0;
+  --type-badge-case: none;
 
   /* -- Icon sizes (DS-TOK-102 to DS-TOK-106). A door mark is sized from
         its host's text. ------------------------------------------------------ */
@@ -272,9 +362,15 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-sans);
-  font-size: var(--text-body);
-  line-height: var(--leading-normal);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+/* Faux bold: no 700 face is loaded, so strong text is the medium weight. */
+b,
+strong {
+  /* type-exception DS-TOK-118: strong keeps its host's size at the medium weight */
+  font-weight: var(--weight-medium);
 }
 img,
 canvas,

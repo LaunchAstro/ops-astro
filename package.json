@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "tokens:diff": "node scripts/token-diff.mjs",
+    "type:census": "node scripts/type-census.mjs",
     "build": "node scripts/build.mjs",
     "brand:check": "node scripts/product-name.mjs --check",
     "brand:sync": "node scripts/product-name.mjs --write",
