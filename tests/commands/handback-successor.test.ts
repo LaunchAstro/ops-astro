@@ -75,7 +75,9 @@ describe('task.handback and the successor proposal', () => {
     expect(outcome.refusal.code).toBe('FIELD_VALUE_INVALID');
     expect(outcome.refusal.names).toEqual(['successor']);
   });
+});
 
+describe('task.handback and the successor proposal', () => {
   it.each([
     ['purpose', { purpose: 42 }],
     ['maximumMinor', { maximumMinor: 'a lot' }],
@@ -122,7 +124,9 @@ describe('task.handback and the successor proposal', () => {
       before + 7 * 24 * 60 * 60 * 1000,
     );
   });
+});
 
+describe('task.handback and the successor proposal', () => {
   it('lets a well-formed successor through to the runtime', async () => {
     // It reaches the database, which is exactly what the proxy reports: no
     // payload guard fired. Anything past this point is L4's handback.

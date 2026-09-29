@@ -227,7 +227,9 @@ describe('CQ-16 size counts code only', () => {
       expect(out).toContain('pr-size: 401 changed lines of non-test code across 1 file(s).');
     }
   });
+});
 
+describe('CQ-16 size counts code only', () => {
   it('CQ-16 size counts code only: a file moved between code and tests counts unless both sides are tests', () => {
     // 600 lines, then moved with 250 of them rewritten: git still reads it as a rename, 500 lines.
     const move = (from: string, to: string) =>

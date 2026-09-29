@@ -23,15 +23,17 @@ import { READS } from '../../packages/core-wire/src/surface.ts';
 import { PROPOSAL } from '../acceptance/role-case-bodies.ts';
 import { serverUrl, type AgentIdentity, type Caller } from '../acceptance/world.ts';
 import {
-  auditMark,
-  auditSince,
   createIdentWorld,
-  domainState,
-  expectAudited,
   type IdentWorld,
   type Picked,
   type RawAnswer,
 } from '../acceptance/ident-audit-cases.ts';
+import {
+  auditMark,
+  auditSince,
+  domainState,
+  expectAudited,
+} from '../acceptance/ident-audit-rows.ts';
 
 type Body = Readonly<Record<string, unknown>>;
 

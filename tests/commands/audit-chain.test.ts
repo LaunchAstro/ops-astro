@@ -205,7 +205,9 @@ describe.skipIf(serverUrl === undefined)('the audit chain', () => {
         await db.admin.execute('alter table public.audit_events enable trigger audit_append_only');
       }
     });
+  });
 
+  describe('the verifier', () => {
     it('catches a link rewritten by someone who recomputed the hash to match', async () => {
       // The forgery a per-row hash check on its own would accept: change what
       // a row says came before it, then recompute its own hash from the new
@@ -241,7 +243,9 @@ describe.skipIf(serverUrl === undefined)('the audit chain', () => {
         await db.admin.execute('alter table public.audit_events enable trigger audit_append_only');
       }
     });
+  });
 
+  describe('the verifier', () => {
     it('catches a row removed, which a per-row hash alone would not', async () => {
       const target = await write(business, actor, { command: 'task.reopen' });
       // One more after it, so removing the target leaves a hole rather than

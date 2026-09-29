@@ -128,7 +128,9 @@ describe('the envelope', () => {
     await make(fetch).mutate('task.update', { recordId: 'r1', fields: { title: 'x' } });
     expect(calls[0]?.body).not.toHaveProperty('expectedRevision');
   });
+});
 
+describe('the envelope', () => {
   it('reuses a caller-supplied identity, so a retry is the same attempt', async () => {
     const { fetch, calls } = stub({ recordId: 'r1', revision: 1 });
     const client = make(fetch);
@@ -180,7 +182,9 @@ describe('what comes back', () => {
     const result = await make(fetch).read('task.board', { board: null });
     expect(result).toMatchObject({ unavailable: true });
   });
+});
 
+describe('what comes back', () => {
   it('ends the session on either 401 code, and only when a token was sent', async () => {
     // The API tells the two apart on purpose — an unplaceable bearer is
     // `AUTH_UNKNOWN_LOGIN` and a verified one past its `exp` is
@@ -223,7 +227,9 @@ describe('what comes back', () => {
     }).read('task.board', { board: null });
     expect(ended).toEqual([]);
   });
+});
 
+describe('what comes back', () => {
   it('reports a transport failure as unavailable', async () => {
     const fetch = (async () => {
       throw new Error('connection refused');

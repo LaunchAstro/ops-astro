@@ -203,7 +203,9 @@ describe.skipIf(serverUrl === undefined)('trash, restore and purge', () => {
       expect(after.trash_batch_id).toBe((await mustRead(parent)).trash_batch_id);
       expect(waited).toBe(true);
     }, 20_000);
+  });
 
+  describe('restore locks the parent it checks', () => {
     it('makes the restore wait on a trash of the parent, and then refuses it PARENT_TRASHED', async () => {
       const parent = await create();
       const child = await create({ parentId: parent });

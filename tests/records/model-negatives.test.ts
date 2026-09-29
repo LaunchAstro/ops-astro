@@ -252,7 +252,7 @@ const OWNER_CASES: Readonly<Record<string, OwnerCase>> = {
   },
   client: {
     // A well-formed identifier and nothing more: the party model is not
-    // installed, so no party is proved to exist (role-case-bodies.ts says so).
+    // installed, so no party is proved to exist (role-case-positive-body.ts says so).
     command: 'task.set_party',
     payload: () => ({ fields: { client: randomUUID() } }),
     stored: (payload) => fieldOf(payload, 'client'),

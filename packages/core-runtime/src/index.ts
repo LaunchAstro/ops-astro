@@ -33,7 +33,7 @@ export {
   type Renewed,
 } from './heartbeat.ts';
 export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
-export { dispatch, type Dispatched, type DispatchRequest } from './dispatch.ts';
+export { dispatch, EFFECT_OPERATIONS, type Dispatched, type DispatchRequest } from './dispatch.ts';
 export { observe, type AppliedEffect, type Observed, type ObserveRequest } from './observe.ts';
 export { readReceipt, receiptTask, type Receipt } from './receipt.ts';
 export { readAlerts, type Alert } from './alerts.ts';
@@ -70,10 +70,32 @@ export {
 } from './handback.ts';
 export { AffectedSetChanged, requireUnchanged } from './rediscovery.ts';
 export { appendRunEvent, type RunEvent, type RunEventKind } from './run-events.ts';
+export { reconcileUnknown, type EffectLookup, type Reconciled } from './recovery/reconcile.ts';
+export {
+  DROP_FAULT,
+  recordDrop,
+  REPORTED_DROP_CAUSES,
+  sweepLostWorkers,
+  type DropCause,
+} from './recovery/drop.ts';
+export {
+  joinOutage,
+  OUTAGE_WINDOW_SECONDS,
+  readOutages,
+  type OutageReport,
+} from './recovery/outage.ts';
+export {
+  recordOutcome,
+  RECORDED_OUTCOMES,
+  type OutcomeRecorded,
+  type RecordedOutcome,
+} from './recovery/outcome.ts';
+export { writeOff, type WriteOffRequest, type WrittenOff } from './recovery/write-off.ts';
 export {
   cancelAndClassify,
   classifyUnderLocks,
   replayRecordedTransitions,
+  sweepExpiredLeases,
   type Classification,
   type ClassifyRequest,
   type NonclaimableCause,

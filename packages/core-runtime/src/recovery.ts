@@ -18,15 +18,20 @@
 //
 // **A marker or an observation always retains the full hold.** Even when the
 // work is otherwise terminal, a dispatch marker or an observation means
-// something happened that this head has no reachable path to, so the hold is
-// quarantined and named for a later reconciliation owner. Work refusal must
-// never erase a real liability.
+// something may have happened, so the whole hold is kept: a dispatched attempt
+// as `liability_unknown` for a person (T3b), a legacy marked row quarantined
+// as 0014 left it. Work refusal must never erase a real liability.
 //
-// The module is three files: `recovery/classifier.ts` (the classifier and the
+// T3b's sweep (`recovery/sweep.ts`) is the one reconciliation pass's
+// lease-expiry phase: it records the fence of a lease past its deadline, and
+// this classifier then reads that recorded fence, never the clock.
+//
+// The module is four files: `recovery/classifier.ts` (the classifier and the
 // reads that find what it classifies), `recovery/lease-retirement.ts` (the
 // live work a closing transition ends, and cancellation) and
 // `recovery/authority-loss.ts` (the grants a claim rests on, and what a
-// revocation classifies). This file is their one surface.
+// revocation classifies) and `recovery/sweep.ts`. This file is their one
+// surface.
 
 export {
   affectedByVersions,
@@ -46,6 +51,7 @@ export {
   replayRecordedTransitions,
   retireWork,
 } from './recovery/lease-retirement.ts';
+export { sweepExpiredLeases } from './recovery/sweep.ts';
 export {
   classifyAuthorityLoss,
   type AuthorityLoss,

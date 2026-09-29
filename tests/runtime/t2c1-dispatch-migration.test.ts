@@ -132,7 +132,7 @@ async function work(
 /** Every attempt and step, row by row, as the owner reads them. */
 async function rows(db: EmptyDatabase): Promise<unknown> {
   return await db.admin.execute(
-    `select (select json_agg(to_jsonb(a) order by a.id) from public.attempts a) as attempts,
+    `select (select json_agg(to_jsonb(a) - 'drop_cause' - 'provider_started_at' order by a.id) from public.attempts a) as attempts,
             (select json_agg(to_jsonb(s) - 'dispatch_attempt_id' - 'dispatch_marked'
                              order by s.id) from public.planned_steps s) as steps`,
   );

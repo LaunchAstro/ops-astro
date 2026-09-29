@@ -229,6 +229,7 @@ export type CommandRequest =
       readonly leaseId: string;
       readonly fence: number;
       readonly leaseSeconds?: number;
+      readonly providerStarting?: true;
     } & Envelope)
   | ({
       readonly command: 'task.dispatch';
@@ -249,6 +250,19 @@ export type CommandRequest =
       readonly recordId: unknown;
       readonly amountMinor: number;
       readonly fromMaximumMinor: number;
+    } & Envelope)
+  | ({
+      readonly command: 'budget.record_outcome';
+      readonly recordId: unknown;
+      readonly attemptId: unknown;
+      readonly outcome: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'budget.write_off';
+      readonly recordId: unknown;
+      readonly attemptId: unknown;
+      readonly amountMinor: unknown;
+      readonly reason: unknown;
     } & Envelope);
 
 /**

@@ -40,7 +40,7 @@ import {
 } from './lease-ownership.ts';
 import { acquire } from './locks.ts';
 import { only } from './only.ts';
-import type { RuntimeResult } from './refusals.ts';
+import { refuse, type RuntimeResult } from './refusals.ts';
 
 /** One renewal's reach, the same ceiling a pickup's own lease has. */
 export const MAXIMUM_RENEWAL_SECONDS: number = 60 * 60;
@@ -56,6 +56,8 @@ export interface HeartbeatRequest {
   /** The delegation the credential resolved to, never a body field. */
   readonly delegationId: string;
   readonly renewSeconds: number;
+  /** T3e1: record that the provider is about to be called. */
+  readonly providerStarting?: boolean;
 }
 
 /**
@@ -74,6 +76,7 @@ export interface PersonHeartbeatRequest {
   readonly subjects: readonly Subject[];
   readonly collection: string;
   readonly renewSeconds: number;
+  readonly providerStarting?: boolean;
 }
 
 export interface Renewed {
@@ -108,6 +111,10 @@ export async function heartbeat(
   const lockedAt = await lockedInstant(tx);
   const checked = await recheckOwner(tx, request, lockedAt);
   if (!checked.ok) return checked;
+  if (request.providerStarting === true) {
+    const started = await startProvider(tx, request.leaseId, lockedAt);
+    if (!started.ok) return started;
+  }
   const expiresAt = await renew(tx, request, delegationId, lockedAt);
   return {
     ok: true,
@@ -149,6 +156,36 @@ async function recheckOwner(
   if (fenced !== null) return refuseLease(fenced, LEASE_FIXES.heartbeat.expired);
   if (!authorityLive) return refuseLease('not_live', LEASE_FIXES.heartbeat.expired);
   return { ok: true, value: lease.task_id };
+}
+
+/**
+ * T3e1: the worker is about to call its provider, which
+ * may act and lose its answer. Recorded once, under the lease lock the sweep
+ * and the reconciliation pass also take, and only on this lease's marked,
+ * dispatched attempt, so the fact is durable before the call. A worker lost
+ * after it has reached a provider that may have acted, and the register,
+ * which holds only the comment, cannot prove otherwise (`registerEffectLookup`).
+ * A step not yet marked is refused, and nothing is written or renewed.
+ */
+async function startProvider(
+  tx: TenantQuery,
+  leaseId: string,
+  lockedAt: string,
+): Promise<RuntimeResult<true>> {
+  const started = await tx.query(
+    `update public.attempts set provider_started_at = coalesce(provider_started_at, $3::timestamptz)
+      where business_id = $1 and lease_id = $2 and dispatch_marker and state = 'dispatched'
+      returning id`,
+    [tx.businessId, leaseId, lockedAt],
+  );
+  if (started.length === 0) {
+    return refuse(
+      'TRANSITION_NOT_PERMITTED',
+      'a provider starts only on a step this lease has marked dispatched',
+      'Dispatch the step first, then record the provider start.',
+    );
+  }
+  return { ok: true, value: true };
 }
 
 /**

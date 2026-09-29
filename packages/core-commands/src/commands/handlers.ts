@@ -30,6 +30,8 @@ import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
+import { recordOutcomeOnTask } from './budget-record-outcome.ts';
+import { writeOffOnTask } from './budget-write-off.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -108,6 +110,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
 
   // T2e. A person's money decision; no agent route reaches it.
   'budget.top_up': topUpOnTask,
+  // T3d1. A person's word on an unknown effect; no agent route reaches it.
+  'budget.record_outcome': recordOutcomeOnTask,
+  // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
+  'budget.write_off': writeOffOnTask,
 };
 
 function writeOwned(

@@ -18,7 +18,7 @@ import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { readIdentity } from '../../apps/api/identity.ts';
 import { createCli, type Transport } from '../../apps/cli/client.ts';
 import { createWorker, EFFECT_BODY } from '../../apps/worker/worker.ts';
-import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
+import { ProviderFault, SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import {
   authorised,
   BUSINESS_KEY,
@@ -233,5 +233,47 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
     expect(
       (await comments(taskId)).filter((comment) => comment['body'] === EFFECT_BODY),
     ).toHaveLength(1);
+  });
+
+  it('an uncertain provider call keeps the full hold until its effect is proved absent', async () => {
+    const { taskId, credential } = await approvedWork();
+    let providerEffects = 0;
+    const worker = createWorker({
+      transport,
+      businessKey: BUSINESS_KEY,
+      credential: agentToken,
+      delegation: credential,
+      reporter: SYNTHETIC_USAGE,
+      provider: {
+        call: async () => {
+          providerEffects += 1;
+          throw new ProviderFault('connection_lost');
+        },
+      },
+    });
+
+    expect(await worker.applyOnce(taskId)).toHaveProperty('dropped');
+    expect(providerEffects).toBe(1);
+    const attempts = await fixture.db.admin.execute<{
+      state: string;
+      dispatch_marker: boolean;
+      reservation_state: string;
+      held_minor: string;
+    }>(
+      `select att.state, att.dispatch_marker, res.state as reservation_state,
+              res.held_minor::text as held_minor
+         from public.attempts att
+         join public.reservations res on res.business_id = att.business_id and res.id = att.reservation_id
+         join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+        where att.business_id = $1 and run.task_id = $2 order by att.created_at, att.id`,
+      [fixture.business, taskId],
+    );
+    expect(attempts[0]).toMatchObject({
+      state: 'liability_unknown',
+      dispatch_marker: true,
+      reservation_state: 'held',
+      held_minor: '2500',
+    });
+    expect(attempts).toHaveLength(1);
   });
 });

@@ -64,7 +64,7 @@ function expectShape(
     operand: 'operationId',
     presence: 'required',
   });
-  expect(shape['outcomes']).toStrictEqual(['completed', 'failed']);
+  expect(shape['outcomes']).toStrictEqual(['completed', 'failed', 'dropped']);
   expect(shape['lease']).toMatchObject({ leaseId: detail['leaseId'], fence: detail['fence'] });
   expect(shape['versionBinding']).toMatchObject({
     operand: null,

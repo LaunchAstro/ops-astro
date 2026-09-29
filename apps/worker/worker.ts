@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import { createCli, isRefusal, type CliAnswer, type Transport } from '../cli/client.ts';
-import type { UsageReporter } from './usage.ts';
+import { ProviderFault, SYNTHETIC_PROVIDER, type Provider, type UsageReporter } from './usage.ts';
 
 export interface WorkerOptions {
   readonly transport: Transport;
@@ -27,6 +27,8 @@ export interface WorkerOptions {
   /** The one delegation it acts under, from `OPS_ASTRO_DELEGATION` as the command line takes it. */
   readonly delegation: string;
   readonly reporter: UsageReporter;
+  /** What the step calls before it acts (T3e1). Absent is the synthetic one, which always answers. */
+  readonly provider?: Provider;
 }
 
 export const SYNTHETIC_STEP = { kind: 'synthetic_comment', payload: {} } as const;
@@ -46,6 +48,8 @@ export type WorkerOutcome =
         readonly commentId: string;
       };
     }
+  /** The provider dropped the step before it acted; handed back, and the work comes back (T3e1). */
+  | { readonly dropped: { readonly taskId: string; readonly cause: string } }
   /** Nothing approved and unpicked on the task: done already, or not yet approved. */
   | { readonly idle: { readonly taskId: string } }
   | { readonly refused: { readonly code: string; readonly names: readonly string[] } }
@@ -86,6 +90,14 @@ interface Held {
   readonly lease: { readonly leaseId: unknown; readonly fence: unknown };
   readonly attemptId: string;
   readonly credential: string;
+  /**
+   * Set once the provider dropped this attempt: only the hand-back is sent
+   * again, under its first operation identity, so it replays.
+   */
+  readonly drop?: {
+    readonly cause: 'provider_unavailable' | 'connection_lost';
+    readonly operationId: string;
+  };
 }
 
 /** A pickup asked for and not yet answered: asked again under its identity, it replays. */
@@ -124,7 +136,9 @@ async function applyOnce(
     work = picked.held;
     kept.set(taskId, work);
   }
-  const outcome = await effectOnce(options, taskId, work);
+  const outcome = await effectOnce(options, taskId, work, (dropped) => {
+    kept.set(taskId, dropped);
+  });
   // A fault may be a lost answer, so the work is kept; anything else ends it here.
   if (!('fault' in outcome)) kept.delete(taskId);
   return outcome;
@@ -160,11 +174,45 @@ async function pickUp(
 async function effectOnce(
   options: WorkerOptions,
   taskId: string,
-  { lease, attemptId, credential }: Held,
+  held: Held,
+  keep: (dropped: Held) => void,
 ): Promise<WorkerOutcome> {
+  const { lease, attemptId, credential } = held;
   const call = agentCall(options, credential);
+  const handBackDrop = async ({ cause, operationId }: NonNullable<Held['drop']>) => {
+    const back = await call('task.handback', {
+      operationId,
+      ...lease,
+      outcome: 'dropped',
+      report: { dropCause: cause },
+    });
+    return 'body' in back ? { dropped: { taskId, cause } } : back;
+  };
+  // A drop whose hand-back answer was lost: send the hand-back again, and
+  // never call the provider a second time for this attempt.
+  if (held.drop !== undefined) return await handBackDrop(held.drop);
+  // The mark first: a provider call may act and then
+  // lose its answer, so it is made only once the step is marked. A fault is
+  // then handed back as a drop, and the step's whole hold stays unknown until
+  // a person records what happened (T3d1): the register holds only the
+  // comment, so the pass cannot prove the provider did nothing.
+  // Nothing is released or reserved again on the worker's word.
   const dispatched = await call('task.dispatch', lease);
   if (!('body' in dispatched)) return dispatched;
+  // The provider start is made durable before the call, so a
+  // worker lost after it is known to have reached a provider that may have
+  // acted, and its missing comment proves nothing. A lost answer here is a
+  // fault, and the provider is not called until the start is recorded.
+  const starting = await call('task.heartbeat', { ...lease, providerStarting: true });
+  if (!('body' in starting)) return starting;
+  try {
+    await (options.provider ?? SYNTHETIC_PROVIDER).call(SYNTHETIC_STEP);
+  } catch (fault) {
+    if (!(fault instanceof ProviderFault)) throw fault;
+    const drop = { cause: fault.dropCause, operationId: randomUUID() };
+    keep({ ...held, drop });
+    return await handBackDrop(drop);
+  }
   const effect = await call('task.comment', {
     operationId: effectOperationId(attemptId),
     recordId: taskId,

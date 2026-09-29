@@ -52,7 +52,8 @@ export async function main(
     const settled = outcome !== undefined && 'applied' in outcome;
     if (argv.includes('--once') || settled) {
       if (outcome === undefined) return EXIT.fault;
-      if ('proposed' in outcome || 'applied' in outcome || 'idle' in outcome) return EXIT.ok;
+      const ended = ['proposed', 'applied', 'idle', 'dropped'].some((key) => key in outcome);
+      if (ended) return EXIT.ok;
       return 'refused' in outcome ? EXIT.refused : EXIT.fault;
     }
     // oxlint-disable-next-line no-await-in-loop -- the poll interval

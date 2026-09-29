@@ -104,7 +104,11 @@ export type CommandName =
   | 'task.observe'
   | 'task.receipt'
   // A person raises a task's envelope, two people above the band (T2e).
-  | 'budget.top_up';
+  | 'budget.top_up'
+  // A person records what an unknown effect came to: one of three (T3d1).
+  | 'budget.record_outcome'
+  // A person closes an unknown hold at an amount, with a reason (T3c).
+  | 'budget.write_off';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -353,10 +357,20 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
-  'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
+  'task.heartbeat': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    leaseSeconds: 'any',
+    providerStarting: 'any',
+  },
   'task.dispatch': { leaseId: 'any', recordId: 'any', fence: 'any' },
   // Minor units, of the maximum the person saw; no standing ceiling (Q168).
   'budget.top_up': { recordId: 'any', amountMinor: 'count', fromMaximumMinor: 'count' },
+  // The task, the attempt held unknown, and one of the three outcomes (O7).
+  'budget.record_outcome': { recordId: 'any', attemptId: 'any', outcome: 'any' },
+  // The task, the attempt held unknown, the minor units charged and why (T3c).
+  'budget.write_off': { recordId: 'any', attemptId: 'any', amountMinor: 'count', reason: 'text' },
   'task.observe': {
     leaseId: 'any',
     recordId: 'any',
@@ -532,6 +546,22 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId'],
+  }),
+  // `billing:decide` on the task (T3d1): any person holding it records an
+  // unknown effect's outcome (O8); no agent route serves it.
+  declare('budget.record_outcome', 'decide', {
+    collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'attemptId'],
+  }),
+  // `billing:decide` on the task (T3c): a person writes an unknown hold off,
+  // two above the band; no agent route serves it.
+  declare('budget.write_off', 'decide', {
+    collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'attemptId'],
   }),
 ];
 

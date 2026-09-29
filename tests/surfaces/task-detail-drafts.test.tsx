@@ -289,7 +289,9 @@ describe('an unsaved edit is resolved, not merged', () => {
 
     await view.unmount();
   });
+});
 
+describe('an unsaved edit is resolved, not merged', () => {
   it('holds the assignee, the lifecycle and Refresh until Save or Discard is answered', async () => {
     const api = server();
     const view = await mount(
@@ -317,7 +319,9 @@ describe('an unsaved edit is resolved, not merged', () => {
 
     await view.unmount();
   });
+});
 
+describe('an unsaved edit is resolved, not merged', () => {
   it('is discarded on request, and the saved values come back', async () => {
     const api = server();
     const view = await mount(
@@ -363,7 +367,9 @@ describe('an unsaved edit is resolved, not merged', () => {
 
     await view.unmount();
   });
+});
 
+describe('an unsaved edit is resolved, not merged', () => {
   it('cannot be edited while the save it belongs to is in flight', async () => {
     const api = server();
     const view = await mount(
@@ -397,7 +403,9 @@ describe('an unsaved edit is resolved, not merged', () => {
 
     await view.unmount();
   });
+});
 
+describe('an unsaved edit is resolved, not merged', () => {
   it('is dropped when the task changes, so one task never shows another one edit', async () => {
     const api = server();
     const held = client(api.fetch);
@@ -432,7 +440,9 @@ describe('an unsaved edit is resolved, not merged', () => {
 
     await view.unmount();
   });
+});
 
+describe('an unsaved edit is resolved, not merged', () => {
   it('is dropped when the read is denied', async () => {
     const api = server();
     const held = client(api.fetch);

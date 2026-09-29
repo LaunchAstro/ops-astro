@@ -85,10 +85,14 @@ async function held(
   });
 }
 
+// T3d1: 0037 adds `absence_proved_at` to every hold, null on a row it did not
+// answer, and T3e1's 0038 `drop_cause` and `provider_started_at` to every attempt; the comparison is of
+// the rows 0034 must not rewrite, as T2c1's is.
 async function rows(db: EmptyDatabase): Promise<unknown> {
   return await db.admin.execute(
-    `select (select json_agg(to_jsonb(r) order by r.id) from public.reservations r) as reservations,
-            (select json_agg(to_jsonb(a) order by a.id) from public.attempts a) as attempts`,
+    `select (select json_agg(to_jsonb(r) - 'absence_proved_at' order by r.id)
+               from public.reservations r) as reservations,
+            (select json_agg(to_jsonb(a) - 'drop_cause' - 'provider_started_at' order by a.id) from public.attempts a) as attempts`,
   );
 }
 

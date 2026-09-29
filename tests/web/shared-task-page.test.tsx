@@ -129,7 +129,9 @@ describe('the task page for a reader outside the business', () => {
     expect(page.text()).toContain('No field on this task is shared.');
     await page.unmount();
   });
+});
 
+describe('the task page for a reader outside the business', () => {
   it('offers no control and reads nothing beyond task.read', async () => {
     const api = server(shared({ summary: 'Shared' }));
     const page = await mount(screen(api.fetch));

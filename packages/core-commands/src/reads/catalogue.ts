@@ -15,7 +15,7 @@
 // inventory read. This row says only how the check is asked.
 
 import { planPresetSync, isUuid } from '../../../core-records/src/index.ts';
-import { readAlerts } from '../../../core-runtime/src/index.ts';
+import { readAlerts, readOutages } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import type { TaskSpine } from '../commands/context.ts';
@@ -252,6 +252,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       ok: true,
       queue: await readQueue(tx),
       alerts: isInternalReader(session.roleKey) ? await readAlerts(tx) : [],
+      // T3e2: one report per outage, the team's as the alerts are.
+      outages: isInternalReader(session.roleKey) ? await readOutages(tx) : [],
     }),
   },
   // The task's runs, after the grant at the task's record scope. It is

@@ -323,7 +323,9 @@ describe.skipIf(serverUrl === undefined)('command_shape', () => {
       const events = await auditEvents();
       expect(events.at(-1)?.attempted).toStrictEqual({ source: spoofed });
     });
+  });
 
+  describe('an audit event per attempt, including the refusals', () => {
     it('leaves the register and the chain agreeing about what happened', async () => {
       const identity = `agree-${randomUUID()}`;
       await create('agreement', identity);

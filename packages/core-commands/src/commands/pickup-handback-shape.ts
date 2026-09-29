@@ -36,7 +36,7 @@ const HANDBACK_OPERANDS: { readonly [K in keyof HandbackFields]-?: OperandShape<
     accepts:
       'the fence this pickup returned, a non-negative integer compared under the handback locks',
   },
-  outcome: { presence: 'required', accepts: 'completed or failed' },
+  outcome: { presence: 'required', accepts: 'completed, failed or dropped' },
   report: {
     presence: 'optional',
     accepts: 'an object of named values; absent is an empty report',

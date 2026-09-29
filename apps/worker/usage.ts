@@ -27,3 +27,31 @@ export const SYNTHETIC_USAGE: UsageReporter = {
   estimate: () => 2_500,
   observe: () => ({ item: 'synthetic_comment', quantity: 1 }),
 };
+
+/**
+ * T3e1: what the step calls once it is marked, before its effect. The shipped
+ * provider always answers; a fault is injected only at construction, as the
+ * reporter is, so no setting turns one on. A worker that meets a
+ * `ProviderFault` hands back `dropped` with its cause; the call may have acted,
+ * so the whole hold stays unknown until a person records what happened: the
+ * register holds only the comment and cannot prove the provider did nothing.
+ */
+export interface Provider {
+  readonly call: (step: { readonly kind: string }) => Promise<void>;
+}
+
+/** The provider did not answer, or the connection to it was lost. */
+export class ProviderFault extends Error {
+  readonly dropCause: 'provider_unavailable' | 'connection_lost';
+
+  constructor(dropCause: 'provider_unavailable' | 'connection_lost') {
+    super(`the provider call dropped: ${dropCause}`);
+    this.dropCause = dropCause;
+  }
+}
+
+export const SYNTHETIC_PROVIDER: Provider = {
+  call: async () => {
+    await Promise.resolve();
+  },
+};

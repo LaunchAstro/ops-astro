@@ -11,7 +11,7 @@
 // agree is an authority change wearing configuration's clothes — so neither is
 // reachable through a generic edit, and each has a named command of its own.
 // This screen posts to those two commands and nowhere else. `budget.top_up`
-// reads the band (T2e); the sign-off setting has no consumer yet, and the
+// (T2e) and `budget.write_off` (T3c) read the band; the sign-off setting has no consumer yet, and the
 // copy on the page says so rather than describing a stop that does not happen.
 //
 // **The values are the server's now.** `settings.read` answers each row with
@@ -156,9 +156,9 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
           The amount above which a second person is to agree before money moves. Off means one
           person is enough at any amount.
         </p>
-        {/* T2e: `budget.top_up` reads the band. The write-off is still to come. */}
+        {/* `budget.top_up` (T2e) and `budget.write_off` (T3c) read the band. */}
         <p className="card__sub" data-settings="applied">
-          Applied to task top-ups: above this amount a second person approves.
+          Applied to task top-ups and write-offs: above this amount a second person approves.
         </p>
         {model.answered ? <ValueLine which="four-eyes" row={model.rowFor('four-eyes')} /> : null}
         {confirmedLine('four-eyes')}

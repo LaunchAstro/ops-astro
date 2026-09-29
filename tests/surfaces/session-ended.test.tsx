@@ -109,6 +109,8 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
     // The task page also reads its run (T2g); none here.
     if (at.endsWith('/task/execution'))
       return json({ ok: true, execution: { outcome: 'no-run', runs: [], events: [] } });
+    // T3e2: the task page reads the team's outage reports; none here.
+    if (at.endsWith('/task/queue')) return json({ ok: true, queue: [], alerts: [], outages: [] });
     if (at.startsWith('http://identity.invalid/token')) {
       // A new hour. Everything the old token could not do, the new one can.
       reads = 'ok';
@@ -215,7 +217,9 @@ describe('a session the API will not vouch for any more', () => {
     expect([...store.held.keys()].some((key) => key.includes('return'))).toBe(false);
     await view.unmount();
   });
+});
 
+describe('a session the API will not vouch for any more', () => {
   it('a mutation refused AUTH_UNKNOWN_LOGIN does the same, from the task screen', async () => {
     const api = server();
     const store = storage(SIGNED_IN);
@@ -245,7 +249,9 @@ describe('a session the API will not vouch for any more', () => {
     expect(view.text()).toContain('Wire the board to the API');
     await view.unmount();
   });
+});
 
+describe('a session the API will not vouch for any more', () => {
   it('an ordinary denial is drawn as a denial and signs nobody out', async () => {
     const api = server({ reads: 'scope' });
     const store = storage(SIGNED_IN);
@@ -285,6 +291,8 @@ function byBearer(): {
     // The task page also reads its run (T2g); none here.
     if (at.endsWith('/task/execution'))
       return json({ ok: true, execution: { outcome: 'no-run', runs: [], events: [] } });
+    // T3e2: the task page reads the team's outage reports; none here.
+    if (at.endsWith('/task/queue')) return json({ ok: true, queue: [], alerts: [], outages: [] });
     if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH_TOKEN });
     const headers = (init?.headers ?? {}) as Record<string, string>;
     const stale = headers['authorization'] === `Bearer ${SESSION.token}`;
@@ -372,6 +380,8 @@ function perBusiness(): typeof globalThis.fetch {
     // The task page also reads its run (T2g); none here.
     if (at.endsWith('/task/execution'))
       return json({ ok: true, execution: { outcome: 'no-run', runs: [], events: [] } });
+    // T3e2: the task page reads the team's outage reports; none here.
+    if (at.endsWith('/task/queue')) return json({ ok: true, queue: [], alerts: [], outages: [] });
     if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH_TOKEN });
     const headers = (init?.headers ?? {}) as Record<string, string>;
     if (headers['authorization'] === `Bearer ${BRAVO.token}`) return unknownLogin();

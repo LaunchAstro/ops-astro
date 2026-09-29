@@ -125,7 +125,9 @@ describe.skipIf(serverUrl === undefined)(
         expect(commands).toContain('task.purge');
         expect(child.recordId).toBeDefined();
       });
+    });
 
+    describe('the audit event T1e handed on', () => {
       it('purges a task a command created, and keeps the evidence about it', async () => {
         // The first time this ran it failed on a foreign key: `operations` and
         // `audit_events` both pointed at `records`, and a purge is a real
@@ -171,7 +173,9 @@ describe.skipIf(serverUrl === undefined)(
         // record, and both rows still name it after it is gone.
         expect(register[0]?.count).toBe('2');
       });
+    });
 
+    describe('the audit event T1e handed on', () => {
       it('refuses a second trash of a subtree already in the trash', async () => {
         const root = await create({ title: 'already gone' });
         const first = await run({

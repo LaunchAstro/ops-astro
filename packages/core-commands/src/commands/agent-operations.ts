@@ -415,6 +415,7 @@ async function serveHeartbeat(
       leaseId: request['leaseId'],
       fence: request['fence'],
       ...(operands.leaseSeconds === undefined ? {} : { leaseSeconds: operands.leaseSeconds }),
+      ...('providerStarting' in request ? { providerStarting: request['providerStarting'] } : {}),
     },
     agentClaimant(session.actorId),
     delegation.id,

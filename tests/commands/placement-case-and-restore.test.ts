@@ -280,7 +280,9 @@ describe.skipIf(serverUrl === undefined)('placement', () => {
       expect(child.trash_batch_id).toBe(parent.trash_batch_id);
       expect(waited).toBe(true);
     }, 20_000);
+  });
 
+  describe('a trash reaching the parent through an ancestor', () => {
     it('takes a child created under the parent meanwhile into its batch', async () => {
       const g = await create();
       const a = await create({ parentId: g });

@@ -49,6 +49,7 @@ export interface ReservationRow {
   readonly attempt_state: string | null;
   readonly attempt_dispatch_marker: boolean | null;
   readonly attempt_observed: boolean | null;
+  readonly attempt_drop_cause: string | null;
 }
 
 export function asVersion(row: VersionRow): ProposalVersionView {
@@ -114,6 +115,7 @@ export function asReservation(row: ReservationRow): ReservationView {
             state: row.attempt_state ?? 'unknown',
             dispatchMarker: row.attempt_dispatch_marker ?? false,
             observed: row.attempt_observed ?? false,
+            dropCause: row.attempt_drop_cause,
           },
   };
 }

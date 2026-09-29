@@ -120,6 +120,14 @@ vi.mock('../../packages/core-commands/src/commands/budget-top-up.ts', async (ori
   ...(await original<object>()),
   topUpOnTask: recorder('topUpOnTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/budget-record-outcome.ts', async (original) => ({
+  ...(await original<object>()),
+  recordOutcomeOnTask: recorder('recordOutcomeOnTask'),
+}));
+vi.mock('../../packages/core-commands/src/commands/budget-write-off.ts', async (original) => ({
+  ...(await original<object>()),
+  writeOffOnTask: recorder('writeOffOnTask'),
+}));
 
 const PINNED_RUNTIME_SHAPED = {
   'task.handback': 'leaseId',
@@ -130,7 +138,9 @@ const PINNED_RUNTIME_SHAPED = {
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
+  'budget.record_outcome': ['recordId', 'attemptId'],
   'budget.top_up': ['recordId'],
+  'budget.write_off': ['recordId', 'attemptId'],
   'delegation.revoke': [],
   'grant.revoke': [],
   'settings.set_client_sign_off': [],
@@ -149,7 +159,9 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
+  'budget.record_outcome',
   'budget.top_up',
+  'budget.write_off',
   'delegation.revoke',
   'grant.revoke',
   'person.list',
@@ -264,6 +276,21 @@ const REQUESTS: readonly CommandRequest[] = [
     amountMinor: 7,
     fromMaximumMinor: 8,
   },
+  {
+    command: 'budget.record_outcome',
+    operationId: 'op',
+    recordId: 'r',
+    attemptId: 'at',
+    outcome: 'happened',
+  },
+  {
+    command: 'budget.write_off',
+    operationId: 'op',
+    recordId: 'r',
+    attemptId: 'at',
+    amountMinor: 0,
+    reason: 'why',
+  },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -309,6 +336,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.dispatch': ['dispatchOwnLease', 'request'],
   'task.observe': ['observeOwnLease', 'request'],
   'budget.top_up': ['topUpOnTask', 'request'],
+  'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
+  'budget.write_off': ['writeOffOnTask', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -348,7 +377,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-four from an expected revision', () => {
+  it('exempts the same twenty-six from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

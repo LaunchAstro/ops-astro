@@ -63,7 +63,9 @@ describe('the credential derivation (group 5)', () => {
     for (const variant of variants) expect(variant).not.toBe(base);
     expect(new Set(variants).size).toBe(variants.length);
   });
+});
 
+describe('the credential derivation (group 5)', () => {
   it('refuses a malformed keyring rather than repairing it', () => {
     const good = key();
     const cases: readonly [string | undefined, string | undefined][] = [

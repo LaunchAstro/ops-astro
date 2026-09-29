@@ -53,7 +53,7 @@ const stubDatabase = (): Database =>
           return [];
         },
       }),
-    close: async () => undefined,
+    close: () => Promise.resolve(),
   }) as unknown as Database;
 
 const api = createApi({
@@ -71,7 +71,7 @@ const api = createApi({
  * one `createApi` built, with its own status, its own headers and its own
  * bytes. No case here may construct a body.
  */
-const transport = (async (url: string | URL, init?: RequestInit) =>
+const transport = ((url: string | URL, init?: RequestInit) =>
   api.fetch(new Request(String(url), init))) as unknown as typeof globalThis.fetch;
 
 const client = (token: string | null): OperationsClient =>

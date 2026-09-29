@@ -6,6 +6,7 @@
 // part draws what it draws.
 
 import type { ReactElement } from 'react';
+import { drawRunState } from '@launchastro/ui';
 import type {
   DecisionLink as ProposalDecision,
   ReservationView as ProposalReservation,
@@ -40,10 +41,49 @@ export function Chain(props: {
   );
 }
 
+/** T3b: a step dispatched and never confirmed. Its hold is an unknown cost, not money spent. */
+const isUnknown = (reservation: ProposalReservation): boolean =>
+  reservation.attempt?.state === 'liability_unknown';
+
 export function Reservations(props: {
   readonly reservations: readonly ProposalReservation[];
 }): ReactElement | null {
-  if (props.reservations.length === 0) return null;
+  const unknown = props.reservations.filter(isUnknown);
+  const known = props.reservations.filter((reservation) => !isUnknown(reservation));
+  return (
+    <>
+      {unknown.length === 0 ? null : <UnknownCosts reservations={unknown} />}
+      {known.length === 0 ? null : <Known reservations={known} />}
+    </>
+  );
+}
+
+/**
+ * Drawn apart from settled money, and raised for a person: the whole hold
+ * stays set aside until someone records what happened (T3c, T3d1).
+ */
+function UnknownCosts(props: {
+  readonly reservations: readonly ProposalReservation[];
+}): ReactElement {
+  return (
+    <div className="sbact" data-unknown-liabilities="list">
+      <div className="sb__sh">
+        <span className="sb__k">Unknown cost, needs a person</span>
+      </div>
+      {props.reservations.map((reservation) => (
+        <div className="sbact__row" data-unknown-liability={reservation.id} key={reservation.id}>
+          <span className="sb__state">started, not confirmed</span>
+          <span className="sbact__meta">
+            {money(reservation.heldMinor ?? 0, '')} held as an unknown cost: it needs a person to
+            record what happened
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Known(props: { readonly reservations: readonly ProposalReservation[] }): ReactElement {
   return (
     <div className="sbact" data-reservations="list">
       <div className="sb__sh">
@@ -94,6 +134,16 @@ function ReservationRow(props: { readonly reservation: ProposalReservation }): R
       ) : (
         <span className="sbact__meta" data-attempt-state={reservation.attempt.state}>
           attempt {reservation.attempt.state}
+          {/* T3e1: a drop is drawn in its own words, one per cause, and never
+              as a person's cancellation. */}
+          {reservation.attempt.dropCause === undefined || reservation.attempt.dropCause === null
+            ? null
+            : ` · ${
+                drawRunState({
+                  state: 'waiting',
+                  waitReason: `dropped_${reservation.attempt.dropCause}`,
+                }).word
+              }`}
         </span>
       )}
     </div>

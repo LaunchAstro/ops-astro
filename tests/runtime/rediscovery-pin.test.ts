@@ -205,7 +205,10 @@ const HELD_BY_LINEAGE = 'select res.id as reservation_id, res.envelope_id #5168d
 const HELD_BY_DELEGATION = 'select res.id as reservation_id, res.envelope_id #2223e6d4';
 // The replay's statement text changed only in a SQL comment: CQ-9 dropped a
 // finding label from `-- F4. A revocation that committed ...` in classifier.ts.
-const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #296c97f7';
+// T3b (#132) then added one filter: a reservation whose attempt is held
+// `liability_unknown` waits for a person and is not rediscovered. Still one
+// read, taken twice; no lock moved.
+const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #39592da5';
 const DEPENDENTS = 'with recursive revoked as ( select g.id, g.subje #c53e3eae';
 
 /**

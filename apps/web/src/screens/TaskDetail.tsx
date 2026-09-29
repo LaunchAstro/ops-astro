@@ -84,6 +84,7 @@ import type { CallResult, OperationsClient, WireRefusal } from '../operations/cl
 import type {
   InternalTaskDetail as Task,
   PersonListResult,
+  QueueResult,
   TaskReadResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
@@ -100,6 +101,7 @@ import { Alerts } from './task/Alerts.tsx';
 import { Comments, type CommentDraft } from './task/Comments.tsx';
 import { DetailsForm } from './task/DetailsForm.tsx';
 import { History } from './task/History.tsx';
+import { Outages } from './task/Outages.tsx';
 import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 
 export interface TaskDetailProps {
@@ -505,6 +507,13 @@ function Loaded(props: LoadedProps): ReactElement {
   const saved = { title: task.title ?? '', due: task.due === null ? '' : task.due.slice(0, 10) };
   const [title, setTitle] = useState(props.draft?.title ?? saved.title);
   const [due, setDue] = useState(props.draft?.due ?? saved.due);
+  // T3e2: the outage reports are the team's, read once from the queue.
+  const outages = useRead<QueueResult>({
+    grantKey: props.grantKey,
+    run: () => client.read<QueueResult>('task.queue', {}),
+    isEmpty: (value) => (value.outages ?? []).length === 0,
+    deps: [],
+  });
 
   // Where this edit began. An existing draft keeps its own starting point; a
   // first keystroke takes the record as it stands right now.
@@ -619,6 +628,8 @@ function Loaded(props: LoadedProps): ReactElement {
 
       <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
       <Alerts alerts={task.alerts} />
+
+      <Outages state={outages.state} taskId={task.id} />
 
       <History history={task.history} />
     </div>

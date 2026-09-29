@@ -20,17 +20,22 @@ import { walkTheJourney, walkTheOtherLineages } from '../acceptance/restart-harn
 import { APPLICATION_ROLE } from '../support/fresh-database.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import {
-  APPLICATION_CALLERS,
   APPLICATION_EXECUTES,
   WORKER_ROLE,
   APPLICATION_GRANTS,
-  OPERATIONS,
-  callFor,
   catalogueFunctions,
   catalogueTables,
   classify,
-  copyStatement,
   describeOutcome,
+  type CatalogueFunction,
+  type CatalogueTable,
+  type Outcome,
+} from './restricted-calls-cases.ts';
+import {
+  APPLICATION_CALLERS,
+  OPERATIONS,
+  callFor,
+  copyStatement,
   expectedOutcome,
   fingerprint,
   meets,
@@ -40,14 +45,11 @@ import {
   statementFor,
   tally,
   type CallerName,
-  type CatalogueFunction,
-  type CatalogueTable,
   type Callers,
-  type Outcome,
-} from './restricted-calls-cases.ts';
+} from './restricted-calls-callers.ts';
 
 /**
- * One owner-written row per business in the three tables the journey leaves
+ * One owner-written row per business in the tables the journey leaves
  * empty, so their filtering is asked of rows that exist (TC:108). Written by
  * this suite's own setup rather than the shared world, so no other suite's
  * world assertions move.
@@ -75,6 +77,23 @@ const UNREACHED: Readonly<Record<string, string>> = {
        from public.records a
        join public.records b on b.business_id = a.business_id and b.id > a.id
       where a.business_id = $1 order by a.id, b.id limit 1 returning 1`,
+  // T3e2: the journey drops nothing, so one report and one of its runs.
+  'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
+     values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
+};
+
+/**
+ * T3e2: an outage run names an attempt, and only the own business's journey
+ * makes one, so this seed is the own business's alone.
+ */
+const UNREACHED_OWN: Readonly<Record<string, string>> = {
+  'public.outage_runs': `insert into public.outage_runs
+       (business_id, outage_id, attempt_id, run_id, task_id, reactivated)
+     select r.business_id, r.id, att.id, run.id, run.task_id, false
+       from public.outage_reports r
+       join public.attempts att on att.business_id = r.business_id
+       join public.planned_runs run on run.business_id = att.business_id and run.id = att.run_id
+      where r.business_id = $1 order by att.id limit 1 returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */
@@ -139,6 +158,11 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
         const seeded = await world.db.admin.execute(text, [business]);
         if (seeded.length !== 1) throw new Error(`no seed row for ${table}`);
       }
+    }
+    for (const [table, text] of Object.entries(UNREACHED_OWN)) {
+      // oxlint-disable-next-line no-await-in-loop
+      const seeded = await world.db.admin.execute(text, [world.alpha]);
+      if (seeded.length !== 1) throw new Error(`no seed row for ${table}`);
     }
     callers = openCallers(world.db, { own: world.alpha, other: world.bravo });
     tables = await catalogueTables(world.db.admin);
@@ -249,7 +273,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // among them, because that case below needs a row to refuse.
     expect(empty).not.toContain('public.handback_reports');
     expect(empty).not.toContain('public.records');
-    for (const table of Object.keys(UNREACHED)) expect(empty).not.toContain(table);
+    for (const table of [...Object.keys(UNREACHED), ...Object.keys(UNREACHED_OWN)]) {
+      expect(empty).not.toContain(table);
+    }
   });
 
   it('admits an own-business insert on every table the application inserts into', async () => {

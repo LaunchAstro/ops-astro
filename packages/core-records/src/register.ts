@@ -641,6 +641,13 @@ const ROWS = [
     source: 'T2 T2c2',
     runtime: true,
   },
+  {
+    code: 'LIABILITY_NOT_UNKNOWN',
+    status: 409,
+    meaning: 'The attempt is not held as an unknown liability, so there is no outcome to record',
+    source: 'T3 T3d1',
+    runtime: true,
+  },
 ] as const;
 
 /** Every registered code. Declared by the rows above and nowhere else. */

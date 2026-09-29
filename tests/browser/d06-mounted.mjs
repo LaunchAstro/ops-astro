@@ -12,7 +12,7 @@
 // **Nothing here is a second copy of the grid.** The operations, the keys, the
 // probe values and the durable comparison are imported from
 // `tests/acceptance/d06-cases.ts`, and the positive recipes from
-// `role-case-bodies.ts`, with the recipe's `asPerson` pointed at the page. So a
+// `role-case-positive-body.ts`, with the recipe's `asPerson` pointed at the page. So a
 // cell is exactly the in-process cell on another surface: a valid control
 // succeeds; the same valid request with the one field is refused with the typed
 // code naming only that key, echoes nothing, leaves every public table as it
@@ -46,7 +46,7 @@ import {
   probeValue,
   roomToApprove,
 } from '../acceptance/d06-cases.ts';
-import { createPositiveBody } from '../acceptance/role-case-bodies.ts';
+import { createPositiveBody } from '../acceptance/role-case-positive-body.ts';
 import { grantTo } from '../commands/fixture.ts';
 import { d03Column } from './d06-mounted-d03.mjs';
 import {

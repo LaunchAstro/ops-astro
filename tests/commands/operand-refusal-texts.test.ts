@@ -38,7 +38,7 @@ describe('operand refusal texts, one source for both entries', () => {
         refused: true,
         code: 'FIELD_VALUE_INVALID',
         names: ['outcome'],
-        fixes: ['An outcome is completed or failed.'],
+        fixes: ['An outcome is completed, failed or dropped.'],
       },
       attempted: { outcome: 'x' },
     });

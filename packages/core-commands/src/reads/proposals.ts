@@ -124,7 +124,8 @@ const RESERVATIONS = `select row_number() over (order by res.created_at, res.id)
             lease.fence::text as lease_fence, lease.state as lease_state,
             lease.expires_at as lease_expires_at, lease.holder_actor_id as lease_holder,
             att.id as attempt_id, att.state as attempt_state,
-            att.dispatch_marker as attempt_dispatch_marker, att.observed as attempt_observed
+            att.dispatch_marker as attempt_dispatch_marker, att.observed as attempt_observed,
+            att.drop_cause as attempt_drop_cause
        from public.reservations res
        join public.planned_runs run
          on run.business_id = res.business_id and run.id = res.run_id

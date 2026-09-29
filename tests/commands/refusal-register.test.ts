@@ -67,7 +67,9 @@ describe('the refusal register', () => {
       expect(entry.source.length, entry.code).toBeGreaterThan(4);
     }
   });
+});
 
+describe('the refusal register', () => {
   it('names the codes nothing produces yet, so closing one is a visible diff', () => {
     // Registered because the contract registers them; unreachable because the
     // command or the table that would produce them lands in a later part.
@@ -116,7 +118,9 @@ describe('the refusal register', () => {
       expect(registeredRefusal(code), code).toBeDefined();
     }
   });
+});
 
+describe('the refusal register', () => {
   it('registers the code for a value of the wrong type, which the trigger would raise on', () => {
     expect(registeredRefusal('FIELD_VALUE_INVALID')).toBeDefined();
   });

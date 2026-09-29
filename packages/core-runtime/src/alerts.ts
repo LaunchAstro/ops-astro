@@ -7,7 +7,8 @@
 // an unpriced report) is not a transition and raises none.
 //
 // The raise points are T2d's settlement (`budget.ts`), hand-back's settlement
-// (`handback.ts`) and cancellation (`recovery/lease-retirement.ts`). A pending
+// (`handback.ts`) and cancellation (`recovery/lease-retirement.ts`). A drop
+// raises none: it joins its outage's one report (T3e2, `recovery/outage.ts`). A pending
 // gate a proposal opens is the gate engine's (`propose.ts`), and raising there
 // is a gate-engine touch this part does not make.
 //

@@ -161,7 +161,9 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         },
       );
     });
+  });
 
+  describe('the conformance set', () => {
     it('catches a second restrictive policy', async () => {
       await whenSchemaIs(
         db.admin,
@@ -206,7 +208,9 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
         },
       );
     });
+  });
 
+  describe('the conformance set', () => {
     it('catches a join in a policy', async () => {
       await whenSchemaIs(
         db.admin,

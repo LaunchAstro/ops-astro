@@ -502,7 +502,12 @@ raises none. `task.read` carries a task's `alerts`, newest first, to the team
 only, and `task.queue` carries every live task's beside the queue, to the team
 only; an agent's queue carries none. Nothing delivers them. Each is
 `{ id, taskId, kind, waitingReason, causeId, raisedAt }`, one per cause and
-kind (`migrations/0034_alerts.sql`). `tests/runtime/t2h-alerts.test.ts` holds it.
+kind (`migrations/0036_alerts.sql`). `tests/runtime/t2h-alerts.test.ts` holds it.
+A drop raises no alert (T3e2): `task.queue` carries the team's `outages`
+beside the alerts, newest first, each
+`{ id, cause, fault, openedAt, lastDropAt, closedAt, runs: [{ taskId, runId, attemptId, reactivated }] }`,
+one report per outage per business; a reader outside the team gets none, and
+the task page draws the report naming its task (`tests/runtime/t3e2-outage.test.ts`).
 
 `task.propose` answers `FIELD_VALUE_INVALID` 422 for the two shapes its columns
 constrain, before the write rather than at it: a `purpose` outside
@@ -670,7 +675,10 @@ optional there does not compile until the descriptor follows. `required` is
 `leaseId`, `fence` and `outcome`, and `optional` is `report`, `actualMinor`
 (null only) and `successor`. `operationIdentity` is the envelope's `operationId`
 and its replay rule; `lease` repeats this pickup's `leaseId` and `fence`;
-`outcomes` is `completed` or `failed`. `credential` names where the claimant's
+`outcomes` is `completed`, `failed` or `dropped` (T3e1: a drop names
+`report.dropCause`, `provider_unavailable` or `connection_lost`, asks for no
+successor, and the same work is reserved again; anything else is
+`FIELD_VALUE_INVALID` on `report`). `credential` names where the claimant's
 credential travels, never the credential itself. That is the
 `x-agent-delegation` header for an agent and the person's own bearer for a
 person. `versionBinding` has no operand. The lease is bound to `versionId`, and the handback refuses `LEASE_NOT_OWNED`, keeping the
@@ -753,13 +761,13 @@ each for its own kind of lease: an agent's under the delegation its pickup
 minted, and a person's own delegation-free lease under their current grants.
 None is a new actor power. Each asks for authority the caller already holds.
 
-| Operation           | Route                | Body                                                        | Authority                                                                                                                                                           | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ------------------- | -------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `grant.revoke`      | `/grant/revoke`      | `operationId`, `grantId`                                    | `manage` on tasks, asked at the revoked grant's own scope, then the manager's own ceiling: `manage` and the grant's own pair on its collection, at a covering scope | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (already revoked), `COMMAND_BODY_INVALID` 400 (also naming a `delegationId` sent beside the `grantId`)                                                                                                                                                                                                                                                                                        |
-| `delegation.revoke` | `/delegation/revoke` | `operationId`, `delegationId`                               | as `grant.revoke`, asked at the delegation's purpose scope, over every (collection, action) the delegation reaches                                                  | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `DELEGATION_NOT_LIVE` 401 (already revoked, settled or expired), `COMMAND_BODY_INVALID` 400 (also naming a `grantId` sent beside the `delegationId`)                                                                                                                                                                                                                                                                         |
-| `task.cancel`       | `/task/cancel`       | `operationId`, `recordId`, `lineageId`, `reason`            | `write` on the task named in `recordId`, the work-control authority `task.propose` asks; a record-scoped grant is enough                                            | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `LINEAGE_NOT_ON_TASK` 409, `LINEAGE_TERMINAL` 409, `FIELD_VALUE_INVALID` 422 (naming `reason` when it is absent, blank, longer than 500 characters or holds a NUL or an unpaired surrogate), `COMMAND_BODY_INVALID` 400                                                                                                                                                                                                      |
-| `task.restart`      | `/task/restart`      | `operationId`, `recordId`, `lineageId`, `expiresInSeconds?` | `write` on the task named in `recordId`, plus `propose`'s own read and write checks                                                                                 | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `LINEAGE_NOT_ON_TASK` 409, `TRANSITION_NOT_PERMITTED` 409 (live, completed or already restarted), `FIELD_VALUE_INVALID` 422, `PROPOSAL_OUT_OF_SCOPE` 403 (the restarted lineage's last `currency` other than the task's cap's, which is its open envelope's cap or else the business cap, or its last ceiling past the open envelope's or the cap's remaining room; a restart supersedes no version, so no hold is released) |
-| `task.heartbeat`    | `/task/heartbeat`    | `operationId`, `leaseId`, `fence`, `leaseSeconds?`          | the lease's holder: an agent presenting the delegation minted with it, or a person on their own delegation-free lease under current `write`                         | `DELEGATION_NOT_LIVE` 401 (agent), `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `FIELD_VALUE_INVALID` 422                                                                                                                                                                                                                                                                                                                                                               |
+| Operation           | Route                | Body                                                                                                                                                                                                      | Authority                                                                                                                                                           | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `grant.revoke`      | `/grant/revoke`      | `operationId`, `grantId`                                                                                                                                                                                  | `manage` on tasks, asked at the revoked grant's own scope, then the manager's own ceiling: `manage` and the grant's own pair on its collection, at a covering scope | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (already revoked), `COMMAND_BODY_INVALID` 400 (also naming a `delegationId` sent beside the `grantId`)                                                                                                                                                                                                                                                                                        |
+| `delegation.revoke` | `/delegation/revoke` | `operationId`, `delegationId`                                                                                                                                                                             | as `grant.revoke`, asked at the delegation's purpose scope, over every (collection, action) the delegation reaches                                                  | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `DELEGATION_NOT_LIVE` 401 (already revoked, settled or expired), `COMMAND_BODY_INVALID` 400 (also naming a `grantId` sent beside the `delegationId`)                                                                                                                                                                                                                                                                         |
+| `task.cancel`       | `/task/cancel`       | `operationId`, `recordId`, `lineageId`, `reason`                                                                                                                                                          | `write` on the task named in `recordId`, the work-control authority `task.propose` asks; a record-scoped grant is enough                                            | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `LINEAGE_NOT_ON_TASK` 409, `LINEAGE_TERMINAL` 409, `FIELD_VALUE_INVALID` 422 (naming `reason` when it is absent, blank, longer than 500 characters or holds a NUL or an unpaired surrogate), `COMMAND_BODY_INVALID` 400                                                                                                                                                                                                      |
+| `task.restart`      | `/task/restart`      | `operationId`, `recordId`, `lineageId`, `expiresInSeconds?`                                                                                                                                               | `write` on the task named in `recordId`, plus `propose`'s own read and write checks                                                                                 | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `LINEAGE_NOT_ON_TASK` 409, `TRANSITION_NOT_PERMITTED` 409 (live, completed or already restarted), `FIELD_VALUE_INVALID` 422, `PROPOSAL_OUT_OF_SCOPE` 403 (the restarted lineage's last `currency` other than the task's cap's, which is its open envelope's cap or else the business cap, or its last ceiling past the open envelope's or the cap's remaining room; a restart supersedes no version, so no hold is released) |
+| `task.heartbeat`    | `/task/heartbeat`    | `operationId`, `leaseId`, `fence`, `leaseSeconds?`, `providerStarting?` (T3e1: `true` records the provider start on the lease's marked attempt, else `TRANSITION_NOT_PERMITTED` 409 with nothing written) | the lease's holder: an agent presenting the delegation minted with it, or a person on their own delegation-free lease under current `write`                         | `DELEGATION_NOT_LIVE` 401 (agent), `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `FIELD_VALUE_INVALID` 422                                                                                                                                                                                                                                                                                                                                                               |
 
 What each one does:
 
@@ -1192,6 +1200,35 @@ person prefix answers it before comparing `expectedRevision`
 (`prepareCommand`, `commands/prepare.ts`), so a pre-trash revision gets the
 same bytes as a missing task.
 
+### `budget.record_outcome` (T3d1)
+
+`POST /api/b/<key>/budget/record_outcome` with `recordId` (the task),
+`attemptId` and `outcome`, one of `nothing_happened`, `happened` or
+`happened_differently` (O7). It asks `decide` on `billing` for the task (O8:
+any person holding it), and no agent route serves it
+(`DELEGATION_EXCLUDES_OPERATION`). Only an attempt held `liability_unknown`
+takes one; any other is `LIABILITY_NOT_UNKNOWN`. Nothing happened releases the
+whole hold and resumes the work on a new hold; it happened spends the whole
+hold; it happened differently spends it and reopens the work. A retry under the
+same `operationId` replays the stored answer.
+
+### `budget.write_off` (T3c)
+
+`POST /api/b/<key>/budget/write_off` with `recordId` (the task), `attemptId`,
+`amountMinor` (whole minor units from 0 to the hold: the reserved maximum, a
+lesser figure the evidence shows, or nothing) and `reason` (a written reason,
+up to 2,000 characters). It asks `decide` on `billing` for the task, and no
+agent route serves it (`DELEGATION_EXCLUDES_OPERATION`). Only an attempt held
+`liability_unknown` takes one; any other is `LIABILITY_NOT_UNKNOWN`. A positive
+amount settles the hold at that figure, with the attempt's outcome left
+`unknown`; nothing abandons it under the cause `written_off`. The envelope
+gives the whole hold back either way; no attempt, hold or envelope row is
+added and no work moves. When the hold is above the business's four-eyes
+band, the first holder's call answers `awaiting_second_approver` and moves
+nothing; a different live holder naming the same attempt and amount applies
+it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
+`operationId` replays the stored answer.
+
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `person.list`, `preset.plan`,
@@ -1257,12 +1294,12 @@ rather than keeping a copy; the two are told apart by the key.
 `settings.read` takes `read` on `settings` while the two settings commands take
 `manage` on the same collection. The asymmetry is deliberate. A setting is a
 business fact every member works against, and changing one is an authority
-change. The four-eyes band is stored and shown, and no first-slice operation
-applies it yet. `settings.set_four_eyes_threshold` writes it
-(`commands/settings-write.ts`), `settings.read` returns it. The band's consumers,
-top-up (S2-04) and write-off (S2-10), are deferred (ROOT-FBFREEZE-RULINGS §3).
-`task.decide` produces `FOUR_EYES_REQUIRED` without the band since T2g: the
-person a task is assigned to may not decide its gate. The seed gives
+change. The four-eyes band is stored and shown. `settings.set_four_eyes_threshold` writes it
+(`commands/settings-write.ts`) and `settings.read` returns it. Its consumers
+are the top-up (`budget.top_up`, T2e) and the write-off (`budget.write_off`,
+T3c), which produce `FOUR_EYES_REQUIRED`. `task.decide` produces
+`FOUR_EYES_REQUIRED` without the band since T2g: the person a task is assigned
+to may not decide its gate. The seed gives
 `settings:read` to `admin` and to `member`; the write stays with `admin`.
 
 **`settings.read` carries a `revision` on every setting.** It is the number

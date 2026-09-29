@@ -325,7 +325,9 @@ describe('the proposal evidence on the task page', () => {
 
     await page.unmount();
   });
+});
 
+describe('the proposal evidence on the task page', () => {
   it('draws the gate, the stored decision chain and the reservation', async () => {
     const { client } = server({ decidedGate: true });
     const page = await mount(screenFor(client));
@@ -414,7 +416,9 @@ describe('the propose form', () => {
 
     await page.unmount();
   });
+});
 
+describe('the propose form', () => {
   it('quotes the server code when a proposal is refused and writes nothing', async () => {
     const { client, proposed } = server({
       refusePropose: { code: 'PROPOSAL_OUT_OF_SCOPE', status: 403 },
@@ -460,7 +464,9 @@ describe('the propose form', () => {
 
     await page.unmount();
   });
+});
 
+describe('the propose form', () => {
   it('will not send a purpose the database would reject', async () => {
     // The column's own check is `^[a-z][a-z0-9_]{0,62}$` (migration 0010), and a
     // violated check arrives from the API as a 503 rather than as a refusal
@@ -527,7 +533,9 @@ describe('the exact-version decision control', () => {
 
     await page.unmount();
   });
+});
 
+describe('the exact-version decision control', () => {
   it('offers nothing when the gate has already been decided', async () => {
     const { client, decided } = server({ decidedGate: true });
     const page = await mount(screenFor(client));
@@ -575,7 +583,9 @@ describe('the exact-version decision control', () => {
     expect(decided).toHaveLength(1);
     await page.unmount();
   });
+});
 
+describe('the exact-version decision control', () => {
   it('closes the controls after one refused press for a person without the grant', async () => {
     const { client, decided } = server({
       refuseDecide: { code: 'SCOPE_NOT_GRANTED', status: 403 },
