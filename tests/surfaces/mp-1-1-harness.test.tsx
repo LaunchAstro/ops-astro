@@ -2,7 +2,8 @@
 //
 // MP-1-1 on MP-1-7's width-and-theme harness (`tests/visual`), which captures
 // dark from here, where the dark theme lands: these tests hold the harness's
-// dark report and planted drift in the required checks, and
+// dark report and planted drift in the required checks (the real browser
+// capture of every built page is in mp-1-1-tokens.test.tsx), and
 // `node tests/visual/run.ts --prove-drift` runs the same drift in the pinned
 // renderer against the pinned mockup. The /dashboard/ match waits on the page
 // (MP-14-1) and T4b1's signed-in fixture; the harness serves the mockup by
@@ -100,7 +101,7 @@ function pictures(packet: Packet): { ground: Record<Theme, Rgb>; shots: PageShot
 const catalogue = (): Catalogue => JSON.parse(read(`${root}tests/visual/states.json`)) as Catalogue;
 
 describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
-  it('MP-1-1 harness captures: every built page in light and dark at 1480, 900 and 390', () => {
+  it('MP-1-1 harness report: a dark picture gone, too narrow, not an image or scrolling sideways fails by name', () => {
     const packet = readPacket();
     // Dark is captured from here, where the dark theme lands; no longer pending.
     expect(packet.themes.dark).toBe('captured');
@@ -114,8 +115,9 @@ describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
     });
     expect(contextOptions(packet, 1480, 'light')).toMatchObject({ colorScheme: 'light' });
 
-    // Every built page has a light and a dark picture file at every width,
-    // each a PNG as wide as that width; the report reads the files.
+    // With a light and a dark picture file for every built page at every width
+    // (the real browser capture is 'MP-1-1 harness captures', in
+    // mp-1-1-tokens.test.tsx), the report reads the files.
     const { ground, shots } = pictures(packet);
     const all = report(packet, builtPages(), shots);
     expect(all.failed).toBe(0);
