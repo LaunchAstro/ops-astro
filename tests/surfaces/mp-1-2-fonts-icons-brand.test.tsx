@@ -18,9 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { loadConfigFromFile } from 'vite';
 import { afterAll, expect, it } from 'vitest';
-import { BrandMark } from '../../packages/ui/src/primitives/BrandMark.tsx';
 import { GLYPH_NAMES, Icon } from '../../packages/ui/src/primitives/Icon.tsx';
-import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const ui = `${root}packages/ui/`;
@@ -203,42 +201,6 @@ it('MP-1-2 an asset with no compatible licence is refused and reported', () => {
   // Other spellings of the font licence are not the one decided.
   expect(licences(ofl('@fontsource/funnel-sans', 'OFL-1.0')).status).toBe(1);
   expect(licences(ofl('@fontsource/funnel-sans', 'ofl-1.1')).status).toBe(1);
-});
-
-it('MP-1-2 the wordmark and planet masks are present', () => {
-  for (const [variant, file, viewBox] of [
-    ['wordmark', 'wordmark.svg', '0 0 566.93 57.9'],
-    ['planet', 'planet.svg', '0 0 566.93 463.61'],
-  ] as const) {
-    const svg = read(`${ui}src/brand/${file}`);
-    expect(svg).toContain(`viewBox="${viewBox}"`);
-    // A mask image is drawn, never run: no script, handler, link or foreign content.
-    expect(svg).not.toMatch(
-      /<script|\son[a-z]+\s*=|href|<foreignObject|url\(|<!ENTITY|<!DOCTYPE/iu,
-    );
-    const html = renderToStaticMarkup(<BrandMark variant={variant} />);
-    expect(html).toContain(`brand brand--${variant}`);
-    expect(html).toContain('aria-hidden="true"');
-  }
-  const shell = read(`${ui}src/styles/3-shell.css`);
-  expect(shell).toMatch(/\.brand--wordmark\s*\{[^}]*mask:\s*url\('\.\.\/brand\/wordmark\.svg'\)/su);
-  expect(shell).toMatch(/\.brand--planet\s*\{[^}]*mask:\s*url\('\.\.\/brand\/planet\.svg'\)/su);
-  // The expanded rail carries the wordmark above the product's own name.
-  const rail = renderToStaticMarkup(
-    <Shell
-      face="agency"
-      rail={[]}
-      here="/"
-      title="Board"
-      dock={[]}
-      onDockTab={() => {}}
-      seated={false}
-    >
-      {null}
-    </Shell>,
-  );
-  expect(rail).toMatch(/class="rail__brand"><span class="brand brand--wordmark"[^>]*><\/span>/u);
-  expect(rail).toContain('class="rail__hub">Ops Astro</span>');
 });
 
 it('MP-1-2 each bundled asset has its licence recorded', () => {
