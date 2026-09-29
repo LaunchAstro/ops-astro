@@ -1415,6 +1415,32 @@ lost response on a legacy pickup replays its handles with `credential: null` and
 pickup once the old lease has expired. No migration or code path relabels a
 legacy row as derivable, and 0022's trigger forbids it.
 
+## The model call's ledger
+
+`0032_model_calls` (AW-01; numbered again at the rebase) adds two tables,
+both tenancy-scoped with row security forced.
+
+- `model_calls`: one row per priced model call or recorded refusal, bound to
+  its run, step, lease, approved version, reservation and delegation. Its
+  state is `reserved`, `dispatched`, `settled`, `released`, `refused` or
+  `liability_unknown`, and constraints tie each state to its amounts, facts
+  and drop. A call holds its operation's priced maximum out of the run's
+  reservation from `reserved` until it settles. `accepted_at`, `started_at`,
+  `completed_at` and `landed_at` are separate, and a call reaches no level
+  past what its operation declares. The route, its reach, the credential kind
+  and the account that carried it are recorded; a replay call records no
+  account. The application group may select, insert and update.
+- `copy_registrations`: the copy register's registration half. A call's
+  outbound prompt is registered before it is first materialised, and nothing
+  is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses
+  update and delete, and the application group may select and insert only.
+
+The broker (`core-custody/src/broker.ts`) writes both, and the `model.call`
+command ([API.md](API.md), "The model call") is its one product caller. The
+lease-expiry sweep's half is `sweepModelCalls`: a started call on a dead lease
+is held as `liability_unknown`, never released; an unsent one is released.
+Neither the prompt nor the model's words are stored in either table.
+
 ## What is not here
 
 - **No machine write-off.** The worker (`apps/worker/`, T2b), effect
