@@ -128,6 +128,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
       'id',
       'item_id',
       'observed_at',
+      'observed_seq',
       'state',
     ]);
     expect(await columnsOf('inbox_attention')).toStrictEqual([
