@@ -85,21 +85,24 @@ describe('the surface as a table', () => {
   });
 });
 
+/** The surface's reads, sorted. */
+const PINNED_READS = [
+  'person.list',
+  'preset.plan',
+  'session.capabilities',
+  'settings.read',
+  'task.board',
+  'task.execution',
+  'task.ledger',
+  'task.queue',
+  'task.read',
+  'task.receipt',
+  'team.list',
+];
+
 describe('the surface as a table', () => {
   it('declares the eleven reads as reads, and everything else as a write', () => {
-    expect([...READS].toSorted()).toStrictEqual([
-      'person.list',
-      'preset.plan',
-      'session.capabilities',
-      'settings.read',
-      'task.board',
-      'task.execution',
-      'task.ledger',
-      'task.queue',
-      'task.read',
-      'task.receipt',
-      'team.list',
-    ]);
+    expect([...READS].toSorted()).toStrictEqual(PINNED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
       // A read has nothing to be stale against. It does not always take the

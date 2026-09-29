@@ -45,10 +45,10 @@ const PINNED_IDENTIFIERS = {
   'settings.read': [],
   'task.board': ['board'],
   'task.execution': ['recordId'],
+  'task.ledger': [],
   'task.queue': [],
   'task.read': ['recordId'],
   'task.receipt': ['attemptId'],
-  'task.ledger': [],
   'team.list': [],
 };
 
