@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 describe('T2h test-first history', () => {
-  it('Sol proof, criterion 2: the API invariant was committed before its implementation', () => {
+  it('the API invariant was committed before its implementation', () => {
     const implementation = execFileSync(
       'git',
       ['log', '-1', '--format=%H', '--diff-filter=A', '--', 'migrations/0036_alerts.sql'],
