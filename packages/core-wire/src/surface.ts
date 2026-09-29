@@ -104,7 +104,10 @@ export type CommandName =
   // The connector fleet (MP-14-7a): read by `connection:read`, and a repair
   // started by `custody:manage`, which records it and sends nothing.
   | 'connection.fleet'
-  | 'connector.repair';
+  | 'connector.repair'
+  // Grants, tripwires and the night round (MP-14-8): one read by
+  // `connection:read`, the same page's key. The sections change nothing.
+  | 'connection.signal';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -480,6 +483,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // credential's custody, so it is `custody:manage`, never an agent (the
   // ticket's permissions table).
   read('connection.fleet', CONNECTION_COLLECTION),
+  read('connection.signal', CONNECTION_COLLECTION),
   declare('connector.repair', 'manage', {
     collection: CUSTODY_COLLECTION,
     targetsExistingRecord: false,

@@ -147,3 +147,15 @@ export {
   type RepairRefusal,
   type RepairStarted,
 } from './connections/fleet.ts';
+export {
+  listAgents,
+  listGrants,
+  listTripwires,
+  readNightRound,
+  type AgentRow,
+  type GrantRow,
+  type GrantState,
+  type NightRound,
+  type NightStepRow,
+  type TripwireRow,
+} from './connections/signal.ts';

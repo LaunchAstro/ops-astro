@@ -77,8 +77,9 @@ export const READ_NAMES = [
   'preset.plan',
   // Custody's rows as set or not set (C31).
   'secret.list',
-  // The connector fleet on Connections & signal (MP-14-7a).
+  // Connections & signal: the fleet (MP-14-7a), then grants, tripwires and the night round (MP-14-8).
   'connection.fleet',
+  'connection.signal',
 ] as const;
 
 /**

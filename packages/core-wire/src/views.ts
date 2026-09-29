@@ -411,6 +411,87 @@ export interface ConnectionFleetResult {
 }
 
 /**
+ * One grant (MP-14-8): a delegation, a named agent's time-boxed claim for one
+ * job. `access` is `exec` when any of its actions is more than a read.
+ * `redemptions` counts the applied calls made under it; nothing records what
+ * each reached. `client` is null for a fleet grant.
+ */
+export interface GrantView {
+  readonly id: string;
+  readonly agentId: string;
+  readonly purpose: string;
+  readonly collections: readonly string[];
+  readonly access: 'read' | 'exec';
+  readonly client: { readonly id: string; readonly label: string | null } | null;
+  readonly grantedAt: string;
+  readonly expiresAt: string;
+  readonly endedAt: string | null;
+  readonly revocationCause: string | null;
+  readonly state: 'live' | 'ran_out' | 'taken_back';
+  readonly redemptions: number;
+}
+
+/** One tripwire (MP-14-8). An unarmable one carries no firing history. */
+export interface TripwireView {
+  readonly id: string;
+  readonly what: string;
+  readonly rule: string;
+  readonly watching: string;
+  readonly state: 'armed' | 'cannot_be_armed';
+  readonly blockedReason: string | null;
+  readonly firedCount: number;
+  readonly lastFiredAt: string | null;
+  readonly filedItem: string | null;
+  readonly filedNothing: string | null;
+  readonly note: string | null;
+}
+
+/** One step of the night round (MP-14-8), and where the fact it reports lives. */
+export interface NightStepView {
+  readonly id: string;
+  readonly at: string;
+  readonly tone: 'plain' | 'watch' | 'bad';
+  readonly what: string;
+  readonly who: string;
+  readonly say: string;
+  readonly cite: {
+    readonly kind: 'grants' | 'tripwires' | 'exceptions' | 'task';
+    readonly ref: string | null;
+    readonly label: string;
+  } | null;
+}
+
+/** One agent on the roster, with the live grants the caller may see it hold. */
+export interface RosterView {
+  readonly agentId: string;
+  readonly active: boolean;
+  readonly liveGrants: number;
+}
+
+/**
+ * Connections & signal sections 006 to 008 (MP-14-8). Every count is derived
+ * from the rows beside it.
+ */
+export interface ConnectionSignalResult {
+  readonly ok: true;
+  readonly leases: readonly GrantView[];
+  readonly leaseCounts: {
+    readonly live: number;
+    readonly ranOut: number;
+    readonly takenBack: number;
+    readonly liveExec: number;
+  };
+  readonly tripwires: readonly TripwireView[];
+  readonly tripwireCounts: { readonly armed: number; readonly cannotBeArmed: number };
+  readonly nightRound: {
+    readonly roundOn: string;
+    readonly steps: readonly NightStepView[];
+    readonly notClean: number;
+  } | null;
+  readonly roster: readonly RosterView[];
+}
+
+/**
  * The capability answer is flat: `personId`, `businessKey` and `grants` sit
  * beside `ok` rather than under a `capabilities` object, because that is the
  * shape the surfaces read and one nesting level for three fields buys

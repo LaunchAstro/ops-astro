@@ -31,6 +31,7 @@ import { readQueue } from './queue.ts';
 import { readSettings } from './settings.ts';
 import { listCustodySecrets } from './custody.ts';
 import { readConnectionFleet } from './connections.ts';
+import { readConnectionSignal } from './signal.ts';
 import { readCapabilities } from './capabilities.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
@@ -317,6 +318,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'holds-any-grant',
     outsiderNotFound: false,
     serve: async (tx, session) => await readConnectionFleet(tx, session),
+  },
+  // Grants, tripwires and the night round, asked alike by the scopes the
+  // caller holds `connection:read` at (MP-14-8).
+  'connection.signal': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await readConnectionSignal(tx, session),
   },
   'settings.read': {
     identifiers: [],
