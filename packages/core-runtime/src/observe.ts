@@ -5,7 +5,8 @@
 // The token is the attempt the dispatch answered, presented with the lease and
 // its fence. Anything else is the lease refusal a fabricated one gets. Expiry
 // is not a refusal here: an effect applied before the lease ran out still
-// happened, and settlement reads its observation (T2d).
+// happened, and settlement reads its observation (T2d). The answer marks the
+// lease `expired`, and nothing but money moves (T3f, `expired_lease_money_only`).
 //
 // **Did it happen?** The operation register answers, never the caller: the
 // command layer hands in the applied effect it found under the attempt's
@@ -52,6 +53,13 @@ export interface Observed {
   readonly attemptId: string;
   readonly effect: { readonly operationId: string; readonly commentId: string } | null;
   readonly settlement: Settlement;
+  /**
+   * Where the money came from (T3f): a lease still live, or one that expired or
+   * was ended before this report. Stored with the answer in the register, so a
+   * settlement from an expired lease is told apart from a live one. Either way
+   * no work moves here.
+   */
+  readonly lease: 'live' | 'expired';
 }
 
 const NOT_OWNED_FIX = 'Observe under the lease your own pickup was issued, with its attempt.';
@@ -78,7 +86,7 @@ export async function observe(
     return refuseLease('not_owned', NOT_OWNED_FIX);
   }
   const owned = await ownedUnderLocks(tx, request, found);
-  if (owned !== null) return owned;
+  if ('ok' in owned) return owned;
   const state = await heldState(tx, found.attempt_id, request.leaseId);
   if (!state.held) {
     return refuse(
@@ -119,6 +127,7 @@ export async function observe(
       attemptId: found.attempt_id,
       effect: applied ? { operationId: effect.operationId, commentId: effect.commentId } : null,
       settlement: await settlementOf(tx, found, state, request, applied ? 'completed' : 'failed'),
+      lease: owned.lease,
     },
   };
 }
@@ -163,12 +172,12 @@ async function discover(tx: TenantQuery, leaseId: string): Promise<Found | undef
   return rows[0];
 }
 
-/** The lease locked and read as the caller's at its own fence: `null`, or the refusal. */
+/** The lease locked and read as the caller's at its own fence: live or expired, or the refusal. */
 async function ownedUnderLocks(
   tx: TenantQuery,
   request: ObserveRequest,
   found: Found,
-): Promise<RuntimeResult<never> | null> {
+): Promise<RuntimeResult<never> | { readonly lease: Observed['lease'] }> {
   await acquire(tx, [
     { lockClass: 'step', id: found.step_id },
     { lockClass: 'lease', id: request.leaseId },
@@ -190,7 +199,8 @@ async function ownedUnderLocks(
   if (fenced === 'fence_presented' || fenced === 'fence_superseded') {
     return refuseLease(fenced, NOT_OWNED_FIX);
   }
-  return null;
+  // Expiry is not a refusal here (T2d): the money settles, marked.
+  return { lease: fenced === null ? 'live' : 'expired' };
 }
 
 interface HeldState {

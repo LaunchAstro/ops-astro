@@ -1289,6 +1289,17 @@ direct SQL.
   `tests/runtime/schedules-heartbeat.test.ts` reaches the boundary by moving
   the lease's `acquired_at` back on the database clock, then beats through
   `task.heartbeat`.
+- **An expired lease moves money only (T3f).** `task.observe` from a lease that
+  expired after its effect applied still settles the priced cost (T2d), and its
+  answer, stored in the register, marks `lease: 'expired'` (a live one is
+  `live`). Nothing else moves: the lease, run, task and delegation read back as
+  they were. Renewal, a second dispatch and a hand-back on that lease are each
+  refused `LEASE_EXPIRED` (`tests/runtime/t3f-expired-lease.test.ts`). A silent
+  run, never renewed, keeps its live lease and its hold until the lease runs
+  out; only then does the pass fence it and hold the step unknown
+  (`t3f-lease-edges.test.ts`). Leases are per task: one live lease per task,
+  the second claimant refused `LEASE_HELD` (`lease-held-reach.test.ts`).
+  Per-step leases are deferred: no step in this head runs apart from its task.
 
 ## The delegation credential key
 
