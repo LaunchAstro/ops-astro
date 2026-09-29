@@ -426,18 +426,21 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
         id,
       ),
   ],
-  // C41-A: an onboarding step's result is asked at its client's scope, so a
+  // C41-A: an onboarding step's result is asked at the task's own client (its
+  // party slot), and only while that is still the onboarding's client, so a
   // holder scoped to one client writes that client's steps and no other's. A
-  // task that is no step falls back to the business, as a fabricated id does.
+  // task that is no step, or one moved to another client, falls back to the
+  // business, as a fabricated id does.
   'onboarding.step_result': [
     'recordId',
     (tx, id) =>
       firstRow(
         tx,
-        `select 'party' as kind, o.client_id as id
+        `select 'party' as kind, r.uuid_7 as id
            from public.onboarding_steps s
            join public.onboardings o on o.business_id = s.business_id and o.id = s.onboarding_id
-          where s.business_id = $1 and s.task_id = $2`,
+           join public.records r on r.business_id = s.business_id and r.id = s.task_id
+          where s.business_id = $1 and s.task_id = $2 and r.uuid_7 = o.client_id`,
         id,
       ),
   ],

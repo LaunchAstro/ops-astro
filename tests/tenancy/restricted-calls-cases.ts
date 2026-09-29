@@ -57,6 +57,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // (MP-14-10a). Both updates are column grants.
   ['su', 'graduation_classes'],
   ['siu', 'standing_mandates'],
+  // 0036: an onboarding and its steps are laid out once and moved on by
+  // column grants, never deleted (C41-A).
+  ['siu', 'onboarding_steps onboardings'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(
@@ -308,6 +311,8 @@ export const OPERATIONS: readonly Operation[] = ['select', 'insert', 'update', '
 const UPDATE_COLUMN: Readonly<Record<string, string>> = {
   'public.graduation_classes': 'revision',
   'public.standing_mandates': 'revision',
+  'public.onboardings': 'revision',
+  'public.onboarding_steps': 'failures',
 };
 
 export function statementFor(table: CatalogueTable, operation: Operation): string {

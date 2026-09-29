@@ -19,36 +19,34 @@
 // Every refusal comes before the first write, so a refused command writes
 // nothing, and none echoes a value the caller sent.
 
-import { randomUUID } from 'node:crypto';
 import {
   checkAuthority,
   closeStep,
   deriveSource,
   failStep,
   insertOnboarding,
+  insertStepTask,
   isUuid,
   lockStepOfTask,
-  nextTaskKey,
   onboardingOfClient,
   ONBOARDING_TEMPLATES,
-  planTaskPlacement,
   stepTaskTitle,
   subjectsOf,
   CLIENT_TYPE_KEY,
-  isRecordsRefusal,
   writeComment,
   type EntryPoint,
   type OnboardingTemplate,
   type Session,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
-import type { CommandContext, TaskSpine } from './context.ts';
+import type { CommandContext } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { textOf } from './record-create.ts';
 import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 
 const FIXES: Readonly<Record<string, string>> = {
   templateKey: `Send templateKey as one of: ${Object.keys(ONBOARDING_TEMPLATES).join(', ')}.`,
+  recordId: 'Send recordId as the id of the step’s task.',
   outcome: 'Send outcome as done or failed.',
   result: 'Send result as what the step found or did, 1 to 2000 characters.',
 };
@@ -61,11 +59,17 @@ const invalid = (field: string): HandlerOutcome => refused(invalidRefusal(field)
 const notPermitted = (state: string, fix: string): HandlerOutcome =>
   refused(refuseCommand('TRANSITION_NOT_PERMITTED', [`state=${state}`], [fix]));
 
+/**
+ * Whether this is a live client record, locked: two starts for one client
+ * serialise here, so the second sees the first's onboarding and is refused
+ * rather than meeting the unique key as a fault.
+ */
 async function isClient(tx: TenantQuery, clientId: string): Promise<boolean> {
   const rows = await tx.query<{ readonly id: string }>(
     `select r.id from records r join record_types t
         on t.business_id = r.business_id and t.id = r.record_type_id
-      where r.business_id = $1 and r.id = $2 and t.key = $3 and r.deleted_at is null`,
+      where r.business_id = $1 and r.id = $2 and t.key = $3 and r.deleted_at is null
+        for update of r`,
     [tx.businessId, clientId, CLIENT_TYPE_KEY],
   );
   return rows.length === 1;
@@ -78,42 +82,6 @@ async function holdsTaskWrite(tx: TenantQuery, session: Session): Promise<boolea
     scope: { kind: 'business', id: null },
   });
   return held.ok;
-}
-
-/** One task on the client, placed and keyed the way `task.create` places one. */
-async function insertStepTask(
-  tx: TenantQuery,
-  spine: TaskSpine,
-  entryPoint: EntryPoint,
-  clientId: string,
-  title: string,
-): Promise<string> {
-  const placement = await planTaskPlacement(tx, spine.taskTypeId, {
-    parentId: null,
-    board: null,
-    boardSection: null,
-    suppliedKeys: [],
-  });
-  if (isRecordsRefusal(placement)) throw new Error('onboarding: a top-level task was not placed');
-  const state = spine.states.find((one) => one.machineCategory === 'unstarted')?.id;
-  const id = randomUUID();
-  await tx.query(
-    `insert into records (business_id, id, record_type_id, data) values ($1, $2, $3, $4)`,
-    [
-      tx.businessId,
-      id,
-      spine.taskTypeId,
-      {
-        title,
-        client: clientId,
-        key: await nextTaskKey(tx, spine.taskTypeId),
-        source: deriveSource('person', entryPoint),
-        board_rank: placement.boardRank,
-        ...(state === undefined ? {} : { state }),
-      },
-    ],
-  );
-  return id;
 }
 
 /**
@@ -162,13 +130,13 @@ export async function startOnboarding(
   for (const step of template.steps) {
     // One at a time: each task ranks after the one laid out before it.
     // oxlint-disable-next-line no-await-in-loop
-    const taskId = await insertStepTask(
-      tx,
-      context.spine,
-      context.entryPoint,
-      request.clientId,
-      stepTaskTitle(step),
-    );
+    const taskId = await insertStepTask(tx, {
+      taskTypeId: context.spine.taskTypeId,
+      stateId: context.spine.states.find((one) => one.machineCategory === 'unstarted')?.id,
+      source: deriveSource('person', context.entryPoint),
+      clientId: request.clientId,
+      title: stepTaskTitle(step),
+    });
     steps.push({ ...step, taskId });
   }
   const onboarding = await insertOnboarding(tx, {
@@ -209,6 +177,9 @@ function parseResult(
 ):
   | { readonly outcome: 'done' | 'failed'; readonly text: string; readonly commentTypeId: string }
   | Refused {
+  // Absent is a body missing its field; present and not ours is a record
+  // that is not there, answered as a fabricated one is.
+  if (typeof request.recordId !== 'string') return refused(invalidRefusal('recordId'));
   if (!isUuid(request.recordId)) return refused(refuseNotFound());
   const outcome = request.outcome;
   if (outcome !== 'done' && outcome !== 'failed') return refused(invalidRefusal('outcome'));

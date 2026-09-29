@@ -539,4 +539,37 @@ describe.skipIf(serverUrl === undefined)('C41-A new client onboarding', () => {
     });
     expect(pathOf('onboarding.step_result')).toBe('/onboarding/step_result');
   });
+
+  it('C41-A two starts at once for one client: one lays it out, the other is refused, nothing doubles', async () => {
+    const fresh = await newClient('Made-up Client K');
+    const both = await Promise.all([start(fresh), start(fresh)]);
+    expect(both.map((one) => one.status).toSorted()).toStrictEqual([200, 409]);
+    expect(
+      await controls.count('select count(*) as n from public.onboardings where client_id = $1', [
+        fresh,
+      ]),
+    ).toBe(1);
+    expect(
+      await controls.count(
+        `select count(*) as n from public.records where uuid_7 = $1 and deleted_at is null`,
+        [fresh],
+      ),
+    ).toBe(ONBOARDING_TEMPLATES['standard']?.steps.length);
+  });
+
+  it('C41-A isolation: a step whose task moved to another client takes no result from either side', async () => {
+    const taskId = await readyStep(startedA);
+    await controls.fixture.db.admin.execute(
+      `update public.records set data = jsonb_set(data, '{client}', to_jsonb($2::text))
+        where id = $1`,
+      [taskId, clientB],
+    );
+    const byA = await result(clientAWriter, taskId, 'done', 'moved away');
+    expect(byA.status).toBe(403);
+    expect(byA.body['code']).toBe('SCOPE_NOT_GRANTED');
+    const byAdmin = await result(admin, taskId, 'done', 'moved away');
+    expect(byAdmin.status).toBe(404);
+    expect(byAdmin.body['code']).toBe('NOT_FOUND');
+    expect(JSON.stringify([byA.body, byAdmin.body])).not.toContain(RECORD_CANARY);
+  });
 });

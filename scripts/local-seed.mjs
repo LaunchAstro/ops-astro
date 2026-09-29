@@ -103,6 +103,8 @@ const GRANTS_BY_ROLE = {
     ['connection', 'read'],
     // Standing mandates (MP-14-10a): the owner's and administrators', never an agent's.
     ['mandate', 'manage'],
+    // New client onboarding (C41-A): a client record and its onboarding.
+    ['record', 'write'],
   ],
   member: [
     ['task', 'read'],

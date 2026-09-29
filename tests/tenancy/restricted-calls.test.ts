@@ -118,6 +118,19 @@ const UNREACHED: Readonly<Record<string, string>> = {
      select $1, gen_random_uuid(), gen_random_uuid(), '{*}', true, now() + interval '1 day',
             'restricted calls', a.id
        from public.actors a where a.business_id = $1 order by a.id limit 1 returning 1`,
+  // New client onboarding (C41-A): the journey starts none.
+  'public.onboardings': `insert into public.onboardings
+       (business_id, id, client_id, template_key, template_version, started_by_actor_id)
+     select $1, gen_random_uuid(), r.id, 'restricted-calls', 1, a.id
+       from public.records r join public.actors a on a.business_id = r.business_id
+      where r.business_id = $1 order by r.id, a.id limit 1 returning 1`,
+  'public.onboarding_steps': `insert into public.onboarding_steps
+       (business_id, onboarding_id, step_key, task_id, position, phase, kind, state)
+     select o.business_id, o.id, 'restricted-calls', o.client_id, 0, 'restricted calls',
+            'agent', 'ready'
+       from public.onboardings o
+      where o.business_id = $1 and o.template_key = 'restricted-calls'
+      order by o.id limit 1 returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */

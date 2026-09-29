@@ -85,6 +85,9 @@ export interface IdentWorld {
     classId: string;
     clientId: string;
     mandateId: string;
+    /** A client of bravo's and a step of its onboarding (C41-A). */
+    onboardingClientId: string;
+    stepTaskId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
@@ -274,6 +277,27 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
     ),
   };
 
+  // New client onboarding (C41-A): a bravo client, and a step of its onboarding.
+  const bravoClient = need(
+    await person(
+      bravoAdmin,
+      'record.create',
+      { type: 'client', fields: { name: 'a bravo client' } },
+      'bravo',
+    ),
+    'record.create',
+  );
+  const bravoOnboarding = need(
+    await person(
+      bravoAdmin,
+      'onboarding.start',
+      { clientId: String(bravoClient['recordId']), templateKey: 'standard' },
+      'bravo',
+    ),
+    'onboarding.start',
+  );
+  const bravoSteps = bravoOnboarding['steps'] as readonly { readonly taskId: string }[];
+
   return {
     h,
     foreign: {
@@ -286,6 +310,8 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       secretId: String(bravoSecret['secretId']),
       connectionId: await seedBrokenConnection(world.db.admin, world.bravo, 'a bravo source'),
       ...bravoGraduation,
+      onboardingClientId: String(bravoClient['recordId']),
+      stepTaskId: String(bravoSteps[0]?.taskId),
     },
     otherPicked,
     rhea,

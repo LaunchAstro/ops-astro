@@ -50,9 +50,11 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['connection.signal', {}],
   // The per-client region (MP-14-10a) names no row.
   ['connection.graduation', {}],
+  // A new client record (C41-A) names no row.
+  ['record.create', { type: 'client', fields: { name: 'a target-free client' } }],
 ];
 
-/** The sixteen identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The eighteen identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -66,6 +68,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'mandate.revoke': ['mandateId', 'control'],
   'graduation.promote': ['classId', 'control'],
   'graduation.demote': ['classId', 'control'],
+  'onboarding.start': ['clientId', 'control'],
+  'onboarding.step_result': ['recordId', 'control'],
   'delegation.revoke': ['delegationId', 'control'],
   'task.decide': ['gateId', 'gate'],
   'task.board': ['board', 'board'],

@@ -194,6 +194,7 @@ export {
   closeStep,
   failStep,
   insertOnboarding,
+  insertStepTask,
   lockStepOfTask,
   onboardingOfClient,
   type OnboardingStepRow,

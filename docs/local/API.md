@@ -1502,7 +1502,7 @@ type is installed on first use, `installClientType`). `onboarding.start` lays
 a template version out as tasks on that client, one per step, each titled with
 its phase, linked to the client by its party slot, and recorded with its kind
 (agent-run, needs a person, or waits on the client) and the steps it waits for
-(`onboardings`, `onboarding_steps`, migration 0037; one onboarding per client).
+(`onboardings`, `onboarding_steps`, migration 0036; one onboarding per client).
 The templates are versions in code (`ONBOARDING_TEMPLATES`,
 `core-records/src/onboarding/template.ts`). `onboarding.step_result` writes a
 step's result onto its own task as an internal system comment, so reading the

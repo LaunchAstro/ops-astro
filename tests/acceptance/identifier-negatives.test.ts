@@ -72,6 +72,9 @@ const MANDATE_LIMITS = {
   expiresAt: '2099-01-01T00:00:00.000Z',
 } as const;
 const MANDATE = { classes: ['*'], ...MANDATE_LIMITS, label: 'a mandate aimed abroad' } as const;
+// An onboarding start and a step result (C41-A), aimed abroad.
+const START = (clientId: string): Body => ({ clientId, templateKey: 'standard' });
+const STEP = (recordId: string): Body => ({ recordId, outcome: 'done', result: 'aimed abroad' });
 
 describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () => {
   let w: IdentWorld;
@@ -282,6 +285,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           pair('classId', f.classId, (classId) => ({ classId, ...MANDATE_LIMITS })),
         ],
         ['graduation.demote', pair('classId', f.classId, (classId) => ({ classId }))],
+        ['onboarding.start', pair('clientId', f.onboardingClientId, (id) => START(id))],
+        ['onboarding.step_result', pair('recordId', f.stepTaskId, (id) => STEP(id))],
       );
       for (const [op, { operand, forms }] of cells) {
         // eslint-disable-next-line no-await-in-loop

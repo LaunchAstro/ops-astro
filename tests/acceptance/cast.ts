@@ -103,6 +103,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'connection',
   // Standing mandates (MP-14-10a): `mandate:manage` is the owner's and administrators'.
   'mandate',
+  // New client onboarding (C41-A): `record:write` makes a client and starts it.
+  'record',
 ];
 
 export async function tokenFor(

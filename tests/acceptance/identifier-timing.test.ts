@@ -192,7 +192,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 32 cells: the 16 record-targeted operations, then the 16 with their own operand. */
+  /** The 34 cells: the 16 record-targeted operations, then the 18 with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -272,6 +272,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('mandate.revoke', 'mandateId', f.mandateId, (mandateId) => ({ mandateId }));
     byAda('graduation.promote', 'classId', f.classId, (classId) => ({ classId, ...limits }));
     byAda('graduation.demote', 'classId', f.classId, (classId) => ({ classId }));
+    byAda('onboarding.start', 'clientId', f.onboardingClientId, (clientId) => ({
+      clientId,
+      templateKey: 'standard',
+    }));
+    byAda('onboarding.step_result', 'recordId', f.stepTaskId, (recordId) => ({
+      recordId,
+      outcome: 'done',
+      result: 'a result aimed abroad',
+    }));
     const own = await w.propose('a lineage the timing cells name');
     byAda('task.cancel', 'lineageId', f.proposal.lineageId, (lineageId) => ({
       recordId: own.task.id,
@@ -313,11 +322,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 32 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 34 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(32);
-    expect(names).toHaveLength(32);
+    expect(new Set(names).size, 'distinct operations').toBe(34);
+    expect(names).toHaveLength(34);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
