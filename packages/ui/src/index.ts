@@ -38,12 +38,14 @@ import './styles/7-page-kit.css';
 
 export * from './state/corpus.ts';
 export * from './state/project.ts';
+export * from './state/inbox.ts';
 export * from './primitives/Absence.tsx';
 export * from './primitives/Status.tsx';
 export * from './primitives/Tabs.tsx';
 export * from './surfaces/Shell.tsx';
 export * from './surfaces/Board.tsx';
 export * from './surfaces/TaskPage.tsx';
+export * from './surfaces/Notifications.tsx';
 export * from './page-kit/tips.tsx';
 export * from './page-kit/section.tsx';
 export * from './page-kit/stats.tsx';
