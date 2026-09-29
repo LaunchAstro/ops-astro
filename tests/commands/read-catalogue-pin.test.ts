@@ -26,6 +26,7 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 /** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
 const PINNED_SHAPE = {
   'access.read': { spine: false, subject: false, authority: 'declared' },
+  'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'operations.read': { spine: false, subject: false, authority: 'declared' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
@@ -41,6 +42,7 @@ const PINNED_SHAPE = {
 
 const PINNED_IDENTIFIERS = {
   'access.read': [],
+  'client.list': [],
   'operations.read': [],
   'person.list': [],
   'preset.plan': [],
@@ -140,6 +142,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'access.read': BODIES.map(() => null),
   'operations.read': BODIES.map(() => null),
   'privacy.draft_breach_notices': BODIES.map(() => INCIDENT_ID),
+  'client.list': BODIES.map(() => null),
 };
 
 /** The refusal without its `refused` flag, or null. */
@@ -151,7 +154,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same twelve reads', () => {
+  it('names the same thirteen reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

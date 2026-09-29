@@ -24,7 +24,7 @@ export const CASE = {
 } as const;
 
 /**
- * The eighteen operations that name no identifier, each with a minimal valid body.
+ * The twenty operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -54,6 +54,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['session.capabilities', {}],
   ['access.read', {}],
   ['operations.read', {}],
+  ['client.list', {}],
+  ['client.create', { name: 'A made-up client made while bravo is watched' }],
   [
     'privacy.draft_breach_notices',
     {
@@ -105,7 +107,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ],
 ];
 
-/** The nineteen identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The twenty-one identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -128,6 +130,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'legal.approve_version': ['versionId', 'control'],
   'legal.publish_version': ['versionId', 'control'],
   'credential.revoke': ['credentialId', 'control'],
+  'access.grant': ['holderId and clientId', 'control'],
+  'access.revoke': ['grantId', 'control'],
 };
 
 /**

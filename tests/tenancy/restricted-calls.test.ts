@@ -111,6 +111,10 @@ const UNREACHED: Readonly<Record<string, string>> = {
             array['task:read'], repeat('0', 64), 'hmac-sha256-v1', 'seed', now() + interval '1 day'
        from public.actors where business_id = $1 and kind = 'person'
       order by id limit 1 returning 1`,
+  // C32: no journey makes a client, so one is written here.
+  'public.clients': `insert into public.clients (business_id, id, name, created_by_actor_id)
+     select business_id, gen_random_uuid(), 'restricted calls seed', id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
   'public.record_links': `insert into public.record_links
        (business_id, id, link_type, from_record_id, to_record_id)
      select a.business_id, gen_random_uuid(), 'restricted_calls', a.id, b.id

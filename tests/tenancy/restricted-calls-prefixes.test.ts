@@ -154,6 +154,11 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     credential_key_id: 'seed',
     expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
   },
+  // 0036 (C32): no journey makes a client.
+  'public.clients': {
+    name: `restricted calls seed ${randomUUID()}`,
+    created_by_actor_id: randomUUID(),
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

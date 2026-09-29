@@ -106,6 +106,9 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'privacy',
   // API-2: an agent credential, issued and revoked on the holder's own account.
   'credential',
+  // C32: the client record (`record:write`), whose install default is the
+  // owner and administrators.
+  'record',
 ];
 
 export async function tokenFor(
