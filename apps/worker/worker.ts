@@ -194,8 +194,9 @@ async function effectOnce(
   // The mark first (Sol review 1 on #154): a provider call may act and then
   // lose its answer, so it is made only once the step is marked. A fault is
   // then handed back as a drop, and the step's whole hold stays unknown until
-  // the reconciliation pass proves the effect absent (T3d1); nothing is
-  // released or reserved again on the worker's word.
+  // a person records what happened (T3d1): the register holds only the
+  // comment, so the pass cannot prove the provider did nothing (Sol review 2).
+  // Nothing is released or reserved again on the worker's word.
   const dispatched = await call('task.dispatch', lease);
   if (!('body' in dispatched)) return dispatched;
   try {
