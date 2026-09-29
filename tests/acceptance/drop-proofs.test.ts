@@ -129,6 +129,24 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
     evidence({ proof: 'drop_is_not_cancel', cause: 'worker_lost', result: 'pass' });
   }, 60_000);
 
+  it('a worker SIGKILLed after its provider start is worker_lost and waits for a person, never replaced by the pass', async () => {
+    const w = await fresh();
+    const lost = p.worker(w, 'after-provider-start', 't3e1-worker-started', 3);
+    expect(await lost.parked()).toBe('after-provider-start');
+    await hardKill('T3e1 worker lost after its provider start', lost, p.admin, API);
+    await sleep(3_500);
+    expect(await pass()).toMatchObject({ ok: true });
+    // The provider may have acted: held whole, no replacement (Sol review 3).
+    expect(await p.attempts(w.taskId)).toMatchObject([
+      { state: 'liability_unknown', drop_cause: 'worker_lost' },
+    ]);
+    expect(await pass()).toMatchObject({ ok: true });
+    expect(await p.attempts(w.taskId)).toHaveLength(1);
+    await nothingHappened(w);
+    await finishedOnce(w, 't3e1-worker-started-2');
+    evidence({ proof: 'lost_after_provider_start', result: 'pass' });
+  }, 60_000);
+
   it('a silent run stays running until its lease runs out; the woken worker is refused (SIGSTOP, then SIGCONT)', async () => {
     const w = await fresh();
     const stalled = p.worker(w, 'after-reservation', 't3e1-worker-stalled', 3);
