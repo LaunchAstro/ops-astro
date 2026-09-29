@@ -30,11 +30,18 @@
 // finds nothing left to do there next time.
 
 import type { BusinessId, Database, TenantQuery } from '../../packages/core-records/src/index.ts';
+import { lookupEffect } from '../../packages/core-commands/src/index.ts';
 import {
+  EFFECT_OPERATIONS,
+  reconcileUnknown,
   replayRecordedTransitions,
   sweepExpiredLeases,
 } from '../../packages/core-runtime/src/index.ts';
-import type { Classification, EffectLookup } from '../../packages/core-runtime/src/index.ts';
+import type {
+  Classification,
+  EffectLookup,
+  Reconciled,
+} from '../../packages/core-runtime/src/index.ts';
 
 /** The setting's name, in the environment or `.local/recovery.env`. */
 export const RECOVERY_SCOPE_SETTING = 'RECOVERY_BUSINESS_KEYS';
@@ -86,14 +93,16 @@ export function parseRecoveryScope(raw: string | undefined): RecoveryScope {
   return { ok: true, keys };
 }
 
-export interface RecoveredBusiness {
+export interface RecoveredBusiness<T = Classification> {
   readonly key: string;
   readonly businessId: BusinessId;
-  readonly classified: readonly Classification[];
+  readonly classified: readonly T[];
+  /** What the reconciliation phase answered (T3d1), when the pass ran it. */
+  readonly reconciled?: readonly Reconciled[];
 }
 
-export type RecoveryOutcome =
-  | { readonly ok: true; readonly businesses: readonly RecoveredBusiness[] }
+export type RecoveryOutcome<T = Classification> =
+  | { readonly ok: true; readonly businesses: readonly RecoveredBusiness<T>[] }
   | { readonly ok: false; readonly problem: string };
 
 /**
@@ -138,13 +147,13 @@ export async function sweepDeployment(
   );
 }
 
-async function eachBusiness(
+async function eachBusiness<T>(
   database: Database,
   resolveBusiness: (businessKey: string) => Promise<string | undefined>,
   keys: readonly string[],
   pass: string,
-  run: (tx: TenantQuery) => Promise<readonly Classification[]>,
-): Promise<RecoveryOutcome> {
+  run: (tx: TenantQuery) => Promise<readonly T[]>,
+): Promise<RecoveryOutcome<T>> {
   const targets: { key: string; businessId: BusinessId }[] = [];
   for (const key of keys) {
     // One key at a time, on the resolver's single connection.
@@ -161,7 +170,7 @@ async function eachBusiness(
     }
   }
 
-  const businesses: RecoveredBusiness[] = [];
+  const businesses: RecoveredBusiness<T>[] = [];
   for (const target of targets) {
     try {
       // Sequential by design: one tenant's transaction commits or rolls back
@@ -222,6 +231,14 @@ export function startSweeper(
 
 /** One line per business the sweep changed, after its transaction committed. */
 function describeSwept(business: RecoveredBusiness): void {
+  const answered = business.reconciled ?? [];
+  if (answered.length > 0) {
+    const count = (answer: Reconciled['answer']) =>
+      String(answered.filter((one) => one.answer === answer).length);
+    console.log(
+      `reconcile: ${business.key} committed, ${count('present')} settled on proof, ${count('absent')} proved absent, ${count('unanswered')} left for a person`,
+    );
+  }
   if (business.classified.length === 0) return;
   const released = business.classified.filter((one) => one.released).length;
   const unknown = business.classified.filter((one) => one.state === 'liability_unknown').length;
@@ -230,16 +247,49 @@ function describeSwept(business: RecoveredBusiness): void {
   );
 }
 
-/** T3d1, red first: the register's answer, not wired yet. */
-export const registerEffectLookup: EffectLookup = async () =>
-  await Promise.reject(new Error('T3d1: registerEffectLookup is not built yet'));
+/**
+ * T3d1: the operation register's answer for an unknown step. A step whose
+ * effect replays by its token (the synthetic comment) is answered by the
+ * register, under the holder's own identity; any other kind cannot be, and
+ * waits for a person.
+ */
+export const registerEffectLookup: EffectLookup = async (tx, step) =>
+  EFFECT_OPERATIONS[step.stepKind] === 'replay'
+    ? (await lookupEffect(tx, step.holderActorId, step.attemptId)) !== undefined
+    : undefined;
 
-/** T3d1, red first: the whole pass, not built yet. */
+/**
+ * The one reconciliation pass, as the API runs it on its interval: the sweep,
+ * then the recorded-transition replay (its production caller from T3d1 on,
+ * beside start-time recovery), then the register's answers. Each phase is one
+ * transaction per business on the tenancy connection, so no phase takes a
+ * lock after another phase's in the same transaction.
+ */
 export async function passDeployment(
-  _database: Database,
-  _resolveBusiness: (businessKey: string) => Promise<string | undefined>,
-  _keys: readonly string[],
-  _lookup: EffectLookup,
+  database: Database,
+  resolveBusiness: (businessKey: string) => Promise<string | undefined>,
+  keys: readonly string[],
+  lookup: EffectLookup,
 ): Promise<RecoveryOutcome> {
-  return await Promise.reject(new Error('T3d1: passDeployment is not built yet'));
+  const swept = await sweepDeployment(database, resolveBusiness, keys);
+  if (!swept.ok) return swept;
+  const replayed = await recoverDeployment(database, resolveBusiness, keys);
+  if (!replayed.ok) return replayed;
+  const answered = await eachBusiness(
+    database,
+    resolveBusiness,
+    keys,
+    'reconcile',
+    async (tx) => await reconcileUnknown(tx, lookup),
+  );
+  if (!answered.ok) return answered;
+  return {
+    ok: true,
+    businesses: swept.businesses.map((business, at) => ({
+      key: business.key,
+      businessId: business.businessId,
+      classified: [...business.classified, ...(replayed.businesses[at]?.classified ?? [])],
+      reconciled: answered.businesses[at]?.classified ?? [],
+    })),
+  };
 }

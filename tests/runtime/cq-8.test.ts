@@ -67,6 +67,8 @@ describe('CQ-8 runtime structure', () => {
       'recovery/authority-loss.ts',
       'recovery/classifier.ts',
       'recovery/lease-retirement.ts',
+      // T3d1: the pass's reconciliation phase and a person's recorded outcome.
+      'recovery/reconcile.ts',
       // T3b: the reconciliation pass's lease-expiry phase.
       'recovery/sweep.ts',
     ]);

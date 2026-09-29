@@ -1192,6 +1192,18 @@ person prefix answers it before comparing `expectedRevision`
 (`prepareCommand`, `commands/prepare.ts`), so a pre-trash revision gets the
 same bytes as a missing task.
 
+### `budget.record_outcome` (T3d1)
+
+`POST /api/b/<key>/budget/record_outcome` with `recordId` (the task),
+`attemptId` and `outcome`, one of `nothing_happened`, `happened` or
+`happened_differently` (O7). It asks `decide` on `billing` for the task (O8:
+any person holding it), and no agent route serves it
+(`DELEGATION_EXCLUDES_OPERATION`). Only an attempt held `liability_unknown`
+takes one; any other is `LIABILITY_NOT_UNKNOWN`. Nothing happened releases the
+whole hold and resumes the work on a new hold; it happened spends the whole
+hold; it happened differently spends it and reopens the work. A retry under the
+same `operationId` replays the stored answer.
+
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `person.list`, `preset.plan`,

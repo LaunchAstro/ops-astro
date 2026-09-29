@@ -274,6 +274,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       amountMinor: 100,
       fromMaximumMinor: 0,
     }));
+    byAda('budget.record_outcome', 'attemptId', f.picked.attemptId, (attemptId) => ({
+      recordId: f.proposal.task.id,
+      attemptId,
+      outcome: 'happened',
+    }));
     out.push({
       op: 'task.pickup',
       operand: 'reservationId',

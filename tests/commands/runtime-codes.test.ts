@@ -5,7 +5,8 @@
 // lineage that is live, completed or already restarted
 // (`core-runtime/src/propose.ts`). T2c1's dispatch added `AUTHORITY_LOST`,
 // `DECISION_STALE` and `EFFECT_NOT_RECONCILABLE` (`core-runtime/src/dispatch.ts`),
-// and T2c2's observe `EFFECT_NOT_OBSERVED` (`core-runtime/src/observe.ts`).
+// T2c2's observe `EFFECT_NOT_OBSERVED` (`core-runtime/src/observe.ts`), and
+// T3d1's recorded outcome `LIABILITY_NOT_UNKNOWN` (`core-runtime/src/recovery/reconcile.ts`).
 //
 // `RuntimeRefusalCode` is read off the register's rows marked `runtime`, and
 // each row carries its status, so a runtime code cannot be unregistered or

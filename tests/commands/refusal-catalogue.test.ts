@@ -116,9 +116,10 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['EFFECT_NOT_RECONCILABLE', 409, 'caller'],
   ['EFFECT_NOT_DISPATCHED', 409, 'caller'],
   ['EFFECT_NOT_OBSERVED', 409, 'caller'],
+  ['LIABILITY_NOT_UNKNOWN', 409, 'caller'],
 ];
 
-/** The runtime's own twenty-five, as `core-runtime` names them; T2c1 added three, T2c2 one, T2g one. */
+/** The runtime's own twenty-five, as `core-runtime` names them; T2c1 added three, T2c2 one, T2g one, T3d1 one. */
 const RUNTIME = [
   'ACTUAL_EXPENDITURE_UNSUPPORTED',
   'AUTHORITY_LOST',
@@ -137,6 +138,7 @@ const RUNTIME = [
   'LEASE_EXPIRED',
   'LEASE_HELD',
   'LEASE_NOT_OWNED',
+  'LIABILITY_NOT_UNKNOWN',
   'LINEAGE_NOT_ON_TASK',
   'LINEAGE_TERMINAL',
   'PROPOSAL_OUT_OF_SCOPE',

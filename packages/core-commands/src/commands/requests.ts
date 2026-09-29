@@ -249,6 +249,12 @@ export type CommandRequest =
       readonly recordId: unknown;
       readonly amountMinor: number;
       readonly fromMaximumMinor: number;
+    } & Envelope)
+  | ({
+      readonly command: 'budget.record_outcome';
+      readonly recordId: unknown;
+      readonly attemptId: unknown;
+      readonly outcome: unknown;
     } & Envelope);
 
 /**

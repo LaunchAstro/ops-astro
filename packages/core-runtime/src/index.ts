@@ -33,7 +33,7 @@ export {
   type Renewed,
 } from './heartbeat.ts';
 export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
-export { dispatch, type Dispatched, type DispatchRequest } from './dispatch.ts';
+export { dispatch, EFFECT_OPERATIONS, type Dispatched, type DispatchRequest } from './dispatch.ts';
 export { observe, type AppliedEffect, type Observed, type ObserveRequest } from './observe.ts';
 export { readReceipt, receiptTask, type Receipt } from './receipt.ts';
 export { readAlerts, type Alert } from './alerts.ts';
@@ -71,13 +71,19 @@ export {
 export { AffectedSetChanged, requireUnchanged } from './rediscovery.ts';
 export { appendRunEvent, type RunEvent, type RunEventKind } from './run-events.ts';
 export {
+  reconcileUnknown,
+  recordOutcome,
+  RECORDED_OUTCOMES,
+  type EffectLookup,
+  type OutcomeRecorded,
+  type Reconciled,
+  type RecordedOutcome,
+} from './recovery/reconcile.ts';
+export {
   cancelAndClassify,
   classifyUnderLocks,
   replayRecordedTransitions,
   sweepExpiredLeases,
-  reconcileUnknown,
-  type EffectLookup,
-  type Reconciled,
   type Classification,
   type ClassifyRequest,
   type NonclaimableCause,
