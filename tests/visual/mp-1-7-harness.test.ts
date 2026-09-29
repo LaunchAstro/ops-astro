@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { comparePng } from './compare.ts';
-import { checkRenderer, readPacket, rendererOf, type Packet } from './packet.ts';
+import { checkRenderer, readPacket, rendererOf, themesOf, type Packet } from './packet.ts';
 import { builtPages, DARK_PENDING, overflowOf, report, type PageShot } from './report.ts';
 
 type Rgb = readonly [number, number, number];
@@ -44,15 +44,17 @@ beforeAll(() => {
   packet = readPacket();
 });
 
-const everyShot = (widths: readonly number[], overflow = 0): PageShot[] =>
+const everyShot = (widths: readonly number[], overflow = 0, of: Packet = packet): PageShot[] =>
   builtPages().flatMap((page) =>
-    widths.map((width) => ({
-      page,
-      width,
-      theme: 'light' as const,
-      picture: `${page}@${width}-light.png`,
-      overflow,
-    })),
+    widths.flatMap((width) =>
+      themesOf(of).map((theme) => ({
+        page,
+        width,
+        theme,
+        picture: `${page}@${width}-${theme}.png`,
+        overflow,
+      })),
+    ),
   );
 
 describe('MP-1-7', () => {
@@ -78,8 +80,11 @@ describe('MP-1-7', () => {
   });
 
   it('MP-1-7 dark pending: every dark picture is marked waiting for the dark theme until U04', () => {
-    expect(packet.themes.dark).toBe(DARK_PENDING);
-    const { lines } = report(packet, builtPages(), everyShot(packet.widths));
+    // U04 (MP-1-1) has landed the dark theme on this branch, so the packet
+    // captures dark; a packet that still marks it pending prints each as waiting.
+    expect(packet.themes.dark).toBe('captured');
+    const pending: Packet = { ...packet, themes: { ...packet.themes, dark: DARK_PENDING } };
+    const { lines } = report(pending, builtPages(), everyShot(packet.widths, 0, pending));
     const dark = lines.filter((line) => line.includes('-dark'));
     expect(dark).toHaveLength(builtPages().length * packet.widths.length);
     for (const line of dark)
@@ -129,8 +134,8 @@ describe('MP-1-7 report', () => {
     expect(all.failed).toBe(0);
     expect(all.lines.at(-1)).toBe(
       `width-and-theme check: ${builtPages().length} page(s) at ${packet.widths.length} width(s): ` +
-        `${builtPages().length * packet.widths.length} light picture(s), none missing; ` +
-        `${builtPages().length * packet.widths.length} dark waiting for the dark theme; none scrolls sideways`,
+        `${builtPages().length * packet.widths.length} light and ` +
+        `${builtPages().length * packet.widths.length} dark picture(s), none missing; none scrolls sideways`,
     );
     // A page registered with no pictures, and one width missing on another, both fail.
     const missing = everyShot(packet.widths).filter(
@@ -138,8 +143,10 @@ describe('MP-1-7 report', () => {
     );
     const planted = report(packet, [...builtPages(), 'agency:planted'], missing);
     expect(planted.lines).toContain('FAIL agency:settings@1650-light: no picture');
+    expect(planted.lines).toContain('FAIL agency:settings@1650-dark: no picture');
     expect(planted.lines).toContain('FAIL agency:planted@1480-light: no picture');
-    expect(planted.failed).toBe(1 + packet.widths.length);
+    expect(planted.lines).toContain('FAIL agency:planted@1480-dark: no picture');
+    expect(planted.failed).toBe(2 * (1 + packet.widths.length));
   });
 
   it('MP-1-7 pinned mockup baseline: the comparison reads the pinned tree, never a previous run', () => {

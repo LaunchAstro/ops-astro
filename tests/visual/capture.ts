@@ -37,7 +37,12 @@ export type Catalogue = {
   drift: { state: string; control: string; token: string };
   states: State[];
 };
-export type Side = { context: BrowserContext; external: Set<string>; unresolved: Set<string> };
+export type Side = {
+  context: BrowserContext;
+  theme: Theme;
+  external: Set<string>;
+  unresolved: Set<string>;
+};
 
 export const MOCKUP_ORIGIN = 'http://mockup.invalid';
 const ASSET_ORIGIN = 'http://assets.invalid';
@@ -93,15 +98,12 @@ function serveMockup(
 }
 
 /** The browser context one capture draws in: the packet's viewport at one width, in one theme. */
-export function contextOptions(
-  packet: Packet,
-  width: number,
-  _theme: Theme,
-): BrowserContextOptions {
+export function contextOptions(packet: Packet, width: number, theme: Theme): BrowserContextOptions {
   return {
     viewport: { width, height: packet.height },
     deviceScaleFactor: 1,
-    colorScheme: 'light',
+    // The app takes its theme from the system setting before first paint (MP-1-1).
+    colorScheme: theme,
     reducedMotion: 'reduce',
     locale: 'en-AU',
     timezoneId: 'Australia/Brisbane',
@@ -114,14 +116,15 @@ export async function openSide(
   browser: Browser,
   packet: Packet,
   width: number,
+  theme: Theme,
   source: { mockupDir: string; tree: string } | { app: URL; session?: string | undefined },
 ): Promise<Side> {
   const context = await browser.newContext({
     // A signed-in local fixture session (T4b1), as Playwright storage state.
     ...('app' in source && source.session !== undefined ? { storageState: source.session } : {}),
-    ...contextOptions(packet, width, 'light'),
+    ...contextOptions(packet, width, theme),
   });
-  const side: Side = { context, external: new Set(), unresolved: new Set() };
+  const side: Side = { context, theme, external: new Set(), unresolved: new Set() };
   const blobs = new Map<string, Buffer>();
   await context.route('**/*', (route: Route) => {
     const url = new URL(route.request().url());
@@ -142,16 +145,17 @@ export async function openSide(
     side.unresolved.add(url.href);
     return route.abort('blockedbyclient');
   });
+  // The mockup takes its theme from its own stored key.
   if ('mockupDir' in source) {
     await context.addInitScript(
-      (key: string) => localStorage.setItem(key, 'light'),
-      packet.themeKey,
+      ([key, value]: [string, Theme]) => localStorage.setItem(key, value),
+      [packet.themeKey, theme] as [string, Theme],
     );
   }
   return side;
 }
 
-/** Loads a page at the fixed clock, with the bundled faces proved in use. */
+/** Loads a page at the fixed clock, with the bundled faces and the side's theme proved in use. */
 export async function load(
   side: Side,
   packet: Packet,
@@ -176,6 +180,16 @@ export async function load(
   }, families);
   if (missing.length > 0) {
     throw new Error(`visual: ${url} did not resolve ${missing.join(', ')} to a bundled face`);
+  }
+  // Each capture is proved to draw in its side's theme: the mockup marks the
+  // body, the app the root element, before first paint.
+  const drawn = await page.evaluate(
+    () =>
+      document.body.getAttribute('data-theme') ??
+      document.documentElement.getAttribute('data-theme'),
+  );
+  if (drawn !== side.theme) {
+    throw new Error(`visual: ${url} drew in ${String(drawn)}, not ${side.theme}`);
   }
   // A state behind a tab or a disclosure is opened the way a person would.
   if (prep.open !== undefined) await page.locator(prep.open).first().click();
