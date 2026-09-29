@@ -235,12 +235,12 @@ function refuseMalformedIdentifier(
  * them: a comment's body, a cancel's reason, a decision's note, a proposal's
  * purpose, currency, payload and step, a handback's report and successor.
  *
- * Unchecked, each of them could reach its insert holding a NUL or an unpaired
- * surrogate, which the column refuses with a raise: the owed refusal would be
- * a 503, the audit would read `failed`, and a retry of the same body could
- * never succeed. The rule is
- * `values.ts`'s; this is the one place the person path applies it, so an
- * operand added to a command is covered by adding its name here.
+ * Without this check, each of them could reach its insert holding a NUL or an
+ * unpaired surrogate, which the column refuses with a raise. The owed refusal
+ * would be a 503, the audit would read `failed`, and a retry of the same body
+ * could never succeed. The rule is `values.ts`'s; this is the one place the
+ * person path applies it, so an operand added to a command is covered by
+ * adding its name here.
  *
  * `fields` is not listed. The field engine refuses a field value with the
  * field's own name and type (`values.ts`, `refuseWrongValueType`), and a

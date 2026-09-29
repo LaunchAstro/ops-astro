@@ -8,8 +8,8 @@
 // `task.pickup` and `task.handback` against these names, so a later
 // rearrangement inside this package is not a change to what it imports.
 //
-// There is deliberately no dispatch, worker or provider export — no path here
-// makes a call, and `planned_steps.dispatched_at` is a constraint keeping it
+// There is deliberately no dispatch, worker or provider export. No path here
+// makes a call, and the `planned_steps.dispatched_at` constraint keeps it
 // that way. `RuntimeRefusalCode` is read off the refusal register's rows
 // marked `runtime` (`core-records/src/register.ts`) and passed on here with
 // `SUGGESTED_STATUS`, a view of the same rows' statuses that the tests read.

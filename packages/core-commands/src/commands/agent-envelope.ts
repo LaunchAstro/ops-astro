@@ -142,9 +142,9 @@ export async function executeAgentCommand(
  * `session.capabilities` answers flattened beside `ok` on the person prefix,
  * which is the shape the mounted app reads (`reads/capabilities.ts`,
  * `SessionCapabilities`). Here the envelope nests every payload under
- * `detail`, so unflattened the same read would arrive in two shapes and a
- * client would have to know which prefix it was on. It is flattened
- * here, at the wire, rather than in `serve`: the register row keeps the handle
+ * `detail`. Left nested, the same read would arrive in two shapes and a
+ * client would have to know which prefix it was on. This flattens it here,
+ * at the wire, rather than in `serve`: the register row keeps the handle
  * every other agent answer is stored as, so a replay reads the same record and
  * is shaped the same way on the way out. A refusal never reaches here: the
  * boundary answers it first (`apps/api/app.ts`).

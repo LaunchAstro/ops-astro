@@ -4,8 +4,8 @@
 // visibility rule.
 //
 // This is T1f's register. It does not replace the modules' own refusal
-// unions — a module keeps the codes it can
-// produce, which is what lets its own types stay narrow — it is the one place
+// unions, because a module keeps the codes it can produce and that keeps its
+// own types narrow. It is the one place
 // that says a code exists, what it means, which contract row owns it, which
 // HTTP status carries it, and whether a caller may see it at all. A code is
 // declared once, as a row: `RefusalCode` is read off the rows, the runtime's

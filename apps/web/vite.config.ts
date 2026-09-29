@@ -81,8 +81,8 @@ export default defineConfig({
     strictPort: true,
     proxy: { '/api': { target: apiTarget, changeOrigin: false } },
     // The dev server serves any file under the workspace root through `/@fs/`,
-    // which is how a source import reaches `packages/ui`. Unlisted, that
-    // includes `/@fs/<worktree>/.local/db.env`, `.local/auth.env` and
+    // which is how a source import reaches `packages/ui`. Without a deny list
+    // that includes `/@fs/<worktree>/.local/db.env`, `.local/auth.env` and
     // `.local/synthetic-users.json`: the generated database password, the
     // GoTrue secret and every synthetic login, readable by anything that can
     // reach the port. Loopback-only binding keeps that local rather than

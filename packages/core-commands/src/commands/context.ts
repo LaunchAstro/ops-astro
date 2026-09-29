@@ -7,8 +7,8 @@
 // dispatch that calls it: `handlers.ts` imports `tasks-write.ts` for the work,
 // and `tasks-write.ts` would import `handlers.ts` back for the shape of its
 // own argument. A cycle has no entry point, and this tree's dependency rules
-// refuse one (`.dependency-cruiser.cjs`, `no-circular`), so the shape lives
-// here — the module both sides depend on — and the dispatch stays where the
+// refuse one (`.dependency-cruiser.cjs`, `no-circular`). So the shape lives
+// here, in the module both sides depend on, and the dispatch stays where the
 // exported surface check reads it from.
 
 import {

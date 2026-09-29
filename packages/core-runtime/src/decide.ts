@@ -246,12 +246,12 @@ interface FoundGate {
  * everything read here is re-read under the locks, and this pass exists only
  * to learn which rows to lock. A trashed task's gate reads as no gate at all.
  *
- * The authority check here runs before any lock, so unheld, a revocation
- * could commit while this waited on the chain or the cap and the decision
- * still commit after it. The decide grants are held for share here,
- * before the runtime set, as pickup holds its own: a revocation that locked
- * first is seen by the re-check under the locks, and one that comes second
- * waits for this decision to commit.
+ * The authority check here runs before any lock. If nothing held the grants,
+ * a revocation could commit while this waited on the chain or the cap, and
+ * the decision would still commit after it. So this holds the decide grants
+ * for share here, before the runtime set, as pickup holds its own. A
+ * revocation that locked first is seen by the re-check under the locks, and
+ * one that comes second waits for this decision to commit.
  */
 async function findGate(
   tx: TenantQuery,

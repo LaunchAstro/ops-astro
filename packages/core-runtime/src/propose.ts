@@ -127,9 +127,9 @@ export async function lockProposal(
   request: ProposeRequest,
 ): Promise<HeldProposal> {
   // The caller's lineage id is the lock key, and `writeProposal` requires the
-  // lineage by the database's own lower-case id. Unfolded, an upper-case
-  // spelling of the same uuid would find the lineage through the cast and then
-  // fault at the lock-set check.
+  // lineage by the database's own lower-case id. Without lower-casing, an
+  // upper-case spelling of the same uuid would find the lineage through the
+  // cast and then fault at the lock-set check.
   const lineageId = request.lineageId?.toLowerCase() ?? null;
   const restarts = lineageId === null ? (request.restartsLineageId?.toLowerCase() ?? null) : null;
   // T4's "preallocate any new successor identities before lock acquisition;
@@ -144,8 +144,9 @@ export async function lockProposal(
   // once, outside, a version proposed and approved in the window would be
   // superseded under locks never taken for its hold, and the classifier would
   // meet that hold as a plain lock-order `Error`. RUNTIME.md "an approval
-  // ... between a proposal's discovery and its locks costs one retry": the recheck has to see which
-  // version is live, not only what the first-found version holds.
+  // ... between a proposal's discovery and its locks costs one retry": the
+  // recheck has to see which version is live, not only what the first-found
+  // version holds.
   //
   // - The live versions: the lineage's `superseded_at is null` rows.
   // - The task's own accounting parents, when they exist. `writeProposal`
