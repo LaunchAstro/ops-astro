@@ -268,6 +268,10 @@ interface VersionProps {
 function Version(props: VersionProps): ReactElement {
   const { version } = props;
   const gate = version.gate;
+  // Derived by comparing versions, never read from a stored field: an open gate
+  // on a version the lineage has moved past is stale.
+  const stale = gate !== null && gate.state === 'pending' && !lapsed(gate) && !props.head;
+  const gateWord = gate === null ? '' : stale ? 'stale' : lapsed(gate) ? 'expired' : gate.state;
   return (
     <div
       className="sb__sect"
@@ -323,9 +327,9 @@ function Version(props: VersionProps): ReactElement {
         <div
           className="card__sub"
           data-gate-expired={String(lapsed(gate))}
-          data-gate-state={lapsed(gate) ? 'expired' : gate.state}
+          data-gate-state={gateWord}
         >
-          Gate {lapsed(gate) ? 'expired' : gate.state}, round {gate.round}
+          Gate {gateWord}, round {gate.round}
           {gate.expiresAt === null ? null : lapsed(gate) ? (
             <span data-gate="expired"> · deadline {gate.expiresAt} passed with no decision</span>
           ) : (
@@ -334,7 +338,13 @@ function Version(props: VersionProps): ReactElement {
         </div>
       )}
 
-      {gate === null || !props.head ? null : (
+      {stale ? (
+        <p className="card__sub" data-gate="stale">
+          A stale gate cannot be approved: the run has to raise it again against the current
+          version.
+        </p>
+      ) : null}
+      {gate === null || !(props.head || stale) ? null : (
         <Decide
           client={props.client}
           gate={gate}
@@ -343,6 +353,7 @@ function Version(props: VersionProps): ReactElement {
           note={props.note}
           onChanged={props.onChanged}
           onDecided={props.onDecided}
+          stale={stale}
           versionId={version.versionId}
         />
       )}
@@ -368,6 +379,8 @@ interface DecideProps {
   readonly note: DecisionNote | null;
   readonly onDecided: (note: DecisionNote | null) => void;
   readonly onChanged: () => void;
+  /** The gate's version is not the lineage's newest, so approve is disabled. */
+  readonly stale: boolean;
 }
 
 function Decide(props: DecideProps): ReactElement {
@@ -390,7 +403,7 @@ function Decide(props: DecideProps): ReactElement {
           ? null
           : `This lineage is ${props.lineageState}, and a lineage that has ended is not decided again. An authorised restart opens a new one.`;
 
-  const decide = (decision: 'approve' | 'reject'): void => {
+  const decide = (decision: 'approve' | 'request_changes'): void => {
     if (busy || closed) return;
     props.onDecided(null);
     run(
@@ -415,32 +428,38 @@ function Decide(props: DecideProps): ReactElement {
     <div className="btnrow" data-decide="controls">
       {why === null ? (
         <>
+          {/* Two controls and no third: reject is the proposal header's own
+              action (T3a), never a gate control (package 2 item 4). */}
+          <button
+            className="btn"
+            data-decide="request_changes"
+            data-gate-id={gate.id}
+            data-version-id={props.versionId}
+            disabled={busy}
+            onClick={() => {
+              decide('request_changes');
+            }}
+            type="button"
+          >
+            Request changes
+          </button>
           <button
             className="btn btn--primary"
             data-decide="approve"
             data-gate-id={gate.id}
             data-version-id={props.versionId}
-            disabled={busy}
+            disabled={busy || props.stale}
             onClick={() => {
-              decide('approve');
+              if (!props.stale) decide('approve');
             }}
             type="button"
           >
             {busy ? 'Deciding…' : 'Approve this version'}
           </button>
-          <button
-            className="btn"
-            data-decide="reject"
-            data-gate-id={gate.id}
-            data-version-id={props.versionId}
-            disabled={busy}
-            onClick={() => {
-              decide('reject');
-            }}
-            type="button"
-          >
-            Reject
-          </button>
+          <p className="card__sub" data-gate="notice">
+            This demonstration changes nothing outside the app: its one effect is a team-only
+            comment on this task.
+          </p>
         </>
       ) : (
         <p className="card__sub" data-decide="closed">

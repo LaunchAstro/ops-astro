@@ -91,6 +91,7 @@ import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { ConflictNotice, MovedNotice, TaskHeader, UnsavedBar } from './task/Notices.tsx';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
+import { RunProgress } from '../views/run-progress.tsx';
 import { RecordState } from '../views/record-state.tsx';
 import { submitEdit } from '../records/submit.ts';
 import { useCommand } from '../records/use-command.ts';
@@ -614,6 +615,8 @@ function Loaded(props: LoadedProps): ReactElement {
         recordId={task.id}
         revision={task.revision}
       />
+
+      <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
 
       <History history={task.history} />
     </div>
