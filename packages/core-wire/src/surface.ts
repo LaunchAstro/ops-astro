@@ -200,12 +200,7 @@ export interface CommandDeclaration {
    * (`reads/catalogue.ts`), so it carries none here.
    */
   readonly operands?: OperandSpec;
-  /**
-   * Every permission key checked inside the command, as `collection:action`,
-   * when there is more than the one its collection and action make: a
-   * two-part authority. The command catalogue (`catalogue.ts`) carries it and
-   * the parity check fails a surface that drops either part (API-1).
-   */
+  /** Every key checked inside, `collection:action`, for a two-part authority (API-1). */
   readonly authority?: readonly string[];
   /** A rule every path holds, carried onto the catalogue row as written. */
   readonly rule?: string;

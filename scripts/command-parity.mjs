@@ -2,15 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The command parity check and report (API-1). It scans the app's source for
-// every command a screen calls, maps each file to the route that draws it
-// through the screen registry's imports, builds the catalogue from the command
-// surface, and holds the API, the CLI and the app to the owning commands.
-//
-//   node scripts/command-parity.mjs            prints the parity report
-//   node scripts/command-parity.mjs --check    exits 1 on any failure
-//   node scripts/command-parity.mjs --json     prints the catalogue
-//
-// It reads source files only: no database, no network, no record.
+// every command a screen calls, maps each file to its route through the screen
+// registry's imports, builds the catalogue and holds the API, the CLI and the
+// app to the owning commands. Source files only: no database, no network.
+// `--check` exits 1 on any failure; `--json` prints the catalogue.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
