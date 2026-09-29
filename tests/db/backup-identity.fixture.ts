@@ -5,7 +5,7 @@
 // the identities' names, a made-up key pair, and the logins each suite makes
 // and drops.
 
-import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
 import { afterAll, beforeAll } from 'vitest';
@@ -16,6 +16,9 @@ import {
   type EmptyDatabase,
 } from '../support/fresh-database.ts';
 
+/** How the job and the drill reach the store: a login and a script in, what psql prints out. */
+export type Reach = (url: string, script: string) => Promise<string>;
+
 /** The job as the machine runs it; loaded per test so a missing job fails its own tests only. */
 export const job = async (): Promise<{
   runBackup: (options: {
@@ -24,9 +27,11 @@ export const job = async (): Promise<{
     publicKey?: string;
     heartbeat?: string;
     send?: (address: string | undefined) => Promise<string>;
+    reach?: Reach;
   }) => Promise<Record<string, unknown>>;
   expireBackups: (options: {
     storeUrl: string;
+    reach?: Reach;
     restoreHeartbeat?: string;
     send?: (address: string | undefined) => Promise<string>;
   }) => Promise<Record<string, unknown>>;
@@ -53,7 +58,7 @@ export const keys: { publicKey: string; privateKey: string } = generateKeyPairSy
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 });
 export const drill = async (): Promise<{
-  fetchLatest: (storeUrl: string) => Promise<{ takenAt: string; body: Buffer }>;
+  fetchLatest: (storeUrl: string, reach?: Reach) => Promise<{ takenAt: string; body: Buffer }>;
   restoreDrill: (options: {
     fetchArchive: () => Promise<{ takenAt: string; body: Buffer }>;
     privateKey: string;
@@ -102,6 +107,25 @@ export async function loginIn(
   url.username = name;
   url.password = password;
   return { url: url.toString(), name };
+}
+
+/**
+ * The store reached from the machine, for the policy suites here. It runs the
+ * same scripts the job and the drill send through psql on staging's network
+ * (scripts/ops/backup-store-reach.mjs) over one session, and answers what
+ * `psql -At` prints: each row's one value, a line each.
+ */
+export async function hostReach(url: string, script: string): Promise<string> {
+  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  try {
+    const results = (await sql.unsafe(script)) as unknown as Record<string, unknown>[][];
+    return results
+      .flat()
+      .map((row) => String(Object.values(row)[0] ?? ''))
+      .join('\n');
+  } finally {
+    await sql.end();
+  }
 }
 
 /** One session, so `set role` and `begin` hold for every statement after them. */
@@ -182,8 +206,9 @@ export async function archiveIds(): Promise<string[]> {
 /** The backup store and its three logins, made before and dropped after the calling describe. */
 export function backupStoreHooks(): void {
   beforeAll(async () => {
-    // The role the store grants to is made by migration 0034 on the source; one
-    // cluster holds both, as staging's server does.
+    // The role the store grants to is made by migration 0034 on the source; the
+    // test cluster holds both. On staging the store is a server of its own and
+    // backup-store.sql makes the role there (staging-backup-reach-live.test.ts).
     const source = await createFreshDatabase({ part: 's03bsrc' });
     await source.drop();
     store = await createEmptyDatabase({ part: 's03bstore' });
@@ -214,66 +239,6 @@ export function backupStoreHooks(): void {
   });
 }
 
-/** A drill receipt as the store takes it (S0-3d). */
-export type DrillRecord = {
-  readonly outcome: string;
-  readonly stage: string | null;
-  readonly target: string;
-  readonly productionMajor: number;
-  readonly sourceMajor: number | null;
-  readonly targetMajor: number;
-  readonly archiveTakenAt: string;
-  readonly tables: number | null;
-  readonly readAs: string | null;
-  readonly timings: {
-    readonly fetch: number;
-    readonly open: number;
-    readonly start: number;
-    readonly restore: number;
-    readonly check: number;
-  };
-};
-
-export const operator: string = randomUUID();
-
-export const passed: DrillRecord = {
-  outcome: 'passed',
-  stage: null,
-  target: 'throwaway container',
-  productionMajor: 17,
-  sourceMajor: 17,
-  targetMajor: 17,
-  archiveTakenAt: '2026-09-29T02:00:00.000Z',
-  tables: 12,
-  readAs: 'ops_astro_app',
-  timings: { fetch: 10, open: 20, start: 900, restore: 400, check: 30 },
-};
-
-export const failed: DrillRecord = {
-  ...passed,
-  outcome: 'failed',
-  stage: 'restore',
-  sourceMajor: null,
-  tables: null,
-  readAs: null,
-};
-
-export const call = (r: DrillRecord): [string, unknown[]] =>
-  [
-    'select backups.record_drill($1, $2, $3, $4, $5, $6, $7, $8, $9)::text as last',
-    [
-      r.outcome,
-      r.stage,
-      operator,
-      r.archiveTakenAt,
-      r.productionMajor,
-      r.sourceMajor,
-      r.targetMajor,
-      r.tables,
-      r.timings,
-    ],
-  ] as [string, unknown[]];
-
 export const address: string = 'https://heartbeat.example.test/api/push/restore';
 
 export const expire = async (sent: string[]): Promise<Record<string, unknown>> =>
@@ -281,6 +246,7 @@ export const expire = async (sent: string[]): Promise<Record<string, unknown>> =
     await job()
   ).expireBackups({
     storeUrl: retentionLogin.url,
+    reach: hostReach,
     restoreHeartbeat: address,
     send: (to: string | undefined) => {
       sent.push(to ?? '');

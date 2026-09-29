@@ -83,6 +83,25 @@ const writable = (def: Definition, service: Service): [string, number][] => [
     }),
 ];
 
+/**
+ * The one persistent place staging has: the backup store's data (S0-3,
+ * ORCH25-SL01-STORE), bounded by the store's own byte cap rather than by memory.
+ * It counts only as named here: that volume, by that name, with no driver
+ * options, at the store's data path, on the store.
+ */
+const STORE_DATA = 'ops-astro-staging-backups-data';
+const isStoreData = (def: Definition, name: string, service: Service, place: string): boolean => {
+  const volume = def.volumes?.[STORE_DATA];
+  return (
+    name === 'backups' &&
+    place === `volume ${STORE_DATA}` &&
+    (service.volumes ?? []).includes(`${STORE_DATA}:/var/lib/postgresql/data`) &&
+    volume?.name === STORE_DATA &&
+    volume.driver_opts === undefined &&
+    !('driver' in volume)
+  );
+};
+
 type Row = {
   name: string;
   /** Problems found; empty when the row holds. */
@@ -221,9 +240,9 @@ const LIMITS: Row[] = [
   {
     name: 'disk: read-only root, every writable place a sized tmpfs inside the memory limit',
     check: (def) =>
-      each(def, all(def), (s) => {
+      each(def, all(def), (s, name) => {
         if (s.read_only !== true) return 'root is writable';
-        const places = writable(def, s);
+        const places = writable(def, s).filter(([place]) => !isStoreData(def, name, s, place));
         const unbounded = places.find(([, size]) => !(size > 0));
         if (unbounded) return `${unbounded[0]} has no size`;
         const total = places.reduce((sum, [, size]) => sum + size, 0);
@@ -256,6 +275,84 @@ describe.each([
     row.remove(without);
     expect(row.check(without), 'the row must notice its own removal').not.toEqual([]);
   });
+});
+
+/** Changes that make some place other than the store's data persistent or unsized; each must fail the disk row. */
+const NOT_THE_STORE: [string, (def: Definition) => void][] = [
+  [
+    'staging’s database made persistent',
+    (def) => {
+      delete def.volumes['ops-astro-staging-pgdata']!.driver_opts;
+    },
+  ],
+  [
+    'the store’s volume on another service',
+    (def) => {
+      def.services['auth']!.volumes = [`${STORE_DATA}:/var/lib/postgresql/data`];
+    },
+  ],
+  [
+    'the store’s volume at another path',
+    (def) => {
+      def.services['backups']!.volumes = [`${STORE_DATA}:/var/lib/other`];
+    },
+  ],
+  [
+    'a second persistent volume on the store',
+    (def) => {
+      def.volumes['ops-astro-staging-extra'] = { name: 'ops-astro-staging-extra' };
+      def.services['backups']!.volumes!.push('ops-astro-staging-extra:/extra');
+    },
+  ],
+  [
+    'another volume in the store’s place',
+    (def) => {
+      def.volumes['ops-astro-staging-backups-data2'] = {
+        name: 'ops-astro-staging-backups-data2',
+      };
+      def.services['backups']!.volumes = def.services['backups']!.volumes!.map((v) =>
+        v.replace(`${STORE_DATA}:`, 'ops-astro-staging-backups-data2:'),
+      );
+    },
+  ],
+  [
+    'the store’s volume bound to a folder on the machine',
+    (def) => {
+      def.volumes[STORE_DATA]!.driver_opts = { type: 'none', o: 'bind', device: '/srv/backups' };
+    },
+  ],
+  [
+    'the store’s volume named as another',
+    (def) => {
+      def.volumes[STORE_DATA]!.name = 'ops-astro-staging-pgdata';
+    },
+  ],
+  [
+    'an unsized tmpfs on the store',
+    (def) => {
+      def.services['backups']!.tmpfs!.push('/scratch');
+    },
+  ],
+  [
+    'a writable root on the store',
+    (def) => {
+      def.services['backups']!.read_only = false;
+    },
+  ],
+];
+
+// The one exception to the disk row is the backup store's data (S0-3,
+// ORCH25-SL01-STORE): it must outlive a restart, so it is bounded by the store
+// itself (`S0-3 store bounded`). Any other persistent or unsized place fails.
+it('S0-1 resource limits: the backup store’s volume is the only persistent place', () => {
+  const disk = LIMITS.find((row) => row.name.startsWith('disk:'))!;
+  expect(load().services['backups'], 'the store is a service of staging').toBeDefined();
+  expect(disk.check(load())).toEqual([]);
+  for (const [what, mutate] of NOT_THE_STORE) {
+    const def = load();
+    mutate(def);
+    expect(disk.check(def), what).not.toEqual([]);
+  }
 });
 
 // ---- the live half ---------------------------------------------------------------
@@ -318,6 +415,8 @@ live('S0-1 containment and resource limits, live', () => {
       ...process.env,
       STAGING_DB_ADMIN_USER: 'probe',
       STAGING_DB_ADMIN_PASSWORD: 'probe-only',
+      STAGING_BACKUPS_ADMIN_USER: 'probe',
+      STAGING_BACKUPS_ADMIN_PASSWORD: 'probe-only',
       STAGING_AUTH_URL: 'http://127.0.0.1',
       STAGING_SITE_URL: 'http://127.0.0.1',
       STAGING_AUTH_DATABASE_URL: 'postgres://unused',
@@ -332,6 +431,7 @@ live('S0-1 containment and resource limits, live', () => {
         networks: { staging: { name: names('staging') } },
         volumes: {
           'ops-astro-staging-pgdata': { name: names('pgdata') },
+          'ops-astro-staging-backups-data': { name: names('backups-data') },
           'ops-astro-staging-tls': { name: names('tls') },
         },
       }),
@@ -425,7 +525,7 @@ live('S0-1 containment and resource limits, live', () => {
   });
 
   it('every service, as Docker creates it, carries its confinement and limits', () => {
-    const create = compose(['create', 'auth']);
+    const create = compose(['create', 'auth', 'backups']);
     expect(create.status, create.out).toBe(0);
     const format =
       '{{json .HostConfig.ReadonlyRootfs}} {{json .HostConfig.CapDrop}} {{.HostConfig.NanoCpus}} ' +

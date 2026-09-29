@@ -7,13 +7,15 @@
 //   node --env-file=<backup env> scripts/ops/backup.mjs run
 //     BACKUP_SOURCE_URL  a login holding ops_astro_backup (migration 0034),
 //                        its host as staging's network names the database
-//     BACKUP_STORE_URL   the same login, on the backup store
+//     BACKUP_STORE_URL   a login holding ops_astro_backup on the backup store,
+//                        its host as staging's network names the store (backups)
 //     BACKUP_PUBLIC_KEY_FILE  the operator's public key; its private half is
 //                        held apart, never on this job's machine account
 //     OPS_BACKUP_HEARTBEAT_URL  the watcher's backup heartbeat, pinged once a
 //                        backup is recorded
 //   node --env-file=<retention env> scripts/ops/backup.mjs expire
-//     BACKUP_RETENTION_URL  a login holding ops_astro_backup_retention
+//     BACKUP_RETENTION_URL  a login holding ops_astro_backup_retention on the
+//                        backup store
 //     OPS_RESTORE_HEARTBEAT_URL  the watcher's restore heartbeat, pinged only
 //                        while a restore drill passed inside the store's window
 //
@@ -24,7 +26,9 @@
 // passed inside its window: yes pings the restore heartbeat, no stays silent,
 // and the watcher mails the owner and the second operator (heartbeat.mjs).
 // What each may do is held by the server
-// (deploy/staging/backup-store.sql), which writes receipts.
+// (deploy/staging/backup-store.sql), which writes receipts. Both reach the
+// store only through psql on staging's network (backup-store-reach.mjs): it
+// publishes no port.
 //
 // Each run prints one JSON line, recorded or failed, and exits 0 or 1. A
 // failed line names the stage and nothing else: an error from pg_dump or the
@@ -33,8 +37,8 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import postgres from 'postgres';
 import { sealArchive } from './archive-seal.mjs';
+import { stagingReach, value } from './backup-store-reach.mjs';
 import { ping } from './heartbeat.mjs';
 
 const BACKUP_ROLE = 'ops_astro_backup';
@@ -45,17 +49,6 @@ const SCHEMAS = ['public', 'ops', 'auth'];
 const staging = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
 );
-
-/** One session holding `role`, so the server judges every statement as that role. */
-async function asRole(url, role, run) {
-  const sql = postgres(url, { max: 1, onnotice: () => {}, connect_timeout: 10 });
-  try {
-    await sql.unsafe(`set role ${role}`);
-    return await run(sql);
-  } finally {
-    await sql.end({ timeout: 5 });
-  }
-}
 
 /**
  * pg_dump in a throwaway container on staging's network, as the backup
@@ -103,7 +96,14 @@ function failed(event, stage) {
 }
 
 /** One scheduled backup. Returns the run's record; never throws. */
-export async function runBackup({ dump, storeUrl, publicKey, heartbeat, send = ping }) {
+export async function runBackup({
+  dump,
+  storeUrl,
+  publicKey,
+  heartbeat,
+  send = ping,
+  reach = stagingReach,
+}) {
   const at = new Date().toISOString();
   let body;
   try {
@@ -117,10 +117,10 @@ export async function runBackup({ dump, storeUrl, publicKey, heartbeat, send = p
     return failed('backup run', 'seal');
   }
   try {
-    await asRole(
+    // The server judges the insert as the backup identity, and stamps it.
+    await reach(
       storeUrl,
-      BACKUP_ROLE,
-      (sql) => sql`insert into backups.archives (body) values (${body})`,
+      `set role ${BACKUP_ROLE};\ninsert into backups.archives (body) values (${value(body, 'bytea')});\n`,
     );
   } catch {
     return failed('backup run', 'store');
@@ -133,15 +133,24 @@ export async function runBackup({ dump, storeUrl, publicKey, heartbeat, send = p
  * Deletes every backup past the window. The store's policy is what holds the
  * window; the job asks for everything and the server deletes only what it may.
  */
-export async function expireBackups({ storeUrl, restoreHeartbeat, send = ping }) {
+export async function expireBackups({
+  storeUrl,
+  restoreHeartbeat,
+  send = ping,
+  reach = stagingReach,
+}) {
   const at = new Date().toISOString();
   let upkeep;
   try {
-    upkeep = await asRole(storeUrl, RETENTION_ROLE, async (sql) => {
-      const deleted = await sql`delete from backups.archives returning id`;
-      const [{ fresh }] = await sql`select backups.restore_fresh() as fresh`;
-      return { count: deleted.count, fresh };
-    });
+    upkeep = JSON.parse(
+      await reach(
+        storeUrl,
+        `set role ${RETENTION_ROLE};
+with gone as (delete from backups.archives returning id)
+select json_build_object('count', (select count(*) from gone), 'fresh', backups.restore_fresh())::text;
+`,
+      ),
+    );
   } catch {
     return failed('backup expired', 'store');
   }

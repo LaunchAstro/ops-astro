@@ -101,6 +101,55 @@
           "max-file": "3"
         }
       }
+    },
+    "backups": {
+      "container_name": "ops-astro-staging-backups",
+      "image": "postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+      "environment": {
+        "POSTGRES_DB": "ops_astro_staging_backups",
+        "POSTGRES_USER": "${STAGING_BACKUPS_ADMIN_USER:?set from the restore runbook}",
+        "POSTGRES_PASSWORD": "${STAGING_BACKUPS_ADMIN_PASSWORD:?set from the restore runbook}"
+      },
+      "command": [
+        "postgres",
+        "-c",
+        "ssl=on",
+        "-c",
+        "ssl_cert_file=/etc/ops-astro-tls/server.crt",
+        "-c",
+        "ssl_key_file=/etc/ops-astro-tls/server.key"
+      ],
+      "volumes": [
+        "ops-astro-staging-backups-data:/var/lib/postgresql/data",
+        "ops-astro-staging-tls:/etc/ops-astro-tls:ro"
+      ],
+      "networks": ["staging"],
+      "restart": "unless-stopped",
+      "healthcheck": {
+        "test": ["CMD", "pg_isready", "-h", "127.0.0.1", "-d", "ops_astro_staging_backups"],
+        "interval": "5s",
+        "timeout": "5s",
+        "retries": 20
+      },
+      "user": "70:70",
+      "read_only": true,
+      "cap_drop": ["ALL"],
+      "security_opt": ["no-new-privileges:true"],
+      "tmpfs": [
+        "/var/run/postgresql:size=1m,uid=70,gid=70,mode=0775",
+        "/tmp:size=64m,uid=70,gid=70,mode=1777"
+      ],
+      "cpus": "0.5",
+      "mem_limit": "512m",
+      "memswap_limit": "512m",
+      "pids_limit": 100,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      }
     }
   },
   "networks": {
@@ -122,6 +171,11 @@
         "o": "size=512m,uid=70,gid=70,mode=0700"
       }
     },
-    "ops-astro-staging-tls": { "name": "ops-astro-staging-tls" }
+    "ops-astro-staging-backups-data": {
+      "name": "ops-astro-staging-backups-data"
+    },
+    "ops-astro-staging-tls": {
+      "name": "ops-astro-staging-tls"
+    }
   }
 }
