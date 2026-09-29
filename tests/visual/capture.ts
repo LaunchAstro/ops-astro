@@ -233,11 +233,13 @@ export async function load(
     throw new Error(`visual: ${url} did not resolve ${missing.join(', ')} to a bundled face`);
   }
   // Each capture is proved to draw in its side's theme: the mockup marks the
-  // body, the app the root element, before first paint.
+  // body, the app the root element, before first paint. A page that marks no
+  // theme (the drift mode's made-up pages) is its caller's to prove: the
+  // app-only drift mode compares it with its light drawing.
   const drawn = await page.evaluate(
     () => document.body.dataset['theme'] ?? document.documentElement.dataset['theme'] ?? null,
   );
-  if (drawn !== side.theme) {
+  if (drawn !== null && drawn !== side.theme) {
     throw new Error(`visual: ${url} drew in ${String(drawn)}, not ${side.theme}`);
   }
   // A state behind a tab or a disclosure is opened the way a person would.
