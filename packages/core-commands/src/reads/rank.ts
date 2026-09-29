@@ -173,6 +173,30 @@ function inputOf(row: PoolRow): RankInput {
 }
 
 /**
+ * The marks and open state of the given tasks, read in one query filtered by
+ * the business and the list inside it; null for the list reads every task of
+ * the business (a collection-wide reader's pool). The clock is the database's.
+ */
+async function poolRows(
+  tx: TenantQuery,
+  taskTypeId: string,
+  ids: readonly string[] | null,
+): Promise<readonly PoolRow[]> {
+  return await tx.query<PoolRow>(
+    `select r.id, r.txt_1 as key, r.num_2::text as position,
+            r.num_3::text as impact, r.num_4::text as confidence, r.num_5::text as ease,
+            coalesce(s.data ->> 'machine_category', '') not in ('completed', 'cancelled') as open,
+            now() as now
+       from public.records r
+       left join public.records s
+         on s.business_id = r.business_id and s.id = r.uuid_1 and s.deleted_at is null
+      where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
+        and ($3::uuid[] is null or r.id = any($3::uuid[]))`,
+    [tx.businessId, taskTypeId, ids],
+  );
+}
+
+/**
  * The rank of one task as this reader is shown it. The pool is the open tasks
  * the reader's grants reach, listed by `readableRecordIds` inside the database
  * and handed to the one query that reads the marks, so a task outside the
@@ -193,18 +217,7 @@ export async function readTaskRank(
           action: 'read',
           recordTypeId: taskTypeId,
         });
-  const rows = await tx.query<PoolRow>(
-    `select r.id, r.txt_1 as key, r.num_2::text as position,
-            r.num_3::text as impact, r.num_4::text as confidence, r.num_5::text as ease,
-            coalesce(s.data ->> 'machine_category', '') not in ('completed', 'cancelled') as open,
-            now() as now
-       from public.records r
-       left join public.records s
-         on s.business_id = r.business_id and s.id = r.uuid_1 and s.deleted_at is null
-      where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and (r.id = $3 or r.id = any($4::uuid[]))`,
-    [tx.businessId, taskTypeId, recordId, readable],
-  );
+  const rows = await poolRows(tx, taskTypeId, [recordId, ...readable]);
   const own = rows.find((row) => row.id === recordId);
   if (own === undefined) return { number: null, score: null, calc: '' };
   const now = own.now;
@@ -215,4 +228,34 @@ export async function readTaskRank(
     score: scored.score,
     calc: calcLine(scored),
   };
+}
+
+/**
+ * Every task's rank in one reader's pool, for a list that draws many (the
+ * Projects board, MP-5-8): one query over the same pool `readTaskRank` reads,
+ * so a task's #N on the board is the #N on its page. `readable` is the
+ * caller's scope from the grant read that admitted the list (null under a
+ * collection-wide grant), so the pool is filtered inside the query and no
+ * second read of the grants can disagree with the first.
+ */
+export async function readRanks(
+  tx: TenantQuery,
+  taskTypeId: string,
+  readable: readonly string[] | null,
+): Promise<ReadonlyMap<string, RankView>> {
+  const rows = await poolRows(tx, taskTypeId, readable);
+  const now = rows[0]?.now ?? new Date();
+  const numbers = numberPool(
+    rows.filter((row) => row.open).map((row) => inputOf(row)),
+    now,
+  );
+  return new Map(
+    rows.map((row) => {
+      const scored = scoreTask(inputOf(row), now);
+      return [
+        row.id,
+        { number: numbers.get(row.id) ?? null, score: scored.score, calc: calcLine(scored) },
+      ];
+    }),
+  );
 }

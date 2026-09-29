@@ -362,10 +362,23 @@ export interface SharedTaskRead {
 /** Which of the two arrived is decided by the key, never by the reader's role. */
 export type TaskReadResult = InternalTaskRead | SharedTaskRead;
 
+/**
+ * One row of a board (MP-5-8): the summary and what the Projects board's
+ * cells draw from stored records, each the value `task.read` answers for the
+ * same task. The rank is worked out at read in the reader's own pool.
+ */
+export interface BoardTask extends TaskSummary {
+  readonly rank: RankView;
+  /** The stage as `task.set_stage` stored it; null for none. */
+  readonly stage: string | null;
+  /** True when the task is put under a client (`task.set_party`). */
+  readonly clientSet: boolean;
+}
+
 export interface TaskBoardResult {
   readonly ok: true;
   /** The board's tasks the caller's grants reach. */
-  readonly tasks: readonly TaskSummary[];
+  readonly tasks: readonly BoardTask[];
   /**
    * How many of this board's tasks in the caller's business their grants do
    * not reach: a count, never which (B-22). Only for a member holding

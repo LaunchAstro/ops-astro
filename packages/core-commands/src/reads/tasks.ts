@@ -27,11 +27,13 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
-import type { InternalCommentView } from '../../../core-wire/src/index.ts';
+import type { BoardTask, InternalCommentView } from '../../../core-wire/src/index.ts';
 import { READS } from '../../../core-wire/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
-import { readTaskRank, type RankPool } from './rank.ts';
+import { readRanks, readTaskRank, type RankPool } from './rank.ts';
+
+const UNRANKED = { number: null, score: null, calc: '' } as const;
 import { readBoardCrumb } from './board-crumb.ts';
 
 interface TaskRowRead {
@@ -350,16 +352,18 @@ export async function readBoard(
 }
 
 /**
- * The board's tasks and when the newest of them last changed (MP-5-7, P-07):
- * one query, so the stamp comes from exactly the rows served and a newer task
- * the caller cannot read never moves it. Null when no task is served.
+ * The board's tasks, each with what its cells draw (MP-5-8), and when the
+ * newest of them last changed (MP-5-7, P-07). The tasks and the stamp come
+ * from one query, so the stamp is of exactly the rows served and a newer task
+ * the caller cannot read never moves it; null when no task is served. The
+ * ranks are read over the same `readable` scope.
  */
 export async function readBoardStamped(
   tx: TenantQuery,
   taskTypeId: string,
   board: string | null,
   readable: readonly string[] | null,
-): Promise<{ readonly tasks: readonly TaskSummary[]; readonly changedAt: string | null }> {
+): Promise<{ readonly tasks: readonly BoardTask[]; readonly changedAt: string | null }> {
   const rows = await tx.query<TaskRowRead>(
     `${SELECT}
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
@@ -372,7 +376,17 @@ export async function readBoardStamped(
   for (const row of rows) {
     if (newest === null || row.updated_at > newest) newest = row.updated_at;
   }
-  return { tasks: rows.map(summaryOf), changedAt: newest?.toISOString() ?? null };
+  // The ranks come from the same scope, so the pool is the reader's own and
+  // a task outside it never moves a number on the board (MP-5-8).
+  const ranks = await readRanks(tx, taskTypeId, readable);
+  const tasks = rows.map((row): BoardTask =>
+    Object.assign(summaryOf(row), {
+      rank: ranks.get(row.id) ?? UNRANKED,
+      stage: row.stage,
+      clientSet: row.client_set,
+    }),
+  );
+  return { tasks, changedAt: newest?.toISOString() ?? null };
 }
 
 /**

@@ -417,6 +417,15 @@ another client's work or in another business, never moves it; no refusal
 carries it. `tests/reads/mp-5-board-isolation.test.ts` holds it, across three
 crossings.
 
+Each row `task.board` answers is the task's summary with what the Projects
+board's cells draw (MP-5-8): `rank`, `stage` and `clientSet`, each the value
+`task.read` answers for the same task. The rank is worked out at read over
+the open tasks in the caller's scope, the same scope the one grant read
+admitted the board with (`readRanks`, `reads/rank.ts`), so a task's #N on the
+board is its #N on its page and a task the caller cannot read never moves it.
+`tests/reads/mp-5-8-board-columns.test.ts` reads each column back against
+`task.read` and holds the crossings.
+
 ## The operations L2 made possible
 
 Four rows joined the surface when L2's model modules landed, and one came off
