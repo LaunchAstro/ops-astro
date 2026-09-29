@@ -205,36 +205,80 @@ function eventTargets(shape: FixtureShape, runs: number): number[] {
 }
 
 /**
- * The records layer, on the admin connection: the steps past each version's
- * one and the events past each run's command-written pair, which no command
- * writes (see `shape.ts`). Returns what it could not seed.
+ * The steps past each version's one, planned before the pack is rendered.
+ * The command writes a version's step 1, renders its evidence from the steps
+ * the run holds, and binds the gate to that pack, all in one transaction; so
+ * this fixture-only trigger, on the admin connection and dropped again at
+ * once, adds a run's further steps the moment step 1 lands. Every proposal
+ * row stays the command's, and nothing is written after a decision.
  */
-async function seedLoad(db: Seedable, t: Tenant, shape: FixtureShape): Promise<string[]> {
+async function withPlannedSteps(
+  db: Seedable,
+  shape: FixtureShape,
+  runTasks: readonly string[],
+  seed: () => Promise<void>,
+): Promise<void> {
+  const { total, twoVersions, threeVersions } = shape.lineages;
+  const extra = shape.steps - (total + twoVersions + 2 * threeVersions + runTasks.length);
+  if (extra < 0) refused('shape', 'STEPS_BELOW_THE_COMMANDS');
+  const perTask = runTasks.map(
+    (_, i) => Math.floor(extra / runTasks.length) + (i < extra % runTasks.length ? 1 : 0),
+  );
+  for (const statement of [
+    'create table public.fixture_steps (task_id uuid primary key, extra int not null)',
+    'grant select on public.fixture_steps to ops_astro_app',
+    `create function public.fixture_steps() returns trigger language plpgsql as $$ begin
+       if new.ordinal = 1 then
+         insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload)
+         select new.business_id, gen_random_uuid(), new.run_id, 1 + g, 'compose', '{}'::jsonb
+           from public.planned_runs r join public.fixture_steps x on x.task_id = r.task_id
+          cross join generate_series(1, x.extra) g
+          where r.business_id = new.business_id and r.id = new.run_id;
+       end if;
+       return new;
+     end $$`,
+    'grant execute on function public.fixture_steps() to ops_astro_app',
+    `create trigger fixture_steps after insert on public.planned_steps
+       for each row execute function public.fixture_steps()`,
+  ]) {
+    await db.admin.execute(statement);
+  }
+  try {
+    await db.admin.execute(
+      'insert into public.fixture_steps select * from unnest($1::uuid[], $2::int[])',
+      [runTasks, perTask],
+    );
+    await seed();
+  } finally {
+    await db.admin.execute('drop trigger if exists fixture_steps on public.planned_steps');
+    await db.admin.execute('drop function if exists public.fixture_steps()');
+    await db.admin.execute('drop table if exists public.fixture_steps');
+  }
+  const [steps] = await db.admin.execute<{ n: string }>(
+    'select count(*)::text n from public.planned_steps',
+  );
+  if (Number(steps?.n) !== shape.steps) refused('load', 'STEPS_NOT_AS_ASKED');
+}
+
+/**
+ * The events past each run's command-written pair, through the records layer
+ * on the admin connection (no command writes them; see `shape.ts`), checked
+ * against the shape. Returns what it could not seed: without T2a's table on
+ * the base, the events.
+ */
+async function seedEvents(db: Seedable, t: Tenant, shape: FixtureShape): Promise<string[]> {
+  const [table] = await db.admin.execute<{ present: boolean }>(
+    `select to_regclass('public.run_events') is not null present`,
+  );
+  if (table?.present !== true) return ['run events: T2a (#97) is not on this base'];
   const runs = (
     await db.admin.execute<{ run: string }>(
       'select run_id::text run from public.attempts where business_id = $1 order by run_id',
       [t.id],
     )
   ).map((row) => row.run);
-  const [made] = await db.admin.execute<{ n: string }>(
-    'select count(*)::text n from public.planned_steps where business_id = $1',
-    [t.id],
-  );
-  const extra = shape.steps - Number(made?.n);
-  if (extra < 0 || runs.length === 0) refused('shape', 'STEPS_BELOW_THE_COMMANDS');
-  await db.admin.execute(
-    `insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload)
-     select $1, gen_random_uuid(), x.run, 1 + row_number() over (partition by x.run order by x.n),
-            'compose', '{}'::jsonb
-       from unnest($2::uuid[]) with ordinality x(run, n)`,
-    [t.id, Array.from({ length: extra }, (_, i) => runs[i % runs.length])],
-  );
-  const [table] = await db.admin.execute<{ present: boolean }>(
-    `select to_regclass('public.run_events') is not null present`,
-  );
-  if (table?.present !== true) return ['run events: T2a (#97) is not on this base'];
-  const targets = eventTargets(shape, runs.length).map((n) => n - 2);
-  if (targets.some((n) => n < 0)) refused('shape', 'EVENTS_BELOW_THE_COMMANDS');
+  const targets = eventTargets(shape, runs.length);
+  if (targets.some((n) => n < 2)) refused('shape', 'EVENTS_BELOW_THE_COMMANDS');
   await db.admin.execute(
     `insert into public.run_events
        (business_id, id, run_id, task_id, position, kind, lease_id, attempt_id, actor_id, detail)
@@ -247,8 +291,16 @@ async function seedLoad(db: Seedable, t: Tenant, shape: FixtureShape): Promise<s
               group by business_id, run_id, task_id, lease_id, attempt_id, actor_id) e
        join unnest($2::uuid[], $3::int[]) x(run, extra) on x.run = e.run_id
       cross join lateral generate_series(1, x.extra) g`,
-    [t.id, runs, targets],
+    [t.id, runs, targets.map((n) => n - 2)],
   );
+  const perRun = await db.admin.execute<{ run: string; n: string }>(
+    `select run_id::text run, count(*)::text n from public.run_events
+      where business_id = $1 group by run_id`,
+    [t.id],
+  );
+  const counted = new Map(perRun.map((row) => [row.run, Number(row.n)]));
+  if (runs.some((run, i) => counted.get(run) !== targets[i]))
+    refused('load', 'EVENTS_NOT_AS_ASKED');
   return [];
 }
 
@@ -265,8 +317,11 @@ export async function seedFixture(db: Seedable, shape: FixtureShape): Promise<Fi
   for (let i = 0; i < shape.tasksB; i += 1)
     bravoTasks.push(await create(db, bravo, `B ${String(i)}`));
   await seedThreads(db, alpha, shape, tree.rest);
-  await seedRuntime(db, alpha, shape, tree.rest);
-  const heldBack = await seedLoad(db, alpha, shape);
+  const runTasks = tree.rest.slice(shape.lineages.total, shape.lineages.total + shape.runs);
+  await withPlannedSteps(db, shape, runTasks, async () => {
+    await seedRuntime(db, alpha, shape, tree.rest);
+  });
+  const heldBack = await seedEvents(db, alpha, shape);
   await onTask(db, alpha, tree.early, { command: 'task.trash' });
   await onTask(db, alpha, tree.root, { command: 'task.trash' });
   const recordGrantTask = tree.rest.at(-1) ?? refused('grant', 'NO_TASK');
