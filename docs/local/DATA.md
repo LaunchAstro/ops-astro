@@ -267,8 +267,8 @@ At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist
 (the header of `restricted-calls-prefixes.test.ts`, and its
 `answers every caller as the contract says after <version>`). At the full
-schema, the suite seeds `person_identifiers`, `person_merges` and `record_links`
-itself. The suite counts the own-tenant insert positive control (TC:108) per
+schema, the suite seeds `person_identifiers`, `person_merges`, `record_links` and
+the three `inbox_` tables itself. The suite counts the own-tenant insert positive control (TC:108) per
 table: one insert through the production wrapper on each tenant table the
 application may insert into, each `rows 1`, and each rolled back
 (`restricted-calls.test.ts`,
