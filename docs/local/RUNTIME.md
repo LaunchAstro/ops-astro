@@ -1020,7 +1020,9 @@ partly covered rather than proved.
   `pending`; from then on `decide` admits only a business-scope decider.
   Before the bound it is `TRANSITION_NOT_PERMITTED`; a recipient outside the
   role, or nobody, is `SCOPE_NOT_GRANTED` naming `recipientPersonId`, with
-  nothing written.
+  nothing written. The inbox follows in the same transaction (INB-1): open
+  decision items on the gate held by anyone outside the business-scope role
+  are withdrawn, and the recipient holds an open one, raised if they had none.
 - **Rejection is terminal** (G05): the rejected gate takes no second decision,
   a new version in the same lineage is refused `LINEAGE_TERMINAL` on the
   lineage rather than on the gate, and the authorised restart is a new lineage
