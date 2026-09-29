@@ -162,9 +162,10 @@ export async function restoreDrill({
       // the forced business barrier shows exactly one business: more means the
       // barrier did not survive the restore, and a person or client of another
       // business is not there to find. Within it, the named person must be a
-      // current member holding a live grant over the named client, at party
-      // scope or as the business's manager (Sol's review 3 on #120). Live is
-      // the product's own definition, parent chain included (EFFECTIVE_GRANTS).
+      // current member holding a live grant to read the named client, as the
+      // product's own read asks it (collection `person`, action `read`, at party
+      // or business scope), or the business's people manager (Sol's reviews of
+      // #120). Live is the product's definition, parent chain included.
       await psql(
         `create role ${APP_ROLE} nologin`,
         `grant usage on schema public to ${APP_ROLE}`,
@@ -180,7 +181,8 @@ export async function restoreDrill({
              where schemaname in ('public', 'ops')),
              (exists (select from public.memberships where person_id = '${p}' and active)
              and exists (select from effective where subject_kind = 'person' and subject_id = '${p}'
-               and (scope_kind = 'party' and scope_id = '${c}' or scope_kind = 'business' and action = 'manage'))
+               and collection = 'person' and (action = 'read' and (scope_kind = 'business'
+               or scope_kind = 'party' and scope_id = '${c}') or action = 'manage' and scope_kind = 'business'))
              )::int, (select count(*) from public.businesses),
              (select count(*) from public.people where id in ('${p}', '${c}'))`,
         )
