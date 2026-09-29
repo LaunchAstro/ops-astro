@@ -106,6 +106,10 @@ describe('CQ-8 runtime structure', () => {
       .toSorted();
     expect(callers).toEqual([
       'packages/core-commands/src/commands/prepare.ts',
+      // C81: the overseas-services register's one lock per business, taken
+      // by a change and by a privacy policy's draft, approval and publication
+      // before reading the register, inside the handler's transaction.
+      'packages/core-records/src/operations/overseas-services.ts',
       'packages/core-records/src/tasks/placement.ts',
       'packages/core-records/src/tenancy/database.ts',
       'packages/core-runtime/src/locks.ts',
