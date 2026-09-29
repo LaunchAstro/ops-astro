@@ -71,8 +71,17 @@ export function identityDefects(evidence: IdentityEvidence): readonly string[] {
   if (web.tree !== evidenceTree) defects.push(`web tree ${web.tree} is not ${evidenceTree}`);
   if (api.dirty.length > 0) defects.push(`API started dirty: ${api.dirty.join(', ')}`);
   if (web.dirty.length > 0) defects.push(`web serves uncommitted ${web.dirty.join(', ')}`);
-  if (apiViaWeb.pid !== api.pid) {
-    defects.push(`the web origin reaches API process ${apiViaWeb.pid}, not ${api.pid}`);
+  // The API as the web origin reaches it is the same process and the same
+  // record, field by field: a pid alone would let a different tree through.
+  for (const key of ['pid', 'commit', 'tree', 'checkout', 'migrationHead'] as const) {
+    if (apiViaWeb[key] !== api[key]) {
+      defects.push(
+        `the web origin reaches an API process with ${key} ${apiViaWeb[key]}, not ${api[key]}`,
+      );
+    }
+  }
+  if (apiViaWeb.dirty.join('\n') !== api.dirty.join('\n')) {
+    defects.push('the web origin reaches an API process with different dirty paths');
   }
   if (api.migrationHead !== migrationFiles) {
     defects.push(`migration head ${api.migrationHead} is not the files' ${migrationFiles}`);

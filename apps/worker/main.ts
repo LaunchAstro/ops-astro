@@ -38,8 +38,10 @@ export async function main(
     try {
       // oxlint-disable-next-line no-await-in-loop -- one poll at a time, by design
       outcome = await worker.proposeOnce();
-    } catch (cause) {
-      process.stderr.write(`worker: no answer from ${api}: ${(cause as Error).message}\n`);
+    } catch {
+      // The failure's own text is never printed: a transport error can carry
+      // the request, and the request carries both credentials (T2 canary token).
+      process.stderr.write(`worker: no answer from ${api}\n`);
     }
     if (outcome !== undefined) process.stdout.write(`${JSON.stringify(outcome)}\n`);
     if (argv.includes('--once') || (outcome !== undefined && 'proposed' in outcome)) {

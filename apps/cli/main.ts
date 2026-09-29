@@ -311,8 +311,10 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     let answer: CliAnswer;
     try {
       answer = await cli.run(verb, request);
-    } catch (cause) {
-      io.err(`cli: no answer from ${api}: ${(cause as Error).message}`);
+    } catch {
+      // Never the failure's own text: it can carry the request, and the
+      // request carries the bearer and the delegation (T2 canary token).
+      io.err(`cli: no answer from ${api}`);
       replayHint();
       return EXIT.transport;
     }
