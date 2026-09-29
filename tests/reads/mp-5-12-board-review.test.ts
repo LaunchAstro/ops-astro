@@ -9,7 +9,9 @@
 // on them; a decided or expired gate waits on nobody; a record-scoped decide
 // grant flags only its own task (`MP-5-12 review count`). The flag is read over
 // the rows the board already serves, so it never names or counts a task the
-// caller cannot read (`MP-5-12 isolation`).
+// caller cannot read (`MP-5-12 isolation`). The answer names its own caller
+// as `viewer`, the person the viewer preset narrows to, and never anyone else
+// (`MP-5-12 viewer preset`).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -100,6 +102,11 @@ const propose = async (name: string) => {
 
 const board = async (business: BusinessId, member: Member) =>
   await executeRead(world.db.app, business, member.presented, { read: 'task.board', board: null });
+
+const viewerOf = async (business: BusinessId, member: Member): Promise<unknown> => {
+  const answer = await board(business, member);
+  return isCommandRefusal(answer) ? answer.code : (answer as Body)['viewer'];
+};
 
 const flags = async (member: Member): Promise<Readonly<Record<string, boolean>>> => {
   const answer = await board(world.business, member);
@@ -201,6 +208,21 @@ describe.skipIf(serverUrl === undefined)('MP-5-12 review count', () => {
       'task.decide',
     );
     expect((await flags(decider))[ids['other'] ?? '']).toBe(false);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('MP-5-12 viewer preset', () => {
+  it('names the signed-in person as the viewer, whoever else is on the board', async () => {
+    expect(await viewerOf(world.business, decider)).toBe(decider.personId);
+    expect(await viewerOf(world.business, reader)).toBe(reader.personId);
+  });
+
+  it('isolation: a record-scoped reader and another business are each told only themselves', async () => {
+    expect(await viewerOf(world.business, pairDecider)).toBe(pairDecider.personId);
+    expect(await viewerOf(bravo, bravoOwner)).toBe(bravoOwner.personId);
+    const crossing = JSON.stringify(await board(world.business, bravoOwner));
+    expect(crossing).not.toContain(decider.personId);
+    expect(crossing).not.toMatch(/"viewer"/u);
   });
 });
 
