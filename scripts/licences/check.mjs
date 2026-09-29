@@ -88,11 +88,12 @@ const REFUSED_WITH_REASON = new Map([
 // allowed here only when its name is one of these exactly and its expression
 // is the bare identifier, with no OR, AND or WITH beside it. A new font is a
 // new entry, with its reason, in the same change as the record in
-// packages/ui/assets/licences.json.
+// packages/ui/assets/licences.json. Funnel Sans is its variable package: the
+// one face the mockup draws, where the static instances drew it differently.
 const FONT_LICENCE = 'OFL-1.1';
 const FONT_PACKAGES = new Set([
   '@fontsource/funnel-display',
-  '@fontsource/funnel-sans',
+  '@fontsource-variable/funnel-sans',
   '@fontsource/chivo-mono',
 ]);
 
