@@ -127,7 +127,7 @@ export async function startApi(
     output: () => written,
     exited: async () => await ended,
     stop: async () => {
-      child.kill('SIGTERM');
+      child.kill('SIGKILL');
       await ended;
       // Exited is not the same as gone from the port. A process that left a
       // listener behind would let the "restarted" reads reach the old one.
