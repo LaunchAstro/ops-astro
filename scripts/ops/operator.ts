@@ -13,11 +13,11 @@
 // with the API stopped. The bearer is verified the way the API verifies it
 // (`apps/api/auth/supabase.ts`), the business is resolved by key the way the
 // server resolves it, and inside one transaction the login is resolved to a
-// person (`withSession`, which never resolves an agent's login) and the grant
+// person (`resolveLogin`, which never resolves an agent's login) and the grant
 // is checked over the whole business. Both connections are closed before it
 // returns, because the migration runner refuses while any other session is
-// connected. Login resolution records the sign-in attempt in that business's
-// own trail (I13); that is the one row the check writes.
+// connected. A refusal rolls that transaction back, so the sign-in attempt
+// login resolution records (I13) is kept only for the operator it admitted.
 
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -27,8 +27,8 @@ import {
   connect,
   connectAsAdmin,
   OPERATIONS_MANAGE,
+  resolveLogin,
   subjectsOf,
-  withSession,
   type VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
@@ -65,7 +65,15 @@ function refused(why: string): Gate {
 
 const set = (environment: Environment, name: string): boolean => (environment[name] ?? '') !== '';
 
-/** The person holding the key over the whole business, read in one transaction; both connections closed. */
+/** Thrown inside the check's transaction so a refusal rolls back what login resolution wrote. */
+class Refused extends Error {}
+
+/**
+ * The person holding the key over the whole business, or undefined. Read in one
+ * transaction that commits only for the operator: a refusal throws inside it,
+ * so the sign-in attempt login resolution records (I13) rolls back with it and
+ * a refused run writes nothing (S0-1 A4). Both connections are closed.
+ */
 async function personHolding(
   env: Readonly<Record<string, string>>,
   business: string,
@@ -76,15 +84,20 @@ async function personHolding(
   try {
     const businessId = await createBusinessResolver(admin)(business);
     if (businessId === undefined) return undefined;
-    const held = await withSession(database, businessId, presented, async (tx, session) => {
+    return await database.withBusiness(businessId, async (tx) => {
+      const session = await resolveLogin(tx, presented);
+      if ('refused' in session) throw new Refused();
       const scope = { kind: 'business', id: null } as const;
       const decision = await checkAuthority(tx, subjectsOf(session), {
         ...OPERATIONS_MANAGE,
         scope,
       });
-      return decision.ok ? session.personId : undefined;
+      if (!decision.ok) throw new Refused();
+      return session.personId;
     });
-    return typeof held === 'string' ? held : undefined;
+  } catch (error) {
+    if (error instanceof Refused) return undefined;
+    throw error;
   } finally {
     await Promise.all([admin.close(), database.close()]);
   }
