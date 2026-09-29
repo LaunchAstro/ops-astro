@@ -26,7 +26,7 @@ const PAGE = `<!doctype html><html><head>
 <script>var alongside = 1;</script>
 </head><body>
 <!-- alongside in a comment -->
-<p>We walk alongside you &amp; your team.</p>
+<p>We walk alongside you &amp; your team&#x2e;&#99999999;</p>
 <noscript>alongside</noscript>
 </body></html>`;
 
@@ -66,7 +66,7 @@ describe('C80 one word only (the fenced capture it compares)', () => {
     const result = await capturePage(ABOUT, { pool: POOL, resolve: publicResolver, transport });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.text).toBe('We walk alongside you & your team.');
+    expect(result.value.text).toBe('We walk alongside you & your team.&#99999999;');
     expect(result.value.documentDigest).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(Object.keys(result.value.stylesheets)).toEqual([
       'https://www.example.com/_astro/extra.css',
