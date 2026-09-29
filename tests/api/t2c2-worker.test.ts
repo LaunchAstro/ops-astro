@@ -174,7 +174,7 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
     expect(foreign.text).not.toContain('receipt"');
   });
 
-  it('Sol proof, criterion 2: a worker resumes observation after the effect commits and the observe route is briefly unavailable', async () => {
+  it('a worker resumes observation after the effect commits and the observe route is briefly unavailable', async () => {
     const { taskId, credential } = await approvedWork();
     let failed = 0;
     const lostObservation: Transport = async (path, body, bearer, delegation) => {
@@ -205,7 +205,7 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
     ).toHaveLength(1);
   });
 
-  it('Sol proof, criterion 2: a worker recovers a committed pickup after its response is lost', async () => {
+  it('a worker recovers a committed pickup after its response is lost', async () => {
     const { taskId, credential } = await approvedWork();
     let lost = false;
     const lostPickup: Transport = async (path, body, bearer, delegation) => {

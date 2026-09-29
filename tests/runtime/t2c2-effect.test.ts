@@ -221,7 +221,7 @@ describe.skipIf(serverUrl === undefined)('T2c2 the effect, its observation and r
     expect(await comments(w.taskId)).toBe(0);
   });
 
-  it('Sol proof, criterion 3: an effect identity cannot write a client-visible comment', async () => {
+  it('an effect identity cannot write a client-visible comment', async () => {
     const taskId = await createTask(s, `t2c2 person effect ${randomUUID()}`);
     const proposal = appliedDetail(
       await asPerson(s, {
