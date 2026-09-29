@@ -8,6 +8,7 @@
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
     "tests/ci/operator-only.test.ts",
+    "tests/ci/s0-3e-operating-business.test.ts",
     "tests/ci/operator-only-acts.test.ts",
     "tests/ci/operator-only-promotion.test.ts",
     "tests/ci/service-stop.test.ts",

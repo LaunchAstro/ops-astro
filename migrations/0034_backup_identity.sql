@@ -6,14 +6,14 @@
 -- once, as one consistent snapshot, and does nothing else here but one write.
 -- pg_dump reads with row security off and fails on any table a policy would
 -- filter, so the role reads past row security; what keeps it to reading is
--- that it is granted select and nothing more. It owns nothing, may not log in,
--- and holds one function privilege: the product revokes execute from PUBLIC on
--- each of its functions, and only `ops.set_restore_challenge` is granted here.
--- TEMPORARY is already revoked from PUBLIC (0031).
+-- that it is granted select and, on one row of one table, the one write
+-- below. It owns nothing, may not log in, and holds no function privilege:
+-- the product revokes execute from PUBLIC on each of its functions, and
+-- nothing is granted here. TEMPORARY is already revoked from PUBLIC (0031).
 --
 -- That one write is the restore challenge (S0-3e, REV158K criterion 13).
 -- Before each dump the job writes a fresh random value into the one row of
--- `ops.restore_challenge`, so the dump carries it, and gives the backup store
+-- `ops.restore_challenge` (an upsert), so the dump carries it, and gives the backup store
 -- only its sha256. A restore drill reads it back from the database it
 -- restored, and the store takes a carried drill as passed only with it: a
 -- pass needs evidence only a real restore gives. No other role reads the row;
@@ -73,30 +73,21 @@ do $$ begin
   end if;
 end $$;
 
--- The restore challenge: one row, replaced before each dump. The table is
--- made after the grants above, so the backup identity's select reaches it
--- through the default privileges; nothing else is granted on it.
+-- The restore challenge: one row, replaced before each dump. The backup
+-- identity may insert it and update its challenge and time, and nothing else;
+-- the check holds its shape. The table is made after the grants above, so the
+-- backup identity's select reaches it through the default privileges; no other
+-- role is granted anything on it.
 create table ops.restore_challenge (
   one boolean primary key default true check (one),
   challenge text not null check (challenge ~ '^[0-9a-f]{64}$'),
   written_at timestamptz not null default now()
 );
 revoke all on ops.restore_challenge from public;
-grant select on ops.restore_challenge to ops_astro_backup;
-
-create function ops.set_restore_challenge(challenge text) returns void
-  language plpgsql security definer set search_path = pg_catalog as $$
-begin
-  if $1 is null or $1 !~ '^[0-9a-f]{64}$' then
-    raise exception 'a restore challenge is 64 hex characters' using errcode = 'invalid_parameter_value';
-  end if;
-  insert into ops.restore_challenge (challenge) values ($1)
-  on conflict (one) do update set challenge = excluded.challenge, written_at = now();
-end $$;
-revoke execute on function ops.set_restore_challenge(text) from public;
-grant execute on function ops.set_restore_challenge(text) to ops_astro_backup;
+grant select, insert (challenge) on ops.restore_challenge to ops_astro_backup;
+grant update (challenge, written_at) on ops.restore_challenge to ops_astro_backup;
 
 comment on role ops_astro_backup is
   'Backup identity. Reads every table in one consistent snapshot, past row security; '
-  'writes only the restore challenge, through ops.set_restore_challenge; '
-  'no schema change, no other function, no login of its own.';
+  'writes only the restore challenge, one row of ops.restore_challenge; '
+  'no schema change, no function, no login of its own.';
