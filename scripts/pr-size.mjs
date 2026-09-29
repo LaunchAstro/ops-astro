@@ -75,6 +75,17 @@ const git = (args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 1
 // main since the branch started would be counted against the author.
 const mergeBase = git(['merge-base', base, head]).trim();
 
+// A path is printed as written unless it could be misread: one holding the
+// rename arrow, the `: ` before a count, a quote, a backslash or a control
+// character is printed as a JSON string. So a file named "a => b" and a
+// rename from a to b never share a name in the report.
+const shown = (path) => {
+  const quoted = JSON.stringify(path);
+  // JSON escapes exactly the quote, the backslash and control characters.
+  const plain = quoted === `"${path}"` && !path.includes(' => ') && !path.includes(': ');
+  return plain ? path : quoted;
+};
+
 // One record per file, in git's order. -z keeps each path as written, and
 // gives a rename both of its paths.
 const diffRecords = (args) => {
@@ -99,7 +110,7 @@ const diffRecords = (args) => {
     // filename such as "a => b" cannot share with a rename.
     records.push({
       paths,
-      path: paths.join(' => '),
+      path: paths.map(shown).join(' => '),
       key: JSON.stringify(paths),
       changed: added + deleted,
     });
