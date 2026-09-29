@@ -123,6 +123,17 @@ refuses `NOT_FOUND` is said as "No task is filed under" that id, quoted as
 typed, with the refusal and a link to the board (`screens/task/Absent.tsx`);
 any other refusal is the denied state. Neither draws another task.
 
+Below it, the facts block (`screens/task/Facts.tsx`, MP-4-2): the strip
+(whose move, derived: absent once complete, Review at a pending gate, Agent
+under a live lease, Team otherwise; the rank as `#N` or "not ranked"; the Ad
+hoc and Client access marks), the calc line, and the ten-field band
+(Assignee, Client, Due date, Estimate, Project, Category, Stage, Status, Page
+link, Handling) in a frame of 5, 2 and 1 columns. An empty value reads "not
+set" and an empty Page link "nothing yet"; Estimate, Category and Page link
+have no value on the record yet, and Client says "On file" until the client
+model names it. Every mark here is inert: no tab stop, role or handler, and
+the default cursor. The ticks that change them are the dock panel's.
+
 The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
 goes to `/settings`. An open dock tab is announced as "Close Settings"
 (`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and

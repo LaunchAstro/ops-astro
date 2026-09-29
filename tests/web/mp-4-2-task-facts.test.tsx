@@ -22,7 +22,28 @@ const text = (view: Mounted, selector: string): string =>
 const pendingGate = {
   lineageId: 'l-gated',
   state: 'open',
-  versions: [{ versionId: 'v1', gate: { id: 'g1', state: 'pending' } }],
+  versions: [
+    {
+      versionId: 'v1',
+      version: 1,
+      purpose: 'draft',
+      maximumMinor: 100,
+      currency: 'AUD',
+      payloadDigest: 'd1',
+      payload: {},
+      supersededAt: null,
+      runId: null,
+      evidence: null,
+      gate: {
+        id: 'g1',
+        state: 'pending',
+        round: 1,
+        expiresAt: '2999-01-01T00:00:00.000Z',
+        expired: false,
+        payloadDigest: 'd1',
+      },
+    },
+  ],
   decisions: [],
   reservations: [],
 };
@@ -134,7 +155,7 @@ describe('MP-4-2 ten-field band', () => {
 
 describe('MP-4-2 inert marks', () => {
   it('every mark with no action has no tab stop, no button role and no handler, and a click changes nothing', async () => {
-    const view = await withFacts({ adHoc: true });
+    const view = await withFacts({ adHoc: true, clientAccess: true });
     const marks = view.all('[data-mark], [data-chip]') as HTMLElement[];
     expect(marks.length).toBeGreaterThanOrEqual(4);
     for (const mark of marks) {

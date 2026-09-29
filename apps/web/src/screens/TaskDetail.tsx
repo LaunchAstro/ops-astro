@@ -90,6 +90,7 @@ import { useRead } from '../data/use-read.ts';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import { ConflictNotice, MovedNotice, UnsavedBar } from './task/Notices.tsx';
 import { TaskHeader } from './task/Header.tsx';
+import { TaskFacts } from './task/Facts.tsx';
 import { TaskUnknown } from './task/Absent.tsx';
 
 import type { ProposeDraft } from '../views/propose-form.tsx';
@@ -542,6 +543,7 @@ function Loaded(props: LoadedProps): ReactElement {
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
       <TaskHeader task={task} />
+      <TaskFacts task={task} />
 
       {because === null ? null : (
         <p className="field__error" role="alert" data-voice="input-wrong">
