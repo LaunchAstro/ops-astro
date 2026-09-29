@@ -188,7 +188,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
     expect(await raise()).toBe(await raise());
   });
 
-  it('derives access at every read: withheld on a lost grant, gone on a trashed task, and never deleted', async () => {
+  it('derives access at every read: withheld on a lost grant, gone on a trashed task still readable, and never deleted', async () => {
     const task = await inAlpha(async (tx) => {
       const spine = await installTaskSpine(tx);
       return await createTask(tx, spine, { title: 'lost then gone', parentId: null });
@@ -216,6 +216,10 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
         [tx.businessId, adaActor, randomUUID(), task],
       );
     });
+    // Without read, a trashed task stays withheld: gone would tell a stranger it
+    // existed (INB-1d, Sol review 1). With read again, it is gone.
+    expect(await accessOf(ada, item)).toBe('withheld');
+    await grantRead({ kind: 'record', id: task });
     expect(await accessOf(ada, item)).toBe('gone');
   });
 
