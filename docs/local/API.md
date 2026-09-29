@@ -895,6 +895,10 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `automation.registry`              | `readAutomationRegistry` (`reads/automations.ts`)                                         | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `activation.change`                | `changeActivationAsPerson` (`commands/automations.ts`)                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `definition.release`               | `releaseDefinitionVersion` (`commands/automations.ts`)                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `activation.adopt`                 | `adoptActivationVersion` (`commands/automation-approvals.ts`)                             | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `activation.roll_back`             | `rollBackActivation` (`commands/automation-approvals.ts`)                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `activation.turn_off`              | `turnOffActivationAsPerson` (`commands/automation-approvals.ts`)                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `approval.revoke`                  | `revokeStandingApproval` (`commands/automation-approvals.ts`)                             | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
@@ -1513,10 +1517,31 @@ An activation is pinned to one version of its definition, in a mode that
 version permits (checked by the command and again by the database). Without
 an `activationId` the change writes a new activation; with one it changes
 that activation at the revision the caller read. Changing a mode starts
-nothing: a run needs an occurrence and C52-A's standing approval.
+nothing: a run needs an occurrence and C52-A's standing approval (below).
 
 | Operation             | Route                  | Body                                                                                        | Answer or refusals                                                                                                                                                                                                                                                                         |
 | --------------------- | ---------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `automation.registry` | `/automation/registry` | `{}`                                                                                        | `{ ok: true, definitions: [{ id, kind, name, versions: [{ id, number, contentDigest, contentSize, modes, releasedBy, releasedAt }], activations: [{ id, versionId, versionNumber, mode, everyMinutes, eventKind, enabled, changedBy, changedAt, revision }] }] }`; `SCOPE_NOT_GRANTED` 403 |
 | `activation.change`   | `/activation/change`   | `{ activationId?, versionId, mode, everyMinutes?, eventKind?, enabled, expectedRevision? }` | `{ activationId, versionId, mode, enabled }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for a mode the version does not permit or another definition's version; `VERSION_STALE` 409                                                      |
 | `definition.release`  | `/definition/release`  | `{ definitionId? \| name, kind, contentDigest, contentSize, inputs, operations, modes }`    | `{ definitionId, versionId, number }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404 for a definition not in the business                                                                                                                                                    |
+
+## Standing approvals (C52-A)
+
+Adopting a version, rolling back, revoking an approval and turning an
+automation off are each `automation:manage`, held business-wide and never an
+agent's; a holder at one client's scope is refused all four. An adoption pins
+an exact released version of the activation's own definition, in a mode that
+version permits, and is the standing approval for every later occurrence on
+that pin. A rollback is an adoption of the version numbered just below the
+pin; the newer version and every earlier adoption stay in history. Revoking an
+approval is its own act and leaves the pin; turning an automation off ends
+its approval with it, and so does any `activation.change`. Each change is
+compared with the revision the caller read. The registry shows each
+activation's `approval: { id, versionId, act, decidedBy, revoked }`, or null.
+
+| Operation              | Route                   | Body                                            | Answer or refusals                                                                                                                                                                                            |
+| ---------------------- | ----------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `activation.adopt`     | `/activation/adopt`     | `{ activationId, versionId, expectedRevision }` | `{ activationId, versionId, approvalId, act }`; `FIELD_VALUE_INVALID` 422; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for another definition's version or a mode it does not permit; `VERSION_STALE` 409 |
+| `activation.roll_back` | `/activation/roll_back` | `{ activationId, expectedRevision }`            | as `activation.adopt`, with `act: 'rolled_back'`; `TRANSITION_NOT_PERMITTED` 409 when the pin is the first version                                                                                            |
+| `activation.turn_off`  | `/activation/turn_off`  | `{ activationId, expectedRevision }`            | `{ activationId, enabled: false }`; `FIELD_VALUE_INVALID` 422; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already off; `VERSION_STALE` 409                                                          |
+| `approval.revoke`      | `/approval/revoke`      | `{ approvalId }`                                | `{ approvalId, revoked: true }`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already revoked                                                                                                         |

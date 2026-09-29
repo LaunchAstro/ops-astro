@@ -54,7 +54,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['automation.registry', {}],
 ];
 
-/** The eighteen identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The twenty-two identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -70,6 +70,10 @@ export const IDENTIFIER_BEARING: Readonly<
   'graduation.demote': ['classId', 'control'],
   'activation.change': ['versionId and activationId', 'control'],
   'definition.release': ['definitionId', 'control'],
+  'activation.adopt': ['activationId and versionId', 'control'],
+  'activation.roll_back': ['activationId', 'control'],
+  'activation.turn_off': ['activationId', 'control'],
+  'approval.revoke': ['approvalId', 'control'],
   'delegation.revoke': ['delegationId', 'control'],
   'task.decide': ['gateId', 'gate'],
   'task.board': ['board', 'board'],

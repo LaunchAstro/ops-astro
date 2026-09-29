@@ -99,6 +99,13 @@ vi.mock('../../packages/core-commands/src/commands/automations.ts', async (origi
   changeActivationAsPerson: recorder('changeActivationAsPerson'),
   releaseDefinitionVersion: recorder('releaseDefinitionVersion'),
 }));
+vi.mock('../../packages/core-commands/src/commands/automation-approvals.ts', async (original) => ({
+  ...(await original<object>()),
+  adoptActivationVersion: recorder('adoptActivationVersion'),
+  rollBackActivation: recorder('rollBackActivation'),
+  turnOffActivationAsPerson: recorder('turnOffActivationAsPerson'),
+  revokeStandingApproval: recorder('revokeStandingApproval'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
   proposeOnTask: recorder('proposeOnTask'),
@@ -137,7 +144,11 @@ const PINNED_RUNTIME_SHAPED = {
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
+  'activation.adopt': ['activationId', 'versionId'],
   'activation.change': ['activationId', 'versionId'],
+  'activation.roll_back': ['activationId'],
+  'activation.turn_off': ['activationId'],
+  'approval.revoke': ['approvalId'],
   'connector.repair': ['connectionId'],
   'definition.release': ['definitionId'],
   'delegation.revoke': [],
@@ -162,7 +173,11 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
+  'activation.adopt',
   'activation.change',
+  'activation.roll_back',
+  'activation.turn_off',
+  'approval.revoke',
   'automation.registry',
   'connection.fleet',
   'connection.graduation',
@@ -278,6 +293,10 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'graduation.demote', operationId: 'op', classId: 'g' },
   { command: 'activation.change', operationId: 'op', versionId: 'v' },
   { command: 'definition.release', operationId: 'op' },
+  { command: 'activation.adopt', operationId: 'op', activationId: 'a', versionId: 'v' },
+  { command: 'activation.roll_back', operationId: 'op', activationId: 'a' },
+  { command: 'activation.turn_off', operationId: 'op', activationId: 'a' },
+  { command: 'approval.revoke', operationId: 'op', approvalId: 'p' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -329,6 +348,10 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'graduation.demote': ['demoteClass', 'request'],
   'activation.change': ['changeActivationAsPerson', 'request'],
   'definition.release': ['releaseDefinitionVersion', 'request'],
+  'activation.adopt': ['adoptActivationVersion', 'request'],
+  'activation.roll_back': ['rollBackActivation', 'request'],
+  'activation.turn_off': ['turnOffActivationAsPerson', 'request'],
+  'approval.revoke': ['revokeStandingApproval', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -373,7 +396,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same thirty-four from an expected revision', () => {
+  it('exempts the same thirty-eight from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
