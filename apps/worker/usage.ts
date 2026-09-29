@@ -29,10 +29,11 @@ export const SYNTHETIC_USAGE: UsageReporter = {
 };
 
 /**
- * T3e1: what the step calls before it acts. The shipped provider always
- * answers; a fault is injected only at construction, as the reporter is, so no
- * setting turns one on. A worker that meets a `ProviderFault` hands back
- * `dropped` with its cause, and the same work comes back.
+ * T3e1: what the step calls once it is marked, before its effect. The shipped
+ * provider always answers; a fault is injected only at construction, as the
+ * reporter is, so no setting turns one on. A worker that meets a
+ * `ProviderFault` hands back `dropped` with its cause; the call may have acted,
+ * so the whole hold stays unknown until the pass proves the effect absent.
  */
 export interface Provider {
   readonly call: (step: { readonly kind: string }) => Promise<void>;

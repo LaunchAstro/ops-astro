@@ -82,4 +82,5 @@ create policy authority_outage_runs on public.outage_runs
   with check (true);
 
 grant select, insert, update on public.outage_reports to ops_astro_app;
-grant select, insert on public.outage_runs to ops_astro_app;
+-- `update`: a run's `reactivated` flips once its step is reserved again.
+grant select, insert, update on public.outage_runs to ops_astro_app;
