@@ -26,6 +26,7 @@
 import { randomUUID } from 'node:crypto';
 import type { CommandDeclaration, CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
+import { ownConversation } from './foreign-conversation.ts';
 
 /** The proposal every case that needs a gate proposes, spelled once. */
 export const PROPOSAL = {
@@ -103,19 +104,6 @@ async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence:
   if (picked.code !== 'ok') throw new Error(`matrix: person pickup refused ${picked.code}`);
   const detail = picked.body['detail'] as Record<string, unknown>;
   return { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
-}
-
-/** A conversation the caller just started, for the operations that name one (AW-03). */
-async function ownConversation(context: BodyContext): Promise<string> {
-  const started = await context.asPerson('conversation.start', {
-    operationId: randomUUID(),
-    body: 'a conversation to name',
-  });
-  const detail = started.body['detail'] as Record<string, unknown> | undefined;
-  if (started.status !== 200 || typeof detail?.['conversationId'] !== 'string') {
-    throw new Error(`matrix: conversation.start answered ${String(started.status)}`);
-  }
-  return detail['conversationId'];
 }
 
 export function createPositiveBody(

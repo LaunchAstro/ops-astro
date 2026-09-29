@@ -107,6 +107,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 the conversation outlives its bo
 
   afterAll(async () => await w?.drop());
 
+  // eslint-disable-next-line max-lines-per-function -- the ticket's invariant, one journey end to end
   it('address_outlives_the_body: after a real purge the address answers the wrap-up with working pointers, through the API and the command line', async () => {
     const { taskId, conversationId } = await heldAndSettled('address');
     const address = detail(

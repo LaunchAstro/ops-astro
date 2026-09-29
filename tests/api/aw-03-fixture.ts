@@ -50,6 +50,37 @@ export interface ConversationWorld {
 
 const WRITES = new Set(['conversation.start', 'conversation.message', 'task.create']);
 
+const bodyOf = (name: string, body: Record<string, unknown>): Record<string, unknown> =>
+  WRITES.has(name) ? { operationId: randomUUID(), ...body } : body;
+
+/** A person's call through the mounted API, with a fresh operation id on a write. */
+const asOn =
+  (api: Hono): ConversationWorld['as'] =>
+  async (member, name, body) =>
+    await post(
+      api,
+      personPath(name),
+      bodyOf(name, body),
+      authorised(await tokenFor(member.presented.subject)),
+    );
+
+/** The shipped command line over the in-process app. */
+const cliOn =
+  (api: Hono): ConversationWorld['cli'] =>
+  async (member, name, body) =>
+    await createCli({
+      businessKey: BUSINESS_KEY,
+      credential: await tokenFor(member.presented.subject),
+      transport: async (path, sent, credential) =>
+        await api.fetch(
+          new Request(`http://api.test${path}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', ...authorised(credential) },
+            body: sent,
+          }),
+        ),
+    }).run(name, bodyOf(name, body));
+
 /** A world of its own, or one on a controls world (its member is the owner) for agent crossings. */
 export async function conversationWorld(on: string | Controls): Promise<ConversationWorld> {
   const fixture = typeof on === 'string' ? await createApiFixture(on) : on.fixture;
@@ -63,33 +94,13 @@ export async function conversationWorld(on: string | Controls): Promise<Conversa
     await grantTo(tx, colleague, 'write', undefined, false, CONVERSATION);
     await grantTo(tx, colleague, 'read');
   });
-  const bodyOf = (name: string, body: Record<string, unknown>): Record<string, unknown> =>
-    WRITES.has(name) ? { operationId: randomUUID(), ...body } : body;
   return {
     fixture,
     api,
     owner,
     colleague,
-    as: async (member, name, body) =>
-      await post(
-        api,
-        personPath(name),
-        bodyOf(name, body),
-        authorised(await tokenFor(member.presented.subject)),
-      ),
-    cli: async (member, name, body) =>
-      await createCli({
-        businessKey: BUSINESS_KEY,
-        credential: await tokenFor(member.presented.subject),
-        transport: async (path, sent, credential) =>
-          await api.fetch(
-            new Request(`http://api.test${path}`, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json', ...authorised(credential) },
-              body: sent,
-            }),
-          ),
-      }).run(name, bodyOf(name, body)),
+    as: asOn(api),
+    cli: cliOn(api),
     age: async (conversationId, days) => {
       await fixture.db.admin.execute(
         `update public.conversations
