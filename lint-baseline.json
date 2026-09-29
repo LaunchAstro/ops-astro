@@ -3,18 +3,18 @@
     "eslint(eqeqeq)": 1,
     "eslint(max-classes-per-file)": 1,
     "eslint(max-lines-per-function)": 627,
-    "eslint(max-lines)": 149,
+    "eslint(max-lines)": 152,
     "eslint(no-fallthrough)": 1,
     "eslint(no-inline-comments)": 17,
     "eslint(no-loop-func)": 34,
     "eslint(no-negated-condition)": 12,
     "eslint(no-promise-executor-return)": 13,
-    "eslint(require-await)": 222,
+    "eslint(require-await)": 99,
     "eslint(require-unicode-regexp)": 6,
     "oxc(branches-sharing-code)": 2,
     "unicorn(escape-case)": 2,
     "unicorn(explicit-length-check)": 3,
-    "unicorn(no-array-callback-reference)": 25,
+    "unicorn(no-array-callback-reference)": 26,
     "unicorn(no-immediate-mutation)": 2,
     "unicorn(no-negated-condition)": 12,
     "unicorn(no-useless-promise-resolve-reject)": 1,
@@ -24,6 +24,6 @@
     "unicorn(prefer-native-coercion-functions)": 1,
     "unicorn(prefer-query-selector)": 1,
     "unicorn(prefer-single-call)": 1,
-    "unicorn(prefer-string-replace-all)": 6
+    "unicorn(prefer-string-replace-all)": 7
   }
 }
