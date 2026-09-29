@@ -276,6 +276,15 @@ describe('MP-1-5 chart primitives', () => {
     expect(labelled(1, true)).toEqual(['0', '1']);
     expect(labelled(3, true)).toEqual(['0', '1', '2', '3']);
     expect(labelled(12_400)).toEqual(['0', '5k', '10k', '15k']);
+    // Far below one, across the point where numbers print in exponent form:
+    // every label distinct, plain decimals, the top one above zero.
+    for (const max of [0.000_004, 1e-7, 3e-9]) {
+      const labels = labelled(max);
+      expect(new Set(labels).size, `${String(max)}: ${labels.join(', ')}`).toBe(labels.length);
+      for (const label of labels) expect(label).toMatch(/^\d+(\.\d+)?$/u);
+      expect(Number(labels.at(-1))).toBeGreaterThanOrEqual(max);
+    }
+    expect(labelled(1e-7)).toEqual(['0', '0.000000025', '0.00000005', '0.000000075', '0.0000001']);
     // Nothing at all still draws one honest step, not a divide by zero.
     expect(labelled(0)).toEqual(['0', '1']);
 
