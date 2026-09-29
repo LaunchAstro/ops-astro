@@ -53,7 +53,7 @@ export interface DockPanel {
 }
 
 export interface DockLayout {
-  readonly mode: 'rest' | 'seated' | 'floating' | 'sheet';
+  readonly mode: 'rest' | 'seated' | 'floating' | 'sheet' | 'phone';
   /** The one width every open panel is drawn at. */
   readonly panelWidth: number;
 }

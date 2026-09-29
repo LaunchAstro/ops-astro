@@ -29,7 +29,7 @@ export const SEAT_FROM = 1440;
 export const SIDE_FROM = 1280;
 
 export interface DockGeometry {
-  readonly mode: 'rest' | 'seated' | 'floating' | 'sheet';
+  readonly mode: 'rest' | 'seated' | 'floating' | 'sheet' | 'phone';
   /** The panels that draw, in rank order: the open ones, less any R39 closed. */
   readonly open: readonly PanelId[];
   /** The panel R39 closed to make room, or null. */
