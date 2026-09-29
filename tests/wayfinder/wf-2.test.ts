@@ -207,6 +207,13 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
     const [a, b] = [tickets['a'] as string, tickets['b'] as string];
     must(await block(writer, b, [a]), 'block');
     expect(await frontierRows(map)).toStrictEqual([a]);
+    // The set is kept on the ticket as a list, not as text holding one.
+    const kept = await w.db.admin.execute<{ readonly kind: string; readonly first: string }>(
+      `select jsonb_typeof(data->'blocked_by') as kind, data->'blocked_by'->>0 as first
+         from public.records where business_id = $1 and id = $2`,
+      [w.business, b],
+    );
+    expect(kept[0]).toStrictEqual({ kind: 'array', first: a });
     expect(codeOf(await block(writer, a, [b]))).toBe('TRANSITION_NOT_PERMITTED');
     expect(codeOf(await block(writer, a, [a]))).toBe('TRANSITION_NOT_PERMITTED');
     const other = await charted(owner, {
