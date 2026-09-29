@@ -70,7 +70,7 @@ import {
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
 
-/** Rows for the three tables the journey leaves empty; foreign keys are off when they are written. */
+/** Rows for the four tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'public.person_identifiers': {
     person_id: randomUUID(),
@@ -89,6 +89,17 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     link_type: 'restricted_calls',
     from_record_id: randomUUID(),
     to_record_id: randomUUID(),
+  },
+  // 0035: no journey step logs time yet.
+  'public.time_entries': {
+    task_id: randomUUID(),
+    person_id: randomUUID(),
+    actor_id: randomUUID(),
+    started_at: '2026-09-30T00:00:00.000Z',
+    ended_at: '2026-09-30T00:01:00.000Z',
+    minutes: 1,
+    ad_hoc: false,
+    source: 'log',
   },
 };
 
