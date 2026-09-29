@@ -88,7 +88,10 @@ import type {
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
-import { ConflictNotice, MovedNotice, TaskHeader, UnsavedBar } from './task/Notices.tsx';
+import { ConflictNotice, MovedNotice, UnsavedBar } from './task/Notices.tsx';
+import { TaskHeader } from './task/Header.tsx';
+import { TaskFacts } from './task/Facts.tsx';
+import { TaskUnknown } from './task/Absent.tsx';
 
 import type { ProposeDraft } from '../views/propose-form.tsx';
 import { RecordState } from '../views/record-state.tsx';
@@ -173,110 +176,127 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
 
   return (
     <div className="stack">
+      <RefreshBar dirty={held !== null} onRefresh={reload} />
       {/*
-        Refresh sits outside the read's own region on purpose. Inside it, the
-        loading rendering replaces the controls, so a person waiting on a slow
-        read has nothing to press and the screen can never have two reads in
-        flight. Out here it stays pressable while a read is running, which is
-        what makes the ordering rule observable in the product rather than only
-        in a unit test: press it twice and the answers may come back in either
-        order, and the older one must not win.
-
-        It is disabled while an edit is unsaved. A refresh is the moment a draft
-        and the server's values would have to be reconciled, and this screen
-        does not reconcile them — the person does, with the Save or Discard
-        choice the form is showing them.
+        An id nothing is filed under is said as that, quoting the id as typed
+        (MP-4-1). Every other refusal is the denied state, quoting its code.
       */}
-      <div className="btnrow">
-        <button
-          className="btn"
-          type="button"
-          data-refresh="task"
-          disabled={held !== null}
-          onClick={reload}
-        >
-          Refresh
-        </button>
-        {held === null ? null : (
-          <span className="sbact__meta" data-draft-resolve="why">
-            Save or discard your unsaved changes before refreshing.
-          </span>
-        )}
-      </div>
-      <RecordState state={state} subject="task" onRetry={reload}>
-        {(value) =>
-          'sharedTask' in value ? (
-            <SharedTaskDetail task={value.sharedTask} />
-          ) : (
-            <Loaded
-              client={client}
-              grantKey={props.grantKey}
-              task={value.task}
-              draft={held}
-              note={note}
-              onDecided={setNote}
-              commentRefusal={commentRefusal}
-              onCommentRefused={setCommentRefusal}
-              proposeRefusal={proposeRefusal}
-              onProposeRefused={setProposeRefusal}
-              moved={moved}
-              onMoved={setMoved}
-              commentDraft={commentDraft}
-              onCommentDraft={setCommentDraft}
-              proposeDraft={proposeDraft}
-              onProposeDraft={setProposeDraft}
-              onAttempt={(attempt) => {
-                setDraft((current) =>
-                  current !== null && current.identity === identity
-                    ? { ...current, attempt }
-                    : current,
-                );
-              }}
-              onDraft={(next, base) => {
-                if (next === null) {
+      {state.outcome === 'denied' && state.refusal.code === 'NOT_FOUND' ? (
+        <TaskUnknown typed={props.taskKey} refusal={state.refusal} />
+      ) : (
+        <RecordState state={state} subject="task" onRetry={reload}>
+          {(value) =>
+            'sharedTask' in value ? (
+              <SharedTaskDetail task={value.sharedTask} />
+            ) : (
+              <Loaded
+                client={client}
+                grantKey={props.grantKey}
+                task={value.task}
+                draft={held}
+                note={note}
+                onDecided={setNote}
+                commentRefusal={commentRefusal}
+                onCommentRefused={setCommentRefusal}
+                proposeRefusal={proposeRefusal}
+                onProposeRefused={setProposeRefusal}
+                moved={moved}
+                onMoved={setMoved}
+                commentDraft={commentDraft}
+                onCommentDraft={setCommentDraft}
+                proposeDraft={proposeDraft}
+                onProposeDraft={setProposeDraft}
+                onAttempt={(attempt) => {
+                  setDraft((current) =>
+                    current !== null && current.identity === identity
+                      ? { ...current, attempt }
+                      : current,
+                  );
+                }}
+                onDraft={(next, base) => {
+                  if (next === null) {
+                    setDraft(null);
+                    return;
+                  }
+                  setDraft((current) =>
+                    current !== null && current.identity === identity
+                      ? {
+                          ...current,
+                          title: next.title,
+                          due: next.due,
+                          generation: current.generation + 1,
+                        }
+                      : {
+                          identity,
+                          generation: 1,
+                          base,
+                          title: next.title,
+                          due: next.due,
+                          attempt: null,
+                        },
+                  );
+                }}
+                onSaved={(generation) => {
+                  // Only the generation that was submitted. A save that settles
+                  // after further typing has answered a question nobody is asking
+                  // any more, and clearing the newer draft here would make the
+                  // person's newer text disappear.
+                  setDraft((current) =>
+                    current !== null &&
+                    current.identity === identity &&
+                    current.generation === generation
+                      ? null
+                      : current,
+                  );
+                }}
+                onDiscard={() => {
                   setDraft(null);
-                  return;
-                }
-                setDraft((current) =>
-                  current !== null && current.identity === identity
-                    ? {
-                        ...current,
-                        title: next.title,
-                        due: next.due,
-                        generation: current.generation + 1,
-                      }
-                    : {
-                        identity,
-                        generation: 1,
-                        base,
-                        title: next.title,
-                        due: next.due,
-                        attempt: null,
-                      },
-                );
-              }}
-              onSaved={(generation) => {
-                // Only the generation that was submitted. A save that settles
-                // after further typing has answered a question nobody is asking
-                // any more, and clearing the newer draft here would make the
-                // person's newer text disappear.
-                setDraft((current) =>
-                  current !== null &&
-                  current.identity === identity &&
-                  current.generation === generation
-                    ? null
-                    : current,
-                );
-              }}
-              onDiscard={() => {
-                setDraft(null);
-                reload();
-              }}
-              onChanged={reload}
-            />
-          )
-        }
-      </RecordState>
+                  reload();
+                }}
+                onChanged={reload}
+              />
+            )
+          }
+        </RecordState>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Refresh sits outside the read's own region on purpose. Inside it, the
+ * loading rendering replaces the controls, so a person waiting on a slow
+ * read has nothing to press and the screen can never have two reads in
+ * flight. Out here it stays pressable while a read is running, which is
+ * what makes the ordering rule observable in the product rather than only
+ * in a unit test: press it twice and the answers may come back in either
+ * order, and the older one must not win.
+ *
+ * It is disabled while an edit is unsaved. A refresh is the moment a draft
+ * and the server's values would have to be reconciled, and this screen
+ * does not reconcile them — the person does, with the Save or Discard
+ * choice the form is showing them.
+ */
+function RefreshBar(props: {
+  readonly dirty: boolean;
+  readonly onRefresh: () => void;
+}): ReactElement {
+  return (
+    <div className="btnrow">
+      <button
+        className="btn"
+        type="button"
+        data-refresh="task"
+        disabled={props.dirty}
+        onClick={props.onRefresh}
+      >
+        Refresh
+      </button>
+      {props.dirty ? (
+        <span className="sbact__meta" data-draft-resolve="why">
+          Save or discard your unsaved changes before refreshing.
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -523,6 +543,7 @@ function Loaded(props: LoadedProps): ReactElement {
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
       <TaskHeader task={task} />
+      <TaskFacts task={task} />
 
       {because === null ? null : (
         <p className="field__error" role="alert" data-voice="input-wrong">

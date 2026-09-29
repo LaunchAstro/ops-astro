@@ -80,9 +80,23 @@ export async function shareRecord(
 ): Promise<ShareDecision<string>> {
   const refused = await refuseShare(tx, sharer, request, 'live');
   if (refused !== undefined) return refused;
+  return { ok: true, value: await issueShare(tx, sharer.actorId, request) };
+}
 
+/**
+ * The share itself, once whoever asked for it has been authorised: a root
+ * `read` grant on the record, named as granted by `granterActorId`, or the
+ * live one already there. `shareRecord` authorises under the record's own
+ * `share`; Client access (MP-4-10) under `access:share`, which its command's
+ * declaration asks before this runs. Nothing here checks authority.
+ */
+export async function issueShare(
+  tx: TenantQuery,
+  granterActorId: string,
+  request: ShareRequest,
+): Promise<string> {
   const live = await liveShares(tx, request);
-  if (live[0] !== undefined) return { ok: true, value: live[0] };
+  if (live[0] !== undefined) return live[0];
 
   const issued = await issueGrant(tx, [], {
     subject: { kind: 'person', id: request.personId },
@@ -90,10 +104,10 @@ export async function shareRecord(
     collection: request.collection,
     action: 'read',
     parentGrantId: null,
-    grantedByActorId: sharer.actorId,
+    grantedByActorId: granterActorId,
   });
-  if (!issued.ok) throw new Error(`shareRecord: a root grant was refused ${issued.refusal.code}`);
-  return { ok: true, value: issued.value };
+  if (!issued.ok) throw new Error(`issueShare: a root grant was refused ${issued.refusal.code}`);
+  return issued.value;
 }
 
 /** Withdraw every live share of this record with this person. Returns how many. */
@@ -107,13 +121,18 @@ export async function revokeShare(
   // standing with nobody able to take it back.
   const refused = await refuseShare(tx, sharer, request, 'live or trashed');
   if (refused !== undefined) return refused;
+  return { ok: true, value: await withdrawShares(tx, request) };
+}
+
+/** Revoke every live share of this record with this person. Checks no authority. */
+export async function withdrawShares(tx: TenantQuery, request: ShareRequest): Promise<number> {
   const live = await liveShares(tx, request);
   for (const grantId of live) {
     // One transaction, one connection: sequential because they share it.
     // oxlint-disable-next-line no-await-in-loop
     await revokeGrant(tx, grantId);
   }
-  return { ok: true, value: live.length };
+  return live.length;
 }
 
 /**

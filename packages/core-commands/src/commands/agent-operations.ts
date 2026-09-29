@@ -17,7 +17,7 @@ import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts'
 import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
-import { isFieldMap } from './operands.ts';
+import { invalid, isFieldMap } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import {
@@ -32,11 +32,15 @@ import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
+import { setScores } from './tasks-scores.ts';
+import { setAdHoc } from './tasks-adhoc.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import {
   claimedSystemFields,
+  expectedRevisionOf,
   irrelevantIdentifiers,
   lockTask,
+  REVISION_FIXES,
   SYSTEM_OWNED_FIXES,
 } from './prepare.ts';
 import { retainLateHandback } from './agent-late-handback.ts';
@@ -362,6 +366,46 @@ async function serveComment(
   );
 }
 
+/**
+ * An owned-field write an agent makes on its own task: the three marks
+ * (`task.set_scores`) and the Ad hoc mark (`task.set_adhoc`). One entry, so
+ * the two refuse a stale write, a missing task and a malformed body alike.
+ */
+const serveOwnedWrite =
+  (
+    write: typeof setScores,
+    example: string,
+  ): ((
+    tx: TenantQuery,
+    call: AgentCall,
+    operands: NoOperands,
+    delegation: Delegation,
+    taskId: string | undefined,
+  ) => ReturnType<typeof setScores>) =>
+  async (tx, { request }, _operands, _delegation, taskId) => {
+    // `authorise` has held the delegation to this task and its `write` action
+    // to the delegating person's live grant. The lock and the revision are the
+    // person envelope's (`prepareCommand`), so the two entries refuse a stale
+    // write in the same words. `fields` is read here, after authority, so an
+    // agent holding nothing is told that before it is told about its body.
+    if (taskId === undefined) return NOT_FOUND();
+    const spine = await readTaskSpine(tx);
+    const target = await lockTask(tx, spine.taskTypeId, taskId);
+    if (target === undefined) return NOT_FOUND();
+    if (expectedRevisionOf(request) !== target.revision) {
+      return refused(
+        refuseCommand('VERSION_STALE', [`revision=${target.revision}`], REVISION_FIXES),
+      );
+    }
+    const fields = request['fields'];
+    if (!isFieldMap(fields)) {
+      return refused(
+        invalid('fields', `Send fields as an object of fields to values, such as ${example}.`),
+      );
+    }
+    return await write(tx, { spine, target }, fields);
+  };
+
 async function serveHeartbeat(
   tx: TenantQuery,
   { session, request }: AgentCall,
@@ -470,15 +514,23 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
         const spine = await readTaskSpine(tx);
         let task: Awaited<ReturnType<typeof readTaskDetail>>;
         try {
-          task = await readTaskDetail(tx, spine.taskTypeId, taskId, {
-            commentTypeId: spine.taskCommentTypeId,
-            // An agent is never an internal reader. It is a delegate working one
-            // task, not a member of the business, so it is shown what an external
-            // reader is shown — the client comments in the fields the catalogue
-            // marks `shared` — and internal notes are absent from its answer
-            // rather than hidden in it (I09).
-            internal: false,
-          });
+          task = await readTaskDetail(
+            tx,
+            spine.taskTypeId,
+            taskId,
+            {
+              commentTypeId: spine.taskCommentTypeId,
+              // An agent is never an internal reader. It is a delegate working one
+              // task, not a member of the business, so it is shown what an external
+              // reader is shown — the client comments in the fields the catalogue
+              // marks `shared` — and internal notes are absent from its answer
+              // rather than hidden in it (I09).
+              internal: false,
+            },
+            // An agent works one task under its delegation, so the pool its
+            // rank is worked out in is that task and no other.
+            { kind: 'task' },
+          );
         } catch (cause) {
           // Decisions that do not verify are the fault the person read answers
           // (`runRead`), not a retryable one: the same body on both prefixes.
@@ -501,6 +553,26 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       // record (`prepare.ts`, `lockTask`), so this one does too.
       operands: recordIdOperand(() => refuseNotFound()),
       serve: serveComment,
+    }),
+  ],
+  [
+    'task.set_scores',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveOwnedWrite(setScores, '{ impact }'),
+    }),
+  ],
+  [
+    'task.set_adhoc',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveOwnedWrite(setAdHoc, '{ ad_hoc }'),
     }),
   ],
   [

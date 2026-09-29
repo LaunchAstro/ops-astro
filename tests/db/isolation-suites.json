@@ -7,6 +7,11 @@
     "tests/tenancy/pooled-crossover.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
-    "tests/reads/mp-5-board-isolation.test.ts"
+    "tests/reads/mp-5-board-isolation.test.ts",
+    "tests/reads/task-rank.test.ts",
+    "tests/commands/task-adhoc.test.ts",
+    "tests/commands/task-client-access.test.ts",
+    "tests/reads/task-board-crumb.test.ts",
+    "tests/reads/task-facts.test.ts"
   ]
 }

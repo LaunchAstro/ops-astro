@@ -14,6 +14,7 @@ import type { OperationsClient } from './operations/client.ts';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
+import { TaskUnnamed } from './screens/task/Absent.tsx';
 
 /** What the application hands whichever screen the address resolves to. */
 export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRouteId> {
@@ -49,6 +50,7 @@ export const SCREENS: {
       taskKey={context.params.key}
     />
   ),
+  'agency:task-unnamed': () => <TaskUnnamed />,
 };
 
 /** The screen a matched address draws, handed that route's own parameters. */

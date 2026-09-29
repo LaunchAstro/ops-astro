@@ -48,6 +48,10 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'session.capabilities',
   'task.read',
   'task.comment',
+  // The three marks (MP-4-9) and the Ad hoc mark (MP-4-10), which an agent
+  // sets on its own task inside its delegation.
+  'task.set_scores',
+  'task.set_adhoc',
   'task.heartbeat',
   'task.pickup',
   'task.handback',
@@ -141,6 +145,17 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     if (name === 'task.read') return { body: { operationId, recordId: held.taskId }, credential };
     if (name === 'task.comment') {
       const body = { recordId: held.taskId, body: 'the agent notes it', audience: 'internal' };
+      return { body: { operationId, ...body }, credential };
+    }
+    if (name === 'task.set_scores' || name === 'task.set_adhoc') {
+      // Read, not carried: each control moves the task's revision.
+      const rows = await harness.world.db.admin.execute<{ readonly revision: string }>(
+        `select revision::text as revision from public.records where id = $1`,
+        [held.taskId],
+      );
+      const expectedRevision = Number(rows[0]?.revision ?? '0');
+      const fields = name === 'task.set_scores' ? { impact: 5 } : { ad_hoc: true };
+      const body = { recordId: held.taskId, expectedRevision, fields };
       return { body: { operationId, ...body }, credential };
     }
     if (name === 'task.heartbeat') {

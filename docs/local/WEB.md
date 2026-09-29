@@ -104,10 +104,40 @@ browser.
 | `/sign-in`   | Credentials and the business selector                                                            |
 | `/projects/` | `task.board` for the unboarded tasks (`board: null`), and the create form                        |
 | `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision |
+| `/task/`     | No task named: says so and offers the board (MP-4-1), and reads nothing                          |
 | `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`  |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
+
+The task page's header (`screens/task/Header.tsx`, MP-4-1) is the crumb
+("Projects →", the board `task.read` names, the key, the state), Copy link,
+the title and the run line. Copy link copies this origin plus `/task/<key>`,
+shows its tick for 1.2 s only after the clipboard said yes, and says so in
+words, with the address, when it said no or there is no clipboard. The run
+line counts the attempts on the task's proposals: `Attempt N · running`
+while one is reserved or dispatched, "Every run on this task has finished."
+once all have ended, and "No agent has run this task. It is a person's work
+so far." with none (TP-07). An id `task.read`
+refuses `NOT_FOUND` is said as "No task is filed under" that id, quoted as
+typed, with the refusal and a link to the board (`screens/task/Absent.tsx`);
+any other refusal is the denied state. Neither draws another task.
+
+Below it, the facts block (`screens/task/Facts.tsx`, MP-4-2): the strip
+(whose move, derived: absent once complete, Review at a pending gate, Agent
+under a live lease, Team otherwise; the rank as `#N` or "not ranked"; the Ad
+hoc and Client access marks), the calc line, and the ten-field band
+(Assignee, Client, Due date, Estimate, Project, Category, Stage, Status, Page
+link, Handling) in a frame of 5, 2 and 1 columns. An empty value reads "not
+set" and an empty Page link "nothing yet"; Estimate, Category and Page link
+have no value on the record yet, and Client says "On file" until the client
+model names it. Every mark here is inert: no tab stop, role or handler, and
+the default cursor. The ticks that change them are the dock panel's:
+`HandlingTicks` (`screens/task/Ticks.tsx`, MP-4-10), which the dock task
+panel (MP-4-8) mounts. Each is a checkbox a person can tab to, turned by a
+press, Space or Enter, through `task.set_adhoc` or `task.share_with_client`
+and `task.revoke_client_share` at the task's revision; a success rereads
+the task and a refusal is quoted with the tick left as the server has it.
 
 The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
 goes to `/settings`. An open dock tab is announced as "Close Settings"

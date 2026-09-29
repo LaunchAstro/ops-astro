@@ -95,6 +95,10 @@ const GRANTS_BY_ROLE = {
     // stays `manage` above; this is the half that lets a screen show the
     // four-eyes band instead of guessing at it.
     ['settings', 'read'],
+    // Client access (MP-4-10) shares a task with its client's people under
+    // `access:share`, which the key catalogue gives the owner and
+    // administrators and never an agent.
+    ['access', 'share'],
   ],
   member: [
     ['task', 'read'],

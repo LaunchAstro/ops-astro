@@ -31,6 +31,8 @@ import type { InternalCommentView } from '../../../core-wire/src/index.ts';
 import { READS } from '../../../core-wire/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
+import { readTaskRank, type RankPool } from './rank.ts';
+import { readBoardCrumb } from './board-crumb.ts';
 
 interface TaskRowRead {
   readonly id: string;
@@ -49,6 +51,10 @@ interface TaskRowRead {
   readonly state_machine_category: string | null;
   readonly assignee_id: string | null;
   readonly assignee_name: string | null;
+  readonly ad_hoc: boolean | null;
+  readonly board_id: string | null;
+  readonly stage: string | null;
+  readonly client_set: boolean;
 }
 
 // The task's state record, by the slot the trigger keeps (`uuid_1`). One copy
@@ -76,7 +82,11 @@ const SELECT = `
          s.data ->> 'label' as state_label,
          s.data ->> 'machine_category' as state_machine_category,
          p.id as assignee_id,
-         p.display_name as assignee_name
+         p.display_name as assignee_name,
+         r.bool_2 as ad_hoc,
+         r.uuid_5 as board_id,
+         r.txt_5 as stage,
+         r.uuid_7 is not null as client_set
     from public.records r${STATE_JOIN}
     left join public.people p
       on p.business_id = r.business_id and p.id = r.uuid_2`;
@@ -233,6 +243,7 @@ export async function readTaskDetail(
   taskTypeId: string,
   recordId: string,
   comments: { readonly commentTypeId: string | undefined; readonly internal: boolean },
+  rankPool: RankPool,
 ): Promise<TaskDetail | undefined> {
   // A malformed identifier is not cast and not queried. The cast would raise
   // where the contract promises a refusal, and "that is not a uuid" is an
@@ -258,6 +269,12 @@ export async function readTaskDetail(
     // reader who may see the task may see what somebody proposed doing to it.
     proposals: await readTaskProposals(tx, row.id),
     capCurrency: await taskCapCurrency(tx, row.id),
+    rank: await readTaskRank(tx, taskTypeId, row.id, rankPool),
+    adHoc: row.ad_hoc === true,
+    clientAccess: (await outsideHolders(tx, row.id)).length > 0,
+    board: await readBoardCrumb(tx, taskTypeId, row.board_id, rankPool),
+    stage: row.stage,
+    clientSet: row.client_set,
   };
 }
 
@@ -356,4 +373,51 @@ export async function readBoardStamped(
     if (newest === null || row.updated_at > newest) newest = row.updated_at;
   }
   return { tasks: rows.map(summaryOf), changedAt: newest?.toISOString() ?? null };
+}
+
+/**
+ * The Ad hoc default a new time entry on this task takes (MP-4-10, CS-4.9):
+ * the task's own mark, and false for a task never marked. It is the one value
+ * the timer and the log read, so an entry cannot start from a different
+ * answer than the task page shows. Scoped by the business the session set: a
+ * task in another business is not here, and takes false.
+ */
+export async function adHocDefault(
+  tx: TenantQuery,
+  taskTypeId: string,
+  recordId: string,
+): Promise<boolean> {
+  if (!isUuid(recordId)) return false;
+  const rows = await tx.query<{ readonly ad_hoc: boolean | null }>(
+    `select r.bool_2 as ad_hoc from public.records r
+      where r.business_id = $1 and r.record_type_id = $2 and r.id = $3 and r.deleted_at is null`,
+    [tx.businessId, taskTypeId, recordId],
+  );
+  return rows[0]?.ad_hoc === true;
+}
+
+/**
+ * Everyone outside the business's membership holding a live read share on
+ * this task. Client access (MP-4-10, R45) is on exactly when this is not
+ * empty: the tick on the task read and the withdrawal in
+ * `commands/tasks-client-access.ts` read this one list.
+ */
+export async function outsideHolders(
+  tx: TenantQuery,
+  recordId: string,
+): Promise<readonly string[]> {
+  const rows = await tx.query<{ readonly person_id: string }>(
+    `select distinct g.subject_id as person_id
+       from public.grants g
+      where g.business_id = $1 and g.subject_kind = 'person'
+        and g.scope_kind = 'record' and g.scope_id = $2
+        and g.collection = 'task' and g.action = 'read'
+        and g.revoked_at is null and (g.expires_at is null or g.expires_at > now())
+        and not exists (select 1 from public.memberships m
+                         where m.business_id = g.business_id and m.person_id = g.subject_id
+                           and m.active)
+      order by 1`,
+    [tx.businessId, recordId],
+  );
+  return rows.map((row) => row.person_id);
 }

@@ -184,6 +184,12 @@ describe('the task page for a member', () => {
         history: [],
         comments: [CLIENT_COMMENT],
         proposals: [],
+        board: null,
+        rank: { number: null, score: null, calc: '' },
+        adHoc: false,
+        clientAccess: false,
+        stage: null,
+        clientSet: false,
       },
     });
     const page = await mount(screen(api.fetch));

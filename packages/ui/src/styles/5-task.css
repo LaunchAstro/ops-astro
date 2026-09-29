@@ -25,10 +25,94 @@
   font-weight: var(--weight-medium);
   font-size: var(--text-h1);
   line-height: var(--lh-title);
+  /* A long name wraps at 390 rather than clipping (MP-4-1). */
+  overflow-wrap: anywhere;
 }
 .tpr__facts {
   display: grid;
   gap: var(--s-3);
+}
+/* The facts band's frame (DS-TASK-11): 5 columns, 2 below 1280, 1 below 641. */
+.tpr__band {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+  background: var(--surface-2);
+}
+@media (width <= 1279px) {
+  .tpr__band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (width <= 640px) {
+  .tpr__band {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.tpr__band dd {
+  margin: 0;
+}
+.tpr__strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-4);
+}
+.tpr__fact {
+  display: grid;
+  gap: 0.15rem;
+}
+.tpr__calc {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-faint);
+}
+/* Inert on the task page: they say what the record says and do nothing, so
+   the cursor is the default one, never the pointer (MP-4-2, D-08). */
+.tpr__mark {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 18px;
+  block-size: 18px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--accent);
+  cursor: default;
+}
+.tpr__mark[data-on='yes'] {
+  border-color: var(--accent);
+}
+/* The live ticks (MP-4-10, DP-16, DP-17): the dock panel's, which do turn. */
+.tpr__tick {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 18px;
+  block-size: 18px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+}
+.tpr__tick:hover,
+.tpr__tick[aria-checked='true'] {
+  border-color: var(--accent);
+}
+.tpr__tick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tpr__tick[aria-disabled='true'] {
+  cursor: progress;
+}
+.tpr__chip {
+  display: inline-block;
+  margin-inline-end: var(--s-2);
+  padding: 0 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  text-transform: uppercase;
+  cursor: default;
 }
 .taskform {
   border: 1px solid var(--border);

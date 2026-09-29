@@ -19,6 +19,7 @@ export {
   checkAuthority,
   effectiveGrants,
   issueGrant,
+  readableRecordIds,
   readableScope,
   revokeGrant,
   subjectsOf,

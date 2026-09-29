@@ -87,6 +87,47 @@ export interface TaskDetail extends TaskSummary {
    * not read the task is told nothing about the cap.
    */
   readonly capCurrency: string | null;
+  /** The derived rank and its calc line (R70, MP-4-9). Worked out at read, never stored. */
+  readonly rank: RankView;
+  /** The Ad hoc mark (MP-4-10, CS-4.9): billing reads it, and new time entries default to it. */
+  readonly adHoc: boolean;
+  /**
+   * Client access (MP-4-10, CS-4.10, R45): true exactly when the task is
+   * shared with at least one of its client's people. The tick draws this and
+   * nothing stored beside it.
+   */
+  readonly clientAccess: boolean;
+  /**
+   * The board the task sits on, as its page's crumb reads it (MP-4-1): null
+   * when it sits on none. A board is a task, so its title is sent only to a
+   * reader who may read that board; anyone else is told there is one.
+   */
+  readonly board: BoardCrumb | null;
+  /** The task's stage as stored (`task.set_stage`), or null when it has none. */
+  readonly stage: string | null;
+  /**
+   * Whether the task is put under a client (`task.set_party`). The facts band
+   * says so; the client's name waits on the client model.
+   */
+  readonly clientSet: boolean;
+}
+
+/** A task's board as the crumb draws it: its title, or that it is withheld. */
+export type BoardCrumb =
+  { readonly readable: true; readonly title: string | null } | { readonly readable: false };
+
+/**
+ * A task's derived rank as its reader is shown it (R70, MP-4-9).
+ *
+ * `number` is the task's place among the open tasks this reader may read, or
+ * null when the task is not ranked; `score` is null exactly then. `calc` is the
+ * line drawn under the rank, worked out on the server so every surface shows the
+ * same words, and it names nothing but this task's own marks and modifiers.
+ */
+export interface RankView {
+  readonly number: number | null;
+  readonly score: number | null;
+  readonly calc: string;
 }
 
 /**

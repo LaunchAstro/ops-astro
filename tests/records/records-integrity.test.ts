@@ -261,7 +261,7 @@ describe.skipIf(serverUrl === undefined)('records integrity', () => {
   });
 
   describe('the slot table the engine is written against', () => {
-    it('is the shipped shape: 38 slots, 18 reserved, and every one of them indexed', async () => {
+    it('is the shipped shape: 38 slots, 22 reserved, and every one of them indexed', async () => {
       const slots = await readSlotTable(db.admin.execute);
       expect(slots).toHaveLength(38);
       const counted = (type: string): number =>
@@ -286,12 +286,15 @@ describe.skipIf(serverUrl === undefined)('records integrity', () => {
       // free slot is now a usable slot.
       //
       // So the assertion moves rather than weakens: every registered slot is
-      // indexed, and reservation is separately eighteen. A migration that
-      // stopped indexing one, or reserved a nineteenth, still fails here.
+      // indexed, and reservation is separately counted: eighteen, then
+      // twenty-one once 0032 reserved `num_3` to `num_5` for the three marks
+      // (MP-4-9), then twenty-two once 0033 reserved `bool_2` for the Ad hoc
+      // mark (MP-4-10). A migration that stopped indexing one, or reserved another,
+      // still fails here.
       const reserved = slots.filter((slot) => slot.reservation !== null);
       const indexed = slots.filter((slot) => slot.indexed);
       expect(indexed).toHaveLength(38);
-      expect(reserved).toHaveLength(18);
+      expect(reserved).toHaveLength(22);
     });
   });
 

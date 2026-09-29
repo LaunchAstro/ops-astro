@@ -167,7 +167,13 @@ export type CommandRequest =
   // definition, so the payload is the values and nothing else.
   | ({
       readonly command:
-        'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_party' | 'task.set_audience';
+        | 'task.assign'
+        | 'task.triage'
+        | 'task.set_stage'
+        | 'task.set_party'
+        | 'task.set_audience'
+        | 'task.set_scores'
+        | 'task.set_adhoc';
       readonly fields: FieldValues;
     } & Targeted)
   | ({ readonly command: 'task.reparent'; readonly parentId: string | null } & Targeted)
@@ -182,6 +188,7 @@ export type CommandRequest =
       readonly afterId?: string | null;
       readonly beforeId?: string | null;
     } & Targeted)
+  | ({ readonly command: 'task.share_with_client' | 'task.revoke_client_share' } & Targeted)
   | ({ readonly command: 'task.trash' } & Targeted)
   | ({ readonly command: 'task.restore'; readonly batchId: string } & Envelope)
   // The purge's window is the business's setting, not an operand. The field is

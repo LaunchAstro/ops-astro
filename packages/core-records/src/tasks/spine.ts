@@ -249,6 +249,47 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: ['task.set_audience'],
     escalatingOperation: null,
   },
+  // The three marks the derived rank reads (R70, migration 0032): whole
+  // numbers from 1 to 10, or absent, and absent is never 0. One command owns
+  // all three, so a mark changes only as `task scores changed` in the audit.
+  {
+    key: 'impact',
+    label: 'Impact',
+    valueType: 'numeric',
+    slot: 'num_3',
+    writeMode: 'operation',
+    owningOperations: ['task.set_scores'],
+    escalatingOperation: null,
+  },
+  {
+    key: 'confidence',
+    label: 'Confidence',
+    valueType: 'numeric',
+    slot: 'num_4',
+    writeMode: 'operation',
+    owningOperations: ['task.set_scores'],
+    escalatingOperation: null,
+  },
+  {
+    key: 'ease',
+    label: 'Ease',
+    valueType: 'numeric',
+    slot: 'num_5',
+    writeMode: 'operation',
+    owningOperations: ['task.set_scores'],
+    escalatingOperation: null,
+  },
+  {
+    // The Ad hoc mark (MP-4-10, migration 0033): it drives billing and is the
+    // default for the task's new time entries. Absent reads as not ad hoc.
+    key: 'ad_hoc',
+    label: 'Ad hoc',
+    valueType: 'boolean',
+    slot: 'bool_2',
+    writeMode: 'operation',
+    owningOperations: ['task.set_adhoc'],
+    escalatingOperation: null,
+  },
   {
     // Unslotted on purpose: long display text that no view filters, sorts or
     // groups on. A slot would buy nothing and cost an index.
@@ -267,11 +308,15 @@ export const TASK_SPINE: readonly SpineField[] = [
  * relaxing one is a visible diff (minimum contract, 5.3 assertion 2).
  */
 export const PROTECTED_TASK_FIELDS: readonly string[] = [
+  'ad_hoc',
   'assignee',
   'client',
   'client_visible',
   'completed_at',
+  'confidence',
   'delegate',
+  'ease',
+  'impact',
   'intake_state',
   'key',
   'parent',

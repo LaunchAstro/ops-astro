@@ -103,6 +103,12 @@ function server(options: ServerOptions = {}) {
     completedAt: null,
     revision: 3,
     history: [],
+    board: null,
+    rank: { number: null, score: null, calc: '' },
+    adHoc: false,
+    clientAccess: false,
+    stage: null,
+    clientSet: false,
     comments: [] as Record<string, unknown>[],
     proposals: [] as ReturnType<typeof lineage>[],
     // The task cap's currency, which the propose form offers (CQ-7).

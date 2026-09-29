@@ -43,6 +43,12 @@ function clientFor(category: 'unstarted' | 'started' | 'completed'): OperationsC
     completedAt: category === 'completed' ? '2026-09-24T00:00:00.000Z' : null,
     revision: 3,
     history: [],
+    board: null,
+    rank: { number: null, score: null, calc: '' },
+    adHoc: false,
+    clientAccess: false,
+    stage: null,
+    clientSet: false,
     comments: [],
     proposals: [],
   };
