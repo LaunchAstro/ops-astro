@@ -236,7 +236,12 @@ async function receiptOf(
  */
 export async function callModelOnTheJourney(
   world: World,
-  walked: { readonly leaseId: string; readonly fence: number; readonly credential: string },
+  walked: {
+    readonly taskId: string;
+    readonly leaseId: string;
+    readonly fence: number;
+    readonly credential: string;
+  },
 ): Promise<void> {
   const called = await call(
     world.api,
@@ -246,7 +251,8 @@ export async function callModelOnTheJourney(
       leaseId: walked.leaseId,
       fence: walked.fence,
       operation: 'model.replay_compose',
-      fields: [{ name: 'tone', source: 'business_internal', value: 'plain' }],
+      // The run's own task, which a person entered (S3).
+      fields: [{ name: 'tone', from: { recordId: walked.taskId, key: 'title' } }],
     },
     { ...bearer(world.agent.token), [DELEGATION_HEADER]: walked.credential },
   );

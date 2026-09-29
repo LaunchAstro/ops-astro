@@ -1,10 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The six facts of a model call (AW-01), and the task's client link (C60),
-// read from rows under the contract's lock order, and the room already
-// committed out of a reservation.
+// The six facts of a model call (AW-01), the task's client link (C60) and
+// the rows its bound fields are read from (S3), read from rows under the
+// contract's lock order, and the room already committed out of a reservation.
 
-import { isUuid, slotOf, TASK_SPINE, type TenantQuery } from '../../core-records/src/index.ts';
+import {
+  isUuid,
+  slotOf,
+  TASK_SPINE,
+  TASK_TYPE_KEY,
+  type TenantQuery,
+} from '../../core-records/src/index.ts';
+import {
+  boundRecordIds,
+  LEAVES_ROW_DATA,
+  sourcesOf,
+  type LockedRecord,
+  type SourceRow,
+} from './broker-sources.ts';
 import type { BrokerRefusal, ModelCaller, ModelCallRequest } from './broker-types.ts';
 
 export interface Facts {
@@ -18,6 +31,8 @@ export interface Facts {
   readonly heldMinor: number;
   /** The run's task's client link, or null for a task no client is on (C60). */
   readonly clientId: string | null;
+  /** The rows the request's bound fields name, by id, as held (S3). One not here was not readable. */
+  readonly sources: ReadonlyMap<string, SourceRow>;
 }
 
 export type Checked =
@@ -38,30 +53,61 @@ interface LeaseRow {
 /** The spine's client slot: the party link `task.set_party` writes. */
 const CLIENT_SLOT = slotOf(TASK_SPINE, 'client');
 
+/** The run's task and the bound rows, one statement, locked in id order (`lockTask`). */
+const LOCK_TASK_AND_SOURCES = `select r.id::text as id, run.id::text as run_id, r.id = run.task_id as is_run_task,
+            r.${CLIENT_SLOT}::text as client, r.deleted_at is null as live,
+            ty.key = $4 as is_task, r.id = any($3::uuid[]) as bound,
+            case when r.id = any($3::uuid[]) then r.data end as data,
+            case when r.id = any($3::uuid[]) then exists (
+              select 1 from public.operations o
+                join public.actors a on a.business_id = o.business_id and a.id = o.actor_id
+               where o.business_id = r.business_id and o.record_id = r.id
+                 and o.outcome = 'applied' and a.kind <> 'person'
+                 and o.command <> all($5::text[])) end as others_wrote
+       from public.leases l
+       join public.planned_runs run on run.business_id = l.business_id and run.id = l.run_id
+       join public.records r on r.business_id = run.business_id
+                            and (r.id = run.task_id or r.id = any($3::uuid[]))
+       join public.record_types ty on ty.business_id = r.business_id and ty.id = r.record_type_id
+      where l.business_id = $1 and l.id = $2
+      order by r.id
+      for share of r`;
+
 /**
  * The run's task, first in the lock order (`task` comes before `lease`), held
  * `for share` so a `task.set_party` cannot move its client while the call is
- * decided, and answering the task's client link (C60). The lease names the
- * run and the run its task, read here before the lease's own lock; the run's
- * task is fixed once written (the application may update a run's state only,
- * 0033), and the lease's run is compared again under the lease's lock
- * (`lockFacts`). Unknown to this business answers nothing, refused as a
- * made-up lease is.
+ * decided, and answering the task's client link (C60). The rows the bound
+ * fields name are records too, so they are held in the same statement, in
+ * the class's key order (by id), and a link or an edit in flight on one is
+ * waited on, never missed (S3). The lease names the run and the run its
+ * task, read here before the lease's own lock; the run's task is fixed once
+ * written (the application may update a run's state only, 0033), and the
+ * lease's run is compared again under the lease's lock (`lockFacts`).
+ * Unknown to this business answers nothing, refused as a made-up lease is;
+ * a bound row of another business, or none, is simply not among the rows.
  */
 async function lockTask(
   tx: TenantQuery,
   leaseId: string,
-): Promise<{ readonly runId: string; readonly clientId: string | null } | undefined> {
-  const [task] = await tx.query<{ run_id: string; client: string | null }>(
-    `select run.id as run_id, t.${CLIENT_SLOT}::text as client
-       from public.leases l
-       join public.planned_runs run on run.business_id = l.business_id and run.id = l.run_id
-       join public.records t on t.business_id = run.business_id and t.id = run.task_id
-      where l.business_id = $1 and l.id = $2
-      for share of t`,
-    [tx.businessId, leaseId],
-  );
-  return task === undefined ? undefined : { runId: task.run_id, clientId: task.client };
+  boundIds: readonly string[],
+): Promise<
+  | {
+      readonly runId: string;
+      readonly clientId: string | null;
+      readonly sources: ReadonlyMap<string, SourceRow>;
+    }
+  | undefined
+> {
+  const rows = await tx.query<LockedRecord>(LOCK_TASK_AND_SOURCES, [
+    tx.businessId,
+    leaseId,
+    boundIds.filter((id) => isUuid(id)),
+    TASK_TYPE_KEY,
+    LEAVES_ROW_DATA,
+  ]);
+  const task = rows.find((row) => row.is_run_task);
+  if (task === undefined) return undefined;
+  return { runId: task.run_id, clientId: task.client, sources: sourcesOf(rows) };
 }
 
 /** The lease, next in the lock order. Another business's, a made-up one, someone else's and one of our own under another delegation all read alike. */
@@ -153,13 +199,13 @@ async function lockHeld(
 export async function lockFacts(
   tx: TenantQuery,
   caller: ModelCaller,
-  request: Pick<ModelCallRequest, 'leaseId' | 'fence' | 'stepId'>,
+  request: Pick<ModelCallRequest, 'leaseId' | 'fence' | 'stepId' | 'fields'>,
 ): Promise<Checked> {
   // A malformed identity or fence is refused like a made-up one, before any row is read.
   if (!isUuid(request.leaseId) || !isUuid(request.stepId) || !Number.isSafeInteger(request.fence)) {
     return { ok: false, code: 'LEASE_NOT_OWNED' };
   }
-  const task = await lockTask(tx, request.leaseId);
+  const task = await lockTask(tx, request.leaseId, boundRecordIds(request.fields));
   if (task === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
   const leased = await lockLease(tx, caller, request);
   if (!leased.ok) return leased;
@@ -183,6 +229,7 @@ export async function lockFacts(
       workForPersonId: delegation.personId,
       heldMinor: held.heldMinor,
       clientId: task.clientId,
+      sources: task.sources,
     },
   };
 }

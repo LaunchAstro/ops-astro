@@ -36,8 +36,10 @@
 // takes no new lock.
 // A model call (AW-01) takes none of these: its run's task `for share` (the
 // `task` class, so a `task.set_party` cannot move the task's client while the
-// call is decided, C60), then its lease, delegation and reservation rows in
-// that order (`core-custody/src/broker-facts.ts`), then its ceiling key per
+// call is decided, C60, with the rows its bound fields are read from, in the
+// same statement and the class's key order, S3), then its lease, delegation
+// and reservation rows in that order (`core-custody/src/broker-facts.ts`),
+// then its ceiling key per
 // business and operation, then its route's key, which every business shares
 // (`broker-reserve.ts`), last. Settlement takes the lease, delegation and
 // reservation only: what it settles was already sent.

@@ -68,11 +68,11 @@ const LEASE_WORK: readonly CommandName[] = [
   'model.call',
 ];
 
-/** One catalogued replay call, carrying only a business-internal field. */
-const CALL = {
+/** One catalogued replay call, carrying only a field bound to the run's own task, which a person entered (S3). */
+const callOn = (taskId: string) => ({
   operation: 'model.replay_compose',
-  fields: [{ name: 'tone', source: 'business_internal', value: 'plain' }],
-} as const;
+  fields: [{ name: 'tone', from: { recordId: taskId, key: 'title' } }],
+});
 
 /** A domain-state digest without `handback_reports`, for I08's retained handback report. */
 const besideReports = (state: Readonly<Record<string, string>>): Record<string, string> =>
@@ -192,7 +192,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           name === 'task.handback'
             ? { ...lease, ...settle }
             : name === 'model.call'
-              ? { ...lease, ...CALL }
+              ? { ...lease, ...callOn(p.taskId) }
               : lease;
         return agentCell(agent, name, body, p.credential, null);
       }
@@ -247,7 +247,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           name === 'task.handback'
             ? { ...lease, ...settle }
             : name === 'model.call'
-              ? { ...lease, ...CALL }
+              ? { ...lease, ...callOn(randomUUID()) }
               : lease;
         return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
       }
@@ -283,7 +283,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           name === 'task.handback'
             ? { ...lease, ...settle }
             : name === 'model.call'
-              ? { ...lease, ...CALL }
+              ? { ...lease, ...callOn(p.taskId) }
               : lease;
         return agentCell(agent, name, body, p.credential, 'LEASE_NOT_OWNED');
       }
@@ -386,7 +386,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           : {
               ...lease,
               ...(name === 'task.handback' && { outcome: 'completed', report: {} }),
-              ...(name === 'model.call' && CALL),
+              ...(name === 'model.call' && callOn(randomUUID())),
             };
       /* eslint-disable no-await-in-loop -- a first call learns the code, a distinct second is checked */
       const seen = await w.person(w.h.world.ada, name, pick);

@@ -670,6 +670,14 @@ const ROWS = [
     meaning: "Model use is off for the task's client, so no route is chosen",
     source: 'C60, LF-5, owner line 72',
   },
+  // S3: a bound field's row is another business's, made up, trashed, or holds
+  // no text at the key. The same words whoever's row it was.
+  {
+    code: 'SOURCE_UNREADABLE',
+    status: 422,
+    meaning: "A bound field's row could not be read, so the call is not made",
+    source: 'AW-01 S3, owner line 72',
+  },
   {
     code: 'SUBSCRIPTION_UNATTENDED',
     status: 403,

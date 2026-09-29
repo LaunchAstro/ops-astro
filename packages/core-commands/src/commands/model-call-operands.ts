@@ -5,10 +5,11 @@
 // skipped: a caller that got a default back would believe the broker had read
 // what it sent.
 //
-// A field's `source` is the caller's statement of where it read the value.
-// The broker trusts it only to narrow: `business_internal` counts for a cloud
-// route only where the operation also declares the field business-internal
-// (`effectiveClass`), and every other source keeps the field local.
+// A field is either supplied, `{ name, source, value }`, where `source` is
+// the caller's statement of where it read the value and only narrows (a
+// claimed `business_internal` counts as `outside`, S3), or bound to its row,
+// `{ name, from: { recordId, key } }`, where the broker reads the value and
+// finds the source itself. Only a bound field can reach a cloud route.
 
 import type { FieldSource } from '../../../core-connectors/src/index.ts';
 import type { ModelCallRequest } from '../../../core-custody/src/index.ts';
@@ -29,7 +30,7 @@ const SOURCES: ReadonlySet<string> = new Set<FieldSource>([
 
 const FIXES: readonly string[] = [
   'Send leaseId and operation as strings, fence as the integer your pickup gave.',
-  'Send fields as a list of { name, source, value }, each a string, source one of business_internal, client_row, client_person, guest or outside.',
+  'Send fields as a list of { name, source, value }, each a string, source one of business_internal, client_row, client_person, guest or outside, or of { name, from: { recordId, key } } to bind a field to its row.',
 ];
 
 // Named, never echoed: a field's value is prompt content, and a refusal's
@@ -37,9 +38,24 @@ const FIXES: readonly string[] = [
 const invalid = (name: string): Refused =>
   refused(refuseCommand('FIELD_VALUE_INVALID', [name], FIXES));
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** `{ name, from: { recordId, key } }`, each a string and nothing else. */
+function boundOf(entry: Record<string, unknown>): ModelCallRequest['fields'][number] | undefined {
+  const { name, from, ...rest } = entry;
+  if (Object.keys(rest).length > 0 || typeof name !== 'string' || !isObject(from)) return undefined;
+  const { recordId, key, ...extra } = from;
+  if (Object.keys(extra).length > 0 || typeof recordId !== 'string' || typeof key !== 'string') {
+    return undefined;
+  }
+  return { name, from: { recordId, key } };
+}
+
 function fieldOf(entry: unknown): ModelCallRequest['fields'][number] | undefined {
-  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
-  const { name, source, value, ...rest } = entry as Record<string, unknown>;
+  if (!isObject(entry)) return undefined;
+  if (Object.hasOwn(entry, 'from')) return boundOf(entry);
+  const { name, source, value, ...rest } = entry;
   if (Object.keys(rest).length > 0) return undefined;
   if (typeof name !== 'string' || typeof value !== 'string' || typeof source !== 'string') {
     return undefined;

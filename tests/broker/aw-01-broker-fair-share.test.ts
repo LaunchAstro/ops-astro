@@ -14,10 +14,12 @@ import {
   type Broker,
   type BrokerRoute,
   type ModelCaller,
+  type ModelCallField,
   type Reservation,
 } from '../../packages/core-custody/src/index.ts';
 import type { Database, TenantQuery } from '../../packages/core-records/src/index.ts';
 import {
+  createTask,
   liveWork,
   racer,
   seedSchedules,
@@ -62,6 +64,18 @@ const callerOf = (owner: Schedules, work: Work): ModelCaller => ({
   attendedByPersonId: null,
 });
 
+/** Each business's own bound field: a task its person entered (S3). */
+const internal = new Map<string, readonly ModelCallField[]>();
+async function internalOf(owner: Schedules): Promise<readonly ModelCallField[]> {
+  const known = internal.get(owner.business);
+  if (known !== undefined) return known;
+  const fields = [
+    { name: 'tone', from: { recordId: await createTask(owner, 'plain'), key: 'title' } },
+  ];
+  internal.set(owner.business, fields);
+  return fields;
+}
+
 async function hold(
   owner: Schedules,
   work: Work,
@@ -70,13 +84,14 @@ async function hold(
   database: Database = owner.db.app,
 ): Promise<Reservation> {
   await stepOf(work);
+  const fields = await internalOf(owner);
   return await database.withBusiness(
     owner.business,
     async (tx) =>
       await reserveModelCall(
         tx,
         callerOf(owner, work),
-        requestFor(work, operation === undefined ? {} : { operation }),
+        requestFor(work, operation === undefined ? { fields } : { operation, fields }),
         with_,
       ),
   );

@@ -12,16 +12,19 @@
 //    fence, the approved version the reservation holds for, the catalogued
 //    operation, and the grant (the run's live delegation). None comes from
 //    the caller, and the caller never names a destination. A task a client
-//    is on is refused here, before any route (C60). Then the data
+//    is on is refused here, before any route (C60). Each field's source is
+//    found from its bound row, held with the task, never taken from the
+//    caller (S3, `broker-sources.ts`). Then the data
 //    classes choose the eligible routes before any route is chosen, the
 //    credential rule checks the route's kind, and the operation's priced
 //    maximum is held out of the reservation's room: a row in `model_calls`,
 //    state `reserved`, with the outbound prompt's copy registered beside it.
 //    A refusal after the facts hold is recorded as a step (state `refused`);
 //    a refusal of the facts themselves writes nothing.
-// 2. Start. The six facts and the client link are read again under their
-//    locks, and a call whose authority went, or whose task gained a client,
-//    since the hold is released unsent. The call is marked
+// 2. Start. The six facts, the client link and the bound rows are read again
+//    under their locks, and a call whose authority went, whose task gained a
+//    client, or whose route a bound row no longer allows, since the hold is
+//    released unsent. The values sent are the ones read here. The call is marked
 //    `dispatched` with its route and credential kind before custody is
 //    asked, so a crash after this point leaves a call the sweep holds as
 //    unknown liability and never releases.
@@ -38,7 +41,9 @@
 // broker-settle.ts; the shapes are broker-types.ts.
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
+import { eligibleRoutes } from '../../core-connectors/src/index.ts';
 import { lockFacts, type Checked } from './broker-facts.ts';
+import { resolveFields } from './broker-sources.ts';
 import { promptCopyRegistered, reserveModelCall, type ReservedCall } from './broker-reserve.ts';
 import { settle, settlementOf } from './broker-settle.ts';
 import type {
@@ -47,18 +52,22 @@ import type {
   ModelCaller,
   ModelCallRequest,
   ModelCallResult,
+  ResolvedField,
 } from './broker-types.ts';
 
 export type {
   AuditNote,
   Broker,
   BrokerRefusal,
+  BoundField,
   BrokerRoute,
+  ClaimedField,
   ModelCaller,
   ModelCallField,
   ModelCallRequest,
   ModelCallResult,
   ProviderAdapter,
+  ResolvedField,
 } from './broker-types.ts';
 export {
   promptCopyRegistered,
@@ -83,14 +92,10 @@ async function markStarted(
   request: ModelCallRequest,
   reserved: ReservedCall,
   broker: Broker,
-): Promise<'started' | BrokerRefusal> {
+): Promise<{ readonly fields: readonly ResolvedField[] } | BrokerRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
     const route = [reserved.route.key, reserved.route.reach, reserved.route.credentialKind];
-    const facts = await lockFacts(tx, caller, request);
-    const checked: Checked =
-      facts.ok && facts.facts.clientId !== null
-        ? { ok: false, code: 'CLIENT_MODEL_USE_OFF' }
-        : facts;
+    const checked = startable(await lockFacts(tx, caller, request), request, reserved);
     if (!checked.ok) {
       await tx.query(
         `update public.model_calls
@@ -115,8 +120,30 @@ async function markStarted(
         where business_id = $1 and id = $2 and state = 'reserved'`,
       [tx.businessId, reserved.callId, ...route],
     );
-    return 'started';
+    return { fields: checked.fields };
   });
+}
+
+/**
+ * The start's own decision, on the facts read again under their locks: a task
+ * that gained a client, or a bound row that became unreadable or stopped
+ * being a business-internal source, releases the call unsent (C60, S3). The
+ * values sent are the ones read here, under the share locks.
+ */
+function startable(
+  facts: Checked,
+  request: ModelCallRequest,
+  reserved: ReservedCall,
+):
+  | { readonly ok: true; readonly fields: readonly ResolvedField[] }
+  | { readonly ok: false; readonly code: BrokerRefusal } {
+  if (!facts.ok) return facts;
+  if (facts.facts.clientId !== null) return { ok: false, code: 'CLIENT_MODEL_USE_OFF' };
+  const resolved = resolveFields(request.fields, facts.facts.sources);
+  if (!resolved.ok) return resolved;
+  const still = eligibleRoutes(reserved.operation.fields, resolved.fields, [reserved.route]);
+  if (!still.ok || still.routes.length === 0) return { ok: false, code: 'LOCAL_MODEL_REQUIRED' };
+  return { ok: true, fields: resolved.fields };
 }
 
 /** One priced model call, through the broker only. */
@@ -149,10 +176,10 @@ export async function sendReservedCall(
   broker: Broker,
 ): Promise<ModelCallResult> {
   const started = await markStarted(database, businessId, caller, request, reserved, broker);
-  if (started !== 'started') return { ok: false, code: started, callId: reserved.callId };
+  if (typeof started === 'string') return { ok: false, code: started, callId: reserved.callId };
   const adapter = broker.providers.get(reserved.operation.provider);
   if (adapter === undefined) throw new Error(`no adapter for ${reserved.operation.provider}`);
-  const values = Object.fromEntries(request.fields.map((field) => [field.name, field.value]));
+  const values = Object.fromEntries(started.fields.map((field) => [field.name, field.value]));
   const built = adapter.build(values);
   const outcome = await broker.custody.dispatch(reserved.route.credentialRef, {
     destination: reserved.operation.destination,
