@@ -186,6 +186,8 @@ describe.skipIf(serverUrl === undefined)('T2c2 the effect, its observation and r
         commentId: effect['commentId'],
         audience: 'internal',
       },
+      // Observed with no usage reported: unpriced, never zero (T2d).
+      settlement: { state: 'unpriced', heldMinor: 2_000 },
     });
     // No undo control: nothing on the receipt names an operation to reverse it.
     expect(JSON.stringify(receipt)).not.toMatch(/undo|revert|reverse|command/iu);
