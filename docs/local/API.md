@@ -1248,10 +1248,14 @@ returning either the contract's `{ ok: true, ... }` shape or a command refusal.
 `executeRead` is a required option of `createApi`, so every declared read has
 an executor.
 
-`inbox.read` answers the caller's own items as `{ ok: true, inbox }` and
-`inbox.count` answers `{ ok: true, owed }`, the counted entries of the same
-list (`reads/inbox.ts`). An item about a task the caller cannot read is not
-listed. A readable entry carries its pointers, its task's `key` and `title`,
+`inbox.read` answers the caller's own items as `{ ok: true, inbox }`: every
+open item, and the newest 50 closed ones (`INBOX_HISTORY_PAGE`) about a task
+the caller reads now, oldest raised first. `inbox.count` answers
+`{ ok: true, owed }`, the list's counted entries, counted in one query under
+the same rule (`reads/inbox.ts`). Access is derived for every item inside the
+read's own query, so neither read grows with a person's closed history. An
+item about a task the caller cannot read is not listed, and a closed one takes
+no place in the page. A readable entry carries its pointers, its task's `key` and `title`,
 and `closedBy`, the decider's `personId` and `name` once it is cleared, all
 read in the same transaction, so the item stores none of them. A gone entry
 carries its own identity and axes and nothing of the task. The board screen

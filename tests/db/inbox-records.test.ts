@@ -302,10 +302,12 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
         [tx.businessId, hiddenItem, bea],
       );
     });
+    // Closed and about a task Ada cannot read: not returned at all, so neither
+    // the item nor the decider it names reaches her.
     const read = await inAlpha(async (tx) => await readInboxItems(tx, ada));
-    const withheld = read.find((item) => item.id === hiddenItem);
-    expect(withheld?.access).toBe('withheld');
-    expect(withheld).not.toHaveProperty('closedByPersonId');
+    expect(read.find((item) => item.id === hiddenItem)).toBeUndefined();
+    expect(JSON.stringify(read)).not.toContain(bea);
+    expect(JSON.stringify(read)).not.toContain(taskB);
   });
 
   it('delivery observations read in causal order', async () => {
@@ -365,18 +367,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
       );
     const onShared = await raise(taskA);
     const onOther = await raise(taskB);
-    // A staff reviewer on the other task clears it, so the item holds their identity.
-    await inAlpha(async (tx) => {
-      await tx.query(
-        `update public.inbox_items
-            set work_state = 'cleared', closed_at = now(), closed_by_person_id = $3
-          where business_id = $1 and id = $2`,
-        [tx.businessId, onOther, bea],
-      );
-    });
-    const read = await inAlpha(async (tx) => await readInboxItems(tx, cleo));
-    expect(read.find((item) => item.id === onShared)?.access).toBe('readable');
-    const withheld = read.find((item) => item.id === onOther);
+    const open = await inAlpha(async (tx) => await readInboxItems(tx, cleo));
+    expect(open.find((item) => item.id === onShared)?.access).toBe('readable');
+    const withheld = open.find((item) => item.id === onOther);
     expect(withheld?.access).toBe('withheld');
     // Every field a withheld item carries, named: a new identity or pointer
     // field goes red here until it is placed on the readable side.
@@ -393,7 +386,22 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
       'seenAt',
       'workState',
     ]);
-    // The canaries: the other task's id and its reviewer's id appear nowhere in the read.
+    expect(JSON.stringify(open)).not.toContain(taskB);
+    // A staff reviewer on the other task clears it, so the item holds their identity.
+    await inAlpha(async (tx) => {
+      await tx.query(
+        `update public.inbox_items
+            set work_state = 'cleared', closed_at = now(), closed_by_person_id = $3
+          where business_id = $1 and id = $2`,
+        [tx.businessId, onOther, bea],
+      );
+    });
+    // Closed and withheld, it is not returned at all: the history page is
+    // taken over what Cleo reads. The canaries, the other task's id and its
+    // reviewer's id, appear nowhere in the read.
+    const read = await inAlpha(async (tx) => await readInboxItems(tx, cleo));
+    expect(read.find((item) => item.id === onOther)).toBeUndefined();
+    expect(read.find((item) => item.id === onShared)?.access).toBe('readable');
     expect(JSON.stringify(read)).not.toContain(taskB);
     expect(JSON.stringify(read)).not.toContain(bea);
   });

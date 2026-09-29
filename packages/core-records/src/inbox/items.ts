@@ -10,7 +10,7 @@
 // on this read from the recipient's live grants. Read is not done, delivered is
 // not seen, and withheld is not gone.
 
-import { accessOf, recipientSubjects, taskAccess } from './access.ts';
+import { readScopes, taskAccess, type InboxAccess } from './access.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /** Why the item is owed to the recipient: CS-16.8's reasons, one each. */
@@ -162,44 +162,69 @@ export async function stampSeen(
   return true;
 }
 
-/** A row as read: the axes, the pointers, and the two facts access is derived from. */
+/** The newest closed items the list carries, after every open one. */
+export const INBOX_HISTORY_PAGE = 50;
+
+/** A row as read: the axes, the pointers, and the facts access is derived from. */
 type ItemRow = InboxItemAxes &
   Disclosed & {
     readonly trashed: boolean;
-    readonly clientId: string | null;
+    readonly held: boolean;
   };
 
 /**
- * Every item of one recipient, each axis read separately, access derived now.
- * The recipient is the only person whose items come back: the query names them,
- * and the attention row it joins is theirs by its foreign key.
+ * Where the recipient reads tasks now, as the three parameters a query filters
+ * on itself: the same grants `accessOf` asks, listed once for every row.
+ */
+const HELD = `($3::boolean or i.subject_record_id = any($4::uuid[]) or r.uuid_7 = any($5::uuid[]))`;
+
+async function reach(tx: TenantQuery, personId: string): Promise<readonly unknown[]> {
+  const scopes = await readScopes(tx, personId);
+  return [tx.businessId, personId, scopes.business, scopes.records, scopes.parties];
+}
+
+/**
+ * What one recipient can be shown, each axis read separately and access derived
+ * in the same query: every open item, and the newest `INBOX_HISTORY_PAGE`
+ * closed ones about a task they read now. A closed item about a task they
+ * cannot read is not returned at all, and takes no place in the page, so the
+ * history leaves no gap that would count it. The recipient is the only person
+ * whose items come back: the query names them, and the attention row it joins
+ * is theirs by its foreign key. Oldest raised first.
  */
 export async function readInboxItems(
   tx: TenantQuery,
   recipientPersonId: string,
 ): Promise<readonly InboxItem[]> {
   const rows = await tx.query<ItemRow>(
-    `select i.id, i.recipient_person_id as "recipientPersonId",
-            i.subject_record_id as "subjectRecordId", i.reason, i.fact_kind as "factKind",
-            i.fact_id as "factId", i.owed, i.work_state as "workState", i.raised_at as "raisedAt",
-            i.closed_at as "closedAt", i.closed_by_person_id as "closedByPersonId",
+    `with mine as (
+       select i.*, r.deleted_at is not null as trashed, ${HELD} as held
+         from public.inbox_items i
+         join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
+        where i.business_id = $1 and i.recipient_person_id = $2
+     ), shown as (
+       select * from mine where work_state = 'open'
+       union all
+       (select * from mine where work_state <> 'open' and held
+         order by closed_at desc, id desc limit $6)
+     )
+     select s.id, s.recipient_person_id as "recipientPersonId",
+            s.subject_record_id as "subjectRecordId", s.reason, s.fact_kind as "factKind",
+            s.fact_id as "factId", s.owed, s.work_state as "workState", s.raised_at as "raisedAt",
+            s.closed_at as "closedAt", s.closed_by_person_id as "closedByPersonId",
             a.seen_at as "seenAt",
             (select d.state from public.inbox_delivery_attempts d
-              where d.business_id = i.business_id and d.item_id = i.id
+              where d.business_id = s.business_id and d.item_id = s.id
               order by d.observed_seq desc limit 1) as "lastDelivery",
-            r.deleted_at is not null as trashed, r.uuid_7 as "clientId"
-       from public.inbox_items i
-       join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
-       left join public.inbox_attention a on a.business_id = i.business_id and a.item_id = i.id
-      where i.business_id = $1 and i.recipient_person_id = $2
-      order by i.raised_at, i.id`,
-    [tx.businessId, recipientPersonId],
+            s.trashed, s.held
+       from shown s
+       left join public.inbox_attention a on a.business_id = s.business_id and a.item_id = s.id
+      order by s.raised_at, s.id`,
+    [...(await reach(tx, recipientPersonId)), INBOX_HISTORY_PAGE],
   );
-  const subjects = await recipientSubjects(tx, recipientPersonId);
   const items: InboxItem[] = [];
-  for (const { trashed, clientId, subjectRecordId, factId, closedByPersonId, ...axes } of rows) {
-    // oxlint-disable-next-line no-await-in-loop
-    const access = await accessOf(tx, subjects, subjectRecordId, trashed, clientId);
+  for (const { trashed, held, subjectRecordId, factId, closedByPersonId, ...axes } of rows) {
+    const access: InboxAccess = held ? (trashed ? 'gone' : 'readable') : 'withheld';
     items.push(
       access === 'readable'
         ? { ...axes, access, subjectRecordId, factId, closedByPersonId }
@@ -207,4 +232,21 @@ export async function readInboxItems(
     );
   }
   return items;
+}
+
+/**
+ * The owed count, in one query under the list's own rule: open, owed, and about
+ * a task the recipient reads now that is not trashed. Every open item is on the
+ * list, so this equals the list's counted entries.
+ */
+export async function countOwedItems(tx: TenantQuery, recipientPersonId: string): Promise<number> {
+  const rows = await tx.query<{ readonly owed: number }>(
+    `select count(*)::int as owed
+       from public.inbox_items i
+       join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
+      where i.business_id = $1 and i.recipient_person_id = $2
+        and i.work_state = 'open' and i.owed and r.deleted_at is null and ${HELD}`,
+    await reach(tx, recipientPersonId),
+  );
+  return rows[0]?.owed ?? 0;
 }

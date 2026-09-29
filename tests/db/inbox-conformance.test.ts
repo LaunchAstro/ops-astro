@@ -53,9 +53,9 @@ const FAULTS = {
     to: 'true',
   },
   count: {
-    file: READS,
-    from: '.filter((entry) => entry.counted).length',
-    to: ".filter((entry) => entry.workState === 'open').length",
+    file: 'packages/core-records/src/inbox/items.ts',
+    from: "and i.work_state = 'open' and i.owed and r.deleted_at is null",
+    to: "and i.work_state = 'open' and r.deleted_at is null",
   },
   clearing: {
     file: 'packages/core-records/src/inbox/clear.ts',

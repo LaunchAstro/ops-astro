@@ -503,13 +503,13 @@ export interface InboxEntry {
   readonly closedBy?: PersonView | null;
 }
 
-/** `inbox.read`'s answer: the caller's own items, oldest raised first. */
+/** `inbox.read`'s answer: the caller's open items and newest page of closed ones, oldest raised first. */
 export interface InboxReadResult {
   readonly ok: true;
   readonly inbox: readonly InboxEntry[];
 }
 
-/** `inbox.count`'s answer: the counted entries of the same read. */
+/** `inbox.count`'s answer: the list's counted entries, under the same rule. */
 export interface InboxCountResult {
   readonly ok: true;
   readonly owed: number;

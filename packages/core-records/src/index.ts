@@ -63,6 +63,8 @@ export {
   owes,
   raiseInboxItem,
   readInboxItems,
+  countOwedItems,
+  INBOX_HISTORY_PAGE,
   stampSeen,
   recordDeliveryAttempt,
   type DeliveryChannel,

@@ -2,8 +2,10 @@
 //
 // The inbox read and the owed count (INB-1d). One permission-checked read: the
 // caller's own items, each with its access derived now from their live grants
-// (`readInboxItems`), and the count is that same read's counted entries, so the
-// two cannot disagree and neither waits on the worker.
+// in the read's own query (`readInboxItems`): every open item, and the newest
+// page of closed ones about a task they read. The count is one query under the
+// same rule (`countOwedItems`); every open item is on the list, so the two
+// cannot disagree, and neither waits on the worker nor grows with history.
 //
 // Counted means open, owed and readable. Read is not done (reading changes
 // nothing), delivered is not seen (the last attempt and the attention row are
@@ -15,6 +17,7 @@
 // or the fact it points at.
 
 import {
+  countOwedItems,
   readInboxItems,
   readUnattended,
   type InboxItem,
@@ -52,7 +55,7 @@ function entryOf(item: InboxItem & { readonly access: InboxEntry['access'] }): I
 const isListed = (item: InboxItem): item is InboxItem & { readonly access: InboxEntry['access'] } =>
   item.access !== 'withheld';
 
-/** The caller's own entries, before anything is named. The count reads these. */
+/** The caller's own entries, before anything is named. */
 async function listed(tx: TenantQuery, personId: string): Promise<readonly InboxEntry[]> {
   return (await readInboxItems(tx, personId))
     .filter((item) => isListed(item))
@@ -68,9 +71,9 @@ export async function readInbox(tx: TenantQuery, personId: string): Promise<read
   return await named(tx, await listed(tx, personId));
 }
 
-/** The owed count: the counted entries of the same read, never a second query. */
+/** The owed count: the list's counted entries, counted in one query under the same rule. */
 export async function countOwed(tx: TenantQuery, personId: string): Promise<number> {
-  return (await listed(tx, personId)).filter((entry) => entry.counted).length;
+  return await countOwedItems(tx, personId);
 }
 
 async function named(
