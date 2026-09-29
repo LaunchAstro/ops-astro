@@ -162,7 +162,7 @@ describe('S0-6 content policy', () => {
     expect(scriptsOf(planted).inline).not.toEqual([]);
   });
 
-  it('Sol proof, criterion 6: an apostrophe in an unquoted value cannot hide an inline script', () => {
+  it('an apostrophe in an unquoted value cannot hide an inline script', () => {
     const planted = `<script data-x=a'src="/a.js">window.planted = 1;//'></script>`;
     expect(scriptsOf(planted).inline).not.toEqual([]);
   });
