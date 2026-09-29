@@ -17,14 +17,23 @@
 
 import type { ReactElement } from 'react';
 import type { GalleryEntry } from './gallery-entry.ts';
-import { BLOCKS } from './gallery-blocks-and-composites.tsx';
+import { BLOCKS } from './gallery-layout.tsx';
+import { FEEDBACK } from './gallery-feedback.tsx';
+import { MARKS } from './gallery-marks.tsx';
 import { CHARTS } from './gallery-charts.tsx';
 import { CONTROLS } from './gallery-controls.tsx';
 import { TREATMENTS } from './gallery-treatments.tsx';
 
 export type { GalleryEntry, GalleryState } from './gallery-entry.ts';
 
-export const GALLERY: readonly GalleryEntry[] = [...CONTROLS, ...BLOCKS, ...CHARTS, ...TREATMENTS];
+export const GALLERY: readonly GalleryEntry[] = [
+  ...CONTROLS,
+  ...MARKS,
+  ...BLOCKS,
+  ...FEEDBACK,
+  ...CHARTS,
+  ...TREATMENTS,
+];
 
 /** The gallery page. */
 export function Gallery(): ReactElement {
