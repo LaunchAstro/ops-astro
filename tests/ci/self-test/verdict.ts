@@ -115,7 +115,7 @@ export function everyInvariantBites(
   if (short.length > 0) said.push(`not proven: ${short.join('; ')}`);
   const detail =
     status === 'pass'
-      ? `${String(lines.length)} checks, each green unmutated and red under its own mutation`
+      ? `${String(lines.length)} checks: each control green, each mutation red under its own check, each T4 part's planted mutation caught`
       : said.join('; ');
   return { case: 'every_invariant_bites', status, detail };
 }
