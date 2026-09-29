@@ -32,6 +32,7 @@ import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
+import { deleteTaskComment, editTaskComment, type CommentChange } from './tasks-comment-edit.ts';
 import { setScores } from './tasks-scores.ts';
 import { setAdHoc } from './tasks-adhoc.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
@@ -363,8 +364,45 @@ async function serveComment(
     request['body'],
     request['audience'],
     request['commentType'],
+    request['parentId'],
   );
 }
+
+/**
+ * An agent's edit or delete of its own comment on its own task (MP-4-5,
+ * CS-4.34). The task is locked as `serveComment` locks it; the comment is
+ * read through it and must be the agent's own actor's (`tasks-comment-edit.ts`).
+ */
+const serveCommentChange =
+  (
+    change: (
+      tx: TenantQuery,
+      on: CommentChange,
+      request: AgentCall['request'],
+    ) => ReturnType<typeof editTaskComment>,
+  ): ((
+    tx: TenantQuery,
+    call: AgentCall,
+    operands: NoOperands,
+    delegation: Delegation,
+    taskId: string | undefined,
+  ) => ReturnType<typeof editTaskComment>) =>
+  async (tx, { session, request, declaration }, _operands, _delegation, taskId) => {
+    if (taskId === undefined) return NOT_FOUND();
+    const spine = await readTaskSpine(tx);
+    const task = await lockTask(tx, spine.taskTypeId, taskId);
+    if (task === undefined) return NOT_FOUND();
+    return await change(
+      tx,
+      {
+        commentTypeId: spine.taskCommentTypeId,
+        declaration,
+        target: task,
+        actorId: session.actorId,
+      },
+      request,
+    );
+  };
 
 /**
  * An owned-field write an agent makes on its own task: the three marks
@@ -553,6 +591,31 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       // record (`prepare.ts`, `lockTask`), so this one does too.
       operands: recordIdOperand(() => refuseNotFound()),
       serve: serveComment,
+    }),
+  ],
+  [
+    'task.edit_comment',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveCommentChange(
+        async (tx, on, request) =>
+          await editTaskComment(tx, on, request['commentId'], request['body']),
+      ),
+    }),
+  ],
+  [
+    'task.delete_comment',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveCommentChange(
+        async (tx, on, request) => await deleteTaskComment(tx, on, request['commentId']),
+      ),
     }),
   ],
   [

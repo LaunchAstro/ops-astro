@@ -90,7 +90,15 @@ export {
   writeComment,
   type CommentAudience,
   type CommentType,
+  type StoredComment,
 } from './tasks/comments.ts';
+export {
+  commentSignals,
+  lockComment,
+  removeComment,
+  rewriteComment,
+  type CommentSignal,
+} from './tasks/comment-thread.ts';
 export {
   DERIVED_ON_CREATE,
   deriveSource,

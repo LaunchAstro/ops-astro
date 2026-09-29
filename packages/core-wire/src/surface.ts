@@ -56,6 +56,8 @@ export type CommandName =
   | 'task.set_adhoc'
   | 'task.share_with_client'
   | 'task.revoke_client_share'
+  | 'task.edit_comment'
+  | 'task.delete_comment'
   // The mechanics specification 14.2 and 14.3 name.
   | 'task.rank'
   | 'task.trash'
@@ -307,7 +309,15 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.complete': TARGET,
   'task.reopen': { ...TARGET, reason: 'any' },
   'task.start': TARGET,
-  'task.comment': { ...TARGET, body: 'any', audience: 'any', commentType: 'any' },
+  'task.comment': {
+    ...TARGET,
+    body: 'any',
+    audience: 'any',
+    commentType: 'any',
+    parentId: 'any',
+  },
+  'task.edit_comment': { ...TARGET, commentId: 'any', body: 'any' },
+  'task.delete_comment': { ...TARGET, commentId: 'any' },
   'task.propose': {
     ...TARGET,
     purpose: 'any',
@@ -412,6 +422,11 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // two at once on one task leave one share per person.
   declare('task.share_with_client', 'share', { collection: ACCESS_COLLECTION }),
   declare('task.revoke_client_share', 'share', { collection: ACCESS_COLLECTION }),
+  // An author's own message or reply, rewritten or deleted (MP-4-5,
+  // CS-4.34): `task:comment` on the task, as the comment itself, and an
+  // agent inside its delegation on its own words only (the handler's check).
+  declare('task.edit_comment', 'comment', { agent: 'delegated' }),
+  declare('task.delete_comment', 'comment', { agent: 'delegated' }),
 
   declare('task.rank', 'write'),
   declare('task.trash', 'write'),

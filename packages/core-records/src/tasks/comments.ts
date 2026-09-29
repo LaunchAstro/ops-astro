@@ -107,7 +107,9 @@ export const COMMENT_SPINE: readonly SpineField[] = [
     valueType: 'text',
     slot: 'txt_3',
     writeMode: 'operation',
-    owningOperations: ['task.comment'],
+    // Its author rewrites it (CS-4.34); nobody else does, which is the
+    // handler's check, not the field's.
+    owningOperations: ['task.comment', 'task.edit_comment'],
     escalatingOperation: null,
     visibilityClass: 'shared',
   },
@@ -129,6 +131,20 @@ export const COMMENT_SPINE: readonly SpineField[] = [
     writeMode: 'system',
     owningOperations: [],
     escalatingOperation: null,
+  },
+  {
+    key: 'parent',
+    label: 'Reply to',
+    valueType: 'uuid',
+    slot: 'uuid_3',
+    // The top-level message a reply sits under, one level deep (R42), set
+    // when the reply is written and never edited. Shared: a reply goes to
+    // its message's audience, so a client is only ever shown the id of a
+    // client message.
+    writeMode: 'operation',
+    owningOperations: ['task.comment'],
+    escalatingOperation: null,
+    visibilityClass: 'shared',
   },
   {
     key: 'source',
@@ -153,6 +169,14 @@ export interface StoredComment {
   readonly postedAt: Date;
   readonly editedAt: Date | null;
   readonly source: string;
+  /** The top-level message this replies to, or null for a message. */
+  readonly parentId: string | null;
+  /**
+   * Written by a person outside the business (no active membership): one of
+   * the client's people. Read from the author's actor at read time, never
+   * stored, so the signals below follow the membership as it stands.
+   */
+  readonly fromOutside: boolean;
 }
 
 export interface NewComment {
@@ -162,14 +186,31 @@ export interface NewComment {
   readonly audience: CommentAudience;
   readonly body: string;
   readonly source: string;
+  /** The top-level message a reply sits under; absent or null for a message. */
+  readonly parentId?: string | null;
 }
 
-interface CommentRow {
+/** A comment row as the reads below select it (`COMMENT_COLUMNS`). */
+export interface CommentRow {
   readonly id: string;
   readonly data: Readonly<Record<string, string | null>>;
+  readonly from_outside: boolean;
 }
 
-function storedFrom(row: CommentRow): StoredComment {
+/**
+ * The comment columns every read selects: the row, and whether its author is
+ * a person with no active membership in this business. An agent's actor has
+ * no person and is the team's.
+ */
+export const COMMENT_COLUMNS: string = `r.id, r.data, exists (
+    select 1 from public.actors a
+     where a.business_id = r.business_id and a.id::text = r.data ->> 'author'
+       and a.person_id is not null
+       and not exists (select 1 from public.memberships m
+                        where m.business_id = a.business_id and m.person_id = a.person_id
+                          and m.active)) as from_outside`;
+
+export function storedFrom(row: CommentRow): StoredComment {
   const data = row.data;
   return {
     id: row.id,
@@ -184,8 +225,13 @@ function storedFrom(row: CommentRow): StoredComment {
         ? null
         : new Date(data['edited_at']),
     source: data['source'] ?? '',
+    parentId: data['parent'] ?? null,
+    fromOutside: row.from_outside,
   };
 }
+
+/** The server's now, as the ISO text a comment's times are stored in. */
+export const NOW_TEXT: string = `to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
 
 /**
  * Write one comment, inside the caller's transaction.
@@ -206,7 +252,9 @@ export async function writeComment(
      values ($1, $2, $3, jsonb_build_object(
        'task', $4::text, 'author', $5::text, 'comment_type', $6::text,
        'audience', $7::text, 'body', $8::text, 'source', $9::text,
-       'posted_at', to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')))`,
+       'posted_at', ${NOW_TEXT})
+       || case when $10::text is null then '{}'::jsonb
+               else jsonb_build_object('parent', $10::text) end)`,
     [
       tx.businessId,
       id,
@@ -217,6 +265,7 @@ export async function writeComment(
       comment.audience,
       comment.body,
       comment.source,
+      comment.parentId ?? null,
     ],
   );
   return id;
@@ -229,10 +278,10 @@ export async function readTaskComments(
   taskId: string,
 ): Promise<readonly StoredComment[]> {
   const rows = await tx.query<CommentRow>(
-    `select id, data from records
-      where business_id = $1 and record_type_id = $2 and deleted_at is null
-        and data ->> 'task' = $3
-      order by data ->> 'posted_at', id`,
+    `select ${COMMENT_COLUMNS} from public.records r
+      where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
+        and r.data ->> 'task' = $3
+      order by r.data ->> 'posted_at', r.id`,
     [tx.businessId, commentTypeId, taskId],
   );
   return rows.map(storedFrom);
@@ -248,6 +297,7 @@ const VALUE_OF: Readonly<Record<string, (comment: StoredComment) => unknown>> = 
   posted_at: (comment) => comment.postedAt,
   edited_at: (comment) => comment.editedAt,
   source: (comment) => comment.source,
+  parent: (comment) => comment.parentId,
 };
 
 /**

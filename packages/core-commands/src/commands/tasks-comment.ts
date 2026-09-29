@@ -27,8 +27,16 @@
 // The author is the acting actor and the posting time is the server's. Neither
 // is a payload field: a comment whose author or time a caller can choose is
 // not evidence of anything, which is why both are `system` on the spine.
+//
+// **A reply (R42).** `parentId` names a top-level message on the same task,
+// read under its lock through the task: a reply to a reply, a message on
+// another task or in another business, or one already deleted is refused
+// naming `parentId`. A reply goes to its message's audience, so a client is
+// only ever shown the id of a client message. A reply to a client message
+// from the other side answers it (`comment answered`): the signal is derived
+// at read (`commentSignals`), and the reply's audit event is the record of it.
 
-import { writeComment } from '../../../core-records/src/index.ts';
+import { lockComment, writeComment } from '../../../core-records/src/index.ts';
 import type {
   TenantQuery,
   CommentAudience,
@@ -59,7 +67,16 @@ const TYPE_FIXES: readonly string[] = [
 
 const BODY_FIXES: readonly string[] = ['Send a body with something in it.'];
 
-const NO_COMMENT_TYPE_FIXES: readonly string[] = [
+const PARENT_FIXES: readonly string[] = [
+  'Send parentId as the id of a message on this task, or leave it out for a new message.',
+  'Replies are one level deep: reply to the message, not to a reply.',
+];
+
+const REPLY_AUDIENCE_FIXES: readonly string[] = [
+  'A reply goes to the audience of the message it answers.',
+];
+
+export const NO_COMMENT_TYPE_FIXES: readonly string[] = [
   'This business has no comment record type installed, so it cannot hold a comment.',
   'It is not a permission problem and retrying will not change it.',
 ];
@@ -70,6 +87,7 @@ export async function commentOnTask(
   body: unknown,
   audience: unknown,
   commentType: unknown,
+  parentId: unknown,
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) {
@@ -88,7 +106,33 @@ export async function commentOnTask(
     body,
     audience,
     commentType,
+    parentId,
   );
+}
+
+/**
+ * The message a reply sits under, locked through its task: its id, null for a
+ * new message, or the refusal. One level deep, and in the message's audience.
+ */
+async function replyParent(
+  tx: TenantQuery,
+  commentTypeId: string,
+  taskId: string,
+  parentId: unknown,
+  audience: string,
+): Promise<string | null | HandlerOutcome> {
+  if (parentId === undefined || parentId === null) return null;
+  const message =
+    typeof parentId === 'string'
+      ? await lockComment(tx, commentTypeId, taskId, parentId)
+      : undefined;
+  if (message === undefined || message.parentId !== null) {
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['parentId'], PARENT_FIXES));
+  }
+  if (message.audience !== audience) {
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['audience'], REPLY_AUDIENCE_FIXES));
+  }
+  return message.id;
 }
 
 /** What a comment is written against, from whichever envelope reached it. */
@@ -126,6 +170,7 @@ export async function writeTaskComment(
   body: unknown,
   audience: unknown,
   commentType: unknown,
+  parentId: unknown = undefined,
 ): Promise<HandlerOutcome> {
   if (on.target.deleted_at !== null) return refused(refuseNotFound());
   const commentTypeId = on.commentTypeId;
@@ -162,6 +207,9 @@ export async function writeTaskComment(
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['comment_type'], TYPE_FIXES));
   }
 
+  const parent = await replyParent(tx, commentTypeId, on.target.id, parentId, audience);
+  if (typeof parent === 'object' && parent !== null) return parent;
+
   const commentId = await writeComment(tx, commentTypeId, {
     taskId: on.target.id,
     authorActorId: on.authorActorId,
@@ -169,6 +217,7 @@ export async function writeTaskComment(
     audience: audience as CommentAudience,
     body,
     source: on.entryPoint,
+    parentId: parent,
   });
 
   return applied(on.target.id, on.target.revision, { commentId });

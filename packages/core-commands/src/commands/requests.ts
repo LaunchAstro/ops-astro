@@ -85,7 +85,15 @@ export type CommandRequest =
       readonly audience: string;
       /** `note`, `client` or `system`. A person writing a comment writes a note. */
       readonly commentType?: string;
+      /** The top-level message on this task a reply sits under (R42). */
+      readonly parentId?: string | null;
     } & Targeted)
+  | ({
+      readonly command: 'task.edit_comment';
+      readonly commentId: string;
+      readonly body: string;
+    } & Targeted)
+  | ({ readonly command: 'task.delete_comment'; readonly commentId: string } & Targeted)
   // A proposal is a record beside the task and targets it, so it names the
   // revision it was written against like every other targeted command. What it
   // does *not* carry is who is proposing, what they may spend it against or
