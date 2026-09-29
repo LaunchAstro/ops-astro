@@ -191,6 +191,29 @@ export async function requireOperator(environment: Environment = process.env): P
 }
 
 /**
+ * The installation's appointed operator, or why not: a person holding
+ * `operations:manage` over the whole of the operating business the
+ * installation names (OPS_ASTRO_OPERATING_BUSINESS, from its own drill
+ * environment), for acts over the whole database, such as the restore drill
+ * and its carried archive. Any other business is refused before any lookup,
+ * with a reason that names neither business, so its manager learns nothing.
+ */
+export async function requireOperatingOperator(
+  environment: Environment = process.env,
+): Promise<Gate> {
+  const operating = environment['OPS_ASTRO_OPERATING_BUSINESS'] ?? '';
+  if (operating === '') {
+    return refused(
+      'OPS_ASTRO_OPERATING_BUSINESS is not set, so the installation has no operating business to check against',
+    );
+  }
+  if ((environment['OPS_ASTRO_BUSINESS'] ?? '') !== operating) {
+    return refused("this act belongs to the installation's operating business alone");
+  }
+  return await requireOperator(environment);
+}
+
+/**
  * Once the act is done: append its record (what was done, by which person, in
  * which business and when), then commit the operator's sign-in attempt (I13).
  * Never called on a refusal. The record carries no credential: the operator is

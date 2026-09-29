@@ -142,3 +142,19 @@ export function value(v, type) {
   const text = type === 'jsonb' ? JSON.stringify(v) : String(v);
   return `convert_from(decode('${Buffer.from(text, 'utf8').toString('hex')}', 'hex'), 'UTF8')::${type}`;
 }
+
+/**
+ * One statement whose values go as bound parameters (psql's `\bind`), never
+ * in its text, so no statement the server logs or reports carries them. Each
+ * value is text of a fixed shape, checked by its caller; a null goes as the
+ * empty text, which the statement reads back with `nullif($n, '')`. A value
+ * that could end its quoting is refused.
+ */
+export function bound(sql, params) {
+  const args = params.map((v) => {
+    const text = v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+    if (/['\\\n\r]/u.test(text)) throw new Error('a bound value is not of its fixed shape');
+    return `'${text}'`;
+  });
+  return `${sql} \\bind ${args.join(' ')} \\g\n`;
+}
