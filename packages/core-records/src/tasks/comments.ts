@@ -190,46 +190,6 @@ export interface NewComment {
   readonly parentId?: string | null;
 }
 
-/** A comment row as the reads below select it (`COMMENT_COLUMNS`). */
-export interface CommentRow {
-  readonly id: string;
-  readonly data: Readonly<Record<string, string | null>>;
-  readonly from_outside: boolean;
-}
-
-/**
- * The comment columns every read selects: the row, and whether its author is
- * a person with no active membership in this business. An agent's actor has
- * no person and is the team's.
- */
-export const COMMENT_COLUMNS: string = `r.id, r.data, exists (
-    select 1 from public.actors a
-     where a.business_id = r.business_id and a.id::text = r.data ->> 'author'
-       and a.person_id is not null
-       and not exists (select 1 from public.memberships m
-                        where m.business_id = a.business_id and m.person_id = a.person_id
-                          and m.active)) as from_outside`;
-
-export function storedFrom(row: CommentRow): StoredComment {
-  const data = row.data;
-  return {
-    id: row.id,
-    taskId: data['task'] ?? '',
-    authorActorId: data['author'] ?? '',
-    commentType: (data['comment_type'] ?? 'note') as CommentType,
-    audience: (data['audience'] ?? 'internal') as CommentAudience,
-    body: data['body'] ?? '',
-    postedAt: new Date(data['posted_at'] ?? 0),
-    editedAt:
-      data['edited_at'] === undefined || data['edited_at'] === null
-        ? null
-        : new Date(data['edited_at']),
-    source: data['source'] ?? '',
-    parentId: data['parent'] ?? null,
-    fromOutside: row.from_outside,
-  };
-}
-
 /** The server's now, as the ISO text a comment's times are stored in. */
 export const NOW_TEXT: string = `to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
 
@@ -269,22 +229,6 @@ export async function writeComment(
     ],
   );
   return id;
-}
-
-/** Every comment on one task, oldest first, with nothing filtered. Storage is not the allowlist. */
-export async function readTaskComments(
-  tx: TenantQuery,
-  commentTypeId: string,
-  taskId: string,
-): Promise<readonly StoredComment[]> {
-  const rows = await tx.query<CommentRow>(
-    `select ${COMMENT_COLUMNS} from public.records r
-      where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and r.data ->> 'task' = $3
-      order by r.data ->> 'posted_at', r.id`,
-    [tx.businessId, commentTypeId, taskId],
-  );
-  return rows.map(storedFrom);
 }
 
 /** The stored value of one field, by its key, so the projection can be catalogue-driven. */

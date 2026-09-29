@@ -72,11 +72,7 @@ export interface BodyContext {
    * only needs the body shape, and the share is refused on authority anyway.
    */
   clientTask?(title: string): Promise<Task>;
-  /**
-   * A comment written by `author` (the admin when absent) on a fresh task,
-   * which is what `task.edit_comment` and `task.delete_comment` need to
-   * succeed: only its author changes a comment (MP-4-5).
-   */
+  /** A comment `author` (the admin when absent) wrote on a fresh task (MP-4-5). */
   ownComment?(author?: unknown): Promise<Task & { readonly commentId: string }>;
 }
 

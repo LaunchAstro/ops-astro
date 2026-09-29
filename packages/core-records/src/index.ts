@@ -90,7 +90,6 @@ export {
 export {
   COMMENT_TYPE_KEY,
   externalCommentProjection,
-  readTaskComments,
   writeComment,
   type CommentAudience,
   type CommentType,
@@ -99,6 +98,7 @@ export {
 export {
   commentSignals,
   lockComment,
+  readTaskComments,
   removeComment,
   rewriteComment,
   type CommentSignal,

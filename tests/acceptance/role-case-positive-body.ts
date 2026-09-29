@@ -20,6 +20,7 @@ import {
   ownAppliedEffect,
   ownUnknownAttempt,
 } from './role-case-bodies.ts';
+import { commentChangeBody } from './role-case-comment-bodies.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -62,21 +63,8 @@ export function createPositiveBody(
       case 'task.comment':
         return { body: { ...(await target()), body: 'a note', audience: 'internal' } };
       case 'task.edit_comment':
-      case 'task.delete_comment': {
-        if (context.ownComment === undefined) {
-          return { body: { ...(await target()), commentId: randomUUID(), body: 'changed' } };
-        }
-        const own = await context.ownComment(author);
-        const words = declaration.name === 'task.edit_comment' ? { body: 'changed' } : {};
-        return {
-          body: {
-            recordId: own.id,
-            expectedRevision: own.revision,
-            commentId: own.commentId,
-            ...words,
-          },
-        };
-      }
+      case 'task.delete_comment':
+        return { body: await commentChangeBody(context, declaration.name, author) };
       case 'task.assign':
         return { body: { ...(await target()), fields: { assignee: context.assigneePersonId } } };
       case 'task.triage':
