@@ -9,6 +9,7 @@
 // connector release, not an edit to this one.
 
 import {
+  CREDENTIAL_HOSTS,
   connectorRelease,
   registerOperation,
   type ConnectorDefinition,
@@ -30,8 +31,8 @@ const NO_SEAM = { read_operation: 'none', reference: 'none' } as const;
 const SOURCE_QUOTA = { bucket: 'source_control_rest', scope: 'installation', cost: 1 } as const;
 const HOSTING_QUOTA = { bucket: 'hosting_rest', scope: 'installation', cost: 1 } as const;
 
-const SOURCE_HOST = 'api.github.com';
-const HOSTING_HOST = 'api.vercel.com';
+const SOURCE_HOST = CREDENTIAL_HOSTS.source_control;
+const HOSTING_HOST = CREDENTIAL_HOSTS.hosting;
 
 /** Hosts a connector call may reach. The capture's own pages are the fence's, not these. */
 export const CONNECTOR_HOSTS: readonly string[] = [SOURCE_HOST, HOSTING_HOST];

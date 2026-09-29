@@ -415,6 +415,19 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
     expect(transport.seen).toHaveLength(0);
   });
 
+  it('never sends a credential to a host other than the one that credential belongs to', async () => {
+    const transport = httpOf(json({}));
+    const crossed = {
+      ...publishRegistration,
+      connector: { ...publishRegistration.connector, host: 'api.vercel.com' },
+    };
+    expect(await callConnector(crossed, params, deps(transport))).toEqual({
+      kind: 'refused',
+      code: 'CREDENTIAL_HOST_MISMATCH',
+    });
+    expect(transport.seen).toHaveLength(0);
+  });
+
   it('refuses a provider address on a private network before any connection', async () => {
     const transport = httpOf(json({}));
     const result = await callConnector(publishRegistration, params, {

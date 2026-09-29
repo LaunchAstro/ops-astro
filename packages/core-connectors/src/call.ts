@@ -10,7 +10,7 @@
 
 import { isIP } from 'node:net';
 import type { OperationRegistration } from './catalogue.ts';
-import { connectorRelease } from './catalogue.ts';
+import { connectorRelease, credentialHostMatches } from './catalogue.ts';
 import { isDeniedAddress, type Resolver, type Transport } from './capture/transport.ts';
 import { CONNECTOR_HOSTS } from './site/operations.ts';
 
@@ -85,6 +85,7 @@ export async function callConnector(
   };
 
   if (!CONNECTOR_HOSTS.includes(connector.host)) return refuse('DESTINATION_NOT_LISTED');
+  if (!credentialHostMatches(connector)) return refuse('CREDENTIAL_HOST_MISMATCH');
   if (connectorRelease(connector) !== declaration.connector_release) {
     return refuse('CONNECTOR_RELEASE_UNAVAILABLE');
   }
