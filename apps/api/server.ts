@@ -169,7 +169,7 @@ export interface ApiConfig {
    * to reach the fault branch.
    */
   readonly executeRead?: ReadExecutor;
-  /** The error sink (ticket S0-2); absent without one. */
+  /** The error sink and the security detections (ticket S0-2); absent without a sink. */
   readonly alerts?: Alerts;
 }
 
@@ -226,6 +226,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
       executeRead,
       executeCommand,
       executeAgentCommand,
+      ...(config.alerts === undefined ? {} : { observe: config.alerts.observe }),
     }),
   );
 

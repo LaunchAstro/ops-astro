@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The error sink (ticket S0-2; GlitchTip, decided C29-3) and how an alert
-// reaches it. The boundary is this code, before the first copy (tracing
+// reaches it, the security detections' included. The boundary is this code, before the first copy (tracing
 // contract 9.2): an event is built from an allowlist, the error's class, its
 // in-app frames, the release and the plain words, and never the error's
 // message, which may hold anything. The sink mails each event at once to the
@@ -13,7 +13,7 @@ import { existsSync } from 'node:fs';
 import { relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { plainAlert, type AlertKind, type Where } from './catalogue.ts';
-import type { SecuritySignal } from './detect.ts';
+import { createDetector, type SecuritySignal } from './detect.ts';
 
 export type Frame = { filename: string; function: string; lineno: number; in_app: true };
 
@@ -123,6 +123,8 @@ export function dsnTransport(dsn: string, fetcher: typeof fetch = fetch): Transp
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-sentry-auth': auth },
       body: JSON.stringify(event),
+      // A hung sink is a sink that is down: give up, the watcher reports it.
+      signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) throw new Error(`the error sink answered ${response.status}`);
   };
@@ -142,7 +144,10 @@ export function sinkFrom(
     throw new Error('OPS_ENVIRONMENT must be staging or production.');
   }
   const release = environment['OPS_RELEASE'];
-  return { send: dsnTransport(dsn), where, ...(release === undefined ? {} : { release }) };
+  if (release !== undefined && release !== '' && !RELEASE.test(release)) {
+    throw new Error('OPS_RELEASE is not a build stamp (twelve hex digits, optionally -dirty).');
+  }
+  return { send: dsnTransport(dsn), where, ...(release ? { release } : {}) };
 }
 
 export function createAlerts(options: Place & { readonly send: Transport }): Alerts {
@@ -155,10 +160,12 @@ export function createAlerts(options: Place & { readonly send: Transport }): Ale
     void sent.finally(() => pending.delete(sent));
     return sent;
   }
+  // A raised detection is its kind alone: it cannot name the scope that raised it.
+  const detector = createDetector((kind) => {
+    void deliver(alertEvent(kind, options.where, options.release));
+  });
   return {
-    observe: () => {
-      throw new Error('S0-2: not built');
-    },
+    observe: detector.observe,
     fault: async (cause) => await deliver(errorEvent(cause, options)),
     settled: async () => void (await Promise.all(pending)),
   };

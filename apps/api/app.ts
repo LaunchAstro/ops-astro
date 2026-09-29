@@ -64,7 +64,7 @@ import type {
   ReadRequest,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
-import type { SecuritySignal } from './alerts/detect.ts';
+import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -117,6 +117,10 @@ export interface ApiOptions {
    * which is the honest answer for a deployment that has not enabled it.
    */
   readonly executeAgentCommand?: AgentExecutor;
+  /**
+   * The security detections (ticket S0-2): each answer's outcome, as a signal
+   * with no content. Absent in a deployment without an error sink.
+   */
   readonly observe?: (signal: SecuritySignal) => void;
 }
 
@@ -174,6 +178,7 @@ async function admit(
   entry: Entry,
 ): Promise<Admitted | Response> {
   const presented = await options.verify(context.req);
+  if (presented !== undefined && presented !== 'expired') context.set(PRESENTED, presented);
   if (presented === undefined) {
     return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
   }
@@ -215,8 +220,11 @@ export function createApi(options: ApiOptions): Hono {
     for (const declaration of COMMAND_SURFACE) {
       routes.post(pathOf(declaration.name), async (context) => {
         const admitted = await admit(options, context, entry);
-        if (admitted instanceof Response) return admitted;
-        return await run(context, declaration, admitted);
+        const response =
+          admitted instanceof Response ? admitted : await run(context, declaration, admitted);
+        const signal = options.observe && signalOf(outcomeOf(context, declaration));
+        if (signal) options.observe?.(signal);
+        return response;
       });
     }
     api.route(prefix, routes);
@@ -287,6 +295,7 @@ export function createApi(options: ApiOptions): Hono {
  * review of the draft found both of its own minting a code by hand.
  */
 function refuse(context: Context, refusal: CommandRefusal): Response {
+  context.set(REFUSAL, refusal.code);
   // `refused: true` is the flag that makes this a refusal on the wire and not
   // merely a status code. A caller reading the status alone cannot tell a
   // decision the server made from a server that fell over, and the mounted
@@ -298,6 +307,19 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
     { refused: true, code: refusal.code, names: refusal.names, fixes: refusal.fixes },
     statusOf(refusal.code),
   );
+}
+
+const PRESENTED = 'presented';
+const REFUSAL = 'refusal';
+/** The answer's outcome, as the detector reads it: no content, only scopes and a code. */
+function outcomeOf(context: Context, declaration: CommandDeclaration): Outcome {
+  const presented = context.get(PRESENTED) as VerifiedSubject | undefined;
+  return {
+    business: context.req.param('businessKey') ?? '',
+    person: presented === undefined ? '' : `${presented.provider}\u0000${presented.subject}`,
+    refusal: context.get(REFUSAL) as string | undefined,
+    command: declaration.name,
+  };
 }
 
 const SIGN_IN = 'Sign in. This endpoint reads the caller from verified authentication only.';

@@ -42,9 +42,48 @@ export interface Outcome {
   readonly command: string;
 }
 
-export function signalOf(_outcome: Outcome): SecuritySignal | undefined {
-  throw new Error('S0-2: not built');
+const SIGN_IN_FAILED = new Set(['AUTH_UNKNOWN_LOGIN', 'ACTOR_INACTIVE']);
+const CROSS_SCOPE = new Set(['AUTH_NO_MEMBERSHIP', 'SCOPE_NOT_GRANTED']);
+const AUTHORITY = new Set(['grant.revoke', 'delegation.revoke']);
+
+/** What an answer tells the detector, if anything. */
+export function signalOf({
+  business,
+  person,
+  refusal,
+  command,
+}: Outcome): SecuritySignal | undefined {
+  if (refusal === undefined) {
+    return AUTHORITY.has(command) ? { kind: 'authority-changed', business } : undefined;
+  }
+  if (SIGN_IN_FAILED.has(refusal)) return { kind: 'sign-in-failed', business, person };
+  if (CROSS_SCOPE.has(refusal)) return { kind: 'cross-scope-refusal', business, person };
+  return undefined;
 }
+
+interface Rule {
+  readonly alert: AlertKind;
+  /** Events, or exported items, within the window that raise the alert. */
+  readonly threshold: number;
+  readonly windowMs: number;
+}
+
+const MINUTE = 60_000;
+const RULES: Readonly<Record<SecuritySignal['kind'], Rule>> = {
+  'sign-in-failed': { alert: 'sign-in-failures', threshold: 5, windowMs: 15 * MINUTE },
+  'authority-changed': { alert: 'authority-changed', threshold: 1, windowMs: MINUTE },
+  'secret-scan-failed': { alert: 'secret-scan-failed', threshold: 1, windowMs: MINUTE },
+  'cross-scope-refusal': { alert: 'cross-scope-burst', threshold: 10, windowMs: 10 * MINUTE },
+  'webhook-signature-failed': {
+    alert: 'webhook-signature-failures',
+    threshold: 5,
+    windowMs: 15 * MINUTE,
+  },
+  export: { alert: 'export-volume', threshold: 200, windowMs: 60 * MINUTE },
+};
+
+/** Past this many scopes in memory, the expired ones are swept. */
+const SWEEP_AT = 10_000;
 
 export interface Detector {
   readonly observe: (signal: SecuritySignal) => void;
@@ -52,9 +91,56 @@ export interface Detector {
   readonly tracked: () => number;
 }
 
+function scopeOf(signal: SecuritySignal): string {
+  switch (signal.kind) {
+    case 'sign-in-failed':
+    case 'cross-scope-refusal':
+      return `${signal.business}\u0000${signal.person}`;
+    case 'webhook-signature-failed':
+      return `${signal.business}\u0000${signal.source}`;
+    case 'export':
+      return `${signal.business}\u0000${signal.client}`;
+    case 'authority-changed':
+      return signal.business;
+    case 'secret-scan-failed':
+      return '';
+  }
+}
+
 export function createDetector(
-  _raise: (kind: AlertKind) => void,
-  _options: { readonly now?: () => number } = {},
+  raise: (kind: AlertKind) => void,
+  options: { readonly now?: () => number } = {},
 ): Detector {
-  throw new Error('S0-2: not built');
+  const now = options.now ?? Date.now;
+  const seen = new Map<string, { at: number; weight: number }[]>();
+
+  function sweep(at: number): void {
+    for (const [key, events] of seen) {
+      const rule = RULES[key.slice(0, key.indexOf('\u0001')) as SecuritySignal['kind']];
+      if (events.every((event) => at - event.at >= rule.windowMs)) seen.delete(key);
+    }
+    // A flood of live scopes: the oldest are dropped, so memory stays bounded.
+    for (const key of seen.keys()) {
+      if (seen.size <= SWEEP_AT) break;
+      seen.delete(key);
+    }
+  }
+
+  function observe(signal: SecuritySignal): void {
+    const rule = RULES[signal.kind];
+    const at = now();
+    const key = `${signal.kind}\u0001${scopeOf(signal)}`;
+    const events = (seen.get(key) ?? []).filter((event) => at - event.at < rule.windowMs);
+    events.push({ at, weight: signal.kind === 'export' ? signal.items : 1 });
+    if (events.reduce((sum, event) => sum + event.weight, 0) >= rule.threshold) {
+      // One alert per burst: the count starts again after it is raised.
+      seen.delete(key);
+      raise(rule.alert);
+      return;
+    }
+    seen.set(key, events);
+    if (seen.size > SWEEP_AT) sweep(at);
+  }
+
+  return { observe, tracked: () => seen.size };
 }

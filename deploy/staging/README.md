@@ -76,7 +76,10 @@ containers these names (`S0-1 gated stop`).
 Nothing deploys before the alerts reach the owner (ticket S0-2). The watcher
 (UptimeRobot, off the machine) checks each environment's web page, API health
 and backup heartbeat, and the error sink's health; the error sink (GlitchTip)
-takes the API's errors. Each mails the owner and the second operator at once,
+takes the API's errors and its security alerts (repeated failed sign-ins, a
+permission, grant or custody change, a failed secret scan, a burst of
+cross-scope refusals, repeated webhook signature failures, unusual export
+volume). Each mails the owner and the second operator at once,
 from its own mail, in the plain words of `apps/api/alerts/catalogue.ts`. The
 addresses are private, set in the environment at run time:
 
