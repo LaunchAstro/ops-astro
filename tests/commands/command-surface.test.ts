@@ -74,10 +74,13 @@ describe('the surface as a table', () => {
     // the only collection nothing is stored in, because the read under it is
     // about the caller rather than about the business's records. `grant` and
     // `delegation` are the revocation controls': the path names the row a
-    // revocation writes, and the authority it asks is still on tasks.
+    // revocation writes, and the authority it asks is still on tasks. `model`
+    // is AW-01's call through the broker, asked of the lease's task.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget)\/[a-z_]+$/u.test(path),
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|model)\/[a-z_]+$/u.test(
+          path,
+        ),
       ),
     ).toBe(true);
   });
