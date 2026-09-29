@@ -14,93 +14,26 @@
 /* eslint-disable no-await-in-loop */
 
 import { randomUUID } from 'node:crypto';
-import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
-import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
-import type {
-  CommandHandle,
-  CommandResult,
-} from '../../packages/core-commands/src/commands/register-store.ts';
 import { approveBody, handbackBody, proposeBody } from '../runtime/schedules-harness.ts';
 import {
   agentOf,
+  applied,
   client,
+  command,
+  create,
   grantOn,
+  onTask,
   presetFields,
   refused,
+  refuseUnlessEmpty,
+  revisionOf,
   tenant,
+  type Detail,
   type Seedable,
   type Tenant,
 } from './cast.ts';
-import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
-import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
-import type { FixtureShape } from './shape.ts';
-
-type Detail = Readonly<Record<string, unknown>>;
-
-export interface FixtureReport {
-  readonly board: string;
-  readonly recordGrantTask: string;
-  readonly slots: { readonly assigned: number; readonly total: number };
-  readonly people: { readonly alpha: readonly string[]; readonly bravo: readonly string[] };
-  readonly seedMs: number;
-  /** Who the isolation cases read as: a client sees its own shared task only. */
-  readonly callers: {
-    readonly alpha: BusinessId;
-    readonly bravo: BusinessId;
-    readonly bravoLead: VerifiedSubject;
-    readonly r4: VerifiedSubject;
-    readonly clients: readonly {
-      readonly business: BusinessId;
-      readonly presented: VerifiedSubject;
-      readonly task: string;
-    }[];
-  };
-  /** SPEC 10.1 rows this base cannot hold yet (run events wait on T2a's table). */
-  readonly heldBack: readonly string[];
-}
-
-function applied(result: CommandResult, what: unknown): CommandHandle {
-  return isCommandRefusal(result) ? refused(String(what), result.code) : result;
-}
-
-async function command(db: Seedable, t: Tenant, body: Detail): Promise<CommandHandle> {
-  const request = { operationId: randomUUID(), ...body };
-  const result = await executeCommand(db.app, t.id, t.lead.presented, 'api', request as never);
-  return applied(result, body['command']);
-}
-
-async function create(db: Seedable, t: Tenant, title: string, place: Detail = {}) {
-  const made = await command(db, t, { command: 'task.create', fields: { title }, ...place });
-  return made.recordId ?? refused('task.create', 'NO_RECORD');
-}
-
-async function revisionOf(db: Seedable, recordId: string): Promise<number> {
-  const [found] = await db.admin.execute<{ n: string }>(
-    'select revision::text n from public.records where id = $1',
-    [recordId],
-  );
-  return Number(found?.n);
-}
-
-/** A command on one task at its current revision. */
-async function onTask(db: Seedable, t: Tenant, recordId: string, body: Detail) {
-  return await command(db, t, {
-    ...body,
-    recordId,
-    expectedRevision: await revisionOf(db, recordId),
-  });
-}
-
-async function refuseUnlessEmpty(db: Seedable): Promise<void> {
-  const found = await db.admin.execute<{ n: string }>(
-    `select case when to_regclass('public.businesses') is null then -1
-                 else (select count(*) from public.businesses) end::text n`,
-  );
-  const n = Number(found[0]?.n);
-  if (n < 0) throw new Error('fixture: DATABASE_NOT_MIGRATED, run the migrations first');
-  if (n > 0) throw new Error(`fixture: DATABASE_NOT_EMPTY, ${String(n)} business(es) here`);
-}
+import type { FixtureReport, FixtureShape } from './shape.ts';
 
 interface Tree {
   readonly board: string;
@@ -304,6 +237,18 @@ async function seedEvents(db: Seedable, t: Tenant, shape: FixtureShape): Promise
   return [];
 }
 
+/** How many of the task type's field slots the fixture assigned, of all there are. */
+async function slotCount(db: Seedable, t: Tenant) {
+  const [slots] = await db.admin.execute<{ assigned: string; total: string }>(
+    `select (select count(distinct f.slot) from public.field_defs f join public.record_types t
+               on t.business_id = f.business_id and t.id = f.record_type_id
+             where t.business_id = $1 and t.key = 'task' and f.slot is not null)::text assigned,
+            (select count(*) from ops.slots)::text total`,
+    [t.id],
+  );
+  return slots;
+}
+
 export async function seedFixture(db: Seedable, shape: FixtureShape): Promise<FixtureReport> {
   const started = performance.now();
   await refuseUnlessEmpty(db);
@@ -336,13 +281,7 @@ export async function seedFixture(db: Seedable, shape: FixtureShape): Promise<Fi
       clients.push({ business: t.id, presented: await client(db, t, c + 1, task), task });
     }
   }
-  const [slots] = await db.admin.execute<{ assigned: string; total: string }>(
-    `select (select count(distinct f.slot) from public.field_defs f join public.record_types t
-               on t.business_id = f.business_id and t.id = f.record_type_id
-             where t.business_id = $1 and t.key = 'task' and f.slot is not null)::text assigned,
-            (select count(*) from ops.slots)::text total`,
-    [alpha.id],
-  );
+  const slots = await slotCount(db, alpha);
   return {
     board: tree.board,
     recordGrantTask,

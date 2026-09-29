@@ -105,6 +105,13 @@ describe('the pins refuse', () => {
     const other = { ...packet.renderer, browserBuild: '0.0.0.0' };
     expect(() => checkRenderer(packet, other)).toThrow(/browserBuild/u);
   });
+});
+
+describe('the pins refuse', () => {
+  let packet: Packet;
+  beforeAll(() => {
+    packet = readPacket();
+  });
 
   it('a changed pinned mockup', () => {
     const root = fileURLToPath(new URL('../..', import.meta.url));

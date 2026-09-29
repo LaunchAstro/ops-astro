@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable no-useless-undefined
+   -- the proof's body is kept as reviewed, byte for byte. */
 
 import { describe, expect, it } from 'vitest';
 import { commandBudgets, writeBundle } from '../../scripts/local/journey-bundle.ts';

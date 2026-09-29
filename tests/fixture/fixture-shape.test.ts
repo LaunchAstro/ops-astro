@@ -20,7 +20,8 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
-import { seedFixture, type FixtureReport } from './generate.ts';
+import { seedFixture } from './generate.ts';
+import type { FixtureReport } from './shape.ts';
 import { FIXTURE_SHAPE } from './shape.ts';
 
 const serverUrl = databaseUrlFromEnvironment();

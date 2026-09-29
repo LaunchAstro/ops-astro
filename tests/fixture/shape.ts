@@ -14,6 +14,9 @@
 // writes two events per pickup and hand-back, so no command reaches SPEC
 // 10.1's 1,200 steps, 6,000 events and one run held at 1,500.
 
+import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
+import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
+
 export interface FixtureShape {
   /** Task records in A and B, subtasks and trashed ones included. */
   readonly tasksA: number;
@@ -66,3 +69,26 @@ export const FIXTURE_SHAPE: FixtureShape = {
   runEvents: 6_000,
   heldRunShare: 0.25,
 };
+
+/** What a seed reports: the ids and callers the suites read with. */
+export interface FixtureReport {
+  readonly board: string;
+  readonly recordGrantTask: string;
+  readonly slots: { readonly assigned: number; readonly total: number };
+  readonly people: { readonly alpha: readonly string[]; readonly bravo: readonly string[] };
+  readonly seedMs: number;
+  /** Who the isolation cases read as: a client sees its own shared task only. */
+  readonly callers: {
+    readonly alpha: BusinessId;
+    readonly bravo: BusinessId;
+    readonly bravoLead: VerifiedSubject;
+    readonly r4: VerifiedSubject;
+    readonly clients: readonly {
+      readonly business: BusinessId;
+      readonly presented: VerifiedSubject;
+      readonly task: string;
+    }[];
+  };
+  /** SPEC 10.1 rows this base cannot hold yet (run events wait on T2a's table). */
+  readonly heldBack: readonly string[];
+}

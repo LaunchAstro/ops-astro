@@ -7,6 +7,12 @@
 /* eslint-disable no-await-in-loop -- `issueGrant` reads the granter's own rows */
 
 import { randomUUID } from 'node:crypto';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import type {
+  CommandHandle,
+  CommandResult,
+} from '../../packages/core-commands/src/commands/register-store.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
 import type { EmptyDatabase } from '../support/fresh-database.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
@@ -166,4 +172,62 @@ export async function agentOf(db: Seedable, t: Tenant): Promise<VerifiedSubject>
     );
   });
   return { provider: 'supabase', subject };
+}
+
+// The command entries the generator writes through (`generate.ts`): a refusal
+// stops the seed with its code, and a task command goes at the record's
+// current revision.
+
+export type Detail = Readonly<Record<string, unknown>>;
+
+export function applied(result: CommandResult, what: unknown): CommandHandle {
+  return isCommandRefusal(result) ? refused(String(what), result.code) : result;
+}
+
+export async function command(db: Seedable, t: Tenant, body: Detail): Promise<CommandHandle> {
+  const request = { operationId: randomUUID(), ...body };
+  const result = await executeCommand(db.app, t.id, t.lead.presented, 'api', request as never);
+  return applied(result, body['command']);
+}
+
+export async function create(
+  db: Seedable,
+  t: Tenant,
+  title: string,
+  place: Detail = {},
+): Promise<string> {
+  const made = await command(db, t, { command: 'task.create', fields: { title }, ...place });
+  return made.recordId ?? refused('task.create', 'NO_RECORD');
+}
+
+export async function revisionOf(db: Seedable, recordId: string): Promise<number> {
+  const [found] = await db.admin.execute<{ n: string }>(
+    'select revision::text n from public.records where id = $1',
+    [recordId],
+  );
+  return Number(found?.n);
+}
+
+/** A command on one task at its current revision. */
+export async function onTask(
+  db: Seedable,
+  t: Tenant,
+  recordId: string,
+  body: Detail,
+): Promise<CommandHandle> {
+  return await command(db, t, {
+    ...body,
+    recordId,
+    expectedRevision: await revisionOf(db, recordId),
+  });
+}
+
+export async function refuseUnlessEmpty(db: Seedable): Promise<void> {
+  const found = await db.admin.execute<{ n: string }>(
+    `select case when to_regclass('public.businesses') is null then -1
+                 else (select count(*) from public.businesses) end::text n`,
+  );
+  const n = Number(found[0]?.n);
+  if (n < 0) throw new Error('fixture: DATABASE_NOT_MIGRATED, run the migrations first');
+  if (n > 0) throw new Error(`fixture: DATABASE_NOT_EMPTY, ${String(n)} business(es) here`);
 }
