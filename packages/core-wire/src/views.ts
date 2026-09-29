@@ -95,9 +95,11 @@ export interface TaskDetail extends TaskSummary {
    * The task's token ledger (MP-6-5): each envelope's allowance, what it was
    * built from, and what is held and spent against it. The per-run rows are the
    * proposals' reservations, each naming its envelope. Read inside the task
-   * read, so a reader who may not read the task is told nothing of it.
+   * read, so a reader who may not read the task is told nothing of it. Null
+   * for an agent: it names the business's cap, which a delegate on one task is
+   * not shown (I09).
    */
-  readonly ledger: TaskLedgerView;
+  readonly ledger: TaskLedgerView | null;
 }
 
 /** One alert as `task.read` and `task.queue` carry it (`core-runtime/src/alerts.ts`). */
