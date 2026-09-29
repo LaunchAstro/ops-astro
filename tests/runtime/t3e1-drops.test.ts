@@ -13,7 +13,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { sweepExpiredLeases } from '../../packages/core-runtime/src/index.ts';
+import { sweepLostWorkers } from '../../packages/core-runtime/src/index.ts';
 import {
   appliedDetail,
   approve,
@@ -86,7 +86,7 @@ const alerts = async (on: Schedules, taskId: string) =>
   ).map((row) => row.kind);
 
 const sweep = async (on: Schedules) =>
-  await on.db.app.withBusiness(on.business, async (tx) => await sweepExpiredLeases(tx));
+  await on.db.app.withBusiness(on.business, async (tx) => await sweepLostWorkers(tx));
 
 /** Everything the other business holds that a drop here could move. */
 const digest = async (on: Schedules) =>

@@ -71,7 +71,13 @@ export {
 export { AffectedSetChanged, requireUnchanged } from './rediscovery.ts';
 export { appendRunEvent, type RunEvent, type RunEventKind } from './run-events.ts';
 export { reconcileUnknown, type EffectLookup, type Reconciled } from './recovery/reconcile.ts';
-export { DROP_FAULT, recordDrop, REPORTED_DROP_CAUSES, type DropCause } from './recovery/drop.ts';
+export {
+  DROP_FAULT,
+  recordDrop,
+  REPORTED_DROP_CAUSES,
+  sweepLostWorkers,
+  type DropCause,
+} from './recovery/drop.ts';
 export {
   recordOutcome,
   RECORDED_OUTCOMES,

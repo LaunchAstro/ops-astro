@@ -20,9 +20,10 @@
 // No timer path leaves that state: only a person's recorded outcome or
 // write-off does (T3c, T3d1).
 //
-// **A lease that ran out with nothing reported is our worker lost** (T3e1,
-// `drop.ts`): the drop is recorded with that cause, a person is told, and an
-// unmarked step is reserved again, so the work comes back by itself.
+// **A lease that ran out with nothing reported is our worker lost** (T3e1):
+// the pass sweeps through `sweepLostWorkers` (`drop.ts`), which records the
+// drop with that cause under these locks, tells a person, and reserves an
+// unmarked step again, so the work comes back by itself.
 //
 // **It races dispatch on the lease and reservation locks.** Dispatch takes
 // both; so does this. Whichever commits first wins: a sweep first fences the
@@ -31,6 +32,7 @@
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { lockedInstant } from '../clock.ts';
+import type { LockSet } from '../locks.ts';
 import { lockRediscovered } from '../rediscovery.ts';
 import {
   AFFECTED_COLUMNS,
@@ -40,7 +42,6 @@ import {
   type Affected,
   type Classification,
 } from './classifier.ts';
-import { recordDrop } from './drop.ts';
 import { endLease } from './lease-retirement.ts';
 
 /**
@@ -70,7 +71,10 @@ async function discoverExpired(tx: TenantQuery, at: string): Promise<readonly Af
  * the `covered` rule lets go on under the locks held. A lease that runs out
  * after that instant is the next pass's.
  */
-export async function sweepExpiredLeases(tx: TenantQuery): Promise<readonly Classification[]> {
+export async function sweepExpiredLeases(
+  tx: TenantQuery,
+  after?: (found: readonly Affected[], locks: LockSet) => Promise<void>,
+): Promise<readonly Classification[]> {
   const at = await lockedInstant(tx);
   const { locks, found } = await lockRediscovered(tx, {
     discover: async () => await discoverExpired(tx, at),
@@ -90,18 +94,7 @@ export async function sweepExpiredLeases(tx: TenantQuery): Promise<readonly Clas
       if (row.lease_id !== null) await endLease(tx, row.lease_id, 'expired');
     },
   );
-  // T3e1: the lease ran out on its own clock and nobody reported why, so our
-  // worker was lost. The drop is recorded, and unmarked work comes back.
-  for (const row of found) {
-    // Sequential: each reactivation reserves against the envelope the next may share.
-    // eslint-disable-next-line no-await-in-loop
-    const [attempt] = await tx.query<{ readonly id: string }>(
-      'select id from public.attempts where business_id = $1 and reservation_id = $2',
-      [tx.businessId, row.reservation_id],
-    );
-    if (attempt === undefined) continue;
-    // eslint-disable-next-line no-await-in-loop
-    await recordDrop(tx, { attemptId: attempt.id, cause: 'worker_lost', retire: true, locks });
-  }
+  // T3e1: the pass's drop step (`drop.ts`), under these same locks.
+  if (after !== undefined) await after(found, locks);
   return classified;
 }

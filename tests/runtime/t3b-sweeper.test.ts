@@ -97,25 +97,18 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
     await alpha.expire(w);
     const swept = await alpha.sweep();
     expect(swept).toStrictEqual([expect.objectContaining({ released: true, state: 'abandoned' })]);
-    // T3e1: released in full, then the work comes back by itself. The attempt
-    // is `dropped` (our worker was lost) and one new hold of the same 2 500 is
-    // reserved for it, so the envelope and the cap hold one step, not two.
     expect(await alpha.money(w)).toMatchObject({
       state: 'abandoned',
       classified_cause: 'lease_expired_and_fenced',
-      attempt_state: 'dropped',
+      attempt_state: 'abandoned',
       dispatch_marker: false,
-      envelope_held: '2500',
+      envelope_held: '0',
       envelope_actual: '0',
       lease_state: 'expired',
     });
-    expect(capBefore - (await capCommitted(s))).toBe(0);
-    // The fenced lease dispatches nothing afterwards. Since T3e1 the lost
-    // worker's delegation is retired as its work comes back, so it is refused
-    // at the delegation before the lease is reached.
-    expect(codeOf(await onLease(s, w, { command: 'task.dispatch' }))).toMatch(
-      /^(LEASE_|DELEGATION_NOT_LIVE$)/u,
-    );
+    expect(capBefore - (await capCommitted(s))).toBe(2_500);
+    // The fenced lease dispatches nothing afterwards.
+    expect(codeOf(await onLease(s, w, { command: 'task.dispatch' }))).toMatch(/^LEASE_/u);
   });
 
   it('never releases a hold awaiting pickup or one held by a live lease', async () => {
