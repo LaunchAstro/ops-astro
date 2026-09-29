@@ -32,6 +32,8 @@ interface PendingCreate {
 export interface ProjectsProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
+  /** Goes to an address inside the application. */
+  readonly navigate: (path: string) => void;
 }
 
 export function Projects(props: ProjectsProps): ReactElement {

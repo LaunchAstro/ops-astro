@@ -24,6 +24,8 @@ export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRo
   /** Why the board was reached instead of the address that was held. */
   readonly notice: string | null;
   readonly storage: Storage | null;
+  /** Goes to an address inside the application. */
+  readonly navigate: (path: string) => void;
 }
 
 export const SCREENS: {
@@ -36,7 +38,7 @@ export const SCREENS: {
           {context.notice}
         </p>
       )}
-      <Projects client={context.client} grantKey={context.grantKey} />
+      <Projects client={context.client} grantKey={context.grantKey} navigate={context.navigate} />
     </>
   ),
   'agency:settings': (context) => (
