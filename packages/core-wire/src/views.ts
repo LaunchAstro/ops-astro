@@ -327,9 +327,11 @@ export interface TaskBoardResult {
   readonly tasks: readonly TaskSummary[];
   /**
    * How many of this board's tasks in the caller's business their grants do
-   * not reach: a count, never which (B-22). Zero under a business grant.
+   * not reach: a count, never which (B-22). Only for a member holding
+   * task:read on the whole collection; absent for a member reading through
+   * record grants, a client login under owner answer 22.
    */
-  readonly withheld: number;
+  readonly withheld?: number;
 }
 
 export interface PersonListResult {

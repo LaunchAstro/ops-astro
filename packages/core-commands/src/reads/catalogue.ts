@@ -76,8 +76,9 @@ interface RowBase<K extends ReadName> {
    * the read refuses a caller holding nothing (see `session.capabilities`).
    * `declared-within`: a list read. For an external party, as `declared`.
    * For a member, the row's `serve` decides from one read of their grants:
-   * a business grant answers every record, a grant on some records answers
-   * those and counts the rest as withheld (B-22), no grant is refused.
+   * a business grant answers every record with the withheld count (B-22), a
+   * grant on some records answers those and no count (a client login, owner
+   * answer 22), no grant is refused.
    */
   readonly authority:
     'declared' | 'declared-within' | 'holds-any-grant' | ((operands: ReadOperands[K]) => string);
@@ -254,13 +255,18 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // A named board is itself a task: one the caller cannot read is refused
       // as `task.read` refuses it, in-tenant (I05).
       if (unreadable(operands.board)) return refuseScope();
-      const board = await readBoard(
+      const tasks = await readBoard(
         tx,
         spine.taskTypeId,
         operands.board,
         scope.business ? null : scope.records,
       );
-      return { ok: true, ...board };
+      // The withheld count goes only to a member holding task:read on the
+      // whole collection, whose grant reaches every task, so it is 0 until a
+      // narrower collection-wide rule exists. A member reading through record
+      // grants is a client login under owner answer 22 and is told no count
+      // at all, not a filtered one (SL07-B22-ANSWER).
+      return scope.business ? { ok: true, tasks, withheld: 0 } : { ok: true, tasks };
     },
   },
   'person.list': {

@@ -306,7 +306,7 @@ export async function readSharedTask(
 
 /**
  * The live tasks on one board, or the unboarded ones when the board is null,
- * that the caller's grants reach, and how many others there are.
+ * that the caller's grants reach.
  *
  * Unboarded is a real answer and not a missing filter: `task.create` takes no
  * board (acceptance B1), so every task starts here and a board read that
@@ -316,30 +316,23 @@ export async function readSharedTask(
  * refuses anything else, a malformed identifier included, through
  * `boardExists` before it calls this.
  *
- * `readable` is null under a business grant; otherwise it is the records the
- * caller's record-scoped grants reach, and the filter is in the query. The
- * rest are counted, never listed (the withheld count, B-22).
+ * `readable` is null under a collection-wide grant; otherwise it is the
+ * records the caller's record-scoped grants reach, and the filter is in the
+ * query.
  */
 export async function readBoard(
   tx: TenantQuery,
   taskTypeId: string,
   board: string | null,
   readable: readonly string[] | null,
-): Promise<{ readonly tasks: readonly TaskSummary[]; readonly withheld: number }> {
-  const onBoard = `r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and (($3::uuid is null and r.uuid_5 is null) or r.uuid_5 = $3::uuid)`;
+): Promise<readonly TaskSummary[]> {
   const rows = await tx.query<TaskRowRead>(
     `${SELECT}
-      where ${onBoard}
+      where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
+        and (($3::uuid is null and r.uuid_5 is null) or r.uuid_5 = $3::uuid)
         and ($4::uuid[] is null or r.id = any($4::uuid[]))
       order by r.num_2 nulls last, r.created_at`,
     [tx.businessId, taskTypeId, board, readable],
   );
-  if (readable === null) return { tasks: rows.map(summaryOf), withheld: 0 };
-  const counted = await tx.query<{ readonly withheld: number }>(
-    `select count(*)::int as withheld from public.records r
-      where ${onBoard} and not (r.id = any($4::uuid[]))`,
-    [tx.businessId, taskTypeId, board, readable],
-  );
-  return { tasks: rows.map(summaryOf), withheld: counted[0]?.withheld ?? 0 };
+  return rows.map(summaryOf);
 }
