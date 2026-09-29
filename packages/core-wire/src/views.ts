@@ -409,6 +409,28 @@ export interface MapViewResult {
 }
 
 /** A map's frontier and fog (WF-2): each from its read model, in order. */
+/** Map status (API-4): the frontier, the fog and the counts, at a detail level. */
+export interface MapStatus {
+  readonly map: string;
+  readonly version: number;
+  readonly open: number;
+  readonly closed: number;
+  readonly outOfScope: number;
+  readonly frontier: readonly Readonly<{
+    id?: string;
+    key?: string | null;
+    title?: string | null;
+    type?: string;
+  }>[];
+  readonly fog: readonly Readonly<{ id: string; text?: string }>[];
+}
+
+export interface MapStatusResult {
+  readonly ok: true;
+  readonly detail: 'brief' | 'standard' | 'full';
+  readonly status: MapStatus;
+}
+
 export interface MapFrontierResult {
   readonly ok: true;
   readonly frontier: readonly {

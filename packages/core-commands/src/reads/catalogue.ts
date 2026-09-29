@@ -31,7 +31,7 @@ import { readQueue } from './queue.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
-import { readMapFrontier, readMapView } from './maps.ts';
+import { readMapFrontier, readMapStatus, readMapView } from './maps.ts';
 import { blockersFor, isRefusal, pageOf, parsePaging, taskAt } from './detail.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -254,6 +254,30 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (recordId === undefined || !isInternalReader(session.roleKey)) return refuseNotFound();
       const answer = await readMapFrontier(tx, spine.taskTypeId, recordId);
       return answer ?? (await notAMap(tx, recordId));
+    },
+  },
+  'map.status': {
+    identifiers: ['recordId'],
+    parse: (body) => {
+      if (typeof body['recordId'] !== 'string') {
+        return rejected('recordId', 'Send recordId as the map’s identifier or its key.');
+      }
+      if (body['limit'] !== undefined || body['page'] !== undefined) {
+        return rejected('detail', 'Map status is one answer; send only recordId and detail.');
+      }
+      const paging = parsePaging(body);
+      if (isRefusal(paging)) return { ok: false, refusal: paging };
+      return parsed({ recordId: body['recordId'], ...paging });
+    },
+    spine: true,
+    subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
+    authority: 'declared',
+    outsiderNotFound: true,
+    async serve(tx, session, operands, { spine, recordId }) {
+      if (recordId === undefined || !isInternalReader(session.roleKey)) return refuseNotFound();
+      const detail = operands.detail ?? 'full';
+      const status = await readMapStatus(tx, spine.taskTypeId, recordId, detail);
+      return status === undefined ? await notAMap(tx, recordId) : { ok: true, detail, status };
     },
   },
   'task.board': {

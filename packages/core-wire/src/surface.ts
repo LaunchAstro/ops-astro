@@ -112,7 +112,8 @@ export type CommandName =
   | 'map.graduate'
   | 'task.resolve'
   | 'task.close_out_of_scope'
-  | 'map.frontier';
+  | 'map.frontier'
+  | 'map.status';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -551,6 +552,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.resolve', 'write'),
   declare('task.close_out_of_scope', 'decide', { serialise: WAYFINDER_MAP_LOCK }),
   read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // API-4: the frontier, the fog and the counts, one query on the read models.
+  read('map.status', TASK_COLLECTION, { authorisedOn: 'record' }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));

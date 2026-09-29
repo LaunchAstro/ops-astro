@@ -212,7 +212,12 @@ export async function createHarness(part: string): Promise<Harness> {
    * authority one the case is about.
    */
   /** The reads that name one record: the task, and a map's two views (WF-1, WF-2). */
-  const RECORD_READS: ReadonlySet<string> = new Set(['task.read', 'map.view', 'map.frontier']);
+  const RECORD_READS: ReadonlySet<string> = new Set([
+    'task.read',
+    'map.view',
+    'map.frontier',
+    'map.status',
+  ]);
   function probeBody(declaration: CommandDeclaration): Readonly<Record<string, unknown>> {
     const targeted = declaration.targetsExistingRecord;
     return {

@@ -26,6 +26,7 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 /** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
 const PINNED_SHAPE = {
   'map.frontier': { spine: true, subject: true, authority: 'declared' },
+  'map.status': { spine: true, subject: true, authority: 'declared' },
   'map.view': { spine: true, subject: true, authority: 'declared' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
@@ -38,6 +39,7 @@ const PINNED_SHAPE = {
 
 const PINNED_IDENTIFIERS = {
   'map.frontier': ['recordId'],
+  'map.status': ['recordId'],
   'map.view': ['recordId'],
   'person.list': [],
   'preset.plan': [],
@@ -48,7 +50,13 @@ const PINNED_IDENTIFIERS = {
   'task.read': ['recordId'],
 };
 
-const PINNED_OUTSIDER_NOT_FOUND = ['map.frontier', 'map.view', 'task.board', 'task.read'];
+const PINNED_OUTSIDER_NOT_FOUND = [
+  'map.frontier',
+  'map.status',
+  'map.view',
+  'task.board',
+  'task.read',
+];
 
 const BODIES: readonly (readonly [string, Readonly<Record<string, unknown>>])[] = [
   ['empty', {}],
@@ -121,6 +129,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   ],
   'map.view': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
   'map.frontier': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
+  'map.status': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
   'task.queue': BODIES.map(() => null),
   'person.list': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
@@ -136,7 +145,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same nine reads', () => {
+  it('names the same ten reads (API-4 added map.status)', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

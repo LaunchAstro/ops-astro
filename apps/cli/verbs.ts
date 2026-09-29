@@ -148,6 +148,12 @@ export const VERB_TABLE: readonly VerbRow[] = [
     body: (id) => ({ recordId: target(id) }),
   },
   {
+    verb: 'map status',
+    command: 'map.status',
+    usage: '<id> [--detail brief|standard|full] [--fields a,b] [--json]',
+    body: (id, flags) => ({ recordId: target(id), detail: detail(flags) }),
+  },
+  {
     verb: 'map frontier',
     command: 'map.frontier',
     usage: '<id> [--fields a,b] [--json]',

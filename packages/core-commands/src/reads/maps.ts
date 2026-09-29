@@ -6,7 +6,13 @@
 // on its ticket (W2).
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import type { MapComponentView, MapFrontierResult, MapView } from '../../../core-wire/src/index.ts';
+import type {
+  MapComponentView,
+  MapFrontierResult,
+  MapStatus,
+  MapView,
+} from '../../../core-wire/src/index.ts';
+import type { Detail } from './detail.ts';
 
 interface MapRow {
   readonly key: string | null;
@@ -191,12 +197,79 @@ export async function readMapFrontier(
   };
 }
 
-/** Map status (API-4): not built yet. */
-export function readMapStatus(
-  _tx: TenantQuery,
-  _taskTypeId: string,
-  _mapId: string,
-  _detail: 'brief' | 'standard' | 'full',
-): Promise<{ readonly frontier: readonly unknown[] } | undefined> {
-  return Promise.resolve(undefined as never);
+interface StatusRow {
+  readonly version: number;
+  readonly open: number;
+  readonly closed: number;
+  readonly out_of_scope: number;
+  readonly frontier: readonly {
+    readonly id: string;
+    readonly key: string | null;
+    readonly title: string | null;
+    readonly type: string;
+  }[];
+  readonly fog: readonly { readonly id: string; readonly text: string }[];
+}
+
+/**
+ * Map status (API-4): the frontier, the fog and the counts, in one statement
+ * over the map's read models (the summary is WF-1's, the frontier WF-2's),
+ * which the writing transaction keeps current, so a read after a write never
+ * shows the old state. Undefined when the id names no live map here.
+ *
+ * Full carries every id; standard names a frontier ticket by its key, title
+ * and type (its id only where it has no key); brief keeps the counts and the
+ * keys. A level is a projection of the same row, never a second read.
+ */
+export async function readMapStatus(
+  tx: TenantQuery,
+  taskTypeId: string,
+  mapId: string,
+  detail: Detail,
+): Promise<MapStatus | undefined> {
+  const rows = await tx.query<StatusRow>(
+    `select coalesce(s.version, 0) as version,
+            coalesce(s.open_tickets, 0) as open,
+            coalesce(s.closed_tickets, 0) as closed,
+            coalesce(s.out_of_scope, 0) as out_of_scope,
+            coalesce((select json_agg(json_build_object(
+                        'id', f.ticket_id, 'key', t.txt_1, 'title', t.txt_4,
+                        'type', coalesce(t.data ->> 'type', 'task')) order by f.position)
+                        from public.map_frontier f
+                        join public.records t
+                          on t.business_id = f.business_id and t.id = f.ticket_id
+                       where f.business_id = m.business_id and f.map_id = m.id),
+                     '[]'::json) as frontier,
+            coalesce((select json_agg(json_build_object('id', c.id, 'text', c.body)
+                               order by c.position)
+                        from public.map_components c
+                       where c.business_id = m.business_id and c.map_id = m.id
+                         and c.kind = 'fog' and c.retired_version is null),
+                     '[]'::json) as fog
+       from public.records m
+       left join public.map_summaries s on s.business_id = m.business_id and s.map_id = m.id
+      where m.business_id = $1 and m.id = $2 and m.record_type_id = $3
+        and m.deleted_at is null and m.data ->> 'type' = 'map'`,
+    [tx.businessId, mapId, taskTypeId],
+  );
+  const row = rows[0];
+  if (row === undefined) return undefined;
+  return {
+    map: mapId,
+    version: row.version,
+    open: row.open,
+    closed: row.closed,
+    outOfScope: row.out_of_scope,
+    frontier: row.frontier.map((ticket) => frontierAt(detail, ticket)),
+    fog: detail === 'brief' ? row.fog.map((line) => ({ id: line.id })) : row.fog,
+  };
+}
+
+function frontierAt(
+  detail: Detail,
+  ticket: StatusRow['frontier'][number],
+): MapStatus['frontier'][number] {
+  if (detail === 'full') return { ...ticket };
+  const named = ticket.key === null ? { id: ticket.id } : { key: ticket.key };
+  return detail === 'brief' ? named : { ...named, title: ticket.title, type: ticket.type };
 }

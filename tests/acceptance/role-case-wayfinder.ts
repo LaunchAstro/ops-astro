@@ -76,6 +76,7 @@ export const WAYFINDER_BODIES: Partial<Record<CommandName, Recipe>> = {
   'map.scope': async (context) => ({ ...(await freshMap(context)), client: randomUUID() }),
   'map.view': async (context) => ({ recordId: (await freshMap(context)).recordId }),
   'map.frontier': async (context) => ({ recordId: (await freshMap(context)).recordId }),
+  'map.status': async (context) => ({ recordId: (await freshMap(context)).recordId }),
   // WF-2, each on a map and ticket filed through the routes.
   'map.chart': () => ({
     title: 'a charted map',
