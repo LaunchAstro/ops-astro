@@ -14,7 +14,6 @@ import { useState, type ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AskSparkle } from '../../packages/ui/src/surfaces/assistant/asker.tsx';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
-import type { AskEntry } from '../../apps/web/src/assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../../apps/web/src/assistant/entries.ts';
 import { LOCAL_MODEL_WAIT } from '../../apps/web/src/assistant/subject.ts';
 import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
@@ -51,7 +50,7 @@ function Host(props: {
   readonly client: OperationsClient;
   readonly shifts: boolean[];
 }): ReactElement {
-  const [entry, setEntry] = useState<AskEntry | null>(null);
+  const [entry, setEntry] = useState<EntryPoint | null>(null);
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -62,10 +61,10 @@ function Host(props: {
             row={point.row}
             widget={point.widget.label}
             onAsk={(shift) => {
-              const made = entryFor(point);
-              if (made === null) return;
+              // The host opens the drawer only for a press the seam makes an ask of.
+              if (entryFor(point) === null) return;
               props.shifts.push(shift);
-              setEntry(made);
+              setEntry({ ...point });
               setOpen(true);
             }}
           />

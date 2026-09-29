@@ -10,7 +10,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
-import type { AskEntry } from '../../apps/web/src/assistant/chats.ts';
+import type { EntryPoint } from '../../apps/web/src/assistant/entries.ts';
 import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount, settle } from './mount.tsx';
 import { doubleClick, press, track, unmountAll } from './mp-7-11-drawer-fixtures.tsx';
@@ -70,7 +70,7 @@ function heldAnswer(): { readonly held: Promise<void>; readonly release: () => v
   };
 }
 
-async function view(options: { refuse?: string; entry?: AskEntry; held?: Promise<void> } = {}) {
+async function view(options: { refuse?: string; entry?: EntryPoint; held?: Promise<void> } = {}) {
   const { client, sent } = recorder(options.refuse ?? null, options.held);
   const page = track(
     await mount(
@@ -185,8 +185,8 @@ describe('MP-7-11 egress off', () => {
       entry: {
         row: 'CL-M03',
         widget: { id: 'clients-row', label: 'Meridian Physio, Clients' },
+        client: { id: 'c1', name: 'Meridian Physio' },
         question: 'How is Meridian going?',
-        scope: { client: { id: 'c1', name: 'Meridian Physio' }, task: null },
       },
     });
     expect(page.all('[data-assistant="model"] option')).toHaveLength(0);
