@@ -227,6 +227,7 @@ export class SessionStore {
     this.#kept.remove();
     if (ending !== null) {
       jsonSlot(this.#storage, settingsCacheKey(ending.businessKey), isRecord).remove();
+      jsonSlot(this.#storage, dockKey(ending.businessKey), isRecord).remove();
     }
   }
 

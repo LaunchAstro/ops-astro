@@ -12,7 +12,7 @@
 // and layout and may not own a session [ui-reference CONTRACT.md:305 rule 3].
 
 import type { ReactElement, ReactNode } from 'react';
-import type { DockTab } from './Dock.tsx';
+import { Dock, type DockProps } from './Dock.tsx';
 
 export interface RailEntry {
   /** Namespace-qualified. Sixteen bare identifiers collide in the corpus. */
@@ -28,17 +28,14 @@ export interface ShellProps {
   readonly here: string;
   readonly title: string;
   readonly meta?: ReactNode;
-  readonly dock: readonly DockTab[];
-  readonly onDockTab: (id: string) => void;
-  /** Whether the open panel is seated as a grid track or floating over. */
-  readonly seated: boolean;
-  readonly panel?: ReactNode;
+  /** The dock, or null where there is none: signed out, and on the client face (R17). */
+  readonly dock: DockProps | null;
   readonly children: ReactNode;
 }
 
 export function Shell(props: ShellProps): ReactElement {
   return (
-    <div className="shell" data-face={props.face} data-dock={props.seated ? 'seated' : 'floating'}>
+    <div className="shell" data-face={props.face}>
       <nav className="rail" aria-label="Sections">
         <div className="rail__brand">
           {/* The wordmark is a mask over an SVG in the pinned estate. No asset
@@ -78,31 +75,7 @@ export function Shell(props: ShellProps): ReactElement {
       {/* The dock is the way in to a panel at every width. The rail rotates
           below 900; it does not disappear, and there is no topbar fallback —
           at the pinned revision that control is display:none at every width. */}
-      <div className="dock__rail" role="group" aria-label="Side panels">
-        {props.dock.map((tab) => (
-          <button
-            key={tab.id}
-            className="dock__tab"
-            type="button"
-            aria-expanded={tab.open}
-            aria-label={`${tab.open ? 'Close' : 'Open'} ${tab.label}${tab.count === null ? '' : `, ${tab.count}`}`}
-            onClick={() => {
-              props.onDockTab(tab.id);
-            }}
-          >
-            {/* The icon slot. It carries the panel's initial until an icon set
-                with redistribution rights is resolved, rather than an emoji,
-                which the design system forbids outright. */}
-            <span aria-hidden="true">{tab.label.slice(0, 1)}</span>
-            {tab.count === null ? null : (
-              <span className="dock__n" aria-hidden="true">
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
-        {props.panel}
-      </div>
+      {props.dock === null ? null : <Dock {...props.dock} />}
     </div>
   );
 }

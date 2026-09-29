@@ -163,21 +163,44 @@
   }
 }
 
-/* -- The dock rail. It does not disappear below 900: it ROTATES onto the
-      bottom edge, and one panel draws, because a phone holds one thing.
-      (The contract describes an icon-only topbar fallback at this width. At
-      the pinned revision that control is `display: none !important` at EVERY
-      width and the rail is the way in; see DECISIONS.tsv.) ---------------- */
-.dock__rail {
+/* -- The dock (MP-3-1). The right edge as a place: a 40px rail of permanent
+      tabs floats centred on the right edge, and the open panels sit beside it,
+      the rail riding their left edge. It is fixed, so the grid's third track
+      (--dock-w) only keeps the rail off the content. Which panels are open and
+      how wide they sit is MP-3-2's geometry; this is the frame.
+      Below 900 the rail does not disappear: it ROTATES onto the bottom edge
+      and stays on screen at rest (the mockup's D-1), because a phone holds one
+      thing. The sheet tiers are MP-3-3's. ----------------------------------- */
+.dock {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
   display: flex;
-  flex: none;
+  pointer-events: none;
+}
+.dock > * {
+  pointer-events: auto;
+}
+.dock__rail {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.15rem;
   width: 40px;
-  padding: var(--s-3) 0;
-  border-left: 1px solid var(--border);
+  padding: var(--s-2) 0;
+  border: 1px solid var(--border);
+  border-right: 0;
   background: var(--rail-bg);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-50%);
+}
+.dock:not([data-open='0']) .dock__rail {
+  box-shadow: none;
 }
 .dock__tab {
   position: relative;
@@ -225,8 +248,132 @@
   width: 2px;
   background: var(--accent);
 }
+/* The callout (DK-03): the tab's label, on hover or keyboard focus only, and
+   no native title beside it. It opens to the right when the rail sits within
+   150px of the window's left edge. Its hairline keeps an edge in dark, where
+   its ground is the page's own (the mockup's D-12). */
+.dock__tip {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 7px);
+  z-index: 1;
+  display: none;
+  max-width: 14rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border-strong);
+  background: var(--void);
+  color: var(--on-dark);
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.dock__tab:hover .dock__tip,
+.dock__tab:focus-visible .dock__tip {
+  display: block;
+}
+.dock--tipflip .dock__tip {
+  right: auto;
+  left: calc(100% + 7px);
+}
+/* Close all (DK-06): last, behind its own hairline, only while something is open. */
+.dock__closeall {
+  margin-top: 0.35rem;
+  border-top: 1px solid var(--border);
+  font-size: 1rem;
+}
+.dock__closeall:hover {
+  color: var(--danger);
+}
+.dock__panels {
+  display: flex;
+  height: 100%;
+  box-shadow: var(--shadow-overlay);
+}
+.dpanel {
+  display: flex;
+  flex-direction: column;
+  width: var(--dock-panel-w, 550px);
+  min-width: 0;
+  border-left: 1px solid var(--border);
+  background: var(--rail-bg);
+}
+.dpanel__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-4) var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.dpanel__name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-weight: var(--weight-medium);
+  font-size: 1.05rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dpanel__acts {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+.dpanel__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-faint);
+  font-size: 0.95rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.dpanel__btn:hover {
+  color: var(--text);
+}
+.dpanel__btn[data-act='door']:hover {
+  color: var(--accent);
+}
+/* Back and forward are disabled, never hidden (DK-11, DK-12). */
+.dpanel__btn[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.dpanel__btn[aria-disabled='true']:hover {
+  color: var(--ink-faint);
+}
+.dpanel__div {
+  flex: none;
+  width: 1px;
+  height: 1.1em;
+  margin: 0 0.25rem;
+  background: var(--border);
+}
+.dpanel__body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5);
+}
 @media (width <= 900px) {
+  .dock {
+    top: auto;
+    left: 0;
+    flex-direction: column;
+  }
   .dock__rail {
+    position: static;
     order: 2;
     flex-direction: row;
     justify-content: center;
@@ -234,8 +381,32 @@
     width: auto;
     height: 40px;
     padding: 0;
-    border-left: 0;
+    border: 0;
     border-top: 1px solid var(--border);
+    box-shadow: none;
+    transform: none;
+  }
+  .dock__closeall {
+    margin: 0;
+    border-top: 0;
+  }
+  .dock__tip {
+    top: auto;
+    right: auto;
+    bottom: calc(100% + 7px);
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .dock__panels {
+    height: 560px;
+    max-height: calc(100dvh - 40px);
+  }
+  .dpanel {
+    width: 100vw;
+  }
+  /* One panel draws on a phone. */
+  .dpanel:not(:last-child) {
+    display: none;
   }
   .dock__tab[aria-expanded='true']::before {
     left: 4px;

@@ -48,7 +48,11 @@ const REGISTRY: PanelRegistry = {
 
 const live: Mounted[] = [];
 afterEach(async () => {
-  await Promise.all(live.splice(0).map(async (page) => await page.unmount()));
+  // One at a time: two unmounts at once would overlap their act() scopes.
+  for (const page of live.splice(0)) {
+    // eslint-disable-next-line no-await-in-loop
+    await page.unmount();
+  }
   closedFor.length = 0;
 });
 
@@ -144,6 +148,12 @@ describe('MP-3-1 open set survives navigation', () => {
   });
 });
 
+function made(tag: string, name?: string, value?: string): HTMLElement {
+  const element = document.createElement(tag);
+  if (name !== undefined) element.setAttribute(name, value ?? '');
+  return element;
+}
+
 describe('MP-3-1 escape order', () => {
   it('closes the last opened panel, one per press', async () => {
     const page = await at('/projects/', memory());
@@ -160,14 +170,15 @@ describe('MP-3-1 escape order', () => {
     await press(page, 'settings');
     const body = page.find('.dpanel__body') as HTMLElement;
     const hosts = [
-      Object.assign(document.createElement('input'), { type: 'text' }),
-      document.createElement('textarea'),
-      document.createElement('select'),
-      Object.assign(document.createElement('div'), { contentEditable: 'true' }),
-      Object.assign(document.createElement('div'), { role: 'combobox' }),
-      Object.assign(document.createElement('ul'), { role: 'menu' }),
-      Object.assign(document.createElement('div'), { role: 'listbox' }),
-      Object.assign(document.createElement('div'), { role: 'textbox' }),
+      made('input', 'type', 'text'),
+      made('textarea'),
+      made('select'),
+      made('div', 'contenteditable', 'true'),
+      made('div', 'contenteditable', ''),
+      made('div', 'role', 'combobox'),
+      made('ul', 'role', 'MENU'),
+      made('div', 'role', 'listbox'),
+      made('div', 'role', 'textbox'),
     ];
     for (const host of hosts) {
       const inner = document.createElement('span');
