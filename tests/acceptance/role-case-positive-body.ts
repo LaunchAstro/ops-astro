@@ -179,6 +179,13 @@ export function createPositiveBody(
           body: { secretId: String((set.body['detail'] as Record<string, unknown>)['secretId']) },
         };
       }
+      // The connector fleet (MP-14-7a): the admin reads it and starts a repair.
+      case 'connection.fleet':
+        return { body: {} };
+      case 'connector.repair':
+        return {
+          body: { connectionId: (await context.brokenConnection?.()) ?? randomUUID() },
+        };
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');

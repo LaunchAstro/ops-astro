@@ -102,6 +102,8 @@ const GRANTS_BY_ROLE = {
     // administrators, never an agent. Without it no seeded identity could set
     // or clear a key on Settings ▸ Keys.
     ['custody', 'manage'],
+    // The connector fleet on Connections & signal (MP-14-7a).
+    ['connection', 'read'],
   ],
   member: [
     ['task', 'read'],

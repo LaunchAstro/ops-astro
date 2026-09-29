@@ -16,6 +16,7 @@
 // Nothing below the boundary is substituted. Fixture grants go through
 // `issueGrant` via `grantTo`; every probe goes through `callRaw`.
 
+import { seedBrokenConnection } from '../connections/fixture.ts';
 import { randomUUID } from 'node:crypto';
 import { grantTo } from '../commands/fixture.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
@@ -79,6 +80,8 @@ export interface IdentWorld {
     grantId: string;
     /** A key bravo's admin set in custody (C31). */
     secretId: string;
+    /** A broken connection of bravo's, owner-written (MP-14-7a). */
+    connectionId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
@@ -268,6 +271,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       batchId: String(trashed['batchId']),
       grantId: String(bravoGrants[0]?.id),
       secretId: String(bravoSecret['secretId']),
+      connectionId: await seedBrokenConnection(world.db.admin, world.bravo, 'a bravo source'),
     },
     otherPicked,
     rhea,

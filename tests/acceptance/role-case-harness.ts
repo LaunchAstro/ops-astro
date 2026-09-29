@@ -16,6 +16,7 @@
 // what this adds is the identities each case needs and the setup a real
 // deployment already has. It substitutes nothing below the boundary.
 
+import { seedBrokenConnection } from '../connections/fixture.ts';
 import { randomUUID } from 'node:crypto';
 import {
   COMMAND_SURFACE,
@@ -275,6 +276,7 @@ export async function createHarness(part: string): Promise<Harness> {
       assigneePersonId: world.mia.personId as string,
       asPerson: async (name, body) => await asPerson(name, body),
       freshTask,
+      brokenConnection: async () => await seedBrokenConnection(world.db.admin, world.alpha),
     }),
     approvedReservation,
     reserve,

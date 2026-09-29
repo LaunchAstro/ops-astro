@@ -904,6 +904,8 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `secret.list`                      | `listCustodySecrets` (`reads/custody.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `secret.set`                       | `setCustodySecret` (`commands/custody-secrets.ts`)                                        | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `secret.clear`                     | `clearCustodySecret` (`commands/custody-secrets.ts`)                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `connection.fleet`                 | `readConnectionFleet` (`reads/connections.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `connector.repair`                 | `startConnectorRepair` (`commands/connector-repair.ts`)                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
@@ -1457,3 +1459,22 @@ has the table, the sealing and the compromise runbook.
 | `secret.clear` | `/secret/clear` | `operationId`, `secretId`, `expectedRevision?`                          | `detail: { secretId, state }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `VERSION_STALE` 409                                                        |
 
 No answer carries a value, and a refusal names the field, never what was sent.
+
+## Connections (MP-14-7a)
+
+The connector fleet on Connections & signal. The fleet is `connection:read`,
+filtered in its statement by the scopes the caller holds it at: a client-scoped
+reader sees the connections serving that client, and only that client in each
+list. The repair is `custody:manage`, business-wide, never an agent. It records
+`connector repair started` on a broken connection at its current revision and
+sends nothing: re-authorising is the broker's (AW-01), behind the approval gate
+on that revision. Connection rows are written by MP-13-5 and the broker; this
+build only reads them.
+
+| Operation          | Route               | Body                                               | Answer or refusals                                                                                                                                                                                                                                                                                                                                            |
+| ------------------ | ------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.fleet` | `/connection/fleet` | `{}`                                               | `{ ok: true, connections: [{ id, connectorKey, label, authMethod, status, failureClass, cadenceMinutes, lastSyncedAt, lastAttemptAt, scope, readComponents, executeComponents, custody: { secretId, state }, clients: [{ id, label }], repairStartedAt, revision }], counts: { all, active, degraded, broken, clientConnections } }`; `SCOPE_NOT_GRANTED` 403 |
+| `connector.repair` | `/connector/repair` | `operationId`, `connectionId`, `expectedRevision?` | `detail: { repairId, connectionId, connectionRevision, state: 'awaiting approval' }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (not broken), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                                                                                                   |
+
+The custody field is a reference: the secret's id and whether custody holds a
+value, never any part of one.

@@ -84,6 +84,26 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.custody_secrets': `insert into public.custody_secrets
        (business_id, id, name, scope_kind, scope_id)
      values ($1, gen_random_uuid(), 'restricted-calls.seed', 'business', null) returning 1`,
+  // The connector fleet (MP-14-7a): nothing the journey does writes a
+  // connection, so each of the three is written here.
+  'public.connections': `insert into public.connections
+       (business_id, id, connector_key, label, status)
+     values ($1, gen_random_uuid(), 'restricted-calls', 'restricted calls', 'active') returning 1`,
+  'public.connection_clients': `with made as (
+       insert into public.connections (business_id, id, connector_key, label, status)
+       values ($1, gen_random_uuid(), 'restricted-calls', 'restricted calls', 'active')
+       returning business_id, id)
+     insert into public.connection_clients (business_id, connection_id, client_id, client_label)
+     select business_id, id, gen_random_uuid(), 'restricted calls client' from made returning 1`,
+  'public.connection_repairs': `with made as (
+       insert into public.connections (business_id, id, connector_key, label, status, failure_class)
+       values ($1, gen_random_uuid(), 'restricted-calls', 'restricted calls', 'broken', 'unreachable')
+       returning business_id, id)
+     insert into public.connection_repairs
+       (business_id, id, connection_id, connection_revision, started_by_actor_id)
+     select m.business_id, gen_random_uuid(), m.id, 1, a.id
+       from made m join public.actors a on a.business_id = m.business_id
+      order by a.id limit 1 returning 1`,
 };
 
 /**

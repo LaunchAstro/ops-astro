@@ -79,7 +79,7 @@ describe('the surface as a table', () => {
     // `custody:manage`.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret|connection|connector)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -88,8 +88,9 @@ describe('the surface as a table', () => {
 });
 
 describe('the surface as a table', () => {
-  it('declares the ten reads as reads, and everything else as a write', () => {
+  it('declares the eleven reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
+      'connection.fleet',
       'person.list',
       'preset.plan',
       'secret.list',

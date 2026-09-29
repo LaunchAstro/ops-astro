@@ -11,6 +11,7 @@
 import type { ReactElement } from 'react';
 import type { AuthenticatedRouteId, ParamsOf, RouteMatch } from './routes.ts';
 import type { OperationsClient } from './operations/client.ts';
+import { ConnectionsScreen } from './screens/Connections.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
@@ -39,6 +40,7 @@ export const SCREENS: {
       <Projects client={context.client} grantKey={context.grantKey} />
     </>
   ),
+  'agency:connections': (context) => <ConnectionsScreen client={context.client} />,
   'agency:settings': (context) => (
     <SettingsScreen client={context.client} grantKey={context.grantKey} storage={context.storage} />
   ),

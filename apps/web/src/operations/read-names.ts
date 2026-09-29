@@ -42,6 +42,8 @@ export const READ_NAMES = [
   'task.receipt',
   // Custody's rows as set or not set (C31).
   'secret.list',
+  // The connector fleet on Connections & signal (MP-14-7a).
+  'connection.fleet',
 ] as const;
 
 /**

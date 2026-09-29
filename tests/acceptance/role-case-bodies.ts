@@ -66,6 +66,11 @@ export interface BodyContext {
   readonly assigneePersonId: string;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
+  /**
+   * A broken connection to repair (MP-14-7a), owner-written. A context that
+   * cannot write one leaves it out and the body names a fabricated one.
+   */
+  brokenConnection?(): Promise<string>;
 }
 
 export const batchOf = (answer: Answer): string =>
