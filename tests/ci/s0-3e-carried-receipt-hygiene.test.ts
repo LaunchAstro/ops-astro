@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CANARY,
   TAKEN,
+  carried,
   carriedFile,
   drillModule,
   folder,
@@ -129,5 +130,14 @@ function hygieneCases3() {
       output += readFileSync(join(gate.records, 'deployments.jsonl'), 'utf8');
     }
     expect(output).not.toContain(CANARY);
+  });
+
+  it('Sol proof, criterion 14: the planted target case reaches the target validator', async () => {
+    const operator = randomUUID();
+    const file = save({ ...pending(operator, 'made-up'), target: CANARY });
+    const { readCarriedReceipt } = await carried();
+    expect(() => readCarriedReceipt(file, { personId: operator, business: 'made-up' })).toThrow(
+      "the receipt's target is not one a carried drill writes",
+    );
   });
 }

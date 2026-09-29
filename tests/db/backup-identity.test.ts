@@ -246,4 +246,18 @@ function identityScopeCases3() {
     );
     expect(app?.reads).toBe(false);
   });
+
+  it('Sol proof, criterion 4: the source backup identity refuses every insert and update', async () => {
+    const client = await asRole(login.url, BACKUP);
+    try {
+      const challenge = randomBytes(32).toString('hex');
+      const insert = await attempt(client, UPSERT, [challenge]);
+      const update = await attempt(client, 'update ops.restore_challenge set challenge = $1', [
+        challenge,
+      ]);
+      expect({ insert, update }).toStrictEqual({ insert: '42501', update: '42501' });
+    } finally {
+      await client.end();
+    }
+  });
 }
