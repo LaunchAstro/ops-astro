@@ -380,15 +380,21 @@ export async function discoverEligible(
                            and unknown_att.state = 'liability_unknown')
         and (lin.state in ('rejected', 'cancelled')
              or ver.superseded_at is not null
-             -- A revocation that committed without its classification:
-             -- the delegation row records it, and the lease may still be live.
-             or held_delegation.revoked_at is not null
-             -- R5. A hold still bound to a lease the server has already fenced
-             -- has a recorded transition and no classification, which is the
-             -- exactly-once case W04 asks recovery to finish. It is still not
-             -- a clock: the lease's own terminal state is the fact, and a live
-             -- lease -- expired by its timestamp or not -- is not in this set.
-             or held_lease.state in ('expired', 'released'))
+             -- AW-05: a run waiting for budget ended its own lease and
+             -- retired its delegation when it stopped, and its hold is the
+             -- approved ceiling kept for a person's answer. Neither fact is
+             -- a transition to classify; the answer is (migration 0034).
+             or (run.state <> 'waiting_budget'
+                 -- A revocation that committed without its classification:
+                 -- the delegation row records it, and the lease may still be live.
+                 and (held_delegation.revoked_at is not null
+                      -- R5. A hold still bound to a lease the server has already
+                      -- fenced has a recorded transition and no classification,
+                      -- which is the exactly-once case W04 asks recovery to
+                      -- finish. It is still not a clock: the lease's own terminal
+                      -- state is the fact, and a live lease -- expired by its
+                      -- timestamp or not -- is not in this set.
+                      or held_lease.state in ('expired', 'released'))))
       order by res.id`,
     [tx.businessId, lineageId],
   );

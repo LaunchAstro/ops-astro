@@ -14,9 +14,21 @@
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
+import { callModel } from '../../packages/core-custody/src/index.ts';
 import { replayRecordedTransitions } from '../../packages/core-runtime/src/index.ts';
-import { liveWork, type Work } from '../runtime/schedules-harness.ts';
-import { call, noDatabase, rowsOnLease, s, useBrokerWorld, world } from './broker-world.ts';
+import { liveWork, racer, type Work } from '../runtime/schedules-harness.ts';
+import {
+  broker,
+  call,
+  caller,
+  noDatabase,
+  requestFor,
+  rowsOnLease,
+  s,
+  stepOf,
+  useBrokerWorld,
+  world,
+} from './broker-world.ts';
 
 /** Every case needs the database; without one the file is skipped. */
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -221,4 +233,29 @@ it('AW-05 asks are append-only', async () => {
     '42501',
   );
   expect(await outcome(`delete from public.budget_asks where run_id = $1`)).toBe('42501');
+});
+
+it('AW-05 two calls reaching the ceiling at once stop the run once', async () => {
+  const work = await liveWork(s, 'aw05 two at once', UNDER_ONE_CALL);
+  await stepOf(work);
+  const runId = await runOf(work);
+  const seen = world.provider.seen.length;
+  // Two connections of their own: the second waits on the rows the first holds
+  // (the run, then the lease) and finds its lease over. The lease lock alone
+  // makes this one ask; the run lock keeps the contract order (task, run,
+  // lease) for the run update.
+  const [first, second] = [racer(s), racer(s)];
+  try {
+    const answers = await Promise.all(
+      [first, second].map(
+        async (db) => await callModel(db, s.business, caller(work), requestFor(work), broker),
+      ),
+    );
+    expect(answers.map((answer) => answer.ok)).toEqual([false, false]);
+  } finally {
+    await Promise.all([first.close(), second.close()]);
+  }
+  expect(world.provider.seen.length).toBe(seen);
+  expect((await asksOf(runId)).map((ask) => ask.ask_number)).toEqual([1]);
+  expect(await stateOf(work, runId)).toMatchObject({ run: 'waiting_budget', reservation: 'held' });
 });

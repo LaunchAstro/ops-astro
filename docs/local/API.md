@@ -875,7 +875,10 @@ register's code (`LEASE_NOT_OWNED`, `LEASE_EXPIRED`, `AUTHORITY_LOST`,
 `LOCAL_MODEL_REQUIRED` 501, `CLIENT_MODEL_USE_OFF` (the task's client has
 model use off, C60), the three `SUBSCRIPTION_` codes, `RATE_LIMITED`
 with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
-`model_calls` row. `RATE_LIMITED` writes nothing and answers two ceilings,
+`model_calls` row. `BUDGET_UNAVAILABLE` is the approved ceiling reached: the
+run stops and asks in the same transaction (AW-05, the budget wait in
+[RUNTIME.md](RUNTIME.md)), its lease ends, and every later call on that lease
+is refused as an ended lease is. `RATE_LIMITED` writes nothing and answers two ceilings,
 each counting a call from its hold until it ends: the business's own per
 operation, and its fair share of the route's, which is the installation's.
 A business with calls in flight on a route holds no more than the route's

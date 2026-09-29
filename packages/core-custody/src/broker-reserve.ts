@@ -17,6 +17,7 @@ import {
 import { mayCarry } from './credentials.ts';
 import { committedMinor, lockFacts, type Facts } from './broker-facts.ts';
 import { resolveFields } from './broker-sources.ts';
+import { stopAtCeiling } from './broker-wait.ts';
 import type {
   Broker,
   BrokerRefusal,
@@ -172,8 +173,11 @@ export async function reserveModelCall(
   if (await atCeiling(tx, operation, route.route)) {
     return refusing('RATE_LIMITED', null, { retryAfterSeconds: WAIT_SECONDS });
   }
-  const room = facts.heldMinor - (await committedMinor(tx, facts.reservationId));
-  if (operation.maximumMinor > room) return await refused('BUDGET_UNAVAILABLE');
+  const spent = await committedMinor(tx, facts.reservationId);
+  if (operation.maximumMinor > facts.heldMinor - spent) {
+    // AW-05: the approved ceiling is the stop; the refusal commits with the wait.
+    return await refused('BUDGET_UNAVAILABLE', await stopAtCeiling(tx, facts, spent));
+  }
   const callId = await insertHold(tx, facts, operation, route.route);
   await registerPromptCopy(tx, callId);
   return {

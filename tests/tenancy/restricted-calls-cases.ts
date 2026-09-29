@@ -34,6 +34,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // kept and never read back by a run role.
   ['si', 'bootstrap_reads run_definition_pins'],
   ['i', 'bootstrap_bytes'],
+  // AW-05: a budget ask is the persisted count and is never rewritten.
+  ['si', 'budget_asks'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
   // AW-02: a historical run is never rewritten; the application moves its
