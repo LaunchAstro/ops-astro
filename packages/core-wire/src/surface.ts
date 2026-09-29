@@ -90,6 +90,7 @@ export type CommandName =
   // `business_settings` rows already cite in `owning_operation`.
   | 'settings.set_four_eyes_threshold'
   | 'settings.set_client_sign_off'
+  | 'settings.set_money_step_up'
   // The support controls the contract ledger requires through owning
   // production interfaces: revocation of an existing grant or delegation,
   // cancellation of a run's lineage, an authorised restart as a new lineage,
