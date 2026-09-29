@@ -27,6 +27,11 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'alerts handback_reports operations run_events'],
   // A run's checks, append only as handback_reports is (MP-6-1).
   ['si', 'run_checks'],
+  // 0033 (AW-03): a conversation, its body (deleted only by the purge, never
+  // edited) and its wrap-ups (append only, never purged).
+  ['siu', 'conversations'],
+  ['sid', 'conversation_messages'],
+  ['si', 'conversation_wrap_ups'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],

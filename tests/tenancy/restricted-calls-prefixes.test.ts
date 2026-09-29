@@ -111,6 +111,28 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     name: 'restricted calls seed',
     outcome: 'passed',
   },
+  // The journey holds no conversation (AW-03).
+  'public.conversations': {
+    owner_actor_id: randomUUID(),
+    owner_person_id: randomUUID(),
+    title: 'restricted calls seed',
+  },
+  'public.conversation_messages': {
+    conversation_id: randomUUID(),
+    role: 'person',
+    author_actor_id: randomUUID(),
+    body: 'restricted calls seed',
+  },
+  'public.conversation_wrap_ups': {
+    conversation_id: randomUUID(),
+    version: 1,
+    written_by_operation: 'conversation.wrap_up',
+    code_revision: 'seed',
+    request_quotation: 'restricted calls seed',
+    items: [{}, {}, {}, {}, {}, {}, {}],
+    left_open: [],
+    activity_through: new Date(),
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

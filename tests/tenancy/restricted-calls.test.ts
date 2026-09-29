@@ -55,7 +55,12 @@ import {
  * world assertions move.
  */
 /** The seeds written with foreign keys off: their rows may name ids that key nothing. */
-const REPLICA_SEEDS: ReadonlySet<string> = new Set(['public.run_checks']);
+const REPLICA_SEEDS: ReadonlySet<string> = new Set([
+  'public.run_checks',
+  'public.conversations',
+  'public.conversation_messages',
+  'public.conversation_wrap_ups',
+]);
 
 /** One seed row, as the owner; a replica seed with foreign keys off. */
 async function seed(
@@ -72,6 +77,38 @@ async function seed(
 }
 
 const UNREACHED: Readonly<Record<string, string>> = {
+  // The journey holds no conversation (AW-03), so one row per business in each
+  // of its three tables: the conversation owned by the business's first person
+  // actor, its message and its wrap-up on that conversation, where the business
+  // has them. Bravo's rows name ids that key nothing, written with foreign keys
+  // off (`REPLICA_SEEDS`).
+  'public.conversations': `insert into public.conversations
+       (business_id, id, owner_actor_id, owner_person_id, title)
+     select $1, gen_random_uuid(), coalesce(a.id, gen_random_uuid()),
+            coalesce(a.person_id, gen_random_uuid()), 'restricted calls seed'
+       from (select 1) one
+       left join lateral (
+         select id, person_id from public.actors
+          where business_id = $1 and person_id is not null order by id limit 1) a on true
+     returning 1`,
+  'public.conversation_messages': `insert into public.conversation_messages
+       (business_id, id, conversation_id, role, author_actor_id, body)
+     select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), 'person',
+            coalesce(c.owner_actor_id, gen_random_uuid()), 'restricted calls seed'
+       from (select 1) one
+       left join lateral (
+         select id, owner_actor_id from public.conversations
+          where business_id = $1 order by id limit 1) c on true
+     returning 1`,
+  'public.conversation_wrap_ups': `insert into public.conversation_wrap_ups
+       (business_id, id, conversation_id, version, written_by_operation, code_revision,
+        request_quotation, items, left_open, activity_through)
+     select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), 1, 'conversation.wrap_up',
+            'seed', 'restricted calls seed', '[{},{},{},{},{},{},{}]'::jsonb, '[]'::jsonb, now()
+       from (select 1) one
+       left join lateral (
+         select id from public.conversations where business_id = $1 order by id limit 1) c on true
+     returning 1`,
   // The journey records no check (MP-6-1), so one is written against the
   // business's own lease, run, version and attempt where it has one, as
   // `recordCheck` does; Bravo holds no lease, so its row names ids that key
