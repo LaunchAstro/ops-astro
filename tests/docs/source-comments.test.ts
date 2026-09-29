@@ -133,11 +133,25 @@ function passages(lines: readonly CommentLine[]): CommentLine[] {
 }
 
 /**
- * A dollar-quote tag as Postgres reads one: `$$`, or `$` and an identifier
- * (a letter or underscore, then letters, digits or underscores) and `$`. So
- * `$body1$` opens a quoted value, and `$1` is a parameter, not a tag.
+ * A dollar-quote tag as Postgres's lexer reads one: `$$`, or `$`, a letter,
+ * an underscore or any non-ASCII character, then any of those or digits, and
+ * `$`. So `$body1$` and `$é2$` open a quoted value, and `$1` is a parameter,
+ * because a tag cannot start with a digit.
  */
-const DOLLAR_TAG = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/u;
+const DOLLAR_TAG = /^\$(?:[A-Za-z_\u{80}-\u{10FFFF}][A-Za-z0-9_\u{80}-\u{10FFFF}]*)?\$/u;
+
+/**
+ * Where the dollar-quoted body opening at `at` ends, or -1 when there is none:
+ * no tag at `at`, or a tag never closed by the same tag (case and all). Postgres
+ * refuses an unclosed body, so the text after it is read on as SQL rather than
+ * skipped as data, and a comment in it is still found.
+ */
+function dollarQuoteEnd(sql: string, at: number): number {
+  const tag = DOLLAR_TAG.exec(sql.slice(at))?.[0];
+  if (tag === undefined) return -1;
+  const close = sql.indexOf(tag, at + tag.length);
+  return close < 0 ? -1 : close + tag.length;
+}
 
 /** A stylesheet's block comments; one left open runs to the end of the file. */
 function blockComments(text: string): (readonly [number, number])[] {
@@ -190,6 +204,7 @@ function sqlComments(sql: string, offset: number): (readonly [number, number])[]
   let at = 0;
   while (at < sql.length) {
     const char = sql[at];
+    const dollarEnd = char === '$' ? dollarQuoteEnd(sql, at) : -1;
     if (char === "'" || char === '"') {
       const escapes = char === "'" && /[Ee]/u.test(sql[at - 1] ?? '');
       at += 1;
@@ -200,10 +215,8 @@ function sqlComments(sql: string, offset: number): (readonly [number, number])[]
         else at += 1;
       }
       at += 1;
-    } else if (char === '$' && DOLLAR_TAG.test(sql.slice(at))) {
-      const tag = DOLLAR_TAG.exec(sql.slice(at))?.[0] ?? '$$';
-      const close = sql.indexOf(tag, at + tag.length);
-      at = close < 0 ? sql.length : close + tag.length;
+    } else if (dollarEnd >= 0) {
+      at = dollarEnd;
     } else if (sql.startsWith('--', at)) {
       const newline = sql.indexOf('\n', at);
       const end = newline < 0 ? sql.length : newline;
@@ -391,6 +404,23 @@ describe('a source comment cites no review round, lane or finding id', () => {
       'const q = sql`select $b1$ -- data $b1$ -- thermo`;',
     ],
     ['a SQL comment after parameter placeholders', 'const q = sql`select $1, $2 -- Sol 6`;'],
+    [
+      'a SQL comment between $1 and a dollar sign, which is not a tag',
+      'const q = sql`select $1$ -- Sol 6 $1$`;',
+    ],
+    ['a SQL comment after a dollar tag never closed', 'const q = sql`select $a$ -- Sol 6`;'],
+    [
+      'a SQL comment after a tag closed only by a different tag',
+      'const q = sql`select $a$ -- Sol 6 $b$`;',
+    ],
+    [
+      'a SQL comment after a tag closed only in another case',
+      'const q = sql`select $Tag$ -- Sol 6 $tag$`;',
+    ],
+    [
+      'a SQL comment after a nested tag body closes',
+      'const q = sql`select $a$ $b$ x $b$ $a$ -- Sol 6`;',
+    ],
   ])('reads %s', (_, source) => {
     const read = passages(commentLines(source));
     expect(read.some(({ comment }) => cites(comment) !== undefined)).toBe(true);
@@ -410,6 +440,13 @@ describe('a source comment cites no review round, lane or finding id', () => {
       'a dollar body whose tag has a digit and an underscore',
       'const q = sql`select $a_2$ -- Sol 6 $a_2$`;',
     ],
+    ['a dollar body with a non-ASCII letter tag', 'const q = sql`select $ü$ -- Sol 6 $ü$`;'],
+    ['a dollar body with a CJK tag', 'const q = sql`select $日本$ -- Sol 6 $日本$`;'],
+    [
+      'a dollar body whose tag starts with an underscore',
+      'const q = sql`select $_9$ -- Sol 6 $_9$`;',
+    ],
+    ["a tag nested inside another tag's body", 'const q = sql`select $a$ $b$ -- Sol 6 $b$ $a$`;'],
     ['a citation inside a regex', 'const r = /Sol 6|thermo/u;'],
   ])('does not read %s', (_, source) => {
     expect(commentLines(source)).toEqual([]);
