@@ -36,6 +36,23 @@ it('Sol proof, criterion 4: business-to-business and person-to-person rows are n
   expect(crossBoundaryCounts).toEqual([]);
 });
 
+it('Sol proof, criterion 4: business-to-business and person-to-person rows are not read by yes-or-no preflight', async () => {
+  const statements: string[] = [];
+  const owner: OwnerQuery = {
+    execute<Row>(statement: string): Promise<readonly Row[]> {
+      statements.push(statement);
+      if (statement.includes('shobj_description'))
+        return Promise.resolve([{ mark: null }] as Row[]);
+      return Promise.resolve([{ yes: statement.includes('to_regclass') }] as Row[]);
+    },
+  };
+  await productionSigns(owner, ['alpha']);
+  const crossBoundaryReads = statements.filter((statement) =>
+    /exists \(select from (?:public\.businesses|auth\.users)/u.test(statement),
+  );
+  expect(crossBoundaryReads).toEqual([]);
+});
+
 if (serverUrl === undefined) {
   console.warn('S0-1 no production data: DATABASE_URL is unset, so nothing below ran.');
 }
@@ -58,6 +75,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
   });
 
   const reset = async (): Promise<void> => {
+    await db.admin.execute('delete from public.people');
     await db.admin.execute('delete from public.businesses');
     await db.admin.execute('delete from auth.users');
     const [unmark] = await db.admin.execute<{ statement: string }>(
@@ -160,5 +178,26 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
     );
     const signs = await productionSigns(db.admin, MADE_UP);
     expect(signs).not.toEqual([]);
+  });
+
+  it('Sol proof, criterion 9: a marked database rejects restored person content', async () => {
+    await reset();
+    const businessId = await business('alpha');
+    await markMadeUp(db.admin, [businessId]);
+    await db.admin.execute(
+      'insert into public.people (business_id, id, display_name) values ($1, $2, $3)',
+      [businessId, randomUUID(), 'Restored Private Customer Canary'],
+    );
+    expect(await productionSigns(db.admin, MADE_UP)).not.toEqual([]);
+  });
+
+  it('Sol proof, criterion 9: confirmation cannot bless a backup with allowed business keys', async () => {
+    await reset();
+    const businessId = await business('alpha');
+    await db.admin.execute(
+      'insert into public.people (business_id, id, display_name) values ($1, $2, $3)',
+      [businessId, randomUUID(), 'Production Person Canary'],
+    );
+    expect(await productionSigns(db.admin, MADE_UP, true)).not.toEqual([]);
   });
 });
