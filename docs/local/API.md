@@ -768,6 +768,7 @@ None is a new actor power. Each asks for authority the caller already holds.
 | `task.cancel`       | `/task/cancel`       | `operationId`, `recordId`, `lineageId`, `reason`                                                                                                                                                          | `decide` on the task named in `recordId` (T3a; never an agent), asked again with the grants held, and `write` under the runtime's locks; a record-scoped grant is enough          | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `LINEAGE_NOT_ON_TASK` 409, `LINEAGE_TERMINAL` 409, `FIELD_VALUE_INVALID` 422 (naming `reason` when it is absent, blank, longer than 500 characters or holds a NUL or an unpaired surrogate), `COMMAND_BODY_INVALID` 400                                                                                                                                                                                                                                                         |
 | `task.restart`      | `/task/restart`      | `operationId`, `recordId`, `lineageId`, `expiresInSeconds?`                                                                                                                                               | `decide` on the task named in `recordId` (T3a; never an agent), plus `propose`'s own read and write checks; closes the task's open envelope, so the next approval opens a new one | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `LINEAGE_NOT_ON_TASK` 409, `TRANSITION_NOT_PERMITTED` 409 (live, completed or already restarted), `FIELD_VALUE_INVALID` 422, `PROPOSAL_SCOPE_EXCEEDED` 422 (the restarted lineage's last `currency` other than the task's cap's, which is its open envelope's cap or else the business cap, or its last ceiling past the cap's remaining room; a restart draws on a new envelope, so the old one's room does not bind it, and it supersedes no version, so no hold is released) |
 | `task.heartbeat`    | `/task/heartbeat`    | `operationId`, `leaseId`, `fence`, `leaseSeconds?`, `providerStarting?` (T3e1: `true` records the provider start on the lease's marked attempt, else `TRANSITION_NOT_PERMITTED` 409 with nothing written) | the lease's holder: an agent presenting the delegation minted with it, or a person on their own delegation-free lease under current `write`                                       | `DELEGATION_NOT_LIVE` 401 (agent), `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `FIELD_VALUE_INVALID` 422                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `task.check`        | `/task/check`        | `operationId`, `leaseId`, `fence`, `name`, `outcome`, `note?`                                                                                                                                             | the lease's holder, as `task.heartbeat`: the row names that holder as the actor that performed the check, and the run and version the lease works (MP-6-1)                        | `DELEGATION_NOT_LIVE` 401 (agent), `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `FIELD_VALUE_INVALID` 422 (name 1 to 120 characters, outcome `passed`, `failed` or `inconclusive`, note up to 500)                                                                                                                                                                                                                                                                                                                         |
 
 What each one does:
 
@@ -793,7 +794,7 @@ What each one does:
   in `tests/api/controls-revoke.test.ts` and the role-case matrix's case (f).
 - **Cancellation** reaches `cancelAndClassify`. The lineage becomes
   `cancelled` with the reason as its terminal reason, the live lease is
-  released, and the lineage's holds are classified. The canceller's write on
+  released, and the lineage's holds are classified. The canceller's decide on
   the task is held and checked again under the runtime locks, so a revocation
   that commits first makes the cancel `SCOPE_NOT_GRANTED` 403 with nothing
   written (`cancelAndClassify`, `core-runtime/src/recovery.ts`). The answer is
@@ -860,6 +861,7 @@ The five support controls, with their owning functions:
 | `task.cancel`       | `/api/b/:key/task/cancel`               | refused `DELEGATION_EXCLUDES_OPERATION` | `cancelOnTask` (`commands/tasks-controls.ts`)                                                                                                                                         | `cancelAndClassify` (`core-runtime/src/recovery.ts`)                                                        |
 | `task.restart`      | `/api/b/:key/task/restart`              | refused `DELEGATION_EXCLUDES_OPERATION` | `restartOnTask` (`commands/tasks-controls.ts`)                                                                                                                                        | `restart` (`core-runtime/src/restart.ts`) → `propose`, with `refuseRestart` (`core-runtime/src/propose.ts`) |
 | `task.heartbeat`    | `/api/b/:key/task/heartbeat`, own lease | `/api/a/b/:key/task/heartbeat`          | person: `heartbeatOwnLease` (`commands/tasks-lease.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`, `commands/agent-operations.ts`) → `heartbeatLease` (`commands/tasks-lease.ts`) | `heartbeat` (`core-runtime/src/heartbeat.ts`)                                                               |
+| `task.check`        | `/api/b/:key/task/check`, own lease     | `/api/a/b/:key/task/check`              | person: `checkOwnLease` (`commands/tasks-check.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`) → `checkLease` (same file)                                                         | `recordCheck` (`core-runtime/src/checks.ts`)                                                                |
 
 The other thirty. `runAgentCommand` (`commands/agent-envelope.ts`) refuses a
 name outside `AGENT_SURFACE` before it reads anything else. Each name the agent
@@ -923,6 +925,20 @@ lineage first. It is on the detail rather than behind a read of its own because
 a page that showed the evidence and then fetched the version separately could
 offer a decision on a version it never displayed, and the exact version is the
 whole of what `decide` compares.
+
+Each version carries `checks`: the checks its run recorded through
+`task.check` under the run's lease, oldest first, each with its `outcome` and
+the lease holder as `performedByActorId` (MP-6-1, CS-16.3; `run_checks`,
+migration 0032). They are read in the same snapshot as the rest.
+
+`gate.pending` is the one awaiting-review read (MP-6-1, TR-P-14): every gate
+still waiting on a person, on a live lineage's current version, on a task not
+in the trash, before its deadline on the database's clock. It is filtered by
+the caller's `decide` on tasks (`gate:decide`) inside the statement that reads
+the gates (`coveredScopes`, `authority/grants.ts`), so a record-scoped decider
+sees only its own records' gates, and a caller holding no `decide` anywhere is
+refused `SCOPE_NOT_GRANTED` 403 rather than answered with an empty list
+(`reads/awaiting-review.ts`; `tests/api/mp-6-1-isolation.test.ts`).
 
 A `task.read` answer's gate states, decisions and reservations come from one
 database snapshot. `readTaskProposals` (`reads/proposals.ts`) takes the
@@ -1231,8 +1247,8 @@ it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
 
 ## Reads
 
-`task.read`, `task.board`, `task.queue`, `person.list`, `preset.plan`,
-`settings.read` and `session.capabilities` are declared in `COMMAND_SURFACE`
+`task.read`, `task.board`, `task.queue`, `gate.pending`, `person.list`,
+`preset.plan`, `settings.read` and `session.capabilities` are declared in `COMMAND_SURFACE`
 with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 

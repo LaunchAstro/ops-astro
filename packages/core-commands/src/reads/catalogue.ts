@@ -30,6 +30,7 @@ import {
 import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
+import { readAwaitingReview } from './awaiting-review.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
@@ -284,6 +285,20 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         return refuseNotFound();
       }
       return { ok: true, execution: await readTaskExecution(tx, recordId, operands.cursor) };
+    },
+  },
+  // No subject record, as the queue: the list is about the gates the caller
+  // may decide. The door asks for any grant; the rows are filtered by the
+  // caller's `decide` inside the query, and a caller holding none is refused.
+  'gate.pending': {
+    identifiers: [],
+    parse: NONE,
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    async serve(tx, session, _operands, { spine }) {
+      const awaiting = await readAwaitingReview(tx, session, spine.taskTypeId, 'task');
+      return Array.isArray(awaiting) ? { ok: true, awaiting } : (awaiting as CommandRefusal);
     },
   },
   'preset.plan': {

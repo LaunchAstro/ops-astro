@@ -31,6 +31,7 @@ import { MAXIMUM_LEASE_SECONDS, pickupReservation, refuseReservationBody } from 
 import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
 import { dispatchLease } from './tasks-dispatch.ts';
 import { observeLease } from './tasks-observe.ts';
+import { checkLease } from './tasks-check.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
@@ -534,6 +535,28 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
             delegationId: delegation.id,
             collection: declaration.collection,
           },
+        ),
+    }),
+  ],
+  [
+    'task.check',
+    row({
+      authority: 'record',
+      subjectTask: 'lease',
+      replay: 'reauthorise',
+      operands: NONE,
+      serve: async (tx, { session, request }, _operands, delegation) =>
+        await checkLease(
+          tx,
+          {
+            leaseId: request['leaseId'],
+            fence: request['fence'],
+            name: request['name'],
+            outcome: request['outcome'],
+            note: request['note'],
+          },
+          agentClaimant(session.actorId),
+          delegation.id,
         ),
     }),
   ],

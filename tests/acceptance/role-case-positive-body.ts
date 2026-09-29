@@ -125,6 +125,9 @@ export function createPositiveBody(
       case 'task.board':
         return { body: { board: null } };
       case 'task.queue':
+      // The pending gates the admin may decide: the admin holds `decide` on
+      // the whole business, so the list answers.
+      case 'gate.pending':
       case 'person.list':
       // Both take an empty body and neither carries an `expectedRevision`:
       // `settings.read` because `business_settings` has no revision column to
@@ -208,6 +211,12 @@ export function createPositiveBody(
       case 'task.dispatch':
         // The person marks their own lease's step dispatched (T2c1).
         return { body: await ownLease(context) };
+      case 'task.check':
+        // A check recorded under the person's own lease (MP-6-1). The agent's
+        // check under its delegation is in the agent journey.
+        return {
+          body: { ...(await ownLease(context)), name: 'the admin checks', outcome: 'passed' },
+        };
       case 'task.observe':
         // The person observes the effect they applied on their own lease (T2c2).
         return { body: await ownAppliedEffect(context) };

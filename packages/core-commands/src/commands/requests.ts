@@ -264,6 +264,14 @@ export type CommandRequest =
       readonly attemptId: unknown;
       readonly amountMinor: unknown;
       readonly reason: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'task.check';
+      readonly leaseId: string;
+      readonly fence: number;
+      readonly name: string;
+      readonly outcome: string;
+      readonly note?: string | null;
     } & Envelope);
 
 /**

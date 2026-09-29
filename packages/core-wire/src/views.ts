@@ -253,6 +253,19 @@ export interface ProposalVersionView {
   readonly runId: string | null;
   readonly evidence: EvidenceView | null;
   readonly gate: GateView | null;
+  /** The checks the run performed on this version, oldest first (MP-6-1, CS-16.3). */
+  readonly checks: readonly CheckView[];
+}
+
+/** One check a run recorded under its worker lease, against the version it ran on. */
+export interface CheckView {
+  readonly id: string;
+  readonly name: string;
+  readonly outcome: string;
+  readonly note: string | null;
+  /** The lease holder that performed it: the provenance is the lease, not a claim. */
+  readonly performedByActorId: string;
+  readonly recordedAt: string;
 }
 
 export interface ProposalView {
@@ -357,6 +370,26 @@ export interface TaskBoardResult {
 export interface PersonListResult {
   readonly ok: true;
   readonly persons: readonly PersonView[];
+}
+
+/** One gate waiting on a person: `gate.pending`'s row (MP-6-1, TR-P-14). */
+export interface AwaitingReviewView {
+  readonly gateId: string;
+  readonly versionId: string;
+  readonly version: number;
+  readonly lineageId: string;
+  readonly taskId: string;
+  readonly taskTitle: string;
+  readonly purpose: string;
+  readonly maximumMinor: number;
+  readonly currency: string;
+  readonly round: number;
+  readonly expiresAt: string;
+}
+
+export interface AwaitingReviewResult {
+  readonly ok: true;
+  readonly awaiting: readonly AwaitingReviewView[];
 }
 
 /**

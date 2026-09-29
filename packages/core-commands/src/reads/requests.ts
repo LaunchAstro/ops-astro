@@ -30,6 +30,7 @@ import type {
   PersonListResult,
   PresetPlanResult,
   QueueResult,
+  AwaitingReviewResult,
   SettingsReadResult,
   SharedTaskRead,
   TaskBoardResult,
@@ -63,6 +64,8 @@ export interface ReadOperands {
   readonly 'person.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
+  /** The pending gates the caller may decide, filtered by their `decide` in the query. */
+  readonly 'gate.pending': NoOperands;
   /**
    * The task's runs and their progress events after `cursor`, a position the
    * caller already holds (0 for the start). See `reads/execution.ts`.
@@ -123,6 +126,7 @@ export type ReadResult =
   | TaskBoardResult
   | PersonListResult
   | QueueResult
+  | AwaitingReviewResult
   | PresetPlanResult
   | SettingsReadResult
   | { readonly ok: true; readonly execution: TaskExecution }

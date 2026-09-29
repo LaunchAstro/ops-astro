@@ -25,6 +25,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['s', 'ops.slots'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
+  // A run's checks, append only as handback_reports is (MP-6-1).
+  ['si', 'run_checks'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],

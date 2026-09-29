@@ -40,6 +40,13 @@ export { readAlerts, type Alert } from './alerts.ts';
 export { priceUsage, SYNTHETIC_PRICES, type Usage } from './price-book.ts';
 export { openEnvelopeOf, topUp, type Settlement, type TopUp, type TopUpRequest } from './budget.ts';
 export { CRASH_POINT_VARIABLE, crashPointAfterCommit, crashSeamProblem } from './crash-point.ts';
+export {
+  CHECK_OUTCOMES,
+  recordCheck,
+  type CheckOutcome,
+  type CheckRequest,
+  type RecordedCheck,
+} from './checks.ts';
 export { renderEvidence, RENDERER, type RenderedPack } from './evidence.ts';
 export {
   decide,

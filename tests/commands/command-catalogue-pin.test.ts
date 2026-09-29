@@ -106,6 +106,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-observe.ts', async (ori
   ...(await original<object>()),
   observeOwnLease: recorder('observeOwnLease'),
 }));
+vi.mock('../../packages/core-commands/src/commands/tasks-check.ts', async (original) => ({
+  ...(await original<object>()),
+  checkOwnLease: recorder('checkOwnLease'),
+}));
 vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async (original) => ({
   ...(await original<object>()),
   revokeDelegationAsManager: recorder('revokeDelegationAsManager'),
@@ -130,6 +134,7 @@ vi.mock('../../packages/core-commands/src/commands/budget-write-off.ts', async (
 }));
 
 const PINNED_RUNTIME_SHAPED = {
+  'task.check': 'leaseId',
   'task.handback': 'leaseId',
   'task.heartbeat': 'leaseId',
   'task.dispatch': 'leaseId',
@@ -146,6 +151,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'task.cancel': ['recordId', 'lineageId'],
+  'task.check': ['leaseId'],
   'task.create': ['parentId', 'board', 'boardSection'],
   'task.decide': ['gateId', 'versionId'],
   'task.handback': ['leaseId'],
@@ -163,6 +169,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.top_up',
   'budget.write_off',
   'delegation.revoke',
+  'gate.pending',
   'grant.revoke',
   'person.list',
   'preset.plan',
@@ -172,6 +179,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'settings.set_four_eyes_threshold',
   'task.board',
   'task.cancel',
+  'task.check',
   'task.create',
   'task.decide',
   'task.dispatch',
@@ -190,6 +198,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 
 const PINNED_AGENT_SURFACE = [
   'session.capabilities',
+  'task.check',
   'task.comment',
   'task.decide',
   'task.dispatch',
@@ -291,6 +300,14 @@ const REQUESTS: readonly CommandRequest[] = [
     amountMinor: 0,
     reason: 'why',
   },
+  {
+    command: 'task.check',
+    operationId: 'op',
+    leaseId: 'l',
+    fence: 4,
+    name: 'spelling',
+    outcome: 'passed',
+  },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -338,6 +355,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'task.check': ['checkOwnLease', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -362,7 +380,7 @@ const agentReach = (reach: readonly string[]) =>
     .toSorted();
 
 describe('the per-command tables at 06ab232', () => {
-  it('shapes the same runtime identifier for the same three commands', () => {
+  it('shapes the same runtime identifier for the same four commands', () => {
     expect({ ...RUNTIME_SHAPED }).toStrictEqual(PINNED_RUNTIME_SHAPED);
   });
 
@@ -377,13 +395,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-six from an expected revision', () => {
+  it('exempts the same twenty-eight from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same eleven, two of them before a pickup', () => {
+  it('lets an agent reach the same twelve, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

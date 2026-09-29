@@ -57,7 +57,7 @@ import type { KeyResolver, SigningKey } from '../../../core-runtime/src/index.ts
 import { readVerifiedProjection, type VerifiedDecision } from './verified-decisions.ts';
 import type { DecisionLink, ProposalView } from '../../../core-wire/src/index.ts';
 import { asReservation, asVersion } from './proposal-rows.ts';
-import type { ReservationRow, VersionRow } from './proposal-rows.ts';
+import type { CheckRow, ReservationRow, VersionRow } from './proposal-rows.ts';
 
 /** What each payload format signed, in `DecisionLink`'s names (`signing.ts`). */
 const SIGNED_FIELDS: Readonly<Record<number, readonly string[]>> = {
@@ -136,6 +136,14 @@ const RESERVATIONS = `select row_number() over (order by res.created_at, res.id)
       where res.business_id = $1
         and run.lineage_id in (select lineage_id from lineages)`;
 
+const CHECKS = `select row_number() over (order by ck.created_at, ck.id) as ordinal,
+            ck.version_id, ck.id, ck.name, ck.outcome, ck.note, ck.actor_id, ck.created_at
+       from public.run_checks ck
+       join public.proposal_versions ver
+         on ver.business_id = ck.business_id and ver.id = ck.version_id
+      where ck.business_id = $1
+        and ver.lineage_id in (select lineage_id from lineages)`;
+
 /**
  * Every proposal on one task, newest lineage first.
  *
@@ -158,13 +166,14 @@ export async function readTaskProposals(
     tx,
     {
       lineages: LINEAGES,
-      rows: { versions: VERSIONS, reservations: RESERVATIONS },
+      rows: { versions: VERSIONS, reservations: RESERVATIONS, checks: CHECKS },
       parameter: taskId,
     },
     signingKey,
   );
   const versions = (snapshot.rows['versions'] ?? []) as readonly VersionRow[];
   const reservations = (snapshot.rows['reservations'] ?? []) as readonly ReservationRow[];
+  const checks = (snapshot.rows['checks'] ?? []) as readonly CheckRow[];
   const decisions = snapshot.decisions;
   if (versions.length === 0) return [];
 
@@ -176,7 +185,7 @@ export async function readTaskProposals(
     return {
       lineageId,
       state: first?.lineage_state ?? 'unknown',
-      versions: rows.map((row) => asVersion(row)),
+      versions: rows.map((row) => asVersion(row, checks)),
       decisions: decisions
         .filter((row) => row.lineage_id === lineageId)
         .map((row) => asDecision(row)),

@@ -52,7 +52,17 @@ export interface ReservationRow {
   readonly attempt_drop_cause: string | null;
 }
 
-export function asVersion(row: VersionRow): ProposalVersionView {
+export interface CheckRow {
+  readonly version_id: string;
+  readonly id: string;
+  readonly name: string;
+  readonly outcome: string;
+  readonly note: string | null;
+  readonly actor_id: string;
+  readonly created_at: string;
+}
+
+export function asVersion(row: VersionRow, checks: readonly CheckRow[]): ProposalVersionView {
   return {
     versionId: row.version_id,
     version: Number(row.version),
@@ -83,6 +93,16 @@ export function asVersion(row: VersionRow): ProposalVersionView {
             expired: row.gate_expired ?? false,
             payloadDigest: row.payload_digest,
           },
+    checks: checks
+      .filter((check) => check.version_id === row.version_id)
+      .map((check) => ({
+        id: check.id,
+        name: check.name,
+        outcome: check.outcome,
+        note: check.note,
+        performedByActorId: check.actor_id,
+        recordedAt: isoTime(check.created_at),
+      })),
   };
 }
 

@@ -64,6 +64,8 @@ export type CommandName =
   | 'task.board'
   | 'task.queue'
   | 'task.execution'
+  // The gate engine's pending decisions a person may make (MP-6-1, TR-P-14).
+  | 'gate.pending'
   | 'person.list'
   // The preset planner. It reads the model and writes nothing at all, so it is
   // a read by the only definition this table has; what makes it unlike the
@@ -108,7 +110,10 @@ export type CommandName =
   // A person records what an unknown effect came to: one of three (T3d1).
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
-  | 'budget.write_off';
+  | 'budget.write_off'
+  // A check the run performed, recorded under its worker lease (MP-6-1,
+  // CS-16.3): a system write whose authority is the live lease, not a grant.
+  | 'task.check';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -385,6 +390,14 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  'task.check': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    name: 'any',
+    outcome: 'any',
+    note: 'any',
+  },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -454,6 +467,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   read('task.queue', TASK_COLLECTION, { agent: 'before-pickup' }),
   // One task's runs and their progress events (T2a), after `read` on that task.
   read('task.execution', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // `decide` on tasks (`gate:decide`), asked per row inside the query, so a
+  // record-scoped decider sees its own records' gates (`reads/awaiting-review.ts`).
+  read('gate.pending', TASK_COLLECTION, { action: 'decide' }),
   read('person.list', 'person'),
   // `preset` is what this route is about; the grant it takes is `manage` on
   // the family the request names, which `reads/dispatch.ts` reads off the
@@ -532,6 +548,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // The lease owner's too, asked as heartbeat is; the runtime rechecks the
   // four effect-time facts under its own locks.
   declare('task.dispatch', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // Asked of the lease like heartbeat: the lease holder records the check,
+  // and the row names the holder as the actor that performed it.
+  declare('task.check', 'write', {
     targetsExistingRecord: false,
     authorisedOn: 'claim',
     untargetedIdentifiers: ['leaseId'],

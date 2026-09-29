@@ -25,6 +25,7 @@ import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
 import { dispatchOwnLease } from './tasks-dispatch.ts';
 import { observeOwnLease } from './tasks-observe.ts';
+import { checkOwnLease } from './tasks-check.ts';
 import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
@@ -106,6 +107,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.heartbeat': heartbeatOwnLease,
   'task.dispatch': dispatchOwnLease,
   'task.observe': observeOwnLease,
+  'task.check': checkOwnLease,
   'task.handback': handbackOwnLease,
 
   // T2e. A person's money decision; no agent route reaches it.

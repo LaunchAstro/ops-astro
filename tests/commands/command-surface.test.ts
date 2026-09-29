@@ -74,18 +74,23 @@ describe('the surface as a table', () => {
     // the only collection nothing is stored in, because the read under it is
     // about the caller rather than about the business's records. `grant` and
     // `delegation` are the revocation controls': the path names the row a
-    // revocation writes, and the authority it asks is still on tasks.
+    // revocation writes, and the authority it asks is still on tasks. `gate`
+    // is the awaiting-review read's (MP-6-1): the gates waiting on a decision,
+    // asked with `decide` on tasks.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget)\/[a-z_]+$/u.test(path),
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate)\/[a-z_]+$/u.test(
+          path,
+        ),
       ),
     ).toBe(true);
   });
 });
 
 describe('the surface as a table', () => {
-  it('declares the nine reads as reads, and everything else as a write', () => {
+  it('declares the ten reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
+      'gate.pending',
       'person.list',
       'preset.plan',
       'session.capabilities',

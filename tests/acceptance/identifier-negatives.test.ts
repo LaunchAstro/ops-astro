@@ -355,6 +355,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['task.dispatch', {}],
         // The attempt token is one no form holds, so the lease is what is compared.
         ['task.observe', { attemptId: randomUUID() }],
+        ['task.check', { name: NOBODY, outcome: 'passed' }],
         ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
       ];
       for (const [op, extra] of byLease) {
