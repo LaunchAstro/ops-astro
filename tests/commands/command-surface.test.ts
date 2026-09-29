@@ -82,11 +82,12 @@ describe('the surface as a table', () => {
     ).toBe(true);
   });
 
-  it('declares the eight reads as reads, and everything else as a write', () => {
+  it('declares the nine reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
       'person.list',
       'preset.plan',
       'session.capabilities',
+      'session.person',
       'settings.read',
       'task.board',
       'task.queue',

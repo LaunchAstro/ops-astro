@@ -2,12 +2,13 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 36 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 38 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 36. For
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 38; on
+// the two that are his own account (C23) he is refused for naming someone. For
 // the three lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
 // own refusals of those three are a case of their own below.
@@ -226,6 +227,11 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         const body = name === 'task.handback' ? { ...lease, ...settle } : lease;
         return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
       }
+      case 'session.person':
+      case 'session.end':
+        // His own account (C23) needs no grant, so what he is refused for is
+        // aiming it at something: a record id, which neither takes.
+        return personCell(noah, name, { recordId: w.h.alphaTask.id }, 'COMMAND_BODY_INVALID');
       default: {
         // `session.capabilities` included: contract 8.2 case 3 names every
         // endpoint, and the root's routing (ROOT-REVIEW-74d583c-ROUTING) says
@@ -322,12 +328,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 36 exported operations both ways', () => {
+  it('covered all 38 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(36);
+    expect(names).toHaveLength(38);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 36.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 38.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 

@@ -4,8 +4,7 @@
 // (MP-2-5). The browser says neither whether there is a page ahead nor where
 // the tab is, so each entry the application pushes carries its position, and
 // the furthest position is kept for the tab. A new navigation from the middle
-// drops the pages ahead, as the browser does, so Forward is disabled then
-// (TR-S-B1R-13).
+// drops the pages ahead, as the browser does, so Forward is disabled then.
 
 const TOP = 'ops-astro.history-top';
 

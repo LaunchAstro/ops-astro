@@ -42,6 +42,9 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['settings.read', {}],
   ['session.capabilities', {}],
   ['task.search', { query: 'brochure' }],
+  // The person menu's two (C23): the caller's own account, naming nobody.
+  ['session.person', {}],
+  ['session.end', {}],
 ];
 
 /** The ten identifier-bearing operations outside (c) and (d): operand and executed case. */

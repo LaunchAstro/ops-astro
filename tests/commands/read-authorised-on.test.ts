@@ -19,7 +19,8 @@ describe("a read's declared authority scope", () => {
     const checked = Object.fromEntries(
       Object.entries(READ_CATALOGUE).map(([name, row]) => [
         name,
-        'subject' in row ? 'record' : 'business',
+        // `self`: no grant is asked; the answer is the caller's own (C23).
+        row.authority === 'self' ? 'self' : 'subject' in row ? 'record' : 'business',
       ]),
     );
     expect(declared).toStrictEqual(checked);
