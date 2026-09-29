@@ -6,13 +6,21 @@
 // the sort's third press, the board's own order, is the work order too. The
 // Client column drops when one client is shown (P-23). The rows gather under
 // their statuses in the workflow's order, each banner with its waiting
-// reasons (MP-5-11).
+// reasons (MP-5-11). The chip row carries the viewer's own chip (on at load
+// unless `viewerOn` is false, as on a client's board), a chip per category in
+// scope, and the Review mode with its live count (MP-5-12).
 
 import { useMemo, useState, type ReactElement } from 'react';
 import { BoardMachine } from './BoardMachine.tsx';
 import { projectCell } from './ProjectCell.tsx';
 import { groupReason, projectColumns, statusOrder, type ProjectRow } from '../board/projects.ts';
 import { clientFiltersIn, projectFacets } from '../board/project-facets.ts';
+import {
+  openWithViewer,
+  projectPresets,
+  reviewBadge,
+  REVIEW_MODE,
+} from '../board/project-presets.ts';
 import { sortRows } from '../board/sort.ts';
 
 export interface ProjectsBoardProps {
@@ -44,8 +52,17 @@ function withWorkOrder(address: string): string {
   return params.toString();
 }
 
+const REVIEW_EMPTY = {
+  title: 'Nothing is waiting for your decision.',
+  description: 'Press Review again to go back to every task.',
+};
+
 export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
-  const [opening] = useState(() => withWorkOrder(props.address ?? ''));
+  const viewer = props.viewer ?? null;
+  // The viewer preset is on at load agency-wide and off on a client's board (P-11).
+  const [opening] = useState(() =>
+    withWorkOrder(openWithViewer(props.address ?? '', props.viewerOn === false ? null : viewer)),
+  );
   const [address, setAddress] = useState(opening);
   const now = useMemo(() => props.now ?? new Date(), [props.now]);
   const clientFilters = clientFiltersIn(address);
@@ -57,7 +74,12 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
     () => sortRows(props.rows, WORK_ORDER, projectColumns({ stages: props.stages })),
     [props.rows, props.stages],
   );
-  const facets = useMemo(() => projectFacets(props.rows, now), [props.rows, now]);
+  const facets = useMemo(() => projectFacets(props.rows, now, viewer), [props.rows, now, viewer]);
+  const presets = useMemo(() => projectPresets(props.rows, viewer), [props.rows, viewer]);
+  const modes = useMemo(
+    () => [{ ...REVIEW_MODE, badge: reviewBadge(props.rows), empty: REVIEW_EMPTY }],
+    [props.rows],
+  );
   const statuses = useMemo(() => statusOrder(props.rows), [props.rows]);
   return (
     <BoardMachine<ProjectRow>
@@ -65,6 +87,8 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
       withheld={props.withheld ?? 0}
       columns={columns}
       facets={facets}
+      presets={presets}
+      modes={modes}
       groups={{ order: statuses, of: (row) => row.status, reason: groupReason }}
       rowKey={(row) => row.id}
       cell={(row, key) => projectCell(row, key, { now, href: props.href })}
