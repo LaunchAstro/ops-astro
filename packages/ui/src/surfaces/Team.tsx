@@ -13,6 +13,7 @@ import {
   teammatesOf,
   type Availability,
   type AvailabilityChange,
+  type DirectThread,
   type Teammate,
 } from '../state/team.ts';
 import { follow, type OpenHow } from './gesture.ts';
@@ -26,6 +27,12 @@ export interface TeamPanelProps {
   readonly workHref: (personId: string) => string;
   readonly onOpenWork: (personId: string, how: OpenHow) => void;
   readonly onSetAvailability: (change: AvailabilityChange) => void;
+  /** The reader's direct conversations, as the comment read returned them (C71-D). */
+  readonly threads: readonly DirectThread[];
+  /** Move the reader's own read marker on the conversation with this teammate. */
+  readonly onMarkRead: (withPerson: string, upTo: string) => void;
+  /** Send a direct message: a comment with a two-person audience, through MP-4-5's comment command. */
+  readonly onSend: (toPerson: string, body: string) => void;
 }
 
 function Chip(props: {

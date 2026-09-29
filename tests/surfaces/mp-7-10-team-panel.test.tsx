@@ -8,55 +8,10 @@
 
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  TeamPanel,
-  teammatesOf,
-  type AvailabilityChange,
-  type OpenHow,
-  type TeamPanelProps,
-  type Teammate,
-} from '../../packages/ui/src/index.ts';
+import { TeamPanel, teammatesOf } from '../../packages/ui/src/index.ts';
 import { press } from './inbox-fixture.tsx';
 import { mount, type Mounted } from './mount.tsx';
-
-const person = (personId: string, name: string, away: string | null = null): Teammate => ({
-  personId,
-  name,
-  short: name.split(' ')[0] ?? name,
-  initials: name
-    .split(' ')
-    .map((part) => part[0])
-    .join(''),
-  away: away === null ? null : { reason: away },
-});
-
-const ME = 'p-me';
-const PEOPLE: readonly Teammate[] = [
-  person('p-ryan', 'Ryan Hale'),
-  person(ME, 'Sam Reid'),
-  person('p-len', 'Len Ortiz', 'At the Meridian shoot until 2'),
-  person('p-cath', 'Cath Lea'),
-];
-
-interface Calls {
-  readonly work: [string, OpenHow][];
-  readonly availability: AvailabilityChange[];
-}
-
-function props(over: Partial<TeamPanelProps> = {}): TeamPanelProps & { readonly calls: Calls } {
-  const calls: Calls = { work: [], availability: [] };
-  return {
-    people: PEOPLE,
-    me: ME,
-    workHref: (id) => `/projects/?person=${id}`,
-    onOpenWork: (id, how) => calls.work.push([id, how]),
-    onSetAvailability: (change) => calls.availability.push(change),
-    ...over,
-    calls,
-  };
-}
-
-const chip = (m: Mounted, id: string): Element | null => m.find(`[data-person="${id}"]`);
+import { ME, PEOPLE, chip, person, props } from './team-fixture.tsx';
 
 let mounted: Mounted | undefined;
 afterEach(async () => {

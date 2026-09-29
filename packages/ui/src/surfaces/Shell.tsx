@@ -24,6 +24,8 @@ export interface DockTab {
   readonly id: string;
   readonly label: string;
   readonly open: boolean;
+  /** What is waiting in the panel, painted with the first frame; none at zero. */
+  readonly count?: number;
 }
 
 export interface ShellProps {

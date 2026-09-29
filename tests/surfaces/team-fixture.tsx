@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The Team panel tests' one team: four people, one of them the reader and one
+// away, their direct conversations, and the panel's props with every call kept.
+
+import type {
+  AvailabilityChange,
+  DirectThread,
+  OpenHow,
+  TeamMessage,
+  TeamPanelProps,
+  Teammate,
+} from '../../packages/ui/src/index.ts';
+import type { Mounted } from './mount.tsx';
+
+export const person = (personId: string, name: string, away: string | null = null): Teammate => ({
+  personId,
+  name,
+  short: name.split(' ')[0] ?? name,
+  initials: name
+    .split(' ')
+    .map((part) => part[0])
+    .join(''),
+  away: away === null ? null : { reason: away },
+});
+
+export const ME = 'p-me';
+export const PEOPLE: readonly Teammate[] = [
+  person('p-ryan', 'Ryan Hale'),
+  person(ME, 'Sam Reid'),
+  person('p-len', 'Len Ortiz', 'At the Meridian shoot until 2'),
+  person('p-cath', 'Cath Lea'),
+];
+
+export const message = (
+  id: string,
+  authorId: string,
+  at: string,
+  body = `Message ${id}`,
+): TeamMessage => ({
+  id,
+  authorId,
+  author: PEOPLE.find((p) => p.personId === authorId)?.name ?? authorId,
+  at,
+  body,
+});
+
+/** Ryan: read to 09:40, one of his after it. Len: nothing unread. Cath: never read, two of hers. */
+export const THREADS: readonly DirectThread[] = [
+  {
+    with: 'p-ryan',
+    lastRead: '2026-09-28T09:40:00Z',
+    messages: [
+      message('r1', 'p-ryan', '2026-09-28T09:12:00Z'),
+      message('r2', ME, '2026-09-28T09:31:00Z'),
+      message('r3', 'p-ryan', '2026-09-28T11:47:00Z'),
+    ],
+  },
+  {
+    with: 'p-len',
+    lastRead: '2026-09-28T10:05:00Z',
+    messages: [
+      message('l1', 'p-len', '2026-09-28T08:55:00Z'),
+      message('l2', ME, '2026-09-28T10:02:00Z'),
+    ],
+  },
+  {
+    with: 'p-cath',
+    lastRead: null,
+    messages: [
+      message('c1', 'p-cath', '2026-09-28T08:20:00Z'),
+      message('c2', 'p-cath', '2026-09-28T08:21:00Z'),
+    ],
+  },
+];
+
+export interface Calls {
+  readonly work: [string, OpenHow][];
+  readonly availability: AvailabilityChange[];
+  readonly marks: [string, string][];
+  readonly sends: [string, string][];
+}
+
+export function props(
+  over: Partial<TeamPanelProps> = {},
+): TeamPanelProps & { readonly calls: Calls } {
+  const calls: Calls = { work: [], availability: [], marks: [], sends: [] };
+  return {
+    people: PEOPLE,
+    me: ME,
+    workHref: (id) => `/projects/?person=${id}`,
+    onOpenWork: (id, how) => calls.work.push([id, how]),
+    onSetAvailability: (change) => calls.availability.push(change),
+    threads: [],
+    onMarkRead: (withPerson, upTo) => calls.marks.push([withPerson, upTo]),
+    onSend: (to, body) => calls.sends.push([to, body]),
+    ...over,
+    calls,
+  };
+}
+
+export const chip = (m: Mounted, id: string): Element | null =>
+  m.host.querySelector(`[data-person="${id}"]`);
