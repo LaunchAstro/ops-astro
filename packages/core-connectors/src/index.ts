@@ -50,6 +50,14 @@ export {
 } from './capture/fence.ts';
 export { capturePage, type CaptureOptions } from './capture/page.ts';
 export {
+  PICTURE_POLICY,
+  capturePicture,
+  type Picture,
+  type PictureBrowser,
+  type PictureRequest,
+  type PictureRoute,
+} from './capture/picture.ts';
+export {
   CONNECTOR_HOSTS,
   SITE_OPERATIONS,
   siteCatalogue,
