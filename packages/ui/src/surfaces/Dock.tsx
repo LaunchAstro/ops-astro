@@ -22,13 +22,12 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type KeyboardEvent,
   type MouseEvent,
-  type PointerEvent,
   type CSSProperties,
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { EdgeGrip } from './EdgeGrip.tsx';
 
 export interface DockTab {
   readonly id: string;
@@ -66,8 +65,6 @@ export const DOCK_PANEL_FLOOR = 380;
 export const DOCK_PANEL_DEFAULT = 550;
 export const DOCK_SHEET_FLOOR = 220;
 export const DOCK_SHEET_DEFAULT = 460;
-const STEP = 16;
-const BIG_STEP = 64;
 
 export interface DockProps {
   readonly tabs: readonly DockTab[];
@@ -140,8 +137,10 @@ export function Dock(props: DockProps): ReactElement {
               grip={
                 sheet ? (
                   index === 0 ? (
-                    <Grip
-                      axis="y"
+                    <EdgeGrip
+                      edge="top"
+                      className="dpanel__grip"
+                      label="Sheet height"
                       value={height}
                       min={DOCK_SHEET_FLOOR}
                       max={props.layout?.sheetMax}
@@ -153,8 +152,10 @@ export function Dock(props: DockProps): ReactElement {
                     />
                   ) : null
                 ) : (
-                  <Grip
-                    axis="x"
+                  <EdgeGrip
+                    edge="left"
+                    className="dpanel__grip"
+                    label="Panel width"
                     value={width}
                     min={DOCK_PANEL_FLOOR}
                     reset={DOCK_PANEL_DEFAULT}
@@ -237,84 +238,6 @@ export function useReadyAfterFirstLayout(): boolean {
     };
   }, []);
   return ready;
-}
-
-/**
- * One separator for either measure. Along x it is the panels' one width: the
- * group is anchored right, so a pointer moved left by d widens each of `per`
- * panels by d / per, and ArrowLeft widens. Along y it is the sheet's one
- * height: a pointer moved up by d makes it d taller, and ArrowUp does.
- */
-function Grip(props: {
-  readonly axis: 'x' | 'y';
-  readonly value: number;
-  readonly min: number;
-  readonly max?: number | undefined;
-  readonly reset: number;
-  readonly per: number;
-  readonly onDragging: (dragging: boolean) => void;
-  readonly onChange: ((value: number) => void) | undefined;
-  readonly onCommit: ((value: number) => void) | undefined;
-}): ReactElement {
-  const start = useRef<{ readonly at: number; readonly value: number } | null>(null);
-  const held = (value: number): number =>
-    Math.max(props.min, Math.min(Math.round(value), props.max ?? Number.POSITIVE_INFINITY));
-  const along = (event: PointerEvent<HTMLDivElement>): number =>
-    props.axis === 'x' ? event.clientX : event.clientY;
-  const at = (point: number): number => {
-    const from = start.current ?? { at: point, value: props.value };
-    return held(from.value + (from.at - point) / props.per);
-  };
-  const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
-    start.current = { at: along(event), value: props.value };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    props.onDragging(true);
-  };
-  const onPointerMove = (event: PointerEvent<HTMLDivElement>): void => {
-    if (start.current !== null) props.onChange?.(at(along(event)));
-  };
-  const onPointerUp = (event: PointerEvent<HTMLDivElement>): void => {
-    if (start.current === null) return;
-    const value = at(along(event));
-    start.current = null;
-    props.onDragging(false);
-    props.onCommit?.(value);
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    const step = event.shiftKey ? BIG_STEP : STEP;
-    const [grow, shrink] =
-      props.axis === 'x' ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown'];
-    const next =
-      event.key === grow
-        ? props.value + step
-        : event.key === shrink
-          ? props.value - step
-          : event.key === 'Home'
-            ? props.reset
-            : null;
-    if (next === null) return;
-    event.preventDefault();
-    const value = held(next);
-    props.onChange?.(value);
-    props.onCommit?.(value);
-  };
-  return (
-    <div
-      className="dpanel__grip"
-      role="separator"
-      aria-orientation={props.axis === 'x' ? 'vertical' : 'horizontal'}
-      aria-label={props.axis === 'x' ? 'Panel width' : 'Sheet height'}
-      aria-valuenow={props.value}
-      aria-valuemin={props.min}
-      aria-valuemax={props.max}
-      tabIndex={0}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      onKeyDown={onKeyDown}
-    />
-  );
 }
 
 function DockPanelView(props: {

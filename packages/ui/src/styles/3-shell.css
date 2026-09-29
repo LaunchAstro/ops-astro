@@ -111,6 +111,102 @@
   }
 }
 
+/* -- The rail folds (MP-2-3). Above 900 it folds to a 56px strip of glyphs,
+      each with its name on hover, and its right edge drags it from 170 to
+      400. At 900 and below the rail is the drawer: no fold, no grip, and the
+      strip's rules do not reach it. The shell writes --rail-w; the grid's
+      transition runs once the shell is ready and never during a drag
+      (the mockup's drag trailed the cursor, DS-SIDE-D4). */
+.railfold {
+  position: absolute;
+  top: calc(var(--s-5) + 1.15rem);
+  right: var(--s-3);
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.railfold:hover,
+.railfold:focus-visible {
+  color: var(--text);
+  background: var(--surface);
+}
+.rail__glyph {
+  display: none;
+}
+/* Right: 0 rather than straddling the border, because the rail scrolls and
+   would clip or scroll sideways to show anything past its edge. */
+.railgrip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.railgrip:hover,
+.railgrip:focus-visible,
+.shell[data-rail-dragging] .railgrip {
+  background: var(--accent-ring);
+  outline: none;
+}
+.shell[data-rail-dragging],
+.shell[data-rail-dragging] * {
+  transition: none !important;
+  cursor: col-resize;
+  user-select: none;
+}
+@media not all and (max-width: 900px) {
+  .shell[data-rail='collapsed'] .rail {
+    padding-top: calc(var(--s-5) + 30px);
+  }
+  .shell[data-rail='collapsed'] .railfold {
+    top: var(--s-5);
+    right: 16px;
+  }
+  .shell[data-rail='collapsed'] .rail__item {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .shell[data-rail='collapsed'] .rail__glyph {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    font-size: 0.8rem;
+    font-weight: var(--weight-medium);
+  }
+  /* Hidden from sight only: each label stays its item's accessible name. */
+  .shell[data-rail='collapsed'] .rail__hub,
+  .shell[data-rail='collapsed'] .rail__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+@media (width <= 900px) {
+  .railfold,
+  .railgrip {
+    display: none;
+  }
+}
+
 /* -- The page strip and the content column ------------------------------- */
 .main {
   display: flex;

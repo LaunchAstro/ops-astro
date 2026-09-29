@@ -20,7 +20,7 @@ import { PANELS, dockTabs, isPanelId, type PanelId, type PanelRegistry } from '.
 import { closeAll, close, isOwnAddress, press, ranked, visit } from './dock/open-set.ts';
 import { useDock } from './dock/use-dock.ts';
 import { useDockLayout } from './dock/use-layout.ts';
-import type { RailPreference } from './shell/use-rail.ts';
+import { useRail, type RailPreference } from './shell/use-rail.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
@@ -52,7 +52,8 @@ export function App(props: AppProps): ReactElement {
   const [session, setSession] = useState<Session | null>(props.sessions.session);
   const registry = props.panels ?? PANELS;
   const dock = useDock(session, props.storage, registry);
-  const layout = useDockLayout(dock, registry);
+  const nav = useRail(props.railPreference, props.saveRailPreference);
+  const layout = useDockLayout(dock, registry, nav.drawn);
 
   // The root address is not a screen and it is not a mistake either: it is how
   // a person arrives. It leads to the board when there is a session and to
@@ -256,6 +257,11 @@ export function App(props: AppProps): ReactElement {
         )
       }
       onClick={dock.onDoor}
+      railCollapsed={nav.collapsed}
+      railWidth={nav.width}
+      onRailFold={nav.fold}
+      onRailResize={nav.resize}
+      onRailResizeEnd={nav.keep}
       dockWidth={layout.geometry.mode === 'seated' ? layout.geometry.groupWidth : 0}
       dockSheetHeight={layout.sheetHeight}
       // The client face has no dock (R17), and nobody signed out has one.

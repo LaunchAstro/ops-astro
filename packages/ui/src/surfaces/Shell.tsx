@@ -7,12 +7,30 @@
 // rotates onto the bottom edge. The third track's width is a variable the shell
 // writes and nothing else does.
 //
+// The rail folds to a 56px strip of glyphs, each with its section's name on
+// hover, and its right edge drags it from 170 to 400 (MP-2-3). The person's
+// choice is the application's to hold and to keep; what the shell draws on
+// its first render is what it is handed, so nothing jumps before paint.
+//
 // This component holds no session state. Panel open state, the drawer and the
 // current face belong to `apps/web`, because `packages/ui` owns visual controls
 // and layout and may not own a session [ui-reference CONTRACT.md:305 rule 3].
 
-import type { CSSProperties, MouseEvent, ReactElement, ReactNode } from 'react';
+import {
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { Dock, useReadyAfterFirstLayout, type DockProps } from './Dock.tsx';
+import { EdgeGrip } from './EdgeGrip.tsx';
+
+/** The rail's width at rest, its grip's range, and the folded strip (SIDEBAR DS-SIDE-11). */
+export const RAIL_DEFAULT = 224;
+export const RAIL_MIN = 170;
+export const RAIL_MAX = 400;
+export const RAIL_STRIP = 56;
 
 export interface RailEntry {
   /** Namespace-qualified. Sixteen bare identifiers collide in the corpus. */
@@ -49,7 +67,11 @@ export interface ShellProps {
 
 export function Shell(props: ShellProps): ReactElement {
   const ready = useReadyAfterFirstLayout();
+  const [railDragging, setRailDragging] = useState(false);
+  const collapsed = props.railCollapsed ?? false;
+  const railWidth = props.railWidth ?? RAIL_DEFAULT;
   const track = {
+    '--rail-w': `${String(collapsed ? RAIL_STRIP : railWidth)}px`,
     ...(props.dockWidth === undefined ? {} : { '--dock-w': `${String(props.dockWidth)}px` }),
     ...(props.dockSheetHeight === undefined
       ? {}
@@ -60,11 +82,26 @@ export function Shell(props: ShellProps): ReactElement {
     <div
       className="shell"
       data-face={props.face}
+      data-rail={collapsed ? 'collapsed' : 'expanded'}
       style={track}
       onClick={props.onClick}
       {...(ready ? { 'data-dock-ready': '' } : {})}
+      {...(railDragging ? { 'data-rail-dragging': '' } : {})}
     >
       <nav className="rail" aria-label="Sections">
+        {/* First in the rail, where it is drawn, and it says whether the rail
+            is open (the mockup appended it last and said neither). */}
+        {props.onRailFold === undefined ? null : (
+          <button
+            type="button"
+            className="railfold"
+            aria-label={collapsed ? 'Expand the menu' : 'Collapse the menu'}
+            aria-expanded={!collapsed}
+            onClick={props.onRailFold}
+          >
+            <span aria-hidden="true">{collapsed ? '»' : '«'}</span>
+          </button>
+        )}
         <div className="rail__brand">
           {/* The wordmark is a mask over an SVG in the pinned estate. No asset
               ships here until the icon-and-font rights question is resolved
@@ -83,11 +120,34 @@ export function Shell(props: ShellProps): ReactElement {
               // same descriptor list the router resolves, so the mark cannot go
               // missing without the route going missing too.
               {...(entry.href === props.here ? { 'aria-current': 'page' as const } : {})}
+              // In the strip the name shows on hover; the label stays the
+              // item's accessible name, hidden only from sight.
+              {...(collapsed ? { title: entry.label } : {})}
             >
-              <span>{entry.label}</span>
+              {/* The icon slot carries the section's initial until the kit's
+                  icon set lands (MP-1-2, R55). */}
+              <span className="rail__glyph" aria-hidden="true">
+                {entry.label.slice(0, 1)}
+              </span>
+              <span className="rail__label">{entry.label}</span>
             </a>
           ))}
         </div>
+        {collapsed || props.onRailResize === undefined ? null : (
+          <EdgeGrip
+            edge="right"
+            className="railgrip"
+            label="Menu width"
+            value={railWidth}
+            min={RAIL_MIN}
+            max={RAIL_MAX}
+            reset={RAIL_DEFAULT}
+            per={1}
+            onDragging={setRailDragging}
+            onChange={props.onRailResize}
+            onCommit={props.onRailResizeEnd}
+          />
+        )}
       </nav>
 
       <main className="main">

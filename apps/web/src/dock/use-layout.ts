@@ -23,9 +23,6 @@ import {
 import { close, ranked } from './open-set.ts';
 import type { DockModel } from './use-dock.ts';
 
-/** The nav rail's width at rest. MP-2-3 makes it the person's own. */
-export const NAV_RAIL = 224;
-
 const COUNT = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 
 export interface DockLayoutModel {
@@ -39,7 +36,12 @@ export interface DockLayoutModel {
   readonly setSheetHeight: (height: number) => void;
 }
 
-export function useDockLayout(dock: DockModel, registry: PanelRegistry): DockLayoutModel {
+/** `navRail` is the nav rail as drawn: the person's width, or the strip's while folded (MP-2-3). */
+export function useDockLayout(
+  dock: DockModel,
+  registry: PanelRegistry,
+  navRail: number,
+): DockLayoutModel {
   const [viewport, setViewport] = useState(() => window.innerWidth);
   const [tall, setTall] = useState(() => window.innerHeight);
   const [sheet, setSheet] = useState(SHEET_DEFAULT);
@@ -57,7 +59,7 @@ export function useDockLayout(dock: DockModel, registry: PanelRegistry): DockLay
   }, []);
 
   const open = ranked(dock.state);
-  const geometry = dockGeometry({ viewport, navRail: NAV_RAIL, width, open });
+  const geometry = dockGeometry({ viewport, navRail, width, open });
   const closes = geometry.closes;
   const { change } = dock;
   useEffect(() => {
