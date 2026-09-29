@@ -175,6 +175,8 @@ export interface ReservationView {
   readonly state: string;
   readonly heldMinor: number;
   readonly actualMinor: number | null;
+  /** What settling at the observed cost gave back to the cap (T2d); `null` until settled. */
+  readonly releasedMinor: number | null;
   readonly classifiedCause: string | null;
   readonly leaseId: string | null;
   readonly lease: LeaseView | null;

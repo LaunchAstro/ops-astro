@@ -521,7 +521,13 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       serve: async (tx, { session, request, declaration }, _operands, delegation) =>
         await observeLease(
           tx,
-          { leaseId: request['leaseId'], fence: request['fence'], attemptId: request['attemptId'] },
+          {
+            leaseId: request['leaseId'],
+            fence: request['fence'],
+            attemptId: request['attemptId'],
+            usage: request['usage'],
+            outcome: request['outcome'],
+          },
           {
             actorId: session.actorId,
             delegationId: delegation.id,

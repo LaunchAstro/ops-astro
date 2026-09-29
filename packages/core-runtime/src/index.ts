@@ -36,6 +36,8 @@ export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
 export { dispatch, type Dispatched, type DispatchRequest } from './dispatch.ts';
 export { observe, type AppliedEffect, type Observed, type ObserveRequest } from './observe.ts';
 export { readReceipt, receiptTask, type Receipt } from './receipt.ts';
+export { priceUsage, SYNTHETIC_PRICES, type Usage } from './price-book.ts';
+export type { Settlement } from './budget.ts';
 export { CRASH_POINT_VARIABLE, crashPointAfterCommit, crashSeamProblem } from './crash-point.ts';
 export { renderEvidence, RENDERER, type RenderedPack } from './evidence.ts';
 export {

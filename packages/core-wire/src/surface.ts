@@ -352,7 +352,14 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
   'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
   'task.dispatch': { leaseId: 'any', recordId: 'any', fence: 'any' },
-  'task.observe': { leaseId: 'any', recordId: 'any', fence: 'any', attemptId: 'any' },
+  'task.observe': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    attemptId: 'any',
+    usage: 'any',
+    outcome: 'any',
+  },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [

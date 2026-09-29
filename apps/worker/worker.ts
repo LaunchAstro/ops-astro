@@ -172,7 +172,8 @@ async function effectOnce(
     audience: 'internal',
   });
   if (!('body' in effect)) return effect;
-  const observed = await call('task.observe', { ...lease, attemptId });
+  const usage = options.reporter.observe(SYNTHETIC_STEP);
+  const observed = await call('task.observe', { ...lease, attemptId, usage });
   if (!('body' in observed)) return observed;
   return { applied: { taskId, attemptId, commentId: String(effect.detail['commentId']) } };
 }

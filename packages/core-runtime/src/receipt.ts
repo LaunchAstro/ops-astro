@@ -8,10 +8,12 @@
 //
 // Only an observed attempt has a receipt. A staged intent (dispatched, never
 // observed) reads as no receipt at all. The receipt carries facts and no
-// operation: nothing on it undoes the effect. The settled amount joins it in
-// T2d, which settles it.
+// operation: nothing on it undoes the effect. T2d: it names the settlement,
+// read from the settled attempt and its reservation: the amount held, spent
+// and released, or the hold alone while it is unpriced or an unknown liability.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
+import type { Settlement } from './budget.ts';
 
 export interface Receipt {
   readonly attemptId: string;
@@ -29,6 +31,9 @@ export interface Receipt {
     readonly commentId: string;
     readonly audience: string;
   };
+  readonly settlement:
+    | Exclude<Settlement, { readonly state: 'liability_unknown' }>
+    | { readonly state: 'liability_unknown'; readonly heldMinor: number };
 }
 
 /** The task an attempt worked, in this business only: what the receipt's grant check is asked on. */
@@ -56,8 +61,15 @@ export async function readReceipt(
                 'decidedAt', to_char(d.decided_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
               'version', json_build_object('id', ver.id, 'number', ver.version),
               'effect', json_build_object('kind', step.kind, 'operationId', o.operation_id,
-                'commentId', c.id, 'audience', c.data ->> 'audience')) as receipt
+                'commentId', c.id, 'audience', c.data ->> 'audience'),
+              'settlement', case when att.state = 'settled'
+                then json_build_object('state', 'settled', 'heldMinor', res.held_minor,
+                  'spentMinor', att.actual_minor, 'releasedMinor', res.held_minor - att.actual_minor)
+                else json_build_object('state', case when att.state = 'liability_unknown'
+                  then 'liability_unknown' else 'unpriced' end, 'heldMinor', res.held_minor)
+                end) as receipt
        from public.attempts att
+       join public.reservations res on res.business_id = att.business_id and res.id = att.reservation_id
        join public.leases l on l.business_id = att.business_id and l.id = att.lease_id
        join public.planned_steps step on step.business_id = att.business_id and step.id = att.step_id
        join public.proposal_versions ver on ver.business_id = att.business_id and ver.id = att.version_id

@@ -164,3 +164,83 @@ export function capVerdict(of: {
 export function exceeds(committed: string, adding: bigint, limit: string): boolean {
   return BigInt(committed) + adding > BigInt(limit);
 }
+
+/**
+ * What observing an attempt did to its money (T2d). `unpriced` moved nothing:
+ * an absent or unpriced report is neither a zero nor a success.
+ * `liability_unknown` kept the whole hold, because the cost reported is more
+ * than a person approved (O9); a person records its outcome.
+ */
+export type Settlement =
+  | {
+      readonly state: 'settled';
+      readonly heldMinor: number;
+      readonly spentMinor: number;
+      readonly releasedMinor: number;
+    }
+  | { readonly state: 'unpriced'; readonly heldMinor: number }
+  | {
+      readonly state: 'liability_unknown';
+      readonly heldMinor: number;
+      readonly observedMinor: number;
+    };
+
+export function settledAt(heldMinor: bigint, spentMinor: bigint): Settlement {
+  return {
+    state: 'settled',
+    heldMinor: Number(heldMinor),
+    spentMinor: Number(spentMinor),
+    releasedMinor: Number(heldMinor - spentMinor),
+  };
+}
+
+/**
+ * T2d: settle a dispatched attempt at its priced cost, under the caller's step,
+ * lease and reservation locks. The step's attempt, the reservation and the
+ * envelope move in the caller's one transaction, with the command's audit
+ * event after them, so a failure in any rolls back all. The envelope gives
+ * back the hold and takes the cost, which releases the difference to the cap.
+ * No lease, run or task state moves: money settles on its own (an expired
+ * lease included).
+ */
+export async function settleAtObserved(
+  tx: TenantQuery,
+  of: {
+    readonly attemptId: string;
+    readonly reservationId: string;
+    readonly envelopeId: string;
+    readonly heldMinor: bigint;
+    readonly costMinor: bigint;
+    readonly outcome: 'completed' | 'failed';
+  },
+): Promise<Settlement> {
+  if (of.costMinor > of.heldMinor) {
+    await tx.query(
+      `update public.attempts set state = 'liability_unknown' where business_id = $1 and id = $2`,
+      [tx.businessId, of.attemptId],
+    );
+    return {
+      state: 'liability_unknown',
+      heldMinor: Number(of.heldMinor),
+      observedMinor: Number(of.costMinor),
+    };
+  }
+  const cost = of.costMinor.toString();
+  await tx.query(
+    `update public.attempts set state = 'settled', actual_minor = $3, outcome = $4, settled_at = now()
+      where business_id = $1 and id = $2`,
+    [tx.businessId, of.attemptId, cost, of.outcome],
+  );
+  await tx.query(
+    `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
+      where business_id = $1 and id = $2`,
+    [tx.businessId, of.reservationId, cost],
+  );
+  await tx.query(
+    `update public.task_envelopes
+        set held_minor = held_minor - $3, actual_minor = actual_minor + $4
+      where business_id = $1 and id = $2`,
+    [tx.businessId, of.envelopeId, of.heldMinor.toString(), cost],
+  );
+  return settledAt(of.heldMinor, of.costMinor);
+}

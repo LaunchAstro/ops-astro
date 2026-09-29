@@ -22,6 +22,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { executeRead } from '../../packages/core-commands/src/index.ts';
+import { priceUsage, SYNTHETIC_PRICES } from '../../packages/core-runtime/src/index.ts';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
@@ -65,13 +66,7 @@ interface Work {
 }
 
 describe('T2d the synthetic price book', () => {
-  it('has at least two entries, one strictly below the maximum, and prices nothing else', async () => {
-    // Red first: the book does not exist yet (T2d's implementation commit makes this static).
-    const { priceUsage, SYNTHETIC_PRICES } =
-      (await import('../../packages/core-runtime/src/index.ts')) as unknown as {
-        readonly priceUsage: (usage: unknown) => bigint | undefined;
-        readonly SYNTHETIC_PRICES: Readonly<Record<string, bigint>>;
-      };
+  it('has at least two entries, one strictly below the maximum, and prices nothing else', () => {
     expect(Object.keys(SYNTHETIC_PRICES).length).toBeGreaterThanOrEqual(2);
     const cost = priceUsage(PRICED);
     expect(cost).toBe(1_800n);
@@ -235,11 +230,11 @@ describe.skipIf(serverUrl === undefined)('T2d settlement at the observed cost', 
     appliedDetail(await observeOf(w, { usage: PRICED }), 'task.observe');
     const receipt = await receiptOf(w.attemptId);
     if (!('receipt' in receipt)) throw new Error(`receipt refused ${JSON.stringify(receipt)}`);
-    const read = receipt.receipt as unknown as Readonly<Record<string, unknown>>;
+    const read = receipt.receipt;
     // Reservation, dispatch, effect, receipt and now settlement, in one read.
-    expect(read['decision']).toMatchObject({ id: w.decision['decisionId'] });
-    expect(read['effect']).toMatchObject({ operationId: effectOperationId(w.attemptId) });
-    expect(read['settlement']).toStrictEqual({
+    expect(read.decision).toMatchObject({ id: w.decision['decisionId'] });
+    expect(read.effect).toMatchObject({ operationId: effectOperationId(w.attemptId) });
+    expect(read.settlement).toStrictEqual({
       state: 'settled',
       heldMinor: 2_500,
       spentMinor: 1_800,
@@ -263,9 +258,7 @@ describe.skipIf(serverUrl === undefined)('T2d settlement at the observed cost', 
     expect(await money(w)).toStrictEqual({ ...before, observed: true });
     const receipt = await receiptOf(w.attemptId);
     if (!('receipt' in receipt)) throw new Error('an observed attempt has a receipt');
-    expect(
-      (receipt.receipt as unknown as Readonly<Record<string, unknown>>)['settlement'],
-    ).toStrictEqual({
+    expect(receipt.receipt.settlement).toStrictEqual({
       state: 'unpriced',
       heldMinor: 2_500,
     });

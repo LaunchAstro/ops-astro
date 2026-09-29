@@ -64,6 +64,9 @@ export function Reservations(props: {
             held {reservation.heldMinor === null ? 'nothing' : money(reservation.heldMinor, '')} ·
             spent{' '}
             {reservation.actualMinor === null ? 'not reported' : money(reservation.actualMinor, '')}
+            {reservation.releasedMinor === undefined || reservation.releasedMinor === null
+              ? null
+              : ` · released ${money(reservation.releasedMinor, '')}`}
             {reservation.classifiedCause === null ? null : ` · ${reservation.classifiedCause}`}
           </span>
           {reservation.lease === null ? (

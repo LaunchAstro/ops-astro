@@ -240,6 +240,9 @@ export type CommandRequest =
       readonly leaseId: string;
       readonly fence: number;
       readonly attemptId: string;
+      /** What the step used, priced by the synthetic book (T2d). */
+      readonly usage?: { readonly item: string; readonly quantity: number } | null;
+      readonly outcome?: 'completed' | 'failed';
     } & Envelope);
 
 /**

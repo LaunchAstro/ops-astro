@@ -180,7 +180,7 @@ describe.skipIf(serverUrl === undefined)('0034 settlement at the observed cost',
   it.each([
     ['an actual above the hold', 2_501, 'reservations_actual_within_held'],
     ['a zero actual', 0, 'attempts_actual_positive'],
-    ['a negative actual', -5, 'attempts_actual_positive'],
+    ['a negative actual', -5, 'attempts_actual_not_negative'],
   ] as const)('refuses %s (%s)', async (_label, actual, constraint) => {
     const one = await held(fresh.app, fixture);
     await expect(settle(one.reservationId, one.attemptId, actual)).rejects.toMatchObject({
