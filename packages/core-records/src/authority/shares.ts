@@ -28,6 +28,7 @@
 // `task.comment` itself, which is not this module's to change, so a share that
 // carried `comment` would let an outsider write a team note. It does not.
 
+import { isWayfinderRecord } from '../tasks/wayfinder.ts';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import {
@@ -155,6 +156,15 @@ async function refuseShare(
     ],
   );
   if (found[0]?.record !== true || found[0]?.person !== true) return notFound();
+  // A map, its tickets and their threads never reach a client surface (WF-1).
+  // A new share only: withdrawing one that exists stays open.
+  if (
+    record === 'live' &&
+    request.collection === 'task' &&
+    (await isWayfinderRecord(tx, request.recordId))
+  ) {
+    return notFound();
+  }
   return undefined;
 }
 

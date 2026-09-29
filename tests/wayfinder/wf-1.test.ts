@@ -60,6 +60,7 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
   let teammate: Decider;
   let writer: Member;
   let reader: Member;
+  let sharer: Member;
 
   const view = async (who: Member, recordId: string): Promise<MapView> => {
     const answer = (await w.read(who, { read: 'map.view', recordId })) as {
@@ -98,6 +99,7 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
     teammate = await w.decider('teammate');
     writer = await w.member('writer', ['read', 'write']);
     reader = await w.member('reader', ['read']);
+    sharer = await w.member('sharer', ['read', 'write', 'share']);
   }, 180_000);
 
   afterAll(async () => await w?.drop());
@@ -158,7 +160,7 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
       `select table_name as name from information_schema.tables
         where table_schema = 'public' and table_name in ('maps', 'wayfinder_maps')`,
     );
-    expect(tables).toStrictEqual([]);
+    expect(tables).toHaveLength(0);
   });
 
   it('WF-1 each component is typed; a fog patch and an out of scope item have their own ids', async () => {
@@ -278,7 +280,7 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
 
     // Never client visible: the audience command refuses both.
     for (const id of [map.id, research.id]) {
-      const shown = await w.as(owner, {
+      const shown = await w.as(sharer, {
         command: 'task.set_audience',
         recordId: id,
         expectedRevision: await w.revisionOf(id),
@@ -288,16 +290,24 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
     }
     // Never shared: a share of either is refused, and an outside party
     // holding a share row written behind the product's back reads NOT_FOUND.
+    const plain = await w.create(owner, { title: 'a plain task, shareable' });
     const subject = `client-${randomUUID()}`;
     const outside = await w.db.app.withBusiness(w.business, async (tx) => {
       const personId = await insertPerson(tx, subject);
       const actorId = await insertActor(tx, personId);
       await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
-      const sharer = { personId: owner.personId, actorId: owner.actorId };
+      const by = { personId: sharer.personId, actorId: sharer.actorId };
       for (const recordId of [map.id, research.id]) {
-        const shared = await shareRecord(tx, sharer, { collection: 'task', recordId, personId });
+        const shared = await shareRecord(tx, by, { collection: 'task', recordId, personId });
         expect(shared.ok).toBe(false);
       }
+      // The control: the same sharer shares a plain task, so the refusal above is the map's.
+      const control = await shareRecord(tx, by, {
+        collection: 'task',
+        recordId: plain.id,
+        personId,
+      });
+      expect(control.ok).toBe(true);
       return personId;
     });
     await w.db.admin.execute(
@@ -461,10 +471,19 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
       'reparent',
     );
     must(await retype(owner, picked.taskId, 'grilling'), 'owner retype');
+    const agentOperation = randomUUID();
+    const refusedRetypes = async () =>
+      (await w.audit()).filter(
+        (l) =>
+          l.command === 'task.set_type' &&
+          l.outcome === 'refused' &&
+          l.code === 'DELEGATION_EXCLUDES_OPERATION',
+      ).length;
+    const before = await refusedRetypes();
     const byAgent = await w.asAgent(
       {
         command: 'task.set_type',
-        operationId: randomUUID(),
+        operationId: agentOperation,
         recordId: picked.taskId,
         expectedRevision: await w.revisionOf(picked.taskId),
         taskType: 'research',
@@ -477,10 +496,11 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
       [w.business, picked.taskId],
     );
     expect(type[0]?.type).toBe('grilling');
-    const trail = (await w.audit()).filter(
-      (l) => l.command === 'task.set_type' && l.subject === picked.taskId,
-    );
-    expect(trail.at(-1)?.outcome).toBe('refused');
+    // Refused at the agent surface and audited: until the agent credential
+    // (API-2) gives an agent task:write on a map, no agent retype reaches the
+    // handler, and a guarded one never will (the handler asks task:decide).
+    expect(codeOf(byAgent)).toBe('DELEGATION_EXCLUDES_OPERATION');
+    expect(await refusedRetypes()).toBe(before + 1);
   });
 
   it('WF-1 isolation', async () => {

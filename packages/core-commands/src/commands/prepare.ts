@@ -41,6 +41,7 @@ import {
   advisoryLock,
   checkAuthority,
   subjectsOf,
+  wayfinderFacts,
   isUuid,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-records/src/index.ts';
@@ -514,6 +515,31 @@ const SCOPE_OF: Readonly<
   claim: (tx, request) => firstScope(tx, request, CLAIM_LOOKUPS),
 };
 
+/**
+ * The map whose record-scoped grant also covers this request: the map a
+ * targeted ticket belongs to, or the map a new task is filed under. Only a
+ * task collection command, and never the record itself (its own scope was
+ * the first question).
+ */
+async function coveringMap(
+  tx: TenantQuery,
+  request: UncheckedRequest,
+  declaration: CommandDeclaration,
+): Promise<string | undefined> {
+  if (declaration.collection !== 'task') return undefined;
+  const named =
+    declaration.authorisedOn === 'record'
+      ? request['recordId']
+      : declaration.name === 'task.create'
+        ? request['parentId']
+        : undefined;
+  if (!isUuid(named)) return undefined;
+  const id = named.toLowerCase();
+  const facts = await wayfinderFacts(tx, id);
+  if (facts?.mapId === null || facts?.mapId === undefined) return undefined;
+  return declaration.name === 'task.create' || facts.mapId !== id ? facts.mapId : undefined;
+}
+
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
   tx: TenantQuery,
@@ -546,12 +572,25 @@ export async function prepareCommand(
   if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
-  const authorised = await checkAuthority(tx, subjectsOf(session), {
+  const asked = {
     // From the declaration, never written in here: see `CommandDeclaration`.
     collection: declaration.collection,
     action: declaration.action,
     scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
-  });
+  };
+  let authorised = await checkAuthority(tx, subjectsOf(session), asked);
+  // A grant scoped to a map covers the map and its tickets (W12): asked again
+  // at the map's scope, and the first refusal stands when that fails too.
+  if (!authorised.ok) {
+    const map = await coveringMap(tx, request, declaration);
+    if (map !== undefined) {
+      const again = await checkAuthority(tx, subjectsOf(session), {
+        ...asked,
+        scope: { kind: 'record', id: map },
+      });
+      if (again.ok) authorised = again;
+    }
+  }
   if (!authorised.ok) return refused(authorised.refusal);
   // A field the row does not describe, after authority as on the agent prefix:
   // a caller without the right is told that first (R4, `external-party`).

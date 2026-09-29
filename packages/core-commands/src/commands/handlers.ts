@@ -27,6 +27,7 @@ import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
+import { reviseMap, scopeMap, setTaskType } from './wayfinder.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -93,6 +94,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.pickup': pickupAsPerson,
   'task.heartbeat': heartbeatOwnLease,
   'task.handback': handbackOwnLease,
+
+  'task.set_type': setTaskType,
+  'map.revise': reviseMap,
+  'map.scope': scopeMap,
 };
 
 function writeOwned(

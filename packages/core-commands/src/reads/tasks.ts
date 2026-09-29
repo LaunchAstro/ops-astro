@@ -24,6 +24,7 @@ import {
   readFieldDefinitions,
   isLive,
   isUuid,
+  isWayfinderRecord,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
@@ -283,6 +284,9 @@ export async function readSharedTask(
   );
   const row = rows[0];
   if (row === undefined) return undefined;
+  // A map, its tickets and their threads never reach a client surface (WF-1),
+  // even under a read grant written behind the share path's back.
+  if (await isWayfinderRecord(tx, recordId)) return undefined;
   const data = (row['data'] ?? {}) as Readonly<Record<string, unknown>>;
   const fields: Record<string, unknown> = {};
   for (const field of await readFieldDefinitions(tx, taskTypeId)) {

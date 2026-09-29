@@ -34,6 +34,7 @@ import type {
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
+  MapViewResult,
 } from '../../../core-wire/src/index.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
@@ -93,6 +94,8 @@ export interface ReadOperands {
    * pair it returns is a pair the caller already holds.
    */
   readonly 'session.capabilities': NoOperands;
+  /** A map's sections, tickets and versions (WF-1). */
+  readonly 'map.view': { readonly recordId: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -116,4 +119,5 @@ export type ReadResult =
   | QueueResult
   | PresetPlanResult
   | SettingsReadResult
-  | CapabilitiesResult;
+  | CapabilitiesResult
+  | MapViewResult;

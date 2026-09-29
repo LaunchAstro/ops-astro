@@ -31,6 +31,7 @@ import { readQueue } from './queue.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
+import { readMapView } from './maps.ts';
 
 export type ReadName = ReadRequest['read'];
 
@@ -192,6 +193,23 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       });
       // Not there, or there in another business: one answer, deliberately.
       return task === undefined ? refuseNotFound() : { ok: true, task };
+    },
+  },
+  'map.view': {
+    identifiers: ['recordId'],
+    parse: ({ recordId }) =>
+      typeof recordId === 'string'
+        ? parsed({ recordId })
+        : rejected('recordId', 'Send recordId as the map’s identifier or its key.'),
+    spine: true,
+    subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
+    authority: 'declared',
+    outsiderNotFound: true,
+    async serve(tx, session, _operands, { spine, recordId }) {
+      // A map never reaches a client surface (WF-1).
+      if (recordId === undefined || !isInternalReader(session.roleKey)) return refuseNotFound();
+      const map = await readMapView(tx, spine.taskTypeId, recordId);
+      return map === undefined ? refuseNotFound() : { ok: true, map };
     },
   },
   'task.board': {

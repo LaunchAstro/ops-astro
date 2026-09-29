@@ -83,6 +83,21 @@ export async function approvableGate(
   return { gateId: detail['gateId'] as string, versionId: detail['versionId'] as string };
 }
 
+/** A map filed by the context's person, and the revision it stands at. */
+async function freshMap(
+  context: BodyContext,
+): Promise<{ recordId: string; expectedRevision: number }> {
+  const made = await context.asPerson('task.create', {
+    fields: { title: 'a map for the matrix' },
+    taskType: 'map',
+  });
+  if (made.code !== 'ok') throw new Error(`matrix: map create refused ${made.code}`);
+  return {
+    recordId: String(made.body['recordId']),
+    expectedRevision: Number(made.body['revision']),
+  };
+}
+
 /** Proposed and approved by the context's person: a reservation on the queue. */
 async function approvedReservationId(context: BodyContext): Promise<string> {
   const gate = await approvableGate(context);
@@ -265,6 +280,16 @@ export function createPositiveBody(
         // The person renews their own lease (ledger line 38, "current lease
         // owner"). The agent's renewal is in the agent journey.
         return { body: await ownLease(context) };
+      // Wayfinder (WF-1). An unguarded retype is `write` on the task; the
+      // three map rows need a task of type map, filed through the route.
+      case 'task.set_type':
+        return { body: { ...(await target()), taskType: 'build' } };
+      case 'map.revise':
+        return { body: { ...(await freshMap(context)), notes: 'the admin revises it' } };
+      case 'map.scope':
+        return { body: { ...(await freshMap(context)), client: randomUUID() } };
+      case 'map.view':
+        return { body: { recordId: (await freshMap(context)).recordId } };
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }
