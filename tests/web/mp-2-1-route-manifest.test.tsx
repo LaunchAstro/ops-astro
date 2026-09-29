@@ -33,6 +33,7 @@ import {
   hrefs,
   json,
   mockupAddresses,
+  mockupPick,
   normal,
   open,
   settle,
@@ -195,6 +196,18 @@ describe('MP-2-1 legacy redirects', () => {
       expect(target, legacy).not.toBeNull();
       expect(target, legacy).not.toMatch(LEGACY);
       expect(pageAt(target ?? '')?.page.path, legacy).toBeDefined();
+    }
+  });
+
+  it('lands every known legacy address on the page the mockup itself chose for it', () => {
+    for (const route of known) {
+      const source = route.source ?? '';
+      const hash = route.legacyHash ?? '';
+      const expected = mockupPick(source, hash);
+      expect(expected, source).toBeDefined();
+      expect(canonicalOf(`${source}?client=acme-dental${hash}`), `${source}${hash}`).toBe(
+        filled(expected?.path ?? 'missing'),
+      );
     }
   });
 

@@ -105,6 +105,7 @@ interface MockupRoute {
   readonly path: string;
   readonly source?: string;
   readonly legacyHash?: string;
+  readonly state?: string;
   readonly children?: readonly MockupRoute[];
 }
 
@@ -146,4 +147,39 @@ export async function settle(): Promise<void> {
       });
     });
   }
+}
+
+const flat = (routes: readonly MockupRoute[]): readonly MockupRoute[] => [
+  ...routes,
+  ...routes.flatMap((route) => route.children ?? []),
+];
+
+/**
+ * The row the mockup itself sends a legacy source to: `namespaceForLegacy` and
+ * `routeForSource` in its `assets/canonical-routes.js`, read outside the
+ * portal. One deliberate difference: a `/client-portal/` source with no
+ * workspace row (home, contact, booking, connections, library docs) goes to its
+ * portal row, where the mockup, outside the portal, left the link unchanged.
+ */
+export function mockupPick(source: string, hash: string): MockupRoute | undefined {
+  const utility = (prefix: string) =>
+    MOCKUP.utilityRoutes.filter((route) => route.path.startsWith(prefix));
+  const workspace = [...flat(MOCKUP.clientWorkspace), ...utility('/clients/')];
+  const portal = [...flat(MOCKUP.clientPortal), ...utility('/portal/')];
+  const spaces = source.startsWith('/client-portal/')
+    ? [workspace, portal]
+    : source === '/agency/brief/' || source === '/agency/activation-map/'
+      ? [workspace]
+      : [flat(MOCKUP.hub)];
+  for (const space of spaces) {
+    const list = space.filter((route) => route.source === source);
+    if (list.length === 0) continue;
+    return (
+      (hash === '' ? undefined : list.find((route) => route.legacyHash === hash)) ??
+      list.find((route) => route.legacyHash === undefined && route.state !== undefined) ??
+      list.find((route) => route.legacyHash === undefined) ??
+      list[0]
+    );
+  }
+  return undefined;
 }
