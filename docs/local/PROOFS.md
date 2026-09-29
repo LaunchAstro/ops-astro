@@ -487,7 +487,8 @@ database at the checked-out head and runs `restart-and-expiry.test.ts`,
 `--fileParallelism=false` and both restarts asked. The evidence file carries the head sha, the migration output, `StartedAt`
 before and after, every compared identity with its state, the API process ids
 before and after, each HTTP answer, and the verbose test output. On success and
-on failure the exit trap stops every API process the run wrote to its pid file,
+on failure the exit trap kills, with SIGKILL, every API and worker process the
+run wrote to its pid file,
 records whether the API port is free, removes the container, and writes the
 exit status as the last line. Pass is exit 0, `api port free`, `container
 removed`, and `Tests 30 passed (30)`, with no expected failure.
@@ -553,7 +554,7 @@ restart cases are skipped and printed as skipped, so a plain
 
 **The API is restarted as a real process.** With `L5_RESTART_API_PORT` set,
 `restart-process.ts` starts `node apps/api/server.ts` against the suite's own
-database, reads `task.read` over HTTP, stops it with SIGTERM, checks that the
+database, reads `task.read` over HTTP, stops it with SIGKILL (T3d2), checks that the
 port no longer answers, starts a new process and reads again.
 
 ### W06 coverage
@@ -597,6 +598,44 @@ since. Cancellation and authorised restart are closed over HTTP: L3-CONTROLS
 declared `task.cancel` and `task.restart` (d41c842), both cases run as plain
 `it`, and the cancelled-lineage fixture in `walkTheOtherLineages` cancels
 through `task.cancel` on the API.
+
+### T3d2: the two runtime proofs, F1 and F2
+
+```sh
+pnpm verify:runtime-proofs --evidence .local/runtime-proofs/<name>.txt
+# its own defaults: --name ops-astro-runtime-proofs-pg --port 54396 --api-port 8796
+```
+
+`scripts/local/runtime-proofs.sh` runs `restart-proof.sh` with
+`--suite tests/acceptance/runtime-proofs.test.tsx`, on its own disposable
+two-business Postgres. Every kill is SIGKILL to the real node process by its
+pid. A worker is the shipped one run by `tests/support/parking-worker.ts`,
+which stops itself with SIGSTOP when the answer to a named call arrives
+(`after-reservation`, `after-dispatch-mark`, `after-effect`); an API process
+is stopped with SIGSTOP once its answer is back. Nothing is killed on seeing a
+mark (spike RN-02). `tests/acceptance/kill-harness.ts` records four checks
+per kill as a `runtime-proof:` evidence line with the head, machine and date:
+stopped with no child, the API's backends idle, SIGKILL as the exit signal,
+and the killed process's backends gone from `pg_stat_activity`, polled. It
+reads through its own `connectAsAdmin` connection; the worker is never given
+a database address (RN-04).
+
+- **F1, `apply_after_api_stops`**: ada approves through API A; the worker
+  parks after its pickup; A is killed; B starts on the same port from the
+  same tree; the worker carries on through B on the lease A gave it, and the
+  receipt cites the decision. B is killed, a third process reads the task,
+  the receipt and the run's events back identically, and the live channel
+  answers `resync` and nothing else.
+- **F2, `crash_between_apply_and_settle`**: two workers park, after the
+  dispatch mark and after the effect, and are killed. The task page, mounted
+  against the served API, draws each step `dispatched`. After the 20-second
+  leases run out, the API's own pass (T3d1) settles the applied one with the
+  effect counter at 1 and resumes the other as a new attempt, which a
+  replacement worker applies once. Bravo's rows are unchanged throughout.
+  With the reconcile phase removed from `passDeployment` F2 stalls and fails.
+
+Pass is exit 0 and `Tests 2 passed (2)`. The process states have been checked
+on macOS only; Linux is owed once (T3.md).
 
 ## Defects found in other lanes' files
 

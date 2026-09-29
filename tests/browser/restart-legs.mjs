@@ -185,7 +185,8 @@ async function startApi(label) {
     stop: async () => {
       if (exited) return;
       const gone = new Promise((resolve) => child.once('exit', resolve));
-      child.kill('SIGTERM');
+      // A hard stop, no shutdown handler run (T3d2).
+      child.kill('SIGKILL');
       await gone;
     },
   };

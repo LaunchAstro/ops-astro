@@ -10,8 +10,8 @@
 # tests/acceptance/restart-and-expiry.test.ts with both restarts asked -- the
 # container restarted under the suite, and apps/api/server.ts started, stopped
 # and started again as a real process -- writes the evidence to FILE, and
-# removes the container and stops any API or worker process the run started,
-# by pid, whether the run passed or failed. `--suite`, once or
+# removes the container and kills any API or worker process the run started,
+# by pid and with SIGKILL, whether the run passed or failed. `--suite`, once or
 # more, runs those files instead (`runtime-proofs.sh` names T3d2's).
 # L5_RESTART_INDUCE_FAILURE=throw|crash, passed through to the
 # run, makes it fail once everything is up, which is how that removal is shown.
@@ -70,18 +70,18 @@ created=no
 PIDFILE=
 cleanup() {
   status=$?
-  # The API processes the run started, by the pids it wrote down. A runner that
-  # died mid-case never reached its own afterAll, so they are stopped here.
+  # The API and worker processes the run started, by the pids it wrote down. A
+  # runner that died mid-case never reached its own afterAll, so they are
+  # killed here. SIGKILL, because a worker parked with SIGSTOP never runs a
+  # SIGTERM handler (T3d2).
   if [ -n "$PIDFILE" ] && [ -f "$PIDFILE" ]; then
     while read -r pid; do
       if kill -0 "$pid" 2>/dev/null; then
-        kill -TERM "$pid" 2>/dev/null || true
-        say "stopped api pid $pid"
-        printf 'api stopped by trap: %s\n' "$pid" >>"$EVIDENCE"
+        kill -KILL "$pid" 2>/dev/null || true
+        say "killed pid $pid"
+        printf 'killed by trap: %s\n' "$pid" >>"$EVIDENCE"
       fi
     done <"$PIDFILE"
-    sleep 1
-    while read -r pid; do kill -KILL "$pid" 2>/dev/null || true; done <"$PIDFILE"
     rm -f "$PIDFILE"
   fi
   if nc -z 127.0.0.1 "$API_PORT" 2>/dev/null; then
