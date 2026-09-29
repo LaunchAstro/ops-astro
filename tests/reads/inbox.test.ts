@@ -5,8 +5,8 @@
 //
 // One permission-checked read serves the list, and the count is that same
 // read's counted entries: open, owed and readable now. Access is derived at the
-// read, so a lost grant withholds an item at the next read without touching it,
-// and withheld is not gone. `seen` is the recipient's own attention row, written
+// read, so a lost grant withholds an item at the next read without touching it
+// (withheld items are not listed), and withheld is not gone. `seen` is the recipient's own attention row, written
 // by `inbox.seen` for the caller's own item only. No worker runs anywhere in
 // this suite: the fixture composes the API alone, so every count here is the
 // count with the dispatching worker stopped.
@@ -14,7 +14,7 @@
 // Separations, each exercised below: business to business (another business's
 // person reads, counts and stamps nothing here, and this business's items never
 // reach theirs), client to client (a party grant on client A shows A's item and
-// withholds B's, in one business), person to person (a read returns the
+// neither lists nor stamps B's, in one business), person to person (a read returns the
 // caller's items only, and nobody stamps another person's item).
 
 import { randomUUID } from 'node:crypto';
@@ -178,12 +178,8 @@ describe.skipIf(serverUrl === undefined)('INB-1d the inbox read and count', () =
     await inAlpha(async (tx) => {
       await revokeGrant(tx, grant);
     });
-    const withheld = await entry(deeToken, item);
-    expect(withheld).toMatchObject({ access: 'withheld', counted: false, workState: 'open' });
-    // A withheld entry names nothing the recipient can no longer read.
-    for (const key of ['subjectRecordId', 'factKind', 'factId', 'closedByPersonId']) {
-      expect(withheld).not.toHaveProperty(key);
-    }
+    // Withheld at the next read: not listed, not counted, and still stored.
+    expect(await entry(deeToken, item)).toBeUndefined();
     expect(await owed(deeToken)).toBe(0);
     expect(await stored(item)).toBe('open');
 
@@ -256,6 +252,36 @@ describe.skipIf(serverUrl === undefined)('INB-1d the inbox read and count', () =
   });
 
   describe('INB-1 isolation over the read, the count and the stamp', () => {
+    it('Sol proof, criterion 3: wrong-client item is not listed', async () => {
+      const recipient = await enrol(w.fixture.db.app, w.fixture.business, 'Sol Client Read');
+      const token = await tokenFor(recipient.presented.subject);
+      const clientA = randomUUID();
+      const onA = await task('Sol readable client task', clientA);
+      const onB = await task('Sol other client task', randomUUID());
+      await grantRead(recipient, { kind: 'party', id: clientA });
+      const own = await raise(recipient.personId, onA.id);
+      const foreign = await raise(recipient.personId, onB.id);
+
+      const listed = await inbox(token);
+      expect(listed.map((item) => item['id'])).toContain(own);
+      expect(listed.map((item) => item['id'])).not.toContain(foreign);
+      expect(await owed(token)).toBe(1);
+    });
+
+    it('Sol proof, criterion 3: wrong-client item cannot be stamped', async () => {
+      const recipient = await enrol(w.fixture.db.app, w.fixture.business, 'Sol Client Stamp');
+      const token = await tokenFor(recipient.presented.subject);
+      const clientA = randomUUID();
+      await grantRead(recipient, { kind: 'party', id: clientA });
+      const onB = await task('Sol unshared client task', randomUUID());
+      const foreign = await raise(recipient.personId, onB.id);
+
+      const response = await seen(foreign, token);
+      expect(response.status).toBe(404);
+      expect(response.body['code']).toBe('NOT_FOUND');
+      expect(await attention(foreign)).toStrictEqual([]);
+    });
+
     it('business to business', async () => {
       const bravoTask = ok(
         await post(
@@ -298,9 +324,8 @@ describe.skipIf(serverUrl === undefined)('INB-1d the inbox read and count', () =
         access: 'readable',
         subjectRecordId: onA.id,
       });
-      const b = list.find((e) => e['id'] === itemB);
-      expect(b).toMatchObject({ access: 'withheld', counted: false });
-      expect(b).not.toHaveProperty('subjectRecordId');
+      // Client B's item is withheld: not listed at all, so its existence is not told.
+      expect(list.map((e) => e['id'])).not.toContain(itemB);
       expect(await owed(coraToken)).toBe(1);
     });
 
