@@ -113,7 +113,6 @@ describe('MP-4-2 ten-field band', () => {
       stage: 'Awareness',
       clientSet: true,
       steps: [],
-      time: null,
     });
     const labels = view.all('[data-band] dt').map((label) => label.textContent);
     expect(labels).toStrictEqual([
@@ -144,7 +143,6 @@ describe('MP-4-2 ten-field band', () => {
       stage: null,
       clientSet: false,
       steps: [],
-      time: null,
     });
     for (const field of ['assignee', 'client', 'due', 'estimate', 'project', 'category']) {
       expect(text(view, `[data-field="${field}"] dd`)).toBe('not set');
