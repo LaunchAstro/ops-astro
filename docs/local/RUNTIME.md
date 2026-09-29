@@ -1310,6 +1310,17 @@ direct SQL.
   `tests/runtime/schedules-heartbeat.test.ts` reaches the boundary by moving
   the lease's `acquired_at` back on the database clock, then beats through
   `task.heartbeat`.
+- **An expired lease moves money only (T3f).** `task.observe` from a lease that
+  expired after its effect applied still settles the priced cost (T2d), and its
+  answer, stored in the register, marks `lease: 'expired'` (a live one is
+  `live`). Nothing else moves: the lease, run, task and delegation read back as
+  they were. Renewal, a second dispatch and a hand-back on that lease are each
+  refused `LEASE_EXPIRED` (`tests/runtime/t3f-expired-lease.test.ts`). A silent
+  run, never renewed, keeps its live lease and its hold until the lease runs
+  out; only then does the pass fence it and hold the step unknown
+  (`t3f-lease-edges.test.ts`). Leases are per task: one live lease per task,
+  the second claimant refused `LEASE_HELD` (`lease-held-reach.test.ts`).
+  Per-step leases are deferred: no step in this head runs apart from its task.
 
 ## The delegation credential key
 
@@ -1380,11 +1391,13 @@ legacy row as derivable, and 0022's trigger forbids it.
 
 ## What is not here
 
-- **No write-off.** The worker (`apps/worker/`, T2b), effect activation
-  (T2c1, T2c2), the top-up (T2e, `topUp` in `budget.ts`), the sweep (T3b) and
-  the reconciliation pass with a person's recorded outcome
-  (`budget.record_outcome`, T3d1) are built. An unknown liability the
-  register cannot answer waits for a person's outcome or a write-off (T3c).
+- **No machine write-off.** The worker (`apps/worker/`, T2b), effect
+  activation (T2c1, T2c2), the top-up (T2e, `topUp` in `budget.ts`), the sweep
+  (T3b), the reconciliation pass with a person's recorded outcome
+  (`budget.record_outcome`, T3d1) and a person's write-off
+  (`budget.write_off`, `recovery/write-off.ts`, T3c) are built. An unknown
+  liability the register cannot answer waits for a person's outcome or
+  write-off; no timer, pass or worker reaches either.
 - **No audit row from this package.** `audit_events` is written through L3's
   command envelope, which owns the actor and the operation identity. The first
   attempt to write one from `handback.ts` aborted the whole transaction on a

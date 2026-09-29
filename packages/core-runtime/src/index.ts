@@ -90,6 +90,7 @@ export {
   type RecordedOutcome,
 } from './recovery/outcome.ts';
 export { appendRunEvent, type RunEvent, type RunEventKind } from './run-events.ts';
+export { writeOff, type WriteOffRequest, type WrittenOff } from './recovery/write-off.ts';
 export {
   cancelAndClassify,
   classifyUnderLocks,
