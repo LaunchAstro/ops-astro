@@ -274,9 +274,12 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // grants is a client login under owner answer 22 and is told no count
       // at all, not a filtered one (SL07-B22-ANSWER).
       // The stamp is the newest of the rows served, so it is in scope (MP-5-7).
+      // `viewer` is the caller's own person, the one the viewer preset
+      // narrows to (MP-5-12): never anyone else's identifier.
+      const viewer = session.personId;
       return scope.business
-        ? { ok: true, tasks, changedAt, withheld: 0 }
-        : { ok: true, tasks, changedAt };
+        ? { ok: true, tasks, changedAt, viewer, withheld: 0 }
+        : { ok: true, tasks, changedAt, viewer };
     },
   },
   'person.list': {

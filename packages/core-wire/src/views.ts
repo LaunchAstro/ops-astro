@@ -403,6 +403,8 @@ export interface TaskBoardResult {
   readonly withheld?: number;
   /** When the newest task served last changed (MP-5-7); null when none is served. */
   readonly changedAt: string | null;
+  /** The caller's own person id, which the viewer preset narrows to (MP-5-12). */
+  readonly viewer: string;
 }
 
 export interface PersonListResult {
