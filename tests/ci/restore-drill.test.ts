@@ -16,21 +16,30 @@
 // only for the backup identity and every read logged, is in
 // tests/db/backup-identity.test.ts under the same name.)
 //
+// `S0-3 drill scope` (Sol's review 2, criterion 4, as the orchestrator ruled):
+// the backup and the restored copy stay whole, and the drill reads the copy
+// only as the tenancy role under one named business, client and person, with
+// the business barrier (forced row security) in force. A copy where the
+// barrier did not survive fails, and so does a person or client of another
+// business named under this one.
+//
 // Runs wherever Docker runs, CI's hosted runner included. The fixture is a
 // real pg_dump of made-up rows, taken in a container of staging's own image.
 import { spawn, spawnSync } from 'node:child_process';
-import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 type DrillRecord = Record<string, unknown> & { outcome: string; stage?: string };
 type Docker = (args: string[], input?: Buffer) => Promise<{ code: number; stdout: string }>;
 type Archive = { takenAt: string; body: Buffer };
+type Scope = { business: string; client: string; person: string };
 
 const drillModule = async (): Promise<{
   restoreDrill: (options: {
     fetchArchive: () => Promise<Archive>;
     privateKey: string;
+    scope: Scope;
     docker?: Docker;
     image?: string;
   }) => Promise<DrillRecord>;
@@ -60,6 +69,11 @@ const OTHER_MAJOR_IMAGE =
   'postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873';
 const DRILL_PREFIX = `${staging['x-ops-astro'].ownPrefix}-drill-`;
 const MADE_UP = `made-up-business-${randomBytes(4).toString('hex')}`;
+// Two businesses, each with a person and a client (an external party, a
+// person of the business with no membership). The drill is scoped to A.
+const A = { business: randomUUID(), person: randomUUID(), client: randomUUID() };
+const B = { business: randomUUID(), person: randomUUID(), client: randomUUID() };
+const SCOPE: Scope = A;
 
 const hasDocker = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
 if (!hasDocker) console.warn('ci/restore-drill: Docker is not running, so nothing below ran.');
@@ -74,8 +88,21 @@ function run(args: string[], input?: Buffer): Promise<{ code: number; stdout: Bu
   });
 }
 
-/** A real custom-format dump of made-up rows, as the backup job takes one. */
-async function fixtureDump(): Promise<Buffer> {
+/** The product's business barrier on one table (migrations/0001_tenancy.sql). */
+const barrier = (table: string): string => `
+  alter table public.${table} enable row level security;
+  alter table public.${table} force row level security;
+  create policy tenancy_${table} on public.${table} as restrictive for all
+    using (business_id = (select public.app_business_id()));
+  create policy authority_${table} on public.${table} as permissive for all using (true);`;
+
+/**
+ * A real custom-format dump of made-up rows, as the backup job takes one, in
+ * the product's tenancy shape (migrations/0001_tenancy.sql): a restrictive,
+ * forced business barrier on every table. `unbarred` is the same data dumped
+ * after the barrier was taken off.
+ */
+async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
   const name = `ops-astro-test-fixture-${randomBytes(4).toString('hex')}`;
   const password = randomBytes(12).toString('hex');
   await run([
@@ -114,10 +141,20 @@ async function fixtureDump(): Promise<Buffer> {
       create schema ops;
       create table ops.schema_migrations (version text primary key, checksum text not null);
       insert into ops.schema_migrations values ('0033', 'a'), ('0034', 'b');
-      create table public.businesses (id int primary key, name text not null);
-      insert into public.businesses select g, '${MADE_UP}-' || g from generate_series(1, 2000) g;
-      create table public.tasks (id int primary key, business_id int references public.businesses, title text);
-      insert into public.tasks select g, 1 + g % 2000, repeat('made-up task ', 20) from generate_series(1, 4000) g;`;
+      create function public.app_business_id() returns uuid language sql stable
+        as $$ select nullif(current_setting('app.business_id', true), '')::uuid $$;
+      create table public.businesses (business_id uuid not null, id uuid primary key, name text not null);
+      insert into public.businesses values ('${A.business}', '${A.business}', 'made-up A'),
+        ('${B.business}', '${B.business}', 'made-up B');
+      insert into public.businesses select u, u, '${MADE_UP}-' || g
+        from (select gen_random_uuid() as u, g from generate_series(1, 2000) g) s;
+      create table public.people (business_id uuid not null, id uuid primary key, name text not null);
+      insert into public.people values ('${A.business}', '${A.person}', 'made-up person A'),
+        ('${A.business}', '${A.client}', 'made-up client A'), ('${B.business}', '${B.person}', 'made-up person B'),
+        ('${B.business}', '${B.client}', 'made-up client B');
+      create table public.tasks (business_id uuid not null, id int primary key, title text);
+      insert into public.tasks select '${A.business}', g, repeat('made-up task ', 20) from generate_series(1, 4000) g;
+      ${['businesses', 'people', 'tasks'].map(barrier).join('\n')}`;
     const created = await run(
       ['exec', '-i', name, 'psql', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'fixture'],
       Buffer.from(sql),
@@ -136,7 +173,31 @@ async function fixtureDump(): Promise<Buffer> {
       'fixture',
     ]);
     expect(dump.code).toBe(0);
-    return dump.stdout;
+    const unbar = ['businesses', 'people', 'tasks']
+      .map(
+        (t) =>
+          `alter table public.${t} no force row level security; alter table public.${t} disable row level security;`,
+      )
+      .join(' ');
+    const off = await run(
+      ['exec', '-i', name, 'psql', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', 'fixture'],
+      Buffer.from(unbar),
+    );
+    expect(off.code).toBe(0);
+    const unbarred = await run([
+      'exec',
+      name,
+      'pg_dump',
+      '--format=custom',
+      '--schema=public',
+      '--schema=ops',
+      '-U',
+      'postgres',
+      '-d',
+      'fixture',
+    ]);
+    expect(unbarred.code).toBe(0);
+    return { dump: dump.stdout, unbarred: unbarred.stdout };
   } finally {
     await run(['rm', '-f', '-v', name]);
   }
@@ -163,9 +224,10 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
   const takenAt = '2026-09-29T02:00:00.000Z';
   let dump: Buffer;
   let sealed: Buffer;
+  let unbarred: Buffer;
 
   beforeAll(async () => {
-    dump = await fixtureDump();
+    ({ dump, unbarred } = await fixtureDump());
     sealed = (await sealModule()).sealArchive(dump, keys.publicKey);
   }, 180_000);
 
@@ -201,6 +263,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
       const passed = await restoreDrill({
         fetchArchive: async () => ({ takenAt, body: sealed }),
         privateKey: keys.privateKey,
+        scope: SCOPE,
       });
       expect(passed).toMatchObject({
         event: 'restore drill',
@@ -212,6 +275,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
       const plain = await restoreDrill({
         fetchArchive: async () => ({ takenAt, body: dump }),
         privateKey: keys.privateKey,
+        scope: SCOPE,
         docker: (args, input) => {
           calls.push(args);
           return docker(args, input);
@@ -231,6 +295,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
           body: sealed.subarray(0, Math.floor(sealed.length / 2)),
         }),
         privateKey: keys.privateKey,
+        scope: SCOPE,
       });
       expect(record).toMatchObject({ event: 'restore drill', outcome: 'failed', stage: 'open' });
     });
@@ -242,6 +307,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
       const record = await restoreDrill({
         fetchArchive: async () => ({ takenAt, body: cut }),
         privateKey: keys.privateKey,
+        scope: SCOPE,
       });
       expect(record).toMatchObject({ event: 'restore drill', outcome: 'failed', stage: 'restore' });
       expect(Object.keys(record).toSorted()).toEqual(
@@ -269,6 +335,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
           throw new Error(`password ${canary} rejected at /var/lib/ops-keys/restore.pem`);
         },
         privateKey: keys.privateKey,
+        scope: SCOPE,
       });
       expect(record).toMatchObject({ outcome: 'failed', stage: 'fetch' });
       expect(JSON.stringify(record)).not.toContain(canary);
@@ -283,6 +350,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
       const record = await restoreDrill({
         fetchArchive: async () => ({ takenAt, body: sealed }),
         privateKey: keys.privateKey,
+        scope: SCOPE,
         docker: (args, input) => {
           calls.push(args);
           return docker(args, input);
@@ -295,8 +363,8 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
         sourceMajor: PRODUCTION_MAJOR,
         targetMajor: PRODUCTION_MAJOR,
         productionMajor: PRODUCTION_MAJOR,
-        tables: 3,
-        migration: '0034',
+        tables: 4,
+        readAs: 'ops_astro_app',
       });
       const timings = record['timings'] as Record<string, number>;
       expect(Object.keys(timings)).toEqual(['fetch', 'open', 'start', 'restore', 'check']);
@@ -327,6 +395,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
       const record = await restoreDrill({
         fetchArchive: async () => ({ takenAt, body: sealed }),
         privateKey: keys.privateKey,
+        scope: SCOPE,
         image: OTHER_MAJOR_IMAGE,
       });
       expect(record).toMatchObject({
@@ -345,6 +414,83 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
       );
       expect(source).not.toMatch(/DATABASE_URL|SUPABASE|--host|PGHOST/u);
       expect(source).toMatch(/'--network',\s*'none'/u);
+    });
+  });
+
+  describe('S0-3 drill scope', () => {
+    it('reads the restored copy only as the tenancy role, under the named business', async () => {
+      const { restoreDrill, docker } = await drillModule();
+      const calls: string[][] = [];
+      const record = await restoreDrill({
+        fetchArchive: async () => ({ takenAt, body: sealed }),
+        privateKey: keys.privateKey,
+        scope: SCOPE,
+        docker: (args, input) => {
+          calls.push(args);
+          return docker(args, input);
+        },
+      });
+      expect(record).toMatchObject({ outcome: 'passed', readAs: 'ops_astro_app', tables: 4 });
+      // Every statement that reads the copy's tables runs as the tenancy role
+      // under the named business; the owner session never reads one.
+      const reads = calls.filter(
+        (c) => c.includes('psql') && /from (public|ops)\./u.test(c.join(' ')),
+      );
+      expect(reads.length).toBeGreaterThan(0);
+      for (const call of reads) {
+        const text = call.join(' ');
+        expect(text).toContain('set role ops_astro_app');
+        expect(text).toContain(`set app.business_id = '${A.business}'`);
+        expect(text.indexOf('set role ops_astro_app')).toBeLessThan(
+          text.search(/from (public|ops)\./u),
+        );
+      }
+      // No id or row reaches the record.
+      for (const id of [...Object.values(A), ...Object.values(B)])
+        expect(JSON.stringify(record)).not.toContain(id);
+    }, 120_000);
+
+    it('fails a person or a client of another business named under this one', async () => {
+      const { restoreDrill } = await drillModule();
+      for (const scope of [
+        { ...A, person: B.person },
+        { ...A, client: B.client },
+      ]) {
+        // oxlint-disable-next-line no-await-in-loop
+        const record = await restoreDrill({
+          fetchArchive: async () => ({ takenAt, body: sealed }),
+          privateKey: keys.privateKey,
+          scope,
+        });
+        expect(record).toMatchObject({ outcome: 'failed', stage: 'check' });
+      }
+    }, 180_000);
+
+    it('fails a copy where the business barrier did not survive', async () => {
+      const { restoreDrill } = await drillModule();
+      const { sealArchive } = await sealModule();
+      const record = await restoreDrill({
+        fetchArchive: async () => ({ takenAt, body: sealArchive(unbarred, keys.publicKey) }),
+        privateKey: keys.privateKey,
+        scope: SCOPE,
+      });
+      expect(record).toMatchObject({ outcome: 'failed', stage: 'check' });
+    }, 120_000);
+
+    it('refuses a scope that is not three ids before starting anything', async () => {
+      const { restoreDrill, docker } = await drillModule();
+      const calls: string[][] = [];
+      const record = await restoreDrill({
+        fetchArchive: async () => ({ takenAt, body: sealed }),
+        privateKey: keys.privateKey,
+        scope: { ...A, person: "x' or true --" },
+        docker: (args, input) => {
+          calls.push(args);
+          return docker(args, input);
+        },
+      });
+      expect(record).toMatchObject({ outcome: 'failed', stage: 'scope' });
+      expect(calls).toEqual([]);
     });
   });
 });
