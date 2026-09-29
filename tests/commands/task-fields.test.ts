@@ -93,7 +93,7 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
   });
 
   describe('the generic editor cannot perform a transition', () => {
-    // The code each of the eleven earns, asserted by name rather than by rule,
+    // The code each of the fourteen earns, asserted by name rather than by rule,
     // so relaxing one is a visible diff (minimum contract 5.3 assertion 2).
     // Three kinds, and the difference between them is the point: a field an
     // operation owns names that operation, a derived field names nobody
@@ -105,7 +105,10 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
       client: 'TRANSITION_PROTECTED',
       client_visible: 'TRANSITION_PROTECTED',
       completed_at: 'FIELD_NOT_WRITABLE',
+      confidence: 'TRANSITION_PROTECTED',
       delegate: 'TRANSITION_PROTECTED',
+      ease: 'TRANSITION_PROTECTED',
+      impact: 'TRANSITION_PROTECTED',
       intake_state: 'TRANSITION_PROTECTED',
       key: 'FIELD_NOT_WRITABLE',
       parent: 'TRANSITION_PROTECTED',
@@ -129,7 +132,7 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
         refusals[field] = isCommandRefusal(refusal) ? refusal.code : 'APPLIED';
       }
       expect(refusals).toStrictEqual(EXPECTED);
-      // Every field the spine calls protected has a case above. A twelfth
+      // Every field the spine calls protected has a case above. A fifteenth
       // field added to that list with no entry here fails this line.
       expect(Object.keys(EXPECTED).toSorted()).toStrictEqual([...PROTECTED_TASK_FIELDS].toSorted());
     });
