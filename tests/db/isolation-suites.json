@@ -13,6 +13,7 @@
     "tests/reads/task-board-crumb.test.ts",
     "tests/reads/task-facts.test.ts",
     "tests/reads/task-perspectives.test.ts",
-    "tests/reads/task-history-trail.test.ts"
+    "tests/reads/task-history-trail.test.ts",
+    "tests/commands/task-conversation.test.ts"
   ]
 }
