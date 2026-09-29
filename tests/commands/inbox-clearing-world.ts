@@ -9,6 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect } from 'vitest';
 import type { Hono } from 'hono';
+import type { InboxItem } from '../../packages/core-records/src/index.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { insertActor, insertBusiness, insertPerson } from '../identity/fixture.ts';
 import { enrol, grantTo, type Member } from './fixture.ts';
@@ -39,6 +40,11 @@ const proposal = (task: { id: string; rev: number }) => ({
   payload: { instruction: 'draft' },
   step: { kind: 'compose', payload: {} },
 });
+
+/** Only a readable item carries its pointers; a withheld or gone one names nothing (INB-1a). */
+export const readable = (
+  item: InboxItem,
+): item is Extract<InboxItem, { readonly access: 'readable' }> => item.access === 'readable';
 
 export const decideBody = (
   gate: { gateId: string; versionId: string },

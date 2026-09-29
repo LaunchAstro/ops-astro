@@ -19,7 +19,7 @@ import {
   withdrawEndedGates,
 } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
-import { clearingWorld, decideBody, detailOf, ok } from './inbox-clearing-world.ts';
+import { clearingWorld, decideBody, detailOf, ok, readable } from './inbox-clearing-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -79,7 +79,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 clearing guards', () => {
       w.fixture.business,
       async (tx) => await readInboxItems(tx, w.reviewer.personId),
     );
-    expect(owed.filter((i) => i.factId === gate.gateId)).toMatchObject([
+    expect(owed.filter((i) => readable(i)).filter((i) => i.factId === gate.gateId)).toMatchObject([
       { owed: true, workState: 'open' },
     ]);
   });
@@ -178,7 +178,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 clearing guards', () => {
       async (tx) => await readInboxItems(tx, w.reviewer.personId),
     );
     expect(
-      reviewers.filter((i) => i.subjectRecordId === onA.task.id && i.reason === 'mention'),
+      reviewers
+        .filter((i) => readable(i))
+        .filter((i) => i.subjectRecordId === onA.task.id && i.reason === 'mention'),
     ).toMatchObject([{ workState: 'open', closedByPersonId: null }]);
     const writers = await w.fixture.db.app.withBusiness(
       w.fixture.business,
