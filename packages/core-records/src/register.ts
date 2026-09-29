@@ -598,6 +598,35 @@ const ROWS = [
     source: 'L4 RUNTIME.md',
     runtime: true,
   },
+  // Instruction files pinned by digest (AW-02, `core-runtime/src/definitions.ts`).
+  {
+    code: 'ACTIVATION_MODE_NOT_PERMITTED',
+    status: 403,
+    meaning: 'An instruction file has no activation modes: only a person activates it, by hand',
+    source: 'AW-02, automations contract E4',
+    runtime: true,
+  },
+  {
+    code: 'DELEGATION_EXCLUDES_ACTIVATION',
+    status: 403,
+    meaning: 'An agent never activates an instruction file, in any mode',
+    source: 'AW-02, automations contract 3.3',
+    runtime: true,
+  },
+  {
+    code: 'DEFINITION_DIGEST_MISMATCH',
+    status: 409,
+    meaning: "The file's bytes are not the ones the run pinned; a changed file is a new file",
+    source: 'AW-02, automations contract 5.1',
+    runtime: true,
+  },
+  {
+    code: 'DEFINITION_UNAVAILABLE',
+    status: 409,
+    meaning: 'The pinned instruction file cannot be read at its exact identity',
+    source: 'AW-02, automations contract 5.1',
+    runtime: true,
+  },
   // The broker's model call (AW-01, `core-custody/src/broker.ts`). The six
   // facts are verified against rows under lock; everything after them is
   // recorded as a step of the run.
@@ -851,6 +880,13 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // reservations: the second pickup meets the first one's live lease.
   'EVIDENCE_MISMATCH',
   'LEASE_EXPIRED',
+  // AW-02's four. The pinned-file stores are built, and their one entry point
+  // is AW-04's plan accept, which activates a file and starts the run that
+  // reads it; each comes off this list with that accept.
+  'ACTIVATION_MODE_NOT_PERMITTED',
+  'DEFINITION_DIGEST_MISMATCH',
+  'DEFINITION_UNAVAILABLE',
+  'DELEGATION_EXCLUDES_ACTIVATION',
   // Three codes are deliberately **not** on this list, and each is a command
   // path rather than a module one.
   //

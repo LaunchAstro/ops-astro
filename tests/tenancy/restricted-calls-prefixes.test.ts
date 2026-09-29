@@ -29,7 +29,7 @@
 // not exist it is not called, and the tally says which.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readdirSync } from 'node:fs';
 import {
   createEmptyDatabase,
@@ -71,7 +71,10 @@ import {
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
 
-/** Rows for the three tables the journey leaves empty; foreign keys are off when they are written. */
+/** SHA-256 of the four bytes `seed`, so the audit copy's own check holds. */
+const SEED_DIGEST = createHash('sha256').update('seed').digest('hex');
+
+/** Rows for the tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'public.person_identifiers': {
     person_id: randomUUID(),
@@ -90,6 +93,31 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     link_type: 'restricted_calls',
     from_record_id: randomUUID(),
     to_record_id: randomUUID(),
+  },
+  // AW-02: nothing writes a pin before AW-04's plan accept.
+  'public.run_definition_pins': {
+    run_id: randomUUID(),
+    ref_kind: 'bootstrap_file',
+    path: 'skills/seed.md',
+    content_digest: SEED_DIGEST,
+    content_size: 4,
+    read_at: '2026-09-30T00:00:00Z',
+    manifest: [],
+    manifest_digest: SEED_DIGEST,
+    pinned_by_actor_id: randomUUID(),
+  },
+  'public.bootstrap_reads': {
+    run_id: randomUUID(),
+    sequence: 1,
+    path: 'skills/seed.md',
+    content_digest: SEED_DIGEST,
+    content_size: 4,
+    is_entry: true,
+  },
+  'public.bootstrap_bytes': {
+    content_digest: SEED_DIGEST,
+    content_size: 4,
+    bytes: '\\x73656564',
   },
 };
 

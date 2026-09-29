@@ -1370,6 +1370,40 @@ lease-expiry sweep's half is `sweepModelCalls`: a started call on a dead lease
 is held as `liability_unknown`, never released; an unsent one is released.
 Neither the prompt nor the model's words are stored in either table.
 
+## Instruction files pinned by digest
+
+`0033_bootstrap_pins` (AW-02; numbered again at the rebase) adds three
+tables, each tenancy-scoped with row security forced. A file's identity is its
+digest and its size; the path is provenance only.
+
+- `run_definition_pins`: the run's definition reference slot, one per run.
+  `ref_kind` is `bootstrap_file` (path, digest, size, read time) or, from C33,
+  `definition_version` (the version's id and digest), each shape checked by
+  the server. The accept-time manifest (every file the run may read, sorted by
+  path) and its digest sit beside the pin.
+- `bootstrap_reads`: the read ledger. One row per instruction read, entry and
+  non-entry, in read order (`sequence`), exactly one `is_entry` per run. A
+  ledger row needs its run's pin.
+- `bootstrap_bytes`: the audit copy, one per business and digest. The server
+  checks the bytes against their own digest and size.
+
+The application group may select and insert a pin and a ledger row, and never
+update or delete one; it may insert an audit copy and never read, update or
+delete it. The worker and broker roles hold nothing on any of them.
+
+`core-runtime/src/definitions.ts` holds the operations, all first used by
+AW-04's plan accept, the only activation. `admitActivation` refuses anything
+but a person's manual act before a run exists (`ACTIVATION_MODE_NOT_PERMITTED`
+for a schedule, event, timer or the system; `DELEGATION_EXCLUDES_ACTIVATION`
+for an agent). `captureManifest` takes the accept-time manifest,
+`pinBootstrapFile` writes the pin from an admitted activation only, and
+`readPinned` is the pinned read. It runs under the caller's live lease on the
+run. With no pin it resolves nothing by name or path (`DEFINITION_UNAVAILABLE`),
+and bytes that are not the manifest's are `DEFINITION_DIGEST_MISMATCH`. It
+writes its ledger row, the audit copy and its one audit event before it returns
+the bytes, so a read that cannot be recorded fails the transaction and returns
+nothing. `setDigest` is the path-sorted set digest over a run's reads.
+
 ## What is not here
 
 - **No worker, sweeper, top-up, write-off or effect activation.** `apps/worker/`

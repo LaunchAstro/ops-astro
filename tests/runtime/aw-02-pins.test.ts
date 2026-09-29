@@ -332,7 +332,7 @@ it('AW-02 pin slot: one reference slot per run, a bootstrap-file kind now and a 
     }),
   ).toBe('ok');
   await seedPin(bravo, other);
-  await seedRead(bravo, other).catch(() => undefined);
+  await seedRead(bravo, other).catch(() => null);
 
   // No ledger row without a pin: the ledger hangs off the pin.
   const unpinned = await liveWork(alpha, 'aw02 unpinned run', 1_000);

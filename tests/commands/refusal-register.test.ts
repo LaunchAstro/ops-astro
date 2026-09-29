@@ -72,6 +72,11 @@ describe('the refusal register', () => {
     // Registered because the contract registers them; unreachable because the
     // command or the table that would produce them lands in a later part.
     expect([...UNPRODUCED_CODES].toSorted()).toStrictEqual([
+      // AW-02's four wait for AW-04's plan accept, their one entry point.
+      'ACTIVATION_MODE_NOT_PERMITTED',
+      'DEFINITION_DIGEST_MISMATCH',
+      'DEFINITION_UNAVAILABLE',
+      'DELEGATION_EXCLUDES_ACTIVATION',
       // `AUDIENCE_NOT_PERMITTED` came off when a delegated agent's own-task
       // comment was wired: the agent writes `internal` only, and a `client`
       // comment is refused with it (`agent-envelope.ts`, role-case matrix).

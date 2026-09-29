@@ -85,6 +85,29 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, copy_class, copy_key, invalidation_trigger, retention_class)
      values ($1, gen_random_uuid(), 'outbound_prompt', 'model_call:' || gen_random_uuid(),
              'call_ended', 'transient') returning 1`,
+  // AW-02: nothing writes a pin before AW-04's plan accept. The pin rides on
+  // a run the journey made; a business with none gets a made-up run id, which
+  // the owner's seed writes with foreign keys off.
+  'public.run_definition_pins': `insert into public.run_definition_pins
+       (business_id, run_id, ref_kind, path, content_digest, content_size, read_at,
+        manifest, manifest_digest, pinned_by_actor_id)
+     select $1,
+            coalesce((select id from public.planned_runs where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            'bootstrap_file', 'skills/seed.md', encode(sha256('seed'::bytea), 'hex'), 4, now(),
+            '[]'::jsonb, encode(sha256('seed'::bytea), 'hex'),
+            coalesce((select id from public.actors where business_id = $1 order by id limit 1),
+                     gen_random_uuid())
+     returning 1`,
+  'public.bootstrap_reads': `insert into public.bootstrap_reads
+       (business_id, id, run_id, sequence, path, content_digest, content_size, is_entry)
+     select p.business_id, gen_random_uuid(), p.run_id, 1, p.path, p.content_digest,
+            p.content_size, true
+       from public.run_definition_pins p where p.business_id = $1 order by p.run_id limit 1
+     returning 1`,
+  'public.bootstrap_bytes': `insert into public.bootstrap_bytes
+       (business_id, content_digest, content_size, bytes)
+     values ($1, encode(sha256('seed'::bytea), 'hex'), 4, 'seed'::bytea) returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */
@@ -148,7 +171,10 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     for (const business of [world.alpha, world.bravo]) {
       for (const [table, text] of Object.entries(UNREACHED)) {
         // oxlint-disable-next-line no-await-in-loop
-        const seeded = await world.db.admin.execute(text, [business]);
+        const seeded = await world.db.admin.transaction(async (execute) => {
+          await execute('set local session_replication_role = replica');
+          return await execute(text, [business]);
+        });
         if (seeded.length !== 1) throw new Error(`no seed row for ${table}`);
       }
     }

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// L4's twenty refusal codes, as L3 registers them. The twentieth is
-// `TRANSITION_NOT_PERMITTED`, which `task.restart` added for a lineage that is
-// live, completed or already restarted (`core-runtime/src/propose.ts`).
+// L4's twenty refusal codes, as L3 registers them, and AW-02's four. The
+// twentieth is `TRANSITION_NOT_PERMITTED`, which `task.restart` added for a
+// lineage that is live, completed or already restarted
+// (`core-runtime/src/propose.ts`). AW-02 adds the pinned read's and the
+// activation refusal's (`core-runtime/src/definitions.ts`).
 //
 // `RuntimeRefusalCode` is read off the register's rows marked `runtime`, and
 // each row carries its status, so a runtime code cannot be unregistered or
@@ -29,8 +31,8 @@ import {
 const RUNTIME_CODES = Object.keys(SUGGESTED_STATUS) as readonly RuntimeRefusalCode[];
 
 describe('the runtime refusal codes L3 registers', () => {
-  it('registers all twenty', () => {
-    expect(RUNTIME_CODES).toHaveLength(20);
+  it('registers all twenty-four', () => {
+    expect(RUNTIME_CODES).toHaveLength(24);
     for (const code of RUNTIME_CODES) {
       expect(registeredRefusal(code as RefusalCode), code).toBeDefined();
     }
@@ -42,7 +44,7 @@ describe('the runtime refusal codes L3 registers', () => {
     }
   });
 
-  it('shows every one of them to the caller, because all twenty are caller-visible', () => {
+  it('shows every one of them to the caller, because all twenty-four are caller-visible', () => {
     for (const code of RUNTIME_CODES) {
       expect(CALLER_VISIBLE.has(code as RefusalCode), code).toBe(true);
     }
