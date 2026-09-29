@@ -73,6 +73,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 isolation', () => {
     await db.app.withBusiness(business, async (tx) => {
       await grantTo(tx, readerOfOne, 'read', { kind: 'record', id: taskOne }, false, CONVERSATION);
       await grantTo(tx, readerOfTwo, 'read', { kind: 'record', id: taskTwo }, false, CONVERSATION);
+      await grantTo(tx, w.owner, 'share');
     });
     const bravo = await insertBusiness(db.app, 'bravo');
     await installSpine(db.app, bravo);

@@ -26,6 +26,11 @@ export type { CommandRefusal } from '../../core-records/src/index.ts';
 export type {
   AttemptView,
   AwaitingReviewResult,
+  ConversationMessageView,
+  ConversationPointerView,
+  ConversationReadResult,
+  WrapUpItemView,
+  WrapUpView,
   AwaitingReviewView,
   CheckView,
   Capability,

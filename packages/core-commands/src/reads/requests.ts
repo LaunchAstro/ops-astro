@@ -31,6 +31,7 @@ import type {
   PresetPlanResult,
   QueueResult,
   AwaitingReviewResult,
+  ConversationReadResult,
   SettingsReadResult,
   SharedTaskRead,
   TaskBoardResult,
@@ -96,6 +97,11 @@ export interface ReadOperands {
    * pair it returns is a pair the caller already holds.
    */
   readonly 'session.capabilities': NoOperands;
+  /**
+   * A conversation at its address (AW-03): the owner's, or a holder of the
+   * read-any grant's. After the body purges it answers the wrap-up.
+   */
+  readonly 'conversation.read': { readonly conversationId: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -120,4 +126,5 @@ export type ReadResult =
   | AwaitingReviewResult
   | PresetPlanResult
   | SettingsReadResult
-  | CapabilitiesResult;
+  | CapabilitiesResult
+  | ConversationReadResult;

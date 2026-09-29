@@ -803,6 +803,45 @@ What each one does:
   operations' classifier ([RUNTIME.md](RUNTIME.md)). Both bounds are open items
   below.
 
+## A person's conversation with the agent
+
+AW-03. A conversation is minted by its first message, so opening the drawer
+and closing it without sending anything writes no row. It is its owner's
+alone, and its address (`/agent/<id>`) keeps answering after the body purges.
+
+| Operation              | Route                   | Body                                                                                  | Authority                                                                                                                                                                               | Refusals                                                                                                                                                     |
+| ---------------------- | ----------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `conversation.start`   | `/conversation/start`   | `operationId`, `body`, `title?`, `subject?`, `scope?` (`{"kind":"task","id":<task>}`) | `conversation:write`; a cited task must be one the caller may read                                                                                                                      | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 (scope), `FIELD_VALUE_INVALID` 422 (body 1 to 20000, title up to 120, subject up to 200)                            |
+| `conversation.message` | `/conversation/message` | `operationId`, `conversationId`, `body`                                               | `conversation:write`, and the caller is the owner: anyone else is `SCOPE_NOT_GRANTED` whatever they hold                                                                                | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` (body purged), `FIELD_VALUE_INVALID` 422                                                |
+| `conversation.read`    | `/conversation/read`    | `conversationId`                                                                      | the owner while they hold `conversation:write`; anyone else needs `conversation:read` (the read-any grant, held by nobody on install) covering the conversation's scope; a client never | `NOT_FOUND` 404 (another business, a made-up id, any client), `SCOPE_NOT_GRANTED` 403 with the reason and nothing of the conversation, `FIELD_VALUE_INVALID` |
+
+The answer to `conversation.read` is the conversation (id, address, title,
+subject, scope, created, last activity, body purged at), its `messages` or
+`null` once purged, the current `wrapUp` and `wrapUpHistory`, newest first.
+No agent entry reaches any of the three: the agent's side of an exchange is
+written by the product's exchange, never by an agent calling in. The message
+text is stored in `conversation_messages` and nowhere else: the answer and the
+operation register carry ids and the address, and the audit event the
+payload's digest.
+
+Two system operations, the worker's and no person's command
+(`commands/conversation-lifecycle.ts`), each take the conversation's row lock
+first, the lock `conversation.message` takes:
+
+- `writeWrapUp` after 24 hours quiet writes the next wrap-up version from
+  records: the first message as a marked quotation, seven pointer-and-fact
+  items (opened, scope, exchange, tasks created, runs started, gates raised,
+  cost) and item 8, what was left open, as pointers or "nothing left open". It
+  is idempotent on the conversation and its last activity.
+- `purgeConversation` removes the body and keeps the conversation and every
+  wrap-up. It answers `WRAP_UP_ABSENT` without a wrap-up covering the last
+  activity (the database refuses the delete too), `WORK_OPEN` while cited or
+  started work is open, `NOT_DUE` before the window has passed since the later
+  of the last activity and the work's end, and `WINDOW_UNREADABLE` when
+  `conversation_window_days` is missing, not a whole number, under seven, or
+  over `retention_window_days`. A purged conversation answers `replayed`, with
+  no second audit event (`conversation.purge`, actor the business's worker).
+
 ## Source-to-route manifest
 
 Every route is generated from `COMMAND_SURFACE`
@@ -834,14 +873,17 @@ case calls.
 
 The five support controls, with their owning functions:
 
-| Operation           | Person route                            | Agent route                             | Handler                                                                                                                                                                               | Owning function                                                                                             |
-| ------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `grant.revoke`      | `/api/b/:key/grant/revoke`              | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeGrantAsManager` (`commands/authority-controls.ts`)                                                                                                                             | `revokeGrant` (`authority/grants.ts`)                                                                       |
-| `delegation.revoke` | `/api/b/:key/delegation/revoke`         | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeDelegationAsManager` (`commands/authority-controls.ts`)                                                                                                                        | `revokeDelegation` (`authority/delegations.ts`)                                                             |
-| `task.cancel`       | `/api/b/:key/task/cancel`               | refused `DELEGATION_EXCLUDES_OPERATION` | `cancelOnTask` (`commands/tasks-controls.ts`)                                                                                                                                         | `cancelAndClassify` (`core-runtime/src/recovery.ts`)                                                        |
-| `task.restart`      | `/api/b/:key/task/restart`              | refused `DELEGATION_EXCLUDES_OPERATION` | `restartOnTask` (`commands/tasks-controls.ts`)                                                                                                                                        | `restart` (`core-runtime/src/restart.ts`) → `propose`, with `refuseRestart` (`core-runtime/src/propose.ts`) |
-| `task.heartbeat`    | `/api/b/:key/task/heartbeat`, own lease | `/api/a/b/:key/task/heartbeat`          | person: `heartbeatOwnLease` (`commands/tasks-lease.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`, `commands/agent-operations.ts`) → `heartbeatLease` (`commands/tasks-lease.ts`) | `heartbeat` (`core-runtime/src/heartbeat.ts`)                                                               |
-| `task.check`        | `/api/b/:key/task/check`, own lease     | `/api/a/b/:key/task/check`              | person: `checkOwnLease` (`commands/tasks-check.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`) → `checkLease` (same file)                                                         | `recordCheck` (`core-runtime/src/checks.ts`)                                                                |
+| Operation              | Person route                            | Agent route                             | Handler                                                                                                                                                                               | Owning function                                                                                             |
+| ---------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `grant.revoke`         | `/api/b/:key/grant/revoke`              | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeGrantAsManager` (`commands/authority-controls.ts`)                                                                                                                             | `revokeGrant` (`authority/grants.ts`)                                                                       |
+| `delegation.revoke`    | `/api/b/:key/delegation/revoke`         | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeDelegationAsManager` (`commands/authority-controls.ts`)                                                                                                                        | `revokeDelegation` (`authority/delegations.ts`)                                                             |
+| `task.cancel`          | `/api/b/:key/task/cancel`               | refused `DELEGATION_EXCLUDES_OPERATION` | `cancelOnTask` (`commands/tasks-controls.ts`)                                                                                                                                         | `cancelAndClassify` (`core-runtime/src/recovery.ts`)                                                        |
+| `task.restart`         | `/api/b/:key/task/restart`              | refused `DELEGATION_EXCLUDES_OPERATION` | `restartOnTask` (`commands/tasks-controls.ts`)                                                                                                                                        | `restart` (`core-runtime/src/restart.ts`) → `propose`, with `refuseRestart` (`core-runtime/src/propose.ts`) |
+| `task.heartbeat`       | `/api/b/:key/task/heartbeat`, own lease | `/api/a/b/:key/task/heartbeat`          | person: `heartbeatOwnLease` (`commands/tasks-lease.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`, `commands/agent-operations.ts`) → `heartbeatLease` (`commands/tasks-lease.ts`) | `heartbeat` (`core-runtime/src/heartbeat.ts`)                                                               |
+| `task.check`           | `/api/b/:key/task/check`, own lease     | `/api/a/b/:key/task/check`              | person: `checkOwnLease` (`commands/tasks-check.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`) → `checkLease` (same file)                                                         | `recordCheck` (`core-runtime/src/checks.ts`)                                                                |
+| `conversation.start`   | `/api/b/:key/conversation/start`        | refused `DELEGATION_EXCLUDES_OPERATION` | `startConversation` (`commands/conversations.ts`)                                                                                                                                     | `conversations`, `conversation_messages`                                                                    |
+| `conversation.message` | `/api/b/:key/conversation/message`      | refused `DELEGATION_EXCLUDES_OPERATION` | `messageConversation` (`commands/conversations.ts`)                                                                                                                                   | `conversation_messages`                                                                                     |
+| `conversation.read`    | `/api/b/:key/conversation/read`         | refused `DELEGATION_EXCLUDES_OPERATION` | `readConversation` (`reads/conversation.ts`)                                                                                                                                          | `conversations`, `conversation_messages`, `conversation_wrap_ups`                                           |
 
 The other thirty. `runAgentCommand` (`commands/agent-envelope.ts`) refuses a
 name outside `AGENT_SURFACE` before it reads anything else. Each name the agent
@@ -1210,7 +1252,7 @@ same bytes as a missing task.
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `gate.pending`, `person.list`,
-`preset.plan`, `settings.read` and `session.capabilities` are declared in `COMMAND_SURFACE`
+`preset.plan`, `settings.read`, `session.capabilities` and `conversation.read` are declared in `COMMAND_SURFACE`
 with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 

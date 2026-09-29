@@ -105,6 +105,19 @@ async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence:
   return { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
 }
 
+/** A conversation the caller just started, for the operations that name one (AW-03). */
+async function ownConversation(context: BodyContext): Promise<string> {
+  const started = await context.asPerson('conversation.start', {
+    operationId: randomUUID(),
+    body: 'a conversation to name',
+  });
+  const detail = started.body['detail'] as Record<string, unknown> | undefined;
+  if (started.status !== 200 || typeof detail?.['conversationId'] !== 'string') {
+    throw new Error(`matrix: conversation.start answered ${String(started.status)}`);
+  }
+  return detail['conversationId'];
+}
+
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration) => Promise<Prepared> {
@@ -274,6 +287,14 @@ export function createPositiveBody(
         return {
           body: { ...(await ownLease(context)), name: 'the admin checks', outcome: 'passed' },
         };
+      // AW-03. The admin holds `conversation:write`, so starts one of their own;
+      // the message and the read name a conversation the admin just started.
+      case 'conversation.start':
+        return { body: { body: 'the admin asks the agent', subject: 'acceptance' } };
+      case 'conversation.message':
+        return { body: { conversationId: await ownConversation(context), body: 'and again' } };
+      case 'conversation.read':
+        return { body: { conversationId: await ownConversation(context) } };
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }

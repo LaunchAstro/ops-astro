@@ -237,6 +237,18 @@ export type CommandRequest =
       readonly name: string;
       readonly outcome: string;
       readonly note?: string | null;
+    } & Envelope)
+  | ({
+      readonly command: 'conversation.start';
+      readonly body: unknown;
+      readonly title?: unknown;
+      readonly subject?: unknown;
+      readonly scope?: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'conversation.message';
+      readonly conversationId: unknown;
+      readonly body: unknown;
     } & Envelope);
 
 /**

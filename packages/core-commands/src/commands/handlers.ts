@@ -28,6 +28,7 @@ import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
+import { messageConversation, startConversation } from './conversations.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -95,6 +96,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.heartbeat': heartbeatOwnLease,
   'task.check': checkOwnLease,
   'task.handback': handbackOwnLease,
+
+  // AW-03: the conversation's first message mints it; later ones are its owner's.
+  'conversation.start': startConversation,
+  'conversation.message': messageConversation,
 };
 
 function writeOwned(

@@ -76,6 +76,7 @@ export const READ_NAMES = [
   'task.queue',
   'preset.plan',
   'gate.pending',
+  'conversation.read',
 ] as const;
 
 /**

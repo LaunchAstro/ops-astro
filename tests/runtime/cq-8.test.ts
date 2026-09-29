@@ -92,6 +92,7 @@ describe('CQ-8 runtime structure', () => {
       .map((file) => relative(ROOT, file))
       .toSorted();
     expect(callers).toEqual([
+      'packages/core-commands/src/commands/conversation-lifecycle.ts',
       'packages/core-commands/src/commands/prepare.ts',
       'packages/core-records/src/tasks/placement.ts',
       'packages/core-records/src/tenancy/database.ts',

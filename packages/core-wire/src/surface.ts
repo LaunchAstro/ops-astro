@@ -100,7 +100,12 @@ export type CommandName =
   | 'task.heartbeat'
   // A check the run performed, recorded under its worker lease (MP-6-1,
   // CS-16.3): a system write whose authority is the live lease, not a grant.
-  | 'task.check';
+  | 'task.check'
+  // A person's conversation with the agent (AW-03): minted at its first
+  // message, its owner's alone, and read at its address after the body purges.
+  | 'conversation.start'
+  | 'conversation.message'
+  | 'conversation.read';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -258,6 +263,7 @@ function declare(
 const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
+const CONVERSATION_COLLECTION = 'conversation';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -357,6 +363,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     outcome: 'any',
     note: 'any',
   },
+  'conversation.start': { body: 'any', title: 'any', subject: 'any', scope: 'any' },
+  'conversation.message': { conversationId: 'any', body: 'any' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -443,6 +451,24 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // delegation's purpose; before a pickup it is refused like every other
   // operation outside the two (minimum contract 8.2 case 9).
   read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated' }),
+
+  // AW-03. `conversation:write` is the owner's key for their own conversation;
+  // the handler refuses a message into anyone else's. The read names its own
+  // rule (`reads/conversation.ts`): the owner, or a holder of the read-any
+  // grant `conversation:read`, which nobody holds on install. No agent entry:
+  // the agent's side of an exchange is written by the product's exchange,
+  // never by an agent calling in.
+  declare('conversation.start', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('conversation.message', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
+  read('conversation.read', CONVERSATION_COLLECTION),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was

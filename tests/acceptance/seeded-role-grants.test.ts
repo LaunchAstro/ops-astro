@@ -40,9 +40,12 @@ const held = (role: string): readonly string[] =>
  * What each declaration asks the grant model about. `preset.plan` takes
  * `manage` on the family the request names (surface.ts), and the seeded
  * family is `task`. `session.capabilities` asks about nothing: it reports
- * what the caller holds.
+ * what the caller holds. `conversation.read` asks its own rule (the owner, or
+ * the read-any grant `conversation:read`, which no role holds on install), so
+ * its declared pair is deliberately seeded to nobody.
  */
-const asked = COMMAND_SURFACE.filter((each) => each.name !== 'session.capabilities')
+const NOT_SEEDED = new Set(['session.capabilities', 'conversation.read']);
+const asked = COMMAND_SURFACE.filter((each) => !NOT_SEEDED.has(each.name))
   .map((each) =>
     each.name === 'preset.plan' ? 'task:manage' : `${each.collection}:${each.action}`,
   )
