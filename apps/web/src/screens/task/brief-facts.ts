@@ -22,14 +22,14 @@ export interface BriefFact {
 }
 
 const BRIEF_KEYS: readonly (readonly [BriefFactKey, RegExp])[] = [
-  ['Objective', /^(objective|goal|aim)\b/i],
-  ['Definition of done', /^(done when|definition of done|acceptance|success)\b/i],
-  ['Constraints', /^(constraints?|limits?|rules|guardrails)\b/i],
-  ['Escalation', /^(escalat\w*|stop if|ask if|gates?)\b/i],
+  ['Objective', /^(objective|goal|aim)\b/iu],
+  ['Definition of done', /^(done when|definition of done|acceptance|success)\b/iu],
+  ['Constraints', /^(constraints?|limits?|rules|guardrails)\b/iu],
+  ['Escalation', /^(escalat\w*|stop if|ask if|gates?)\b/iu],
 ];
 
-const BOLD_LEAD = /^\s*(?:#{1,4}\s*)?\*\*([^*]+)\*\*\s*[—–:-]?\s*(.*)$/;
-const HEADING = /^\s*#{1,4}\s+(.+?)\s*[—–:]?\s*$/;
+const BOLD_LEAD = /^\s*(?:#{1,4}\s*)?\*\*([^*]+)\*\*\s*[—–:-]?\s*(.*)$/u;
+const HEADING = /^\s*#{1,4}\s+(.+?)\s*[—–:]?\s*$/u;
 
 interface Head {
   readonly line: number;

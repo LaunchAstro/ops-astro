@@ -128,7 +128,7 @@ async function replyParent(
       : undefined;
   // A message in an audience this caller may not write in (an internal note,
   // to a client's person or an agent) is answered as one that is not there,
-  // so a reply cannot be used to learn that a note it cannot see exists.
+  // so a reply cannot reveal that a note it cannot see exists.
   if (message === undefined || message.parentId !== null || !on.audiences.has(message.audience)) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['parentId'], PARENT_FIXES));
   }
