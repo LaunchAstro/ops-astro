@@ -533,7 +533,18 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
     const derived = PROTECTED_TASK_FIELDS.filter(
       (key) => spineField(key).owningOperations.length === 0,
     );
-    expect(derived.toSorted()).toStrictEqual(['completed_at', 'key', 'source']);
+    // The wayfinder's five (WF-1, WF-2) are its commands' records: the map's
+    // owner and version, the type history, the blocking set and how it closed.
+    expect(derived.toSorted()).toStrictEqual([
+      'blocked_by',
+      'closed_as',
+      'completed_at',
+      'key',
+      'map_owner',
+      'map_version',
+      'source',
+      'type_history',
+    ]);
     expect(baseline.data['source']).toBe('person:api');
     expect(baseline.data['key']).toMatch(/^T-\d+$/u);
     expect(baseline.data['completed_at']).toBeUndefined();
