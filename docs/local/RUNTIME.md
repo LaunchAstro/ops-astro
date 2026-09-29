@@ -1284,9 +1284,12 @@ direct SQL.
   (the provider's fault) and `connection_lost` (the network's), which a worker
   reports by handing back `dropped` with `report.dropCause`. The worker calls
   its provider only once the step is marked, since a call may act and lose its
-  answer, so such a drop keeps its whole hold unknown until the pass proves the
-  effect absent; a lost hand-back answer is sent again under its first
-  identity, never the provider call. And `worker_lost`
+  answer, so such a drop keeps its whole hold unknown until a person records
+  what happened: the register (`registerEffectLookup`) holds only the comment,
+  so a missing one cannot prove a reached provider did nothing and the pass
+  leaves it unanswered; a registered comment still proves it happened. A lost
+  hand-back answer is sent again under its first identity, never the provider
+  call. And `worker_lost`
   (ours), which the pass's sweep (`sweepLostWorkers`) names when a lease runs
   out with nothing reported.
   A silent run is running until then. The drop appends `dropped` to the run's

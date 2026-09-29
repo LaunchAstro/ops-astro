@@ -253,11 +253,25 @@ function describeSwept(business: RecoveredBusiness): void {
  * effect replays by its token (the synthetic comment) is answered by the
  * register, under the holder's own identity; any other kind cannot be, and
  * waits for a person.
+ *
+ * The register holds the comment and nothing else. A registered comment
+ * proves the effect happened. A missing one proves nothing about a provider
+ * the worker reached and lost the answer from (a `provider_unavailable` or
+ * `connection_lost` drop after the mark, T3e1): that provider may have acted,
+ * so the register cannot answer, the whole hold stays, and a person records
+ * what happened (Sol review 2 on #154).
  */
-export const registerEffectLookup: EffectLookup = async (tx, step) =>
-  EFFECT_OPERATIONS[step.stepKind] === 'replay'
-    ? (await lookupEffect(tx, step.holderActorId, step.attemptId)) !== undefined
-    : undefined;
+export const registerEffectLookup: EffectLookup = async (tx, step) => {
+  if (EFFECT_OPERATIONS[step.stepKind] !== 'replay') return undefined;
+  if ((await lookupEffect(tx, step.holderActorId, step.attemptId)) !== undefined) return true;
+  const [attempt] = await tx.query<{ readonly drop_cause: string | null }>(
+    'select drop_cause from public.attempts where business_id = $1 and id = $2',
+    [tx.businessId, step.attemptId],
+  );
+  const providerReached =
+    attempt?.drop_cause === 'provider_unavailable' || attempt?.drop_cause === 'connection_lost';
+  return providerReached ? undefined : false;
+};
 
 /**
  * The one reconciliation pass, as the API runs it on its interval: the sweep,

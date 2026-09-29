@@ -33,7 +33,8 @@ export const SYNTHETIC_USAGE: UsageReporter = {
  * provider always answers; a fault is injected only at construction, as the
  * reporter is, so no setting turns one on. A worker that meets a
  * `ProviderFault` hands back `dropped` with its cause; the call may have acted,
- * so the whole hold stays unknown until the pass proves the effect absent.
+ * so the whole hold stays unknown until a person records what happened: the
+ * register holds only the comment and cannot prove the provider did nothing.
  */
 export interface Provider {
   readonly call: (step: { readonly kind: string }) => Promise<void>;
