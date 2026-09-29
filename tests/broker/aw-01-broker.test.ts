@@ -42,6 +42,7 @@ import {
   liveWork,
   openSchedules,
   propose,
+  racer,
   type Schedules,
   type Work,
 } from '../runtime/schedules-harness.ts';
@@ -457,6 +458,42 @@ describe.skipIf(serverUrl === undefined)('AW-01 the broker on the database', () 
     });
     expect(await callCount()).toBe(before);
     await first;
+  });
+
+  it('AW-01 last room: two calls at once for room enough for one hold one', async () => {
+    // 700 holds one call at the operation's maximum of 500, not two.
+    const work = await liveWork(s, 'room for one', 700);
+    await stepOf(work);
+    world.provider.mode('answer');
+    const seen = world.provider.seen.length;
+    const racers = [racer(s), racer(s)];
+    try {
+      const both = await Promise.all(
+        racers.map(
+          async (database) =>
+            await database.withBusiness(
+              s.business,
+              async (tx) => await reserveModelCall(tx, caller(work), requestFor(work), broker),
+            ),
+        ),
+      );
+      expect(both.map((one) => (one.ok ? 'held' : one.code)).toSorted()).toEqual([
+        'BUDGET_UNAVAILABLE',
+        'held',
+      ]);
+    } finally {
+      await Promise.all(racers.map(async (database) => await database.close()));
+    }
+    const rows = await s.db.admin.execute<{ state: string; reserved_minor: string }>(
+      `select state, reserved_minor::text as reserved_minor from public.model_calls
+        where lease_id = $1 order by reserved_minor`,
+      [work.picked['leaseId']],
+    );
+    expect(rows).toEqual([
+      { state: 'refused', reserved_minor: '0' },
+      { state: 'reserved', reserved_minor: '500' },
+    ]);
+    expect(world.provider.seen.length).toBe(seen);
   });
 
   it('AW-01 revocation mid-transfer: that transfer finishes, nothing further is granted', async () => {
