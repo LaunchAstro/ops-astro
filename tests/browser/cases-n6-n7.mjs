@@ -44,6 +44,7 @@ import {
   WEB,
   record,
   serverTask,
+  servedBuild,
   shot,
   signIn,
   standaloneStatus,
@@ -219,6 +220,8 @@ export async function casesN6(run) {
     await page.goto(`${WEB}/task/${encodeURIComponent(state.taskKey)}`, {
       waitUntil: 'domcontentloaded',
     });
+    // Which build served this page (S0-1, line C8).
+    await servedBuild(page, 'N6');
     const { records, personId } = await n6Cases({
       page,
       database,

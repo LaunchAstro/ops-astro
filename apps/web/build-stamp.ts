@@ -23,8 +23,6 @@ import { join } from 'node:path';
 export const STAMP_FILE = 'build.json';
 /** The `<meta name>` the build writes into the entry document. */
 export const STAMP_META = 'ops-astro-build';
-/** How `scripts/build.mjs` hands Vite the identifier it computed once. */
-export const STAMP_VARIABLE = 'OPS_ASTRO_BUILD_ID';
 /** An identifier and nothing else: no tag, no date, no free text. */
 export const STAMP_SHAPE: RegExp = /^[0-9a-f]{12}(?:-dirty)?$/u;
 

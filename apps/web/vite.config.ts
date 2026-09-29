@@ -30,13 +30,7 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
-import {
-  buildIdentifier,
-  STAMP_FILE,
-  STAMP_META,
-  STAMP_SHAPE,
-  STAMP_VARIABLE,
-} from './build-stamp.ts';
+import { buildIdentifier, STAMP_FILE, STAMP_META } from './build-stamp.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -76,16 +70,12 @@ function moduleGraphManifest(): Plugin {
 }
 
 /**
- * The version stamp. `scripts/build.mjs` names the identifier once and hands it
- * over, so the artefact carries the one it checks; a bare `vite` or `vite build`
- * reads the checkout itself.
+ * The version stamp, always read from the checkout being built: nothing in the
+ * environment can name a build, so no artefact carries a version it was not
+ * made from. `scripts/build.mjs` reads the artefact back and checks it.
  */
 function buildStamp(): Plugin {
-  const handed = process.env[STAMP_VARIABLE];
-  if (handed !== undefined && !STAMP_SHAPE.test(handed)) {
-    throw new Error(`${STAMP_VARIABLE}=${JSON.stringify(handed)} is not a build identifier`);
-  }
-  const build = handed ?? buildIdentifier(root);
+  const build = buildIdentifier(root);
   return {
     name: 'ops-astro-build-stamp',
     config: () => ({ define: { 'import.meta.env.VITE_OPS_ASTRO_BUILD': JSON.stringify(build) } }),

@@ -29,17 +29,17 @@
 // exists to catch, so each built target's output directory is checked for real
 // files afterwards and an empty one fails.
 //
-// Every build carries its version (S0-1, line C2). The identifier is named once
-// here, from the checkout (`apps/web/build-stamp.ts`), and handed to the web
-// build, which writes it into the page and into `build.json` in its artefact.
-// The artefact is then read back: one without that exact stamp is a failed
-// build, because a promotion step that cannot say which build it is promoting
-// is promoting a guess.
+// Every build carries its version (S0-1, line C2). The web build reads the
+// identifier from the checkout (`apps/web/build-stamp.ts`) and writes it into
+// the page and into `build.json` in its artefact; nothing in the environment
+// can name it. The artefact is then read back against the checkout: one
+// without that exact stamp is a failed build, because a promotion step that
+// cannot say which build it is promoting is promoting a guess.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { buildIdentifier, readStamp, STAMP_FILE, STAMP_VARIABLE } from '../apps/web/build-stamp.ts';
+import { buildIdentifier, readStamp, STAMP_FILE } from '../apps/web/build-stamp.ts';
 
 /** Workspace roots, in the order `pnpm-workspace.yaml` globs them. */
 const ROOTS = ['packages', 'apps'];
@@ -56,12 +56,12 @@ const STAMPED = new Set(['@launchastro/web']);
  * reads `npm_execpath` rather than trusting the name -- the same reason
  * scripts/check.mjs does.
  */
-function pnpmRun(args, env) {
+function pnpmRun(args) {
   const execPath = process.env['npm_execpath'];
   const isScript = execPath !== undefined && /\.[cm]?js$/u.test(execPath);
   const command = execPath === undefined ? 'pnpm' : isScript ? process.execPath : execPath;
   const prefix = isScript && execPath !== undefined ? [execPath] : [];
-  return spawnSync(command, [...prefix, ...args], { stdio: 'inherit', env });
+  return spawnSync(command, [...prefix, ...args], { stdio: 'inherit' });
 }
 
 /** Every directory under the workspace roots, classified by what it can build. */
@@ -128,10 +128,7 @@ console.log(`build: this build is ${stamp}`);
 
 for (const target of built) {
   console.log(`\n=== ${target.name} (pnpm --filter ${target.name} run build) ===`);
-  const run = pnpmRun(['--filter', target.name, 'run', 'build'], {
-    ...process.env,
-    [STAMP_VARIABLE]: stamp,
-  });
+  const run = pnpmRun(['--filter', target.name, 'run', 'build']);
   if (run.error !== undefined) {
     console.error(`build: could not run the build for ${target.name}: ${run.error.message}`);
     process.exit(1);
