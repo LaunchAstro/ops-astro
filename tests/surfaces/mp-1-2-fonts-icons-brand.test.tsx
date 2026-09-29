@@ -49,8 +49,8 @@ interface Font {
   readonly family: string;
   readonly token: string;
   readonly weights: readonly number[];
-  /** The variable face's file, where the package ships the family as one face over its weights. */
-  readonly variable?: string;
+  /** The variable face's file and weight axis, where the package ships the family as one face. */
+  readonly variable?: { readonly file: string; readonly axis: string };
 }
 const FONTS: readonly Font[] = [
   {
@@ -64,13 +64,14 @@ const FONTS: readonly Font[] = [
     family: 'Funnel Sans',
     token: '--font-sans',
     weights: [400, 500, 600],
-    variable: 'funnel-sans-latin-wght-normal.woff2',
+    variable: { file: 'funnel-sans-latin-wght-normal.woff2', axis: '300 800' },
   },
   {
-    pkg: '@fontsource/chivo-mono',
+    pkg: '@fontsource-variable/chivo-mono',
     family: 'Chivo Mono',
     token: '--font-mono',
     weights: [300, 400, 500],
+    variable: { file: 'chivo-mono-latin-wght-normal.woff2', axis: '100 900' },
   },
 ] as const;
 const fontsCss = `${ui}src/styles/0-fonts.css`;
@@ -112,12 +113,12 @@ it('MP-1-2 fonts load from the three OFL fonts', () => {
     if (font.variable !== undefined) {
       // The variable face the mockup draws: one Latin face over the weight
       // axis, declared under the token's family, from the package's own file.
-      const face = sheet.slice(sheet.indexOf('@font-face'));
+      const face = sheet.split('@font-face').find((f) => f.includes(`'${font.family}';`)) ?? '';
       expect(face).toContain(`font-family: '${font.family}'`);
-      expect(face).toContain(`url('${font.pkg}/files/${font.variable}')`);
-      expect(face).toContain('font-weight: 300 800');
+      expect(face).toContain(`url('${font.pkg}/files/${font.variable.file}')`);
+      expect(face).toContain(`font-weight: ${font.variable.axis}`);
       expect(face).not.toContain('italic');
-      expect(existsSync(`${ui}node_modules/${font.pkg}/files/${font.variable}`)).toBe(true);
+      expect(existsSync(`${ui}node_modules/${font.pkg}/files/${font.variable.file}`)).toBe(true);
       continue;
     }
     for (const weight of font.weights) {
@@ -203,7 +204,9 @@ it('MP-1-2 an asset with no compatible licence is refused and reported', () => {
   const hostile = [
     'some-widget',
     '@fontsource/funnel-sans',
+    '@fontsource/chivo-mono',
     '@fontsource-variable/funnel-sans-extra',
+    '@fontsource-variable/chivo-mono-extra',
     '@FONTSOURCE-VARIABLE/FUNNEL-SANS',
     ' @fontsource-variable/funnel-sans',
     '@fontsource-variable/funnel-sans ',
