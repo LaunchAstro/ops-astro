@@ -94,6 +94,18 @@ const PROVIDER_FIXES: readonly string[] = [
   'The sign-in service did not answer as expected. Nothing was changed; try again shortly.',
 ];
 const BODY_FIXES: readonly string[] = ['Send only { "code": "<the six digits>" }.'];
+const LOCKED_FIXES: readonly string[] = [
+  'Too many wrong codes. Wait 15 minutes, then try again with the code your app shows.',
+];
+
+/**
+ * Wrong codes a person may send before their factor routes stop asking the
+ * provider: five in fifteen minutes, counted from their own refused attempts
+ * in the audit chain, so a six-digit code cannot be walked by a caller who
+ * holds only the password.
+ */
+const FAILED_CODE_LIMIT = 5;
+const FAILED_CODE_WINDOW_MINUTES = 15;
 
 /**
  * First enrolment: a person with no factor, after a fresh password sign-in
@@ -105,14 +117,19 @@ export async function enrolSecondFactor(
   provider: FactorProvider,
 ): Promise<IssuedFactor | CommandRefusal> {
   const act = 'account.factor_enrol';
-  const precondition = await judged(caller, act, async (tx, session) => {
-    const live = await liveFactor(tx, session.personId);
-    if (live?.status === 'verified')
-      return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
-    if (!(await freshSignIn(tx, session)))
-      return refuseCommand('FRESH_SIGN_IN_REQUIRED', [], FRESH_FIXES);
-    return undefined;
-  });
+  const precondition = await judged(
+    caller,
+    act,
+    async (tx, session) => {
+      const live = await liveFactor(tx, session.personId);
+      if (live?.status === 'verified')
+        return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
+      if (!(await freshSignIn(tx, session)))
+        return refuseCommand('FRESH_SIGN_IN_REQUIRED', [], FRESH_FIXES);
+      return undefined;
+    },
+    'before',
+  );
   if (precondition !== undefined) return precondition;
 
   const issued = await provider.enrol(caller.accessToken);
@@ -150,13 +167,20 @@ export async function verifySecondFactor(
   const act = 'account.factor_verify';
   const code = codeOf(body);
   let factor: { readonly id: string; readonly providerFactorId: string } | undefined;
-  const precondition = await judged(caller, act, async (tx, session) => {
-    if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
-    factor = await liveFactor(tx, session.personId);
-    return factor === undefined
-      ? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES)
-      : undefined;
-  });
+  const precondition = await judged(
+    caller,
+    act,
+    async (tx, session) => {
+      if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
+      if (await tooManyWrongCodes(tx, session))
+        return refuseCommand('SECOND_FACTOR_LOCKED', [], LOCKED_FIXES);
+      factor = await liveFactor(tx, session.personId);
+      return factor === undefined
+        ? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES)
+        : undefined;
+    },
+    'before',
+  );
   if (precondition !== undefined || factor === undefined || code === undefined) {
     return precondition ?? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
   }
@@ -190,14 +214,21 @@ export async function removeSecondFactor(
   const act = 'account.factor_remove';
   const code = codeOf(body);
   let factor: { readonly id: string; readonly providerFactorId: string } | undefined;
-  const precondition = await judged(caller, act, async (tx, session) => {
-    if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
-    const live = await liveFactor(tx, session.personId);
-    if (live?.status !== 'verified')
-      return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
-    factor = live;
-    return undefined;
-  });
+  const precondition = await judged(
+    caller,
+    act,
+    async (tx, session) => {
+      if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
+      if (await tooManyWrongCodes(tx, session))
+        return refuseCommand('SECOND_FACTOR_LOCKED', [], LOCKED_FIXES);
+      const live = await liveFactor(tx, session.personId);
+      if (live?.status !== 'verified')
+        return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
+      factor = live;
+      return undefined;
+    },
+    'before',
+  );
   if (precondition !== undefined || factor === undefined || code === undefined) {
     return precondition ?? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
   }
@@ -221,12 +252,17 @@ export async function removeSecondFactor(
 /**
  * One transaction on the factor path: resolve the caller (their factor is not
  * required yet, since these acts are how they give it), run `check`, and write
- * the act's audit event, applied or refused, in the same transaction.
+ * the act's audit event in the same transaction.
+ *
+ * The check before the provider call records only a refusal: a check that
+ * passed has done nothing yet, and the act's own event is the one written
+ * after the call, applied or refused, beside the record it changes.
  */
 async function judged(
   caller: FactorCaller,
   act: Act,
   check: (tx: TenantQuery, session: Session) => Promise<CommandRefusal | undefined>,
+  stage: 'before' | 'after' = 'after',
 ): Promise<CommandRefusal | undefined> {
   const outcome = await withSession(
     caller.database,
@@ -234,6 +270,7 @@ async function judged(
     caller.presented,
     async (tx, session) => {
       const refusal = await check(tx, session);
+      if (stage === 'before' && refusal === undefined) return undefined;
       await writeAuditEvent(tx, {
         actorId: session.actorId,
         command: act,
@@ -247,6 +284,21 @@ async function judged(
   );
   if (outcome === undefined) return undefined;
   return asCallerVisible(outcome);
+}
+
+/** Whether this person has sent too many wrong codes lately (see `FAILED_CODE_LIMIT`). */
+async function tooManyWrongCodes(tx: TenantQuery, session: Session): Promise<boolean> {
+  const rows = await tx.query<{ readonly failures: number }>(
+    `select count(*)::int as failures
+       from public.audit_events
+      where business_id = $1
+        and actor_id = $2
+        and command in ('account.factor_verify', 'account.factor_remove')
+        and refusal_code = 'SECOND_FACTOR_INVALID'
+        and occurred_at > now() - make_interval(mins => $3)`,
+    [tx.businessId, session.actorId, FAILED_CODE_WINDOW_MINUTES],
+  );
+  return (rows[0]?.failures ?? 0) >= FAILED_CODE_LIMIT;
 }
 
 /** A first enrolment's precondition: a password sign-in inside the window. */

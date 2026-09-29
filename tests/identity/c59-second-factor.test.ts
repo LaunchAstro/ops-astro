@@ -47,7 +47,11 @@ import {
   verifyAuditChain,
 } from '../../packages/core-commands/src/commands/audit.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
-import { declarationOf, type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
+import {
+  COMMAND_SURFACE,
+  declarationOf,
+  type CommandDeclaration,
+} from '../../packages/core-wire/src/surface.ts';
 import { insertBusiness } from './fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 
@@ -188,6 +192,16 @@ describe('C59 step-up boundary, as a rule', () => {
     expect(
       judgeStepUp(teamMember({ level: 'aal2', signedInAt: later, factorAt: later }), NOW),
     ).toBe('stale');
+  });
+
+  it('C59 step-up boundary: no money command is reachable on the agent prefix, where no sign-in is', () => {
+    // The step-up judges a person's sign-in, and an agent has none to judge, so
+    // a command holding a money key stays off the agent route. A row that opens
+    // one to agents fails here before it can skip the step-up.
+    const opened = COMMAND_SURFACE.filter(
+      (row) => isMoneyKey(row.collection, row.action) && row.agent !== 'never',
+    ).map((row) => row.name);
+    expect(opened).toEqual([]);
   });
 
   it('C59 step-up boundary: the money set is every billing key, offer:decide, mandate:manage and spend:decide', () => {

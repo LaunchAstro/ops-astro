@@ -84,6 +84,8 @@ describe.skipIf(serverUrl === undefined)(
     let slowApi: ReturnType<typeof createApi>;
     let clientA: Member;
     let clientB: Member;
+    /** A third client, whose factor the path and lockout cases use. */
+    let clientC: Member;
 
     /** A bearer carrying the assurance a sign-in gave it, signed as GoTrue signs. */
     const tokenFor = async (
@@ -138,7 +140,7 @@ describe.skipIf(serverUrl === undefined)(
         ),
       );
 
-    const build = (timeoutMs?: number) =>
+    const build = (timeoutMs?: number, basePath = '') =>
       createApi({
         database: world.db.app,
         verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
@@ -147,7 +149,7 @@ describe.skipIf(serverUrl === undefined)(
         executeRead,
         executeAgentCommand,
         factors: createGoTrueFactors({
-          baseUrl: `http://127.0.0.1:${(provider.address() as AddressInfo).port}`,
+          baseUrl: `http://127.0.0.1:${(provider.address() as AddressInfo).port}${basePath}`,
           ...(timeoutMs === undefined ? {} : { timeoutMs }),
         }),
       });
@@ -191,6 +193,7 @@ describe.skipIf(serverUrl === undefined)(
       const sharer = world.ada as unknown as Member;
       clientA = await shareWithClient(world.db.app, world.alpha, sharer, tasks[0] ?? '');
       clientB = await shareWithClient(world.db.app, world.alpha, sharer, tasks[1] ?? '');
+      clientC = await shareWithClient(world.db.app, world.alpha, sharer, tasks[1] ?? '');
     }, 60_000);
 
     afterEach(() => {
@@ -224,6 +227,11 @@ describe.skipIf(serverUrl === undefined)(
       expect(seen.map((request) => request.route)).toEqual(['POST /factors']);
       expect(seen[0]?.authorization).toBe(`Bearer ${token}`);
       expect(await factorOf(world.mia.personId)).toMatchObject({ status: 'unverified' });
+
+      // One event for the act, written with its record after the provider
+      // answered; the check before the call recorded nothing, having done nothing.
+      const enrolEvents = await eventsFor('account.factor_enrol');
+      expect(enrolEvents.filter((event) => event.outcome === 'applied')).toHaveLength(1);
 
       const verified = await act('verify', token, { code: '123456' });
       expect(verified.status).toBe(200);
@@ -325,6 +333,33 @@ describe.skipIf(serverUrl === undefined)(
       const answer = await act('verify', token, { code: '123456' });
       expect(answer.code).toBe('PROVIDER_ANSWER_INVALID');
       expect(await factorOf(world.noah.personId)).toMatchObject({ status: 'unverified' });
+    });
+
+    it('C59 hostile provider: a provider served under a path is called under that path', async () => {
+      replies = { 'POST /auth/v1/factors': GOOD['POST /factors'] ?? json(500, {}) };
+      const underPath = await act('enrol', await fresh(clientC), {}, build(undefined, '/auth/v1/'));
+      expect(underPath.status).toBe(200);
+      expect(seen.map((request) => request.route)).toEqual(['POST /auth/v1/factors']);
+    });
+
+    it('C59 factor change: five wrong codes in fifteen minutes stop the provider being asked', async () => {
+      const token = await fresh(clientC);
+      expect((await act('verify', token, { code: '123456' })).status).toBe(200);
+      replies['POST /factors/factor-one/verify'] = json(422, {
+        code: 422,
+        msg: 'Invalid TOTP code',
+      });
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        // oxlint-disable-next-line no-await-in-loop
+        expect((await act('verify', token, { code: '000000' })).code).toBe('SECOND_FACTOR_INVALID');
+      }
+      seen = [];
+      const locked = await act('verify', token, { code: '123456' });
+      expect(locked.status).toBe(429);
+      expect(locked.code).toBe('SECOND_FACTOR_LOCKED');
+      const removal = await act('remove', token, { code: '123456' });
+      expect(removal.code).toBe('SECOND_FACTOR_LOCKED');
+      expect(seen).toEqual([]);
     });
 
     it('C59 canary: the authenticator secret and the provider’s words reach no log, record or refusal', async () => {

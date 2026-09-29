@@ -43,7 +43,9 @@ export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvide
   ): Promise<ProviderAnswer<Json>> {
     // The path is built here from fixed segments and provider ids already
     // shaped by the caller; the origin is the configured one, never the answer's.
-    const url = new URL(path, base);
+    // GoTrue may be served under a path (`/auth/v1` on a hosted project), so
+    // the call's path is appended to the base's, never put in its place.
+    const url = new URL(`${base.pathname.replace(/\/+$/u, '')}${path}`, base);
     if (url.origin !== base.origin) return { ok: false, fault: 'refused' };
     let response: Response;
     try {
