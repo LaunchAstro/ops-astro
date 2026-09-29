@@ -13,7 +13,7 @@
     {
       "id": "font-funnel-sans",
       "kind": "font",
-      "package": "@fontsource/funnel-sans",
+      "package": "@fontsource-variable/funnel-sans",
       "version": "5.3.0",
       "licence": "OFL-1.1",
       "licenceFile": "licences/OFL-funnel-sans.txt",

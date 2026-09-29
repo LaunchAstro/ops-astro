@@ -44,7 +44,15 @@ const uiDependencies = (): Readonly<Record<string, string>> =>
   json<{ dependencies?: Record<string, string> }>(`${ui}package.json`).dependencies ?? {};
 
 /** The three families and the weights TOKENS.md DS-TOK-28 to DS-TOK-30 name. */
-const FONTS = [
+interface Font {
+  readonly pkg: string;
+  readonly family: string;
+  readonly token: string;
+  readonly weights: readonly number[];
+  /** The variable face's file, where the package ships the family as one face over its weights. */
+  readonly variable?: string;
+}
+const FONTS: readonly Font[] = [
   {
     pkg: '@fontsource/funnel-display',
     family: 'Funnel Display',
@@ -52,10 +60,11 @@ const FONTS = [
     weights: [400, 500, 600, 700],
   },
   {
-    pkg: '@fontsource/funnel-sans',
+    pkg: '@fontsource-variable/funnel-sans',
     family: 'Funnel Sans',
     token: '--font-sans',
     weights: [400, 500, 600],
+    variable: 'funnel-sans-latin-wght-normal.woff2',
   },
   {
     pkg: '@fontsource/chivo-mono',
@@ -92,13 +101,25 @@ it('MP-1-2 fonts load from the three OFL fonts', () => {
   expect(existsSync(fontsCss), 'packages/ui/src/styles/0-fonts.css').toBe(true);
   const sheet = read(fontsCss);
   const imports = [...sheet.matchAll(/@import\s+'([^']+)'/gu)].map((m) => m[1]);
-  const wanted = FONTS.flatMap((f) => f.weights.map((w) => `${f.pkg}/latin-${w}.css`));
+  const statics = FONTS.filter((f) => f.variable === undefined);
+  const wanted = statics.flatMap((f) => f.weights.map((w) => `${f.pkg}/latin-${w}.css`));
   // Exactly the weights the tokens use: no italics, no whole-family index.
   expect(imports).toEqual(wanted);
   for (const font of FONTS) {
     expect(deps[font.pkg], `${font.pkg} is a pinned dependency`).toMatch(/^\d+\.\d+\.\d+$/u);
     // The token's first family is the face the package declares.
     expect(tokens).toMatch(new RegExp(`${font.token}:\\s*'${font.family}',`, 'u'));
+    if (font.variable !== undefined) {
+      // The variable face the mockup draws: one Latin face over the weight
+      // axis, declared under the token's family, from the package's own file.
+      const face = sheet.slice(sheet.indexOf('@font-face'));
+      expect(face).toContain(`font-family: '${font.family}'`);
+      expect(face).toContain(`url('${font.pkg}/files/${font.variable}')`);
+      expect(face).toContain('font-weight: 300 800');
+      expect(face).not.toContain('italic');
+      expect(existsSync(`${ui}node_modules/${font.pkg}/files/${font.variable}`)).toBe(true);
+      continue;
+    }
     for (const weight of font.weights) {
       const face = read(`${ui}node_modules/${font.pkg}/latin-${weight}.css`);
       expect(face).toContain(`font-family: '${font.family}'`);
@@ -181,11 +202,12 @@ it('MP-1-2 an asset with no compatible licence is refused and reported', () => {
   // Anything else under it is refused, and the report names the package.
   const hostile = [
     'some-widget',
-    '@fontsource/funnel-sans-extra',
-    '@FONTSOURCE/FUNNEL-SANS',
-    ' @fontsource/funnel-sans',
-    '@fontsource/funnel-sans ',
-    '@evil/@fontsource/funnel-sans',
+    '@fontsource/funnel-sans',
+    '@fontsource-variable/funnel-sans-extra',
+    '@FONTSOURCE-VARIABLE/FUNNEL-SANS',
+    ' @fontsource-variable/funnel-sans',
+    '@fontsource-variable/funnel-sans ',
+    '@evil/@fontsource-variable/funnel-sans',
   ];
   for (const name of hostile) {
     const run = licences(ofl(name));
@@ -197,13 +219,13 @@ it('MP-1-2 an asset with no compatible licence is refused and reported', () => {
   expect(vendor.status).toBe(1);
   expect(vendor.out).toContain('uicons');
   // A font licence joined to a refused one, or carrying an exception, is not a font licence.
-  expect(licences(ofl('@fontsource/funnel-sans', 'OFL-1.1 OR SSPL-1.0')).status).toBe(1);
-  expect(licences(ofl('@fontsource/funnel-sans', 'OFL-1.1 WITH Font-exception-2.0')).status).toBe(
-    1,
-  );
+  expect(licences(ofl('@fontsource-variable/funnel-sans', 'OFL-1.1 OR SSPL-1.0')).status).toBe(1);
+  expect(
+    licences(ofl('@fontsource-variable/funnel-sans', 'OFL-1.1 WITH Font-exception-2.0')).status,
+  ).toBe(1);
   // Other spellings of the font licence are not the one decided.
-  expect(licences(ofl('@fontsource/funnel-sans', 'OFL-1.0')).status).toBe(1);
-  expect(licences(ofl('@fontsource/funnel-sans', 'ofl-1.1')).status).toBe(1);
+  expect(licences(ofl('@fontsource-variable/funnel-sans', 'OFL-1.0')).status).toBe(1);
+  expect(licences(ofl('@fontsource-variable/funnel-sans', 'ofl-1.1')).status).toBe(1);
 });
 
 it('MP-1-2 each bundled asset has its licence recorded', () => {

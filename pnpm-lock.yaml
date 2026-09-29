@@ -204,13 +204,13 @@ importers:
 
   packages/ui:
     dependencies:
+      '@fontsource-variable/funnel-sans':
+        specifier: 5.3.0
+        version: 5.3.0
       '@fontsource/chivo-mono':
         specifier: 5.3.0
         version: 5.3.0
       '@fontsource/funnel-display':
-        specifier: 5.3.0
-        version: 5.3.0
-      '@fontsource/funnel-sans':
         specifier: 5.3.0
         version: 5.3.0
       lucide-react:
@@ -378,14 +378,14 @@ packages:
       '@noble/hashes':
         optional: true
 
+  '@fontsource-variable/funnel-sans@5.3.0':
+    resolution: {integrity: sha512-NOgHy3KWMAJdl33XSESit33nI8vlFZh8/0E3tLD7z5jJA5gQoLeUkFcZtxehVVkyYpAZ747tF8O/kAHXXa96ZA==}
+
   '@fontsource/chivo-mono@5.3.0':
     resolution: {integrity: sha512-JhGFmYUkWc/jQ5yQt8tp02VO1gouolfnSfNbo8qCuET7Cu6X2VieLpic2ZXQPvDQBcqjjrmruPnkGnoYmxMlaQ==}
 
   '@fontsource/funnel-display@5.3.0':
     resolution: {integrity: sha512-3TA/c8FdK+W8Sme1A0Ukg7oEofFk1h+LJYy7A3NFqAJiL2KYDwJHwPTkgPA/GLCridQcaIcYaNJW8OjoQvWFrA==}
-
-  '@fontsource/funnel-sans@5.3.0':
-    resolution: {integrity: sha512-LmINq/6qfoYW1LOkOwaiZw7YVEpi3QACa36V7jxgBlO8MPGPbeSxFrPjk4lF6uP1ZbCp2VsBWmneo+1b59GbbA==}
 
   '@hono/node-server@2.1.1':
     resolution: {integrity: sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==}
@@ -1970,11 +1970,11 @@ snapshots:
 
   '@exodus/bytes@1.15.2': {}
 
+  '@fontsource-variable/funnel-sans@5.3.0': {}
+
   '@fontsource/chivo-mono@5.3.0': {}
 
   '@fontsource/funnel-display@5.3.0': {}
-
-  '@fontsource/funnel-sans@5.3.0': {}
 
   '@hono/node-server@2.1.1(hono@4.13.9)':
     dependencies:
