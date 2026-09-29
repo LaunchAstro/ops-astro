@@ -153,3 +153,20 @@ it('AW-01 egress 14: the literal forms of a forbidden address are refused when t
   }
   expect(parseDestinations([{ key: 'good', origin: 'http://127.0.0.1:8080' }]).ok).toBe(true);
 });
+
+/** A resolver that never answers. */
+const silent: Resolve = async () =>
+  await new Promise<never>(() => {
+    // Never settles.
+  });
+
+it('AW-01 egress 15: a lookup that never answers ends at the request timeout, with nothing sent', async () => {
+  const started = Date.now();
+  const { result, sockets } = await socketsDuring(
+    async () =>
+      await send(listed('http://slow.test'), { ...REQUEST, timeoutMs: 200 }, null, silent),
+  );
+  expect(result).toEqual({ ok: false, fault: 'timeout', status: null });
+  expect(sockets).toBe(0);
+  expect(Date.now() - started).toBeLessThan(2_000);
+}, 5_000);
