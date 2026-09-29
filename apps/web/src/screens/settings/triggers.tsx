@@ -87,6 +87,7 @@ function Definition(props: {
             {activation.mode === 'manual' ? null : (
               <button
                 type="button"
+                data-control="manual"
                 onClick={() => {
                   props.toManual(activation);
                 }}
