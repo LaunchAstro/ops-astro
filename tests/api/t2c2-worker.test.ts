@@ -235,7 +235,7 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
     ).toHaveLength(1);
   });
 
-  it('Sol proof, criterion 3: an uncertain provider call keeps the full hold until its effect is proved absent', async () => {
+  it('an uncertain provider call keeps the full hold until its effect is proved absent', async () => {
     const { taskId, credential } = await approvedWork();
     let providerEffects = 0;
     const worker = createWorker({

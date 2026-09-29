@@ -6,7 +6,7 @@ import { test } from 'node:test';
 
 const suite = readFileSync(new URL('../runtime/t3e2-outage.test.ts', import.meta.url), 'utf8');
 
-test('Sol proof, criterion 3: outage isolation tests two clients with one grant each and two granted people', () => {
+test('outage isolation tests two clients with one grant each and two granted people', () => {
   const clients = [...suite.matchAll(/const (\w+) = await cq8World\(s\)\.client\(/gu)].map(
     (match) => match[1],
   );

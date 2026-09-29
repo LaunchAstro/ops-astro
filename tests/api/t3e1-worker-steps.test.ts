@@ -324,7 +324,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(written).toHaveLength(1);
     });
 
-    it('Sol proof, criterion 3: missing comment cannot prove an uncertain provider effect absent', async () => {
+    it('missing comment cannot prove an uncertain provider effect absent', async () => {
       const { taskId, credential } = await approvedWork();
       let providerEffects = 0;
       const provider: Provider = {
@@ -357,7 +357,7 @@ describe.skipIf(serverUrl === undefined)(
       ]);
     });
 
-    it('Sol proof, criterion 3: a lost worker after provider action cannot prove that action absent', async () => {
+    it('a lost worker after provider action cannot prove that action absent', async () => {
       const { taskId, credential } = await approvedWork();
       const topUp = await asPerson('budget.top_up', {
         operationId: randomUUID(),

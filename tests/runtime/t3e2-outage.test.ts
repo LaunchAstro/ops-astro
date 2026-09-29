@@ -227,7 +227,7 @@ describe.skipIf(url === undefined)('T3e2: one report per outage', { timeout: 180
     expect(JSON.stringify(answered)).not.toMatch(/provider_unavailable|attemptId|reactivated/u);
   });
 
-  it('Sol proof, criterion 2: an outage reports a marked run as back after absence proof resumes it', async () => {
+  it('an outage reports a marked run as back after absence proof resumes it', async () => {
     await openBilling(s);
     const w = await work(s);
     appliedDetail(
