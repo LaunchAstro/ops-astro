@@ -196,20 +196,30 @@ describe.skipIf(serverUrl === undefined)('MP-8-4 the ledger read', () => {
     // Two more on 5 January, so a day with three events is never split.
     await plant(gamma, gus, gammaTask, '2026-01-05T09:00:00Z');
     await plant(gamma, gus, gammaTask, '2026-01-05T20:00:00Z');
+    // 20:00 UTC on 6 January is 7 January in Brisbane, so a page before the
+    // 7th there must leave it out even though UTC calls it the 6th.
+    await plant(gamma, gus, gammaTask, '2026-01-06T20:00:00Z');
   }, 120_000);
 
   afterAll(async () => await db?.drop());
 
   describe('MP-8-4 a view over the events table', () => {
-    it('lists applied writes with who and when, and not reads, refusals or trashed tasks', async () => {
-      const revision = (
-        await run(alpha, ada, {
-          command: 'task.update',
-          recordId: alphaTask,
-          expectedRevision: alphaRevision,
-          fields: { title: 'the ledger subject, renamed' },
-        })
-      ).revision;
+    it('lists applied writes with who and when, and not reads, replays, refusals or trashed tasks', async () => {
+      const update = {
+        command: 'task.update',
+        operationId: randomUUID(),
+        recordId: alphaTask,
+        expectedRevision: alphaRevision,
+        fields: { title: 'the ledger subject, renamed' },
+      };
+      const revision = (await run(alpha, ada, update)).revision;
+      // The same write sent again is a replay: audited against the task, and
+      // not a second change to it.
+      await run(alpha, ada, update);
+      const replays = await db.app.withBusiness(alpha, async (tx) =>
+        (await readAuditEvents(tx)).filter((event) => event.outcome === 'replayed'),
+      );
+      expect(replays.map((event) => event.subject_record_id)).toStrictEqual([alphaTask]);
       // A read of the same task, and a refused write: neither happened to it.
       await executeRead(db.app, alpha, ada.presented, { read: 'task.read', recordId: alphaTask });
       const stale = await executeCommand(db.app, alpha, ada.presented, 'api', {
@@ -302,6 +312,8 @@ describe.skipIf(serverUrl === undefined)('MP-8-4 the ledger read', () => {
       ['a day in another shape', { timeZone: 'UTC', before: '26-1-1' }, 'before'],
       ['a day with a time on it', { timeZone: 'UTC', before: '2026-01-01T00:00:00Z' }, 'before'],
       ['a day that is a number', { timeZone: 'UTC', before: 20260101 }, 'before'],
+      // A real ISO day the database has no year for.
+      ['a day in year zero', { timeZone: 'UTC', before: '0000-01-01' }, 'before'],
     ];
 
     it.each(cases)(
@@ -310,15 +322,25 @@ describe.skipIf(serverUrl === undefined)('MP-8-4 the ledger read', () => {
         const before = (await ledgerAudit(alpha)).length;
         const answer = await ledger(alpha, ada, body);
         expect(isCommandRefusal(answer) ? [answer.code, answer.names] : answer).toStrictEqual([
-          'COMMAND_BODY_INVALID',
+          'FIELD_VALUE_INVALID',
           [name],
         ]);
         const events = (await ledgerAudit(alpha)).slice(before);
         expect(events.map((event) => [event.outcome, event.refusal_code])).toStrictEqual([
-          ['refused', 'COMMAND_BODY_INVALID'],
+          ['refused', 'FIELD_VALUE_INVALID'],
         ]);
       },
     );
+  });
+
+  describe('MP-8-4 malformed operands, before the grant', () => {
+    it('refuses a zone of the wrong shape before asking for a grant, as every read checks its body first', async () => {
+      const answer = await ledger(alpha, noah, { timeZone: "UTC'; select 1; --" });
+      expect(isCommandRefusal(answer) ? [answer.code, answer.names] : answer).toStrictEqual([
+        'FIELD_VALUE_INVALID',
+        ['timeZone'],
+      ]);
+    });
   });
 
   describe('MP-8-4 isolation', () => {
@@ -373,7 +395,7 @@ describe.skipIf(serverUrl === undefined)('MP-8-4 the ledger read', () => {
       expect('days' in refusalOf(answer)).toBe(false);
     });
 
-    it('shows a reader outside the business no comment, as the task history does', async () => {
+    it('lists comments to staff, and tells a reader who is not staff there is no ledger', async () => {
       await run(alpha, ada, {
         command: 'task.comment',
         recordId: alphaTask,
@@ -384,14 +406,24 @@ describe.skipIf(serverUrl === undefined)('MP-8-4 the ledger read', () => {
       const inside = days(await ledger(alpha, ada));
       expect(inside.days[0]?.events.map((event) => event.operation)).toContain('task.comment');
 
-      const outsider = await shareWithClient(db.app, alpha, ada, alphaTask);
+      // A member of alpha whose role is none of the internal ones, holding a
+      // business-wide task read: `task.read` shows such a reader the shared
+      // view, which carries no history, so the ledger (all history) is not theirs.
+      const guest = await enrol(db.app, alpha, 'Guest');
       await db.app.withBusiness(alpha, async (tx) => {
-        await grantTo(tx, outsider, 'read');
+        await tx.query(`update memberships set role_key = 'guest' where person_id = $1`, [
+          guest.personId,
+        ]);
+        await grantTo(tx, guest, 'read');
       });
-      const outside = days(await ledger(alpha, outsider));
-      const operations = outside.days.flatMap((day) => day.events.map((event) => event.operation));
-      expect(operations).toContain('task.update');
-      expect(operations).not.toContain('task.comment');
+      const shared = await executeRead(db.app, alpha, guest.presented, {
+        read: 'task.read',
+        recordId: alphaTask,
+      });
+      expect('sharedTask' in shared).toBe(true);
+      const answer = await ledger(alpha, guest);
+      expect(isCommandRefusal(answer) ? answer.code : 'answered').toBe('NOT_FOUND');
+      expect(JSON.stringify(answer).includes(alphaKey)).toBe(false);
     });
   });
 });

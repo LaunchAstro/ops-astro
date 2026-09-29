@@ -84,7 +84,7 @@ describe('the surface as a table', () => {
 });
 
 describe('the surface as a table', () => {
-  it('declares the nine reads as reads, and everything else as a write', () => {
+  it('declares the ten reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
       'person.list',
       'preset.plan',
@@ -92,6 +92,7 @@ describe('the surface as a table', () => {
       'settings.read',
       'task.board',
       'task.execution',
+      'task.ledger',
       'task.queue',
       'task.read',
       'task.receipt',

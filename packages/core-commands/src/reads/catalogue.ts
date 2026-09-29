@@ -34,6 +34,7 @@ import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
+import { isKnownTimeZone, readLedger } from './ledger.ts';
 
 export type ReadName = ReadRequest['read'];
 
@@ -146,6 +147,24 @@ function parsed<T>(operands: T): { readonly ok: true; readonly operands: T } {
 const NONE = (): { readonly ok: true; readonly operands: Readonly<Record<never, never>> } =>
   parsed({});
 
+/**
+ * A zone name as the zone database spells one: letters, digits and `_+-`, in
+ * `/`-separated parts. The shape keeps anything else from reaching the
+ * lookup; whether the server knows the zone is `serve`'s question.
+ */
+const ZONE_SHAPE = /^[A-Za-z][A-Za-z0-9_+-]{0,31}(?:\/[A-Za-z0-9_+-]{1,32}){0,2}$/u;
+const ZONE_FIX = 'Send timeZone as a zone name the server knows, such as Australia/Brisbane.';
+const BEFORE_FIX = 'Send before as a day, YYYY-MM-DD, or leave it out for the newest days.';
+
+/** A real day from 1970 on, written `YYYY-MM-DD`: no time, no other shape. */
+function isCalendarDay(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^(19[7-9]\d|[2-9]\d{3})-\d{2}-\d{2}$/u.test(value)) {
+    return false;
+  }
+  const day = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(day.getTime()) && day.toISOString().slice(0, 10) === value;
+}
+
 /** The planner reads each preset field as an object; which keys it needs is its own question. */
 const PRESET_FIELDS_FIX = 'Send fields as an array of field objects, which may be empty.';
 
@@ -229,17 +248,33 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return { ok: true, tasks: await readBoard(tx, spine.taskTypeId, operands.board) };
     },
   },
+  // No subject record, for the reason `task.queue` gives: the ledger is about
+  // every task the business has, and naming one would make "who read this
+  // record" false for the rest.
   'task.ledger': {
     identifiers: [],
-    parse: ({ before, timeZone }) =>
-      parsed({
-        before: typeof before === 'string' ? before : null,
-        timeZone: typeof timeZone === 'string' ? timeZone : 'UTC',
-      }),
+    parse({ before, timeZone }) {
+      if (typeof timeZone !== 'string' || !ZONE_SHAPE.test(timeZone)) {
+        return rejected('timeZone', ZONE_FIX);
+      }
+      if (before !== undefined && before !== null && !isCalendarDay(before)) {
+        return rejected('before', BEFORE_FIX);
+      }
+      return parsed({ before: before ?? null, timeZone });
+    },
     spine: true,
     authority: 'declared',
+    // An outsider standing on one shared task is not told the business keeps
+    // a ledger of the rest (minimum contract 8.2 case 7, as for the board).
     outsiderNotFound: true,
-    serve: async () => await Promise.resolve({ ok: true, days: [], earlier: false }),
+    async serve(tx, session, operands, { spine }) {
+      // Staff's alone: `task.read` shows anyone else a task's shared view,
+      // which carries no history, and the ledger is nothing but history. The
+      // answer is the outsider's, so it says nothing about what is kept.
+      if (!isInternalReader(session.roleKey)) return refuseNotFound();
+      if (!(await isKnownTimeZone(tx, operands.timeZone))) return invalid('timeZone', ZONE_FIX);
+      return { ok: true, ...(await readLedger(tx, spine.taskTypeId, operands)) };
+    },
   },
   'person.list': {
     identifiers: [],
