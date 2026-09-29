@@ -216,6 +216,22 @@ between the tabs, and the reread after each write, keep the map and its
 filters. `map.view`'s ticket rows carry each ticket's revision and blockers for
 these writes. The look waits on the accepted prototypes W4 and W5.
 
+## A ticket on its task page
+
+`/task/:key` for a map's ticket (WF-5) adds the ticket panel
+(`screens/task/Ticket.tsx`) under the header. It draws from `task.context` at
+`full`: the ticket's type, its map (linking `/map/:key`) and Destination, what
+blocks it and what it blocks, and its gist once resolved. The thread is not
+drawn again: it is the task's one comment record, shown by `Comments`. Claim
+(`task.claim`) is offered while nobody holds the open ticket; Resolve
+(`task.resolve`, `TicketResolve.tsx`) asks for the answer and a one-line gist
+and stays disabled until both are written. On a grilling or prototype ticket
+Resolve is offered only to the map's owner: the panel compares
+`session.capabilities`' person with the bundle's map owner, and the server
+refuses anyone else who sends it. A task on no map draws no panel. The panel's
+two reads are audited like every read. The look waits on the accepted
+prototype W6.
+
 ## Comments on a task
 
 `task.read` has carried the task's comments since L3 (`docs/local/API.md`).

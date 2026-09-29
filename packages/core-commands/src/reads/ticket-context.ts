@@ -60,6 +60,8 @@ export interface TicketContextRow {
     readonly key: string | null;
     readonly title: string | null;
     readonly destination: string | null;
+    /** The map owner's person id: the one who resolves its grilling and prototype tickets. */
+    readonly owner: string | null;
     readonly decisions: readonly Decision[];
   } | null;
   readonly blockedBy: readonly Linked[];
@@ -92,6 +94,7 @@ const STATEMENT = `
            'description', t.data ->> 'description', 'gist', t.data ->> 'gist') as ticket,
          (select json_build_object(
                    'id', m.id, 'key', m.txt_1, 'title', m.txt_4,
+                   'owner', m.data ->> 'map_owner',
                    'destination', (select c.body from public.map_components c
                                     where c.business_id = m.business_id and c.map_id = m.id
                                       and c.kind = 'destination' and c.retired_version is null

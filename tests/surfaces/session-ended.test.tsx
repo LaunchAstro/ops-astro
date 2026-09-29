@@ -298,6 +298,11 @@ function byBearer(): {
     const stale = headers['authorization'] === `Bearer ${SESSION.token}`;
 
     if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
+    // The ticket panel's reads (WF-5), answered as the task read is: this task
+    // is on no map, so the panel draws nothing.
+    if (at.endsWith('/task/context') || at.endsWith('/session/capabilities')) {
+      return json({ ok: true });
+    }
     if (at.endsWith('/person/list')) {
       // The old token's people read never comes back on its own. The test
       // holds it, signs in again, and only then lets the 401 arrive.
@@ -390,6 +395,9 @@ function perBusiness(): typeof globalThis.fetch {
     const task = { ...TASK, title: `The ${business} task called TSK-1` };
     if (at.endsWith('/person/list')) return json({ ok: true, persons: PEOPLE });
     if (at.endsWith('/task/read')) return json({ ok: true, task });
+    if (at.endsWith('/task/context') || at.endsWith('/session/capabilities')) {
+      return json({ ok: true });
+    }
     if (at.endsWith('/task/board')) return json({ ok: true, tasks: [task] });
     return json({ recordId: TASK.id, revision: TASK.revision + 1 });
   }) as unknown as typeof globalThis.fetch;
