@@ -1389,7 +1389,11 @@ digest and its size; the path is provenance only.
 
 The application group may select and insert a pin and a ledger row, and never
 update or delete one; it may insert an audit copy and never read, update or
-delete it. The worker and broker roles hold nothing on any of them.
+delete it. The worker and broker roles hold nothing on any of them. The run
+itself is never rewritten either: 0033 takes back the application's update on
+`planned_runs` (granted whole by 0010) and grants it on `state` alone, so a
+run keeps its version, task and lineage. Restricted calls pin the column grant
+at the full schema and every prefix.
 
 `core-runtime/src/definitions.ts` holds the operations, all first used by
 AW-04's plan accept, the only activation. `admitActivation` refuses anything
