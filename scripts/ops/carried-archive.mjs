@@ -108,7 +108,7 @@ export function readCarried(file) {
   if (!matches(body, held.sha256)) {
     throw new Error('the archive does not match the digest the store recorded');
   }
-  return { takenAt: held.takenAt, body };
+  return { takenAt: held.takenAt, sha256: held.sha256, body };
 }
 
 const isInteger = (v) => Number.isInteger(v);
@@ -119,7 +119,7 @@ const isTime = (v) => typeof v === 'string' && ISO.test(v);
 /** Each field's shape; the store checks the rest (stage names, timings, majors). */
 const RECEIPT_SHAPE = {
   action: (v) => v === 'restore drill recorded',
-  outcome: (v) => v === 'passed' || v === 'failed',
+  outcome: (v) => v === 'pending' || v === 'failed',
   stage: orNull(isText),
   at: isTime,
   target: isText,
@@ -134,6 +134,7 @@ const RECEIPT_SHAPE = {
   business: isText,
   operator: (v) => typeof v === 'string' && ID.test(v),
   ranOn: (v) => v === 'carried archive',
+  archiveDigest: orNull((v) => typeof v === 'string' && HEX64.test(v)),
 };
 
 /**
