@@ -7,28 +7,19 @@
 //   pnpm verify:journey [--pg-port N] [--api-port N] [--web-port N]
 //                       [--evidence DIR] [--only journey] [--remove]
 //
-// Before anything starts it refuses an occupied or another stack's port and
-// a pinned Postgres image that is not already on this machine: it never pulls
-// (spike RN-03). Then it starts that image as a container of its own,
-// migrates it at this head, and runs, one line per case:
-//
-//   1. the journey (`tests/journey/run.ts`, run as a process because scripts
-//      may not import tests): the API and web processes it owns, T2b's served
-//      identity at the start and the end, the whole journey through the app
-//      and again through the command line with the facts compared
-//      (`journey_twice_same_facts`), the separation, the live update, one
-//      command-line process per declaration, and a full restart read back and
-//      replayed byte for byte;
-//   2. T3d2's restart legs (`runtime-proofs.sh`, a container of their own);
-//   3. the named suites, T1 to T3's cases (`db-conformance.mjs`, which fails a
-//      skip and a suite that never reached the database);
-//   4. the cases this base cannot run yet, each printed `unrun` with its reason.
-//
-// Any `fail` or `unrun` line fails the command. The database is left for
-// inspection unless `--remove`; the command prints how to remove it. What the
-// run started is stopped by the process groups the run created, each checked
-// for a member running a journey command first; never by name, and never by a
-// plain pid, which may belong to another process by then.
+// It refuses another stack's port, a port in use and a pinned Postgres image
+// not already on this machine before starting anything (it never pulls,
+// RN-03), starts that image as its own container, migrates it, and prints one
+// line per case: the journey (`tests/journey/run.ts`, a process, since scripts
+// may not import tests) twice with its facts compared, its separation, live
+// update, CLI declarations, restart and replay; T3d2's restart legs; the named
+// suites with one verdict per protected component; the built bundle's scan;
+// the worker's structure; and `unrun` with its reason for what this base
+// cannot run. Any line that is not `pass` fails the command. It then prints
+// the budgets and writes the evidence bundle (T4d). The database is kept
+// unless `--remove`. What the run started is stopped by the process groups it
+// created, each checked for a journey command first: never by name, never by
+// a plain pid, which may be another process's by then.
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -171,7 +162,11 @@ async function journey() {
   });
   appendFileSync(join(evidence, 'run.stderr'), scrubbed(errors));
   // Exit 1 is the run's own verdict, already on its case lines; anything else is the run breaking.
-  const seen = lines.length - before;
+  const ran = lines.slice(before);
+  const seen = ran.length;
+  // Reached its end: the closing identity line is there and nothing broke on the way.
+  const ended = ran.some((line) => line.case === 'identity at the end (T2b)');
+  carried.measures.journeyRan = ended && !ran.some((line) => line.case === 'run');
   if (seen === 0 || (code !== 0 && code !== 1)) {
     const detail = `exit ${String(code)}, ${String(seen)} cases; stderr in ${join(evidence, 'run.stderr')}`;
     record('the journey run itself', 'fail', detail);
@@ -214,8 +209,9 @@ function afterJourney() {
 
 /** T4d: the budgets the command measures itself, then the bundle beside the case lines. */
 function bundle() {
-  const { migrateMs, seedMs } = carried.measures;
-  const own = commandBudgets(migrateMs, performance.now() - begun, seedMs, loadAtStart);
+  const { migrateMs, seedMs, journeyRan } = carried.measures;
+  const elapsed = performance.now() - begun;
+  const own = commandBudgets(migrateMs, elapsed, seedMs, loadAtStart, journeyRan === true);
   const budgets = [...carried.budgets, ...own];
   for (const { status, operation, measured, budget, load } of budgets) {
     say(`budget ${status.padEnd(8)} ${operation}: ${measured} against ${budget} (${load})`);

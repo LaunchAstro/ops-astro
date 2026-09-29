@@ -12,8 +12,8 @@
 // that revision, on that machine, on that date.
 
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { availableParallelism, loadavg } from 'node:os';
+import { approvalOf, digestOf, scrub, withhold } from './journey-withhold.ts';
 
 export interface Approval {
   readonly taskId: string;
@@ -72,14 +72,22 @@ function seconds(ms: number | undefined, budget: number): { measured: string; st
   };
 }
 
-/** The budgets the command measures itself (10.2), and the seed time on its own line (RN-09). */
+/**
+ * The budgets the command measures itself (10.2), and the seed time on its own
+ * line (RN-09). `journeyRan` is the command's word that its journey ran to its
+ * end; without it the end-to-end budget is unrun.
+ */
 export function commandBudgets(
   migrateMs: number | undefined,
   totalMs: number,
   seedMs: number | undefined,
   loadAtStart?: number,
+  journeyRan = false,
 ): Record<string, string>[] {
   const run = 'this run, its own container';
+  // The whole command is timed only when a journey ran on a stack that
+  // started: an aborted run's elapsed time is not the command's (Sol, review 2).
+  const completed = journeyRan && migrateMs !== undefined && migrateMs > 0;
   // The machine's load beside each time (Sol, review 1 on #164): lanes share it.
   const cpus = `${String(availableParallelism())} CPUs`;
   const start = loadAtStart === undefined ? 'not recorded' : loadAtStart.toFixed(2);
@@ -95,7 +103,9 @@ export function commandBudgets(
     {
       operation: 'The T4 command end to end',
       budget: '15 minutes',
-      ...seconds(totalMs, 900),
+      ...(completed
+        ? seconds(totalMs, 900)
+        : { measured: 'not measured: no journey ran', status: 'unrun' }),
       against: `${run}, up to the bundle`,
       load,
     },
@@ -108,52 +118,6 @@ export function commandBudgets(
       load,
     },
   ];
-}
-
-/**
- * The decision payload's fields the bundle may show: identifiers, the
- * decision and the chain. Anything else, the note first, is written by a
- * person and may be a client's words, so it is withheld and named by its
- * digest (Sol, review 1 on #164).
- */
-const SHOWN = new Set([
-  'id',
-  'by',
-  'actor',
-  'gate',
-  'lineage',
-  'version',
-  'decision',
-  'round',
-  'seq',
-  'link',
-  'key',
-  'evidence',
-  'prev',
-]);
-
-const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex');
-
-/** The approval as the bundle carries it: the row's exact bytes by digest, and its shown fields. */
-function approvalOf(approval: Approval): Record<string, unknown> {
-  let payload: unknown;
-  try {
-    payload = JSON.parse(approval.action);
-  } catch {
-    payload = undefined;
-  }
-  const fields =
-    typeof payload === 'object' && payload !== null && !Array.isArray(payload)
-      ? Object.fromEntries(
-          Object.entries(payload).map(([key, value]) =>
-            SHOWN.has(key)
-              ? [key, value]
-              : [key, `withheld (sha256 ${sha256(JSON.stringify(value)).slice(0, 16)})`],
-          ),
-        )
-      : 'withheld: the payload is not an object';
-  const { taskId, decisionId, decision } = approval;
-  return { taskId, decisionId, decision, actionSha256: sha256(approval.action), action: fields };
 }
 
 const OWNER = /\b(T\d[a-z]\d?|CQ-\d+|INB-\d+|U\d\d|#\d+)\b/u;
@@ -197,13 +161,27 @@ function openItemsOf(input: BundleInput): readonly Record<string, string>[] {
   return [...fromCases, g5];
 }
 
-export function writeBundle(input: BundleInput): Bundle {
-  const { approval } = input;
+export function writeBundle(raw: BundleInput): Bundle {
+  const { approval } = raw;
   if (approval === undefined) {
     throw new Error(
       'bundle: no decision in this run; the bundle names the approval it applied, so none is written',
     );
   }
+  // Everything the run hands over passes through withholding before any of it
+  // is written (Sol, review 2 on #164): case details, open items built from
+  // them, the identity line, the environment and the budgets.
+  const held = new Set<string>();
+  const fields = (row: Readonly<Record<string, string>>): Record<string, string> =>
+    Object.fromEntries(Object.entries(row).map(([key, value]) => [key, withhold(value, held)]));
+  const input: BundleInput = {
+    ...raw,
+    identity: withhold(raw.identity, held),
+    environment: fields(raw.environment),
+    cases: raw.cases.map((line) => ({ ...line, detail: withhold(line.detail, held) })),
+    budgets: raw.budgets.map((row) => fields(row)),
+  };
+  const shown = approvalOf(approval, held);
   const domain = input.cases.find((line) => line.case === 'protected: domain model');
   const bundle = {
     revision: {
@@ -214,7 +192,7 @@ export function writeBundle(input: BundleInput): Bundle {
     },
     environment: input.environment,
     behaviour: input.cases,
-    approval: approvalOf(approval),
+    approval: shown,
     budgets: input.budgets,
     crashPoints: crashPointsOf(input.crashPoints),
     openItems: openItemsOf(input),
@@ -222,8 +200,8 @@ export function writeBundle(input: BundleInput): Bundle {
     notEstablished: NOT_ESTABLISHED,
   };
   return {
-    json: `${JSON.stringify(bundle, null, 2)}\n`,
-    markdown: markdownOf(input, approval, bundle),
+    json: scrub(`${JSON.stringify(bundle, null, 2)}\n`, held),
+    markdown: scrub(markdownOf(input, approval, bundle, shown), held),
   };
 }
 
@@ -240,6 +218,7 @@ function markdownOf(
     readonly openItems: readonly Record<string, string>[];
     readonly textArrayProof: string;
   },
+  shown: Record<string, unknown>,
 ): string {
   return [
     '# Journey evidence bundle',
@@ -250,10 +229,10 @@ function markdownOf(
     ...table([input.environment]),
     '',
     '## The approval applied',
-    `Decision ${approval.decisionId} (${approval.decision}) on task ${approval.taskId}. The action as the database holds it has sha256 ${sha256(approval.action)}; its identifiers, decision and chain, with every other field withheld by digest:`,
+    `Decision ${approval.decisionId} (${approval.decision}) on task ${approval.taskId}. The action as the database holds it has sha256 ${digestOf(approval.action)}; its identifiers, decision and chain, with every other field withheld by digest:`,
     '',
     '```json',
-    JSON.stringify(approvalOf(approval)['action'], null, 2),
+    JSON.stringify(shown['action'], null, 2),
     '```',
     '',
     '## Behaviour tested',
