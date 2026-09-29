@@ -170,6 +170,31 @@ describe.skipIf(serverUrl === undefined)('INB-1 escalate and the inbox', () => {
     expect(await owed(late.personId)).toBe(1);
   });
 
+  it('INB-1 escalate raises every business decider granted after the gate, not only the recipient', async () => {
+    const { taskId, v3 } = await atTheBound();
+    const named = await enrol(s.db.app, s.business, `late-named-${randomUUID()}`);
+    const other = await enrol(s.db.app, s.business, `late-other-${randomUUID()}`);
+    await s.db.app.withBusiness(s.business, async (tx) => {
+      for (const person of [named, other]) {
+        for (const action of ['read', 'decide'] as const) {
+          // eslint-disable-next-line no-await-in-loop
+          await grantTo(tx, person, action);
+        }
+      }
+    });
+    const before = await onGate(v3['gateId']);
+    expect(itemOf(before, other.personId, taskId)).toBeUndefined();
+
+    appliedDetail(
+      await asPerson(s, decideBody(v3, 'escalate', { recipientPersonId: named.personId })),
+      'escalate to one of two later holders',
+    );
+    const after = await onGate(v3['gateId']);
+    expect(itemOf(after, named.personId, taskId)?.state).toBe('open');
+    expect(itemOf(after, other.personId, taskId)?.state).toBe('open');
+    expect(await owed(other.personId)).toBe(1);
+  });
+
   it('INB-1 a refused escalate moves no item', async () => {
     const taskId = await createTask(s, `inbox escalate early ${randomUUID()}`);
     const approver = await approverOn(taskId);
