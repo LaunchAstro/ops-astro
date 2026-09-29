@@ -9,7 +9,8 @@
 import { act, type ReactElement } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { useRead } from '../../apps/web/src/data/use-read.ts';
-import { createRollupFloor, FLOOR_MS, type RollupFloor } from '../../apps/web/src/data/live.ts';
+import { FLOOR_MS } from '../../apps/web/src/data/live.ts';
+import { createRollupFloor, type RollupFloor } from '../../apps/web/src/data/rollup-floor.ts';
 import type { CallResult } from '../../apps/web/src/operations/client.ts';
 import { mount } from './mount.tsx';
 
@@ -20,9 +21,9 @@ afterEach(() => {
 let visible = true;
 const floorFor = (): RollupFloor => createRollupFloor({ visible: () => visible });
 
-async function turn(to: boolean): Promise<void> {
+function turn(to: boolean): void {
   visible = to;
-  await act(async () => {
+  act(() => {
     document.dispatchEvent(new Event('visibilitychange'));
   });
 }
@@ -62,19 +63,19 @@ it('C4 live-sync 7: a rollup page with no topic refreshes within 30 s while visi
   await pass(FLOOR_MS);
   expect(reads.n).toBe(3);
 
-  await turn(false);
+  turn(false);
   await pass(FLOOR_MS * 4);
   expect(reads.n).toBe(3);
   expect(vi.getTimerCount()).toBe(0);
 
-  await turn(true);
+  turn(true);
   expect(reads.n).toBe(4);
   await pass(FLOOR_MS - 1);
   expect(reads.n).toBe(4);
   await pass(1);
   expect(reads.n).toBe(5);
 
-  await act(async () => {
+  act(() => {
     window.dispatchEvent(new Event('online'));
   });
   expect(reads.n).toBe(6);
@@ -85,15 +86,16 @@ it('C4 live-sync 7: a rollup page with no topic refreshes within 30 s while visi
   expect(vi.getTimerCount()).toBe(0);
 });
 
-it('C4 live-sync 7 (floor): rollup pages share one timer, each re-read once a tick, and the last to leave stops it', async () => {
+it('C4 live-sync 7 (floor): rollup pages share one timer that a later page never delays, and the last to leave stops it', async () => {
   vi.useFakeTimers({ now: 1_000_000 });
   visible = true;
   const floor = floorFor();
   const heard = { a: 0, b: 0 };
   const stopA = floor.follow(() => (heard.a += 1));
+  await vi.advanceTimersByTimeAsync(FLOOR_MS - 10_000);
   const stopB = floor.follow(() => (heard.b += 1));
   expect(vi.getTimerCount()).toBe(1);
-  await vi.advanceTimersByTimeAsync(FLOOR_MS);
+  await vi.advanceTimersByTimeAsync(10_000);
   expect(heard).toEqual({ a: 1, b: 1 });
 
   stopA();
@@ -104,4 +106,21 @@ it('C4 live-sync 7 (floor): rollup pages share one timer, each re-read once a ti
   document.dispatchEvent(new Event('visibilitychange'));
   window.dispatchEvent(new Event('online'));
   expect(heard).toEqual({ a: 1, b: 2 });
+});
+
+it('C4 live-sync 7 (floor): a rollup followed in a hidden tab runs no timer until the tab is shown', async () => {
+  vi.useFakeTimers({ now: 1_000_000 });
+  visible = false;
+  const floor = floorFor();
+  let heard = 0;
+  const stop = floor.follow(() => (heard += 1));
+  expect(vi.getTimerCount()).toBe(0);
+  await vi.advanceTimersByTimeAsync(FLOOR_MS * 3);
+  expect(heard).toBe(0);
+
+  visible = true;
+  document.dispatchEvent(new Event('visibilitychange'));
+  expect(heard).toBe(1);
+  expect(vi.getTimerCount()).toBe(1);
+  stop();
 });
