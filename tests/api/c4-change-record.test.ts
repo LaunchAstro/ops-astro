@@ -10,15 +10,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   changesSince,
   revokeGrant,
-  type BusinessId,
-  type ChangesSince,
   type TenantQuery,
 } from '../../packages/core-records/src/index.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { enrol, grantTo, type Member } from '../commands/fixture.ts';
+import { enrol, grantTo } from '../commands/fixture.ts';
 import { openSchedules, racer, type Schedules } from '../runtime/schedules-harness.ts';
 import { cq8World, type Party } from '../runtime/cq-8-world.ts';
+import { changeKit, ids, subjects, tasksOf } from './c4-change-support.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -26,53 +25,7 @@ if (serverUrl === undefined) console.warn('api/c4-change-record: DATABASE_URL is
 let s: Schedules;
 let alpha: Party;
 let beta: Party;
-
-const subjects = (who: Member) => [
-  { kind: 'person' as const, id: who.personId },
-  { kind: 'actor' as const, id: who.actorId },
-];
-
-const since = async (
-  business: BusinessId,
-  who: Member,
-  point: string | null,
-): Promise<ChangesSince> => {
-  const read = await s.db.app.withBusiness(
-    business,
-    async (tx) => await changesSince(tx, subjects(who), point),
-  );
-  if (read === 'POINT_INVALID') throw new Error('refused a point it handed out');
-  return read;
-};
-
-const ids = (read: ChangesSince): string[] => read.changes.map((change) => change.id);
-
-const touch = async (business: BusinessId, recordIds: readonly string[]): Promise<void> => {
-  await s.db.app.withBusiness(business, async (tx) => {
-    await tx.query('update public.records set data = data where id = any($1::uuid[])', [recordIds]);
-  });
-};
-
-/**
- * The point just past `recordId`'s last stamp. A point the read hands back
- * can sit lower on a shared server (another database's open transaction holds
- * the watermark), which costs duplicates, never a skip; this one is exact.
- */
-const pointAfter = async (recordId: string): Promise<string> => {
-  const [row] = await s.db.admin.execute<{ point: string }>(
-    `select (changed_xid::text::numeric + 1)::text as point
-       from public.live_changes where subject_id = $1`,
-    [recordId],
-  );
-  if (row === undefined) throw new Error('no change row to pass');
-  return row.point;
-};
-
-const tasksOf = (p: Party): [string, string] => {
-  const [one, two] = p.tasks;
-  if (one === undefined || two === undefined) throw new Error('party: two tasks');
-  return [one.id, two.id];
-};
+const { since, touch, pointAfter } = changeKit(() => s);
 
 /** C4 changes since returns only the tasks changed after the point, and the next point */
 async function afterThePoint(): Promise<void> {

@@ -102,7 +102,8 @@
     "MP-8-4 names mp-8-4-ledger-read as an invariant (task.ledger, the activity ledger over audit_events): applied writes to live tasks only, whole days in the reader's zone seven to a page, malformed zone and day refused and audited, and isolation across another business, a client on one shared task, a person under a live delegation of one task, and a member who is not staff (NOT_FOUND: the shared view carries no history).",
     "C4 (U26) names c4-change-record as an invariant (the live change record 0036: changes since returns only the tasks stamped after the point, a write open at the point is returned next time, a rolled-back write leaves no stamp, one query, a malformed point refused before any query, two bulk writers in opposite orders both land, the record holds no content; isolation across another business, another client in the same business and another person under a delegated grant that is then revoked).",
     "C4 (U26) names c4-live-stream as an invariant (one event stream per tab: every topic it names on one stream, each asked about at join and before each delivery; a refused topic closed alone and all refused the first refusal; hostile topic sets refused whole before any read; an ended session closes every topic; two browsers on one task within 1 s at p95; isolation across another business, another client in the same business and another person under a delegated grant that is then revoked).",
-    "C4 (U26) names c4-live-audit as an invariant (live-sync 6: the live channel adds no audit entry and no view record of its own; opening a stream records the login's one authentication attempt however many topics it names; each delivery's check and the per-topic recheck write no row anywhere in the database; a page re-read after an invalidation writes exactly one read event and its own attempt; a revoked grant is still closed by the recheck)."
+    "C4 (U26) names c4-live-audit as an invariant (live-sync 6: the live channel adds no audit entry and no view record of its own; opening a stream records the login's one authentication attempt however many topics it names; each delivery's check and the per-topic recheck write no row anywhere in the database; a page re-read after an invalidation writes exactly one read event and its own attempt; a revoked grant is still closed by the recheck).",
+    "C4 (U26) names c4-changes-map as an invariant (changes since answers exactly what task.read would let its caller read: a record grant on a map covers the map and its tickets, W12; a reader of another map, a grant on a ticket or on a task that is no map, and a map filed under the map read only their own; isolation across another business, another client in the same business and another person under a delegation of the map grant that is then revoked; split from c4-change-record for the per-file cap)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -291,7 +292,8 @@
     "tests/reads/mp-8-4-ledger-read.test.ts",
     "tests/api/c4-change-record.test.ts",
     "tests/api/c4-live-stream.test.ts",
-    "tests/api/c4-live-audit.test.ts"
+    "tests/api/c4-live-audit.test.ts",
+    "tests/api/c4-changes-map.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
