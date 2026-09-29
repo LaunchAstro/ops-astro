@@ -45,8 +45,7 @@ import type { AgentRequest } from './agent-call.ts';
 import { executeAgentOperation } from './agent-envelope.ts';
 import { modelCallRow } from './agent-operations.ts';
 import { writeAuditEvent } from './audit.ts';
-import type { CommandContext } from './context.ts';
-import { refused, refusedRetaining, type HandlerOutcome, type Refused } from './outcome.ts';
+import { refused, refusedRetaining, type Refused } from './outcome.ts';
 import { isCommandRefusal, refuseCommand } from './refusal.ts';
 import type { CommandHandle, CommandResult } from './register-store.ts';
 
@@ -218,16 +217,4 @@ async function answerFrom(
       ...words,
     },
   };
-}
-
-const PERSON_FIXES: readonly string[] = [
-  "A model call is the run's worker's, made under its lease through the credential broker.",
-];
-
-/** A person holding a lease has no route to the broker (AW-01, "n/a (system)"). */
-export function refuseModelCallAsPerson(
-  _tx: TenantQuery,
-  _context: CommandContext,
-): Promise<HandlerOutcome> {
-  return Promise.resolve(refused(refuseCommand('SCOPE_NOT_GRANTED', ['model.call'], PERSON_FIXES)));
 }

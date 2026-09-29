@@ -27,7 +27,7 @@ import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
-import { refuseModelCallAsPerson } from './model-call.ts';
+import { refuseModelCallAsPerson } from './model-call-person.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the

@@ -218,7 +218,8 @@
     "tests/runtime/decided-gate-upgrade-race.test.ts",
     "tests/runtime/upgrade-guards.test.ts",
     "tests/tenancy/migration-runner-guard.test.ts",
-    "tests/broker/aw-01-broker.test.ts"
+    "tests/broker/aw-01-broker.test.ts",
+    "tests/broker/aw-01-model-call.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

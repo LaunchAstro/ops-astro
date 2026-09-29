@@ -110,7 +110,7 @@ vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (or
   cancelOnTask: recorder('cancelOnTask'),
   restartOnTask: recorder('restartOnTask'),
 }));
-vi.mock('../../packages/core-commands/src/commands/model-call.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/model-call-person.ts', async (original) => ({
   ...(await original<object>()),
   refuseModelCallAsPerson: recorder('refuseModelCallAsPerson'),
 }));
