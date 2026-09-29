@@ -203,3 +203,10 @@ export {
   type OccurrenceOutcome,
   type OccurrenceRow,
 } from './automations/occurrences.ts';
+export {
+  listRegistry,
+  type Registry,
+  type RegistryActivation,
+  type RegistryDefinition,
+  type RegistryVersion,
+} from './automations/registry.ts';

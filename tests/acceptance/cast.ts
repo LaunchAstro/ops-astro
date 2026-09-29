@@ -103,6 +103,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'connection',
   // Standing mandates (MP-14-10a): `mandate:manage` is the owner's and administrators'.
   'mandate',
+  // Settings ▸ Workflow triggers (C33): `automation:manage` releases a version.
+  'automation',
 ];
 
 export async function tokenFor(

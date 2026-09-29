@@ -27,6 +27,7 @@ import { randomUUID } from 'node:crypto';
 import type { CommandDeclaration, CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 import { connectionsBody, type ConnectionsContext } from './role-case-connections.ts';
+import { automationsBody } from './role-case-automations.ts';
 
 /** The proposal every case that needs a gate proposes, spelled once. */
 export const PROPOSAL = {
@@ -113,6 +114,8 @@ export function createPositiveBody(
   return async function positiveBody(declaration: CommandDeclaration): Promise<Prepared> {
     const connections = await connectionsBody(declaration.name, context);
     if (connections !== undefined) return connections;
+    const automations = await automationsBody(declaration.name, context);
+    if (automations !== undefined) return automations;
     const target = async (): Promise<Record<string, unknown>> => {
       const task = await context.freshTask(`a task for ${declaration.name}`);
       return { recordId: task.id, expectedRevision: task.revision };

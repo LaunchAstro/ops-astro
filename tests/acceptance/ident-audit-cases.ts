@@ -17,6 +17,7 @@
 // `issueGrant` via `grantTo`; every probe goes through `callRaw`.
 
 import { seedBrokenConnection, seedMandate, seedReadyClass } from '../connections/fixture.ts';
+import { seedAutomation, type SeededAutomation } from '../automations/seed.ts';
 import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
 import { grantTo } from '../commands/fixture.ts';
@@ -85,7 +86,11 @@ export interface IdentWorld {
     classId: string;
     clientId: string;
     mandateId: string;
+    /** An automation of bravo's: definition, version, activation (C33). */
+    automation: SeededAutomation;
   }>;
+  /** An automation of alpha's own, so a foreign activation is aimed past its version (C33). */
+  readonly ownAutomation: SeededAutomation;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
   /** A member of alpha holding task grants on `rheaTask` and nothing else. */
@@ -286,7 +291,9 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       secretId: String(bravoSecret['secretId']),
       connectionId: await seedBrokenConnection(world.db.admin, world.bravo, 'a bravo source'),
       ...bravoGraduation,
+      automation: await seedAutomation(world.db.admin, world.bravo, bravoAdmin.actorId as string),
     },
+    ownAutomation: await seedAutomation(world.db.admin, world.alpha, world.ada.actorId as string),
     otherPicked,
     rhea,
     rheaTask,

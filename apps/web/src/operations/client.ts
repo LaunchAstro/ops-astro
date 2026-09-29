@@ -69,17 +69,17 @@ export const READ_NAMES = [
   'person.list',
   'settings.read',
   'session.capabilities',
-  // The last two reads, which the client reached only through `mutate()` and
-  // so with an operation identity a read does not carry (SPEC-ADJUDICATE (b)).
-  // The same permission applies as on the API and the command line: the
-  // server's `reads/dispatch.ts` asks it, not this list.
+  // The last two reads, which the client reached only through `mutate()` and so with an
+  // operation identity a read does not carry (SPEC-ADJUDICATE (b)). The same permission applies
+  // as on the API and the command line: the server's `reads/dispatch.ts` asks it, not this list.
   'task.queue',
   'preset.plan',
-  // Custody (C31); Connections & signal: fleet, signal, graduation (MP-14-7a, MP-14-8, MP-14-10a).
+  // Custody (C31); Connections & signal (MP-14-7a, MP-14-8, MP-14-10a); Workflow triggers (C33).
   'secret.list',
   'connection.fleet',
   'connection.signal',
   'connection.graduation',
+  'automation.registry',
 ] as const;
 
 /**

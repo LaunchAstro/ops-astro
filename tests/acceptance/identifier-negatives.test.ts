@@ -63,6 +63,30 @@ const pair = (
   forms: { foreign: body(foreignId), fabricated: body(randomUUID()) },
 });
 
+/** C33's three identifier cells: a foreign version, activation and definition. */
+function automationCells(w: IdentWorld): [CommandName, ReturnType<typeof pair>][] {
+  const f = w.foreign.automation;
+  return [
+    [
+      'activation.change',
+      pair('versionId', f.versionId, (versionId) => ({ versionId, ...MANUAL })),
+    ],
+    [
+      'activation.change',
+      pair('activationId', f.activationId, (activationId) => ({
+        activationId,
+        versionId: w.ownAutomation.versionId,
+        ...MANUAL,
+        expectedRevision: 1,
+      })),
+    ],
+    [
+      'definition.release',
+      pair('definitionId', f.definitionId, (definitionId) => ({ definitionId, ...RELEASE })),
+    ],
+  ];
+}
+
 const actorOf = (by: Presenter): string =>
   by.kind === 'person' ? (by.caller.actorId as string) : by.identity.actorId;
 
@@ -72,6 +96,15 @@ const MANDATE_LIMITS = {
   expiresAt: '2099-01-01T00:00:00.000Z',
 } as const;
 const MANDATE = { classes: ['*'], ...MANDATE_LIMITS, label: 'a mandate aimed abroad' } as const;
+// An activation's values and a version's (C33): the same bytes in both forms.
+const MANUAL = { mode: 'manual', enabled: false } as const;
+const RELEASE = {
+  contentDigest: 'e'.repeat(64),
+  contentSize: 1,
+  inputs: [],
+  operations: [],
+  modes: ['manual'],
+} as const;
 
 describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () => {
   let w: IdentWorld;
@@ -282,6 +315,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           pair('classId', f.classId, (classId) => ({ classId, ...MANDATE_LIMITS })),
         ],
         ['graduation.demote', pair('classId', f.classId, (classId) => ({ classId }))],
+        ...automationCells(w),
       );
       for (const [op, { operand, forms }] of cells) {
         // eslint-disable-next-line no-await-in-loop

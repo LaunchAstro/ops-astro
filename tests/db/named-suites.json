@@ -223,7 +223,9 @@
     "tests/connections/mp-14-8-signal.test.ts",
     "tests/connections/mp-14-10a-mandates.test.ts",
     "tests/automations/c33-versions.test.ts",
-    "tests/automations/c33-occurrences.test.ts"
+    "tests/automations/c33-occurrences.test.ts",
+    "tests/automations/c33-commands.test.ts",
+    "tests/automations/c33-authority.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

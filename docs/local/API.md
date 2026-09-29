@@ -892,6 +892,9 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `mandate.revoke`                   | `revokeStandingMandate` (`commands/mandates.ts`)                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `graduation.promote`               | `promoteClass` (`commands/mandates.ts`)                                                   | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `graduation.demote`                | `demoteClass` (`commands/mandates.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `automation.registry`              | `readAutomationRegistry` (`reads/automations.ts`)                                         | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `activation.change`                | `changeActivationAsPerson` (`commands/automations.ts`)                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `definition.release`               | `releaseDefinitionVersion` (`commands/automations.ts`)                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
@@ -1490,3 +1493,30 @@ covers the effect only in its currency and within its ceiling.
 | `mandate.revoke`        | `/mandate/revoke`        | `{ mandateId, expectedRevision? }`                                                              | `{ mandateId, state: 'revoked' }`; `VERSION_STALE` 409; `TRANSITION_NOT_PERMITTED` 409 when already revoked; `NOT_FOUND` 404                                                                                                                                                                                                                                                                             |
 | `graduation.promote`    | `/graduation/promote`    | `{ classId, ceiling: { amountMinor, currency }, expiresAt, expectedRevision? }`                 | `{ classId, mandateId, state: 'promoted' }`; `TRANSITION_NOT_PERMITTED` 409 unless the class is ready and held by nothing; `VERSION_STALE` 409                                                                                                                                                                                                                                                           |
 | `graduation.demote`     | `/graduation/demote`     | `{ classId, expectedRevision? }`                                                                | `{ classId, mandateId, state: 'ready' }`; `TRANSITION_NOT_PERMITTED` 409 unless promoted                                                                                                                                                                                                                                                                                                                 |
+
+## Workflow triggers (C33)
+
+Settings ▸ Workflow triggers: one read on `settings:read`, and two changes,
+each held business-wide and never an agent's. `activation.change` is
+`settings:manage`; `definition.release` is `automation:manage` (the key
+catalogue: owner and administrators). Definitions carry no client, so the
+registry is the business's; a holder at one client's scope is refused all
+three.
+
+A person releases a definition version: the first release names a new
+definition by `name` and `kind`, a later one names it by `definitionId`. The
+version takes the next number, pins its bytes by digest and size, and lists
+its inputs, its operations and the activation modes it permits. It never
+changes after release (`definition_versions`, migration 0036). The digest and
+size are the caller's until AW-02's pinned read computes them from the bytes.
+An activation is pinned to one version of its definition, in a mode that
+version permits (checked by the command and again by the database). Without
+an `activationId` the change writes a new activation; with one it changes
+that activation at the revision the caller read. Changing a mode starts
+nothing: a run needs an occurrence and C52-A's standing approval.
+
+| Operation             | Route                  | Body                                                                                        | Answer or refusals                                                                                                                                                                                                                                                                         |
+| --------------------- | ---------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `automation.registry` | `/automation/registry` | `{}`                                                                                        | `{ ok: true, definitions: [{ id, kind, name, versions: [{ id, number, contentDigest, contentSize, modes, releasedBy, releasedAt }], activations: [{ id, versionId, versionNumber, mode, everyMinutes, eventKind, enabled, changedBy, changedAt, revision }] }] }`; `SCOPE_NOT_GRANTED` 403 |
+| `activation.change`   | `/activation/change`   | `{ activationId?, versionId, mode, everyMinutes?, eventKind?, enabled, expectedRevision? }` | `{ activationId, versionId, mode, enabled }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 for a mode the version does not permit or another definition's version; `VERSION_STALE` 409                                                      |
+| `definition.release`  | `/definition/release`  | `{ definitionId? \| name, kind, contentDigest, contentSize, inputs, operations, modes }`    | `{ definitionId, versionId, number }`; `FIELD_VALUE_INVALID` 422 naming the field; `NOT_FOUND` 404 for a definition not in the business                                                                                                                                                    |

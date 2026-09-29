@@ -103,6 +103,8 @@ const GRANTS_BY_ROLE = {
     ['connection', 'read'],
     // Standing mandates (MP-14-10a): the owner's and administrators', never an agent's.
     ['mandate', 'manage'],
+    // Settings ▸ Workflow triggers (C33): releasing a definition version.
+    ['automation', 'manage'],
   ],
   member: [
     ['task', 'read'],

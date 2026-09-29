@@ -79,15 +79,16 @@ describe('the surface as a table', () => {
     // `custody:manage`.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|secret|connection|connector|mandate|graduation)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|secret|connection|connector|mandate|graduation|automation|activation|definition)\/[a-z_]+$/u.test(
           path,
         ),
       ),
     ).toBe(true);
   });
 
-  it('declares the eleven reads as reads, and everything else as a write', () => {
+  it('declares the twelve reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
+      'automation.registry',
       'connection.fleet',
       'connection.graduation',
       'connection.signal',
