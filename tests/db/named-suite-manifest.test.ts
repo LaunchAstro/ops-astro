@@ -41,6 +41,7 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
     'skips without L5_RUNTIME_PROOFS and L5_RESTART_API_PORT',
   'tests/acceptance/drop-proofs.test.ts': 'skips without L5_RUNTIME_PROOFS and L5_RESTART_API_PORT',
   'tests/acceptance/restart-declared.test.ts': 'pure: restart-harness refusals only',
+  'tests/wayfinder/wf-2-inbox.test.ts': 'held skip until the inbox lands (SL04 U99)',
   'tests/cli/cli-answers.test.ts': 'pure: the CLI against an HTTP stand-in',
   'tests/cli/cli-wire.test.ts': 'pure: the CLI against an HTTP stand-in',
   'tests/support/global-setup.test.ts': 'pure: besideUrl only',

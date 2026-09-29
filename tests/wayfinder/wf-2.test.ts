@@ -496,25 +496,6 @@ describe.skipIf(serverUrl === undefined)('WF-2 wayfinder commands and read model
     ).toBe('applied');
   });
 
-  // LEANS-ON SL04 U99 (the inbox, `raiseDecision`): enabled at the rebase onto
-  // batch 1, when `inbox_items` exists on main.
-  it.skip('WF-2 a grilling or prototype ticket reaching the frontier raises one decision item for the map owner', async () => {
-    const { tickets } = await charted(owner, {
-      title: 'inbox map',
-      tickets: [
-        { ref: 'a', title: 'research first', type: 'research' },
-        { ref: 'g', title: 'then decide', type: 'grilling', blockedBy: ['a'] },
-      ],
-    });
-    must(await resolve(owner, tickets['a'] as string), 'resolve');
-    const items = await w.db.admin.execute<{ readonly recipient_person_id: string }>(
-      `select recipient_person_id from public.inbox_items
-        where business_id = $1 and subject_record_id = $2 and reason = 'decision'`,
-      [w.business, tickets['g']],
-    );
-    expect(items.map((i) => i.recipient_person_id)).toStrictEqual([owner.personId]);
-  });
-
   it('WF-2 isolation', async () => {
     const mapA = await charted(owner, {
       title: 'canary-A',
