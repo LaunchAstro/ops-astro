@@ -40,6 +40,14 @@ describe('T2b isolation evidence', () => {
       ).toBe(true);
     }
   });
+
+  it('Sol proof, criterion 3: a failed mint cannot stand in for a live person crossover', () => {
+    const source = readFileSync(new URL('./t2b-worker.test.ts', import.meta.url), 'utf8');
+    const personCase = source.slice(source.indexOf("it('T2 isolation: person to person'"));
+    expect(personCase).not.toMatch(
+      /return minted\.ok \? minted\.value\.credential : minted\.refusal\.code/u,
+    );
+  });
 });
 
 describe('T2b credential output', () => {
