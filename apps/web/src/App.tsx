@@ -10,10 +10,17 @@
 // — the words and tones a state may print — and not as a source of rows.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Shell } from '@launchastro/ui';
+import { AppStrip, Shell } from '@launchastro/ui';
 import { gateOf, matchRoute, pathTo } from './routes.ts';
 import { NO_CLIENT_GRANTS, canonicalOf, isLegacy, pageAt, type ClientAccess } from './manifest.ts';
-import { ClientRefused, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
+import {
+  ClientRefused,
+  PagePlaceholder,
+  railFor,
+  sectionAt,
+  stripClient,
+  tabsFor,
+} from './route-views.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { PANELS } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
@@ -41,20 +48,27 @@ export function App(props: AppProps): ReactElement {
   const [session, setSession] = useState<Session | null>(props.sessions.session);
 
   // The root address is not a screen and it is not a mistake either: it is how
-  // a person arrives. It leads to the board when there is a session and to
-  // sign-in when there is not, and the address bar is corrected to say so, so
-  // a reload lands on the same place a link would.
+  // a person arrives. There is no launcher page (R3): it leads to the
+  // dashboard when there is a session and to sign-in when there is not, and
+  // the address bar is corrected to say so, so a reload lands on the same
+  // place a link would.
   // A legacy address is answered with its canonical one the same way, so the
   // address bar, the rail and a remembered interruption never hold a legacy one.
   const here =
     canonicalOf(props.path) ??
-    (props.path === '/'
-      ? pathTo(session === null ? 'agency:sign-in' : 'agency:projects-board')
-      : props.path);
+    (props.path === '/' ? (session === null ? pathTo('agency:sign-in') : DASHBOARD) : props.path);
   const navigate = props.navigate;
   useEffect(() => {
     if (here !== props.path) navigate(here);
   }, [here, props.path, navigate]);
+
+  // The narrow drawer (MP-2-8) is open or not here, and any change of address
+  // closes it, a link in it included.
+  const [navOpen, setNavOpen] = useState(false);
+  useEffect(() => {
+    setNavOpen(false);
+  }, [here]);
+  const online = useOnline();
 
   // Why the board was reached instead of the address that was held. Drawn on
   // the board and nowhere else, and gone when this session is. The offer is the
@@ -177,7 +191,11 @@ export function App(props: AppProps): ReactElement {
     at !== null &&
     at.client !== null &&
     (session === null || !clientAccess(session.businessKey, at.client));
-  const rail = railFor(at, refused);
+  const section = refused ? null : sectionAt(at, match);
+  const rail = railFor(at, refused, section, bare);
+  const tabs = at === null || refused || session === null ? null : tabsFor(at, section);
+  const identity = refused ? null : stripClient(at?.client ?? null);
+  const face = at?.page.namespace === 'portal' ? 'client' : 'agency';
 
   const signIn = (
     <SignIn
@@ -227,9 +245,14 @@ export function App(props: AppProps): ReactElement {
 
   return (
     <Shell
-      face={at?.page.namespace === 'portal' ? 'client' : 'agency'}
+      face={face}
       rail={rail}
       here={bare}
+      strip={<AppStrip face={face} client={identity} />}
+      tabs={tabs}
+      freshness={online ? null : 'offline'}
+      nav={{ open: navOpen, onToggle: setNavOpen }}
+      onNavigate={navigate}
       title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
       meta={
         session === null ? null : (
@@ -265,10 +288,35 @@ export function App(props: AppProps): ReactElement {
       }}
       seated={false}
     >
-      {at === null || refused || session === null ? null : <RouteTabs at={at} />}
       {content}
     </Shell>
   );
+}
+
+/** Portfolio Command's address (R1), where a signed-in arrival at `/` goes (R3). */
+const DASHBOARD = '/dashboard/';
+
+/**
+ * Whether the browser says it is connected, for the header's freshness marker
+ * (CS-1.1). Live sync (C4) supplies the other states when it lands; until
+ * then the marker shows only a dropped connection and claims nothing live.
+ */
+function useOnline(): boolean {
+  const [online, setOnline] = useState(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine,
+  );
+  useEffect(() => {
+    const update = (): void => {
+      setOnline(navigator.onLine);
+    };
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
+  return online;
 }
 
 // An unknown legacy address is not echoed: no legacy address reaches the interface (R5).

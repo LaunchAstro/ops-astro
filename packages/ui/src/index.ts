@@ -40,5 +40,6 @@ export * from './primitives/Absence.tsx';
 export * from './primitives/Status.tsx';
 export * from './primitives/Tabs.tsx';
 export * from './surfaces/Shell.tsx';
+export * from './surfaces/Frame.tsx';
 export * from './surfaces/Board.tsx';
 export * from './surfaces/TaskPage.tsx';
