@@ -11,7 +11,8 @@
 //   - `worker_lost`: our worker went silent and its lease ran out (ours).
 // A worker reports the first two by handing back `dropped` (`handback.ts`);
 // nothing reports the third, so the sweep names it when the lease's own
-// deadline passes (`sweep.ts`). A silent run is running until then.
+// deadline passes (`sweepLostWorkers` below, the pass's sweep). A silent run is
+// running until then.
 //
 // The caller has classified the hold under its locks. Here the cause is
 // written once, `dropped` is appended to the run's progress, and a person is
@@ -28,7 +29,9 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { raiseAlert } from '../alerts.ts';
 import type { LockSet } from '../locks.ts';
 import { appendRunEvent } from '../run-events.ts';
+import type { Classification } from './classifier.ts';
 import { resume, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
+import { sweepExpiredLeases } from './sweep.ts';
 
 export type DropCause = 'provider_unavailable' | 'connection_lost' | 'worker_lost';
 
@@ -128,4 +131,24 @@ export async function recordDrop(
     drop.locks,
   );
   return `dropped and reactivated as attempt ${next.id}`;
+}
+
+/**
+ * The pass's sweep with its drop step: a lease that ran out with nothing
+ * reported is our worker lost, recorded under the sweep's own locks.
+ */
+export async function sweepLostWorkers(tx: TenantQuery): Promise<readonly Classification[]> {
+  return await sweepExpiredLeases(tx, async (found, locks) => {
+    for (const row of found) {
+      // Sequential: each reactivation reserves against the envelope the next may share.
+      // eslint-disable-next-line no-await-in-loop
+      const [attempt] = await tx.query<{ readonly id: string }>(
+        'select id from public.attempts where business_id = $1 and reservation_id = $2',
+        [tx.businessId, row.reservation_id],
+      );
+      if (attempt === undefined) continue;
+      // eslint-disable-next-line no-await-in-loop
+      await recordDrop(tx, { attemptId: attempt.id, cause: 'worker_lost', retire: true, locks });
+    }
+  });
 }

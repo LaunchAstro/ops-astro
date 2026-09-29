@@ -35,7 +35,7 @@ import {
   EFFECT_OPERATIONS,
   reconcileUnknown,
   replayRecordedTransitions,
-  sweepExpiredLeases,
+  sweepLostWorkers,
 } from '../../packages/core-runtime/src/index.ts';
 import type {
   Classification,
@@ -143,7 +143,8 @@ export async function sweepDeployment(
     resolveBusiness,
     keys,
     'sweep',
-    async (tx) => await sweepExpiredLeases(tx),
+    // T3e1: the sweep with its drop step, so a lost worker's work comes back.
+    async (tx) => await sweepLostWorkers(tx),
   );
 }
 
