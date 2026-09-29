@@ -276,6 +276,8 @@
     "tests/db/backup-store-restore.test.ts",
     "tests/ci/upgrade-drill.test.ts",
     "tests/ci/operator-only.test.ts",
+    "tests/ci/operator-only-acts.test.ts",
+    "tests/ci/operator-only-promotion.test.ts",
     "tests/ci/service-stop.test.ts",
     "tests/ci/service-stop-gated.test.ts",
     "tests/runtime/storage-backstop-migrations.test.ts",
