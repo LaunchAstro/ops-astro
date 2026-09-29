@@ -3,8 +3,8 @@
 import { describe, expect, it } from 'vitest';
 import { writeBundle } from '../../scripts/local/journey-bundle.ts';
 
-describe('Sol proof for the narrow T4 re-review', () => {
-  it('Sol proof, criterion 3: a client-authored uppercase token stays out of case details', () => {
+describe('a client-authored uppercase token in a case detail', () => {
+  it('a client-authored uppercase token stays out of case details', () => {
     const clientText = 'CLIENT_QUOKKA_SECRET';
     const bundle = writeBundle({
       head: 'a'.repeat(40),

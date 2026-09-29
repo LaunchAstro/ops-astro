@@ -6,15 +6,15 @@ import { crossings, type Cast } from './separation.ts';
 import type { PassContext, PassResult } from './passes.ts';
 import type { World } from '../acceptance/world.ts';
 
-describe('Sol proofs for T4b1 and T4d', () => {
-  it('Sol proof, criterion 2: an unmeasured migration cannot pass its budget', () => {
+describe('journey budgets, the bundle and a same-business crossing', () => {
+  it('an unmeasured migration cannot pass its budget', () => {
     const [migration] = commandBudgets(undefined, 1000, undefined);
     expect(migration?.['status']).not.toBe('pass');
     const [failedStart] = commandBudgets(0, 1000, undefined);
     expect(failedStart?.['status']).not.toBe('pass');
   });
 
-  it('Sol proof, criterion 3: bundle excludes client-authored approval notes', () => {
+  it('bundle excludes client-authored approval notes', () => {
     const note = 'Client Quokka confidential treatment plan';
     const approval = {
       taskId: 'task-1',
@@ -37,7 +37,7 @@ describe('Sol proofs for T4b1 and T4d', () => {
     expect(bundle.markdown).not.toContain(note);
   });
 
-  it('Sol proof, criterion 3: journey isolation attempts a same-business person crossing', async () => {
+  it('journey isolation attempts a same-business person crossing', async () => {
     const seen = new Set<string>();
     vi.stubGlobal('fetch', async (_url: string, options: RequestInit) => {
       const headers = options.headers as Record<string, string>;

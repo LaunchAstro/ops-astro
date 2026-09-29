@@ -86,7 +86,7 @@ describe('the bundle withholds what a person wrote, wherever it arrives', () => 
     expect(text).not.toContain(BODY);
   });
 
-  it('keeps a case detail as its digest alone, whatever its words are spelled like (Sol, REV164D)', () => {
+  it('keeps a case detail as its digest alone, whatever its words are spelled like', () => {
     const title = 'Client ACME defaced plan for the decade';
     const detail = `task.read refused NOT_FOUND for ${DECISION} while handling ${title}, CLIENT_X_SECRET, 106 ms, see tests/journey/run.ts and T2g (#136)`;
     const bundle = bundleWith([detail]);

@@ -3,8 +3,8 @@
 import { describe, expect, it } from 'vitest';
 import { writeBundle } from '../../scripts/local/journey-bundle.ts';
 
-describe('Sol proof for the third T4 review', () => {
-  it('Sol proof, criterion 3: a plain-text failure detail cannot disclose client content', () => {
+describe('a plain-text failure detail', () => {
+  it('a plain-text failure detail cannot disclose client content', () => {
     const clientTitle = 'Client Quokka confidential treatment plan';
     const bundle = writeBundle({
       head: 'a'.repeat(40),

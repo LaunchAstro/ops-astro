@@ -4,13 +4,13 @@ import { describe, expect, it } from 'vitest';
 import { commandBudgets, writeBundle } from '../../scripts/local/journey-bundle.ts';
 import { compareFacts, type JourneyFacts } from './facts.ts';
 
-describe('Sol proofs for the T4 fix head', () => {
-  it('Sol proof, criterion 2: an aborted journey cannot pass the end-to-end budget', () => {
+describe('an aborted journey and a failed comparison', () => {
+  it('an aborted journey cannot pass the end-to-end budget', () => {
     const [, wholeCommand] = commandBudgets(undefined, 1000, undefined);
     expect(wholeCommand?.['status']).not.toBe('pass');
   });
 
-  it('Sol proof, criterion 3: a failed comparison cannot put client content in the bundle', () => {
+  it('a failed comparison cannot put client content in the bundle', () => {
     const clientNote = 'Client Quokka confidential treatment plan';
     const facts: JourneyFacts = {
       decisions: [{ payload: { note: clientNote } }],
