@@ -45,6 +45,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
 import { createApi, type ReadExecutor } from './app.ts';
+import type { Alerts } from './alerts/sink.ts';
 import {
   executeAgentCommand,
   describeFault,
@@ -168,6 +169,7 @@ export interface ApiConfig {
    * to reach the fault branch.
    */
   readonly executeRead?: ReadExecutor;
+  readonly alerts?: Alerts;
 }
 
 export interface ComposedApi {
