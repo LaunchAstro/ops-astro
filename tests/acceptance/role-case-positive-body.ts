@@ -133,10 +133,11 @@ export function createPositiveBody(
       // `settings.read` needs `settings:read`, which the seed grants the
       // admin; `session.capabilities` needs a live grant of any kind, which
       // the admin holds, so the admin reaches both here.
+      // The person menu's two (C23), `session.person` and `session.end`, take
+      // an empty body too: the caller's own name, and the caller's own
+      // sign-out, which records it and leaves the bearer working.
       case 'settings.read':
       case 'session.capabilities':
-      // The person menu's (C23): the caller's own name, and the caller's own
-      // sign-out, which records it and leaves the bearer working.
       case 'session.person':
       case 'session.end':
         return { body: {} };
