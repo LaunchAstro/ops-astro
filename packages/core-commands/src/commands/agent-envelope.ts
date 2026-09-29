@@ -136,7 +136,11 @@ export async function executeAgentCommand(
       }),
   );
   // Committed: the lost-response gap before the worker reads this (T2c1).
-  await crashPointAfterCommit(request.command, !isCommandRefusal(result), process.env);
+  await crashPointAfterCommit(
+    request.command,
+    isCommandRefusal(result) ? undefined : result.detail,
+    process.env,
+  );
   return result;
 }
 

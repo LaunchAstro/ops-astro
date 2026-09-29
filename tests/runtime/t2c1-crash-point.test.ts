@@ -52,15 +52,22 @@ describe('T2c1 the crash seam', () => {
   it('parks at the named point in test mode, and maps each committed command to its point', async () => {
     const armed = { [CRASH_POINT_VARIABLE]: 'dispatch_committed', NODE_ENV: 'test' };
     expect(await settledWithin(crashPoint('dispatch_committed', armed), 100)).toBe(false);
-    expect(await settledWithin(crashPointAfterCommit('task.dispatch', true, armed), 100)).toBe(
-      false,
-    );
-    expect(await settledWithin(crashPointAfterCommit('task.dispatch', false, armed), 50)).toBe(
+    expect(
+      await settledWithin(crashPointAfterCommit('task.dispatch', { attemptId: 'a' }, armed), 100),
+    ).toBe(false);
+    expect(await settledWithin(crashPointAfterCommit('task.dispatch', undefined, armed), 50)).toBe(
       true,
     );
     const decide = { [CRASH_POINT_VARIABLE]: 'reservation_committed', NODE_ENV: 'test' };
-    expect(await settledWithin(crashPointAfterCommit('task.decide', true, decide), 100)).toBe(
-      false,
-    );
+    expect(
+      await settledWithin(
+        crashPointAfterCommit('task.decide', { reservationId: 'r' }, decide),
+        100,
+      ),
+    ).toBe(false);
+    // A rejection commits no reservation, so it answers rather than parking (Sol review 1).
+    expect(
+      await settledWithin(crashPointAfterCommit('task.decide', { decision: 'reject' }, decide), 50),
+    ).toBe(true);
   });
 });

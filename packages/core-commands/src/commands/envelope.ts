@@ -204,7 +204,11 @@ export async function executeCommand(
     async (cause) => await recordFailure(database, businessId, presented, request, cause),
   );
   // Committed: the crash seam's one place on this entry (T2c1), inert unless a test names it.
-  await crashPointAfterCommit(request.command, !isCommandRefusal(result), process.env);
+  await crashPointAfterCommit(
+    request.command,
+    isCommandRefusal(result) ? undefined : result.detail,
+    process.env,
+  );
   return result;
 }
 
