@@ -277,6 +277,7 @@
     "tests/ci/upgrade-drill.test.ts",
     "tests/ci/operator-only.test.ts",
     "tests/ci/service-stop.test.ts",
+    "tests/ci/service-stop-gated.test.ts",
     "tests/runtime/storage-backstop-migrations.test.ts",
     "tests/runtime/cap-ceiling-fails-closed.test.ts",
     "tests/tenancy/temporary-tables.test.ts",
@@ -294,7 +295,8 @@
     "tests/api/t3f-races.test.ts",
     "tests/fixture/fixture-shape.test.ts",
     "tests/fixture/snapshot/snapshot-clone-and-privileges.test.ts",
-    "tests/ci/staging-no-production-data.test.ts"
+    "tests/ci/staging-no-production-data.test.ts",
+    "tests/ci/staging-no-production-data-guard.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
