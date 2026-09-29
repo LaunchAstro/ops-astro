@@ -3,9 +3,9 @@
 // T1: propose real bounded local work.
 //
 // One transaction. It locks the task context, checks the caller's write and
-// proposal authority through L2's grants, creates the next immutable version,
-// the real planned run and its step, renders the evidence pack from those
-// stored facts, and creates the gate bound to all of them.
+// proposal authority through the person's grants, creates the next immutable
+// version, the real planned run and its step, renders the evidence pack from
+// those stored facts, and creates the gate bound to all of them.
 //
 // Two things it does not do, and both are the contract rather than an omission.
 // It does not create any accounting record: "required accounting records are
@@ -39,7 +39,7 @@ import { refuse, type RuntimeResult } from './refusals.ts';
 // `proposal-writer.ts` so `handback` can make a successor through the same
 // code rather than a second copy of it (T4). `roundsUsed` moved with them and
 // is re-exported here, because `index.ts` pins it under this module's name and
-// L3 imports it from there.
+// the command layer imports it from there.
 export { roundsUsed } from './proposal-writer.ts';
 
 export interface ProposeRequest {

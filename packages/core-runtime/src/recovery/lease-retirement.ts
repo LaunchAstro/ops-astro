@@ -204,7 +204,7 @@ export async function replayRecordedTransitions(
  * lineage, fence and release the live lease, revoke the delegation it was
  * issued under, end its runs as cancelled (F2), then classify **its own**
  * reservations. Exported because T5 names cancellation as one of the owning
- * transitions, and L3 wires it.
+ * transitions, and the command layer wires it.
  *
  * R1. Everything is discovered and locked before the first write, and the
  * classification is scoped to this lineage. Updating the lineage, then the

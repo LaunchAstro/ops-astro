@@ -38,8 +38,9 @@
 // `DELEGATION_OUT_OF_PURPOSE` — not `NOT_FOUND`, because the task is really
 // there and the agent really may not reach it — and so is a call on the right
 // task with an action the purpose does not carry. `task.decide` is refused
-// `DELEGATION_EXCLUDES_DECISION` by L4's `decideAsAgent`, which asks L2 and
-// returns L2's answer rather than inventing a runtime code for it.
+// `DELEGATION_EXCLUDES_DECISION` by the runtime's `decideAsAgent`, which asks
+// the delegation check and returns its answer rather than inventing a runtime
+// code for it.
 //
 // **What this path does not duplicate.** The repeat-request identity, the
 // register lookup, the replay and the settling of a refusal are the person

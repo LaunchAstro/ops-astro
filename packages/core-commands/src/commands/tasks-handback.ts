@@ -40,7 +40,8 @@ export interface HandbackFields {
 export const OUTCOMES: ReadonlySet<string> = new Set(['completed', 'failed']);
 
 /**
- * The handback refusals that have already written a report row L4 keeps.
+ * The handback refusals that have already written a report row the runtime
+ * keeps.
  *
  * `core-runtime/src/handback.ts` calls its `refuseRetained` helper on exactly
  * these two before refusing, and `ACTUAL_EXPENDITURE_UNSUPPORTED` is deliberately
@@ -155,11 +156,12 @@ async function settle(
   // an object with numeric keys; absent is an empty report.
   const report: unknown = fields.report;
   if (report !== undefined && !isFieldMap(report)) return refuseReport(report);
-  // L4's `handback` answers `ACTUAL_EXPENDITURE_UNSUPPORTED` for any non-null
-  // `actualMinor`, and the command says so here rather than discarding the
-  // key. Dropping it quietly is the failure D06 exists to stop from the other
-  // direction: the caller is left believing a spend figure was recorded when
-  // nothing read it. `null` and absent are the same answer and both are fine.
+  // The runtime's `handback` answers `ACTUAL_EXPENDITURE_UNSUPPORTED` for any
+  // non-null `actualMinor`, and the command says so here rather than discarding
+  // the key. Dropping it quietly is the failure D06 exists to stop from the
+  // other direction: the caller is left believing a spend figure was recorded
+  // when nothing read it. `null` and absent are the same answer and both are
+  // fine.
   if (fields.actualMinor !== undefined && fields.actualMinor !== null) {
     return refuseActualMinor(fields.actualMinor);
   }

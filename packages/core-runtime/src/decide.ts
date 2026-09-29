@@ -3,8 +3,8 @@
 // T2: decide, and reserve before pickup.
 //
 // A person decides. The agent's refusal is `DELEGATION_EXCLUDES_DECISION`,
-// produced by L2's `checkDelegatedAuthority` and returned here unchanged.
-// `decideAsAgent` exists for exactly that: to consume L2's answer rather than
+// produced by `checkDelegatedAuthority` and returned here unchanged.
+// `decideAsAgent` exists for exactly that: to consume that answer rather than
 // re-derive it, because a second module that decides for itself what an agent
 // may decide is a second place that rule can drift out of step with the schema
 // constraint holding it in 0008.
@@ -142,8 +142,9 @@ interface GateRow {
 }
 
 /**
- * What an agent gets. It asks L2 and returns L2's answer, so the code a
- * delegated caller sees is `DELEGATION_EXCLUDES_DECISION` with L2's wording
+ * What an agent gets. It asks the delegation check and returns its answer, so
+ * the code a delegated caller sees is `DELEGATION_EXCLUDES_DECISION` in the
+ * check's wording
  * and never a runtime code invented here.
  */
 export async function decideAsAgent(
@@ -157,9 +158,9 @@ export async function decideAsAgent(
     scope: { kind: 'record', id: request.taskId },
   });
   if (decision.ok) {
-    // Unreachable through L2, whose `DelegableAction` excludes `decide` and
-    // whose check refuses it first. If it ever is reached, the safe answer is
-    // still a refusal, and a loud one.
+    // Unreachable through the delegation check, whose `DelegableAction`
+    // excludes `decide` and whose check refuses it first. If it ever is
+    // reached, the safe answer is still a refusal, and a loud one.
     throw new Error('decideAsAgent: checkDelegatedAuthority permitted a decision');
   }
   return { ok: false, refusal: decision.refusal };
@@ -431,8 +432,8 @@ async function recheckGate(
   const gate = only(gates, 'decide: the gate locked above');
   if (gate.state !== 'pending') {
     // G03: the loser of the race lands here and its refusal is recorded by the
-    // caller's own audit path, which is L3's envelope. The row is not written
-    // to `gate_decisions`, because a refusal is not a decision.
+    // caller's own audit path, which is the command envelope. The row is not
+    // written to `gate_decisions`, because a refusal is not a decision.
     return refuse(
       'GATE_ALREADY_DECIDED',
       `gate ${gate.id} is ${gate.state}`,

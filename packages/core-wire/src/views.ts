@@ -52,7 +52,7 @@ export interface TaskSummary {
  *
  * The shape is the same for both audiences and the *contents* are not: an
  * internal reader gets every comment in full, an external one gets the client
- * comments in the fields the catalogue marks `shared`, built by L2's
+ * comments in the fields the catalogue marks `shared`, built by
  * `externalCommentProjection`. The type is `unknown`-valued rather than a
  * fixed record because the external half is catalogue-driven — pinning the
  * keys here would put a second copy of the allowlist in the type, and the

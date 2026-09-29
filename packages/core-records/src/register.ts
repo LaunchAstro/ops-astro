@@ -278,7 +278,7 @@ const ROWS = [
     visibility: 'audit',
   },
 
-  // The agent's own identity, L2's `identity/agent-login.ts`. An agent login and
+  // The agent's own identity, `identity/agent-login.ts`. An agent login and
   // a person's login are two credentials and resolve through two paths, so "no
   // agent identity" is its own answer and never `AUTH_UNKNOWN_LOGIN`.
   //
@@ -395,7 +395,7 @@ const ROWS = [
     source: 'contract 4.3',
   },
 
-  // The preset planner, L2's `records/preset-plan.ts`. A preset that is itself
+  // The preset planner, `records/preset-plan.ts`. A preset that is itself
   // wrong comes back naming the field keys so the author can classify them.
   {
     code: 'PRESET_FIELD_UNCLASSIFIED',
@@ -485,12 +485,12 @@ const ROWS = [
     runtime: true,
   },
 
-  // L4's bounded runtime, `core-runtime/src/refusals.ts`. Seven of its eighteen
+  // The bounded runtime, `core-runtime/src/refusals.ts`. Seven of its eighteen
   // are the six above plus `SCOPE_NOT_GRANTED`, already registered by the parts
   // that named them first; these eleven are new spellings and they come in here
-  // rather than being invented a second time in a handler. The last three arrived
-  // with L4's review fixes (R2, R3 and R6) and are registered on the same terms
-  // as the eight before them.
+  // rather than being invented a second time in a handler. The last three
+  // belong to the runtime's rules R2, R3 and R6 and are registered on the same
+  // terms as the eight before them.
   //
   // The gate names a version that is no longer the live one.
   {
@@ -760,7 +760,7 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'PROPOSAL_SUPERSEDED',
   'PROPOSAL_SCOPE_EXCEEDED',
   'TASK_NOT_PICKABLE',
-  // The two L4 codes that need something no caller can reach.
+  // The two runtime codes that need something no caller can reach.
   //
   // `EVIDENCE_MISMATCH` needs a gate whose stored digest and version's own
   // disagree, and `propose` writes both from one value, so only an amended row

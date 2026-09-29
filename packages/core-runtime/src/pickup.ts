@@ -13,7 +13,7 @@
 // T3 line 66: "Person pickup uses the same work/lease contract without
 // pretending the person is an agent."
 //
-// - **Agent.** `pickup` mints the delegation through L2's `mintDelegation`
+// - **Agent.** `pickup` mints the delegation through `mintDelegation`
 //   with `expiresAt` equal to the lease expiry, so the agent's authority and
 //   its claim on the work end at the same instant. A delegation outliving its
 //   lease is an agent still holding narrowed authority over work somebody else
@@ -24,10 +24,11 @@
 //   agent is really a person is the collapse the agent path exists to prevent.
 //
 // The coordinator's recorded decision: minting checks the **delegating
-// person's** business-scope grants, which is L2's conservative reading. An
-// agent cannot choose the person, widen the purpose or mint from a bare
-// assignment; `authorisedByPersonId` is the person who authorised this work
-// and `mintedByActorId` is their acting identity, never the agent's.
+// person's** business-scope grants, which is the authority module's
+// conservative reading. An agent cannot choose the person, widen the purpose or
+// mint from a bare assignment; `authorisedByPersonId` is the person who
+// authorised this work and `mintedByActorId` is their acting identity, never
+// the agent's.
 
 import { randomUUID } from 'node:crypto';
 import { mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
@@ -496,11 +497,11 @@ async function fenceLiveLease(
  * cap does not count.
  *
  * An agent: the delegation expires with the lease, minted against the
- * delegating person's live grants, which L2 reads for itself; nothing is
- * copied here. `purposeScope` is R5's one-task ceiling. L2 reads the
- * delegating person's grants through `now()`, the
+ * delegating person's live grants, which `mintDelegation` reads for itself;
+ * nothing is copied here. `purposeScope` is R5's one-task ceiling.
+ * `mintDelegation` reads the delegating person's grants through `now()`, the
  * transaction's start, so they are judged here first at the locked instant,
- * with L2's own refusal, and a grant that lapsed mints nothing.
+ * with `mintDelegation`'s own refusal, and a grant that lapsed mints nothing.
  */
 async function authoriseClaimant(
   tx: TenantQuery,
@@ -522,7 +523,8 @@ async function authoriseClaimant(
   }
   const actions = ['read', 'comment', 'write'] as const;
   for (const action of actions) {
-    // Sequential, as L2's own check is: one transaction, one connection.
+    // Sequential, as the authority module's own check is: one transaction,
+    // one connection.
     // oxlint-disable-next-line no-await-in-loop
     const delegable = await checkAuthorityAt(
       tx,

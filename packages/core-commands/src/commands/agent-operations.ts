@@ -81,8 +81,8 @@ interface AgentOperationRow<O extends object> {
  * - `purpose`, `read` on the delegation's own purpose record;
  * - `record`, the operation's own collection and action on the task the call
  *   is about, found where `subjectTask` says, and served on that task;
- * - `decision`, L4's `decideAsAgent`, which always refuses, so it has no
- *   `serve` at all.
+ * - `decision`, the runtime's `decideAsAgent`, which always refuses, so it has
+ * no `serve` at all.
  */
 export type TypedOperation<O extends object> =
   | (AgentOperationRow<O> & {

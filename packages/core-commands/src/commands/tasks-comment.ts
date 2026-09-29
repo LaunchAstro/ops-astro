@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // `task.comment`: one comment on one task, written through the comment record
-// type L2 installs.
+// type the task installer adds.
 //
 // The envelope has already required the identity, checked the `comment`
 // grant, locked the task and written the audit event, and none of that is

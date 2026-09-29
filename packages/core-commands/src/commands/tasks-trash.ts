@@ -122,7 +122,7 @@ export async function restoreTasks(
  * business's row and never a number the caller sent. Specification 14.3 purges
  * the work class "after the business's retention window", and SPEC:319 with
  * C12-5 Q46 moved that window out of this request body and into the settings
- * table (root ruling 2, L3-RETENTION). It is still configurable, which is what
+ * table (root ruling 2). It is still configurable, which is what
  * 14.3 asks of it: a test sets the row to zero and watches the operation accept
  * the work class and refuse the evidence class in one run.
  *

@@ -276,8 +276,8 @@ export function createApi(options: ApiOptions): Hono {
 
 /**
  * One way out for every refusal, so the ones the boundary raises itself go
- * through the register's constructor and the status table like any other. A
- * review of the draft found both of its own minting a code by hand.
+ * through the register's constructor and the status table like any other,
+ * and none of them mints a code by hand.
  */
 function refuse(context: Context, refusal: CommandRefusal): Response {
   // `refused: true` is the flag that makes this a refusal on the wire and not

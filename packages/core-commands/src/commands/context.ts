@@ -33,7 +33,7 @@ export interface TaskSpine {
    * The comment type, when this business has one.
    *
    * Optional, and deliberately not part of the pair above: a business seeded
-   * before L2 installed `task_comment` has a task spine and no comment type,
+   * before `task_comment` was installed has a task spine and no comment type,
    * and `task.comment` refusing `DEPENDENCY_NOT_LANDED` there is a truthful
    * answer where raising would call a missing record type a fault in the
    * caller's request.

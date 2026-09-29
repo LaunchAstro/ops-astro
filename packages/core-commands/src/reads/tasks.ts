@@ -180,7 +180,7 @@ export async function resolveTaskId(
 /**
  * Which comments a caller is shown, and in what.
  *
- * The internal projection is every comment in full; the external one is L2's
+ * The internal projection is every comment in full; the external one is
  * `externalCommentProjection`, which is an allowlist in both directions — the
  * client comments, in the fields the catalogue marks `shared`.
  *

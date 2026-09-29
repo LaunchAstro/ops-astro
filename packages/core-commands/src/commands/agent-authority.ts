@@ -96,7 +96,8 @@ export async function authorise<O extends object>(
 
   if (operation.authority === 'decision') {
     const taskId = (await namedTaskId(tx, request, 'record')) ?? delegation.purposeScope.id;
-    // L4 asks L2 and returns L2's answer. It cannot succeed: `DelegableAction`
+    // The runtime asks the delegation check and returns its answer. It cannot
+    // succeed: `DelegableAction`
     // excludes `decide`, the check refuses it first, and a delegation carrying
     // it cannot be written at all. An ordinary write of one is refused by
     // `delegations_actions_known` (0008:188), the constraint Postgres reports;

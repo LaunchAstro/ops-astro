@@ -36,9 +36,9 @@ export const READ_BODY_FIXES: readonly string[] = [
 /**
  * Every read, audited, in the caller's own transaction (I13).
  *
- * `core-wire/src/surface.ts` used to say a read writes no audit event and it now
- * says the opposite, because the accepted ledger asks for every successful and
- * refused production operation to be audited and a read that leaves no trace
+ * A read writes an audit event (`core-wire/src/surface.ts`), because the
+ * accepted ledger asks for every successful and refused production operation
+ * to be audited, and a read that leaves no trace
  * is the one way to look at a business's work without the business learning it
  * happened. The event is the same shape the commands write, through the same
  * `writeAuditEvent`, so the chain has one kind of row in it and the hash

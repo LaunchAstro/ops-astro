@@ -21,7 +21,7 @@
 // `shared`, so a field nobody classified is absent rather than exposed.
 //
 // Comments are stored and are not yet projected through the API: the read that
-// serves them is L3's, built on `readTaskComments` and
+// serves them is the command layer's, built on `readTaskComments` and
 // `externalCommentProjection` below.
 
 import { randomUUID } from 'node:crypto';

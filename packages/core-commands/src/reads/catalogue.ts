@@ -259,23 +259,24 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     },
     spine: false,
     // The collection is the family the request names, because that is the
-    // grant the plan actually needs: L2's `planPresetSync` checks `manage` on
-    // the family of `recordTypeKey`, so a blanket `manage` on `preset` in
-    // front of it would be a wider question than the operation asks and a
-    // caller holding only it would be let through here and refused there. The
-    // declaration's own `preset` is what the route is about rather than what
-    // it takes; see `CommandDeclaration.collection`.
+    // grant the plan actually needs: the planner's `planPresetSync` checks
+    // `manage` on the family of `recordTypeKey`, so a blanket `manage` on
+    // `preset` in front of it would be a wider question than the operation asks
+    // and a caller holding only it would be let through here and refused there.
+    // The declaration's own `preset` is what the route is about rather than
+    // what it takes; see `CommandDeclaration.collection`.
     //
-    // Today the record type key *is* the family (L2's `familyOf`, private to
-    // the planner because it is the one place a real type-to-collection
-    // mapping has to land). This is the same key, not a second copy of that
-    // mapping: should the two ever differ, the planner still asks its own
-    // question afterwards, so this check can only be redundant or narrower --
-    // never wider than the authority the plan is granted under.
+    // Today the record type key *is* the family (the planner's `familyOf`,
+    // private to the planner because it is the one place a real
+    // type-to-collection mapping has to land). This is the same key, not a
+    // second copy of that mapping: should the two ever differ, the planner
+    // still asks its own question afterwards, so this check can only be
+    // redundant or narrower -- never wider than the authority the plan is
+    // granted under.
     authority: (operands) => operands.recordTypeKey,
     outsiderNotFound: false,
     async serve(tx, session, operands) {
-      // L2's planner checks the same authority again, from its own module, and
+      // The planner checks the same authority again, from its own module, and
       // that repetition is deliberate: the guarantee "this plan was authorised"
       // belongs to the planner whichever surface reaches it, and the guarantee
       // "every operation is authorised before it runs" belongs here. Neither is
