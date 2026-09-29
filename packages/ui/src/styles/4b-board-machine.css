@@ -142,6 +142,40 @@
   position: relative;
 }
 
+/* The resize grip (MP-5-6, B-17): an 8px handle on the head's right edge
+   whose rule is 1px at rest and 2px accent on hover, focus and drag. */
+.cbd__grip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+.cbd__grip::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--border);
+}
+
+.cbd__grip:hover::after,
+.cbd__grip:focus-visible::after,
+.cbd__grip.is-live::after {
+  width: 2px;
+  background: var(--accent);
+}
+
+.cbd__grip:focus-visible {
+  outline: none;
+}
+
 .cbd__tbl th .cbd__th {
   font: inherit;
   width: 100%;
