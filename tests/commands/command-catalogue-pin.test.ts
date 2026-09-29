@@ -48,6 +48,10 @@ function recorder(handler: string) {
   };
 }
 
+vi.mock('../../packages/core-commands/src/commands/session-end.ts', async (original) => ({
+  ...(await original<object>()),
+  endOwnSession: recorder('endOwnSession'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-write.ts', async (original) => ({
   ...(await original<object>()),
   createTask: recorder('createTask'),
@@ -143,6 +147,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.write_off': ['recordId', 'attemptId'],
   'delegation.revoke': [],
   'grant.revoke': [],
+  'session.end': [],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'task.cancel': ['recordId', 'lineageId'],
@@ -167,6 +172,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'person.list',
   'preset.plan',
   'session.capabilities',
+  'session.end',
+  'session.person',
   'settings.read',
   'settings.set_client_sign_off',
   'settings.set_four_eyes_threshold',
@@ -292,6 +299,7 @@ const REQUESTS: readonly CommandRequest[] = [
     amountMinor: 0,
     reason: 'why',
   },
+  { command: 'session.end', operationId: 'op' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -339,6 +347,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'session.end': ['endOwnSession', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -378,7 +387,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-six from an expected revision', () => {
+  it('exempts the same thirty from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

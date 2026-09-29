@@ -42,7 +42,11 @@ const held = (role: string): readonly string[] =>
  * family is `task`. `session.capabilities` asks about nothing: it reports
  * what the caller holds.
  */
-const asked = COMMAND_SURFACE.filter((each) => each.name !== 'session.capabilities')
+const asked = COMMAND_SURFACE.filter(
+  // The two `self` operations (C23) ask about nothing either: they are the
+  // caller's own account, which every signed-in person holds.
+  (each) => each.name !== 'session.capabilities' && each.authorisedOn !== 'self',
+)
   .map((each) =>
     each.name === 'preset.plan' ? 'task:manage' : `${each.collection}:${each.action}`,
   )

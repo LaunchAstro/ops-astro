@@ -135,6 +135,10 @@ export function createPositiveBody(
       // the admin holds, so the admin reaches both here.
       case 'settings.read':
       case 'session.capabilities':
+      // The person menu's (C23): the caller's own name, and the caller's own
+      // sign-out, which records it and leaves the bearer working.
+      case 'session.person':
+      case 'session.end':
         return { body: {} };
       case 'task.search':
         // A word no audit row carries, so digest-only is checked on it.

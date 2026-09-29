@@ -300,7 +300,7 @@ function read(
   options: {
     readonly action?: Action;
     readonly agent?: CommandDeclaration['agent'];
-    readonly authorisedOn?: 'record' | 'business';
+    readonly authorisedOn?: 'record' | 'business' | 'self';
   } = {},
 ): CommandDeclaration {
   return {
@@ -499,7 +499,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated' }),
   // The caller's own name, served without a grant (`reads/dispatch.ts`). Never
   // an agent's: the person menu is a person's.
-  read('session.person', SESSION_COLLECTION),
+  read('session.person', SESSION_COLLECTION, { authorisedOn: 'self' }),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was

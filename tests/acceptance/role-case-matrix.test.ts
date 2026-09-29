@@ -186,6 +186,26 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           );
           continue;
         }
+        if (declaration.authorisedOn === 'self' && grants !== undefined) {
+          // The person menu's two (C23): `account:write` and the caller's own
+          // name are every signed-in person's, on their own account only, so a
+          // member holding no grant is not R2 for them. `noah`'s row is the
+          // control: served, and the answer names him alone. `orphan` and `bea`
+          // are not in `heldBy` and fall through below, refused at admission.
+          // eslint-disable-next-line no-await-in-loop
+          const own = await call(
+            harness.world.api,
+            personPath('alpha', pathOf(declaration.name)),
+            harness.probeBody(declaration),
+            bearer(caller.token),
+          );
+          observe(caller.name, 'e-no-grant', declaration.name, own, SUCCESS);
+          expect(own.body['refused'], `${caller.name}/${declaration.name}`).toBeUndefined();
+          expect(JSON.stringify(own.body), caller.name).not.toContain(
+            String(harness.world.ada.personId),
+          );
+          continue;
+        }
         if (declaration.name === 'session.capabilities' && grants !== undefined) {
           // The read with no collection of its own: it reports the caller's
           // grants, so the grant it takes is holding one at all. `noah`, a
