@@ -9,6 +9,7 @@
 // draw.
 
 import type { ReactElement, ReactNode } from 'react';
+import { Gallery } from '@launchastro/ui';
 import type { AuthenticatedRouteId, ParamsOf, RouteMatch } from './routes.ts';
 import type { OperationsClient } from './operations/client.ts';
 import { Projects } from './screens/Projects.tsx';
@@ -39,6 +40,7 @@ export const SCREENS: {
       <Projects client={context.client} grantKey={context.grantKey} />
     </>
   ),
+  'agency:gallery': () => <Gallery />,
   'agency:settings': (context) => (
     <SettingsScreen client={context.client} grantKey={context.grantKey} storage={context.storage} />
   ),
