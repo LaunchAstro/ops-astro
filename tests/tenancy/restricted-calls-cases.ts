@@ -39,6 +39,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'reservations task_envelopes'],
+  // 0035: a time entry is deleted by a mark, never a row delete.
+  ['siu', 'time_entries'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
