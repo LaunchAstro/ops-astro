@@ -309,7 +309,8 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
 
   const narrowed = narrowRows(props.rows, view, props.facets, props.hay);
   const mode = (props.modes ?? []).find((one) => one.id === view.mode);
-  const moded = mode?.narrow === undefined ? narrowed : narrowed.filter(mode.narrow);
+  const keep = mode?.narrow;
+  const moded = keep === undefined ? narrowed : narrowed.filter((row) => keep(row));
   const sorted = sortRows(moded, view.sort, props.columns);
   const presets = props.presets ?? [];
   const onPresets = presets.filter(
@@ -317,6 +318,7 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
   );
   const shownByPreset = new Set(onPresets.flatMap((preset) => preset.facetIds));
   const line = readingLine(view, props.facets, narrowed.length, props.withheld);
+  const surface = mode?.render;
   const last = machine.history.past.at(-1);
   const next = machine.history.future.at(-1);
   const rest = view.ids.length === 0 && view.text.length === 0;
@@ -564,8 +566,8 @@ export function BoardMachine<Row>(props: BoardMachineProps<Row>): ReactElement {
 
       {line === '' ? null : <p className="cbd__read">{line}</p>}
 
-      {mode?.render !== undefined ? (
-        mode.render(narrowed)
+      {surface ? (
+        surface(narrowed)
       ) : sorted.length === 0 ? (
         <div className="cbd__empty">
           <Empty

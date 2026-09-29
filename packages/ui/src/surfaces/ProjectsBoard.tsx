@@ -57,6 +57,16 @@ const REVIEW_EMPTY = {
   description: 'Press Review again to go back to every task.',
 };
 
+/** The chip row's presets and the Review mode with its live count (MP-5-12). */
+function useChips(rows: readonly ProjectRow[], viewer: string | null) {
+  const presets = useMemo(() => projectPresets(rows, viewer), [rows, viewer]);
+  const modes = useMemo(
+    () => [{ ...REVIEW_MODE, badge: reviewBadge(rows), empty: REVIEW_EMPTY }],
+    [rows],
+  );
+  return { presets, modes };
+}
+
 export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
   const viewer = props.viewer ?? null;
   // The viewer preset is on at load agency-wide and off on a client's board (P-11).
@@ -75,11 +85,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
     [props.rows, props.stages],
   );
   const facets = useMemo(() => projectFacets(props.rows, now, viewer), [props.rows, now, viewer]);
-  const presets = useMemo(() => projectPresets(props.rows, viewer), [props.rows, viewer]);
-  const modes = useMemo(
-    () => [{ ...REVIEW_MODE, badge: reviewBadge(props.rows), empty: REVIEW_EMPTY }],
-    [props.rows],
-  );
+  const { presets, modes } = useChips(props.rows, viewer);
   const statuses = useMemo(() => statusOrder(props.rows), [props.rows]);
   return (
     <BoardMachine<ProjectRow>
