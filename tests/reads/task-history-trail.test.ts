@@ -180,3 +180,57 @@ describe.skipIf(serverUrl === undefined)(
     });
   },
 );
+
+/** Each change on a task as (what, whose name, which kind of actor). */
+const whoOf = async (member: Member, recordId: string) => {
+  const answer = await historyOf(member, recordId);
+  if (isCommandRefusal(answer) || !('task' in answer)) throw new Error('task not answered');
+  return answer.task.history.map((entry) => {
+    const who = entry as unknown as Readonly<Record<string, unknown>>;
+    return [entry.operation, who['actorName'], who['actorKind']];
+  });
+};
+
+describe.skipIf(serverUrl === undefined)(
+  'MP-4-16 who: the name of whoever made each change',
+  () => {
+    it('each change names the person who made it', async () => {
+      expect(await whoOf(writer, ids['clientB'] ?? '')).toStrictEqual([
+        ['task.create', 'writer', 'person'],
+        ['task.set_party', 'writer', 'person'],
+        ['task.set_stage', 'other-writer', 'person'],
+        ['task.set_stage', 'other-writer', 'person'],
+      ]);
+    });
+
+    it('an agent’s change names no person and says an agent made it', async () => {
+      const decider = await world.decider('who-decider');
+      const picked = await world.pickUp(decider, 'the agent writes here');
+      const marked = await world.asAgent(
+        {
+          command: 'task.set_adhoc',
+          operationId: randomUUID(),
+          recordId: picked.taskId,
+          expectedRevision: await revision(picked.taskId),
+          fields: { ad_hoc: true },
+        },
+        picked.credential,
+      );
+      expect(isCommandRefusal(marked)).toBe(false);
+      const rows = await whoOf(decider, picked.taskId);
+      expect(rows.find(([operation]) => operation === 'task.set_adhoc')).toStrictEqual([
+        'task.set_adhoc',
+        null,
+        'agent',
+      ]);
+    });
+
+    it('another client: a reader of client A’s task never sees client B’s writer named', async () => {
+      const own = await historyOf(viewer, ids['clientA'] ?? '');
+      expect(JSON.stringify(own)).toContain('"actorName":"writer"');
+      expect(JSON.stringify(own)).not.toContain('other-writer');
+      const across = await historyOf(viewer, ids['clientB'] ?? '');
+      expect(JSON.stringify(across)).not.toContain('other-writer');
+    });
+  },
+);
