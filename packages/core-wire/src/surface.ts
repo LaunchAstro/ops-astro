@@ -327,7 +327,13 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     expiresInSeconds: 'any',
     lineageId: 'id?|null',
   },
-  'task.decide': { gateId: 'id', versionId: 'id', decision: 'any', note: 'any' },
+  'task.decide': {
+    gateId: 'id',
+    versionId: 'id',
+    decision: 'any',
+    note: 'any',
+    recipientPersonId: 'id?|null',
+  },
   'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },
   // A lease call names its task through its lease; a `recordId` beside the
   // lease is taken and plays no part in the check (API.md, id operands).
@@ -395,8 +401,12 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.propose', 'write', { targetLock: 'runtime', agent: 'delegated' }),
   // In the agent's reach so a delegated agent is refused by the decision
   // itself, not by the surface: a person decides (case (j) of the matrix).
+  // Asked on the gate's own task (`prepare.ts`, `TARGET_LOOKUPS`), so a
+  // task-scoped decider decides at the bound; an escalated gate then needs
+  // business scope, which the runtime asks under its locks (T3a).
   declare('task.decide', 'decide', {
     targetsExistingRecord: false,
+    authorisedOn: 'target',
     untargetedIdentifiers: ['gateId', 'versionId'],
     agent: 'delegated',
   }),
@@ -494,17 +504,18 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'target',
     untargetedIdentifiers: [],
   }),
-  // Work control is `write` on the task, the authority `task.propose` asks,
-  // and it is asked of that task: a record-scoped writer controls its own
-  // lineage. Both name the task in `recordId` and the lineage in `lineageId`,
-  // and the handler refuses a lineage opened on another task. They take no
+  // Work control is `decide` on the task (T3a, `gate:decide`): stopping or
+  // restarting approved work is a person's decision, never an agent's, and it
+  // is asked of that task. Cancel's runtime also asks `write` under its locks.
+  // Both name the task in `recordId` and the lineage in `lineageId`, and the
+  // handler refuses a lineage opened on another task. They take no
   // `expectedRevision` because neither writes the task record.
-  declare('task.cancel', 'write', {
+  declare('task.cancel', 'decide', {
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'lineageId'],
   }),
-  declare('task.restart', 'write', {
+  declare('task.restart', 'decide', {
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'lineageId'],

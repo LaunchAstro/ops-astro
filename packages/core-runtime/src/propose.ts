@@ -234,7 +234,7 @@ export async function proposeUnderLocks(
 
   if (!Number.isSafeInteger(request.maximumMinor) || request.maximumMinor <= 0) {
     return refuse(
-      'PROPOSAL_OUT_OF_SCOPE',
+      'PROPOSAL_SCOPE_EXCEEDED',
       `a bounded proposal needs a finite positive ceiling, and this one asks for ${request.maximumMinor}`,
       'Name a maximum in minor units greater than zero.',
     );
@@ -295,11 +295,14 @@ export async function proposeUnderLocks(
   // any write. Priced first, a lineage on another task would release that
   // task's hold into the refusal's committed figure, and whether the answer
   // was LINEAGE_NOT_ON_TASK would depend on the ceiling.
+  // T3a: a restart's lineage draws on a new envelope (`task.restart` closes
+  // the task's open one under this same lock), so it is measured against the
+  // cap alone and never against the room the old envelope has left.
   const outOfBudget = await refuseBeyondBudget(
     tx,
     request,
     capId,
-    accounting?.id ?? null,
+    restarts === null ? (accounting?.id ?? null) : null,
     liveVersions,
   );
   if (outOfBudget !== null) return outOfBudget;
@@ -400,7 +403,7 @@ async function refuseBeyondBudget(
   }
   if (request.currency !== cap.currency) {
     return refuse(
-      'PROPOSAL_OUT_OF_SCOPE',
+      'PROPOSAL_SCOPE_EXCEEDED',
       `this task's budget cap is in ${cap.currency}, and a proposal in another currency is outside it`,
       'Propose the work in the currency the cap holds.',
     );
@@ -427,7 +430,7 @@ async function refuseBeyondBudget(
   const committed = String(BigInt(cap.committed) - BigInt(released));
   if (exceeds(committed, BigInt(request.maximumMinor), cap.limitMinor)) {
     return refuse(
-      'PROPOSAL_OUT_OF_SCOPE',
+      'PROPOSAL_SCOPE_EXCEEDED',
       `the budget cap behind this task has ${committed} of ${cap.limitMinor} committed, and this ceiling does not fit its remaining room`,
       'Propose a ceiling within the cap, or raise the cap through its own authorised decision.',
     );
@@ -468,7 +471,7 @@ async function refuseBeyondEnvelope(
   }
   if (request.currency !== envelope.currency) {
     return refuse(
-      'PROPOSAL_OUT_OF_SCOPE',
+      'PROPOSAL_SCOPE_EXCEEDED',
       `this task's envelope is in ${envelope.currency}, and a proposal in another currency is outside it`,
       'Propose the work in the currency the envelope holds.',
     );
@@ -478,7 +481,7 @@ async function refuseBeyondEnvelope(
   );
   if (exceeds(inEnvelope, BigInt(request.maximumMinor), envelope.maximum_minor)) {
     return refuse(
-      'PROPOSAL_OUT_OF_SCOPE',
+      'PROPOSAL_SCOPE_EXCEEDED',
       `this task's envelope has ${inEnvelope} of ${envelope.maximum_minor} committed, and this ceiling does not fit its remaining room`,
       'Propose a ceiling within the envelope, or raise it through its authorised boundary.',
     );

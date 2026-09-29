@@ -310,7 +310,7 @@ describe.skipIf(serverUrl === undefined)('task.propose checks existing budget au
     await s?.db.drop();
   });
 
-  /** Refused PROPOSAL_OUT_OF_SCOPE with no version written on the task. */
+  /** Refused PROPOSAL_SCOPE_EXCEEDED with no version written on the task. */
   async function refusedOutOfScope(taskId: string, changes: Readonly<Record<string, unknown>>) {
     const before = await versionsOn(s, taskId);
     const body = await bodyWith(s, taskId, changes);
@@ -323,7 +323,7 @@ describe.skipIf(serverUrl === undefined)('task.propose checks existing budget au
   }
 
   const refusedNothingWritten = {
-    answer: 'PROPOSAL_OUT_OF_SCOPE',
+    answer: 'PROPOSAL_SCOPE_EXCEEDED',
     written: 0,
     outcomes: ['refused'],
   };
@@ -390,7 +390,7 @@ describe.skipIf(serverUrl === undefined)('task.propose checks existing budget au
       bodyWith(s, a, { lineageId: held['lineageId'], purpose, maximumMinor });
     const over = await attempt(s, await successor(2_001));
     expect([answerOf(over), reasonOf(over)]).toStrictEqual([
-      'PROPOSAL_OUT_OF_SCOPE',
+      'PROPOSAL_SCOPE_EXCEEDED',
       expect.stringContaining('budget cap'),
     ]);
     expect(answerOf(await attempt(s, await successor(2_000)))).toBe('applied');

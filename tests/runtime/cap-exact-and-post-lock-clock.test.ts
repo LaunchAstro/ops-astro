@@ -5,7 +5,7 @@
 // RUNTIME-1: the first approval on a task opens its envelope, and the cap
 // behind it is the money ceiling in one currency. A version in another
 // currency is refused before anything is written. Since final review round 2
-// (R2-RUNTIME-26) that refusal is the proposal's, `PROPOSAL_OUT_OF_SCOPE`
+// (R2-RUNTIME-26) that refusal is the proposal's, `PROPOSAL_SCOPE_EXCEEDED`
 // under T1's existing budget authority, so no such version reaches a decision;
 // `decide` keeps `CAP_BINDING_MISMATCH` as its own second barrier.
 //
@@ -115,7 +115,7 @@ describe.skipIf(serverUrl === undefined)('the cap currency binds the first envel
       maximumMinor: 1_000,
       currency: 'USD',
     });
-    expect(codeOf(answer)).toBe('PROPOSAL_OUT_OF_SCOPE');
+    expect(codeOf(answer)).toBe('PROPOSAL_SCOPE_EXCEEDED');
     expect(await footprint(s)).toStrictEqual(before);
     const envelopes = await rows<{ readonly currency: string }>(
       s,

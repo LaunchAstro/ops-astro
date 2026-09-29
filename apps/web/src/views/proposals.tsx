@@ -32,7 +32,7 @@
 // rejected or sent-back gate by its outcome even if `expired` arrived true.
 //
 // **A refused decision is quoted and the page is read again.** A refusal like
-// `VERSION_SUPERSEDED` is the server saying this page is no longer describing
+// `PROPOSAL_SUPERSEDED` is the server saying this page is no longer describing
 // the record, so the answer to it is a fresh read rather than a retry. The
 // refusal text is held above the read (`TaskDetail.tsx`) because the reread
 // unmounts everything below it, and a message that vanished with the thing it
@@ -80,12 +80,13 @@ import type { ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
+  PersonView as TaskPerson,
   ProposalVersionView as ProposalVersion,
   ProposalView as ProposalLineage,
   TaskEnvelope,
 } from '../../../../packages/core-wire/src/index.ts';
 import { Decide, lapsed, type DecisionNote } from './gate-controls.tsx';
-import { Chain, money, Reservations, stored } from './proposal-record.tsx';
+import { Chain, money, RejectProposal, Reservations, stored } from './proposal-record.tsx';
 import { Propose, TopUp, type ProposeDraft, type TopUpNote } from './propose-form.tsx';
 
 export type { DecisionNote } from './gate-controls.tsx';
@@ -124,6 +125,8 @@ export interface ProposalsProps {
   readonly onChanged: () => void;
   /** The task cap's currency, which the propose form offers and nothing else. */
   readonly capCurrency: string | null | undefined;
+  /** Who an escalation may name, from `person.list`; the server checks the role. */
+  readonly persons?: readonly TaskPerson[];
 }
 
 export function Proposals(props: ProposalsProps): ReactElement {
@@ -189,6 +192,7 @@ function ProposalList(props: ProposalsProps & { readonly at: NoteAt | null }): R
           noteAt={at}
           onChanged={props.onChanged}
           onDecided={props.onDecided}
+          persons={props.persons ?? []}
         />
       ))}
     </div>
@@ -202,6 +206,7 @@ interface LineageProps {
   readonly noteAt: NoteAt | null;
   readonly onDecided: (note: DecisionNote | null) => void;
   readonly onChanged: () => void;
+  readonly persons: readonly TaskPerson[];
 }
 
 function Lineage(props: LineageProps): ReactElement {
@@ -216,6 +221,7 @@ function Lineage(props: LineageProps): ReactElement {
         <span className="sb__k">Lineage</span>
         <span className="sb__state">{lineage.state}</span>
         <span className="sbact__meta">{lineage.lineageId}</span>
+        <RejectProposal {...props} />
       </div>
       {props.noteAt === 'lineage' && props.note?.lineageId === lineage.lineageId ? (
         <Refusal note={props.note} />
@@ -233,6 +239,7 @@ function Lineage(props: LineageProps): ReactElement {
           note={props.note}
           onChanged={props.onChanged}
           onDecided={props.onDecided}
+          persons={props.persons}
           version={version}
         />
       ))}
@@ -253,6 +260,7 @@ interface VersionProps {
   readonly note: DecisionNote | null;
   readonly onDecided: (note: DecisionNote | null) => void;
   readonly onChanged: () => void;
+  readonly persons: readonly TaskPerson[];
 }
 
 function Version(props: VersionProps): ReactElement {
@@ -343,6 +351,7 @@ function Version(props: VersionProps): ReactElement {
           note={props.note}
           onChanged={props.onChanged}
           onDecided={props.onDecided}
+          persons={props.persons}
           stale={stale}
           versionId={version.versionId}
         />

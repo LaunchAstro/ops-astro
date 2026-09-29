@@ -121,7 +121,7 @@ the rest of the set. The check runs
 after a named lineage is found, on this task and live, and before the first
 write, a new lineage's row included, so a lineage on another task is
 `LINEAGE_NOT_ON_TASK` whatever its ceiling. A version in another currency, or a
-ceiling past either room, is `PROPOSAL_OUT_OF_SCOPE` 403 with nothing written.
+ceiling past either room, is `PROPOSAL_SCOPE_EXCEEDED` 422 with nothing written.
 Caller lineage ids are lower-cased in `lockProposal`
 (`tests/runtime/propose-operands-and-authority.test.ts`,
 `tests/runtime/propose-open-envelope-and-lineage.test.ts`). With no envelope and no cap there is
@@ -326,7 +326,7 @@ delegation's, reason then fix. Each operation's refusals, with their routes, are
 
 | Code                             | Status | Caller-visible                                                 |
 | -------------------------------- | ------ | -------------------------------------------------------------- |
-| `VERSION_SUPERSEDED`             | 409    | yes, re-read and decide the live version                       |
+| `PROPOSAL_SUPERSEDED`            | 409    | yes, re-read and decide the live version                       |
 | `EVIDENCE_MISMATCH`              | 409    | yes                                                            |
 | `GATE_NOT_FOUND`                 | 404    | yes                                                            |
 | `GATE_ALREADY_DECIDED`           | 409    | yes, the loser of a decision race                              |
@@ -335,7 +335,7 @@ delegation's, reason then fix. Each operation's refusals, with their routes, are
 | `CHANGE_ROUNDS_EXHAUSTED`        | 409    | yes                                                            |
 | `BUDGET_UNAVAILABLE`             | 409    | yes, this envelope has no room                                 |
 | `BUDGET_EXHAUSTED`               | 402    | yes, the cap behind it has none                                |
-| `PROPOSAL_OUT_OF_SCOPE`          | 403    | yes                                                            |
+| `PROPOSAL_SCOPE_EXCEEDED`        | 422    | yes                                                            |
 | `LINEAGE_NOT_ON_TASK`            | 409    | yes, the lineage is another task's                             |
 | `CAP_BINDING_MISMATCH`           | 409    | yes, the envelope's cap, and its currency, is the cap          |
 | `ACTUAL_EXPENDITURE_UNSUPPORTED` | 422    | yes, this head observed no spending                            |
@@ -1013,6 +1013,14 @@ partly covered rather than proved.
   rounds), and the third round is refused `CHANGE_ROUNDS_EXHAUSTED` with no
   decision row written. The lineage stays live, so approving or rejecting is
   still open. The cap bounds rounds, not the decision.
+- **Escalate at the bound** (T3a): once the two rounds are used, `task.decide`
+  takes `escalate` with a `recipientPersonId` who holds `decide` at business
+  scope and is not the assignee. It records who escalated and to whom on the
+  gate (migration 0041), writes no decision row, and leaves the gate
+  `pending`; from then on `decide` admits only a business-scope decider.
+  Before the bound it is `TRANSITION_NOT_PERMITTED`; a recipient outside the
+  role, or nobody, is `SCOPE_NOT_GRANTED` naming `recipientPersonId`, with
+  nothing written.
 - **Rejection is terminal** (G05): the rejected gate takes no second decision,
   a new version in the same lineage is refused `LINEAGE_TERMINAL` on the
   lineage rather than on the gate, and the authorised restart is a new lineage
@@ -1173,13 +1181,17 @@ direct SQL.
   (`tests/runtime/retry-bounds.test.ts`). Startup recovery does not retry. A
   changed set there fails the start. `task.cancel` holds the canceller's
   covering grants for share before its runtime set, as decide and pickup do,
-  and re-reads `write` on the task at the locked instant before its first write
-  (`holdCoveringGrants` and `checkAuthorityAt` in `cancelAndClassify`). A
+  and re-reads `write`, and for `task.cancel` `decide` (T3a), on the task at
+  the locked instant before its first write (`holdCoveringGrants` and
+  `checkAuthorityAt` in `cancelAndClassify`). A
   revocation that locks the grant first makes the cancel `SCOPE_NOT_GRANTED`
   with nothing written, and one that comes second waits for the cancel to
   commit (`tests/runtime/decide-cancel-lifecycle-under-lock.test.ts`).
-- **Authority** for `task.cancel` and `task.restart` is `write` on the task
-  named in `recordId`, so a record-scoped writer controls its own lineage
+- **Authority** for `task.cancel` and `task.restart` is `decide` on the task
+  named in `recordId` (T3a), asked again with the grants held for share;
+  cancel's runtime also asks `write` under its locks. A restart closes the
+  task's open envelope, so the new lineage's approval opens its own and the
+  old one keeps its settled spend. A record-scoped decider controls its own lineage
   (`authorisedOn: 'record'` in `COMMAND_SURFACE`, `core-wire/src/surface.ts`;
   `tests/commands/control-scope.test.ts`). `task.pickup`, `task.heartbeat` and
   `task.handback` are authorised as `write` on the task their reservation or

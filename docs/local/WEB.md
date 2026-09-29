@@ -300,7 +300,7 @@ version whose gate it named, whether or not that version is still the head, and
 follows it with a fresh `task.read`. When a reread no longer lists the gate, the
 quote is drawn under its lineage, and failing that above the list. A
 refusal about the reader's authority closes every gate on the task, and the
-other gates say so for the task rather than for this gate. A refusal like `VERSION_SUPERSEDED` or
+other gates say so for the task rather than for this gate. A refusal like `PROPOSAL_SUPERSEDED` or
 `GATE_ALREADY_DECIDED` is the server saying this page has stopped describing the
 record, and the answer is to read it again, not to retry. `TaskDetail.tsx` holds
 the refusal text above the read state, because the reread unmounts everything
@@ -327,14 +327,14 @@ What this screen does not read back, and cannot:
 - Rejecting sends `decision: 'reject'` through the same control and the same
   exact-version comparison. The change-round behaviour behind a rejection is the
   runtime's and this screen does not model it.
-- **A form-driven `VERSION_SUPERSEDED` is unreachable**, and this is the
+- **A form-driven `PROPOSAL_SUPERSEDED` is unreachable**, and this is the
   contract rather than a gap in the screen. The form sends no `lineageId`, so a
   second proposal opens a new lineage instead of adding a version to the live one
   (`core-runtime/src/propose.ts`). `decide` checks the gate's state before the
   version it carries, so when a page has gone stale its Approve lands on a
   superseded gate and the honest answer is `GATE_ALREADY_DECIDED`. The screen
   quotes whichever it gets and rereads either way. `cases-proposals.mjs` proves
-  `VERSION_SUPERSEDED` through the client, where a `lineageId` can be named, and
+  `PROPOSAL_SUPERSEDED` through the client, where a `lineageId` can be named, and
   the screen's own path separately.
 - The agent's own path has no screen. Pickup, handback and the queue are stored
   and projected, and the web does not draw them yet.

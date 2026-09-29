@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The gate's controls on a proposal version: request changes and approve,
-// or the one reason neither is on offer. Split out of `proposals.tsx` to keep
+// escalate at the revision bound (T3a), or the one reason none is on offer. Split out of `proposals.tsx` to keep
 // that file under its 500-line limit; the reasoning for what the controls send
 // and how a refusal is quoted is in `proposals.tsx`'s header.
 
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import type { OperationsClient } from '../operations/client.ts';
-import type { ProposalVersionView as ProposalVersion } from '../../../../packages/core-wire/src/index.ts';
+import type {
+  PersonView as TaskPerson,
+  ProposalVersionView as ProposalVersion,
+} from '../../../../packages/core-wire/src/index.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
 
 /** What a refused decision left behind, held above the read that follows it. */
@@ -41,11 +44,13 @@ interface DecideProps {
   readonly onChanged: () => void;
   /** The gate's version is not the lineage's newest, so approve is disabled. */
   readonly stale: boolean;
+  readonly persons: readonly TaskPerson[];
 }
 
 export function Decide(props: DecideProps): ReactElement {
   const { gate } = props;
   const { busy, run } = useCommand();
+  const [recipient, setRecipient] = useState('');
   const closed = props.note?.closed === true;
   // Whether the note is about this gate, which picks the wording below. The
   // note's own text is drawn by `Version`, under the gate it names.
@@ -63,7 +68,7 @@ export function Decide(props: DecideProps): ReactElement {
           ? null
           : `This lineage is ${props.lineageState}, and a lineage that has ended is not decided again. An authorised restart opens a new one.`;
 
-  const decide = (decision: 'approve' | 'request_changes'): void => {
+  const decide = (decision: 'approve' | 'request_changes' | 'escalate'): void => {
     if (busy || closed) return;
     props.onDecided(null);
     run(
@@ -77,6 +82,7 @@ export function Decide(props: DecideProps): ReactElement {
           versionId: props.versionId,
           decision,
           note: `Decided from the task page (${decision}).`,
+          ...(decision === 'escalate' ? { recipientPersonId: recipient } : {}),
         }),
       (settlement) => {
         settled(settlement, props);
@@ -116,6 +122,40 @@ export function Decide(props: DecideProps): ReactElement {
           >
             {busy ? 'Deciding…' : 'Approve this version'}
           </button>
+          {/* Escalate (T3a) only at the bound, where a third round is refused.
+              New behaviour with no drawing behind it (specification 13.2). */}
+          {gate.round >= 3 ? (
+            <div data-escalate="form" data-ui-reference="none">
+              <select
+                aria-label="Escalate to"
+                data-escalate="recipient"
+                disabled={busy}
+                onChange={(event) => {
+                  setRecipient(event.target.value);
+                }}
+                value={recipient}
+              >
+                <option value="">Choose who decides it</option>
+                {props.persons.map((person) => (
+                  <option key={person.personId} value={person.personId}>
+                    {person.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn"
+                data-decide="escalate"
+                data-gate-id={gate.id}
+                disabled={busy || recipient === ''}
+                onClick={() => {
+                  if (recipient !== '') decide('escalate');
+                }}
+                type="button"
+              >
+                Escalate
+              </button>
+            </div>
+          ) : null}
           <p className="card__sub" data-gate="notice">
             This demonstration changes nothing outside the app: its one effect is a team-only
             comment on this task.
@@ -139,7 +179,12 @@ export function Decide(props: DecideProps): ReactElement {
  * because the reservation the approval created is the server's, not this
  * screen's guess at what an approval does.
  */
-function settled(settlement: Settlement, props: DecideProps): void {
+export function settled(
+  settlement: Settlement,
+  props: Pick<DecideProps, 'onDecided' | 'onChanged' | 'lineageId'> & {
+    readonly gate: { readonly id: string };
+  },
+): void {
   if (settlement.kind === 'ok') {
     props.onDecided(null);
     props.onChanged();

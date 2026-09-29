@@ -3,16 +3,24 @@
 // `task.cancel` and `task.restart`: the work controls, as commands over the
 // runtime functions that own them.
 //
-// Cancel and restart name the task and the lineage on it. The envelope has
-// already asked the declaration's `write` on tasks, the work-control authority
-// `task.propose` asks; here the task is found in this business and the lineage
-// is checked against it, so authority on one task never reaches a lineage on
-// another (R3's rule, the one `propose` enforces). Neither writes the task
-// record, which is why neither takes an `expectedRevision`.
+// Cancel and restart name the task and the lineage on it. Each is a person's
+// decision (T3a, `T3 decide authority`): the envelope has already asked the
+// declaration's `decide` on tasks, and an agent never holds it. Here the task
+// is found in this business and the lineage is checked against it, so
+// authority on one task never reaches a lineage on another (R3's rule, the one
+// `propose` enforces), and `decide` is asked again with the grants held.
+// Neither writes the task record, which is why neither takes an
+// `expectedRevision`.
 
 import { subjectsOf, isUuid } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { cancelAndClassify, restart } from '../../../core-runtime/src/index.ts';
+import {
+  cancelAndClassify,
+  checkAuthorityAt,
+  holdCoveringGrants,
+  lockedInstant,
+  restart,
+} from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -87,6 +95,40 @@ async function lineageOnTask(
 
 const isOutcome = (value: object): value is HandlerOutcome => !('taskId' in value);
 
+/**
+ * `decide` on the task, asked with the caller's grants held for share, as
+ * `decide` holds its own before its locks: a revocation that committed first
+ * is seen here, and one that comes second waits for this transaction. Asked at
+ * the clock after the hold, so a grant that lapsed while this waited no longer
+ * counts. The envelope's check ran before any of this.
+ */
+async function decideHeld(
+  tx: TenantQuery,
+  context: CommandContext,
+  taskId: string,
+): Promise<HandlerOutcome | null> {
+  const subjects = subjectsOf(context.session);
+  await holdCoveringGrants(tx, subjects, context.declaration.collection);
+  const current = await checkAuthorityAt(
+    tx,
+    subjects,
+    {
+      collection: context.declaration.collection,
+      action: 'decide',
+      scope: { kind: 'record', id: taskId },
+    },
+    await lockedInstant(tx),
+  );
+  if (current.ok) return null;
+  return refused(
+    refuseCommand(
+      'SCOPE_NOT_GRANTED',
+      [],
+      ['A person with decide authority on this task stops or restarts its work.'],
+    ),
+  );
+}
+
 export async function cancelOnTask(
   tx: TenantQuery,
   context: CommandContext,
@@ -106,6 +148,8 @@ export async function cancelOnTask(
   }
   const found = await lineageOnTask(tx, context, fields.recordId, fields.lineageId, 'reachable');
   if (isOutcome(found)) return found;
+  const undecided = await decideHeld(tx, context, found.taskId);
+  if (undecided !== null) return undecided;
 
   // The envelope's write check runs before any lock, so the runtime holds
   // the grant and reads it again under its locks.
@@ -116,6 +160,7 @@ export async function cancelOnTask(
       subjects: subjectsOf(context.session),
       collection: context.declaration.collection,
       taskId: found.taskId,
+      alsoDecide: true,
     },
   });
   if (!result.ok) return refused(result.refusal);
@@ -128,6 +173,21 @@ export async function cancelOnTask(
       released: one.released,
     })),
   });
+}
+
+/**
+ * T3a: a restart opens a new envelope. The task's open one keeps its settled
+ * spend and funds nothing new: it is closed here, under the envelope lock
+ * `propose` took for it, so the new lineage's approval opens its own. The
+ * cap still counts what it holds and spent, and a hold still in flight
+ * settles against it by id.
+ */
+async function closeOpenEnvelope(tx: TenantQuery, taskId: string): Promise<void> {
+  await tx.query(
+    `update public.task_envelopes set state = 'closed', closed_at = now()
+      where business_id = $1 and task_id = $2 and state = 'open'`,
+    [tx.businessId, taskId],
+  );
 }
 
 export async function restartOnTask(
@@ -145,6 +205,8 @@ export async function restartOnTask(
   }
   const found = await lineageOnTask(tx, context, fields.recordId, fields.lineageId, 'gone');
   if (isOutcome(found)) return found;
+  const undecided = await decideHeld(tx, context, found.taskId);
+  if (undecided !== null) return undecided;
 
   const result = await restart(tx, {
     taskId: found.taskId,
@@ -155,6 +217,13 @@ export async function restartOnTask(
     expiresAt,
   });
   if (!result.ok) return refused(result.refusal);
+  // Decide again now that `propose` holds its locks, at the clock after them:
+  // a decide grant that lapsed while the restart waited refuses it, and the
+  // command's savepoint takes back what `propose` wrote (as cancel does under
+  // its own locks).
+  const lapsed = await decideHeld(tx, context, found.taskId);
+  if (lapsed !== null) return lapsed;
+  await closeOpenEnvelope(tx, found.taskId);
   return applied(found.taskId, null, {
     lineageId: result.value.lineageId,
     restartsLineageId: result.value.restartsLineageId,
