@@ -127,6 +127,7 @@ const HOSTILE_LANGFUSE: readonly [string, Reply, string][] = [
     'malformed',
   ],
   ['OK with no status', json(200, { version: '3.0.0' }), 'malformed'],
+  ['a 200 whose status is not OK', json(200, { status: 'starting' }), 'malformed'],
   ['a status that is no word', json(200, { status: { ok: true } }), 'malformed'],
   ['a refusal naming the canary', json(401, { message: CANARY }), 'refused'],
   ['a failure that is not shaped', json(500, { message: CANARY }), 'malformed'],

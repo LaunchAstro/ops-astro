@@ -1543,7 +1543,7 @@ local end stands, and asking again is safe. The provider's words go nowhere.
 
 ## The operations view and privacy incidents (C55)
 
-`operations.read` answers `{ ok, privacyIncidents }` to a holder of
+`operations.read` answers `{ ok, privacyIncidents, serviceHealth }` to a holder of
 `operations:read` (install default: the owner and administrators). It is
 never an agent's: on the agent prefix it is `DELEGATION_EXCLUDES_OPERATION` 403. Each incident carries its day-0 facts, its status and `assessBy`, 30 days
 after `foundAt` (the breach runbook's assessment limit), most recently found
@@ -1582,9 +1582,35 @@ runbook is `BREACH_RUNBOOK_UNPUBLISHED` 409, and a runbook with no template, or
 one with a placeholder other than name, date, plain description, kinds,
 containment and steps, is `BREACH_TEMPLATE_UNFILLED` 409.
 
+**Service health (C34).** `serviceHealth` is the installation's watcher, error
+sink and, where switched on, tracing: `{ checkedAt, sources, services }`. It is
+read by the API only after the grant check lets the caller in, and outside the
+serving transaction, so a refused caller asks no source; a read made in-process
+(`executeRead`) carries none. Each source (`watcher`, `error-sink`, `tracing`)
+is `read`, `read-failure` with its fault by kind (`unconfigured`, `refused`,
+`malformed`, `oversized`, `slow`, `unreachable`), or `off`: tracing unset is
+off, never a failure; the watcher and the error sink are not optional, so unset
+is `read-failure` `unconfigured`. Each service a readable source reports is
+`healthy`, `service-failure`, `stale` (last seen more than 15 minutes ago,
+`HEALTH_STALE_SECONDS`, whatever it said then) or `never-observed`, with
+`lastObservedAt`. A source is shown whole or not at all: an answer that throws,
+takes over its time limit (3 seconds), or holds one bad entry (an empty or
+over-long name, a control character, a time that is no time or more than a
+minute ahead) is a read failure, and none of its services is shown. A client's
+own site (`scope: 'client-site'`) is that client's and never shown here. The
+source's own words go nowhere.
+
+The port is `HealthSource` (`reads/service-health.ts`). Tracing is Langfuse,
+`LANGFUSE_HOST`, read at `GET /api/public/health` with no credential
+(`apps/api/health/tracing.ts`): one destination, no redirect, a time and a size
+limit; `{ status: "OK" }` on a 2xx is healthy, a status word on a 5xx is a
+service failure, anything else a read failure. The watcher (UptimeRobot, C29-1)
+and the error sink (GlitchTip, C29-3) are their adapters, filled in at the same
+port when they land.
+
 Held until their parts land (each placed here as its owner's read, never a
 second list): unattended items (INB-1), security alerts (S0-2), the last tested
-restore (S0-3), the watcher's status (C34) and the error-sink link.
+restore (S0-3) and the error-sink link.
 
 ## Legal documents (C81)
 
