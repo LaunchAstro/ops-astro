@@ -111,6 +111,7 @@ export type CommandName =
   | 'client.create'
   | 'access.grant'
   | 'access.revoke'
+  | 'access.end'
   | 'grant.revoke'
   | 'delegation.revoke'
   | 'task.cancel'
@@ -382,6 +383,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'client.create': { name: 'any' },
   'access.grant': { holderId: 'id', collection: 'any', action: 'any', clientId: 'id?|null' },
   'access.revoke': { grantId: 'id' },
+  'access.end': { holderId: 'id' },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -559,6 +561,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: 'access',
     targetsExistingRecord: false,
     untargetedIdentifiers: ['grantId'],
+  }),
+  // C58: the tracked action `access ended (person: login, sessions, grants)`
+  // on Settings ▸ Access, under `access:manage`, never an agent's. It names a
+  // person of the business; the provider steps it owes run after it commits.
+  declare('access.end', 'manage', {
+    collection: 'access',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['holderId'],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this

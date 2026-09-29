@@ -262,6 +262,8 @@ export type CommandRequest =
       readonly clientId?: unknown;
     } & Envelope)
   | ({ readonly command: 'access.revoke'; readonly grantId: string } & Envelope)
+  // C58: end a person's access in one act (`access-end.ts`).
+  | ({ readonly command: 'access.end'; readonly holderId: unknown } & Envelope)
   | ({ readonly command: 'grant.revoke'; readonly grantId: string } & Envelope)
   | ({ readonly command: 'delegation.revoke'; readonly delegationId: string } & Envelope)
   | ({

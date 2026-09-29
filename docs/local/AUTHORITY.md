@@ -607,6 +607,16 @@ grant given twice is one row, and two revocations that would each leave one
 holder of business-wide `access:manage` cannot both apply: the second is
 `ACCESS_LAST_MANAGER`.
 
+Ending a person's access (`access.end`, C58) is `access:manage` too, never an
+agent's. After the access lock it locks every live grant the person holds, in
+id order, before any runtime lock (the order one revocation and `task.pickup`
+take), then revokes them and every delegation the person gave in one
+authority-loss classification (`endPersonAuthority`,
+`commands/authority-controls.ts`), and ends the membership and the person's
+acting identity. The delegations lose their ceiling with the grants and are
+revoked with the cause `authority_lost`. Nobody ends the last business-wide
+`access:manage` of a person who can sign in.
+
 A party-scoped grant is checked at party scope. The task reads and writes ask
 record scope, so they do not yet resolve a grant over a client through the
 task's `client` link; `client.list` and the preview do read it.

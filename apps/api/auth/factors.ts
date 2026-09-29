@@ -149,7 +149,7 @@ function isBoundedText(value: unknown, limit: number): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= limit;
 }
 
-function isTimeout(cause: unknown): boolean {
+export function isTimeout(cause: unknown): boolean {
   return cause instanceof Error && (cause.name === 'TimeoutError' || cause.name === 'AbortError');
 }
 
@@ -157,7 +157,7 @@ function isTimeout(cause: unknown): boolean {
  * The body, up to `maxBytes`, counted as it arrives: a `content-length` is the
  * sender's claim and a chunked answer has none.
  */
-async function readBounded(
+export async function readBounded(
   response: Response,
   maxBytes: number,
   timeoutMs: number,

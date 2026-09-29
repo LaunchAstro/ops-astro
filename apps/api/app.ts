@@ -55,7 +55,11 @@ import {
   removeSecondFactor,
   verifySecondFactor,
 } from '../../packages/core-commands/src/index.ts';
-import type { FactorProvider, LoginProvider } from '../../packages/core-commands/src/index.ts';
+import {
+  settleAccessEndings,
+  type FactorProvider,
+  type LoginProvider,
+} from '../../packages/core-commands/src/index.ts';
 import {
   COMMAND_SURFACE,
   DELEGATION_HEADER,
@@ -269,6 +273,14 @@ export function createApi(options: ApiOptions): Hono {
     });
 
     if (isCommandRefusal(result)) return refuse(context, result);
+    // C58: the provider steps an ending owes are tried as soon as it commits,
+    // outside its transaction; what fails stays owed for the server's retry.
+    if (name === 'access.end' && options.logins !== undefined) {
+      const only = endingIdsOf(result);
+      if (only.length > 0) {
+        await settleAccessEndings(options.database, businessId, options.logins, { only });
+      }
+    }
     return context.json({ ...result }, 200);
   });
 
@@ -437,4 +449,12 @@ async function readLimited(request: Request, limit: number): Promise<string | un
   } catch {
     return undefined;
   }
+}
+
+/** The endings an `access.end` answer names (C58): ids, and nothing else. */
+function endingIdsOf(result: object): readonly string[] {
+  const detail = (result as { readonly detail?: unknown }).detail;
+  if (typeof detail !== 'object' || detail === null) return [];
+  const ids = (detail as { readonly endingIds?: unknown }).endingIds;
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
 }
