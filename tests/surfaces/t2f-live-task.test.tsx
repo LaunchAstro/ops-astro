@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // T2f on the page: the open task re-reads itself when its stream says the
-// task changed, never underneath an unsaved edit, and re-reads into a denial
+// task changed, never over an unsaved edit (which stays as typed while the
+// rest of the page updates, C4 live-sync 4), and re-reads into a denial
 // when the server closes the stream. Where the channel is down, a 30-second
 // floor re-reads a visible page and never a hidden one.
 

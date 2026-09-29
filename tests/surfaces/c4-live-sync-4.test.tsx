@@ -32,7 +32,7 @@ function server() {
     priority: null,
     completedAt: null,
     revision: 1,
-    history: [] as { at: string; actorId: string; operation: string }[],
+    history: [{ at: '2026-09-29T09:00:00Z', actorId: 'p-bo', operation: 'task.create' }],
     comments: [] as Record<string, unknown>[],
   };
   const offered: number[] = [];
@@ -40,7 +40,13 @@ function server() {
   let stream: ReadableStreamDefaultController<Uint8Array> | null = null;
   const route = (at: string, body: string): Response => {
     if (at.endsWith('/person/list'))
-      return json({ ok: true, persons: [{ personId: 'p-ana', name: 'Ana Bell' }] });
+      return json({
+        ok: true,
+        persons: [
+          { personId: 'p-ana', name: 'Ana Bell' },
+          { personId: 'p-bo', name: 'Bo Reyes' },
+        ],
+      });
     if (at.includes('/live?'))
       return new Response(
         new ReadableStream<Uint8Array>({
@@ -60,8 +66,11 @@ function server() {
     }
     throw new Error(`unrouted ${at}`);
   };
-  const fetch = ((url: string | URL, init?: RequestInit) =>
-    Promise.resolve(route(String(url), String(init?.body)))) as unknown as typeof globalThis.fetch;
+  // A read takes a tick, as over a network, so the page's loading state is drawn.
+  const fetch = (async (url: string | URL, init?: RequestInit) => {
+    if (String(url).endsWith('/task/read')) await pause();
+    return route(String(url), String(init?.body));
+  }) as unknown as typeof globalThis.fetch;
   const invalidate = (): void => {
     task.revision += 1;
     stream?.enqueue(encoder.encode(`event: invalidate\ndata: task:${ID}\n\n`));
@@ -86,7 +95,11 @@ function moveOn(api: ReturnType<typeof server>): void {
     posted_at: '2026-09-30T01:00:00Z',
     body: 'Moved it on',
   });
-  task.history.push({ at: '2026-09-30T01:00:00Z', actorId: 'p-ana', operation: 'task.move' });
+  task.history.push(
+    { at: '2026-09-30T01:00:00Z', actorId: 'p-ana', operation: 'task.move' },
+    // Someone this reader cannot list: named as nobody in particular.
+    { at: '2026-09-30T01:00:01Z', actorId: 'p-unlisted', operation: 'task.comment' },
+  );
   api.invalidate();
 }
 
@@ -145,15 +158,39 @@ it('C4 live-sync 4: regions not being edited keep updating under a draft, and th
   const title = (): string => (page.find('#task-title') as HTMLInputElement).value;
 
   await page.type('#task-title', 'My unsaved title');
+  const input = page.find('#task-title');
   moveOn(api);
   await until(
     'the comment arrives under the draft',
     () => page.find('[data-comment-id="c-ana"]') !== null,
   );
   expect(title()).toBe('My unsaved title');
+  // The same input: the page stayed mounted under the re-read.
+  expect(page.find('#task-title')).toBe(input);
   expect(page.find('[data-draft-resolve="choice"]')).not.toBeNull();
   expect(page.host.textContent).toContain('Done');
-  expect(page.find('[data-live-who]')?.textContent).toBe('Ana Bell');
+  expect(page.find('[data-live-who]')?.textContent).toBe('Ana Bell, someone');
   expect(page.find('[data-live-what]')?.textContent).toBe('status, a comment');
+  await page.unmount();
+});
+
+it('C4 live-sync 4: an edit typed back to where it began is no edit, and the form shows the task as last read', async () => {
+  const api = server();
+  const client = new OperationsClient({
+    origin: '',
+    businessKey: 'b',
+    token: 't',
+    fetch: api.fetch,
+  });
+  const page = await mount(<TaskDetailScreen client={client} grantKey="b:g" taskKey={ID} />);
+  await until('the page', () => page.find('#task-title') !== null);
+  const title = (): string => (page.find('#task-title') as HTMLInputElement).value;
+
+  await page.type('#task-title', 'My unsaved title');
+  rename(api, 'Somebody renamed it');
+  await until('B sees that it changed', () => page.find('[data-live="changed"]') !== null);
+  await page.type('#task-title', 'As it began');
+  await until('no unsaved edit', () => page.find('[data-draft-resolve="choice"]') === null);
+  expect(title()).toBe('Somebody renamed it');
   await page.unmount();
 });

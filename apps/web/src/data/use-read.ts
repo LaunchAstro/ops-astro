@@ -25,12 +25,11 @@ export interface UseReadOptions<T> {
   readonly deps: readonly unknown[];
   /**
    * The live topic for what this read shows (C4), named from its last answer
-   * and followed on the tab's one stream. While `paused` (an unsaved edit) a
-   * change is held until the pause ends, and `held` says so (C4 live-sync 4);
-   * `closed` is read at once.
+   * and followed on the tab's one stream. Every change is read at once, an
+   * unsaved edit included: the edit lives above the read and is never read
+   * over, and the rest of the page keeps updating (C4 live-sync 4).
    */
   readonly live?: { readonly hub: LiveHub; readonly topic: (value: T) => string | undefined };
-  readonly paused?: boolean;
   /** An agency-wide rollup no topic reaches: re-read on the floor instead (C4 CS-1.2). */
   readonly rollup?: RollupFloor;
 }
@@ -38,8 +37,6 @@ export interface UseReadOptions<T> {
 export interface UseReadResult<T> {
   readonly state: ReadState<T>;
   readonly reload: () => void;
-  /** A live change arrived during the pause and waits for it to end. */
-  readonly held: boolean;
 }
 
 export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
@@ -93,26 +90,14 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
   }
   const topic = topicRef.current;
   const hub = options.live?.hub;
-  const pausedRef = useRef(false);
-  pausedRef.current = options.paused === true;
-  const [held, setHeld] = useState(false);
 
   useEffect(() => {
     if (hub === undefined || topic === null) return;
-    return hub.follow(topic, (change) => {
-      if (pausedRef.current && change === 'changed') setHeld(true);
-      else reload();
-    });
+    return hub.follow(topic, reload);
   }, [hub, topic, reload]);
 
   const { rollup } = options;
   useEffect(() => rollup?.follow(reload), [rollup, reload]);
 
-  useEffect(() => {
-    if (options.paused === true || !held) return;
-    setHeld(false);
-    reload();
-  }, [options.paused, held, reload]);
-
-  return { state, reload, held };
+  return { state, reload };
 }
