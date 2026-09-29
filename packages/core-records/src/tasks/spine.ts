@@ -364,6 +364,11 @@ export const PROTECTED_TASK_FIELDS: readonly string[] = [
   'type',
   'answer',
   'gist',
+  'map_owner',
+  'map_version',
+  'type_history',
+  'blocked_by',
+  'closed_as',
 ];
 
 /** The two fields that are generic ordinarily and an access change sometimes. */

@@ -161,6 +161,25 @@ const NO_GRANT_AT_ALL = refuseCommand(
   ['no live grant covers it', 'ask a holder who may delegate'],
 );
 
+/**
+ * A map read on a task the caller may read that is not a map says so; one
+ * that names nothing live here is NOT_FOUND like every other read. The caller
+ * already holds read on the task, so telling the two apart tells them nothing.
+ */
+async function notAMap(tx: TenantQuery, recordId: string): Promise<CommandRefusal> {
+  const live = await tx.query<{ readonly type: string | null }>(
+    `select data ->> 'type' as type from public.records
+      where business_id = $1 and id = $2 and deleted_at is null`,
+    [tx.businessId, recordId],
+  );
+  if (live[0] === undefined || live[0].type === 'map') return refuseNotFound();
+  return refuseCommand(
+    'FIELD_VALUE_INVALID',
+    ['recordId'],
+    ['That task is not a map. Read it with task.read.'],
+  );
+}
+
 export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   'task.read': {
     identifiers: ['recordId'],
@@ -212,7 +231,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // A map never reaches a client surface (WF-1).
       if (recordId === undefined || !isInternalReader(session.roleKey)) return refuseNotFound();
       const map = await readMapView(tx, spine.taskTypeId, recordId);
-      return map === undefined ? refuseNotFound() : { ok: true, map };
+      return map === undefined ? await notAMap(tx, recordId) : { ok: true, map };
     },
   },
   'map.frontier': {
@@ -228,7 +247,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     async serve(tx, session, _operands, { spine, recordId }) {
       if (recordId === undefined || !isInternalReader(session.roleKey)) return refuseNotFound();
       const answer = await readMapFrontier(tx, spine.taskTypeId, recordId);
-      return answer ?? refuseNotFound();
+      return answer ?? (await notAMap(tx, recordId));
     },
   },
   'task.board': {

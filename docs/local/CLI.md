@@ -137,3 +137,23 @@ replaced by where it was saved.
 - It has no test-only path. The process proof (`tests/cli/cli-process.test.ts`)
   hands it a bearer through `OPS_ASTRO_TOKEN`, the same way a person does after
   `login`.
+
+## Wayfinder maps
+
+A map is a task of type `map`; its tickets are its subtasks (WF-1, WF-2). The
+same verbs as every other command, each one call:
+
+```sh
+pnpm cli map.chart --json '{"title":"Onboarding","destination":"A signed-off flow","tickets":[{"ref":"a","title":"Find the rules","type":"research"},{"ref":"b","title":"Choose the flow","type":"grilling","blockedBy":["a"]}],"fog":["Who approves?"]}'
+pnpm cli map.view --json '{"recordId":"<mapId>"}'
+pnpm cli map.frontier --json '{"recordId":"<mapId>"}'
+pnpm cli task.claim --json '{"recordId":"<ticketId>","expectedRevision":1}'
+pnpm cli task.resolve --json '{"recordId":"<ticketId>","expectedRevision":2,"answer":"...","gist":"one line"}'
+```
+
+`task.create` takes `taskType` (map, research, prototype, grilling, task or
+build; `task` when absent). `task.set_type`, `map.revise`, `map.scope`,
+`task.set_blocking`, `map.graduate` and `task.close_out_of_scope` complete the
+set. A grilling or prototype ticket is retyped or resolved only by the map's
+owner, holding `task:decide`. An agent reaches none of these yet: they wait on
+the agent credential narrowed from a person's grants (API-2).

@@ -112,6 +112,15 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
       source: 'SOURCE_SPOOFED',
       stage: 'TRANSITION_PROTECTED',
       state: 'TRANSITION_PROTECTED',
+      // Wayfinder: the type is `task.set_type`'s, the resolution `task.resolve`'s.
+      type: 'TRANSITION_PROTECTED',
+      answer: 'TRANSITION_PROTECTED',
+      gist: 'TRANSITION_PROTECTED',
+      map_owner: 'FIELD_NOT_WRITABLE',
+      map_version: 'FIELD_NOT_WRITABLE',
+      type_history: 'FIELD_NOT_WRITABLE',
+      blocked_by: 'FIELD_NOT_WRITABLE',
+      closed_as: 'FIELD_NOT_WRITABLE',
     };
 
     it('refuses each protected field by name, with the code the field earns', async () => {

@@ -98,6 +98,29 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
+  // 0032's map tables: the journey charts no map, so each gets one row here.
+  'public.map_components': {
+    map_id: randomUUID(),
+    kind: 'fog',
+    body: 'restricted calls seed',
+    position: 0,
+    created_version: 1,
+  },
+  'public.map_versions': {
+    map_id: randomUUID(),
+    version: 1,
+    changed: [randomUUID()],
+    actor_id: randomUUID(),
+  },
+  'public.map_summaries': {
+    map_id: randomUUID(),
+    version: 0,
+    open_tickets: 0,
+    closed_tickets: 0,
+    fog: 0,
+    out_of_scope: 0,
+  },
+  'public.map_frontier': { map_id: randomUUID(), ticket_id: randomUUID(), position: 1 },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

@@ -224,6 +224,7 @@ Migration `0032_wayfinder_maps.sql` holds what a map has that a task does not:
 | `map_components` | Destination, Notes, fog patches and Out of scope items, each with its own id; retired by version | select, insert, update |
 | `map_versions`   | One row per `map.revise`: the version number and the component ids it added or retired           | select, insert         |
 | `map_summaries`  | The summary read model: version, open and closed tickets, fog and Out of scope counts            | select                 |
+| `map_frontier`   | The frontier read model (WF-2): the open, unblocked, unclaimed tickets of each map, in order     | select                 |
 
 Decisions so far is not stored: `map.view` renders it from the map's completed
 tickets in closing order, so a decision lives once, on its ticket.
@@ -231,6 +232,14 @@ tickets in closing order, so a decision lives once, on its ticket.
 `map_summaries` has one writer, the security definer trigger functions in 0032. A write to a task recounts the map it is, and the map its parent was
 before and after; a write to a component or a version recounts its map. So the
 counts move in the transaction that changed them, whichever command did it.
+
+A blocking link is a `record_links` row of type `blocks`, from the blocker to
+the ticket it blocks; a link write recounts the map of the ticket it blocks.
+`task.set_blocking` keeps the same set on the ticket as `blocked_by`, so the
+ticket's revision moves with it. Writes to a map's structure (`map.revise`,
+`map.scope`, `map.graduate`, `task.set_blocking`, `task.close_out_of_scope`)
+serialise on the per-business `wayfinder.map` lock before any task row, so the
+cycle check and the version number are each read and written as one step.
 
 A grant scoped to a map covers the map and its tickets. `prepare.ts` and
 `reads/dispatch.ts` ask the record's own scope first and, when that is

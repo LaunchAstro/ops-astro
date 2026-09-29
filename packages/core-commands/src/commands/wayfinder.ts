@@ -148,6 +148,38 @@ export async function setTaskType(
   return applied(target.id, Number(rows[0]?.revision), { type: to, from });
 }
 
+/**
+ * A grilling or prototype ticket moving to another parent. Its owner rule
+ * reads the map it is filed under, so leaving that map would leave the rule
+ * behind: a move to any other parent needs `task:decide` and the owner of the
+ * map it leaves, as a retype does. Anything else moves as before.
+ */
+export async function refuseOwnerTicketMove(
+  tx: TenantQuery,
+  context: CommandContext,
+  recordId: string,
+  parentId: string | null,
+): Promise<CommandRefusal | undefined> {
+  const facts = await wayfinderFacts(tx, recordId);
+  if (facts === undefined || facts.type === 'map' || !OWNER_TYPES.has(facts.type)) return undefined;
+  if (facts.mapId === null || facts.mapId === parentId) return undefined;
+  if (!(await holdsDecide(tx, context, facts))) {
+    return refuseCommand(
+      'SCOPE_NOT_GRANTED',
+      ['task:decide'],
+      ['Moving a grilling or prototype ticket off its map needs task:decide.'],
+    );
+  }
+  if (facts.mapOwner !== context.session.personId) {
+    return refuseCommand(
+      'SCOPE_NOT_GRANTED',
+      ['map owner'],
+      ["Only the map's owner moves a grilling or prototype ticket off the map."],
+    );
+  }
+  return undefined;
+}
+
 interface OutOfScopeItem {
   readonly text: string;
   readonly ticketId: string | null;

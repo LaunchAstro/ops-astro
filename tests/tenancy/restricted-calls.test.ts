@@ -80,6 +80,17 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // T3e2: the journey drops nothing, so one report and one of its runs.
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
+  // 0032: a map's body rows. Any record stands in for the map; the read-model
+  // triggers find it is not one and write nothing.
+  'public.map_components': `insert into public.map_components
+       (business_id, id, map_id, kind, body, position, created_version)
+     select business_id, gen_random_uuid(), id, 'fog', 'restricted calls seed', 0, 1
+       from public.records where business_id = $1 order by id limit 1 returning 1`,
+  'public.map_versions': `insert into public.map_versions
+       (business_id, id, map_id, version, changed, actor_id)
+     select r.business_id, gen_random_uuid(), r.id, 1, array[r.id], a.id
+       from public.records r join public.actors a on a.business_id = r.business_id
+      where r.business_id = $1 order by r.id, a.id limit 1 returning 1`,
 };
 
 /**
@@ -361,16 +372,38 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   describe('the security definer function', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
 
-    it('is exactly one, a trigger on handback_reports with its search path pinned', () => {
+    it('is the handback trigger and the map read models, each with its search path pinned', () => {
+      // 0032 added the map read models' writers: security definer so the
+      // summary and frontier tables have one writer and the application only
+      // reads them. None is executable by an application caller (the call
+      // loop above holds that), and each pins its search path.
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
         'handback_reports_append_only()',
+        'map_summary_on_link()',
+        'map_summary_on_map_part()',
+        'map_summary_on_record()',
+        'map_summary_refresh(uuid)',
       ]);
-      const [fn] = definers();
-      expect(fn?.trigger).toBe(true);
-      expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
-      expect(fn?.firedBy).toStrictEqual([
+      for (const fn of definers()) {
+        expect(fn.config, fn.signature).toStrictEqual(['search_path=pg_catalog, public']);
+      }
+      const fired = Object.fromEntries(definers().map((fn) => [fn.signature, fn.firedBy]));
+      expect(fired['handback_reports_append_only()']).toStrictEqual([
         { table: 'public.handback_reports', events: 'delete update' },
       ]);
+      expect(fired['map_summary_on_record()']).toStrictEqual([
+        { table: 'public.records', events: 'insert delete update' },
+      ]);
+      expect(fired['map_summary_on_link()']).toStrictEqual([
+        { table: 'public.record_links', events: 'insert delete update' },
+      ]);
+      expect(fired['map_summary_on_map_part()']).toStrictEqual([
+        { table: 'public.map_components', events: 'insert delete update' },
+        { table: 'public.map_versions', events: 'insert' },
+      ]);
+      expect(definers().find((fn) => fn.signature === 'map_summary_refresh(uuid)')?.trigger).toBe(
+        false,
+      );
     });
   });
 

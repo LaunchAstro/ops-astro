@@ -94,6 +94,21 @@ vi.mock('../../packages/core-commands/src/commands/tasks-handback.ts', async (or
   ...(await original<object>()),
   handbackOwnLease: recorder('handbackOwnLease'),
 }));
+vi.mock('../../packages/core-commands/src/commands/wayfinder.ts', async (original) => ({
+  ...(await original<object>()),
+  setTaskType: recorder('setTaskType'),
+  reviseMap: recorder('reviseMap'),
+  scopeMap: recorder('scopeMap'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-flow.ts', async (original) => ({
+  ...(await original<object>()),
+  chartMap: recorder('chartMap'),
+  setBlocking: recorder('setBlocking'),
+  claimTicket: recorder('claimTicket'),
+  graduateFog: recorder('graduateFog'),
+  resolveTicket: recorder('resolveTicket'),
+  closeOutOfScope: recorder('closeOutOfScope'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-lease.ts', async (original) => ({
   ...(await original<object>()),
   heartbeatOwnLease: recorder('heartbeatOwnLease'),
@@ -156,6 +171,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'task.purge': [],
   'task.restart': ['recordId', 'lineageId'],
   'task.restore': ['batchId'],
+  'map.chart': [],
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
@@ -186,7 +202,10 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.receipt',
   'task.restart',
   'task.restore',
-];
+  'map.chart',
+  'map.frontier',
+  'map.view',
+].toSorted();
 
 const PINNED_AGENT_SURFACE = [
   'session.capabilities',
@@ -291,6 +310,15 @@ const REQUESTS: readonly CommandRequest[] = [
     amountMinor: 0,
     reason: 'why',
   },
+  { command: 'task.set_type', operationId: 'op', recordId: 'r', taskType: 'research' },
+  { command: 'map.revise', operationId: 'op', recordId: 'r', notes: 'n' },
+  { command: 'map.scope', operationId: 'op', recordId: 'r', client: 'c' },
+  { command: 'map.chart', operationId: 'op', title: 't' },
+  { command: 'task.set_blocking', operationId: 'op', recordId: 'r', blockedBy: [] },
+  { command: 'task.claim', operationId: 'op', recordId: 'r' },
+  { command: 'map.graduate', operationId: 'op', recordId: 'r', patchId: 'p', tickets: [] },
+  { command: 'task.resolve', operationId: 'op', recordId: 'r', answer: 'a', gist: 'g' },
+  { command: 'task.close_out_of_scope', operationId: 'op', recordId: 'r', reason: 'x' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -338,6 +366,15 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'task.set_type': ['setTaskType', 'request'],
+  'map.revise': ['reviseMap', 'request'],
+  'map.scope': ['scopeMap', 'request'],
+  'map.chart': ['chartMap', 'request'],
+  'task.set_blocking': ['setBlocking', 'request'],
+  'task.claim': ['claimTicket'],
+  'map.graduate': ['graduateFog', 'request'],
+  'task.resolve': ['resolveTicket', 'request'],
+  'task.close_out_of_scope': ['closeOutOfScope', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
