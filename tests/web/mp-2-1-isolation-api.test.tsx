@@ -16,8 +16,8 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Hono } from 'hono';
 import { heldAddressOffer } from '../../apps/web/src/held-address.tsx';
-import { tokenFor, type ApiFixture } from '../api/fixture.ts';
-import { createControls } from '../api/controls-fixture.ts';
+import { authorised, post, tokenFor, type ApiFixture } from '../api/fixture.ts';
+import { agentPath, createControls } from '../api/controls-fixture.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
 import {
   insertActor,
@@ -54,6 +54,8 @@ describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
   let fixture: ApiFixture;
   let api: Hono;
   let agentSubject: string;
+  /** The live delegation's credential, which the agent presents beside its login. */
+  let delegation: string;
   const subjects = {
     both: `both-${randomUUID()}`,
     alphaOnly: `alpha-only-${randomUUID()}`,
@@ -69,6 +71,7 @@ describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
     const reservation = await controls.approve(await controls.propose(task.id, task.revision));
     const picked = await controls.pickup(reservation);
     expect(typeof picked['credential']).toBe('string');
+    delegation = String(picked['credential']);
     agentSubject = fixture.agent.subject;
     const bravo = await insertBusiness(fixture.db.app, 'bravo');
     await enrolAs(fixture.db.app, fixture.business, subjects.both, true);
@@ -84,12 +87,22 @@ describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
   const through = ((url: string | URL, init?: RequestInit) =>
     api.fetch(new Request(`http://api.test${String(url)}`, init))) as typeof fetch;
 
-  async function offer(subject: string, heldIn: string, signedInTo: string) {
+  async function offer(subject: string, heldIn: string, signedInTo: string, held?: string) {
+    // An agent's probe carries its live delegation on every call, as the agent's own client does.
+    const fetch = (
+      held === undefined
+        ? through
+        : async (url: string | URL, init?: RequestInit) => {
+            const headers = new Headers(init?.headers);
+            headers.set('x-agent-delegation', held);
+            return await through(url, { ...init, headers });
+          }
+    ) as typeof globalThis.fetch;
     return await heldAddressOffer({
       held: { address: '/task/TSK-1', businessKey: heldIn, code: 'AUTH_SESSION_EXPIRED' },
       next: { token: await tokenFor(subject), businessKey: signedInTo, email: 'x@example.test' },
       apiOrigin: '',
-      fetch: through,
+      fetch,
     });
   }
 
@@ -116,8 +129,21 @@ describe.skipIf(serverUrl === undefined)('MP-2-1 isolation', () => {
   });
 
   it('names no business to an agent under a live delegation from an Alpha person', async () => {
-    expect(await offer(agentSubject, 'alpha', 'bravo')).toEqual({ kind: 'unnamed' });
-    expect(await offer(agentSubject, 'bravo', 'alpha')).toEqual({ kind: 'unnamed' });
+    // The delegation is live and the bearer with it is answered on the agent's own route,
+    // so an unnamed offer below is the delegation lending nothing, not a dead credential.
+    const live = await post(
+      api,
+      agentPath('session.capabilities'),
+      { operationId: randomUUID() },
+      { ...authorised(await tokenFor(agentSubject)), 'x-agent-delegation': delegation },
+    );
+    expect(live.status).toBe(200);
+    for (const held of [undefined, delegation]) {
+      // eslint-disable-next-line no-await-in-loop -- bearer alone, then with the delegation
+      expect(await offer(agentSubject, 'alpha', 'bravo', held)).toEqual({ kind: 'unnamed' });
+      // eslint-disable-next-line no-await-in-loop -- bearer alone, then with the delegation
+      expect(await offer(agentSubject, 'bravo', 'alpha', held)).toEqual({ kind: 'unnamed' });
+    }
   });
 
   it('names no business for one that does not exist, the same as one the person is not in', async () => {
