@@ -188,7 +188,8 @@ async function main(): Promise<void> {
     holdSecret(caller.token);
   }
   const keys = mkdtempSync(join(tmpdir(), 'journey-keys-'));
-  process.env['CLI_PROCESS_PIDFILE'] = PIDFILE;
+  // A record of every process started, beside the pid file; only groups are ever stopped.
+  process.env['CLI_PROCESS_PIDFILE'] = `${PIDFILE}.started`;
   const serve = async (): Promise<ServedApi> =>
     await serveApi(world, { port: API_PORT, keys, recovery: 'alpha,bravo' });
   let served = await serve();
