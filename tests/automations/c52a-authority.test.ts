@@ -109,17 +109,15 @@ describe.skipIf(serverUrl === undefined)('C52-A standing approval authority', ()
         where s.activation_id = $1 order by s.sequence`,
       [one.activationId],
     );
-    expect(record).toStrictEqual([
-      { act: 'adopted', decided: w.admin.actorId, revoked: null },
-      { act: 'rolled_back', decided: w.admin.actorId, revoked: w.admin.actorId },
+    expect(record.map((kept) => [kept.act, kept.decided, kept.revoked])).toStrictEqual([
+      ['adopted', w.admin.actorId, null],
+      ['rolled_back', w.admin.actorId, w.admin.actorId],
     ]);
-    const activation = await w.controls.fixture.db.admin.execute<{
-      readonly enabled: boolean;
-      readonly changed: string;
-    }>('select enabled, changed_by_actor_id as changed from public.activations where id = $1', [
-      one.activationId,
-    ]);
-    expect(activation).toStrictEqual([{ enabled: false, changed: w.admin.actorId }]);
+    const [activation] = await w.controls.fixture.db.admin.execute<{ readonly by: string }>(
+      'select changed_by_actor_id as by from public.activations where id = $1 and not enabled',
+      [one.activationId],
+    );
+    expect(activation?.by).toBe(w.admin.actorId);
   });
 
   it('C52-A refusal automation:manage: read, write, client-scoped and settings-only holders change nothing', async () => {

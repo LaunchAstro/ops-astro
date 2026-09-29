@@ -56,7 +56,7 @@ const pair = (
   forms: { foreign: body(foreignId), fabricated: body(randomUUID()) },
 });
 
-/** C33's three identifier cells: a foreign version, activation and definition. */
+/** C33's three identifier cells: a foreign version, activation and definition; then C52-A's. */
 function automationCells(w: IdentWorld): [CommandName, ReturnType<typeof pair>][] {
   const f = w.foreign.automation;
   return [
@@ -77,6 +77,31 @@ function automationCells(w: IdentWorld): [CommandName, ReturnType<typeof pair>][
       'definition.release',
       pair('definitionId', f.definitionId, (definitionId) => ({ definitionId, ...RELEASE })),
     ],
+    ...approvalCells(w),
+  ];
+}
+
+const at = (activationId: string): Body => ({ activationId, expectedRevision: 1 });
+
+/** C52-A's identifier cells: a foreign activation, version and approval. */
+function approvalCells(w: IdentWorld): [CommandName, ReturnType<typeof pair>][] {
+  const f = w.foreign.automation;
+  const own = w.ownAutomation;
+  return [
+    [
+      'activation.adopt',
+      pair('activationId', f.activationId, (activationId) => ({
+        ...at(activationId),
+        versionId: own.versionId,
+      })),
+    ],
+    [
+      'activation.adopt',
+      pair('versionId', f.versionId, (versionId) => ({ ...at(own.activationId), versionId })),
+    ],
+    ['activation.roll_back', pair('activationId', f.activationId, at)],
+    ['activation.turn_off', pair('activationId', f.activationId, at)],
+    ['approval.revoke', pair('approvalId', f.approvalId, (approvalId) => ({ approvalId }))],
   ];
 }
 

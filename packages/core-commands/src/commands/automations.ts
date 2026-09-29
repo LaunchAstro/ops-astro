@@ -65,15 +65,15 @@ const FIXES: Readonly<Record<string, string>> = {
   modes: 'Send modes as a list of distinct entries from manual, scheduled and event.',
 };
 
-const invalid = (field: string): HandlerOutcome =>
+export const invalid = (field: string): HandlerOutcome =>
   refused(refuseCommand('FIELD_VALUE_INVALID', [field], [FIXES[field] ?? '']));
 
-const notPermitted = (state: string, fix: string): HandlerOutcome =>
+export const notPermitted = (state: string, fix: string): HandlerOutcome =>
   refused(refuseCommand('TRANSITION_NOT_PERMITTED', [state], [fix]));
 
 const absent = (value: unknown): boolean => value === undefined || value === null;
 
-const isRevision = (value: unknown): value is number =>
+export const isRevision = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 1;
 
 const isMode = (value: unknown): value is ActivationMode =>
@@ -148,14 +148,17 @@ async function changeExisting(
   const changed = await changeActivation(tx, activationId, expectedRevision, to.setting);
   if (changed !== null) return appliedActivation(changed);
   const now = await readActivation(tx, activationId);
-  return refused(
+  return staleAt(now?.revision ?? current.revision);
+}
+
+export const staleAt = (revision: number): HandlerOutcome =>
+  refused(
     refuseCommand(
       'VERSION_STALE',
-      [`revision=${now?.revision ?? current.revision}`],
+      [`revision=${revision}`],
       ['Read the registry again and act on the revision it is at now.'],
     ),
   );
-}
 
 const appliedActivation = (row: {
   readonly id: string;
