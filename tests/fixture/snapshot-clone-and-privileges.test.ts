@@ -180,3 +180,46 @@ it.skipIf(serverUrl === undefined)(
   },
   120_000,
 );
+
+it.skipIf(serverUrl === undefined)(
+  'the clone fallback refuses a FIXTURE_PG_CONTAINER that is not a container name, creating nothing',
+  async () => {
+    const template = snapshotTemplate();
+    const target = `fixture_refused_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const server = connectAsAdmin(serverUrl ?? '', { source: 'harness' });
+    const existing = await server.execute<{ datname: string }>(
+      'select datname from pg_database where datname = $1',
+      [template],
+    );
+    const created = existing.length === 0;
+    if (created) await server.execute(`create database "${template}"`);
+    const templateUrl = new URL(serverUrl ?? '');
+    templateUrl.pathname = `/${template}`;
+    const reader = postgres(templateUrl.toString(), { max: 1, idle_timeout: 0 });
+    const container = process.env['FIXTURE_PG_CONTAINER'];
+    try {
+      await reader`select 1`;
+      // docker would read it as its own option, and `--help` exits 0.
+      process.env['FIXTURE_PG_CONTAINER'] = '--help';
+      process.argv = ['node', 'tests/fixture/snapshot.ts', 'clone', target];
+      vi.resetModules();
+      await expect(import('./snapshot.ts')).rejects.toThrow(
+        'fixture: FIXTURE_PG_CONTAINER "--help" is not a container name or id',
+      );
+      const made = await server.execute<{ datname: string }>(
+        'select datname from pg_database where datname = $1',
+        [target],
+      );
+      expect(made).toHaveLength(0);
+    } finally {
+      if (container === undefined) delete process.env['FIXTURE_PG_CONTAINER'];
+      else process.env['FIXTURE_PG_CONTAINER'] = container;
+      process.argv = originalArgv;
+      await reader.end();
+      await server.execute(`drop database if exists "${target}" with (force)`);
+      if (created) await server.execute(`drop database "${template}" with (force)`);
+      await server.close();
+    }
+  },
+  120_000,
+);
