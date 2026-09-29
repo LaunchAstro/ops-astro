@@ -63,7 +63,7 @@ afterAll(async () => {
 describe.skipIf(serverUrl === undefined)('C80 isolation, another business', () => {
   it('never approves, lists or counts a correction of another business', async () => {
     const approve = await w.asIn(w.beta, w.eve, {
-      command: 'live_correction.approve',
+      command: 'live_correction.decide',
       correctionId: foreign.correctionId,
       versionId: foreign.versionId,
       decision: 'approve',
@@ -104,7 +104,7 @@ describe.skipIf(serverUrl === undefined)(
       const picked = await w.world.pickUp(w.cal, 'someone else’s work');
       const asked = await w.world.asAgent(
         {
-          command: 'live_correction.approve',
+          command: 'live_correction.decide',
           operationId: randomUUID(),
           correctionId: foreign.correctionId,
           versionId: foreign.versionId,

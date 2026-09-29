@@ -241,7 +241,7 @@ export type CommandRequest =
       readonly after: string;
     } & Envelope)
   | ({
-      readonly command: 'live_correction.approve';
+      readonly command: 'live_correction.decide';
       readonly correctionId: string;
       readonly versionId: string;
       readonly decision: string;

@@ -116,7 +116,7 @@ export type CommandName =
   // effect. The publish, the revert and `receipt written` are system writes
   // under the worker lease, so none of them is a row here.
   | 'live_correction.request'
-  | 'live_correction.approve'
+  | 'live_correction.decide'
   | 'settings.set_live_correction_approver';
 
 export interface CommandDeclaration {
@@ -396,18 +396,20 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  // Typed by the handler, after authority, on both entries: an agent holding
+  // nothing is told that before anything about its body.
   'live_correction.request': {
-    partyId: 'id',
-    taskId: 'id',
-    path: 'text',
-    word: 'text',
-    replacement: 'text',
-    pageUrl: 'text',
-    baseRevision: 'text',
-    before: 'text',
-    after: 'text',
+    partyId: 'any',
+    taskId: 'any',
+    path: 'any',
+    word: 'any',
+    replacement: 'any',
+    pageUrl: 'any',
+    baseRevision: 'any',
+    before: 'any',
+    after: 'any',
   },
-  'live_correction.approve': { correctionId: 'id', versionId: 'id', decision: 'text' },
+  'live_correction.decide': { correctionId: 'id', versionId: 'id', decision: 'text' },
   'settings.set_live_correction_approver': { value: 'any', expectedRevision: 'any' },
 };
 
@@ -613,7 +615,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['partyId', 'taskId'],
     agent: 'delegated',
   }),
-  declare('live_correction.approve', 'decide', {
+  declare('live_correction.decide', 'decide', {
     collection: GATE_COLLECTION,
     targetsExistingRecord: false,
     authorisedOn: 'target',

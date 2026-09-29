@@ -22,6 +22,7 @@ import {
   TITLE,
 } from './external-party-records.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
+import { seedLiveCorrection } from './c80-bodies.ts';
 import {
   bearer,
   call,
@@ -210,6 +211,9 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
     const positiveBody = createPositiveBody({
       alphaTaskId: shared,
       assigneePersonId: world.ada.personId as string,
+      adminPersonId: world.ada.personId as string,
+      seedCorrection: async () =>
+        await seedLiveCorrection(world.db.app, world.alpha, shared, world.mia),
       asPerson: async (name, body) =>
         await as(world.ada, name, { operationId: randomUUID(), ...body }),
       freshTask: async (title) => {

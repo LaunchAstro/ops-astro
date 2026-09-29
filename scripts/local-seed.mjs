@@ -98,6 +98,13 @@ const GRANTS_BY_ROLE = {
     // A top-up is a money decision on `billing` (T2e, the permission
     // catalogue's `billing:decide`): the owner and administrators hold it.
     ['billing', 'decide'],
+    // C80: a live correction is asked for as run work and approved as a gate
+    // decision (the permission key catalogue's `run:write` and `gate:decide`),
+    // and an administrator is whom the catalogue names for both. Only the
+    // configured approver passes an approval, so the grant alone approves nothing.
+    ['run', 'read'],
+    ['run', 'write'],
+    ['gate', 'decide'],
   ],
   member: [
     ['task', 'read'],

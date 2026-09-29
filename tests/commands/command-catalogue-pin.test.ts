@@ -113,7 +113,7 @@ vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async
 }));
 vi.mock('../../packages/core-commands/src/commands/live-corrections.ts', async (original) => ({
   ...(await original<object>()),
-  approveLiveCorrection: recorder('approveLiveCorrection'),
+  decideLiveCorrection: recorder('decideLiveCorrection'),
   requestLiveCorrection: recorder('requestLiveCorrection'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (original) => ({
@@ -148,7 +148,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.write_off': ['recordId', 'attemptId'],
   'delegation.revoke': [],
   'grant.revoke': [],
-  'live_correction.approve': ['correctionId', 'versionId'],
+  'live_correction.decide': ['correctionId', 'versionId'],
   'live_correction.request': ['partyId', 'taskId'],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
@@ -172,7 +172,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.write_off',
   'delegation.revoke',
   'grant.revoke',
-  'live_correction.approve',
+  'live_correction.decide',
   'live_correction.request',
   'person.list',
   'preset.plan',
@@ -317,7 +317,7 @@ const REQUESTS: readonly CommandRequest[] = [
     after: 'after',
   },
   {
-    command: 'live_correction.approve',
+    command: 'live_correction.decide',
     operationId: 'op',
     correctionId: 'c',
     versionId: 'v',
@@ -372,7 +372,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
   'live_correction.request': ['requestLiveCorrection', 'request'],
-  'live_correction.approve': ['approveLiveCorrection', 'request'],
+  'live_correction.decide': ['decideLiveCorrection', 'request'],
   'settings.set_live_correction_approver': [
     'setBusinessSetting',
     'settings.set_live_correction_approver',

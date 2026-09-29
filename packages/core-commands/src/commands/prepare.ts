@@ -422,7 +422,7 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
   // the party of the correction it names, read in this business only, so a
   // correction elsewhere falls back to the business like any unknown target.
   'live_correction.request': ['partyId', (_tx, id) => Promise.resolve({ kind: 'party', id })],
-  'live_correction.approve': [
+  'live_correction.decide': [
     'correctionId',
     (tx, id) =>
       firstRow(

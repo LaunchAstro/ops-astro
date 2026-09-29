@@ -92,6 +92,8 @@ export const MEMBER_ACTIONS: readonly Action[] = ['read', 'write', 'assign', 'co
  * fixture would have recorded four missing positive controls as product
  * failures. The grant is per collection because the surface says it is.
  */
+// `run` and `gate` are C80's: a live correction is requested as run work and
+// approved as a gate decision, and the seed grants the administrator both.
 export const ADMIN_COLLECTIONS: readonly string[] = [
   'task',
   'person',
@@ -99,6 +101,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'preset',
   // `budget.top_up` asks `decide` on `billing` (T2e), as the seed's admin holds it.
   'billing',
+  'run',
+  'gate',
 ];
 
 export async function tokenFor(

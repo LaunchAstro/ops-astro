@@ -21,7 +21,7 @@
 // (TC:108). The rows are the acceptance world's own, one per table, taken once
 // from a full-schema world and written by the owner with triggers and foreign
 // keys off, since an intermediate prefix has no journey to write them; the
-// three tables the journey leaves empty get a row made here. They are removed
+// tables the journey leaves empty get a row made here. They are removed
 // again before the next migration, so no migration meets a row it did not
 // expect. The worker role is created by 0008, but roles belong to
 // the cluster rather than the database, so on a server where any database has
@@ -97,6 +97,29 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     run_id: randomUUID(),
     task_id: randomUUID(),
     reactivated: false,
+  },
+  'public.live_corrections': {
+    party_id: randomUUID(),
+    task_id: randomUUID(),
+    requested_by_actor_id: randomUUID(),
+    requested_by_person_id: randomUUID(),
+    target_path: 'src/pages/about.md',
+    word: 'friendly',
+    replacement: 'welcoming',
+    page_url: 'https://agency.example/about/',
+    pre_image_digest: 'sha256:seed',
+    base_revision: 'rev-1',
+    seam: 'seam-seed',
+    version_id: randomUUID(),
+    version_digest: 'sha256:seed',
+  },
+  'public.live_correction_receipts': {
+    correction_id: randomUUID(),
+    lease_id: randomUUID(),
+    fence: 1,
+    step: 'publish',
+    outcome: 'live',
+    observations: {},
   },
 };
 

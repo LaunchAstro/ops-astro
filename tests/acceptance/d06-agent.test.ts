@@ -63,6 +63,13 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
 /** In `AGENT_SURFACE` and still not the agent's: a person decides (case (j) of the matrix). */
 const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide']);
 
+/**
+ * In `AGENT_SURFACE`, reached only under a delegation carrying `run:write`,
+ * which no pickup mints yet: the journey's delegation is refused it. C80's
+ * positive agent case is `tests/site/c80-agent-request.test.ts`.
+ */
+const AGENT_BEYOND_A_PICKUP: ReadonlySet<CommandName> = new Set(['live_correction.request']);
+
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
   TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),
 );
@@ -262,7 +269,9 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       const after = await durable();
       const reason = AGENT_EXCLUDED_BY_DESIGN.has(cell.operation)
         ? `a person decides; answered ${String(answer.body['code'])}`
-        : `not in AGENT_SURFACE; answered ${String(answer.body['code'])}`;
+        : AGENT_BEYOND_A_PICKUP.has(cell.operation)
+          ? `needs a run:write delegation; answered ${String(answer.body['code'])}`
+          : `not in AGENT_SURFACE; answered ${String(answer.body['code'])}`;
       tally.count(cell.operation, 'agent', answer.body['refused'] === true, reason);
       expect(answer.body['refused']).toBe(true);
       if (typeof value === 'string') expect(JSON.stringify(answer.body)).not.toContain(value);
@@ -274,7 +283,9 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       });
       // The request was authenticated, so the door log saw it.
       expect(after.doorLog - before.doorLog).toBeGreaterThan(0);
-      expect(AGENT_SURFACE.has(cell.operation)).toBe(AGENT_EXCLUDED_BY_DESIGN.has(cell.operation));
+      expect(AGENT_SURFACE.has(cell.operation)).toBe(
+        AGENT_EXCLUDED_BY_DESIGN.has(cell.operation) || AGENT_BEYOND_A_PICKUP.has(cell.operation),
+      );
     },
     60_000,
   );

@@ -32,7 +32,7 @@ import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
-import { approveLiveCorrection, requestLiveCorrection } from './live-corrections.ts';
+import { decideLiveCorrection, requestLiveCorrection } from './live-corrections.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -99,7 +99,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.restart': restartOnTask,
 
   'live_correction.request': requestLiveCorrection,
-  'live_correction.approve': approveLiveCorrection,
+  'live_correction.decide': decideLiveCorrection,
   'settings.set_live_correction_approver': setting,
 
   // EX-01. A person picks up, renews and hands back as themselves, on a

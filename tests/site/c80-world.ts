@@ -156,7 +156,7 @@ function commands(
       }),
     approve: async (member, correctionId, versionId) =>
       await as(member, {
-        command: 'live_correction.approve',
+        command: 'live_correction.decide',
         correctionId,
         versionId,
         decision: 'approve',

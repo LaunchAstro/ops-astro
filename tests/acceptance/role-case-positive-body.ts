@@ -7,6 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
+import { C80_REQUEST } from './c80-bodies.ts';
 import {
   PROPOSAL,
   lineageOn,
@@ -142,6 +143,22 @@ export function createPositiveBody(
         return { body: { value: 1200 } };
       case 'settings.set_client_sign_off':
         return { body: { value: true } };
+      case 'settings.set_live_correction_approver':
+        return { body: { value: context.assigneePersonId } };
+      case 'live_correction.request': {
+        const task = await context.freshTask('a task a live correction is worked under');
+        return { body: { ...C80_REQUEST, partyId: randomUUID(), taskId: task.id } };
+      }
+      case 'live_correction.decide': {
+        // Another member's request, and the admin named as the approver just
+        // before: the requester never approves, and only the configured one does.
+        const correction = await context.seedCorrection();
+        const named = await context.asPerson('settings.set_live_correction_approver', {
+          value: context.adminPersonId,
+        });
+        if (named.code !== 'ok') throw new Error(`matrix: approver refused ${named.code}`);
+        return { body: { ...correction, decision: 'approve' } };
+      }
       case 'budget.top_up':
         // The admin approved the plan and holds billing, so a top-up under
         // the band is hers alone (T2e).

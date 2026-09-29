@@ -81,7 +81,7 @@ describe.skipIf(serverUrl === undefined)('C80 isolation, an agent under a live d
     const created = await w.as(w.ava, { command: 'task.create', fields: { title: 'other' } });
     const otherTask = 'recordId' in created ? String(created.recordId) : '';
     const asked = await w.world.asAgent(body(w.partyA, otherTask), credential);
-    expect(codeOf(asked)).toBe('DELEGATION_EXCLUDES_OPERATION');
+    expect(codeOf(asked)).toBe('DELEGATION_OUT_OF_PURPOSE');
     expect(await agentRows()).toBe('0');
   });
 });

@@ -31,6 +31,7 @@
 // run's exit code.
 
 import { randomUUID } from 'node:crypto';
+import { C80_REQUEST } from './c80-bodies.ts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   COMMAND_SURFACE,
@@ -554,19 +555,28 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(
         declaration.name,
-        ['task.heartbeat', 'task.dispatch', 'task.observe'].includes(declaration.name)
-          ? // A heartbeat, a dispatch or an observe, like a handback, names its task through the lease
-            // and never through a stray `recordId` (final review R1 #23), so
-            // the sibling is reached by its own lease.
+        declaration.name === 'live_correction.request'
+          ? // C80's request names its task through `taskId`, never a stray
+            // `recordId`, so the sibling is reached through that operand.
             {
               ...harness.probeBody(declaration),
-              leaseId: siblingLease['leaseId'],
-              fence: siblingLease['fence'],
-              ...(declaration.name === 'task.observe'
-                ? { attemptId: siblingLease['attemptId'] }
-                : {}),
+              ...C80_REQUEST,
+              partyId: randomUUID(),
+              taskId: sibling.id,
             }
-          : { ...harness.probeBody(declaration), recordId: sibling.id },
+          : ['task.heartbeat', 'task.dispatch', 'task.observe'].includes(declaration.name)
+            ? // A heartbeat, a dispatch or an observe, like a handback, names its task through the lease
+              // and never through a stray `recordId` (final review R1 #23), so
+              // the sibling is reached by its own lease.
+              {
+                ...harness.probeBody(declaration),
+                leaseId: siblingLease['leaseId'],
+                fence: siblingLease['fence'],
+                ...(declaration.name === 'task.observe'
+                  ? { attemptId: siblingLease['attemptId'] }
+                  : {}),
+              }
+            : { ...harness.probeBody(declaration), recordId: sibling.id },
         credential,
       );
       observe('agent-after-pickup', table, declaration.name, answer, expected);
