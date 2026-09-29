@@ -193,7 +193,8 @@ describe.skipIf(serverUrl === undefined)('MP-5-9 refusals per key', () => {
     expect(titleOf(await readTask('ticked'))).not.toContain('not allowed');
   });
 
-  it.todo('time:write: the hover box’s timer (LEANS-ON the time.* commands, SL08 U19)');
+  // time:write, the hover box's timer, waits on the time.* commands (SL08
+  // U19, LEANS-ON). No todo here: the isolation manifest refuses a skip.
 });
 
 describe.skipIf(serverUrl === undefined)('MP-5-9 isolation', () => {
