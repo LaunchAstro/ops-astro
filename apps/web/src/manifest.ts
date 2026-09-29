@@ -234,14 +234,24 @@ export function pageAt(address: string): PageMatch | null {
 export const fill = (path: string, client: string | null): string =>
   client === null ? path : path.replace(':client', client);
 
-export const namespaceOf = (address: string): Namespace =>
-  pageAt(address)?.page.namespace ?? 'agency';
+/** An address outside the manifest belongs to the face its prefix names. */
+export function namespaceOf(address: string): Namespace {
+  const [first, second] = segments(address);
+  const named = pageAt(address)?.page.namespace;
+  if (named !== undefined) return named;
+  if (first === 'portal' && second !== undefined) return 'portal';
+  return first === 'clients' && second !== undefined ? 'clients' : 'agency';
+}
 
 export const crossingDeclared = (from: Namespace, href: string): boolean =>
   namespaceOf(href) === from ||
   CROSS_FACE.some(
     ([at, to, path]) => at === from && to === namespaceOf(href) && fits(path, href) !== false,
   );
+
+/** A mockup source address: never drawn, linked or stored. */
+export const isLegacy = (address: string): boolean =>
+  /^\/(?:agency|client-portal)\//u.test(address);
 
 /**
  * The canonical address for a known legacy one, else null: the hash picks the
