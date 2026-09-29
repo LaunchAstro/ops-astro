@@ -11,7 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import type { Hono } from 'hono';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
@@ -118,6 +118,19 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
       [fixture.business],
     );
   }, 120_000);
+
+  // An agent holds one live delegation per purpose, and nothing in this head
+  // ends the one a pickup minted once its effect is observed: T2d's settlement
+  // will. Until then each case retires the worker's pickup delegation, so the
+  // next case's pickup is not refused DELEGATION_ALREADY_LIVE.
+  afterEach(async () => {
+    await fixture.db.admin.execute(
+      `update public.delegations set revoked_at = now(), revocation_cause = 'work_retired'
+        where business_id = $1 and agent_actor_id = $2 and purpose = 'synthetic_comment'
+          and revoked_at is null and settled_at is null`,
+      [fixture.business, fixture.agentActorId],
+    );
+  });
 
   afterAll(async () => {
     await fixture?.db.drop();
