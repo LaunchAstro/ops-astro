@@ -486,22 +486,13 @@ describe('a source comment cites no review, lane or finding id', () => {
     expect(commentLines('/* lane L4 */', 'x.cts')).toHaveLength(1);
     expect(readComments('-- Sol 6', 'x.sql').errors).toHaveLength(1);
     expect(readComments('-- Sol 6', 'Makefile').errors).toHaveLength(1);
-  });
-
-  it.each([
-    ['an SVG comment', '<svg>\n<!-- Sol 6 -->\n</svg>', 'x.svg', [2]],
-    ['a stylesheet comment inside an SVG', '<svg><style>/* lane L4 */</style></svg>', 'x.svg', [1]],
-  ])('reads %s', (_, source, file, lines) => {
-    expect(readComments(source, file).errors).toEqual([]);
-    expect(commentLines(source, file).map(({ line }) => line)).toEqual(lines);
-  });
-
-  it('skips only plain text by name, and refuses an SVG or text under an extension it does not read', () => {
+    // Plain text is skipped by name in the tree, never read; an SVG or a text
+    // file under an extension the check does not know is refused.
     expect(NO_COMMENTS.has('txt')).toBe(true);
     expect(NO_COMMENTS.has('svg')).toBe(false);
+    expect(readComments('Sol 6', 'x.txt').errors).toHaveLength(1);
     expect(readComments('<!-- Sol 6 -->', 'x.SVG').errors).toHaveLength(1);
     expect(readComments('Sol 6', 'x.text').errors).toHaveLength(1);
-    expect(readComments('Sol 6', 'x.txt').errors).toHaveLength(1);
   });
 
   it.each([
@@ -521,6 +512,10 @@ describe('a source comment cites no review, lane or finding id', () => {
     expect(commentLines(css, 'x.css').map(({ line }) => line)).toEqual([1, 2]);
     const html = '<p>x</p>\n<!--\nlane L4\n-->';
     expect(commentLines(html, 'x.html').map(({ line }) => line)).toEqual([2, 3, 4]);
+    // An SVG is XML: its comments and a stylesheet's inside it are read.
+    const svg = '<svg>\n<!-- Sol 6 -->\n<style>/* lane L4 */</style>\n</svg>';
+    expect(readComments(svg, 'x.svg').errors).toEqual([]);
+    expect(commentLines(svg, 'x.svg').map(({ line }) => line)).toEqual([2, 3]);
   });
 
   it('holds over every comment in packages/ and apps/', () => {

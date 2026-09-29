@@ -16,11 +16,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { loadConfigFromFile } from 'vite';
 import { afterAll, expect, it } from 'vitest';
 import { BrandMark } from '../../packages/ui/src/primitives/BrandMark.tsx';
 import { GLYPH_NAMES, Icon } from '../../packages/ui/src/primitives/Icon.tsx';
 import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
-import webConfig from '../../apps/web/vite.config.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const ui = `${root}packages/ui/`;
@@ -111,7 +111,7 @@ it('MP-1-2 fonts load from the three OFL fonts', () => {
   );
 });
 
-it('MP-1-2 each font ships with its licence file', () => {
+it('MP-1-2 each font ships with its licence file', async () => {
   const fonts = record().filter((a) => a.kind === 'font');
   expect(fonts.map((a) => a.package).toSorted()).toEqual(FONTS.map((f) => f.pkg).toSorted());
   for (const font of fonts) {
@@ -120,8 +120,13 @@ it('MP-1-2 each font ships with its licence file', () => {
     // The committed text is the installed package's own, byte for byte.
     expect(shipped).toBe(read(`${ui}node_modules/${String(font.package)}/LICENSE`));
   }
-  // The web build copies the record and the licence texts into its output.
-  expect(webConfig.publicDir).toBe(
+  // The web build copies the record and the licence texts into its output:
+  // the web app's config, resolved by vite itself.
+  const web = await loadConfigFromFile(
+    { command: 'build', mode: 'production' },
+    fileURLToPath(new URL('../../apps/web/vite.config.ts', import.meta.url)),
+  );
+  expect(web?.config.publicDir).toBe(
     fileURLToPath(new URL('../../packages/ui/assets', import.meta.url)),
   );
 });
