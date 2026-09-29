@@ -67,7 +67,8 @@ describe.skipIf(serverUrl === undefined)('MP-4-5 replies', () => {
     expect(codeOf(crossed)).toBe('FIELD_VALUE_INVALID');
     expect(JSON.stringify(crossed)).toContain('audience');
     const malformed = await post(who.decider, ids['a'] ?? '', 'internal', 'bad parent', 'nope');
-    expect(codeOf(malformed)).toBe('FIELD_VALUE_INVALID');
+    // A string that is not an identifier is the envelope's, as for every id.
+    expect(codeOf(malformed)).toBe('NOT_FOUND');
     expect(await who.world.commentsOn(ids['a'] ?? '')).toBe(before);
   });
 

@@ -40,6 +40,8 @@ const COMMENT_FIELDS = [
   'body',
   'comment_type',
   'edited_at',
+  // A reply's message (MP-4-5, R42).
+  'parent',
   'posted_at',
   'source',
   'task',

@@ -270,6 +270,22 @@ export async function createHarness(part: string): Promise<Harness> {
     });
   }
 
+  /** A note `author` writes on a fresh task, for the author-only commands (MP-4-5). */
+  async function ownComment(
+    author: { readonly token: string } = world.ada,
+  ): Promise<Task & { readonly commentId: string }> {
+    const task = await freshTask('a task with a note to change');
+    const written = await asPerson(
+      'task.comment',
+      { recordId: task.id, expectedRevision: task.revision, body: 'a note', audience: 'internal' },
+      'alpha',
+      author,
+    );
+    if (written.code !== 'ok') throw new Error(`matrix: task.comment refused ${written.code}`);
+    const detail = written.body['detail'] as Record<string, unknown>;
+    return { ...task, revision: await revisionOf(task.id), commentId: String(detail['commentId']) };
+  }
+
   /** One internal note and one addressed to the client, on the same task. */
   async function writeBothComments(taskId: string): Promise<readonly Answer[]> {
     const written: Answer[] = [];
@@ -307,6 +323,7 @@ export async function createHarness(part: string): Promise<Harness> {
       asPerson: async (name, body) => await asPerson(name, body),
       freshTask,
       clientTask,
+      ownComment: async (author) => await ownComment(author as { readonly token: string }),
     }),
     approvedReservation,
     reserve,

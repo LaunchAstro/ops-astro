@@ -53,6 +53,9 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.read',
   'task.comment',
   'task.propose',
+  // An author's edit and delete (MP-4-5), each on a comment the agent wrote.
+  'task.edit_comment',
+  'task.delete_comment',
   // The three marks (MP-4-9) and the Ad hoc mark (MP-4-10), which an agent
   // sets on its own task inside its delegation.
   'task.set_scores',
@@ -155,6 +158,22 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     if (name === 'task.comment') {
       const body = { recordId: held.taskId, body: 'the agent notes it', audience: 'internal' };
       return { body: { operationId, ...body }, credential };
+    }
+    if (name === 'task.edit_comment' || name === 'task.delete_comment') {
+      const written = await harness.asAgent(
+        'task.comment',
+        {
+          operationId: randomUUID(),
+          recordId: held.taskId,
+          body: 'to change',
+          audience: 'internal',
+        },
+        credential,
+      );
+      const commentId = written.body['detail'] as Record<string, unknown> | undefined;
+      const body = { recordId: held.taskId, commentId: commentId?.['commentId'] };
+      const words = name === 'task.edit_comment' ? { body: 'changed' } : {};
+      return { body: { operationId, ...body, ...words }, credential };
     }
     if (name === 'task.set_scores' || name === 'task.set_adhoc') {
       // Read, not carried: each control moves the task's revision.

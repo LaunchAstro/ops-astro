@@ -23,9 +23,12 @@ import {
 
 export function createPositiveBody(
   context: BodyContext,
-): (declaration: CommandDeclaration) => Promise<Prepared> {
+): (declaration: CommandDeclaration, author?: unknown) => Promise<Prepared> {
   // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
-  return async function positiveBody(declaration: CommandDeclaration): Promise<Prepared> {
+  return async function positiveBody(
+    declaration: CommandDeclaration,
+    author?: unknown,
+  ): Promise<Prepared> {
     const target = async (): Promise<Record<string, unknown>> => {
       const task = await context.freshTask(`a task for ${declaration.name}`);
       return { recordId: task.id, expectedRevision: task.revision };
@@ -58,6 +61,22 @@ export function createPositiveBody(
       }
       case 'task.comment':
         return { body: { ...(await target()), body: 'a note', audience: 'internal' } };
+      case 'task.edit_comment':
+      case 'task.delete_comment': {
+        if (context.ownComment === undefined) {
+          return { body: { ...(await target()), commentId: randomUUID(), body: 'changed' } };
+        }
+        const own = await context.ownComment(author);
+        const words = declaration.name === 'task.edit_comment' ? { body: 'changed' } : {};
+        return {
+          body: {
+            recordId: own.id,
+            expectedRevision: own.revision,
+            commentId: own.commentId,
+            ...words,
+          },
+        };
+      }
       case 'task.assign':
         return { body: { ...(await target()), fields: { assignee: context.assigneePersonId } } };
       case 'task.triage':
