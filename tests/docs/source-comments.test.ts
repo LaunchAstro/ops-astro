@@ -18,7 +18,7 @@ const root = new URL('../../', import.meta.url);
 /** What a comment may not cite, by the label a failure reports. */
 const CITATIONS: readonly (readonly [string, RegExp])[] = [
   ['a thermo review or recheck', /thermo/iu],
-  ['a Sol review', /\bSol\b|\bSOL-[A-Z0-9]/u],
+  ['a Sol review', /\bSol\b|\bSOL-[A-Z0-9]/iu],
   ['a numbered review finding', /\bR\d+-[A-Z]+-\d+|\b(?:RUNTIME|AUTHORITY|SURFACE)-(?:R-)?\d+\b/u],
   ['a finding by review and number', /\bR\d+ #\d+/u],
   ['a recheck finding code', /\b(?:NNA|NA|NB|NC)\d+\b/u],
@@ -56,7 +56,22 @@ const cites = (comment: string): string | undefined => citationIn(comment)?.labe
 
 type CommentLine = { readonly line: number; readonly comment: string };
 
-const LANGS = { ts: 'ts', mts: 'ts', tsx: 'tsx', js: 'js', mjs: 'js' } as const;
+const LANGS = {
+  ts: 'ts',
+  mts: 'ts',
+  cts: 'ts',
+  tsx: 'tsx',
+  js: 'js',
+  mjs: 'js',
+  cjs: 'js',
+  jsx: 'jsx',
+} as const;
+
+/** Formats whose comments are read by pattern. */
+const STYLES: ReadonlySet<string> = new Set(['css', 'html']);
+
+/** Formats that hold no comments, which the tree case skips by name. */
+const NO_COMMENTS: ReadonlySet<string> = new Set(['json', 'gitkeep']);
 
 /**
  * Every comment in `text`, one entry per source line it covers. A script's
@@ -65,7 +80,8 @@ const LANGS = { ts: 'ts', mts: 'ts', tsx: 'tsx', js: 'js', mjs: 'js' } as const;
  * comment after code, with or without a space, always is. Two kinds the
  * parser does not report are read by pattern: a SQL `--` line, which sits
  * inside a query template, and an HTML comment. A stylesheet's comments are
- * its block comments. `errors` is what the parser could not read.
+ * its block comments. `errors` is what the parser could not read, or the
+ * format itself when this check has no reader for it.
  */
 function readComments(
   text: string,
@@ -74,17 +90,19 @@ function readComments(
   const extension = file.slice(file.lastIndexOf('.') + 1);
   const spans: (readonly [number, number])[] = [];
   let errors: readonly unknown[] = [];
-  if (extension in LANGS) {
+  if (Object.hasOwn(LANGS, extension)) {
     const parsed = parseSync(file, text, { lang: LANGS[extension as keyof typeof LANGS] });
     errors = parsed.errors;
     for (const { start, end } of parsed.comments) spans.push([start, end]);
     for (const sql of text.matchAll(/^[ \t]*--\s.*$/gmu)) {
       spans.push([sql.index, sql.index + sql[0].length]);
     }
-  } else {
+  } else if (STYLES.has(extension)) {
     for (const block of text.matchAll(/\/\*[\s\S]*?\*\//gu)) {
       spans.push([block.index, block.index + block[0].length]);
     }
+  } else {
+    errors = [`${file} is not a format this check reads`];
   }
   for (const html of text.matchAll(/<!--[\s\S]*?-->/gu)) {
     spans.push([html.index, html.index + html[0].length]);
@@ -217,6 +235,34 @@ describe('a source comment cites no review round, lane or finding id', () => {
     expect(cites(read[0]?.comment ?? '')).toBe('a story of earlier handling');
   });
 
+  it.each([
+    ['a tab-indented line comment', '\t//\tSol 6 SURFACE-1'],
+    ['CRLF line endings', 'const a = 1;\r\n// final review R1 #20\r\nconst b = 2;'],
+    ['a byte-order mark', '\uFEFF// thermo review b483399'],
+    ['a comment inside a template expression', 'const s = `a ${/* Sol 6 */ 1} b`;'],
+    ['a JSX comment nested in markup', 'const v = <div><span>{/* lane L4 */}</span></div>;'],
+    ['a lower-case reviewer name', '// as sol asked'],
+    ['a tab inside a SQL comment', 'const q = sql`select 1\n\t--\tF4. revoked\n`;'],
+  ])('reads %s', (_, source) => {
+    const read = passages(commentLines(source));
+    expect(read.some(({ comment }) => cites(comment) !== undefined)).toBe(true);
+  });
+
+  it.each([
+    ['a citation inside a string', "const s = '// Sol 6 AUTHORITY-4';"],
+    ['a citation inside a template', 'const s = `/* thermo review */`;'],
+    ['a citation inside a regex', 'const r = /Sol 6|thermo/u;'],
+  ])('does not read %s', (_, source) => {
+    expect(commentLines(source)).toEqual([]);
+  });
+
+  it('reads a renamed script, and refuses a format it has no reader for', () => {
+    expect(commentLines('// Sol 6', 'x.cjs')).toHaveLength(1);
+    expect(commentLines('/* lane L4 */', 'x.cts')).toHaveLength(1);
+    expect(readComments('-- Sol 6', 'x.sql').errors).toHaveLength(1);
+    expect(readComments('-- Sol 6', 'Makefile').errors).toHaveLength(1);
+  });
+
   it('reads stylesheet and HTML comments across lines', () => {
     const css = 'a { color: red; } /* first line\n R2-RUNTIME-4 */';
     expect(commentLines(css, 'x.css').map(({ line }) => line)).toEqual([1, 2]);
@@ -225,18 +271,28 @@ describe('a source comment cites no review round, lane or finding id', () => {
   });
 
   it('holds over every comment in packages/ and apps/', () => {
-    const files = execFileSync('git', ['ls-files', 'packages', 'apps'], {
+    // Mode and path of every tracked file, so a symlink is refused rather than
+    // read through, and a file in a format with no reader fails instead of
+    // being skipped by its extension.
+    const entries = execFileSync('git', ['ls-files', '-s', 'packages', 'apps'], {
       cwd: root,
       encoding: 'utf8',
     })
       .split('\n')
-      .filter((file) => /\.(?:ts|tsx|mts|mjs|js|css|html)$/u.test(file));
-    expect(files.length).toBeGreaterThan(100);
+      .filter(Boolean)
+      .map((entry) => ({ mode: entry.split(' ')[0], file: entry.slice(entry.indexOf('\t') + 1) }));
+    expect(entries.length).toBeGreaterThan(100);
     const found: string[] = [];
-    const unread: string[] = [];
+    const unread: string[] = entries
+      .filter(({ mode }) => mode === '120000')
+      .map(({ file }) => `${file} is a symlink`);
+    const files = entries
+      .filter(({ mode }) => mode !== '120000')
+      .map(({ file }) => file)
+      .filter((file) => !NO_COMMENTS.has(file.slice(file.lastIndexOf('.') + 1)));
     for (const file of files) {
       const { lines, errors } = readComments(readFileSync(new URL(file, root), 'utf8'), file);
-      if (errors.length > 0) unread.push(file);
+      if (errors.length > 0) unread.push(`${file}: ${errors.length} unread`);
       for (const { line, comment } of passages(lines)) {
         const citation = citationIn(comment);
         if (citation !== undefined) {
