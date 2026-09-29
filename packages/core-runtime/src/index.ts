@@ -74,6 +74,7 @@ export {
   cancelAndClassify,
   classifyUnderLocks,
   replayRecordedTransitions,
+  sweepExpiredLeases,
   type Classification,
   type ClassifyRequest,
   type NonclaimableCause,
