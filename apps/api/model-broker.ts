@@ -58,7 +58,8 @@ const KINDS: ReadonlySet<string> = new Set<CredentialKind>([
   'cloud_credential',
   'replay',
 ]);
-const ROUTE_KEYS = ['key', 'reach', 'provider', 'credentialRef', 'credentialKind', 'installation'];
+const ROUTE_TEXT = ['key', 'reach', 'provider', 'credentialRef', 'credentialKind', 'installation'];
+const ROUTE_KEYS = [...ROUTE_TEXT, 'ceiling'];
 
 const invalid = (problem: string): BrokerSettings => ({ kind: 'invalid', problem });
 
@@ -77,7 +78,12 @@ function routeOf(entry: unknown): BrokerRoute | undefined {
   if (keys.length !== ROUTE_KEYS.length || !ROUTE_KEYS.every((key) => keys.includes(key))) {
     return undefined;
   }
-  if (!ROUTE_KEYS.every((key) => typeof shape[key] === 'string' && shape[key] !== '')) {
+  // The route's ceiling across the installation (AW-01's fair share): a whole number of calls.
+  const { ceiling } = shape;
+  if (typeof ceiling !== 'number' || !Number.isSafeInteger(ceiling) || ceiling < 1) {
+    return undefined;
+  }
+  if (!ROUTE_TEXT.every((key) => typeof shape[key] === 'string' && shape[key] !== '')) {
     return undefined;
   }
   const text = (key: string): string => shape[key] as string;
@@ -113,7 +119,8 @@ export function brokerSettings(
   if (routes === undefined || routes.length === 0 || routes.includes(undefined)) {
     return invalid(
       'MODEL_BROKER_ROUTES is not a list of routes, each exactly { key, reach, provider, ' +
-        'credentialRef, credentialKind, installation } with a known reach, kind and provider',
+        'credentialRef, credentialKind, installation, ceiling } with a known reach, kind and ' +
+        'provider and a whole-number ceiling of at least 1',
     );
   }
 

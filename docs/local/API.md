@@ -301,7 +301,10 @@ the `model.call` executor over it, handed to `composeApi` as
 `DEPENDENCY_NOT_LANDED` 501. Some of them, or a malformed one, stops the server
 with a problem naming the setting, never its value. The model operations and
 their adapters are registered in code there, not configured: the replay
-provider is the only one until the real-provider run.
+provider is the only one until the real-provider run. Each route in
+`MODEL_BROKER_ROUTES` declares its `ceiling`, a whole number of at least 1:
+the calls in flight on that route across every business of the installation,
+at most (the fair share, "The model call" below).
 
 ## Task, board and people operations
 
@@ -850,7 +853,13 @@ register's code (`LEASE_NOT_OWNED`, `LEASE_EXPIRED`, `AUTHORITY_LOST`,
 `DECISION_STALE`, `OPERATION_NOT_CATALOGUED`, `EFFECT_NOT_RECONCILABLE`,
 `LOCAL_MODEL_REQUIRED` 501, the three `SUBSCRIPTION_` codes, `RATE_LIMITED`
 with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
-`model_calls` row. A malformed operand is `FIELD_VALUE_INVALID` by name, and
+`model_calls` row. `RATE_LIMITED` writes nothing and answers two ceilings,
+each counting a call from its hold until it ends: the business's own per
+operation, and its fair share of the route's, which is the installation's.
+A business with calls in flight on a route holds no more than the route's
+ceiling divided by the businesses in flight there, itself counted. The share
+is read through `model_route_room` ([DATA.md](DATA.md), "What the tenancy proofs are"),
+under one lock per route. A malformed operand is `FIELD_VALUE_INVALID` by name, and
 its value is never echoed into the audit. Where no broker is configured the
 agent envelope's own `model.call` row answers `DEPENDENCY_NOT_LANDED` 501 after
 the delegation check (`AGENT_OPERATIONS`).

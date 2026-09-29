@@ -100,9 +100,14 @@ create index model_calls_business_idx on public.model_calls (business_id);
 
 create index model_calls_reservation_idx on public.model_calls (business_id, reservation_id);
 
+-- In flight is held or sent: a hold not yet sent counts toward every ceiling.
 create index model_calls_in_flight_idx
   on public.model_calls (business_id, operation_key)
-  where state = 'dispatched';
+  where state in ('reserved', 'dispatched');
+
+create index model_calls_route_in_flight_idx
+  on public.model_calls (route_key)
+  where state in ('reserved', 'dispatched');
 
 alter table public.model_calls enable row level security;
 alter table public.model_calls force row level security;
@@ -185,3 +190,78 @@ create trigger copy_registrations_no_update
   for each row execute function public.copy_registrations_append_only();
 
 grant select, insert on public.copy_registrations to ops_astro_app;
+
+
+-- The fair share (AW-01; ORCH-DECISION SL11 AW-01). A provider route has one
+-- ceiling for the whole installation, and a business with calls in flight on
+-- it holds no more than its share: the ceiling divided by the businesses in
+-- flight there, counting itself. A tenant transaction cannot count another
+-- business's rows under row security, so the count is this one function,
+-- which runs as its definer with row security off. It is the one read across
+-- businesses and it is kept narrow on purpose:
+--   * it answers one whole number, 1 when the calling business may hold one
+--     more call on the route and 0 when it may not: no id, no business, no
+--     count, and nothing larger than 1, which would say more about other
+--     businesses' load than the decision needs;
+--   * the business is the tenant transaction's own (app_business_id), never
+--     an argument; with none set the answer is 0;
+--   * PUBLIC may not execute it, and neither may the application's group:
+--     only `ops_astro_broker`, a role that holds nothing else. The group may
+--     take that role (SET) but does not inherit it, so the broker switches to
+--     it for this one statement and back, and any other statement the
+--     application sends is refused it.
+-- The broker serialises the decision per route with an advisory lock before
+-- it asks (packages/core-records/src/locks.ts). With an owner that does not
+-- bypass row security the query is refused rather than answered from one
+-- business's rows: `row_security = off` fails closed.
+
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname = 'ops_astro_broker') then
+    create role ops_astro_broker nologin nosuperuser nocreatedb nocreaterole nobypassrls;
+  end if;
+end $$;
+
+revoke all on schema ops from ops_astro_broker;
+revoke all on all tables in schema public from ops_astro_broker;
+revoke all on all tables in schema ops from ops_astro_broker;
+revoke all on all functions in schema public from ops_astro_broker;
+
+comment on role ops_astro_broker is
+  'The credential broker''s role for the fair share''s one count across businesses. '
+  'It executes public.model_route_room and holds nothing else; the application group '
+  'may set it, never inherit it.';
+
+grant ops_astro_broker to ops_astro_app with inherit false, set true;
+
+create function public.model_route_room(route text, route_ceiling integer)
+  returns integer
+  language sql
+  stable
+  security definer
+  set search_path = pg_catalog, public
+  set row_security = off
+as $$
+  with here as (
+    select public.app_business_id() as business_id
+  ),
+  flight as (
+    select count(*)::integer as total,
+           count(distinct c.business_id)::integer as holding,
+           (count(*) filter (where c.business_id = (select business_id from here)))::integer as mine
+      from public.model_calls c
+     where c.route_key = route
+       and c.state in ('reserved', 'dispatched')
+  )
+  select case
+           when (select business_id from here) is null then 0
+           when route_ceiling is null or route_ceiling < 1 then 0
+           when f.total >= route_ceiling then 0
+           when f.mine >= greatest(1, route_ceiling
+                  / (f.holding + case when f.mine = 0 then 1 else 0 end)) then 0
+           else 1
+         end
+    from flight f
+$$;
+
+revoke all on function public.model_route_room(text, integer) from public;
+grant execute on function public.model_route_room(text, integer) to ops_astro_broker;

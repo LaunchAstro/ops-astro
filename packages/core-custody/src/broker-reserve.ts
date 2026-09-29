@@ -152,12 +152,12 @@ export async function reserveModelCall(
     return await refused('EFFECT_NOT_RECONCILABLE');
   const route = routeFor(operation, caller, request, facts, broker);
   if (!route.ok) return await refused(route.code, route.words);
-  if (await atCeiling(tx, operation)) {
+  if (await atCeiling(tx, operation, route.route)) {
     return refusing('RATE_LIMITED', null, { retryAfterSeconds: WAIT_SECONDS });
   }
   const room = facts.heldMinor - (await committedMinor(tx, facts.reservationId));
   if (operation.maximumMinor > room) return await refused('BUDGET_UNAVAILABLE');
-  const callId = await insertHold(tx, facts, operation);
+  const callId = await insertHold(tx, facts, operation, route.route);
   await registerPromptCopy(tx, callId);
   return {
     ok: true,
@@ -201,29 +201,59 @@ function routeFor(
   return { ok: true, route };
 }
 
-/** The durable ceiling: in-flight calls are rows, counted under one lock per operation. */
-async function atCeiling(tx: TenantQuery, operation: ModelOperation): Promise<boolean> {
+/**
+ * The durable ceilings. A call is in flight from its hold until it ends, so a
+ * hold not yet sent counts. First the business's own ceiling per operation,
+ * under one lock per business and operation; then the route's, which is the
+ * installation's, under one lock per route.
+ */
+async function atCeiling(
+  tx: TenantQuery,
+  operation: ModelOperation,
+  route: BrokerRoute,
+): Promise<boolean> {
   await advisoryLock(tx, `model_call:${tx.businessId}:${operation.key}`);
   const [flight] = await tx.query<{ n: string }>(
     `select count(*)::text as n from public.model_calls
-      where business_id = $1 and operation_key = $2 and state = 'dispatched'`,
+      where business_id = $1 and operation_key = $2 and state in ('reserved', 'dispatched')`,
     [tx.businessId, operation.key],
   );
-  return Number(flight?.n ?? 0) >= operation.concurrency;
+  if (Number(flight?.n ?? 0) >= operation.concurrency) return true;
+  return !(await routeHasRoom(tx, route));
 }
 
-/** The hold: a `reserved` row at the operation's priced maximum. */
+/**
+ * The fair share: whether this business may hold one more call on the route,
+ * given every business's calls in flight there. Only the broker's role may ask
+ * (migration 0032, `model_route_room`); the application takes it for this one
+ * statement and gives it back, transaction-local as the wrapper sets the
+ * business (`set_config(..., true)`: no `set` statement is sent). A failed
+ * statement aborts the transaction, which undoes the role with the rest.
+ */
+async function routeHasRoom(tx: TenantQuery, route: BrokerRoute): Promise<boolean> {
+  await advisoryLock(tx, `model_route:${route.key}`);
+  await tx.query(`select set_config('role', 'ops_astro_broker', true)`);
+  const [answer] = await tx.query<{ room: number }>(
+    'select public.model_route_room($1, $2) as room',
+    [route.key, route.ceiling],
+  );
+  await tx.query(`select set_config('role', 'none', true)`);
+  return answer?.room === 1;
+}
+
+/** The hold: a `reserved` row at the operation's priced maximum, on the route it will take. */
 async function insertHold(
   tx: TenantQuery,
   facts: Facts,
   operation: ModelOperation,
+  route: BrokerRoute,
 ): Promise<string> {
   const callId = randomUUID();
   await tx.query(
     `insert into public.model_calls
        (business_id, id, run_id, step_id, lease_id, version_id, reservation_id, delegation_id,
-        operation_key, state, reserved_minor)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'reserved', $10)`,
+        operation_key, state, reserved_minor, route_key, route_reach, credential_kind)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'reserved', $10, $11, $12, $13)`,
     [
       tx.businessId,
       callId,
@@ -235,6 +265,9 @@ async function insertHold(
       facts.delegationId,
       operation.key,
       operation.maximumMinor,
+      route.key,
+      route.reach,
+      route.credentialKind,
     ],
   );
   return callId;

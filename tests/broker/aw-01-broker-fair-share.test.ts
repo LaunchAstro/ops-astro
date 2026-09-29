@@ -103,12 +103,12 @@ async function roomAs(
 ): Promise<readonly Record<string, unknown>[]> {
   return await owner.db.app.withBusiness(owner.business, async (tx) => {
     await before?.(tx);
-    await tx.query(`set local role ${BROKER_ROLE}`);
+    await tx.query(`select set_config('role', $1, true)`, [BROKER_ROLE]);
     const rows = await tx.query<Record<string, unknown>>(
       'select public.model_route_room($1, $2) as room',
       [routeKey, ceiling],
     );
-    await tx.query('set local role none');
+    await tx.query(`select set_config('role', 'none', true)`);
     return rows;
   });
 }
@@ -227,14 +227,14 @@ it('AW-01 fair share: the broker role holds execute on the one function and noth
     [BROKER_ROLE],
   );
   expect(tables).toEqual([]);
-  const executes = await s.db.admin.execute<{ signature: string }>(
-    `select p.oid::regprocedure::text as signature
+  const executes = await s.db.admin.execute<{ schema: string; signature: string }>(
+    `select n.nspname as schema, p.oid::regprocedure::text as signature
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname not like 'pg\\_%' and n.nspname <> 'information_schema'
         and has_function_privilege($1, p.oid, 'EXECUTE')`,
     [BROKER_ROLE],
   );
-  expect(executes.map((row) => row.signature)).toEqual([ROOM]);
+  expect(executes).toEqual([{ schema: 'public', signature: 'model_route_room(text,integer)' }]);
 });
 
 it('AW-01 fair share: the application may take the broker role, never inherit it, and the function is pinned', async () => {
