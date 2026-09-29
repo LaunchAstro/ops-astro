@@ -36,6 +36,7 @@ import {
   stopStarted,
 } from './journey-stack.ts';
 import { builtCases, protectedVerdicts } from './journey-proofs.ts';
+import { emptyMeasures, takeMeasure } from './journey-measure.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 /**
@@ -89,7 +90,7 @@ const admin = `postgres://postgres:${password}@127.0.0.1:${pg}/journey`;
 const pidfile = join(evidence, 'journey.pids');
 const lines = [];
 /** What the run hands the bundle beside its case lines (T4d). */
-const carried = { approval: undefined, budgets: [], measures: {} };
+const carried = { approval: undefined, budgets: [], measures: emptyMeasures() };
 const begun = performance.now();
 const loadAtStart = os.loadavg()[0];
 
@@ -116,7 +117,7 @@ function take(line) {
     record(one.case, one.status, one.detail, one.facts);
   } else if (kind === 'journey-approval') carried.approval = JSON.parse(value);
   else if (kind === 'journey-budget') carried.budgets.push(JSON.parse(value));
-  else if (kind === 'journey-measure') Object.assign(carried.measures, JSON.parse(value));
+  else if (kind === 'journey-measure') takeMeasure(carried.measures, value);
 }
 
 /** The journey's own run, one `journey-case` line per case on its stdout. */
