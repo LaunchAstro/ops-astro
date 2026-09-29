@@ -30,7 +30,6 @@ export {
   identityOf,
   isInstructionPath,
   pinBootstrapFile,
-  readPinned,
   setDigest,
   type ActivationMode,
   type ActivationRequest,
@@ -39,10 +38,13 @@ export {
   type CapturedManifest,
   type FileIdentity,
   type InstructionSource,
+} from './definitions.ts';
+export {
+  readPinned,
   type PinnedRead,
   type ReadAuditNote,
   type ReadRequest,
-} from './definitions.ts';
+} from './definitions-read.ts';
 export {
   heartbeat,
   MAXIMUM_LEASE_LIFETIME_SECONDS,
