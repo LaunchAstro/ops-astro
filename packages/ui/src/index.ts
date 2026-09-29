@@ -36,6 +36,7 @@ import './styles/5-task.css';
 import './styles/6-kit-standin.css';
 import './styles/7-page-kit.css';
 import './styles/8-notifications.css';
+import './styles/9-ledger.css';
 
 export * from './state/corpus.ts';
 export * from './state/project.ts';
@@ -47,6 +48,7 @@ export * from './surfaces/Shell.tsx';
 export * from './surfaces/Board.tsx';
 export * from './surfaces/TaskPage.tsx';
 export * from './surfaces/Notifications.tsx';
+export * from './surfaces/Ledger.tsx';
 export * from './page-kit/tips.tsx';
 export * from './page-kit/section.tsx';
 export * from './page-kit/stats.tsx';
