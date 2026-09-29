@@ -261,6 +261,15 @@ export function createPositiveBody(
             'executed alternative: needs a pickup; ada revokes a live delegation in ' +
             'case (h), k-revoke rows',
         };
+      case 'model.call':
+        // The run's worker's, never a person's: the person prefix refuses it
+        // SCOPE_NOT_GRANTED (AW-01, "n/a (system)"). The agent makes the call
+        // under its delegation in the agent journey, case (h).
+        return {
+          exception:
+            'executed alternative: the person prefix refuses it by design; the agent calls it ' +
+            'in case (h)',
+        };
       case 'task.heartbeat':
         // The person renews their own lease (ledger line 38, "current lease
         // owner"). The agent's renewal is in the agent journey.

@@ -56,6 +56,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.board': ['board', 'board'],
   'task.heartbeat': ['leaseId', 'agent'],
   'task.handback': ['leaseId', 'agent'],
+  'model.call': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
 };
 

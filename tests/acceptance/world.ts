@@ -33,6 +33,7 @@
 // database — but its shape is followed so that a case proved here is a case
 // about the product a person actually signs into.
 
+import { openReplayBroker, type ReplayBroker } from '../broker/replay-broker.ts';
 import { randomUUID } from 'node:crypto';
 import {
   createFreshDatabase,
@@ -90,6 +91,8 @@ export interface World {
   readonly agent: AgentIdentity;
   /** The real application, built the way `apps/api/server.ts` builds it. */
   readonly api: ReturnType<typeof createApi>;
+  /** The credential broker the app mounts, over the replay provider on loopback. */
+  readonly broker: ReplayBroker;
   close(): Promise<void>;
 }
 /**
@@ -162,6 +165,7 @@ export async function createWorld(part: string): Promise<World> {
   }
 
   const byKey: Readonly<Record<string, BusinessId>> = { alpha, bravo };
+  const broker = await openReplayBroker();
   const api = createApi({
     database: db.app,
     verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
@@ -172,6 +176,7 @@ export async function createWorld(part: string): Promise<World> {
     executeCommand,
     executeRead,
     executeAgentCommand,
+    executeModelCall: broker.executor,
   });
 
   return {
@@ -187,7 +192,9 @@ export async function createWorld(part: string): Promise<World> {
     bea,
     agent,
     api,
+    broker,
     close: async () => {
+      await broker.close();
       await db.drop();
     },
   };
@@ -219,6 +226,7 @@ export function rebuildApi(world: World): {
       executeCommand,
       executeRead,
       executeAgentCommand,
+      executeModelCall: world.broker.executor,
     }),
     close: async () => {
       await database.close();

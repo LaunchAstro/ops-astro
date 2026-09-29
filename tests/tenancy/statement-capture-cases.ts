@@ -87,6 +87,7 @@ export function observe(world: World): Observed {
     executeCommand,
     executeRead,
     executeAgentCommand,
+    executeModelCall: world.broker.executor,
   });
   return {
     log,
@@ -230,11 +231,15 @@ export function expectedShape(
 ): Shape {
   // The agent prefix runs its own envelope with its own savepoint name.
   const savepoint = prefix === 'agent' ? 'agent_work' : 'command_work';
+  // An applied model call spans a network send (AW-01): the envelope's
+  // transaction holds the money, then the broker's start and settlement and
+  // the answer's read of the ledger are each a tenant transaction of their own.
+  const transactions = declaration.name === 'model.call' && outcome === 'applied' ? 4 : 1;
   return {
-    transactions: 1,
+    transactions,
     outside: [],
-    afterBegin: [LOCAL_SETTING],
-    ends: ['commit'],
+    afterBegin: Array.from({ length: transactions }, () => LOCAL_SETTING),
+    ends: Array.from({ length: transactions }, () => 'commit'),
     // A read has no savepoint, and a login that resolves to no standing never
     // reaches the envelope that opens one.
     work:
@@ -324,6 +329,21 @@ export const AGENT_RECIPES: Partial<Record<CommandName, AgentRecipe>> = {
       return issued.value;
     });
     return { prefix: 'person', body: { grantId } };
+  },
+  // The run's worker's, never a person's (AW-01): the agent makes it under the
+  // delegation its pickup minted, through the broker the world mounts.
+  'model.call': async (harness) => {
+    const picked = await pickedUp(harness);
+    return {
+      prefix: 'agent',
+      body: {
+        leaseId: picked['leaseId'],
+        fence: picked['fence'],
+        operation: 'model.replay_compose',
+        fields: [{ name: 'tone', source: 'business_internal', value: 'plain' }],
+      },
+      credential: String(picked['credential']),
+    };
   },
 };
 
