@@ -11,7 +11,8 @@
 // (`MP-5-11 groups in the status vocabulary's order`). The position a row
 // carries is its own business's: another business reordering its workflow
 // never moves a row here, and a reader who cannot read a task is shown no
-// position of it (`MP-5-11 isolation`).
+// position of it (`MP-5-11 isolation`; the agent's crossing is in
+// mp-5-11-board-agent).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -22,7 +23,6 @@ import {
   type FreshDatabase,
 } from '../support/fresh-database.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
-import { agentWorld, codeOf, type AgentWorld } from '../commands/agent-fixture.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
@@ -98,7 +98,7 @@ const make = async (
   for (const step of steps) {
     // eslint-disable-next-line no-await-in-loop -- each step reads the revision the last one wrote
     const expectedRevision = await revisionOf(recordId);
-    // eslint-disable-next-line no-await-in-loop -- one step at a time, in order
+    // eslint-disable-next-line no-await-in-loop -- one command at a time, in order
     await command(business, by, { ...step, recordId, expectedRevision });
   }
   w.ids[name] = recordId;
@@ -268,38 +268,3 @@ describe.skipIf(serverUrl === undefined)('MP-5-11 isolation', () => {
     expect(JSON.stringify(refused)).not.toContain(CANARY);
   });
 });
-
-describe.skipIf(serverUrl === undefined)(
-  'MP-5-11 isolation: an agent under a live delegation',
-  () => {
-    let world: AgentWorld;
-
-    beforeAll(async () => {
-      world = await agentWorld('b8', `mp511-agent-${randomUUID().slice(0, 8)}`);
-    }, 180_000);
-
-    afterAll(async () => {
-      await world?.drop();
-    });
-
-    it('is refused the board and shown no position or canary', async () => {
-      const decider = await world.decider('decider');
-      const other = await world.asPerson(decider, {
-        command: 'task.create',
-        operationId: randomUUID(),
-        fields: { title: CANARY },
-      });
-      const otherId = isCommandRefusal(other) ? '' : (other.recordId ?? '');
-      const picked = await world.pickUp(decider, 'the agent’s task');
-      const answer = await world.asAgent(
-        { command: 'task.board', operationId: randomUUID(), board: null },
-        picked.credential,
-      );
-      expect(codeOf(answer)).toBe('DELEGATION_EXCLUDES_OPERATION');
-      const text = JSON.stringify(answer);
-      expect(text).not.toContain(CANARY);
-      expect(text).not.toContain(otherId);
-      expect(text).not.toMatch(/"statePosition"/u);
-    });
-  },
-);
