@@ -99,12 +99,12 @@ browser.
 
 ## Addresses
 
-| Address      | What it draws                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------ |
-| `/sign-in`   | Credentials and the business selector                                                            |
-| `/projects/` | `task.board` for the unboarded tasks (`board: null`), and the create form                        |
-| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision |
-| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`  |
+| Address      | What it draws                                                                                                                                                              |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/sign-in`   | Credentials and the business selector                                                                                                                                      |
+| `/projects/` | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening |
+| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                           |
+| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`                                                                            |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
