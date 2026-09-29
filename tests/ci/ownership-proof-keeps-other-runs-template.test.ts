@@ -12,7 +12,7 @@ const serverUrl = process.env['DATABASE_URL'];
 const container = process.env['FIXTURE_PG_CONTAINER'];
 
 it.skipIf(!serverUrl || !container || process.env['FIXTURE_PROOF_RACE'] !== '1')(
-  "Sol proof, criterion 3: ownership proof cleanup preserves another run's template",
+  "ownership proof cleanup preserves another run's template",
   async () => {
     const hash = createHash('sha256');
     const sources = [
