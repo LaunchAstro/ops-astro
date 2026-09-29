@@ -12,11 +12,18 @@
 //
 // A reach takes a login URL and a script and answers what `psql -At` prints.
 // It throws a bare error on any failure: psql's and the server's messages can
-// carry a host or a login, so they are discarded.
+// carry a host or a login, so they are discarded. An archive can be as large
+// as the store's cap (REV158S criterion 5), so neither end is ever held whole:
+// a script may be a list or a stream of pieces, written to psql as psql takes
+// them, and a caller that passes `onLine` is handed each printed line in turn
+// instead of the whole output.
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 const staging = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
@@ -59,34 +66,79 @@ export function reachArgs(network) {
   ];
 }
 
-/** A reach through psql on `network`. */
+/** A reach through psql on `network`: `script` is text or pieces of text. */
 export function psqlOn(network) {
-  return (url, script) =>
-    new Promise((resolve, reject) => {
-      const child = spawn('docker', reachArgs(network), {
-        env: { ...process.env, ...reachEnv(url) },
-        stdio: ['pipe', 'pipe', 'ignore'],
-      });
-      const chunks = [];
-      child.stdout.on('data', (chunk) => chunks.push(chunk));
-      child.stdin.on('error', () => {});
-      child.on('error', () => reject(new Error('the store could not be reached')));
-      child.on('close', (code) => {
-        if (code === 0) resolve(Buffer.concat(chunks).toString().replace(/\n$/u, ''));
-        else reject(new Error('the store refused or could not be reached'));
-      });
-      child.stdin.end(script);
+  return async (url, script, onLine) => {
+    const child = spawn('docker', reachArgs(network), {
+      env: { ...process.env, ...reachEnv(url) },
+      stdio: ['pipe', 'pipe', 'ignore'],
     });
+    const exited = new Promise((resolve) => {
+      child.on('error', () => resolve(-1));
+      child.on('close', (code) => resolve(code));
+    });
+    const pieces = typeof script === 'string' ? [script] : script;
+    // One piece ahead at most: a piece can be one part's hex, 8 MiB.
+    const source = Readable.from(pieces, { objectMode: true, highWaterMark: 1 });
+    const sent = pipeline(source, child.stdin).then(
+      () => true,
+      () => false,
+    );
+    const [code, written, printed] = await Promise.all([exited, sent, readOut(child, onLine)]);
+    if (printed.error !== undefined) throw printed.error;
+    if (code === -1) throw new Error('the store could not be reached');
+    if (code !== 0 || !written) throw new Error('the store refused or could not be reached');
+    return printed.text;
+  };
+}
+
+/** psql's output: whole, or line by line to `onLine`, stopping psql if `onLine` throws. */
+async function readOut(child, onLine) {
+  if (onLine === undefined) {
+    const chunks = [];
+    for await (const chunk of child.stdout) chunks.push(chunk);
+    return { text: Buffer.concat(chunks).toString().replace(/\n$/u, '') };
+  }
+  let error;
+  for await (const line of createInterface({ input: child.stdout, crlfDelay: Infinity })) {
+    if (error !== undefined) continue;
+    try {
+      await onLine(line);
+    } catch (thrown) {
+      error = thrown;
+      child.kill();
+    }
+  }
+  return { text: '', error };
 }
 
 /** The route the job and the drill take on staging. */
 export const stagingReach = psqlOn(staging.networks.staging.name);
 
+// The most bytes one `decode` holds: its hex is twice that, far inside a string.
+const PIECE = 4 * 1024 * 1024;
+
+/**
+ * Bytes as SQL, lazily: one `decode` per piece, joined by `||`, handed out one
+ * at a time so a script can stream them; as text only when it is small.
+ */
+function bytea(v) {
+  const bytes = Buffer.isBuffer(v) ? v : Buffer.from(v);
+  function* pieces() {
+    if (bytes.length === 0) yield "decode('', 'hex')";
+    for (let at = 0; at < bytes.length; at += PIECE) {
+      const hex = bytes.subarray(at, at + PIECE).toString('hex');
+      yield `${at === 0 ? '' : ' || '}decode('${hex}', 'hex')`;
+    }
+  }
+  return { [Symbol.iterator]: pieces, toString: () => [...pieces()].join('') };
+}
+
 /** A value as SQL: hex inside the script, then cast; null stays null. */
 export function value(v, type) {
   if (!TYPES.has(type)) throw new Error(`no such value type: ${type}`);
   if (v === null || v === undefined) return `null::${type}`;
-  if (type === 'bytea') return `decode('${Buffer.from(v).toString('hex')}', 'hex')`;
+  if (type === 'bytea') return bytea(v);
   const text = type === 'jsonb' ? JSON.stringify(v) : String(v);
   return `convert_from(decode('${Buffer.from(text, 'utf8').toString('hex')}', 'hex'), 'UTF8')::${type}`;
 }
