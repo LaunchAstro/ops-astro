@@ -10,6 +10,7 @@ import {
   callModel,
   reserveModelCall,
   sendReservedCall,
+  type Broker,
   type ModelCallField,
 } from '../../packages/core-custody/src/index.ts';
 import { openCustodyWorld } from '../custody/custody-world.ts';
@@ -251,4 +252,31 @@ it('AW-01 canary: the planted key and the planted prompt reach no row, audit pay
   expect(world.custody.stderr()).not.toContain(world.canary);
   // The provider did receive the prompt: the search above is not vacuous.
   expect(world.provider.seen.some((request) => request.body.includes(PLANTED_PROMPT))).toBe(true);
+});
+
+it('AW-01 settlement by the call: a lease that left the caller mid-call settles the cost, and the work is refused', async () => {
+  const work = await liveWork(s, 'moves mid-call', 2_000);
+  await stepOf(work);
+  world.provider.mode('answer');
+  // The lease leaves the caller while custody has the request: its fence moves on.
+  const moving: Broker = {
+    ...broker,
+    custody: {
+      ...world.custody,
+      dispatch: async (credentialRef, request) => {
+        await s.db.admin.execute(`update public.leases set fence = fence + 1 where id = $1`, [
+          work.picked['leaseId'],
+        ]);
+        return await world.custody.dispatch(credentialRef, request);
+      },
+    },
+  };
+  const result = await call(work, {}, moving);
+  expect(result).toMatchObject({ ok: false, code: 'LEASE_NOT_OWNED' });
+  const callId = result.ok ? null : result.callId;
+  expect(callId).not.toBeNull();
+  const [row] = await rowsOf(callId);
+  expect(row).toMatchObject({ state: 'settled' });
+  expect(Number(row?.['actual_minor'])).toBeGreaterThan(0);
+  expect(Number(row?.['actual_minor'])).toBeLessThanOrEqual(Number(row?.['reserved_minor']));
 });
