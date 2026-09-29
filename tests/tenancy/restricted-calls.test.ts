@@ -98,6 +98,14 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.clients': `insert into public.clients (business_id, id, name, created_by_actor_id)
      select business_id, gen_random_uuid(), 'restricted calls seed', id
        from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C58: no journey ends a person's access, so an ending is written here for a
+  // person's own login, as `access.end` writes one.
+  'public.access_endings': `insert into public.access_endings
+       (business_id, person_id, login_id, ended_by_actor_id)
+     select pl.business_id, pl.person_id, pl.login_id, a.id
+       from public.person_logins pl
+       join public.actors a on a.business_id = pl.business_id and a.person_id = pl.person_id
+      where pl.business_id = $1 order by pl.login_id limit 1 returning 1`,
   'public.record_links': `insert into public.record_links
        (business_id, id, link_type, from_record_id, to_record_id)
      select a.business_id, gen_random_uuid(), 'restricted_calls', a.id, b.id

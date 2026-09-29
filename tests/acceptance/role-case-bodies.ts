@@ -63,6 +63,8 @@ export interface BodyContext {
   readonly assigneePersonId: string;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
+  /** C58: a new member of this business with a login, for a case that ends one. */
+  freshMember?(): Promise<string>;
 }
 
 const batchOf = (answer: Answer): string =>
@@ -278,6 +280,12 @@ export function createPositiveBody(
         });
         if (given.code !== 'ok') throw new Error(`matrix: access.grant refused ${given.code}`);
         return { body: { grantId: (given.body['detail'] as Record<string, unknown>)['grantId'] } };
+      }
+      // C58: `access:manage`, ending a member made for the case, so no
+      // caller's standing changes under the cases that read it.
+      case 'access.end': {
+        if (context.freshMember === undefined) return { exception: 'no member maker here' };
+        return { body: { holderId: await context.freshMember() } };
       }
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };

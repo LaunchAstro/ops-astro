@@ -51,6 +51,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'overseas_services'],
   // 0036 (C32): a client is written once; never updated or deleted.
   ['si', 'clients'],
+  // 0037 (C58): an access ending is written, then its provider steps are
+  // stamped by update; never deleted.
+  ['siu', 'access_endings'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],

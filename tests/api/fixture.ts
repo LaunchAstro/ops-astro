@@ -93,6 +93,8 @@ export async function tokenFor(
       iss: ISSUER,
       role: 'authenticated',
       exp: now + (options.expiresIn ?? 600),
+      // The first sign-in, as GoTrue stamps it (C58's 12-hour limit is measured from it).
+      amr: [{ method: 'password', timestamp: now }],
     },
     SECRET,
     'HS256',

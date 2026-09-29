@@ -78,7 +78,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ],
 ];
 
-/** The fourteen identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The fifteen identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -96,6 +96,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'legal.publish_version': ['versionId', 'control'],
   'access.grant': ['holderId and clientId', 'control'],
   'access.revoke': ['grantId', 'control'],
+  'access.end': ['holderId', 'control'],
 };
 
 /**

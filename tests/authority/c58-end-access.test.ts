@@ -25,8 +25,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
 import { createGoTrueLogins } from '../../apps/api/auth/logins.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { retryAccessEndings } from '../../apps/api/server.ts';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import {
   settleAccessEndings,
@@ -307,7 +310,9 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     const alpha = harness.world.alpha;
     const again = async () =>
       await settleAccessEndings(harness.world.db.app, alpha, provider, { claimSeconds: 0 });
-    await again();
+    // The server's own pass: it finds alpha by its owed ending and settles it
+    // under alpha's tenancy. The provider fails again, so the step stays owed.
+    await retryAccessEndings(harness.world.db.admin, harness.world.db.app, provider, 0);
     expect((await stateOf(person)).endings[0]).toMatchObject({ login: false });
     const third = await again();
     expect(third.settled).toBeGreaterThanOrEqual(1);
@@ -366,9 +371,9 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
       expect(after.endings, each.name).toEqual([expect.objectContaining(each.owed)]);
       expect(after.liveGrants, each.name).toBe(0);
     }
+  });
 
-    // The last business-wide access:manage of a person who can sign in is
-    // never ended; the refusal writes nothing.
+  it('C58 partial failure: the last business-wide access:manage is never ended, and the refusal writes nothing', async () => {
     const api = apiWith(scripted().provider);
     const bravoBefore = await stateOf(harness.world.bea as unknown as Member, harness.world.bravo);
     const last = await end(
@@ -424,7 +429,9 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     // One fixed destination under the configured base, no redirect followed.
     expect(seen.every((each) => each.url.startsWith('http://127.0.0.1:9/auth/v1/'))).toBe(true);
     expect(seen.every((each) => each.redirect === 'error')).toBe(true);
-    // A subject that is not the provider's id shape is never sent.
+  });
+
+  it("C58 hostile provider: a subject not in the provider's id shape is never sent, and a hostile answer through the act leaves both steps owed", async () => {
     const never = createGoTrueLogins({
       baseUrl: 'http://127.0.0.1:9',
       adminToken: () => Promise.resolve('a'),
@@ -492,8 +499,13 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     const { person } = await teammate('ari');
     let clock = nowSeconds();
     const api = apiWith(undefined, () => clock);
+    // Each call carries a freshly refreshed token (its `iat` is the real
+    // clock's, as the verifier's signature check reads it); the server's clock
+    // is the one the limit is measured on, moved below.
     const at = async (signedInAt: number | null) =>
-      outcome(await ownCall(api, await signedIn(person.presented.subject, signedInAt, clock - 60)));
+      outcome(
+        await ownCall(api, await signedIn(person.presented.subject, signedInAt, nowSeconds() - 60)),
+      );
 
     expect(SESSION_ABSOLUTE_SECONDS).toBe(12 * 60 * 60);
     expect(await at(clock - SESSION_ABSOLUTE_SECONDS + 1)).toEqual({ status: 200, code: 'ok' });
@@ -516,7 +528,7 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
   });
 
   it("C58 isolation: another business, another client and a delegated agent never end, read or retry another's person", async () => {
-    const { provider, calls } = scripted({ endSessions: [FAIL], deactivate: [FAIL] });
+    const { provider } = scripted({ endSessions: [FAIL], deactivate: [FAIL] });
     const api = apiWith(provider);
     const alphaMate = await teammate('bo');
     const bravoMate = await teammate('cy', harness.world.bravo);
@@ -564,8 +576,12 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     );
     expect(outcome(agent)).toEqual({ status: 403, code: 'DELEGATION_EXCLUDES_OPERATION' });
     expect(await stateOf(alphaMate.person)).toEqual(alphaBefore);
+  });
 
-    // Bravo's ending is bravo's: retrying alpha's never touches it.
+  it("C58 isolation: bravo's ending is bravo's, and retrying alpha's never calls for or changes it", async () => {
+    const { provider, calls } = scripted({ endSessions: [FAIL], deactivate: [FAIL] });
+    const api = apiWith(provider);
+    const bravoMate = await teammate('cy', harness.world.bravo);
     expect(
       outcome(await end(api, bravoMate.person.personId, harness.world.bea.token, 'bravo')),
     ).toEqual({ status: 200, code: 'ok' });
@@ -614,5 +630,56 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     );
     expect(stored.length).toBeGreaterThan(0);
     expect(stored.map((each) => each.row).join('\n')).not.toContain(CANARY);
+  });
+  // Last on purpose: one of bravo's two managers is ended here.
+  it('C58 ends at once: a grant racing an ending leaves nothing live, and two last managers ending each other leave one', async () => {
+    const { person } = await teammate('gus');
+    const wide = connect(harness.world.db.appUrl, { source: 'runtime', max: 2 });
+    const act = async (
+      body: Readonly<Record<string, unknown>>,
+      as = harness.world.ada.presented,
+      businessId = harness.world.alpha,
+    ) => {
+      const result = await executeCommand(wide, businessId, as, 'api', {
+        operationId: randomUUID(),
+        ...body,
+      } as Parameters<typeof executeCommand>[4]);
+      return isCommandRefusal(result) ? result.code : 'ok';
+    };
+    try {
+      const raced = await Promise.all([
+        act({
+          command: 'access.grant',
+          holderId: person.personId,
+          collection: 'task',
+          action: 'comment',
+        }),
+        act({ command: 'access.end', holderId: person.personId }),
+      ]);
+      expect(raced[1]).toBe('ok');
+      expect(['ok', 'NOT_FOUND']).toContain(raced[0]);
+      expect(await stateOf(person)).toMatchObject({ liveGrants: 0, activeMemberships: 0 });
+
+      const other = await enrol(
+        harness.world.db.app,
+        harness.world.bravo,
+        `hal-${randomUUID().slice(0, 6)}`,
+      );
+      await harness.world.db.app.withBusiness(harness.world.bravo, async (tx) => {
+        await grantTo(tx, other, 'manage', WHOLE_BUSINESS, false, 'access');
+      });
+      const bea = harness.world.bea.presented;
+      const codes = await Promise.all([
+        act({ command: 'access.end', holderId: other.personId }, bea, harness.world.bravo),
+        act(
+          { command: 'access.end', holderId: harness.world.bea.personId },
+          other.presented,
+          harness.world.bravo,
+        ),
+      ]);
+      expect(codes.toSorted()).toEqual(['ACCESS_LAST_MANAGER', 'ok']);
+    } finally {
+      await wide.close();
+    }
   });
 });

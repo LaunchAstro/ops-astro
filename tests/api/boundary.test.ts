@@ -78,6 +78,8 @@ async function tokenFor(subject: string, options: { readonly expiresIn?: number 
       iss: ISSUER,
       role: 'authenticated',
       exp: now + (options.expiresIn ?? 600),
+      // The first sign-in, as GoTrue stamps it (C58's 12-hour limit is measured from it).
+      amr: [{ method: 'password', timestamp: now }],
     },
     SECRET,
     'HS256',
@@ -318,11 +320,12 @@ describe('the read half of the surface', () => {
     expect(calls).toEqual([
       {
         businessId: ALPHA,
-        // The token carries no `aal` or `amr`, so the lowest assurance (C59).
+        // The token carries no `aal` and a password sign-in, so the lowest
+        // assurance with its sign-in time (C59, C58).
         presented: {
           provider: 'supabase',
           subject: MIA,
-          assurance: { level: 'aal1', signedInAt: null, factorAt: null },
+          assurance: { level: 'aal1', signedInAt: expect.any(Number), factorAt: null },
         },
         read: first.name,
       },

@@ -123,6 +123,10 @@ vi.mock('../../packages/core-commands/src/commands/access-write.ts', async (orig
   createClientRecord: recorder('createClientRecord'),
   grantOnAccess: recorder('grantOnAccess'),
 }));
+vi.mock('../../packages/core-commands/src/commands/access-end.ts', async (original) => ({
+  ...(await original<object>()),
+  endAccessOnSettings: recorder('endAccessOnSettings'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (original) => ({
   ...(await original<object>()),
   cancelOnTask: recorder('cancelOnTask'),
@@ -138,6 +142,7 @@ const PINNED_RUNTIME_SHAPED = {
 const PINNED_UNTARGETED_IDENTIFIERS = {
   'access.grant': ['holderId', 'clientId'],
   'access.revoke': ['grantId'],
+  'access.end': ['holderId'],
   'client.create': [],
   'delegation.revoke': [],
   'grant.revoke': [],
@@ -161,6 +166,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
+  'access.end',
   'access.grant',
   'access.read',
   'access.revoke',
@@ -300,6 +306,7 @@ const REQUESTS: readonly CommandRequest[] = [
     clientId: null,
   },
   { command: 'access.revoke', operationId: 'op', grantId: 'grant' },
+  { command: 'access.end', operationId: 'op', holderId: 'person' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -356,6 +363,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'client.create': ['createClientRecord', 'request'],
   'access.grant': ['grantOnAccess', 'request'],
   'access.revoke': ['revokeGrantOnAccess', 'grant'],
+  'access.end': ['endAccessOnSettings', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],

@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { COMMAND_SURFACE, pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
+import { enrol } from '../commands/fixture.ts';
 import { createPositiveBody } from './role-case-bodies.ts';
 import {
   bearer,
@@ -242,6 +243,8 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
         });
         return { id: String(made.body['recordId']), revision: Number(made.body['revision']) };
       },
+      freshMember: async () =>
+        (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
     });
     const revision = await revisionOf(shared);
     const writes = COMMAND_SURFACE.filter((declaration) => declaration.kind !== 'read');
