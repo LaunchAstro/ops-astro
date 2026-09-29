@@ -50,14 +50,23 @@ describe('MP-4-5 reply one level', () => {
     await typeInto(seen, '#comment-body', 'We are on it.');
     await seen.click('[data-comment="post"]');
     await tick();
+    await seen.click('#conversation-tab-all');
+    await seen.click('[data-comment-id="c1"] [data-comment-act="reply"]');
+    await typeInto(seen, '#comment-body', 'Seen from All.');
+    await seen.click('[data-comment="post"]');
+    await tick();
     expect(sent).toMatchObject([
       {
         to: '/task/comment',
         body: { body: 'We are on it.', audience: 'client', commentType: 'client', parentId: 'c1' },
       },
+      // From All, which posts nowhere by itself, a reply still goes where its message is.
+      { to: '/task/comment', body: { audience: 'client', commentType: 'client', parentId: 'c1' } },
     ]);
   });
+});
 
+describe('MP-4-5 reply one level, a deleted message', () => {
   it('a deleted message’s replies stay, under a line saying it was deleted', async () => {
     const { view } = conversing([
       comment('r9', 'internal', '2026-09-21T03:00:00.000Z', 'still here', { parent: 'gone' }),
