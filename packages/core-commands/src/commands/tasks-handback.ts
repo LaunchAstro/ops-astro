@@ -9,7 +9,7 @@ import { handback, type SuccessorRequest } from '../../../core-runtime/src/index
 import type { HandbackHolder } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isFieldMap, isIdentifier } from './operands.ts';
-import { fromReasoned, refuseCommand } from './refusal.ts';
+import { refuseCommand } from './refusal.ts';
 import {
   applied,
   refused,
@@ -201,8 +201,8 @@ async function settle(
     // through. The codes are named here rather than inferred, because a code
     // that starts retaining a row later should have to come and say so.
     return RETAINING_REFUSALS.has(result.refusal.code)
-      ? refusedRetaining(fromReasoned(result.refusal))
-      : refused(fromReasoned(result.refusal));
+      ? refusedRetaining(result.refusal)
+      : refused(result.refusal);
   }
 
   const settled = result.value;

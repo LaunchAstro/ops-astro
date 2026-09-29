@@ -128,6 +128,7 @@
     "tests/ci/cq-3-supply-chain.test.ts",
     "tests/api/cq-2.test.ts",
     "tests/commands/cq-4.test.ts",
+    "tests/commands/cq-5.test.ts",
     "tests/identity/external-party.test.ts",
     "tests/acceptance/external-party.test.ts",
     "tests/acceptance/comment-rulings.test.ts",

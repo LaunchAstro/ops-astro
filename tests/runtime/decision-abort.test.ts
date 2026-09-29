@@ -88,7 +88,7 @@ async function proposeOn(
       expiresAt: hour(),
     });
     if (!result.ok)
-      throw new Error(`propose refused ${result.refusal.code}: ${result.refusal.reason}`);
+      throw new Error(`propose refused ${result.refusal.code}: ${result.refusal.fixes.join('; ')}`);
     return result.value;
   });
 }

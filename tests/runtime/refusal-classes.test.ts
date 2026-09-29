@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Which side of `AnyRefusal` a code is on.
+// Which side of a runtime result's refusal a code is on.
 //
 // `isRuntimeRefusal` answers by elimination: a code is the runtime's own unless
 // it is one of L2's delegation codes. So a delegation code missing from that
@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DelegationRefusalCode } from '../../packages/core-records/src/authority/delegations.ts';
 import { isRuntimeRefusal, SUGGESTED_STATUS } from '../../packages/core-runtime/src/refusals.ts';
+import { refuseCommand, type RefusalCode } from '../../packages/core-records/src/register.ts';
 
 // Every member of the union, spelled out so a new one is a type error here.
 const DELEGATION: Readonly<Record<DelegationRefusalCode, true>> = {
@@ -21,7 +22,7 @@ const DELEGATION: Readonly<Record<DelegationRefusalCode, true>> = {
   DELEGATION_ALREADY_LIVE: true,
 };
 
-const refusalOf = <C extends string>(code: C) => ({ code, reason: 'r', fix: 'f' });
+const refusalOf = (code: RefusalCode) => refuseCommand(code, [], ['r', 'f']);
 
 describe('isRuntimeRefusal', () => {
   it('classes every delegation code as a delegation refusal, the one a pickup mints included', () => {
@@ -34,5 +35,9 @@ describe('isRuntimeRefusal', () => {
     for (const code of Object.keys(SUGGESTED_STATUS) as (keyof typeof SUGGESTED_STATUS)[]) {
       expect(isRuntimeRefusal(refusalOf(code)), code).toBe(true);
     }
+  });
+
+  it('Sol proof, criterion 9: an identity refusal is not a runtime refusal', () => {
+    expect(isRuntimeRefusal(refusalOf('AUTH_UNKNOWN_LOGIN'))).toBe(false);
   });
 });

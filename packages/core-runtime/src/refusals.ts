@@ -13,45 +13,55 @@
 // unchanged rather than re-deriving it — a second module that decides for
 // itself what an agent may decide is a second place that rule can drift.
 
-import { REFUSAL_REGISTER } from '../../core-records/src/index.ts';
+import { REFUSAL_REGISTER, refuseCommand } from '../../core-records/src/index.ts';
 import type {
-  DelegationRefusal,
+  CommandRefusal,
   DelegationRefusalCode,
   RuntimeRefusalCode,
 } from '../../core-records/src/index.ts';
 
 /**
  * The codes this module returns as its own. Declared once, in the refusal
- * register (`core-records/src/commands/register.ts`), on the rows marked
- * `runtime`, with each code's meaning and HTTP status beside it. The register
- * is L3's file and this module does not write to it; it reads the union from
- * it, so a runtime code and its registration cannot drift apart.
+ * register (`core-records/src/register.ts`), on the rows marked `runtime`,
+ * with each code's meaning and HTTP status beside it. This module reads the
+ * union from it, so a runtime code and its registration cannot drift apart.
  */
 export type { RuntimeRefusalCode };
 
-export interface RuntimeRefusal {
-  readonly code: RuntimeRefusalCode;
-  readonly reason: string;
-  readonly fix: string;
-}
-
-/** A runtime refusal, or one L2 produced and this module is passing through. */
-export type AnyRefusal = RuntimeRefusal | DelegationRefusal;
-
+/**
+ * A runtime refusal, or one L2 produced and this module is passing through,
+ * in the register's one shape: the reason first in `fixes`, then the fix.
+ */
 export type RuntimeResult<T> =
-  { readonly ok: true; readonly value: T } | { readonly ok: false; readonly refusal: AnyRefusal };
+  | { readonly ok: true; readonly value: T }
+  | {
+      readonly ok: false;
+      readonly refusal: CommandRefusal<RuntimeRefusalCode | DelegationRefusalCode>;
+    };
 
 export function refuse(
   code: RuntimeRefusalCode,
   reason: string,
   fix: string,
 ): RuntimeResult<never> {
-  return { ok: false, refusal: { code, reason, fix } };
+  return { ok: false, refusal: refuseCommand(code, [], [reason, fix]) };
 }
 
-export function isRuntimeRefusal(refusal: AnyRefusal): refusal is RuntimeRefusal {
-  return !Object.hasOwn(DELEGATION_CODES, refusal.code);
+/**
+ * Whether a refusal is one of the runtime's own: a register row marked
+ * `runtime`, and not one of L2's delegation codes. It takes any refusal, so
+ * it answers from the register rather than by elimination, or an identity
+ * code such as `AUTH_UNKNOWN_LOGIN` would count as the runtime's.
+ */
+export function isRuntimeRefusal(
+  refusal: CommandRefusal,
+): refusal is CommandRefusal<RuntimeRefusalCode> {
+  return RUNTIME_CODES.has(refusal.code) && !Object.hasOwn(DELEGATION_CODES, refusal.code);
 }
+
+const RUNTIME_CODES: ReadonlySet<string> = new Set(
+  REFUSAL_REGISTER.filter((row) => row.runtime).map((row) => row.code),
+);
 
 // A record over L2's union rather than a list, so a delegation code L2 adds is
 // a type error here instead of a code this module silently claims as its own.

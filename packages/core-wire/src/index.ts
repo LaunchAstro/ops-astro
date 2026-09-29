@@ -15,3 +15,6 @@ export {
   type CommandDeclaration,
   type CommandName,
 } from './surface.ts';
+// The one refusal shape, for the clients that parse it off the wire. Type-only,
+// so no records code reaches a bundle.
+export type { CommandRefusal } from '../../core-records/src/index.ts';

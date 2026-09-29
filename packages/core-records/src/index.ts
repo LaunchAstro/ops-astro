@@ -29,7 +29,6 @@ export {
   revokeDelegation,
   settleDelegation,
   type Delegation,
-  type DelegationRefusal,
   type DelegationRefusalCode,
   type MintedDelegation,
 } from './authority/delegations.ts';
@@ -41,7 +40,6 @@ export {
   type Action,
   type Decision,
   type EffectiveGrant,
-  type Refusal,
   type Scope,
   type ScopeKind,
   type ScopeRequest,
@@ -60,7 +58,6 @@ export {
   type Session,
   type VerifiedSubject,
 } from './identity/login-resolution.ts';
-export { type AgentRefusal, type Refusal as IdentityRefusal } from './identity/refusals.ts';
 export {
   isSettingRevisionStale,
   readBusinessSetting,
@@ -70,18 +67,16 @@ export {
 } from './records/business-settings.ts';
 export { readFieldDefinitions } from './records/field-store.ts';
 export { isLive, refuseGenericWrite, type FieldDefinition } from './records/fields.ts';
-export {
-  planPresetSync,
-  type PresetField,
-  type PresetPlan,
-  type PresetPlanRefusal,
-} from './records/preset-plan.ts';
+export { planPresetSync, type PresetField, type PresetPlan } from './records/preset-plan.ts';
 export { isRecordsRefusal, type RecordsRefusal } from './records/refusals.ts';
 export {
   CALLER_VISIBLE,
+  isCommandRefusal,
   REFUSAL_REGISTER,
+  refuseCommand,
   registeredRefusal,
   statusOf,
+  type CommandRefusal,
   type RefusalCode,
   type RuntimeRefusalCode,
 } from './register.ts';

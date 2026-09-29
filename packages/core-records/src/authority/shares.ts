@@ -28,8 +28,15 @@
 // `task.comment` itself, which is not this module's to change, so a share that
 // carried `comment` would let an outsider write a team note. It does not.
 
+import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { checkAuthority, issueGrant, revokeGrant, type Subject } from './grants.ts';
+import {
+  checkAuthority,
+  issueGrant,
+  revokeGrant,
+  type RefusalCode as AuthorityRefusalCode,
+  type Subject,
+} from './grants.ts';
 import { isUuid } from '../tenancy/ids.ts';
 
 /** Who is sharing: the person, and the actor the grant row names as granter. */
@@ -46,16 +53,12 @@ export interface ShareRequest {
   readonly personId: string;
 }
 
-export type ShareRefusalCode = 'SCOPE_NOT_GRANTED' | 'NOT_FOUND';
-
-export interface ShareRefusal {
-  readonly code: ShareRefusalCode;
-  readonly reason: string;
-  readonly fix: string;
-}
+/** Authority's own refusal, passed through unchanged, or `NOT_FOUND`. */
+export type ShareRefusalCode = AuthorityRefusalCode | 'NOT_FOUND';
 
 export type ShareDecision<T> =
-  { readonly ok: true; readonly value: T } | { readonly ok: false; readonly refusal: ShareRefusal };
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly refusal: CommandRefusal<ShareRefusalCode> };
 
 const subjectsOfSharer = (sharer: Sharer): readonly Subject[] => [
   { kind: 'person', id: sharer.personId },
@@ -133,14 +136,7 @@ async function refuseShare(
     scope: { kind: 'record', id: request.recordId },
   });
   if (!authorised.ok) {
-    return {
-      ok: false,
-      refusal: {
-        code: 'SCOPE_NOT_GRANTED',
-        reason: authorised.refusal.reason,
-        fix: authorised.refusal.fix,
-      },
-    };
+    return { ok: false, refusal: authorised.refusal };
   }
   const found = await tx.query<{ readonly record: boolean; readonly person: boolean }>(
     `select exists (select 1 from public.records r
@@ -175,12 +171,6 @@ async function liveShares(tx: TenantQuery, request: ShareRequest): Promise<reado
 }
 
 function notFound(): ShareDecision<never> {
-  return {
-    ok: false,
-    refusal: {
-      code: 'NOT_FOUND',
-      reason: 'no such record or person here',
-      fix: 'check the identifiers',
-    },
-  };
+  const fixes = ['no such record or person here', 'check the identifiers'];
+  return { ok: false, refusal: refuseCommand('NOT_FOUND', [], fixes) };
 }

@@ -10,7 +10,7 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { heartbeat, MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
-import { fromReasoned, refuseCommand } from './refusal.ts';
+import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import { personClaimant, type AgentClaimant } from './tasks-claimant.ts';
 
@@ -84,7 +84,7 @@ export async function renewLease(
     fence: fields.fence,
     renewSeconds: seconds,
   });
-  if (!result.ok) return refused(fromReasoned(result.refusal));
+  if (!result.ok) return refused(result.refusal);
   return applied(result.value.taskId, null, {
     leaseId: result.value.leaseId,
     fence: result.value.fence,

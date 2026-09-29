@@ -17,6 +17,8 @@
 // never named is another business's anything: a cross-business record is
 // `NOT_FOUND` and that refusal belongs to T1f's register, not here.
 
+import { refuseCommand, type CommandRefusal } from '../register.ts';
+
 export type RecordsRefusalCode =
   /** A view names a field with no slot for a filter, a sort or a grouping. */
   | 'FIELD_NOT_SLOTTED'
@@ -54,25 +56,15 @@ export type RecordsRefusalCode =
   /** A purge named something outside the work retention class. */
   | 'RETENTION_CLASS_PROTECTED';
 
-export interface RecordsRefusal {
-  readonly refused: true;
-  readonly code: RecordsRefusalCode;
-  /**
-   * What the refusal is about, by name: field keys, slot names, the owning
-   * operation. In-business configuration only, never a value a caller wrote
-   * and never anything belonging to another business.
-   */
-  readonly names: readonly string[];
-  /** What a person could do about it. */
-  readonly fixes: readonly string[];
-}
+/** The register's one shape, narrowed to the codes the records engine produces. */
+export type RecordsRefusal = CommandRefusal<RecordsRefusalCode>;
 
 export function refuse(
   code: RecordsRefusalCode,
   names: readonly string[],
   fixes: readonly string[],
 ): RecordsRefusal {
-  return { refused: true, code, names, fixes };
+  return refuseCommand(code, names, fixes);
 }
 
 /** The discriminant, so a caller can tell a result from a refusal. */

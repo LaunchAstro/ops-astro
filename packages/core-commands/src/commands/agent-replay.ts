@@ -19,7 +19,6 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { delegationCredentialKeys } from '../../../core-runtime/src/index.ts';
 import {
   asCallerVisible,
-  fromReasoned,
   isCommandRefusal,
   refuseCommand,
   type CommandRefusal,
@@ -121,7 +120,7 @@ async function replayPickup(
     action: declaration.action,
     scope: held.purposeScope,
   });
-  if (!decision.ok) return fromReasoned(decision.refusal);
+  if (!decision.ok) return decision.refusal;
 
   const binding = await pickupReceiptBinding(tx, {
     holderActorId: session.actorId,
@@ -204,7 +203,7 @@ async function replaySettledHandback(
     action: declaration.action,
     scope: held.purposeScope,
   });
-  return decision.ok ? undefined : fromReasoned(decision.refusal);
+  return decision.ok ? undefined : decision.refusal;
 }
 
 /**

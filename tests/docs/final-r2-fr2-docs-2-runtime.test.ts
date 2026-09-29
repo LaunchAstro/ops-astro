@@ -77,7 +77,7 @@ describe('RUNTIME.md on grants judged at the locked instant (R2-RUNTIME-4, -5)',
   it('says an agent pickup refused this way answers DELEGATION_WIDENS', () => {
     expect(runtime).toMatch(/agent pickup refused this way answers `DELEGATION_WIDENS`/u);
     expect(read(`${RUNTIME_SRC}/pickup.ts`)).toMatch(
-      /checkAuthorityAt\([\s\S]{0,300}?code: 'DELEGATION_WIDENS'/u,
+      /checkAuthorityAt\([\s\S]{0,300}?refuseCommand\(\s*'DELEGATION_WIDENS'/u,
     );
   });
 

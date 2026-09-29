@@ -14,7 +14,7 @@ import {
 import type { PickedUp, PickedUpByPerson } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
-import { fromReasoned, refuseCommand } from './refusal.ts';
+import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import { handbackShapeFor } from './pickup-handback-shape.ts';
 import { readLeaseSeconds } from './tasks-lease.ts';
@@ -154,7 +154,7 @@ async function claim(
           agentActorId: claimant.actorId,
           mintedByActorId: approver.actorId,
         });
-  if (!result.ok) return refused(fromReasoned(result.refusal));
+  if (!result.ok) return refused(result.refusal);
   return applied(result.value.taskId, null, pickupDetail(result.value));
 }
 

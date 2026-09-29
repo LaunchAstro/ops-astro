@@ -40,9 +40,7 @@ import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import { storable, writeAuditEvent } from './audit.ts';
 import {
   asCallerVisible,
-  fromIdentity,
   isCommandRefusal,
-  isIdentityRefusal,
   refuseCommand,
   type CommandRefusal,
 } from './refusal.ts';
@@ -202,7 +200,7 @@ async function callOnce(
   // `audit_events.actor_id` is not null. The refusal is returned as it is; the
   // gap is recorded in the handback rather than papered over with a fabricated
   // actor.
-  if (isIdentityRefusal(outcome)) return asCallerVisible(fromIdentity(outcome));
+  if (isCommandRefusal(outcome)) return asCallerVisible(outcome);
   return outcome;
 }
 

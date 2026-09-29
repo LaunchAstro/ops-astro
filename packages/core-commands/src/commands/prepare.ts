@@ -39,7 +39,7 @@
 
 import { checkAuthority, subjectsOf, isUuid } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-records/src/index.ts';
-import { fromReasoned, refuseCommand, refuseNotFound } from './refusal.ts';
+import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
@@ -579,7 +579,7 @@ export async function prepareCommand(
     action: declaration.action,
     scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
   });
-  if (!authorised.ok) return refused(fromReasoned(authorised.refusal));
+  if (!authorised.ok) return refused(authorised.refusal);
   // The operands' own shape, after authority as every handler's operand
   // refusal is, so a caller holding nothing is told `SCOPE_NOT_GRANTED` and
   // nothing about its body; before the target is read or locked.

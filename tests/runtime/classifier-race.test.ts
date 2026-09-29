@@ -165,7 +165,7 @@ async function proposeOn(
       ...(options.lineageId === undefined ? {} : { lineageId: options.lineageId }),
     });
     if (!result.ok)
-      throw new Error(`propose refused ${result.refusal.code}: ${result.refusal.reason}`);
+      throw new Error(`propose refused ${result.refusal.code}: ${result.refusal.fixes.join('; ')}`);
     return result.value;
   });
 }
@@ -190,7 +190,7 @@ async function approveOn(
     }),
   );
   if (!decided.ok)
-    throw new Error(`decide refused ${decided.refusal.code}: ${decided.refusal.reason}`);
+    throw new Error(`decide refused ${decided.refusal.code}: ${decided.refusal.fixes.join('; ')}`);
   if (decided.value.decision !== 'approve')
     throw new Error(`expected an approval, got ${decided.value.decision}`);
   return {

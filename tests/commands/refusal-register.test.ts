@@ -21,14 +21,10 @@ import {
 } from '../../packages/core-records/src/register.ts';
 import {
   asCallerVisible,
-  fromReasoned,
-  fromIdentity,
-  fromRecords,
   refuseCommand,
   refuseNotFound,
 } from '../../packages/core-commands/src/commands/refusal.ts';
 import { refuse as refuseRecords } from '../../packages/core-records/src/records/refusals.ts';
-import { refuse as refuseIdentity } from '../../packages/core-records/src/identity/refusals.ts';
 
 const IDENTITY_CODES = ['AUTH_UNKNOWN_LOGIN', 'AUTH_NO_MEMBERSHIP', 'ACTOR_INACTIVE'] as const;
 
@@ -155,9 +151,9 @@ describe('what the caller is shown', () => {
   });
 });
 
-describe('the three shapes that came before it', () => {
-  it('normalises a records refusal, keeping its names and fixes', () => {
-    const refusal = fromRecords(refuseRecords('FIELD_NOT_SLOTTED', ['owner'], ['give it a slot']));
+describe('one shape from every layer', () => {
+  it('a records refusal is the one shape, keeping its names and fixes', () => {
+    const refusal = refuseRecords('FIELD_NOT_SLOTTED', ['owner'], ['give it a slot']);
     expect(refusal).toStrictEqual({
       refused: true,
       code: 'FIELD_NOT_SLOTTED',
@@ -166,18 +162,18 @@ describe('the three shapes that came before it', () => {
     });
   });
 
-  it('normalises an identity refusal, which carries no names at all', () => {
-    const refusal = fromIdentity(refuseIdentity('AUTH_NO_MEMBERSHIP', ['ask an administrator']));
+  it('an identity refusal carries no names at all', () => {
+    const refusal = refuseCommand('AUTH_NO_MEMBERSHIP', [], ['ask an administrator']);
     expect(refusal.code).toBe('AUTH_NO_MEMBERSHIP');
     expect(refusal.names).toStrictEqual([]);
   });
 
-  it('normalises an authority refusal, whose reason and fix are single strings', () => {
-    const refusal = fromReasoned({
-      code: 'SCOPE_NOT_GRANTED',
-      reason: 'no live grant covers it',
-      fix: 'ask a holder who may delegate',
-    });
+  it('an authority refusal carries its reason, then its fix, as fixes', () => {
+    const refusal = refuseCommand(
+      'SCOPE_NOT_GRANTED',
+      [],
+      ['no live grant covers it', 'ask a holder who may delegate'],
+    );
     expect(refusal.code).toBe('SCOPE_NOT_GRANTED');
     expect(refusal.fixes).toStrictEqual([
       'no live grant covers it',

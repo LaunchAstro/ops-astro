@@ -15,7 +15,7 @@ import type {
   WireRefusal,
 } from '../../apps/web/src/operations/client.ts';
 
-const refusal = (code: string): WireRefusal => ({
+const refusal = (code: WireRefusal['code']): WireRefusal => ({
   refused: true,
   code,
   names: ['task'],

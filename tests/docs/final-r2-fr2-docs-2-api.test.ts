@@ -89,7 +89,7 @@ const CODE: readonly (readonly [string, string, Claim])[] = [
   [`${T}/trash.ts`, 'purgeTrashedRecords', /< \$3\s+order by id\s+for update/u],
   [`${T}/trash.ts`, 'restoreBatch', /order by id\s+for share/u],
   [`${E}/business-settings.ts`, 'writeBusinessSetting', /isSafeInteger\(write\.expectedRevision/u],
-  [`${E}/business-settings.ts`, 'writeBusinessSetting', "names: ['expectedRevision'],"],
+  [`${E}/business-settings.ts`, 'writeBusinessSetting', "['expectedRevision']"],
   [`${C}/tasks-propose.ts`, 'proposeOnTask', 'deleted_at !== null) return refused(refuseNotFound'],
   [`${R}/propose.ts`, 'refuseBeyondBudget', /currency !== cap\.currency\)\s+\{\s+return refuse\(/u],
   [`${C}/prepare.ts`, '', "'task.propose': { optional: ['lineageId'] },"],

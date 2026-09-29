@@ -30,7 +30,7 @@
 // and `mintedByActorId` is their acting identity, never the agent's.
 
 import { randomUUID } from 'node:crypto';
-import { mintDelegation } from '../../core-records/src/index.ts';
+import { mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
 import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import type { LockRequest } from './locks.ts';
@@ -483,11 +483,14 @@ export async function pickup(
       if (!delegable.ok) {
         return {
           ok: false,
-          refusal: {
-            code: 'DELEGATION_WIDENS',
-            reason: `the delegating person holds no live ${action} grant on ${request.collection}`,
-            fix: 'narrow the purpose, or grant the person that authority first',
-          },
+          refusal: refuseCommand(
+            'DELEGATION_WIDENS',
+            [],
+            [
+              `the delegating person holds no live ${action} grant on ${request.collection}`,
+              'narrow the purpose, or grant the person that authority first',
+            ],
+          ),
         };
       }
     }
