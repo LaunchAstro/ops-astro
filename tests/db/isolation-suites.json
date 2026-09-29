@@ -13,6 +13,7 @@
     "tests/cli/api-4.test.ts",
     "tests/cli/api-4-context-isolation.test.ts",
     "tests/web/wf-3.test.tsx",
-    "tests/web/wf-4-isolation.test.tsx"
+    "tests/web/wf-4-isolation.test.tsx",
+    "tests/web/wf-5-isolation.test.tsx"
   ]
 }
