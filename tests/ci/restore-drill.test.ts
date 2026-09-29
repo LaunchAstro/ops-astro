@@ -82,6 +82,11 @@ const A2 = {
   revoked: randomUUID(),
   outsider: randomUUID(),
   derived: randomUUID(),
+  // Clients A.person holds the wrong grant over, and two business-scope managers.
+  wrongAction: randomUUID(),
+  wrongCollection: randomUUID(),
+  manager: randomUUID(),
+  taskManager: randomUUID(),
 };
 // A root grant over A2.derived, revoked, and a grant A.person holds from it.
 const ROOT = randomUUID();
@@ -165,14 +170,18 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
         ('${B.business}', '${B.client}', 'made-up client B'), ('${A.business}', '${A2.person}', 'made-up person A2'),
         ('${A.business}', '${A2.client}', 'made-up client A2'), ('${A.business}', '${A2.revoked}', 'made-up client A3'),
         ('${A.business}', '${A2.outsider}', 'made-up outsider A'),
-        ('${A.business}', '${A2.derived}', 'made-up client A4');
+        ('${A.business}', '${A2.derived}', 'made-up client A4'),
+        ('${A.business}', '${A2.wrongAction}', 'made-up client A5'),
+        ('${A.business}', '${A2.wrongCollection}', 'made-up client A6'),
+        ('${A.business}', '${A2.manager}', 'made-up manager A'),
+        ('${A.business}', '${A2.taskManager}', 'made-up task manager A');
       create table public.memberships (business_id uuid not null, id uuid primary key default gen_random_uuid(),
         person_id uuid not null, active boolean not null default true);
       insert into public.memberships (business_id, person_id) values ('${A.business}', '${A.person}'),
-        ('${A.business}', '${A2.person}'), ('${B.business}', '${B.person}');
+        ('${A.business}', '${A2.person}'), ('${A.business}', '${A2.manager}'), ('${A.business}', '${A2.taskManager}'), ('${B.business}', '${B.person}');
       create table public.grants (business_id uuid not null, id uuid primary key default gen_random_uuid(),
         subject_kind text not null, subject_id uuid not null, scope_kind text not null, scope_id uuid,
-        collection text not null default 'records', action text not null, can_delegate boolean not null default false,
+        collection text not null default 'person', action text not null, can_delegate boolean not null default false,
         may_permit_delegation boolean not null default false, parent_grant_id uuid,
         expires_at timestamptz, revoked_at timestamptz);
       insert into public.grants (business_id, subject_kind, subject_id, scope_kind, scope_id, action, revoked_at) values
@@ -185,6 +194,11 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
         can_delegate, parent_grant_id, revoked_at) values
         ('${A.business}', '${ROOT}', 'person', '${A2.person}', 'party', '${A2.derived}', 'read', true, null, now()),
         ('${A.business}', gen_random_uuid(), 'person', '${A.person}', 'party', '${A2.derived}', 'read', false, '${ROOT}', null);
+      insert into public.grants (business_id, subject_kind, subject_id, scope_kind, scope_id, collection, action) values
+        ('${A.business}', 'person', '${A.person}', 'party', '${A2.wrongAction}', 'person', 'comment'),
+        ('${A.business}', 'person', '${A.person}', 'party', '${A2.wrongCollection}', 'task', 'read'),
+        ('${A.business}', 'person', '${A2.manager}', 'business', null, 'person', 'manage'),
+        ('${A.business}', 'person', '${A2.taskManager}', 'business', null, 'task', 'manage');
       create table public.tasks (business_id uuid not null, id int primary key, title text);
       insert into public.tasks select '${A.business}', g, repeat('made-up task ', 20) from generate_series(1, 4000) g;
       ${['businesses', 'people', 'memberships', 'grants', 'tasks'].map(barrier).join('\n')}`;
@@ -507,7 +521,12 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
           privateKey: keys.privateKey,
           scope,
         });
-      // The second pair passes on its own grant.
+      // The second pair passes on its own grant, and the people manager on the owning relationship.
+      expect(
+        await drill({ business: A.business, person: A2.manager, client: A2.client }),
+      ).toMatchObject({
+        outcome: 'passed',
+      });
       expect(
         await drill({ business: A.business, person: A2.person, client: A2.client }),
       ).toMatchObject({
@@ -519,6 +538,9 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
         { business: A.business, person: A.person, client: A2.revoked }, // a revoked grant
         { business: A.business, person: A2.outsider, client: A.client }, // a grant but no membership
         { business: A.business, person: A.person, client: A2.derived }, // its granter's grant revoked
+        { business: A.business, person: A.person, client: A2.wrongAction }, // a comment grant
+        { business: A.business, person: A.person, client: A2.wrongCollection }, // another collection's read
+        { business: A.business, person: A2.taskManager, client: A.client }, // a manager of another collection
       ]) {
         // oxlint-disable-next-line no-await-in-loop
         expect(await drill(scope)).toMatchObject({ outcome: 'failed', stage: 'check' });
