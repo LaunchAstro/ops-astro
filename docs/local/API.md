@@ -1029,6 +1029,16 @@ left the count without being done, or null), `assignee` and `revision`. An
 agent reads under its one task and is sent no steps. The shared view carries
 none.
 
+Completing a task marks each unfinished live subtask archived (MP-4-15):
+`task.complete` writes `archived_at` and `archived_why` ("The parent task
+was completed.") on every direct subtask not completed, cancelled or already
+archived, and leaves each one's state as it was; `task.reopen` removes the
+mark from exactly the subtasks that completion archived. Both run in the
+transition's own transaction, after the subtasks are locked and the caller is
+asked `task:write` on each (a business-wide writer once): the first out of
+reach refuses the whole transition, and nothing is written. An archived step
+is out of the Team count and takes no rank number.
+
 A subtask carries its parent's client. `task.create` with a `parentId` copies
 the parent's client onto the new task; `task.set_party` on a subtask naming any
 other client, and `task.reparent` under a parent whose client differs from the

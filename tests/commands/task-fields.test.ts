@@ -93,7 +93,7 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
   });
 
   describe('the generic editor cannot perform a transition', () => {
-    // The code each of the fifteen earns, asserted by name rather than by rule,
+    // The code each of the seventeen earns, asserted by name rather than by rule,
     // so relaxing one is a visible diff (minimum contract 5.3 assertion 2).
     // Three kinds, and the difference between them is the point: a field an
     // operation owns names that operation, a derived field names nobody
@@ -102,6 +102,8 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
     // `task.triage` (the root's D03 ruling; it is `SOURCE_SPOOFED` on create).
     const EXPECTED: Readonly<Record<string, string>> = {
       ad_hoc: 'TRANSITION_PROTECTED',
+      archived_at: 'FIELD_NOT_WRITABLE',
+      archived_why: 'FIELD_NOT_WRITABLE',
       assignee: 'TRANSITION_PROTECTED',
       client: 'TRANSITION_PROTECTED',
       client_visible: 'TRANSITION_PROTECTED',

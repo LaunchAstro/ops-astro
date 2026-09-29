@@ -19,7 +19,8 @@
 // board position, then by key; unscored tasks take no number. A task the
 // reader cannot see is not in the pool, so it never moves a number the reader
 // is shown. The calc line is built from the task's own marks only, so it names
-// no other task.
+// no other task. A step archived by its parent's completion (MP-4-15) is not
+// open work, so it takes no number until the parent is reopened.
 
 import { readableRecordIds, type Subject } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -196,7 +197,8 @@ export async function readTaskRank(
   const rows = await tx.query<PoolRow>(
     `select r.id, r.txt_1 as key, r.num_2::text as position,
             r.num_3::text as impact, r.num_4::text as confidence, r.num_5::text as ease,
-            coalesce(s.data ->> 'machine_category', '') not in ('completed', 'cancelled') as open,
+            coalesce(s.data ->> 'machine_category', '') not in ('completed', 'cancelled')
+              and not (r.data ? 'archived_at') as open,
             now() as now
        from public.records r
        left join public.records s

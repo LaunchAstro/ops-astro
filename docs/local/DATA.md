@@ -197,6 +197,8 @@ table exactly:
 | `confidence`    | `num_4`              | `task.set_scores`                            |
 | `ease`          | `num_5`              | `task.set_scores`                            |
 | `ad_hoc`        | `bool_2`             | `task.set_adhoc`                             |
+| `archived_at`   | unslotted, in `data` | derived on complete, cleared on reopen       |
+| `archived_why`  | unslotted, in `data` | derived on complete, cleared on reopen       |
 | `key`, `source` | `txt_1`, `txt_2`     | system                                       |
 
 There is no `status` column and no second coarse field. Whether a task is done

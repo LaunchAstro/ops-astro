@@ -47,6 +47,7 @@ import { applied, refused, type HandlerOutcome, type Refused } from './outcome.t
 import type { CommandContext } from './context.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import type { FieldValues } from './requests.ts';
+import { lockSteps, moveSteps, type StepMove } from './tasks-steps.ts';
 
 /**
  * The task fields whose value is a person of this business.
@@ -57,6 +58,12 @@ import type { FieldValues } from './requests.ts';
  * the party model, which this unit does not carry.
  */
 const PERSON_LINK_FIELDS: readonly string[] = ['assignee', 'delegate'];
+
+/** What each transition does to the task's steps; starting does nothing to them. */
+const STEP_MOVE: Partial<Record<MachineCategory, StepMove>> = {
+  completed: 'archive',
+  unstarted: 'restore',
+};
 
 /** task.reopen's reason, held to the rule task.cancel applies to its own. */
 const REASON_LIMIT = 500;
@@ -213,12 +220,22 @@ export async function setState(
     );
   }
 
+  // Completing archives the unfinished steps and reopening restores the ones
+  // it archived (MP-4-15): locked and asked about before anything is written.
+  const stepMove = STEP_MOVE[category];
+  const steps =
+    stepMove === undefined
+      ? { ok: true as const, ids: [] }
+      : await lockSteps(tx, context, target.id, stepMove);
+  if (!steps.ok) return refused(steps.refusal);
+
   const moved = await setTaskState(tx, {
     taskId: target.id,
     stateId: state.id,
     taskStateTypeId: context.spine.taskStateTypeId,
   });
   if (isRecordsRefusal(moved)) return refused(moved);
+  if (stepMove !== undefined) await moveSteps(tx, steps.ids, stepMove);
 
   const rows = await tx.query<{ readonly revision: string }>(
     `select revision::text as revision from records where business_id = $1 and id = $2`,
