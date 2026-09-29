@@ -68,21 +68,61 @@ describe('S0-6 isolation: one cookie per sign-in, many tabs', () => {
 
 /**
  * Every script element on a page, and those that are not an empty same-origin
- * file. It reads each opening tag and what follows it, never a pairing with an
- * end tag, so `</script >`, `</script\t>` or an end tag with attributes cannot
- * hide a body: anything but whitespace before `</script` counts as inline.
+ * file. It reads each opening tag as the browser does, quoted values whole, so
+ * a `>` or a fake `</script >` inside a quoted value neither ends the tag nor
+ * reads as a `src`: only a real `src` attribute (the first, as the browser
+ * takes it) makes a file, and only a plain path on this origin: no entity,
+ * tab, backslash or second slash that the URL parser would turn into another
+ * host. A `<script` whose tag never closes counts as inline. It reads what
+ * follows the tag, never a pairing with an end tag, so `</script >`,
+ * `</script\t>` or an end tag with attributes cannot hide a body: anything but
+ * whitespace before `</script` counts as inline.
  */
 function scriptsOf(html: string) {
   const inline: string[] = [];
   let found = 0;
-  for (const open of html.matchAll(/<script\b(?<attributes>[^>]*)>/giu)) {
+  for (const start of html.matchAll(/<script(?=[\s/>])/giu)) {
     found += 1;
+    const tag = /<script(?<attributes>(?:[^>"']|"[^"]*"|'[^']*')*)>/iuy;
+    tag.lastIndex = start.index;
+    const open = tag.exec(html);
+    if (open === null) {
+      inline.push(start[0]);
+      continue;
+    }
     const after = html.slice(open.index + open[0].length);
-    const sameOrigin = /\ssrc="\/[^/]/u.test(open.groups?.['attributes'] ?? '');
+    const src = attributesOf(open.groups?.['attributes'] ?? '').find(([name]) => name === 'src');
+    const sameOrigin = src !== undefined && /^\/[\w.~-][\w.~/-]*$/u.test(src[1]);
     if (!sameOrigin || !/^\s*<\/script\b/iu.test(after)) inline.push(open[0]);
   }
   return { found, inline };
 }
+
+/** An opening tag's attributes in order, names lower-cased, values unquoted. */
+function attributesOf(text: string): [string, string][] {
+  const each =
+    /(?<name>[^\s"'>/=]+)(?:\s*=\s*(?:"(?<dq>[^"]*)"|'(?<sq>[^']*)'|(?<bare>[^\s"'>]+)))?/gu;
+  return [...text.matchAll(each)].map(({ groups }) => [
+    (groups?.['name'] ?? '').toLowerCase(),
+    groups?.['dq'] ?? groups?.['sq'] ?? groups?.['bare'] ?? '',
+  ]);
+}
+
+/** Markup the inline-script check must count as inline, however it is dressed. */
+const HOSTILE_SCRIPTS = [
+  '<script>window.planted = 1;</script >',
+  '<script>window.planted = 1;</script\t>',
+  '<script>window.planted = 1;</script foo="bar">',
+  '<SCRIPT>window.planted = 1;</SCRIPT>',
+  '<script src="/a.js" data-x=">">window.planted = 1;</script>',
+  '<script src="https://outside.example/a.js"></script>',
+  '<script src="//outside.example/a.js"></script>',
+  `<script data-x=' src="/a.js"'>window.planted = 1;</script>`,
+  '<script src="/&#x2f;outside.example/a.js"></script>',
+  '<script src="/\t/outside.example/a.js"></script>',
+  '<script src="/\\outside.example/a.js"></script>',
+  '<script data-x="never closed>window.planted = 1;</script>',
+];
 
 describe('S0-6 content policy', () => {
   const page = readFileSync(join(ROOT, 'apps/web/index.html'), 'utf8');
@@ -116,20 +156,7 @@ describe('S0-6 content policy', () => {
   it('the inline-script check catches hostile markup: odd end tags, case, a > in a quoted value', () => {
     const own = '<script type="module" src="/assets/index.js"></script>';
     expect(scriptsOf(own).inline).toEqual([]);
-    for (const planted of [
-      '<script>window.planted = 1;</script >',
-      '<script>window.planted = 1;</script\t>',
-      '<script>window.planted = 1;</script foo="bar">',
-      '<SCRIPT>window.planted = 1;</SCRIPT>',
-      '<script src="/a.js" data-x=">">window.planted = 1;</script>',
-      '<script src="https://outside.example/a.js"></script>',
-      '<script src="//outside.example/a.js"></script>',
-      `<script data-x=' src="/a.js"'>window.planted = 1;</script>`,
-      '<script src="/&#x2f;outside.example/a.js"></script>',
-      '<script src="/\t/outside.example/a.js"></script>',
-      '<script src="/\\outside.example/a.js"></script>',
-      '<script data-x="never closed>window.planted = 1;</script>',
-    ]) {
+    for (const planted of HOSTILE_SCRIPTS) {
       expect(scriptsOf(`${own}${planted}`).inline, planted).not.toEqual([]);
     }
   });
