@@ -1235,8 +1235,8 @@ it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `person.list`, `preset.plan`,
-`settings.read` and `session.capabilities` are declared in `COMMAND_SURFACE`
-with `kind: 'read'`. The boundary branches on that and calls the executor the
+`settings.read`, `session.capabilities`, `inbox.read`, `inbox.count` and
+`inbox.unattended` are declared in `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
 ```ts
@@ -1247,6 +1247,15 @@ exported as `executeRead` from `packages/core-commands/src/reads/execute.ts`,
 returning either the contract's `{ ok: true, ... }` shape or a command refusal.
 `executeRead` is a required option of `createApi`, so every declared read has
 an executor.
+
+`inbox.read` answers the caller's own items as `{ ok: true, inbox }` and
+`inbox.count` answers `{ ok: true, owed }`, the counted entries of the same
+list (`reads/inbox.ts`). An item about a task the caller cannot read is not
+listed. A readable entry carries its pointers, its task's `key` and `title`,
+and `closedBy`, the decider's `personId` and `name` once it is cleared, all
+read in the same transaction, so the item stores none of them. A gone entry
+carries its own identity and axes and nothing of the task. The board screen
+draws both reads above the board (`apps/web/src/views/inbox.tsx`, INB-1g).
 
 `task.read` carries the task's comments. An internal reader, meaning a
 membership role of `owner`, `admin` or `member`, is given every comment in full.
