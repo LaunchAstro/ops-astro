@@ -75,6 +75,7 @@
     "verify:browser": "node tests/browser/slice-acceptance.mjs",
     "verify:d06-mounted": "node tests/browser/d06-mounted.mjs",
     "verify:restart": "bash scripts/local/restart-proof.sh",
+    "verify:upgrade-drill": "node scripts/local/upgrade-drill.mjs",
     "verify:restart-legs": "node tests/browser/restart-legs.mjs",
     "verify:journey": "node scripts/local/journey.mjs",
     "verify:runtime-proofs": "bash scripts/local/runtime-proofs.sh",
