@@ -66,19 +66,22 @@ describe('S0-6 isolation: one cookie per sign-in, many tabs', () => {
   isolationOneCookieCases3();
 });
 
-/** Every script element on a page, and those that are not an empty same-origin file. */
+/**
+ * Every script element on a page, and those that are not an empty same-origin
+ * file. It reads each opening tag and what follows it, never a pairing with an
+ * end tag, so `</script >`, `</script\t>` or an end tag with attributes cannot
+ * hide a body: anything but whitespace before `</script` counts as inline.
+ */
 function scriptsOf(html: string) {
-  const scripts = [
-    ...html.matchAll(/<script\b(?<attributes>[^>]*)>(?<body>[\s\S]*?)<\/script>/giu),
-  ];
-  const inline = scripts
-    .filter(
-      (script) =>
-        !/\ssrc="\/[^/]/u.test(script.groups?.['attributes'] ?? '') ||
-        script.groups?.['body']?.trim() !== '',
-    )
-    .map((script) => script[0]);
-  return { found: scripts.length, inline };
+  const inline: string[] = [];
+  let found = 0;
+  for (const open of html.matchAll(/<script\b(?<attributes>[^>]*)>/giu)) {
+    found += 1;
+    const after = html.slice(open.index + open[0].length);
+    const sameOrigin = /\ssrc="\/[^/]/u.test(open.groups?.['attributes'] ?? '');
+    if (!sameOrigin || !/^\s*<\/script\b/iu.test(after)) inline.push(open[0]);
+  }
+  return { found, inline };
 }
 
 describe('S0-6 content policy', () => {
