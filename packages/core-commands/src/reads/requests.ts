@@ -34,6 +34,7 @@ import type {
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
+  TaskLedgerResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { Receipt } from '../../../core-runtime/src/index.ts';
@@ -60,6 +61,13 @@ export interface ReadOperands {
   readonly 'task.read': { readonly recordId: string };
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
   readonly 'task.board': { readonly board: string | null };
+  /**
+   * The activity ledger's page: the newest days with events before `before`
+   * (a `YYYY-MM-DD` in `timeZone`), or the newest days of all when it is
+   * null. The zone is the reader's, and it is what a day means: an event at
+   * 23:30 in Townsville is on a different day than it is in UTC.
+   */
+  readonly 'task.ledger': { readonly before: string | null; readonly timeZone: string };
   readonly 'person.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
@@ -121,6 +129,7 @@ export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
   | SharedTaskRead
   | TaskBoardResult
+  | TaskLedgerResult
   | PersonListResult
   | QueueResult
   | PresetPlanResult

@@ -64,6 +64,9 @@ export type CommandName =
   | 'task.board'
   | 'task.queue'
   | 'task.execution'
+  // What happened to the business's tasks, by day (MP-8-4, CS-8.9): a view
+  // over the applied writes in `audit_events`, never a second record of them.
+  | 'task.ledger'
   | 'person.list'
   // The preset planner. It reads the model and writes nothing at all, so it is
   // a read by the only definition this table has; what makes it unlike the
@@ -454,6 +457,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   read('task.queue', TASK_COLLECTION, { agent: 'before-pickup' }),
   // One task's runs and their progress events (T2a), after `read` on that task.
   read('task.execution', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // The activity ledger. `read` on tasks across the business, because it
+  // lists every task's writes; an agent works one delegated task and has no
+  // use for the whole business's trail, so it is not offered one.
+  read('task.ledger', TASK_COLLECTION),
   read('person.list', 'person'),
   // `preset` is what this route is about; the grant it takes is `manage` on
   // the family the request names, which `reads/dispatch.ts` reads off the
