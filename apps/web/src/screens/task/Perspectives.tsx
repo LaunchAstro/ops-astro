@@ -29,6 +29,7 @@ import type { Perspective, PerspectiveCounts, StepMark } from './perspective-cou
 
 export {
   perspectiveCounts,
+  stepMarks,
   type Perspective,
   type PerspectiveCounts,
   type StepMark,

@@ -104,10 +104,11 @@ import {
   PanelDoorButton,
   perspectiveCounts,
   Perspectives,
+  stepMarks,
   type PanelDoor,
   type Perspective,
 } from './task/Perspectives.tsx';
-import { stepMarks, TeamSubtasks } from './task/Subtasks.tsx';
+import { TeamSubtasks } from './task/Subtasks.tsx';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { RunProgress } from '../views/run-progress.tsx';
