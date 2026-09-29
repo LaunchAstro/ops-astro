@@ -188,6 +188,7 @@ function drillReceiptCases4() {
           operator,
           productionMajor: 17,
           targetMajor: 17,
+          ranOn: 'staging machine',
         });
         expect(typeof receipt['lastTestedRestore']).toBe('string');
         const text = JSON.stringify(receipt);

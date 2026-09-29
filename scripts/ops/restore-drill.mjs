@@ -4,6 +4,9 @@
 // LF-3). The operator runs it on the machine, from the runbook:
 //
 //   node --env-file=<drill env> scripts/ops/restore-drill.mjs --drill
+//   node --env-file=<drill env> scripts/ops/restore-drill.mjs --export <file>
+//   node --env-file=<drill env> scripts/ops/restore-drill.mjs --drill --archive <file>
+//   node --env-file=<drill env> scripts/ops/restore-drill.mjs --record <receipt file>
 //     RESTORE_STORE_URL  a login holding ops_astro_backup_restore on the store,
 //                        its host as staging's network names the store (backups)
 //     RESTORE_KEY_FILE   the operator's private key, held apart from the store
@@ -29,6 +32,14 @@
 // folder, with the fields `RECEIPT_FIELDS` (drill-receipt.mjs) names and no
 // other.
 //
+// The clean-host leg (S0-3e, recovery contract D-3) runs off the machine,
+// where the store has no route: `--export` writes the newest sealed backup and
+// the digest the store recorded into one file (carried-archive.mjs), never the
+// key; `--drill --archive <file>` restores that file anywhere, checked against
+// the digest before anything opens it, and its receipt says it ran on a carried
+// archive and is kept and printed, not stored; `--record <file>` takes that
+// receipt back into the store on the machine. Each mode is behind the same gate.
+//
 // It prints one JSON line, passed or failed, and exits 0 or 1. A failed line
 // names the stage and nothing else: Docker's, pg_restore's and the server's
 // messages can carry record data, so they are never kept.
@@ -39,6 +50,7 @@ import { readFileSync } from 'node:fs';
 import { EFFECTIVE_GRANTS } from '../../packages/core-records/src/index.ts';
 import { openArchive } from './archive-seal.mjs';
 import { stagingReach } from './backup-store-reach.mjs';
+import { readCarried, readCarriedReceipt, writeCarried } from './carried-archive.mjs';
 import { RESTORE_ROLE, recordDrill } from './drill-receipt.mjs';
 import { recordDeployment, requireOperator } from './operator.ts';
 
@@ -71,18 +83,38 @@ export function docker(args, input) {
   });
 }
 
-/** The newest backup, read as the restore identity; the store writes the receipt. */
+/**
+ * The newest backup, read as the restore identity (the store logs the read),
+ * with the digest the store recorded when it took it.
+ */
 export async function fetchLatest(storeUrl, reach = stagingReach) {
   const latest = await reach(
     storeUrl,
     `set role ${RESTORE_ROLE};
-select json_build_object('takenAt', taken_at, 'body', encode(body, 'hex'))::text
+select json_build_object('takenAt', taken_at, 'sha256', sha256, 'body', encode(body, 'hex'))::text
   from backups.read_latest();
 `,
   );
   if (latest === '') throw new Error('no backup');
   const row = JSON.parse(latest);
-  return { takenAt: new Date(row.takenAt).toISOString(), body: Buffer.from(row.body, 'hex') };
+  return {
+    takenAt: new Date(row.takenAt).toISOString(),
+    sha256: row.sha256,
+    body: Buffer.from(row.body, 'hex'),
+  };
+}
+
+/**
+ * `--export`: the newest backup as the store handed it out, into `file` for a
+ * drill on another host (carried-archive.mjs). The key is never read here.
+ */
+export async function exportArchive({ gate, storeUrl, file, reach = stagingReach }) {
+  const archive = await fetchLatest(storeUrl, reach);
+  writeCarried(file, archive);
+  return await recordDeployment(gate, {
+    action: 'archive exported',
+    archiveTakenAt: archive.takenAt,
+  });
 }
 
 async function must(result) {
@@ -226,22 +258,37 @@ export async function restoreDrill({
 export async function drillAsOperator({
   gate,
   storeUrl,
+  archiveFile,
   privateKey,
   scope,
   drill = restoreDrill,
   reach = stagingReach,
 }) {
+  const carried = archiveFile !== undefined;
   const {
     event: _event,
     at: _at,
     ...result
   } = await drill({
-    fetchArchive: () => fetchLatest(storeUrl, reach),
+    fetchArchive: carried
+      ? async () => readCarried(archiveFile)
+      : () => fetchLatest(storeUrl, reach),
     privateKey,
     scope,
   });
   const empty = { stage: null, archiveTakenAt: null, tables: null, readAs: null };
-  const act = { action: 'restore drill recorded', ...empty, ...result };
+  const act = {
+    action: 'restore drill recorded',
+    ...empty,
+    ...result,
+    ranOn: carried ? 'carried archive' : 'staging machine',
+  };
+  if (carried) {
+    // Off the machine the store is out of reach: the receipt is kept and
+    // printed, and `--record` takes it back into the store.
+    act.lastTestedRestore = null;
+    return await recordDeployment(gate, act);
+  }
   try {
     act.lastTestedRestore = await recordDrill(storeUrl, gate.operator.personId, act, reach);
   } catch {
@@ -251,37 +298,86 @@ export async function drillAsOperator({
   return await recordDeployment(gate, act);
 }
 
+/**
+ * `--record`: a carried drill's receipt, brought back by the operator who ran
+ * it, into the store. The store takes it once, against its own logged read.
+ */
+export async function recordCarried({ gate, storeUrl, receiptFile, reach = stagingReach }) {
+  const receipt = readCarriedReceipt(receiptFile, gate.operator.personId);
+  let lastTestedRestore;
+  try {
+    lastTestedRestore = await recordDrill(storeUrl, receipt.operator, receipt, reach, true);
+  } catch {
+    throw new Error(
+      'the store did not take the receipt: it has it already, or it never handed out that archive to this login inside the window',
+    );
+  }
+  return await recordDeployment(gate, {
+    ...receipt,
+    action: 'carried drill recorded',
+    lastTestedRestore,
+  });
+}
+
+const USAGE =
+  'usage: restore-drill.mjs --drill [--archive <file>] | --export <file> | --record <receipt file>';
+
+/** The one mode the command line names, or the usage. */
+function modeOf(args) {
+  const [flag, ...rest] = args;
+  const file = rest.at(-1) ?? '';
+  if (flag === '--drill' && rest.length === 0) return { mode: 'drill' };
+  if (flag === '--drill' && rest.length === 2 && rest[0] === '--archive' && file !== '') {
+    return { mode: 'drill', archiveFile: file };
+  }
+  if (flag === '--export' && rest.length === 1 && file !== '') return { mode: 'export', file };
+  if (flag === '--record' && rest.length === 1 && file !== '') return { mode: 'record', file };
+  throw new Error(USAGE);
+}
+
 function need(name) {
   const value = process.env[name];
   if (value === undefined || value === '') throw new Error(`${name} is unset`);
   return value;
 }
 
+/** `--drill`, from the store or from a carried archive: the drill's receipt. */
+async function drillFromHere(gate, archiveFile) {
+  const storeUrl = archiveFile === undefined ? need('RESTORE_STORE_URL') : undefined;
+  let privateKey;
+  try {
+    privateKey = readFileSync(need('RESTORE_KEY_FILE'), 'utf8');
+  } catch {
+    throw new Error('RESTORE_KEY_FILE is unset or unreadable');
+  }
+  const scope = {
+    business: process.env.DRILL_BUSINESS_ID,
+    client: process.env.DRILL_CLIENT_ID,
+    person: process.env.DRILL_PERSON_ID,
+  };
+  return await drillAsOperator({ gate, storeUrl, archiveFile, privateKey, scope });
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
-    if (process.argv[2] !== '--drill' || process.argv.length !== 3) {
-      throw new Error('usage: restore-drill.mjs --drill');
-    }
+    const run = modeOf(process.argv.slice(2));
     const gate = await requireOperator();
     if (!gate.ok) {
       process.stderr.write(`restore-drill: REFUSED: ${gate.reason}\n`);
       process.exit(1);
     }
-    const storeUrl = need('RESTORE_STORE_URL');
-    let privateKey;
-    try {
-      privateKey = readFileSync(need('RESTORE_KEY_FILE'), 'utf8');
-    } catch {
-      throw new Error('RESTORE_KEY_FILE is unset or unreadable');
+    let receipt;
+    if (run.mode === 'export') {
+      receipt = await exportArchive({ gate, storeUrl: need('RESTORE_STORE_URL'), file: run.file });
+    } else if (run.mode === 'record') {
+      const storeUrl = need('RESTORE_STORE_URL');
+      receipt = await recordCarried({ gate, storeUrl, receiptFile: run.file });
+    } else {
+      receipt = await drillFromHere(gate, run.archiveFile);
     }
-    const scope = {
-      business: process.env.DRILL_BUSINESS_ID,
-      client: process.env.DRILL_CLIENT_ID,
-      person: process.env.DRILL_PERSON_ID,
-    };
-    const receipt = await drillAsOperator({ gate, storeUrl, privateKey, scope });
     process.stdout.write(`${JSON.stringify(receipt)}\n`);
-    process.exitCode = receipt.outcome === 'passed' ? 0 : 1;
+    // A drill exits 1 unless it passed; an export or a record that ran exits 0.
+    process.exitCode = run.mode === 'drill' && receipt.outcome !== 'passed' ? 1 : 0;
   } catch (error) {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 2;
