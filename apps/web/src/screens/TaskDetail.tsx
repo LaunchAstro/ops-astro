@@ -93,6 +93,7 @@ import { ConflictNotice, MovedNotice, UnsavedBar } from './task/Notices.tsx';
 import { TaskHeader } from './task/Header.tsx';
 import { TaskFacts } from './task/Facts.tsx';
 import { TaskUnknown } from './task/Absent.tsx';
+import type { PanelDoor } from './task/Perspectives.tsx';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { RunProgress } from '../views/run-progress.tsx';
@@ -111,6 +112,8 @@ export interface TaskDetailProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly taskKey: string;
+  /** The dock task panel's opener, where edits happen (MP-4-8). Absent, a door cannot be pressed. */
+  readonly onOpenPanel?: (door: PanelDoor) => void;
 }
 
 /** Where an unsaved edit began: the revision, and the values as they stood. */
