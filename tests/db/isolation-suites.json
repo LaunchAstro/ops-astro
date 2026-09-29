@@ -11,6 +11,6 @@
     "tests/wayfinder/wf-2.test.ts",
     "tests/cli/api-3-isolation.test.ts",
     "tests/cli/api-4.test.ts",
-    "tests/cli/api-4-context.test.ts"
+    "tests/cli/api-4-context-isolation.test.ts"
   ]
 }
