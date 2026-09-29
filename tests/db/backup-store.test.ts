@@ -21,6 +21,7 @@ import {
   retentionLogin,
   receipts,
   archiveIds,
+  addArchive,
   backupStoreHooks,
   hostReach,
 } from './backup-identity.fixture.ts';
@@ -33,28 +34,32 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
   theBackupStoreCases3();
 });
 
+/** Everything the backup identity is refused on the store beyond adding an archive. */
+const REFUSED_TO_THE_JOB: Record<string, string> = {
+  list: 'select id, taken_at from backups.archives',
+  read: 'select chunk from backups.archive_parts',
+  count: 'select count(*) from backups.archives',
+  add: 'insert into backups.archives default values',
+  backdate: `insert into backups.archives (taken_at) values (now() - interval '400 days')`,
+  part: `insert into backups.archive_parts (archive_id, seq, sha256, chunk) values (gen_random_uuid(), 0, repeat('0', 64), '\\x00')`,
+  change: `update backups.archive_parts set chunk = '\\x00'`,
+  complete: 'update backups.archives set complete = true',
+  delete: 'delete from backups.archives',
+  truncate: 'truncate backups.archives, backups.archive_parts',
+  latest: 'select * from backups.read_latest()',
+  receipts: 'select * from backups.receipts',
+  forge: `insert into backups.receipts (action) values ('backup expired')`,
+  window: 'update backups.settings set retention_days = 1',
+};
+
 function theBackupStoreCases1() {
   describe('S0-3 identity scope', () => {
     it('adds a backup and is refused every list, read, change or delete on the store', async () => {
       const client = await asRole(backupLogin.url, BACKUP);
       try {
-        await client.query('insert into backups.archives (body) values ($1)', [
-          Buffer.from('PGDMP made-up'),
-        ]);
+        await addArchive(client, Buffer.from('PGDMP made-up'));
         const refused: Record<string, string> = {};
-        for (const [what, text] of Object.entries({
-          list: 'select id, taken_at from backups.archives',
-          read: 'select body from backups.archives',
-          count: 'select count(*) from backups.archives',
-          returning: `insert into backups.archives (body) values ('\\x00') returning id`,
-          backdate: `insert into backups.archives (body, taken_at) values ('\\x00', now() - interval '400 days')`,
-          change: `update backups.archives set body = '\\x00'`,
-          delete: 'delete from backups.archives',
-          truncate: 'truncate backups.archives',
-          receipts: 'select * from backups.receipts',
-          forge: `insert into backups.receipts (action) values ('backup expired')`,
-          window: 'update backups.settings set retention_days = 1',
-        })) {
+        for (const [what, text] of Object.entries(REFUSED_TO_THE_JOB)) {
           // oxlint-disable-next-line no-await-in-loop
           refused[what] = await attempt(client, text);
         }
@@ -159,28 +164,38 @@ function backupRetentionCases1() {
   });
 }
 
+/** Two archives of 1 and 2 bytes, added as the job adds them. */
+async function twoArchives(): Promise<void> {
+  const adder = await asRole(backupLogin.url, BACKUP);
+  try {
+    await addArchive(adder, Buffer.from([1]));
+    await addArchive(adder, Buffer.from([2, 2]));
+  } finally {
+    await adder.end();
+  }
+}
+
 function backupRetentionCases2() {
   // prettier-ignore
   it('deletes only a backup past the window, each with a receipt, and cannot delete one inside it', async () => {
-      await store.admin.execute(`insert into backups.archives (body) values ('\\x01'), ('\\x02')`);
+      await twoArchives();
       const [old] = await store.admin.execute<{ id: string }>(
         `update backups.archives set taken_at = now() - make_interval(days => (select retention_days + 1 from backups.settings))
-          where id = (select id from backups.archives where body = '\\x01') returning id::text`,
+          where id = (select id from backups.archives where bytes = 1) returning id::text`,
       );
       const inWindow = (await archiveIds()).filter((id) => id !== old?.id);
 
       const client = await asRole(retentionLogin.url, RETENTION);
       try {
-        expect(await attempt(client, 'select body from backups.archives')).toBe('42501');
+        expect(await attempt(client, 'select chunk from backups.archive_parts')).toBe('42501');
+        expect(await attempt(client, 'select sha256 from backups.archives')).toBe('42501');
         expect(
           await attempt(
             client,
             `update backups.archives set taken_at = now() - interval '999 days'`,
           ),
         ).toBe('42501');
-        expect(await attempt(client, `insert into backups.archives (body) values ('\\x03')`)).toBe(
-          '42501',
-        );
+        expect(await attempt(client, `select backups.add_part(0, '\\x03')`)).toBe('42501');
         expect(await attempt(client, 'update backups.settings set retention_days = 1')).toBe(
           '42501',
         );

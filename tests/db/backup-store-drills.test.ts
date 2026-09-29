@@ -52,7 +52,10 @@ function theBackupStoreCases4() {
 function drillReceiptCases1() {
   it('a failed drill before any passed one is recorded, and names no last tested restore', async () => {
     const path = '../../scripts/ops/restore-drill.mjs';
-    const { recordDrill } = (await import(/* @vite-ignore */ path)) as {
+    const { recordDrill } = (await import(
+      /* @vite-ignore */
+      path
+    )) as {
       recordDrill: (
         url: string,
         who: string,

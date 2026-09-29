@@ -6,7 +6,7 @@
 // refuses every call, and one carried archive in a folder of its own.
 
 import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll } from 'vitest';
@@ -20,9 +20,10 @@ type DrillModule = {
   exportArchive: Act;
   RECEIPT_FIELDS: readonly string[];
 };
+export type Held = { takenAt: string; sha256: string; bytes: number };
 type CarriedModule = {
-  readCarried: (file: string) => { takenAt: string; body: Buffer };
-  writeCarried: (file: string, archive: Archive) => void;
+  readCarried: (file: string, into?: string) => Held;
+  writeCarried: (file: string, fetchInto: (into: string) => Promise<Held>) => Promise<Held>;
   readCarriedReceipt: (file: string, operator: string) => Receipt;
   digestOf: (body: Buffer) => string;
 };
@@ -93,11 +94,23 @@ export const sealed = async (publicKey: string = keys.publicKey): Promise<Archiv
   return { takenAt: TAKEN, sha256: (await carried()).digestOf(body), body };
 };
 
-/** A folder of its own holding one carried archive. */
+/** A fetch that writes `archive`'s sealed bytes into the file it is handed, as the store's does. */
+export const fetchOf =
+  (archive: Archive) =>
+  (into: string): Promise<Held> => {
+    writeFileSync(into, archive.body, { mode: 0o600, flag: 'wx' });
+    return Promise.resolve({
+      takenAt: archive.takenAt,
+      sha256: archive.sha256,
+      bytes: archive.body.length,
+    });
+  };
+
+/** A folder of its own holding one carried archive: `archive.sealed` and its facts. */
 export const carriedFile = async (archive?: Archive): Promise<{ dir: string; file: string }> => {
   const dir = folder('carry');
   const file = join(dir, 'archive.sealed');
-  (await carried()).writeCarried(file, archive ?? (await sealed()));
+  await (await carried()).writeCarried(file, fetchOf(archive ?? (await sealed())));
   return { dir, file };
 };
 

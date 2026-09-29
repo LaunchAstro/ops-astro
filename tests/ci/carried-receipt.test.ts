@@ -73,7 +73,7 @@ function keptCases() {
     });
     expect(Object.keys(receipt).toSorted()).toStrictEqual([...RECEIPT_FIELDS].toSorted());
     // Off the machine it is not a passed drill: the store checks the archive when it is recorded.
-    const held = JSON.parse(readFileSync(file, 'utf8')) as { sha256: string };
+    const held = JSON.parse(readFileSync(`${file}.json`, 'utf8')) as { sha256: string };
     expect(receipt).toMatchObject({
       outcome: 'pending',
       ranOn: 'carried archive',
