@@ -58,6 +58,13 @@ import {
   type SigningKey,
 } from './signing.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import {
+  assignedTo,
+  escalateGate,
+  escalatedDecider,
+  recheckEscalation,
+  type Escalated,
+} from './escalation.ts';
 
 /**
  * A note that cannot be stored. `FIELD_VALUE_INVALID` is
@@ -131,13 +138,8 @@ export type Decided =
   | (DecidedCommon & {
       readonly decision: 'reject' | 'request_changes';
     })
-  | {
-      // An escalation is not the gate's decision: no signed row, no hash.
-      readonly decision: 'escalate';
-      readonly gateId: string;
-      readonly versionId: string;
-      readonly escalatedToPersonId: string;
-    };
+  // An escalation is not the gate's decision: no signed row, no hash.
+  | Escalated;
 
 interface GateRow {
   readonly id: string;
@@ -430,21 +432,8 @@ async function recheckDecision(
   if (!gate.ok) return gate;
   // T3a: an escalated gate is decided only by the escalation role, decide at
   // business scope, read at the locked instant like the grant above.
-  if (gate.value.escalated) {
-    const wider = await checkAuthorityAt(
-      tx,
-      request.subjects,
-      { collection: request.collection, action: 'decide', scope: { kind: 'business', id: null } },
-      locked.lockedAt,
-    );
-    if (!wider.ok) {
-      return refuse(
-        'SCOPE_NOT_GRANTED',
-        'this gate was escalated, and only a holder of decide across the business decides it now',
-        'A person holding decide at business scope decides or escalates it.',
-      );
-    }
-  }
+  const wider = await escalatedDecider(tx, request, gate.value.escalated, locked.lockedAt);
+  if (!wider.ok) return wider;
   // Four eyes (T2g): the person the task is assigned to does not decide its
   // gate. Read under the task lock taken above (the record row, for update),
   // which an assignment's own update of that row waits on, so a reassignment
@@ -457,16 +446,6 @@ async function recheckDecision(
   const work = await recheckWork(tx, request, found, gate.value, evidence.value.version, locked);
   if (!work.ok) return work;
   return { ok: true, value: { gate: gate.value, ...evidence.value } };
-}
-
-/** Whether the task is assigned to this person, read under the caller's task lock. */
-async function assignedTo(tx: TenantQuery, taskId: string, personId: string): Promise<boolean> {
-  const rows = await tx.query<{ readonly mine: boolean }>(
-    `select exists (select 1 from public.records
-                     where business_id = $1 and id = $2 and uuid_2 = $3) as mine`,
-    [tx.businessId, taskId, personId],
-  );
-  return rows[0]?.mine === true;
 }
 
 /** The gate is still pending, on the presented version, and not past its deadline. */
@@ -618,17 +597,8 @@ async function recheckWork(
       'Approve it, reject it, or escalate under the accepted rule. A third round is not taken here.',
     );
   }
-  if (request.decision === 'escalate') {
-    if (!(await atBound())) {
-      return refuse(
-        'TRANSITION_NOT_PERMITTED',
-        'escalation is offered once this lineage has used its two rounds of changes',
-        'Approve, reject or request changes; escalate at the bound.',
-      );
-    }
-    const recipient = await recheckRecipient(tx, request, found.task_id, locked.lockedAt);
-    if (!recipient.ok) return recipient;
-  }
+  const escalation = await recheckEscalation(tx, request, found.task_id, locked.lockedAt, atBound);
+  if (!escalation.ok) return escalation;
   if (request.decision === 'approve') {
     const room = await budgetRoom(tx, {
       capId: locked.capId,
@@ -746,83 +716,6 @@ async function writeDecision(
     [tx.businessId, gate.id, gateState],
   );
   return { decisionId, hash };
-}
-
-/**
- * The recipient holds the escalation role at the locked instant: decide at
- * business scope, through the person or any of their actors, and is not the
- * task's assignee, whom four eyes keeps from deciding. Anyone else, or nobody,
- * fails closed and the gate stays as it was, approve and reject still open.
- * The answer names the field and never echoes the presented id.
- */
-async function recheckRecipient(
-  tx: TenantQuery,
-  request: DecideRequest,
-  taskId: string,
-  lockedAt: string,
-): Promise<RuntimeResult<null>> {
-  const ineligible = {
-    ok: false as const,
-    refusal: refuseCommand(
-      'SCOPE_NOT_GRANTED',
-      ['recipientPersonId'],
-      [
-        'the recipient does not hold decide across this business',
-        'Escalate to a person holding decide at business scope who is not assigned the task.',
-      ],
-    ),
-  };
-  const recipient = request.recipientPersonId;
-  if (recipient === undefined) return ineligible;
-  const actors = await tx.query<{ readonly id: string }>(
-    `select id from public.actors where business_id = $1 and person_id = $2`,
-    [tx.businessId, recipient],
-  );
-  if (actors.length === 0) return ineligible;
-  const held = await checkAuthorityAt(
-    tx,
-    [
-      { kind: 'person', id: recipient },
-      ...actors.map((actor) => ({ kind: 'actor' as const, id: actor.id })),
-    ],
-    { collection: request.collection, action: 'decide', scope: { kind: 'business', id: null } },
-    lockedAt,
-  );
-  if (!held.ok || (await assignedTo(tx, taskId, recipient))) return ineligible;
-  return { ok: true, value: null };
-}
-
-/**
- * Escalate (T3a): the actor and the recipient on the gate, under the gate
- * lock. The gate stays `pending` and no decision is written, so the chain and
- * the one-decision-per-gate index are untouched; a later escalation replaces
- * the recipient, and each one is in the audit trail.
- */
-async function escalateGate(
-  tx: TenantQuery,
-  request: DecideRequest,
-  gate: GateRow,
-): Promise<DecideResult> {
-  const recipient = request.recipientPersonId;
-  if (recipient === undefined) {
-    throw new Error('decide: escalate reached its write without a checked recipient');
-  }
-  await tx.query(
-    `update public.gates
-        set escalated_to_person_id = $3, escalated_by_person_id = $4,
-            escalated_by_actor_id = $5, escalated_at = now()
-      where business_id = $1 and id = $2`,
-    [tx.businessId, gate.id, recipient, request.decidedByPersonId, request.decidedByActorId],
-  );
-  return {
-    ok: true,
-    value: {
-      decision: 'escalate',
-      gateId: gate.id,
-      versionId: gate.version_id,
-      escalatedToPersonId: recipient,
-    },
-  };
 }
 
 /**
