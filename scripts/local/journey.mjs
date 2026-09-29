@@ -39,7 +39,7 @@ import {
   run,
   startPostgres,
   stopStarted,
-} from './journey-stack.mjs';
+} from './journey-stack.ts';
 import { builtCases, protectedVerdicts } from './journey-proofs.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
