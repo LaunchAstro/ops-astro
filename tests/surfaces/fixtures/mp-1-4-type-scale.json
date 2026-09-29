@@ -229,6 +229,10 @@
       "ruling": "DS-TOK-123"
     },
     {
+      "selector": ".dial__score",
+      "ruling": "DS-COMP-28"
+    },
+    {
       "selector": ".tph__n",
       "ruling": "DR-6"
     }
