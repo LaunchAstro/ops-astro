@@ -20,6 +20,7 @@ interface MapRow {
   readonly owner: string | null;
   readonly client: string | null;
   readonly version: number | null;
+  readonly revision: string;
 }
 
 interface ComponentRow {
@@ -85,6 +86,7 @@ function mapView(
     owner: map.owner,
     client: map.client,
     version: map.version ?? 0,
+    revision: Number(map.revision),
     destination: of('destination')[0] ?? null,
     notes: of('notes')[0] ?? null,
     fog: of('fog'),
@@ -132,7 +134,7 @@ export async function readMapView(
 ): Promise<MapView | undefined> {
   const maps = await tx.query<MapRow>(
     `select r.txt_1 as key, r.txt_4 as title, r.data ->> 'map_owner' as owner,
-            r.data ->> 'client' as client, s.version
+            r.data ->> 'client' as client, s.version, r.revision::text as revision
        from public.records r
        left join public.map_summaries s on s.business_id = r.business_id and s.map_id = r.id
       where r.business_id = $1 and r.id = $2 and r.record_type_id = $3

@@ -80,6 +80,18 @@ export const ROUTES = {
     rail: false,
     authenticated: true,
   },
+  // A Wayfinder map (WF-3): its Destination, Notes, Decisions so far, fog and
+  // Out of scope, edited in place. Keyed like a task, by the map's own key. It
+  // draws no pinned surface: its look waits on the accepted prototype W4, so
+  // `surface` is `none` rather than a letter it has not earned.
+  'agency:map': {
+    namespace: 'agency',
+    path: '/map/:key',
+    title: 'Map',
+    surface: 'none',
+    rail: false,
+    authenticated: true,
+  },
   // The business's own two operation-classified settings. It draws no pinned
   // surface — the mockup has no settings screen — so `surface` is `none`
   // rather than a letter it would be borrowing. It carries a rail entry
