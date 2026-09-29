@@ -27,7 +27,8 @@ import {
 export type GateDecision = 'approve' | 'request_changes';
 
 export interface AgentPaneProps {
-  readonly lineages: readonly RunLineage[];
+  /** `task.read`'s proposals; absent on a read that carries none. */
+  readonly lineages: readonly RunLineage[] | undefined;
   /** What approving the gate will do, in the server's words; null when it has not said. */
   readonly effect: string | null;
   /** A person's name for an id the decision chain carries. */
@@ -67,7 +68,7 @@ export function AgentPane(props: AgentPaneProps): ReactElement {
   }
   const shown = stories.find((story) => story.lineageId === opened) ?? current;
   return (
-    <section className="agent" data-agent="pane" data-lineage-id={shown.lineageId}>
+    <section className="agent" data-agent="pane" data-agent-lineage={shown.lineageId}>
       <ProposalHeader
         story={shown}
         busy={props.busy}
@@ -94,7 +95,8 @@ export function AgentPane(props: AgentPaneProps): ReactElement {
         busy={props.busy}
         nameOf={props.nameOf}
         decisions={
-          props.lineages.find((lineage) => lineage.lineageId === shown.lineageId)?.decisions ?? []
+          (props.lineages ?? []).find((lineage) => lineage.lineageId === shown.lineageId)
+            ?.decisions ?? []
         }
         onDecide={props.onDecide}
       />

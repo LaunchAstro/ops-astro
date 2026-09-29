@@ -345,7 +345,7 @@ export interface PersonListResult {
 }
 
 /** `task.queue`'s answer. An empty queue is `[]` beside `ok`, never a refusal. */
-/** One gate waiting on a person: `gate.pending`'s row (MP-6-1, TR-P-14). */
+/** One gate waiting on a person: `gate.pending`'s row (MP-6-1). */
 export interface AwaitingReviewView {
   readonly gateId: string;
   readonly versionId: string;

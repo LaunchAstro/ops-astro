@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `gate.pending`: the one awaiting-review read (MP-6-1, TR-P-14).
+// `gate.pending`: the one awaiting-review read (MP-6-1).
 //
 // The gate engine's pending decisions, as a list a review surface draws: every
 // gate still waiting on a person, on a live lineage's current version, on a

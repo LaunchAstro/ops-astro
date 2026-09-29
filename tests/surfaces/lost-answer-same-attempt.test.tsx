@@ -73,6 +73,7 @@ function lineageOf(spec: LineageSpec) {
       payload: { step: 'draft the quote' },
       supersededAt: version.superseded === true ? '2026-09-24T00:00:00.000Z' : null,
       runId: null,
+      checks: [],
       evidence: null,
       gate: {
         id: version.gateId,

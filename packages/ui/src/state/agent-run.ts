@@ -297,7 +297,8 @@ function jobsOf(head: RunVersion, state: RunState, box: GateBox): readonly Job[]
  * lineage is the current attempt, and the pane shows it unless a person opens
  * an earlier one (CS-6.6).
  */
-export function runStories(proposals: readonly RunLineage[]): readonly RunStory[] {
+export function runStories(proposals: readonly RunLineage[] | undefined): readonly RunStory[] {
+  if (proposals === undefined) return [];
   // The read lists the newest lineage first; attempts count from the oldest.
   const oldestFirst = proposals.toReversed();
   return oldestFirst.flatMap((lineage, index) => {
