@@ -40,7 +40,7 @@ if (created.status !== 0) {
   console.error('operator: FAILED: docker compose create did not complete; no record written');
   process.exit(1);
 }
-const record = recordDeployment(gate.records, gate.operator, {
+const record = await recordDeployment(gate, {
   action: 'staging prepared',
   definition: 'deploy/staging/compose.json',
 });

@@ -428,6 +428,29 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
     expect(await count()).toBe(before);
   });
 
+  it("a completed act records the operator's sign-in once, after the act", async () => {
+    const count = async (): Promise<number> =>
+      await db.app.withBusiness(alphaBusiness, async (tx) => {
+        const rows = await tx.query<{ n: number }>(
+          "select count(*)::int as n from authentication_attempts where business_id = $1 and outcome = 'resolved'",
+          [tx.businessId],
+        );
+        return rows[0]!.n;
+      });
+    const before = await count();
+    const fake = manager(false);
+    const at = marks(fake);
+    const result = COMMANDS['staging preparation']!(
+      environment(at, fake.path, { OPS_ASTRO_TOKEN: await token(subjects.operator) }),
+      at,
+    );
+    expect(result.status, result.out).toBe(0);
+    expect(
+      readFileSync(join(at.records, 'deployments.jsonl'), 'utf8').trim().split('\n'),
+    ).toHaveLength(1);
+    expect(await count()).toBe(before + 1);
+  });
+
   it('past the gate, the promotion takes no saved report and no argument it does not know', async () => {
     const fake = manager(false);
     const at = marks(fake);

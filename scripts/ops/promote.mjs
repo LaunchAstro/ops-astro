@@ -127,8 +127,4 @@ console.log(
     ? `promote: dry run: would promote ${outcome.artefactPath}; nothing asked of the machine, nothing changed`
     : `promote: production now serves ${outcome.artefactPath}`,
 );
-console.log(
-  JSON.stringify(
-    gate ? recordDeployment(gate.records, gate.operator, outcome.record) : outcome.record,
-  ),
-);
+console.log(JSON.stringify(gate ? await recordDeployment(gate, outcome.record) : outcome.record));
