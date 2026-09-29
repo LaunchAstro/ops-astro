@@ -389,9 +389,7 @@ jobs:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
 
   parity:
-    # API-1: every app action that reads or changes state has its API and CLI
-    # equivalent through the owning command, and no surface reaches what
-    # another cannot. Source only: no database, no network.
+    # API-1: every app action has its API and CLI equivalent; no database.
     name: command parity
     needs: [gate]
     runs-on: ubuntu-latest
@@ -404,4 +402,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: node scripts/command-parity.mjs --check
-      - run: pnpm vitest run tests/commands/api-1-catalogue.test.ts tests/commands/sol-api-1-proof.test.ts
+      - run: pnpm vitest run tests/commands/api-1-catalogue.test.ts tests/commands/sol-api-1-proof.test.ts tests/commands/sol-api-1-review2.test.ts
