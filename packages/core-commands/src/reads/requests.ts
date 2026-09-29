@@ -35,6 +35,7 @@ import type {
   TaskBoardResult,
   TaskDetail,
 } from '../../../core-wire/src/index.ts';
+import type { InboxEntry } from './inbox.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -93,6 +94,10 @@ export interface ReadOperands {
    * pair it returns is a pair the caller already holds.
    */
   readonly 'session.capabilities': NoOperands;
+  /** The caller's own inbox items, each with its access derived now (INB-1d). */
+  readonly 'inbox.read': NoOperands;
+  /** The caller's owed count: the counted entries of `inbox.read`. */
+  readonly 'inbox.count': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -116,4 +121,6 @@ export type ReadResult =
   | QueueResult
   | PresetPlanResult
   | SettingsReadResult
-  | CapabilitiesResult;
+  | CapabilitiesResult
+  | { readonly ok: true; readonly inbox: readonly InboxEntry[] }
+  | { readonly ok: true; readonly owed: number };

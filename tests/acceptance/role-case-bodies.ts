@@ -218,7 +218,18 @@ export function createPositiveBody(
       // the admin holds, so the admin reaches both here.
       case 'settings.read':
       case 'session.capabilities':
+      // The caller's own inbox (INB-1d): a live grant of any kind, as above.
+      case 'inbox.read':
+      case 'inbox.count':
         return { body: {} };
+      case 'inbox.seen': {
+        // The caller's own item: a proposal raises a decision item for every
+        // decide holder, the admin among them, read back from their inbox.
+        await lineageOn(context, await context.freshTask('a task whose item is opened'));
+        const listed = await context.asPerson('inbox.read', {});
+        const items = listed.body['inbox'] as readonly Record<string, unknown>[];
+        return { body: { itemId: String(items.at(-1)?.['id']) } };
+      }
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
       case 'settings.set_four_eyes_threshold':

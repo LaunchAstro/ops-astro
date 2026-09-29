@@ -103,6 +103,10 @@ vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async
   revokeDelegationAsManager: recorder('revokeDelegationAsManager'),
   revokeGrantAsManager: recorder('revokeGrantAsManager'),
 }));
+vi.mock('../../packages/core-commands/src/commands/inbox-seen.ts', async (original) => ({
+  ...(await original<object>()),
+  stampOwnSeen: recorder('stampOwnSeen'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (original) => ({
   ...(await original<object>()),
   cancelOnTask: recorder('cancelOnTask'),
@@ -118,6 +122,7 @@ const PINNED_RUNTIME_SHAPED = {
 const PINNED_UNTARGETED_IDENTIFIERS = {
   'delegation.revoke': [],
   'grant.revoke': [],
+  'inbox.seen': ['itemId'],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'task.cancel': ['recordId', 'lineageId'],
@@ -134,6 +139,9 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'delegation.revoke',
   'grant.revoke',
+  'inbox.count',
+  'inbox.read',
+  'inbox.seen',
   'person.list',
   'preset.plan',
   'session.capabilities',
@@ -231,6 +239,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
   { command: 'task.restart', operationId: 'op', recordId: 'r', lineageId: 'lin' },
   { command: 'task.heartbeat', operationId: 'op', leaseId: 'l', fence: 4 },
+  { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -273,6 +282,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.cancel': ['cancelOnTask', 'request'],
   'task.restart': ['restartOnTask', 'request'],
   'task.heartbeat': ['heartbeatOwnLease', 'request'],
+  'inbox.seen': ['stampOwnSeen', 'item'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -312,7 +322,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty from an expected revision', () => {
+  it('exempts the same twenty-three from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
