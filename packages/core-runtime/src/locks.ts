@@ -34,6 +34,9 @@
 // `acquire`. A handler that re-reads a row this set already holds, as
 // `task.propose` re-reads its task `for update` to compare the revision,
 // takes no new lock.
+// A model call (AW-01) takes none of these: its lease, delegation and
+// reservation rows in that order (`core-custody/src/broker-facts.ts`), then its
+// ceiling key per business and operation (`broker-reserve.ts`), last.
 // Every advisory lock, the chain class included, is taken through the one
 // helper, `advisoryLock` in `core-records/src/tenancy/database.ts`.
 // `tests/runtime/cq-8-db.test.ts` records each transaction's lock statements

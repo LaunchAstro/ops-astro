@@ -48,10 +48,11 @@ export interface Custody {
   stop(): Promise<void>;
 }
 
-const ENTRY = fileURLToPath(new URL('./custody-main.ts', import.meta.url));
-
 function forkCustody(config: CustodyConfig): ChildProcess {
-  return fork(ENTRY, [], {
+  // Resolved when custody starts, not when the module loads: a browser-side
+  // import of this package's types never needs a file path.
+  const entry = fileURLToPath(new URL('./custody-main.ts', import.meta.url));
+  return fork(entry, [], {
     env: {
       CUSTODY_CREDENTIALS_FILE: config.credentialsFile,
       CUSTODY_DESTINATIONS: JSON.stringify(config.destinations),

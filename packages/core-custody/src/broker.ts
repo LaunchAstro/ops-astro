@@ -64,6 +64,7 @@ export {
   reserveModelCall,
   type Reservation,
   type ReservedCall,
+  type ReserveRefusal,
 } from './broker-reserve.ts';
 
 /**
@@ -123,7 +124,11 @@ export async function callModel(
     businessId,
     async (tx) => await reserveModelCall(tx, caller, request, broker),
   );
-  if (!reserving.ok) return reserving;
+  if (!reserving.ok) {
+    // The register's shape is the command layer's to answer with; this caller gets the result.
+    const { refusal: _refusal, ...result } = reserving;
+    return result;
+  }
   return await sendReservedCall(database, businessId, caller, request, reserving.reserved, broker);
 }
 
