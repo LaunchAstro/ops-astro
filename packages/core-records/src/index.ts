@@ -77,6 +77,7 @@ export {
 export {
   raiseAssignment,
   raiseDecision,
+  raiseIncident,
   raiseMentions,
   raiseRunSettled,
   readMentions,
