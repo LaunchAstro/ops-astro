@@ -310,6 +310,9 @@ describe.skipIf(serverUrl === undefined)('T2c2 the effect, its observation and r
     const elsewhere = await createTask(s, `t2c2 elsewhere ${randomUUID()}`);
     const outsider = await cq8World(s).client(s.business, s.decider, 't2c2-client', elsewhere);
     expect(await receiptOf(w.attemptId, outsider)).toMatchObject({ code: 'NOT_FOUND' });
+    // The task's own client sees the shared view, which carries no decision: no receipt either.
+    const own = await cq8World(s).client(s.business, s.decider, 't2c2-own', w.taskId);
+    expect(await receiptOf(w.attemptId, own)).toMatchObject({ code: 'NOT_FOUND' });
     const idle = await enrol(s.db.app, s.business, 't2c2-idle');
     expect(await receiptOf(w.attemptId, idle)).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
     expect(JSON.stringify(await receiptOf(w.attemptId, outsider))).not.toContain(w.taskId);
