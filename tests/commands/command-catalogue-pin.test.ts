@@ -130,7 +130,7 @@ vi.mock('../../packages/core-commands/src/commands/budget-write-off.ts', async (
   ...(await original<object>()),
   writeOffOnTask: recorder('writeOffOnTask'),
 }));
-vi.mock('../../packages/core-commands/src/commands/model-call.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/model-call-person.ts', async (original) => ({
   ...(await original<object>()),
   refuseModelCallAsPerson: recorder('refuseModelCallAsPerson'),
 }));

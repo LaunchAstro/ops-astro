@@ -32,7 +32,7 @@ import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
-import { refuseModelCallAsPerson } from './model-call.ts';
+import { refuseModelCallAsPerson } from './model-call-person.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the

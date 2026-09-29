@@ -284,7 +284,8 @@
     "tests/api/t3f-races.test.ts",
     "tests/fixture/fixture-shape.test.ts",
     "tests/fixture/snapshot-clone-and-privileges.test.ts",
-    "tests/broker/aw-01-broker.test.ts"
+    "tests/broker/aw-01-broker.test.ts",
+    "tests/broker/aw-01-model-call.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
