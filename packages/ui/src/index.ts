@@ -35,6 +35,7 @@ import './styles/4-board.css';
 import './styles/5-task.css';
 import './styles/6-kit-standin.css';
 import './styles/7-page-kit.css';
+import './styles/8-notifications.css';
 
 export * from './state/corpus.ts';
 export * from './state/project.ts';
