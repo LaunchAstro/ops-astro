@@ -108,7 +108,8 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     connection_id: randomUUID(),
     connection_revision: 1,
     started_by_actor_id: randomUUID(),
-  }, // Grants, tripwires and the night round (MP-14-8, 0034): nothing the journey
+  },
+  // Grants, tripwires and the night round (MP-14-8, 0034): nothing the journey
   // does writes a tripwire or a step.
   'public.tripwires': {
     what: 'restricted calls',
