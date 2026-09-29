@@ -83,6 +83,25 @@ const writable = (def: Definition, service: Service): [string, number][] => [
     }),
 ];
 
+/**
+ * The one persistent place staging has: the backup store's data (S0-3,
+ * ORCH25-SL01-STORE), bounded by the store's own byte cap rather than by memory.
+ * It counts only as named here: that volume, by that name, with no driver
+ * options, at the store's data path, on the store.
+ */
+const STORE_DATA = 'ops-astro-staging-backups-data';
+const isStoreData = (def: Definition, name: string, service: Service, place: string): boolean => {
+  const volume = def.volumes?.[STORE_DATA];
+  return (
+    name === 'backups' &&
+    place === `volume ${STORE_DATA}` &&
+    (service.volumes ?? []).includes(`${STORE_DATA}:/var/lib/postgresql/data`) &&
+    volume?.name === STORE_DATA &&
+    volume.driver_opts === undefined &&
+    !('driver' in volume)
+  );
+};
+
 type Row = {
   name: string;
   /** Problems found; empty when the row holds. */
@@ -221,9 +240,9 @@ const LIMITS: Row[] = [
   {
     name: 'disk: read-only root, every writable place a sized tmpfs inside the memory limit',
     check: (def) =>
-      each(def, all(def), (s) => {
+      each(def, all(def), (s, name) => {
         if (s.read_only !== true) return 'root is writable';
-        const places = writable(def, s);
+        const places = writable(def, s).filter(([place]) => !isStoreData(def, name, s, place));
         const unbounded = places.find(([, size]) => !(size > 0));
         if (unbounded) return `${unbounded[0]} has no size`;
         const total = places.reduce((sum, [, size]) => sum + size, 0);
@@ -505,7 +524,7 @@ live('S0-1 containment and resource limits, live', () => {
   });
 
   it('every service, as Docker creates it, carries its confinement and limits', () => {
-    const create = compose(['create', 'auth']);
+    const create = compose(['create', 'auth', 'backups']);
     expect(create.status, create.out).toBe(0);
     const format =
       '{{json .HostConfig.ReadonlyRootfs}} {{json .HostConfig.CapDrop}} {{.HostConfig.NanoCpus}} ' +
