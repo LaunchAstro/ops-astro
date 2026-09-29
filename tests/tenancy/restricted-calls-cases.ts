@@ -30,6 +30,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   // 0032 (C59): a factor is written and moved on, never deleted.
   ['siu', 'second_factors'],
+  // 0033 (C55): a privacy incident is recorded and moved on, never deleted.
+  ['siu', 'privacy_incidents'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],

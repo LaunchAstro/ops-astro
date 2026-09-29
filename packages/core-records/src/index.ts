@@ -79,6 +79,14 @@ export {
   STEP_UP_WINDOW_SECONDS,
 } from './authority/step-up.ts';
 export {
+  INFORMATION_KINDS,
+  readPrivacyIncidents,
+  recordPrivacyIncident,
+  type InformationKind,
+  type PrivacyIncident,
+  type PrivacyIncidentFacts,
+} from './operations/privacy-incidents.ts';
+export {
   isSettingRevisionStale,
   readBusinessSetting,
   readBusinessSettings,

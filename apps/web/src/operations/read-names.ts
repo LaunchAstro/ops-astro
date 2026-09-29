@@ -42,6 +42,8 @@ export const READ_NAMES = [
   'task.receipt',
   // Settings ▸ Access (C32), under `access:manage` on the server.
   'access.read',
+  // The operations view (C55), under `operations:read` on the server.
+  'operations.read',
 ] as const;
 
 /**

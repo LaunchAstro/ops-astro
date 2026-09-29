@@ -31,6 +31,8 @@ export type {
   AccessPerson,
   AccessReadResult,
   AttemptView,
+  OperationsReadResult,
+  PrivacyIncidentView,
   Capability,
   CapabilitiesResult,
   CommentView,

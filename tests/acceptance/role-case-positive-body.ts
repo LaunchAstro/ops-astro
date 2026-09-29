@@ -137,6 +137,8 @@ export function createPositiveBody(
       case 'session.capabilities':
       // `access:manage`, which the fixture admin holds on every collection.
       case 'access.read':
+      // `operations:read`, which the fixture admin holds as the owner does (C55).
+      case 'operations.read':
         return { body: {} };
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
@@ -146,6 +148,16 @@ export function createPositiveBody(
         return { body: { value: true } };
       case 'settings.set_money_step_up':
         return { body: { value: true } };
+      case 'privacy.record_incident':
+        return {
+          body: {
+            whatHappened: 'The matrix records a made-up incident.',
+            foundAt: new Date(Date.now() - 60_000).toISOString(),
+            foundBy: 'The matrix',
+            affected: 'Nobody; it is made up.',
+            informationKinds: ['other'],
+          },
+        };
       case 'budget.top_up':
         // The admin approved the plan and holds billing, so a top-up under
         // the band is hers alone (T2e).

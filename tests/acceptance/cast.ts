@@ -100,6 +100,10 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   // `budget.top_up` asks `decide` on `billing` (T2e), as the seed's admin holds it.
   'billing',
   'access',
+  // C55: the operations view and the privacy incident record, whose install
+  // default is the owner and administrators.
+  'operations',
+  'privacy',
 ];
 
 export async function tokenFor(

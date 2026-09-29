@@ -4,7 +4,8 @@
 // the privacy incident record (`privacy.record_incident`, the tracked action
 // `privacy incident recorded`, behind `privacy:manage`), through the real API.
 //
-// Ada is alpha's owner and holds both keys; Noah holds `operations:read` alone;
+// Ada is alpha's owner and holds both keys (the acceptance cast's admin
+// collections, as the install default gives the owner); Noah holds `operations:read` alone;
 // Mia holds neither; Bea is bravo's owner and holds both there. A client of
 // alpha holds a share and nothing else, and the agent acts under a live
 // delegation from Ada, who holds both keys.
@@ -92,8 +93,6 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
     harness = await createHarness('c55_operations');
     const { world } = harness;
     await world.db.app.withBusiness(world.alpha, async (tx) => {
-      await grantTo(tx, member(world.ada), 'read', WHOLE_BUSINESS, true, 'operations');
-      await grantTo(tx, member(world.ada), 'manage', WHOLE_BUSINESS, true, 'privacy');
       await grantTo(tx, member(world.noah), 'read', WHOLE_BUSINESS, false, 'operations');
     });
     await world.db.app.withBusiness(world.bravo, async (tx) => {
@@ -162,13 +161,19 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
       incident({ informationKinds: [] }),
       incident({ informationKinds: ['contact', 'contact'] }),
       incident({ informationKinds: ['gossip'] }),
-      incident({ status: 'closed' }),
     ];
     for (const body of cases) {
       // oxlint-disable-next-line no-await-in-loop
       const answer = await record(body);
       expect(answer.status, JSON.stringify(body).slice(0, 120)).toBe(422);
+      expect(answer.code).toBe('FIELD_VALUE_INVALID');
     }
+    // A field the command does not declare is refused at the boundary.
+    const undeclared = await record(incident({ status: 'closed' }));
+    expect({ status: undeclared.status, code: undeclared.code }).toEqual({
+      status: 400,
+      code: 'COMMAND_BODY_INVALID',
+    });
     expect(await incidentRows(harness.world.alpha)).toEqual(before);
   });
 
@@ -241,7 +246,7 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
     );
   });
 
-  it('C55 canary: incident words reach no log, audit row or refusal', async () => {
+  it('C55 canary: incident words reach no log, audit row, operation register row or refusal', async () => {
     const logged: string[] = [];
     const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
     const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
@@ -267,6 +272,9 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
     const stored = await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) =>
       tx.query<{ readonly row: string }>(
         `select to_jsonb(e)::text as row from public.audit_events e
+          where command = 'privacy.record_incident'
+         union all
+         select to_jsonb(o)::text from public.operations o
           where command = 'privacy.record_incident'`,
       ),
     );

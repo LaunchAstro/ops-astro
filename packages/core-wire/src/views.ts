@@ -499,3 +499,30 @@ export interface AccessReadResult {
   readonly clients: readonly AccessPerson[];
   readonly agents: readonly AccessAgent[];
 }
+
+/** One privacy incident record on the operations view (C55, SP-24). */
+export interface PrivacyIncidentView {
+  readonly id: string;
+  readonly whatHappened: string;
+  /** Day 0, ISO 8601. */
+  readonly foundAt: string;
+  readonly foundBy: string;
+  readonly affected: string;
+  readonly informationKinds: readonly string[];
+  /** Day 0 plus 30 days: the runbook's assessment limit. */
+  readonly assessBy: string;
+  readonly status: 'open' | 'closed';
+  readonly recordedAt: string;
+  readonly recordedByActorId: string;
+}
+
+/**
+ * `operations.read`'s answer (C55). The privacy incidents are this business's
+ * own records. Unattended items (INB-1), security alerts (S0-2), the last
+ * tested restore (S0-3) and the watcher's status (C34) join it as those parts
+ * land; each is its owner's read, placed here, never a second copy.
+ */
+export interface OperationsReadResult {
+  readonly ok: true;
+  readonly privacyIncidents: readonly PrivacyIncidentView[];
+}

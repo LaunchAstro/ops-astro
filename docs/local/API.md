@@ -1482,9 +1482,34 @@ attempts in the audit chain, answer `SECOND_FACTOR_LOCKED` 429 on `verify` and
 cannot walk the six digits. The check before a provider call writes an audit
 event only when it refuses; the act's own event is written after the call,
 beside the record it changes. GoTrue served under a path (`/auth/v1`) is called
-under that path.
+under that path. The record step locks the person's own row (`for no key
+update`), so two tabs enrolling at once queue: the later enrolment replaces the
+earlier unverified one, and one live factor remains.
 
 `PROVIDER_ANSWER_INVALID` names only the kind of fault (`malformed`,
 `oversized`, `slow`, `unreachable` or `refused`), never the provider's words.
 The authenticator secret is in the enrol answer and nowhere else: not a log,
 not an audit event, not the `second_factors` row.
+
+## The operations view and privacy incidents (C55)
+
+`operations.read` answers `{ ok, privacyIncidents }` to a holder of
+`operations:read` (install default: the owner and administrators). It is
+never an agent's: on the agent prefix it is `DELEGATION_EXCLUDES_OPERATION` 403. Each incident carries its day-0 facts, its status and `assessBy`, 30 days
+after `foundAt` (the breach runbook's assessment limit), most recently found
+first, at most 200.
+
+`privacy.record_incident` is the tracked action `privacy incident recorded`,
+under `privacy:manage` and never an agent's. Its body is
+`{ operationId, whatHappened, foundAt, foundBy, affected, informationKinds }`:
+text of 1 to 4000, 1 to 200 and 1 to 2000 characters, `foundAt` an ISO 8601
+time no later than the server's clock (with five minutes' drift), and one or
+more distinct kinds from `contact`, `identity`, `financial`, `health`,
+`credentials`, `client-files`, `other`. A bad field is `FIELD_VALUE_INVALID`
+422 naming the field alone; an undeclared one is `COMMAND_BODY_INVALID` 400.
+The answer's detail is `{ incidentId, assessBy }`. The envelope audits the act
+as a digest; the words are in `privacy_incidents` and nowhere else.
+
+Held until their parts land (each placed here as its owner's read, never a
+second list): unattended items (INB-1), security alerts (S0-2), the last tested
+restore (S0-3), the watcher's status (C34) and the error-sink link.
