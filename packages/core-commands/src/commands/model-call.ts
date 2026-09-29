@@ -46,7 +46,7 @@ import { executeAgentOperation } from './agent-envelope.ts';
 import { modelCallRow } from './agent-operations.ts';
 import { writeAuditEvent } from './audit.ts';
 import { refused, refusedRetaining, type Refused } from './outcome.ts';
-import { isCommandRefusal, refuseCommand } from './refusal.ts';
+import { isCommandRefusal } from './refusal.ts';
 import type { CommandHandle, CommandResult } from './register-store.ts';
 
 /** The broker as a deployment configures it. The audit is this layer's, per caller. */
@@ -147,28 +147,11 @@ function auditAs(actorId: string): Broker['audit'] {
   };
 }
 
-const FIXES: Readonly<Record<string, readonly string[]>> = {
-  RATE_LIMITED: ['Wait, then send the call again with a new operation id.'],
-  BUDGET_UNAVAILABLE: ["The run's reservation has no room for this call's priced maximum."],
-  OPERATION_NOT_CATALOGUED: ['Name an operation the broker has registered.'],
-  EFFECT_NOT_RECONCILABLE: [
-    'An operation with no proof that nothing happened is never dispatched.',
-  ],
-};
-
-/** A reserve refusal in the register's words. One that recorded its step keeps it. */
+/** A reserve refusal, made in the register's shape by the broker. One that recorded its step keeps it. */
 function refusalOf(reservation: Extract<Reservation, { ok: false }>): Refused {
-  const words = reservation.words === undefined ? [] : [reservation.words];
-  const wait =
-    reservation.retryAfterSeconds === undefined
-      ? []
-      : [`Wait ${String(reservation.retryAfterSeconds)} seconds.`];
-  const refusal = refuseCommand(
-    reservation.code,
-    ['model.call'],
-    [...words, ...wait, ...(FIXES[reservation.code] ?? [])],
-  );
-  return reservation.callId === null ? refused(refusal) : refusedRetaining(refusal);
+  return reservation.callId === null
+    ? refused(reservation.refusal)
+    : refusedRetaining(reservation.refusal);
 }
 
 interface LedgerRow {

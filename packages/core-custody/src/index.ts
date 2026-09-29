@@ -42,4 +42,5 @@ export {
   type ProviderAdapter,
   type Reservation,
   type ReservedCall,
+  type ReserveRefusal,
 } from './broker.ts';

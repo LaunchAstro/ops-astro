@@ -3,7 +3,12 @@
 // Step 1 of a model call (AW-01): the hold, or a refusal recorded as a step.
 
 import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../../core-records/src/index.ts';
+import {
+  advisoryLock,
+  refuseCommand,
+  type CommandRefusal,
+  type TenantQuery,
+} from '../../core-records/src/index.ts';
 import {
   eligibleRoutes,
   LOCAL_MODEL_REQUIRED_WORDS,
@@ -85,9 +90,37 @@ export interface ReservedCall {
   readonly reservedMinor: number;
 }
 
-export type Reservation =
-  | { readonly ok: true; readonly reserved: ReservedCall }
-  | Extract<ModelCallResult, { code: BrokerRefusal }>;
+/** A reserve refusal carries the register's shape, made where the broker decides (CQ-5). */
+export type ReserveRefusal = Extract<ModelCallResult, { code: BrokerRefusal }> & {
+  readonly refusal: CommandRefusal;
+};
+
+export type Reservation = { readonly ok: true; readonly reserved: ReservedCall } | ReserveRefusal;
+
+const FIXES: Partial<Record<BrokerRefusal, readonly string[]>> = {
+  RATE_LIMITED: ['Wait, then send the call again with a new operation id.'],
+  BUDGET_UNAVAILABLE: ["The run's reservation has no room for this call's priced maximum."],
+  OPERATION_NOT_CATALOGUED: ['Name an operation the broker has registered.'],
+  EFFECT_NOT_RECONCILABLE: [
+    'An operation with no proof that nothing happened is never dispatched.',
+  ],
+};
+
+/** The refusal in the register's words: the plain words, the wait, then the fix. */
+function refusing(
+  code: BrokerRefusal,
+  callId: string | null,
+  said: { readonly words?: string; readonly retryAfterSeconds?: number } = {},
+): ReserveRefusal {
+  const fixes = [
+    ...(said.words === undefined ? [] : [said.words]),
+    ...(said.retryAfterSeconds === undefined
+      ? []
+      : [`Wait ${String(said.retryAfterSeconds)} seconds.`]),
+    ...(FIXES[code] ?? []),
+  ];
+  return { ok: false, code, callId, ...said, refusal: refuseCommand(code, ['model.call'], fixes) };
+}
 
 /**
  * Step 1 in the caller's transaction, so the command layer commits the hold,
@@ -102,25 +135,22 @@ export async function reserveModelCall(
   broker: Broker,
 ): Promise<Reservation> {
   const checked = await lockFacts(tx, caller, request, false);
-  if (!checked.ok) return { ok: false, code: checked.code, callId: null };
+  if (!checked.ok) return refusing(checked.code, null);
   const { facts } = checked;
   const operation = broker.operations.get(request.operation);
-  const refused = async (
-    code: BrokerRefusal,
-    words?: string,
-  ): Promise<Extract<ModelCallResult, { code: BrokerRefusal }>> => ({
-    ok: false,
-    code,
-    callId: await recordRefusal(tx, facts, request.operation, code, broker),
-    ...(words === undefined ? {} : { words }),
-  });
+  const refused = async (code: BrokerRefusal, words?: string): Promise<ReserveRefusal> =>
+    refusing(
+      code,
+      await recordRefusal(tx, facts, request.operation, code, broker),
+      words === undefined ? {} : { words },
+    );
   if (operation === undefined) return await refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable')
     return await refused('EFFECT_NOT_RECONCILABLE');
   const route = routeFor(operation, caller, request, facts, broker);
   if (!route.ok) return await refused(route.code, route.words);
   if (await atCeiling(tx, operation)) {
-    return { ok: false, code: 'RATE_LIMITED', callId: null, retryAfterSeconds: WAIT_SECONDS };
+    return refusing('RATE_LIMITED', null, { retryAfterSeconds: WAIT_SECONDS });
   }
   const room = facts.heldMinor - (await committedMinor(tx, facts.reservationId));
   if (operation.maximumMinor > room) return await refused('BUDGET_UNAVAILABLE');
@@ -170,10 +200,7 @@ function routeFor(
 
 /** The durable ceiling: in-flight calls are rows, counted under one lock per operation. */
 async function atCeiling(tx: TenantQuery, operation: ModelOperation): Promise<boolean> {
-  await tx.query(`select pg_advisory_xact_lock(hashtext($1), hashtext($2))`, [
-    `model_call:${tx.businessId}`,
-    operation.key,
-  ]);
+  await advisoryLock(tx, `model_call:${tx.businessId}:${operation.key}`);
   const [flight] = await tx.query<{ n: string }>(
     `select count(*)::text as n from public.model_calls
       where business_id = $1 and operation_key = $2 and state = 'dispatched'`,
