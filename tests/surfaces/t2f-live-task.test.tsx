@@ -100,7 +100,7 @@ const client = (fetch: typeof globalThis.fetch): OperationsClient =>
   new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
 
 const valueOf = (host: HTMLElement, selector: string): string =>
-  (host.querySelector(selector) as HTMLInputElement).value;
+  (host.querySelector(selector) as HTMLInputElement | null)?.value ?? '';
 
 describe('T2f the live task page', () => {
   afterEach(() => {
@@ -114,7 +114,7 @@ describe('T2f the live task page', () => {
     );
     await until(
       'the task and the stream',
-      () => api.joins.length === 1 && api.reads.length === 1,
+      () => api.joins.length === 1 && view.find('#task-title') !== null,
       Date.now() + 2_000,
     );
     expect(api.joins[0]).toBe(`/api/b/alpha/live/task/${TASK.id}`);
@@ -141,7 +141,7 @@ describe('T2f the live task page', () => {
     );
     await until(
       'the task and the stream',
-      () => api.joins.length === 1 && api.reads.length === 1,
+      () => api.joins.length === 1 && view.find('#task-title') !== null,
       Date.now() + 2_000,
     );
 
@@ -172,7 +172,7 @@ describe('T2f the live task page', () => {
     );
     await until(
       'the task and the stream',
-      () => api.joins.length === 1 && api.reads.length === 1,
+      () => api.joins.length === 1 && view.find('#task-title') !== null,
       Date.now() + 2_000,
     );
     expect(valueOf(view.host, '#task-title')).toBe(TASK.title);

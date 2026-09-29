@@ -200,6 +200,15 @@ describe.skipIf(serverUrl === undefined)('T2f the live task channel on a real da
     const heard: LiveSignal[] = [];
     const unsubscribe = topics.subscribe(s.business, taskId, (signal) => heard.push(signal));
     const other = await cq8World(s).party(`t2f-rls-${randomUUID().slice(0, 8)}`);
+    // A committed barrier on another task: delivery follows commit order, so
+    // once it is heard this task's own creation has been too.
+    const mark = await createTask(s, `t2f-mark-${randomUUID()}`);
+    let marked = false;
+    const unmark = topics.subscribe(s.business, mark, () => (marked = true));
+    await touch(s.business, mark);
+    await within(2_000, () => marked, 'the barrier');
+    unmark();
+    heard.length = 0;
 
     await expect(
       pool.withBusiness(s.business, async (tx) => {

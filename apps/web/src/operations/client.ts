@@ -221,6 +221,27 @@ export class OperationsClient {
     return this.#post<CommandOutcome>(name, payload);
   }
 
+  /**
+   * The task's live channel (T2f): the stream, or nothing when the API refused
+   * the join or could not be reached. It carries only that the task changed;
+   * the page re-reads through `read`.
+   */
+  async openLive(
+    recordId: string,
+    signal: AbortSignal,
+  ): Promise<ReadableStream<Uint8Array> | null> {
+    const { origin, businessKey, token } = this.#options;
+    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live/task/${encodeURIComponent(recordId)}`;
+    const headers: Record<string, string> =
+      token === null ? {} : { authorization: `Bearer ${token}` };
+    try {
+      const response = await this.#options.fetch(url, { headers, signal });
+      return response.ok ? response.body : null;
+    } catch {
+      return null;
+    }
+  }
+
   async #post<T>(
     name: CommandName,
     body: Readonly<Record<string, unknown>>,
