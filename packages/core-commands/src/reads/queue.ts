@@ -5,7 +5,7 @@
 // It is the runtime's `queue` and nothing else: the projection of approved,
 // held, unleased reservations whose lineage is live, whose version is not
 // superseded and whose attempt carries neither a dispatch marker nor an
-// observation. That last exclusion is the one worth naming — T5 quarantines
+// observation. That last exclusion is the one worth naming. T5 quarantines
 // such an attempt with its hold retained, and handing a quarantined attempt to
 // a worker as ordinary work would be offering somebody else's liability as a
 // job.
