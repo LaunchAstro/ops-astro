@@ -19,6 +19,7 @@
 // never real.
 
 import {
+  commentSignals,
   externalCommentProjection,
   readTaskComments,
   readFieldDefinitions,
@@ -224,6 +225,7 @@ async function commentsFor(
   }
   // The times as the ISO strings they are sent as, so the type this builds is
   // the one a client parses (`views.ts`).
+  const signals = commentSignals(comments);
   return comments.map((comment): InternalCommentView => ({
     id: comment.id,
     audience: comment.audience,
@@ -233,6 +235,8 @@ async function commentsFor(
     posted_at: comment.postedAt.toISOString(),
     edited_at: comment.editedAt?.toISOString() ?? null,
     source: comment.source,
+    parent: comment.parentId,
+    signal: signals.get(comment.id) ?? null,
   }));
 }
 

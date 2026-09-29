@@ -196,6 +196,14 @@ export type InternalCommentView = {
   readonly posted_at: string;
   readonly edited_at: string | null;
   readonly source: string;
+  /** The top-level message this replies to, or null for a message (R42). */
+  readonly parent: string | null;
+  /**
+   * Where a top-level client message stands (DT-19): `owed` (the client's,
+   * awaiting the team), `not_acknowledged` (the team's, awaiting the client)
+   * or `answered`; null on an internal note and on a reply.
+   */
+  readonly signal: 'answered' | 'owed' | 'not_acknowledged' | null;
 };
 
 export interface EvidenceView {

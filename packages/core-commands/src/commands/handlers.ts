@@ -22,6 +22,7 @@ import { revokeClientShare, shareWithClient } from './tasks-client-access.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
+import { changeFrom, deleteTaskComment, editTaskComment } from './tasks-comment-edit.ts';
 import { setBusinessSetting } from './settings-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
@@ -85,7 +86,12 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
       request.body,
       request.audience,
       request.commentType,
+      request.parentId,
     ),
+  'task.edit_comment': (tx, context, request) =>
+    editTaskComment(tx, changeFrom(context), request.commentId, request.body),
+  'task.delete_comment': (tx, context, request) =>
+    deleteTaskComment(tx, changeFrom(context), request.commentId),
 
   // The revision travels with the rest of the envelope rather than as a
   // field of the settings payload, and goes to the settings write as sent,
