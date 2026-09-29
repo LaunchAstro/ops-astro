@@ -14,7 +14,11 @@
 // `S0-3 backup scheduled`: the staging schedule runs the job daily under each
 // identity's own credentials, and every run, recorded or failed, leaves its
 // record.
-import { randomBytes } from 'node:crypto';
+// `S0-3 backup encryption` (S0-3c, line C8), the store's half: the store holds
+// only the sealed artefact, and the restore identity reads the newest one only
+// through the store's own function, each read leaving a receipt. The seal and
+// the drill's half are in tests/ci/restore-drill.test.ts.
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -31,6 +35,7 @@ const job = async (): Promise<{
   runBackup: (options: {
     dump: () => Promise<Buffer>;
     storeUrl: string;
+    publicKey?: string;
   }) => Promise<Record<string, unknown>>;
   expireBackups: (options: { storeUrl: string }) => Promise<Record<string, unknown>>;
 }> => {
@@ -41,6 +46,23 @@ const job = async (): Promise<{
 const serverUrl = databaseUrlFromEnvironment();
 const BACKUP = 'ops_astro_backup';
 const RETENTION = 'ops_astro_backup_retention';
+const RESTORE = 'ops_astro_backup_restore';
+const SUFFIX: Record<string, string> = { [BACKUP]: 'bk', [RETENTION]: 'rt', [RESTORE]: 'rs' };
+const keys = generateKeyPairSync('rsa', {
+  modulusLength: 3072,
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+});
+const drill = async (): Promise<{
+  fetchLatest: (storeUrl: string) => Promise<{ takenAt: string; body: Buffer }>;
+}> => {
+  const path = '../../scripts/ops/restore-drill.mjs';
+  return await import(/* @vite-ignore */ path);
+};
+const seal = async (): Promise<{ openArchive: (sealed: Buffer, privateKey: string) => Buffer }> => {
+  const path = '../../scripts/ops/archive-seal.mjs';
+  return await import(/* @vite-ignore */ path);
+};
 const read = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
@@ -52,7 +74,7 @@ if (serverUrl === undefined) {
 
 /** A login that is a member of `role` and nothing else, for this database only. */
 async function loginIn(db: EmptyDatabase, role: string): Promise<{ url: string; name: string }> {
-  const name = `${db.name}_${role === BACKUP ? 'bk' : 'rt'}`;
+  const name = `${db.name}_${SUFFIX[role] ?? 'xx'}`;
   const password = randomBytes(18).toString('base64url');
   await db.admin.execute(
     `create role "${name}" login password '${password}' nosuperuser nocreatedb nocreaterole nobypassrls noinherit in role ${role}`,
@@ -295,6 +317,7 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
   let store: EmptyDatabase;
   let backupLogin: { url: string; name: string };
   let retentionLogin: { url: string; name: string };
+  let restoreLogin: { url: string; name: string };
 
   async function receipts(): Promise<{ action: string; archive_id: string; bytes: string }[]> {
     return [
@@ -319,12 +342,15 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
     await store.admin.execute(read('deploy/staging/backup-store.sql'));
     backupLogin = await loginIn(store, BACKUP);
     retentionLogin = await loginIn(store, RETENTION);
+    restoreLogin = await loginIn(store, RESTORE);
   }, 120_000);
 
   afterAll(async () => {
     await dropLogins(
       store,
-      [backupLogin?.name, retentionLogin?.name].filter((n): n is string => n !== undefined),
+      [backupLogin?.name, retentionLogin?.name, restoreLogin?.name].filter(
+        (n): n is string => n !== undefined,
+      ),
     );
   });
 
@@ -371,11 +397,12 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
       const ok = await runBackup({
         dump: async () => Buffer.from('PGDMP made-up nightly'),
         storeUrl: backupLogin.url,
+        publicKey: keys.publicKey,
       });
-      expect(ok).toMatchObject({ event: 'backup run', outcome: 'recorded', bytes: 21 });
+      expect(ok).toMatchObject({ event: 'backup run', outcome: 'recorded' });
       const after = await receipts();
       expect(after.length).toBe(before + 1);
-      expect(after.at(-1)).toMatchObject({ action: 'backup recorded', bytes: '21' });
+      expect(after.at(-1)).toMatchObject({ action: 'backup recorded', bytes: String(ok['bytes']) });
 
       const canary = `canary-${randomBytes(8).toString('hex')}`;
       const failed = await runBackup({
@@ -383,6 +410,7 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
           throw new Error(`pg_dump: password ${canary} rejected for ${backupLogin.url}`);
         },
         storeUrl: backupLogin.url,
+        publicKey: keys.publicKey,
       });
       expect(failed).toMatchObject({ event: 'backup run', outcome: 'failed', stage: 'dump' });
       expect(JSON.stringify(failed)).not.toContain(canary);
@@ -392,6 +420,7 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
       const refusedStore = await runBackup({
         dump: async () => Buffer.from('PGDMP'),
         storeUrl: retentionLogin.url,
+        publicKey: keys.publicKey,
       });
       expect(refusedStore).toMatchObject({ outcome: 'failed', stage: 'store' });
       expect(JSON.stringify(refusedStore)).not.toContain(retentionLogin.name);
@@ -472,6 +501,81 @@ describe.skipIf(serverUrl === undefined)('the backup store', () => {
       expect(await archiveIds()).toStrictEqual(inWindow.toSorted());
       const expired = (await receipts()).filter((r) => r.action === 'backup expired');
       expect(expired.map((r) => r.archive_id)).toStrictEqual([old?.id]);
+    });
+  });
+
+  describe('S0-3 backup encryption', () => {
+    it('stores only the sealed artefact, and refuses to store a backup it cannot seal', async () => {
+      const { runBackup } = await job();
+      const dump = Buffer.from(`PGDMP made-up ${randomBytes(6).toString('hex')}`);
+      const ok = await runBackup({
+        dump: async () => dump,
+        storeUrl: backupLogin.url,
+        publicKey: keys.publicKey,
+      });
+      expect(ok).toMatchObject({ outcome: 'recorded' });
+      const [row] = await store.admin.execute<{ body: Buffer }>(
+        'select body from backups.archives order by taken_at desc, id desc limit 1',
+      );
+      expect(row?.body.includes(dump)).toBe(false);
+      expect(row?.body.includes(Buffer.from('PGDMP'))).toBe(false);
+      expect(
+        (await seal()).openArchive(row?.body ?? Buffer.alloc(0), keys.privateKey).equals(dump),
+      ).toBe(true);
+
+      const before = await archiveIds();
+      const unsealed = await runBackup({ dump: async () => dump, storeUrl: backupLogin.url });
+      expect(unsealed).toMatchObject({ outcome: 'failed', stage: 'seal' });
+      expect(await archiveIds()).toStrictEqual(before);
+    });
+
+    it('lets the restore identity read the newest backup only through the store, logging each read', async () => {
+      const [newest] = await store.admin.execute<{ id: string; taken_at: Date }>(
+        'select id::text, taken_at from backups.archives order by taken_at desc, id desc limit 1',
+      );
+      const before = (await receipts()).length;
+      const { fetchLatest } = await drill();
+      const fetched = await fetchLatest(restoreLogin.url);
+      expect(fetched.takenAt).toBe(newest?.taken_at.toISOString());
+      const logged = await receipts();
+      expect(logged.length).toBe(before + 1);
+      expect(logged.at(-1)).toMatchObject({ action: 'backup read', archive_id: newest?.id });
+      const [actor] = await store.admin.execute<{ actor: string }>(
+        'select actor from backups.receipts order by id desc limit 1',
+      );
+      expect(actor?.actor).toBe(restoreLogin.name);
+
+      const reader = await asRole(restoreLogin.url, RESTORE);
+      try {
+        for (const text of [
+          'select body from backups.archives',
+          'select id from backups.archives',
+          `insert into backups.archives (body) values ('\\x01')`,
+          'delete from backups.archives',
+          'update backups.receipts set actor = actor',
+          'select * from backups.settings',
+        ]) {
+          // oxlint-disable-next-line no-await-in-loop
+          expect(await attempt(reader, text), text).toBe('42501');
+        }
+      } finally {
+        await reader.end();
+      }
+      for (const [login, role] of [
+        [backupLogin, BACKUP],
+        [retentionLogin, RETENTION],
+      ] as const) {
+        // oxlint-disable-next-line no-await-in-loop
+        const other = await asRole(login.url, role);
+        try {
+          // oxlint-disable-next-line no-await-in-loop
+          expect(await attempt(other, 'select * from backups.read_latest()')).toBe('42501');
+        } finally {
+          // oxlint-disable-next-line no-await-in-loop
+          await other.end();
+        }
+      }
+      expect((await receipts()).length).toBe(before + 1);
     });
   });
 });
