@@ -100,7 +100,15 @@ alter role ops_astro_backup_retention nologin nosuperuser nocreatedb nocreaterol
 alter role ops_astro_backup_restore nologin nosuperuser nocreatedb nocreaterole noreplication nobypassrls;
 
 -- A read has no trigger, so the one way to read a backup is a function that
--- writes its receipt in the same transaction as the read.
+-- writes its receipt first, on a connection of its own (dblink) that commits
+-- before the bytes are returned: a reader that rolls back keeps its receipt.
+-- dblink connects without a password only for a superuser, so the store is
+-- made by staging's admin, and its functions stay out of every other role's
+-- reach in a schema of their own.
+create schema backups_audit;
+revoke all on schema backups_audit from public;
+create extension dblink schema backups_audit;
+
 create function backups.read_latest()
   returns table (id uuid, taken_at timestamptz, body bytea)
   language plpgsql security definer set search_path = pg_catalog as $$
@@ -111,8 +119,13 @@ begin
   if not found then
     return;
   end if;
-  insert into backups.receipts (action, archive_id, taken_at, bytes)
-  values ('backup read', picked.id, picked.taken_at, picked.bytes);
+  perform backups_audit.dblink_exec(
+    format('dbname=''%s'' user=''%s''', current_database(), current_user),
+    format(
+      'insert into backups.receipts (action, archive_id, taken_at, bytes, actor) values (%L, %L, %L, %s, %L)',
+      'backup read', picked.id, picked.taken_at, picked.bytes, session_user
+    )
+  );
   return query select picked.id, picked.taken_at, picked.body;
 end $$;
 revoke execute on function backups.read_latest() from public;
@@ -133,5 +146,3 @@ create policy backup_adds on backups.archives for insert to ops_astro_backup wit
 create policy retention_sees on backups.archives for select to ops_astro_backup_retention using (true);
 create policy retention_deletes_expired on backups.archives for delete to ops_astro_backup_retention
   using (taken_at < now() - make_interval(days => (select retention_days from backups.settings)));
--- The store's owner, for read_latest() when the owner is not a superuser.
-create policy owner_reads on backups.archives for select to current_user using (true);

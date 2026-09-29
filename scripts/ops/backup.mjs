@@ -62,6 +62,7 @@ export function pgDump(sourceUrl) {
     `--name=${staging['x-ops-astro'].ownPrefix}-backup-${randomBytes(4).toString('hex')}`,
     `--network=${staging.networks.staging.name}`,
     '--env=PGPASSWORD',
+    '--env=PGSSLMODE',
     staging.services.db.image,
     'pg_dump',
     '--format=custom',
@@ -74,7 +75,8 @@ export function pgDump(sourceUrl) {
   ];
   return new Promise((resolve, reject) => {
     const child = spawn('docker', args, {
-      env: { ...process.env, PGPASSWORD: decodeURIComponent(url.password) },
+      // TLS or no dump: the source's bytes are plaintext until the job seals them.
+      env: { ...process.env, PGPASSWORD: decodeURIComponent(url.password), PGSSLMODE: 'require' },
       stdio: ['ignore', 'pipe', 'ignore'],
     });
     const chunks = [];

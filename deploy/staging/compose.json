@@ -16,7 +16,19 @@
         "POSTGRES_PASSWORD": "${STAGING_DB_ADMIN_PASSWORD:?set from the staging runbook}"
       },
       "ports": ["127.0.0.1:${STAGING_DB_PORT:?set from the staging runbook}:5432"],
-      "volumes": ["ops-astro-staging-pgdata:/var/lib/postgresql/data"],
+      "command": [
+        "postgres",
+        "-c",
+        "ssl=on",
+        "-c",
+        "ssl_cert_file=/etc/ops-astro-tls/server.crt",
+        "-c",
+        "ssl_key_file=/etc/ops-astro-tls/server.key"
+      ],
+      "volumes": [
+        "ops-astro-staging-pgdata:/var/lib/postgresql/data",
+        "ops-astro-staging-tls:/etc/ops-astro-tls:ro"
+      ],
       "networks": ["staging"],
       "restart": "unless-stopped",
       "healthcheck": {
@@ -56,5 +68,8 @@
     }
   },
   "networks": { "staging": { "name": "ops-astro-staging" } },
-  "volumes": { "ops-astro-staging-pgdata": { "name": "ops-astro-staging-pgdata" } }
+  "volumes": {
+    "ops-astro-staging-pgdata": { "name": "ops-astro-staging-pgdata" },
+    "ops-astro-staging-tls": { "name": "ops-astro-staging-tls" }
+  }
 }
