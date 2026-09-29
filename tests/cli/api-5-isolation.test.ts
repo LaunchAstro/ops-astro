@@ -108,9 +108,19 @@ describe.skipIf(serverUrl === undefined)('API-5 isolation', () => {
       }
     }
 
-    // 1. Another business: bravo's person on bravo's key reaches nothing of alpha's.
+    // 1. Another business: bravo's person on bravo's key reaches nothing of
+    // alpha's, and learns nothing: each answer is word for word the answer for
+    // ids that exist nowhere (NOT_FOUND, or the key bravo's own grant lacks).
     const bea = await w.person(await w.outsider('bea'), `${w.key}-bravo`);
-    await crossing(bea, /NOT_FOUND/u, 'bravo');
+    await crossing(bea, /NOT_FOUND|SCOPE_NOT_GRANTED/u, 'bravo');
+    const nowhere = { map: randomUUID(), a: randomUUID(), b: randomUUID(), patch: randomUUID() };
+    const real = operations(mapB);
+    const none = operations(nowhere);
+    for (const [at, argv] of real.entries()) {
+      const one = (await bea.run(...argv)).out;
+      const other = (await bea.run(...(none[at] as string[]))).out;
+      expect(one, argv.join(' ')).toBe(other);
+    }
     // Bravo's own list and count show none of alpha's.
     const listed = await bea.run('task', 'list', '--detail', 'brief', '--json');
     for (const canary of canaries) expect(listed.out).not.toContain(canary);

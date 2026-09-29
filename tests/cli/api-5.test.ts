@@ -190,7 +190,18 @@ describe.skipIf(serverUrl === undefined)('API-5 tracker operations', () => {
     );
     const got = await view(map);
     expect(got.outOfScope.map((one) => one['ticketId'])).toStrictEqual([c]);
+    // It stays out of Decisions so far, on the map and in work this ticket.
     expect(got.decisions).toHaveLength(0);
+    const context = await cli.run(
+      'task',
+      'context',
+      ids['a'] as string,
+      '--detail',
+      'full',
+      '--json',
+    );
+    expect(context.exit, context.out).toBe(0);
+    expect(context.out).not.toContain(c);
   });
 
   it('API-5 map revise edits Destination, Notes and fog as a numbered version', async () => {
@@ -221,9 +232,21 @@ describe.skipIf(serverUrl === undefined)('API-5 tracker operations', () => {
   it('API-5 task close closes an issue', async () => {
     const out = await ok('task', 'create', '--title', 'plain issue');
     const id = idOf({ exit: 0, out });
+    const state = async () =>
+      (JSON.parse((await cli.run('task', 'get', id, '--detail', 'brief', '--json')).out) as Json)[
+        'state'
+      ];
+    const open = await state();
     await ok('task', 'close', id, '--revision', await rev(id));
-    const read = await cli.run('task', 'get', id, '--detail', 'brief', '--json');
-    expect(read.out).toMatch(/"state":"(done|completed|closed)"/u);
+    const closed = await state();
+    expect(closed).not.toBe(open);
+    const done = await w.db.admin.execute<{ readonly category: string }>(
+      `select s.data ->> 'machine_category' as category from public.records r
+         join public.records s on s.business_id = r.business_id and s.id = r.uuid_1
+        where r.id = $1`,
+      [id],
+    );
+    expect(done[0]?.category).toBe('completed');
   });
 
   it('API-5 owner check flow: chart a small map with three tickets through the tracker operations; the app shows the map, tickets, blocking and fog exactly as charted', async () => {
@@ -250,7 +273,7 @@ describe.skipIf(serverUrl === undefined)('API-5 tracker operations', () => {
     const three = await file('get a sample export', 'task');
     await ok('task', 'link', two, '--revision', await rev(two), '--blocked-by', `${one},${three}`);
     // The app's read of the map, as the map view draws it.
-    const app = (await w.read(lead, { command: 'map.view', recordId: map })) as { map: View };
+    const app = (await w.read(lead, { read: 'map.view', recordId: map })) as { map: View };
     expect(app.map.destination?.['text']).toBe('a clear import plan');
     expect(app.map.fog.map((f) => f['text'])).toStrictEqual(['how refunds import']);
     expect(app.map.tickets.map((t) => [t.title, t.type, t.blockedBy.toSorted()])).toStrictEqual([

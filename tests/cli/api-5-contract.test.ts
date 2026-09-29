@@ -128,7 +128,7 @@ describe('API-5 the tracker file', () => {
     expect(firstDifference(spec, ours)).toBeNull();
     // The comparison is line for line: one changed cell, a dropped row or an
     // added one is caught, and the line is named.
-    const changed = ours.map((row, at) => (at === 3 ? row.replace('Ops', 'OPS') : row));
+    const changed = ours.map((row, at) => (at === 3 ? `${row}!` : row));
     expect(firstDifference(spec, changed)?.line).toBe(4);
     expect(firstDifference(spec, ours.slice(0, -1))?.right).toBe('(none)');
     expect(firstDifference(spec, [...ours, '| extra |'])?.left).toBe('(none)');

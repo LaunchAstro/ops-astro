@@ -30,14 +30,15 @@ describe.skipIf(serverUrl === undefined)('API-5 tracked actions and keys', () =>
 
   /**
    * Run one write, then show its applied audit event was written by the same
-   * transaction that last wrote its subject: the two rows carry one `xmin`.
+   * transaction that last wrote its subject: both rows carry that transaction's
+   * `now()`, the audit event as `occurred_at` and the record as `updated_at`.
    */
   async function tracked(command: string, subject: string, ...argv: string[]): Promise<string> {
     const answer = await cli.run(...argv);
     expect(answer.exit, answer.out).toBe(0);
     const id = subject === '' ? idOf(answer) : subject;
     const rows = await w.db.admin.execute<{ readonly audit: string; readonly record: string }>(
-      `select e.xmin::text as audit, r.xmin::text as record
+      `select e.occurred_at::text as audit, r.updated_at::text as record
          from public.audit_events e join public.records r
            on r.business_id = e.business_id and r.id = e.subject_record_id
         where e.business_id = $1 and e.command = $2 and e.subject_record_id = $3
@@ -183,6 +184,11 @@ describe.skipIf(serverUrl === undefined)('API-5 tracked actions and keys', () =>
     );
     const map = idOf(charted);
     const { a } = madeIds(charted.out) as { a: string };
+    const chartsBefore = await w.db.admin.execute<{ readonly n: string }>(
+      `select count(*)::text as n from public.audit_events
+        where business_id = $1 and command = 'map.chart' and outcome = 'applied'`,
+      [w.business],
+    );
     const none = await w.person(await w.member('holds-comment', ['comment']));
     const reader = await w.person(await w.member('holds-read', ['read']));
     const writer = await w.person(await w.member('holds-write', ['read', 'write']));
@@ -225,6 +231,6 @@ describe.skipIf(serverUrl === undefined)('API-5 tracked actions and keys', () =>
         where business_id = $1 and command = 'map.chart' and outcome = 'applied'`,
       [w.business],
     );
-    expect(made[0]?.n).toBe('1');
+    expect(made[0]?.n).toBe(chartsBefore[0]?.n);
   });
 });

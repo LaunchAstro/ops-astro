@@ -82,7 +82,8 @@
     "AGENT CLI (SL14, API-3) adds api-3 (one case per checklist line through the verb CLI over the composed API), api-3-isolation (the three crossings), api-3-budget (the token budgets over a 40-ticket fixture map) and api-3-process (the real entry as a process). api-3-world.ts is a harness, not a suite.",
     "API-3 read audit (SL14): api-3-read-audit replaces the held TR-S-B3-1 todo (orchestrator decision 29 Sep 2026: I13 wins, every read writes an audit event); it holds each agent CLI read to exactly one audit event, applied or refused, read back from audit_events.",
     "API-4 (SL14) adds api-4: map status (frontier, fog and counts in one call, one query on the read models, current after a write, detail levels, the three isolation crossings); its budget, quota and read-audit lines sit in the api-3 budget, quota and read-audit suites. api-4-context: work this ticket (the whole bundle in one call and one statement, current after a write, detail levels, withheld parts named, the scripted run with zero follow-up reads, and, in api-4-context-isolation, a refusal per key and the three isolation crossings).",
-    "API-3 quota (SL14) adds api-3-quota: requests and calls at once per credential, person and business over the composed API with small limits and a moved clock, the refusal recorded, an outsider charged nothing, the page size from the one table."
+    "API-3 quota (SL14) adds api-3-quota: requests and calls at once per credential, person and business over the composed API with small limits and a moved clock, the refusal recorded, an outsider charged nothing, the page size from the one table.",
+    "API-5 (SL14, U30) adds api-5 (one case per tracker verb through the verb CLI, the owner check flow, the write budget), api-5-audit (each tracker change recorded in the writing transaction and the audit chain; a refusal per key), api-5-isolation (the three crossings over every tracker operation), api-5-quota (burst and calls at once over the tracker operations) and api-5-conformance (the scripted wayfinder run against the local-Markdown tracker and Ops Astro). api-5-contract.test.ts is a pure unit suite (the tracker file against the upstream contract, the spec table and the pinned digests) and must not be named; api-5-tracker.ts and tracker-backends.ts are harnesses."
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -312,6 +313,11 @@
     "tests/cli/api-4-context-isolation.test.ts",
     "tests/web/wf-3.test.tsx",
     "tests/web/wf-4.test.tsx",
-    "tests/web/wf-4-isolation.test.tsx"
+    "tests/web/wf-4-isolation.test.tsx",
+    "tests/cli/api-5.test.ts",
+    "tests/cli/api-5-audit.test.ts",
+    "tests/cli/api-5-isolation.test.ts",
+    "tests/cli/api-5-quota.test.ts",
+    "tests/cli/api-5-conformance.test.ts"
   ]
 }

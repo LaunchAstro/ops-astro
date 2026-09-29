@@ -76,7 +76,11 @@ export function words(line: string): readonly string[] {
   return out;
 }
 
-/** The rows of the first Markdown table in a text, each cell trimmed, the rule line dropped. */
+/**
+ * The rows of the first Markdown table in a text, each cell trimmed, the rule
+ * line dropped, and emphasis written one way (`_x_` and `*x*` render alike,
+ * and the formatter rewrites one as the other).
+ */
 export function tableRows(text: string): readonly string[] {
   const lines = text.split('\n');
   const start = lines.findIndex((line) => line.startsWith('|'));
@@ -89,7 +93,7 @@ export function tableRows(text: string): readonly string[] {
       line
         .split('|')
         .slice(1, -1)
-        .map((cell) => cell.trim())
+        .map((cell) => cell.trim().replaceAll(/(^|\s)_([^_\s][^_]*)_(?=$|[\s;,.])/gu, '$1*$2*'))
         .join(' | '),
     );
   }
