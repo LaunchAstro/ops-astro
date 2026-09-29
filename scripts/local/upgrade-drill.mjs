@@ -52,12 +52,12 @@ const say = (line) => console.log(`upgrade-drill: ${line}`);
  * password is random base64url, whose alphabet holds no quote, and the names
  * are generated here, so nothing a caller supplies reaches the SQL.
  */
-async function throwawayDatabase(serverUrl) {
+async function throwawayDatabase(clusterUrl) {
   const name = `t1_drill_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const login = `${name}_app`;
   const password = randomBytes(24).toString('base64url');
   const urlFor = (user, secret) => {
-    const url = new URL(serverUrl);
+    const url = new URL(clusterUrl);
     url.pathname = `/${name}`;
     if (user !== undefined) url.username = encodeURIComponent(user);
     if (secret !== undefined) url.password = encodeURIComponent(secret);
@@ -65,7 +65,7 @@ async function throwawayDatabase(serverUrl) {
   };
   const drops = [`drop database if exists "${name}" with (force)`, `drop role if exists "${login}"`];
   const dropAll = async () => {
-    const server = connectAsAdmin(serverUrl, { source: 'harness' });
+    const server = connectAsAdmin(clusterUrl, { source: 'harness' });
     try {
       for (const statement of drops) {
         // oxlint-disable-next-line no-await-in-loop -- the database before its role
@@ -75,7 +75,7 @@ async function throwawayDatabase(serverUrl) {
       await server.close();
     }
   };
-  const server = connectAsAdmin(serverUrl, { source: 'harness' });
+  const server = connectAsAdmin(clusterUrl, { source: 'harness' });
   try {
     await server.execute(
       `do $$ begin
