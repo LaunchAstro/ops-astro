@@ -34,8 +34,8 @@ export interface PictureAnswer {
   readonly body: string;
 }
 
-/** Answers one browser request, or undefined to refuse it. */
-export type PictureRoute = (request: PictureRequest) => Promise<PictureAnswer | undefined>;
+/** Answers one browser request, or null to refuse it. */
+export type PictureRoute = (request: PictureRequest) => Promise<PictureAnswer | null>;
 
 /** Loads `url` with every request handed to `route`, and returns the PNG it rendered. */
 export type PictureBrowser = (url: string, route: PictureRoute) => Promise<Uint8Array>;
@@ -52,17 +52,42 @@ export interface Picture {
 export const PICTURE_POLICY =
   "script-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'";
 
+const originOf = (url: string): string => (URL.canParse(url) ? new URL(url).origin : '');
+
 interface RouteState {
   readonly refused: FenceRefusal[];
   failed: FenceCode | undefined;
 }
 
-/** Stub: every request fetched as a document, no policy. */
-function pictureRoute(_page: string, options: CaptureOptions, _state: RouteState): PictureRoute {
+function pictureRoute(page: string, options: CaptureOptions, state: RouteState): PictureRoute {
+  const record = (refusal: FenceRefusal) => {
+    state.refused.push(refusal);
+    options.record?.(refusal);
+  };
+  const fenced = { ...options, record };
   return async (request) => {
-    const fetched = await fencedFetch(request.url, { ...options, kind: 'document' });
-    if (!fetched.ok) return undefined;
-    return { status: 200, headers: { 'content-type': 'text/html' }, body: fetched.value.body };
+    if (request.kind === 'document' && request.mainFrame && request.url === page) {
+      const fetched = await fencedFetch(page, { ...fenced, kind: 'document' });
+      if (!fetched.ok) {
+        state.failed ??= fetched.code;
+        return null;
+      }
+      const headers = {
+        'content-type': 'text/html; charset=utf-8',
+        'content-security-policy': PICTURE_POLICY,
+      };
+      return { status: 200, headers, body: fetched.value.body };
+    }
+    if (request.kind === 'stylesheet') {
+      const sheet = await fencedFetch(request.url, { ...fenced, kind: 'stylesheet', page });
+      if (!sheet.ok) {
+        state.failed ??= sheet.code;
+        return null;
+      }
+      return { status: 200, headers: { 'content-type': 'text/css' }, body: sheet.value.body };
+    }
+    record({ code: 'CAPTURE_KIND_REFUSED', hop: 0, origin: originOf(request.url) });
+    return null;
   };
 }
 
