@@ -21,6 +21,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { createEmptyDatabase, createFreshDatabase } from '../support/fresh-database.ts';
 import { keys } from './carried-archive.fixture.ts';
 import { COMMANDS, drillKey, manager, marks, scratch } from './operator-only-commands.fixture.ts';
 import {
@@ -105,6 +106,8 @@ describe.skipIf(serverUrl === undefined)('S0-3e operating business only', () => 
   operatingCases5();
   operatingCases6();
   operatingCases7();
+  operatingCases8();
+  operatingCases9();
 });
 
 function operatingCases1() {
@@ -276,6 +279,50 @@ function operatingCases7() {
   });
 }
 
+function operatingCases8() {
+  it('Sol proof, criterion 4: redirecting the admin URL cannot appoint another business', async () => {
+    const [beta] = await state.db.admin.execute<{ id: string }>(
+      "select id::text from public.businesses where key = 'beta'",
+    );
+    expect(beta).toBeDefined();
+    const fake = await createEmptyDatabase({ part: 's03fake' });
+    try {
+      await fake.admin.execute('create schema ops');
+      await fake.admin.execute('create table public.businesses (id uuid primary key, key text)');
+      await fake.admin.execute('create table ops.operating_business (operating_business uuid)');
+      await fake.admin.execute('insert into public.businesses (id, key) values ($1, $2)', [
+        beta?.id,
+        'beta',
+      ]);
+      await fake.admin.execute('insert into ops.operating_business values ($1)', [beta?.id]);
+      const { sealArchive, openArchive } = await load<Seal>('../../scripts/ops/archive-seal.mjs');
+      const plant = `alpha-record-${randomUUID()}`;
+      const store = plantedStore(sealArchive(Buffer.from(plant), keys.publicKey));
+      const file = join(mkdtempSync(join(scratch, 'export-')), 'archive.sealed');
+      const { env, records } = await signedIn(subjects.betaOperator, 'beta');
+      const fakeUrl = new URL(serverUrl ?? '');
+      fakeUrl.pathname = `/${fake.name}`;
+      env['DATABASE_ADMIN_URL'] = fakeUrl.toString();
+      const { runDrillCommand } = await load<DrillCommand>('../../scripts/ops/restore-drill.mjs');
+      const run = await runDrillCommand(['--export', file], {
+        environment: env,
+        reach: store.reach,
+      });
+      const exported = existsSync(file)
+        ? openArchive(readFileSync(file), keys.privateKey).toString('utf8')
+        : '';
+      expect.soft(run.refused).toBeDefined();
+      expect.soft(exported).not.toContain(plant);
+      expect.soft(store.reached()).toBe(0);
+      expect.soft(existsSync(file)).toBe(false);
+      expect.soft(readdirSync(records)).toStrictEqual([]);
+      expect.soft(JSON.stringify(run)).not.toContain(plant);
+    } finally {
+      await fake.drop();
+    }
+  });
+}
+
 function operatingCases5() {
   it('another business cannot appoint itself as the operating business', async () => {
     const { sealArchive } = await load<Seal>('../../scripts/ops/archive-seal.mjs');
@@ -291,5 +338,43 @@ function operatingCases5() {
     expect(existsSync(file)).toBe(false);
     expect(readdirSync(records)).toStrictEqual([]);
     expect(JSON.stringify(run)).not.toContain(plant);
+  });
+}
+
+function operatingCases9() {
+  it('Sol proof, criterion 4: replacing the operating-business database cannot authorise another business export', async () => {
+    const [beta] = await state.db.admin.execute<{ id: string }>(
+      "select id::text from public.businesses where key = 'beta'",
+    );
+    expect(beta).toBeDefined();
+    const otherInstallation = await createFreshDatabase({ part: 's03e_swap' });
+    try {
+      await otherInstallation.admin.execute(
+        'insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $3)',
+        [beta?.id, 'beta', 'Beta'],
+      );
+      await otherInstallation.admin.execute(
+        'insert into ops.operating_business (operating_business) values ($1)',
+        [beta?.id],
+      );
+      const otherAdminUrl = new URL(serverUrl as string);
+      otherAdminUrl.pathname = `/${otherInstallation.name}`;
+      const { sealArchive } = await load<Seal>('../../scripts/ops/archive-seal.mjs');
+      const store = plantedStore(sealArchive(Buffer.from('alpha-record'), keys.publicKey));
+      const file = join(mkdtempSync(join(scratch, 'sol-db-swap-')), 'archive.sealed');
+      const { env, records } = await signedIn(subjects.betaOperator, 'beta');
+      env['DATABASE_ADMIN_URL'] = otherAdminUrl.toString();
+      const { runDrillCommand } = await load<DrillCommand>('../../scripts/ops/restore-drill.mjs');
+      const run = await runDrillCommand(['--export', file], {
+        environment: env,
+        reach: store.reach,
+      });
+      expect(run.refused).toBeDefined();
+      expect(store.reached()).toBe(0);
+      expect(existsSync(file)).toBe(false);
+      expect(readdirSync(records)).toStrictEqual([]);
+    } finally {
+      await otherInstallation.drop();
+    }
   });
 }
