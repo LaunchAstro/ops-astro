@@ -75,7 +75,8 @@
     "FR8-0031 adds a case to upgrade-guards: a member of the application group dropped by another session after 0031's role loop has read it, on a fixed schedule (the loop blocks on a row lock the dropping session holds until the drop commits), no longer fails the upgrade, and every surviving member still has TEMPORARY revoked.",
     "CQ-14 adds owning-operation-constraints (product issue 54): the two 0009 checks on field_defs.owning_operation, field_defs_owning_operation_not_empty and field_defs_operation_names_are_operations, each refusing a bad row by name, with a valid list as the control. Its result is the evidence for S0-6's question 6 (the text[] domain change): 'refuses an empty list by field_defs_owning_operation_not_empty' and 'refuses a malformed operation name by field_defs_operation_names_are_operations' name both checks, and 'accepts a well-formed unknown operation name today: the check reads spelling, not existence' pins that the check reads spelling, not existence, until ops-astro#142 turns it into a refusal.",
     "S0-3a adds the upgrade-drill suite (S0-3 upgrade drill: a database built and seeded at 0023 upgrades to the head row for row unchanged, and a planted changed row, lost row or dropped table turns the drill red).",
-    "S0-7 adds the Postgres-major suite (the database under test runs the major the job names, 17 unless the look-ahead names 18, and a planted migration calling uuidv7() is refused on 17 by the server, with the ledger unchanged)."
+    "S0-7 adds the Postgres-major suite (the database under test runs the major the job names, 17 unless the look-ahead names 18, and a planted migration calling uuidv7() is refused on 17 by the server, with the ledger unchanged).",
+    "ORCH25-SL01-STORE adds backup-store-bounded as an invariant (S0-3 store bounded: the store's cap is backups.settings.max_bytes, which no job identity can change or read around; an archive that fills the store exactly is taken and one byte more is refused 53400 with no row or receipt; of two archives written at once that fit alone but not together, one is refused, under read committed and under repeatable read; a lost first archive leaves its room to the second; an expired backup gives its room back; a lowered cap refuses every new archive and deletes nothing)."
   ],
   "invariant": [
     "tests/ci/staging-no-production-data.test.ts",
@@ -232,7 +233,8 @@
     "tests/db/backup-identity-grants.test.ts",
     "tests/db/backup-store.test.ts",
     "tests/db/backup-store-drills.test.ts",
-    "tests/db/backup-store-encryption.test.ts"
+    "tests/db/backup-store-encryption.test.ts",
+    "tests/db/backup-store-bounded.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
