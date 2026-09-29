@@ -6,8 +6,8 @@
 // the tests read what it reads: every product stylesheet and every component
 // file. Every route draws from those sheets, so the census over them covers the
 // ten shell-inventory routes and the routes built since. The per-route measure
-// at 1480, 900 and 390 in both themes is MP-1-7's harness and is `todo` until
-// it lands.
+// at 1480, 900 and 390 in both themes runs on MP-1-7's harness and is `todo`
+// until those routes' pages and T4b1's signed-in fixture exist.
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -80,7 +80,7 @@ const ok =
 
 describe('MP-1-4 type scale', () => {
   it.todo(
-    'MP-1-4 visual match: matches mockup the ten census routes in the shell inventory at 1480, 900 and 390, light and dark (MP-1-7)',
+    "MP-1-4 visual match: matches mockup the ten census routes in the shell inventory at 1480, 900 and 390, light and dark (MP-1-7 harness; waits on those routes' pages in later slices and T4b1's signed-in fixture)",
   );
 
   it('MP-1-4 every text style maps to a declared type token', () => {
