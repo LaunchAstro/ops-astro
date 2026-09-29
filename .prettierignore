@@ -19,3 +19,9 @@ tests/runtime/t2d-proof-body-byte-identity.test.ts
 # Sol's REV184 and REV184B review proofs, byte-for-byte as the review patches
 # held them, so their byte-identity proof can compare them. See #184.
 tests/ci/sol-review-proof-byte-identity.test.ts
+tests/ci/fixture-database-url-container-proof.test.ts
+tests/ci/fixture-template-ownership-proof.test.ts
+tests/ci/isolation-manifest-fixture-suites-proof.test.ts
+tests/ci/moved-snapshot-proof-argv-path.test.ts
+tests/support/fixture-race-vitest.config.mjs
+tests/support/fixture-template-race-hook.mjs

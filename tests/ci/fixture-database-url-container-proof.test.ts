@@ -43,9 +43,7 @@ it.skipIf(!databaseUrl || !adminUrl || !otherContainer)(
       await expect(import('../fixture/snapshot/snapshot.ts')).rejects.toThrow(
         `fixture: container ${otherContainer ?? ''} is not the DATABASE_URL server`,
       );
-      expect(await other`select datname from pg_database where datname = ${target}`).toHaveLength(
-        0,
-      );
+      expect(await other`select datname from pg_database where datname = ${target}`).toHaveLength(0);
     } finally {
       if (originalAdminUrl === undefined) delete process.env['DATABASE_ADMIN_URL'];
       else process.env['DATABASE_ADMIN_URL'] = originalAdminUrl;

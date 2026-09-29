@@ -28,20 +28,13 @@ it.skipIf(!serverUrl || !container || process.env['FIXTURE_PROOF_RACE'] !== '1')
     const scratch = mkdtempSync(join(tmpdir(), 'fixture-race-proof-'));
     const marker = join(scratch, 'created-template');
     try {
-      expect(
-        await server`select datname from pg_database where datname = ${template}`,
-      ).toHaveLength(0);
+      expect(await server`select datname from pg_database where datname = ${template}`).toHaveLength(0);
       const run = spawnSync(
         'pnpm',
         [
-          'vitest',
-          'run',
-          '--config',
-          'tests/support/fixture-race-vitest.config.mjs',
+          'vitest', 'run', '--config', 'tests/support/fixture-race-vitest.config.mjs',
           'tests/fixture/snapshot/snapshot-clone-and-privileges.test.ts',
-          '--no-file-parallelism',
-          '-t',
-          'building a snapshot completes and leaves a cloneable template',
+          '--no-file-parallelism', '-t', 'building a snapshot completes and leaves a cloneable template',
         ],
         {
           encoding: 'utf8',
@@ -53,9 +46,7 @@ it.skipIf(!serverUrl || !container || process.env['FIXTURE_PROOF_RACE'] !== '1')
       expect(readFileSync(marker, 'utf8')).toBe(template);
       expect(run.status).not.toBe(0);
       expect(run.stdout + run.stderr).toContain(`database "${template}" already exists`);
-      expect(
-        await server`select datname from pg_database where datname = ${template}`,
-      ).toHaveLength(1);
+      expect(await server`select datname from pg_database where datname = ${template}`).toHaveLength(1);
     } finally {
       await server.unsafe(`drop database if exists "${template}" with (force)`);
       await server.end();
