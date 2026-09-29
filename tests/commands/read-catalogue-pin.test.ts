@@ -29,6 +29,7 @@ const PINNED_SHAPE = {
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
   'secret.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'connection.fleet': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'connection.signal': { spine: false, subject: false, authority: 'holds-any-grant' },
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
   'settings.read': { spine: false, subject: false, authority: 'declared' },
   'task.board': { spine: true, subject: false, authority: 'declared' },
@@ -38,6 +39,7 @@ const PINNED_SHAPE = {
 
 const PINNED_IDENTIFIERS = {
   'connection.fleet': [],
+  'connection.signal': [],
   'person.list': [],
   'preset.plan': [],
   'secret.list': [],
@@ -119,6 +121,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'settings.read': BODIES.map(() => null),
   'secret.list': BODIES.map(() => null),
   'connection.fleet': BODIES.map(() => null),
+  'connection.signal': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
 };
 
@@ -131,7 +134,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same nine reads', () => {
+  it('names the same ten reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

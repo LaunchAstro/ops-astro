@@ -47,7 +47,7 @@ import {
 } from './restricted-calls-cases.ts';
 
 /**
- * One owner-written row per business in the seven tables the journey leaves
+ * One owner-written row per business in the nine tables the journey leaves
  * empty, so their filtering is asked of rows that exist (TC:108). Written by
  * this suite's own setup rather than the shared world, so no other suite's
  * world assertions move.
@@ -99,6 +99,15 @@ const UNREACHED: Readonly<Record<string, string>> = {
      select m.business_id, gen_random_uuid(), m.id, 1, a.id
        from made m join public.actors a on a.business_id = m.business_id
       order by a.id limit 1 returning 1`,
+  // Tripwires and the night round (MP-14-8): nothing the journey does writes
+  // either, so each is written here.
+  'public.tripwires': `insert into public.tripwires (business_id, id, what, rule, watching, state)
+     values ($1, gen_random_uuid(), 'restricted calls', 'restricted calls rule',
+             'restricted calls', 'armed') returning 1`,
+  'public.night_round_steps': `insert into public.night_round_steps
+       (business_id, id, round_on, at, tone, what, who, say)
+     values ($1, gen_random_uuid(), date '2026-09-29', timestamptz '2026-09-28 23:00:00+00',
+             'plain', 'restricted calls', 'restricted calls', 'restricted calls') returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */

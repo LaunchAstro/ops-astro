@@ -219,7 +219,8 @@
     "tests/runtime/upgrade-guards.test.ts",
     "tests/tenancy/migration-runner-guard.test.ts",
     "tests/custody/c31-credentials.test.ts",
-    "tests/connections/mp-14-7a-fleet.test.ts"
+    "tests/connections/mp-14-7a-fleet.test.ts",
+    "tests/connections/mp-14-8-signal.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

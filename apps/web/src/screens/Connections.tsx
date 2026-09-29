@@ -9,7 +9,8 @@
 // is no "Run all syncs now" (removed from the mockup's AG-C3).
 //
 // Sections 003 to 005 (credentials and quota, data quality, band health) draw
-// on data the phase 6 sources bring; until MP-14-7b they say so.
+// on data the phase 6 sources bring; until MP-14-7b they say so. Sections 006
+// to 008 (grants, tripwires, the night round) are MP-14-8's, read apart.
 
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { Empty, InDevelopment } from '@launchastro/ui';
@@ -19,6 +20,7 @@ import type {
 } from '../../../../packages/core-wire/src/index.ts';
 import { isRefusal, isUnavailable, type OperationsClient } from '../operations/client.ts';
 import { FleetTable } from './connections/fleet-table.tsx';
+import { SignalSections } from './connections/signal.tsx';
 import {
   initialFleetView,
   toggleOpen,
@@ -245,6 +247,7 @@ export function ConnectionsScreen(props: {
         <Shown fleet={fleet.fleet} now={now} repair={repair} repairSaid={repairSaid} />
       ) : null}
       <NotConnected />
+      <SignalSections client={client} now={now} />
     </section>
   );
 }

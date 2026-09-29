@@ -74,11 +74,14 @@ describe.skipIf(serverUrl === undefined)('MP-14-8 grants, tripwires and the nigh
   /** Pick a task up for real, with its party link set to `client`. */
   async function delegate(purpose: string, client: string | null): Promise<[string, string]> {
     const task = await controls.createTask(purpose);
+    // The party link is projected from the record's data into its slot.
     const set = await controls.fixture.db.admin.execute<{ readonly revision: string }>(
-      `update public.records set uuid_7 = $2 where id = $1 returning revision`,
+      `update public.records set data = data || jsonb_build_object('client', $2::text)
+        where id = $1 and $2::text is not null returning revision`,
       [task.id, client],
     );
-    const proposal = await controls.propose(task.id, Number(set[0]?.revision), purpose);
+    const revision = set[0] === undefined ? task.revision : Number(set[0].revision);
+    const proposal = await controls.propose(task.id, revision, purpose);
     const picked = await controls.pickup(await controls.approve(proposal));
     const rows = await controls.fixture.db.admin.execute<{ readonly id: string }>(
       `select id from public.delegations where purpose_scope_id = $1`,

@@ -246,6 +246,7 @@ export function createPositiveBody(
       }
       // The connector fleet (MP-14-7a): the admin reads it and starts a repair.
       case 'connection.fleet':
+      case 'connection.signal':
         return { body: {} };
       case 'connector.repair':
         return {

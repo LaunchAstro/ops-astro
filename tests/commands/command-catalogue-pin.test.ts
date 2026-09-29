@@ -145,6 +145,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'connection.fleet',
+  'connection.signal',
   'connector.repair',
   'delegation.revoke',
   'grant.revoke',
@@ -334,7 +335,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-five from an expected revision', () => {
+  it('exempts the same twenty-six from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
