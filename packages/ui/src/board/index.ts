@@ -12,3 +12,4 @@ export * from './machine.ts';
 export * from './typeahead.ts';
 export * from './funnel.ts';
 export * from './address.ts';
+export * from './projects.ts';
