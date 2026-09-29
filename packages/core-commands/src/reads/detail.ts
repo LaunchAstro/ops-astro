@@ -98,13 +98,17 @@ export async function blockersFor(
   return { blockedBy: shown, withheld: all.length - shown.length };
 }
 
-/** Every live task this one is blocked by, oldest link first. Never answered as is. */
+/**
+ * Every live task this one is blocked by, oldest link first; a link from a
+ * record of another type is not a blocker. Never answered as is.
+ */
 async function blockersOf(tx: TenantQuery, recordId: string): Promise<readonly string[]> {
   const rows = await tx.query<{ readonly id: string }>(
     `select l.from_record_id::text as id from public.record_links l
        join public.records r on r.business_id = l.business_id and r.id = l.from_record_id
+      join public.records t on t.business_id = l.business_id and t.id = l.to_record_id
       where l.business_id = $1 and l.to_record_id = $2 and l.link_type = 'blocks'
-        and r.deleted_at is null
+        and r.record_type_id = t.record_type_id and r.deleted_at is null
       order by l.id`,
     [tx.businessId, recordId],
   );

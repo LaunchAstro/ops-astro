@@ -68,7 +68,8 @@ export interface TicketContextRow {
 }
 
 // A linked task as JSON: its id, names, type and state. `$side` is the column
-// of `record_links` that names the other task.
+// of `record_links` that names the other task, which must be a task: a link to
+// a record of another type is never shown under a task grant.
 const linked = (side: 'from_record_id' | 'to_record_id', mine: string): string => `
   coalesce((select json_agg(json_build_object(
               'id', o.id, 'key', o.txt_1, 'title', o.txt_4,
@@ -79,7 +80,7 @@ const linked = (side: 'from_record_id' | 'to_record_id', mine: string): string =
        join public.records o on o.business_id = l.business_id and o.id = l.${side}
        left join public.records os on os.business_id = o.business_id and os.id = o.uuid_1
       where l.business_id = t.business_id and l.${mine} = t.id and l.link_type = 'blocks'
-        and o.deleted_at is null), '[]'::json)`;
+        and o.record_type_id = t.record_type_id and o.deleted_at is null), '[]'::json)`;
 
 const STATEMENT = `
   select json_build_object(
