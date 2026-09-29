@@ -206,8 +206,9 @@ export async function archiveIds(): Promise<string[]> {
 /** The backup store and its three logins, made before and dropped after the calling describe. */
 export function backupStoreHooks(): void {
   beforeAll(async () => {
-    // The role the store grants to is made by migration 0034 on the source; one
-    // cluster holds both, as staging's server does.
+    // The role the store grants to is made by migration 0034 on the source; the
+    // test cluster holds both. On staging the store is a server of its own and
+    // backup-store.sql makes the role there (staging-backup-reach-live.test.ts).
     const source = await createFreshDatabase({ part: 's03bsrc' });
     await source.drop();
     store = await createEmptyDatabase({ part: 's03bstore' });

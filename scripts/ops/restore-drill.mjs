@@ -4,13 +4,15 @@
 // LF-3). The operator runs it on the machine, from the runbook:
 //
 //   node --env-file=<drill env> scripts/ops/restore-drill.mjs --drill
-//     RESTORE_STORE_URL  a login holding ops_astro_backup_restore on the store
+//     RESTORE_STORE_URL  a login holding ops_astro_backup_restore on the store,
+//                        its host as staging's network names the store (backups)
 //     RESTORE_KEY_FILE   the operator's private key, held apart from the store
 //     DRILL_BUSINESS_ID, DRILL_CLIENT_ID, DRILL_PERSON_ID  the one scope it reads
 //
-// It takes the newest backup from the store (the store logs the read), opens
-// the seal, starts a throwaway container of the production major with no
-// network, restores the whole backup into it, checks the result and removes
+// It takes the newest backup from the store (the store logs the read), through
+// psql on staging's network (backup-store-reach.mjs), since the store publishes
+// no port; opens the seal, starts a throwaway container of the production
+// major with no network, restores the whole backup into it, checks the result and removes
 // the container. It takes no target: the one database it writes is the one it
 // started, so it cannot reach the managed project or any other server. It
 // reads the restored copy only as the tenancy role, under the named business,
@@ -34,9 +36,9 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import postgres from 'postgres';
 import { EFFECTIVE_GRANTS } from '../../packages/core-records/src/index.ts';
 import { openArchive } from './archive-seal.mjs';
+import { stagingReach } from './backup-store-reach.mjs';
 import { RESTORE_ROLE, recordDrill } from './drill-receipt.mjs';
 import { recordDeployment, requireOperator } from './operator.ts';
 
@@ -70,18 +72,17 @@ export function docker(args, input) {
 }
 
 /** The newest backup, read as the restore identity; the store writes the receipt. */
-export async function fetchLatest(storeUrl) {
-  const sql = postgres(storeUrl, { max: 1, onnotice: () => {}, connect_timeout: 10 });
-  try {
-    return await sql.begin(async (tx) => {
-      await tx.unsafe(`set local role ${RESTORE_ROLE}`);
-      const [row] = await tx`select taken_at, body from backups.read_latest()`;
-      if (row === undefined) throw new Error('no backup');
-      return { takenAt: row.taken_at.toISOString(), body: row.body };
-    });
-  } finally {
-    await sql.end({ timeout: 5 });
-  }
+export async function fetchLatest(storeUrl, reach = stagingReach) {
+  const latest = await reach(
+    storeUrl,
+    `set role ${RESTORE_ROLE};
+select json_build_object('takenAt', taken_at, 'body', encode(body, 'hex'))::text
+  from backups.read_latest();
+`,
+  );
+  if (latest === '') throw new Error('no backup');
+  const row = JSON.parse(latest);
+  return { takenAt: new Date(row.takenAt).toISOString(), body: Buffer.from(row.body, 'hex') };
 }
 
 async function must(result) {
@@ -222,20 +223,27 @@ export async function restoreDrill({
  * The drill as the operator the gate admitted runs it: the drill, then its
  * receipt in the store, then the operator's record. Returns the receipt.
  */
-export async function drillAsOperator({ gate, storeUrl, privateKey, scope, drill = restoreDrill }) {
+export async function drillAsOperator({
+  gate,
+  storeUrl,
+  privateKey,
+  scope,
+  drill = restoreDrill,
+  reach = stagingReach,
+}) {
   const {
     event: _event,
     at: _at,
     ...result
   } = await drill({
-    fetchArchive: () => fetchLatest(storeUrl),
+    fetchArchive: () => fetchLatest(storeUrl, reach),
     privateKey,
     scope,
   });
   const empty = { stage: null, archiveTakenAt: null, tables: null, readAs: null };
   const act = { action: 'restore drill recorded', ...empty, ...result };
   try {
-    act.lastTestedRestore = await recordDrill(storeUrl, gate.operator.personId, act);
+    act.lastTestedRestore = await recordDrill(storeUrl, gate.operator.personId, act, reach);
   } catch {
     // The store's own message can name its host; the operator is told the step.
     throw new Error('the drill ran, but its receipt could not be written to the store');

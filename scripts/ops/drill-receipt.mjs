@@ -2,9 +2,10 @@
 //
 // The restore drill's receipt (scripts/ops/restore-drill.mjs, S0-3d): the
 // fields a receipt may carry, and the write that puts it in the backup store
-// as the restore identity.
+// as the restore identity, through psql on staging's network
+// (backup-store-reach.mjs).
 
-import postgres from 'postgres';
+import { stagingReach, value } from './backup-store-reach.mjs';
 
 export const RESTORE_ROLE = 'ops_astro_backup_restore';
 
@@ -31,18 +32,21 @@ export const RECEIPT_FIELDS = [
  * The drill's receipt in the store, as the restore identity: the store stamps
  * the time, and a passed drill's time is the date of the last tested restore.
  */
-export async function recordDrill(storeUrl, operator, record) {
-  const sql = postgres(storeUrl, { max: 1, onnotice: () => {}, connect_timeout: 10 });
-  try {
-    return await sql.begin(async (tx) => {
-      await tx.unsafe(`set local role ${RESTORE_ROLE}`);
-      const [row] = await tx`select backups.record_drill(
-        ${record.outcome}, ${record.stage ?? null}, ${operator}, ${record.archiveTakenAt ?? null},
-        ${record.productionMajor}, ${record.sourceMajor}, ${record.targetMajor},
-        ${record.tables ?? null}, ${sql.json(record.timings)}) as at`;
-      return row.at === null ? null : row.at.toISOString();
-    });
-  } finally {
-    await sql.end({ timeout: 5 });
-  }
+export async function recordDrill(storeUrl, operator, record, reach = stagingReach) {
+  const args = [
+    value(record.outcome, 'text'),
+    value(record.stage ?? null, 'text'),
+    value(operator, 'uuid'),
+    value(record.archiveTakenAt ?? null, 'timestamptz'),
+    value(record.productionMajor, 'integer'),
+    value(record.sourceMajor ?? null, 'integer'),
+    value(record.targetMajor ?? null, 'integer'),
+    value(record.tables ?? null, 'integer'),
+    value(record.timings, 'jsonb'),
+  ];
+  const at = await reach(
+    storeUrl,
+    `set role ${RESTORE_ROLE};\nselect to_json(backups.record_drill(${args.join(', ')}))::text;\n`,
+  );
+  return at === '' ? null : new Date(JSON.parse(at)).toISOString();
 }
