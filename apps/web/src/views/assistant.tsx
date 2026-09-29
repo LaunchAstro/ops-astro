@@ -21,6 +21,9 @@
 //
 // The agent does not answer yet: the exchange runs on AW-01's model seam. A
 // kept question says so in plain words.
+//
+// A started tab links to the conversation's own address (C36), where it stays
+// after it is taken out of the tab row.
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { AssistantPanel, type AssistantMessage, type AssistantPage } from '@launchastro/ui';
@@ -42,7 +45,7 @@ import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { modelOffer, subjectFor, type ModelChoice, type Subject } from '../assistant/subject.ts';
 import type { CallResult, CommandOutcome, OperationsClient } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
-import { ROUTES, type RouteId } from '../routes.ts';
+import { pathTo, ROUTES, type RouteId } from '../routes.ts';
 
 export const KEPT = 'Kept in this conversation. The agent does not answer here yet.';
 
@@ -213,12 +216,16 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
   const subject = subjectFor({ route: props.route, ...state.scope });
   const sender = useSender(props, store, subject);
   const writes = useWrites(props, store, sender.report);
+  const opened = state.chats.find((chat) => chat.key === state.selected)?.conversationId ?? null;
   return (
     <AssistantPanel
       subject={subject}
       chats={state.chats}
       selected={state.selected}
       offer={modelOffer(subject, CATALOGUE, null)}
+      address={
+        opened === null ? null : pathTo('agency:agent-conversation', { conversation: opened })
+      }
       citation={state.citation}
       draft={state.draft}
       onSelect={(key) => {

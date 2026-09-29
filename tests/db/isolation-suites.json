@@ -10,6 +10,7 @@
     "tests/api/mp-6-1-isolation.test.ts",
     "tests/api/mp-6-4-isolation.test.ts",
     "tests/api/aw-03-isolation.test.ts",
-    "tests/api/mp-7-11-isolation.test.ts"
+    "tests/api/mp-7-11-isolation.test.ts",
+    "tests/api/c36-isolation.test.ts"
   ]
 }

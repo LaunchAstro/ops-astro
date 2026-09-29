@@ -99,18 +99,20 @@ browser.
 
 ## Addresses
 
-| Address      | What it draws                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------ |
-| `/sign-in`   | Credentials and the business selector                                                            |
-| `/projects/` | `task.board` for the unboarded tasks (`board: null`), and the create form                        |
-| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision |
-| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`  |
+| Address                | What it draws                                                                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/sign-in`             | Credentials and the business selector                                                                                                                           |
+| `/projects/`           | `task.board` for the unboarded tasks (`board: null`), and the create form                                                                                       |
+| `/task/:key`           | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                |
+| `/settings`            | The two operation-classified business settings, from `settings.read` and `session.capabilities`                                                                 |
+| `/agent/:conversation` | `conversation.read` by the id the address carries: the transcript while the body lives, only the wrap-up after it purges (C36); a started drawer tab links here |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
 
-The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
-goes to `/settings`. An open dock tab is announced as "Close Settings"
+The dock has two tabs (`PANELS` in `apps/web/src/panels.ts`): Settings, which
+goes to `/settings`, and Agent, which opens the assistant drawer in place
+(MP-7-11; its route is null). An open dock tab is announced as "Close Settings"
 (`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
 leaves its address for the board when pressed (`onDockTab` in
 `apps/web/src/App.tsx`).

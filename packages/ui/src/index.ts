@@ -22,7 +22,8 @@
 // arrived with MP-6-1, mounted on the task page over the proposals `task.read`
 // stores; `AssistantPanel` arrived with MP-7-11, mounted as the dock's Agent
 // drawer over AW-03's conversations; its ask sparkle is exported when the
-// first host page mounts it. An exported component that nothing mounts is an
+// first host page mounts it. `ConversationRecord` arrived with C36, mounted at
+// a conversation's own address. An exported component that nothing mounts is an
 // estate to maintain, not a capability.
 
 // The package's stylesheets, in their load order: tokens, then primitives, then
@@ -50,3 +51,4 @@ export * from './surfaces/Board.tsx';
 export * from './surfaces/TaskPage.tsx';
 export * from './surfaces/AgentPane.tsx';
 export * from './surfaces/AssistantPanel.tsx';
+export * from './surfaces/ConversationRecord.tsx';

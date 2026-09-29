@@ -79,7 +79,8 @@
     "AW-03 (SL12) names aw-03-address (address_outlives_the_body, the ticket's invariant, and AW-03 purge real: the purge, item 8 from records and the address after a real purge through the API and the command line) and aw-03-isolation (AW-03 isolation across another business, another client in the same business and another person under a live delegation, with AW-03 client, AW-03 revoked and AW-03 canary) as invariants, the isolation suite listed in isolation-suites.json too.",
     "AW-03 (SL12, session 4) names aw-03-races (a message racing the purge and the wrap-up, two purges and two idle passes at once, a pass and a purge dying mid-write) and aw-03-sweep (the idle sweep: wrap-up at quiet, purge in a later pass, open work held, a failed idle write under a lock timeout, an unreadable window, a retried pass asking for the same purge) as conformance.",
     "AW-03 task origin (SL12, ORCH25-SL12-ORIGIN2) names audit-origin (0034: a chain written before 0034 verifies unchanged after it with every stored hash the same; an origin is stored and hashed; another business's conversation or a made-up id is refused and writes nothing; an event without an origin hashes exactly as 0007's formula) as an invariant.",
-    "MP-7-11 (SL12, session 5) names mp-7-11-tabs (the tab row on the server: the person's own conversations newest activity first, a fresh tab, rename, add page to context with a second pointer replacing the first, hostile page addresses refused, owner-only, the conversation:write refusal, no audit event beyond the command's own) as conformance, and mp-7-11-isolation (list, rename and set_scope across another business, another client in the same business and the owner's agent under a live delegation; a client; the canary; revoked) as an invariant"
+    "MP-7-11 (SL12, session 5) names mp-7-11-tabs (the tab row on the server: the person's own conversations newest activity first, a fresh tab, rename, add page to context with a second pointer replacing the first, hostile page addresses refused, owner-only, the conversation:write refusal, no audit event beyond the command's own) as conformance, and mp-7-11-isolation (list, rename and set_scope across another business, another client in the same business and the owner's agent under a live delegation; a client; the canary; revoked) as an invariant",
+    "C36 (SL12, session 7) names c36-address (a conversation's address keeps AW-03's refusals, read by the id the address carries: another business NOT_FOUND byte for byte a made-up address, a colleague SCOPE_NOT_GRANTED and nothing else, a client session refused, after the purge only the wrap-up) as conformance, and c36-isolation (the address read across another business, another client in the same business and the owner's agent under a live delegation, statuses checked, nothing of the conversation in any body) as an invariant"
   ],
   "invariant": [
     "tests/tenancy/pooled-crossover.test.ts",
@@ -229,7 +230,8 @@
     "tests/api/aw-03-address.test.ts",
     "tests/api/aw-03-isolation.test.ts",
     "tests/commands/audit-origin.test.ts",
-    "tests/api/mp-7-11-isolation.test.ts"
+    "tests/api/mp-7-11-isolation.test.ts",
+    "tests/api/c36-isolation.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
@@ -306,6 +308,7 @@
     "tests/api/mp-6-4-scope.test.ts",
     "tests/api/aw-03-races.test.ts",
     "tests/api/aw-03-sweep.test.ts",
-    "tests/api/mp-7-11-tabs.test.ts"
+    "tests/api/mp-7-11-tabs.test.ts",
+    "tests/api/c36-address.test.ts"
   ]
 }

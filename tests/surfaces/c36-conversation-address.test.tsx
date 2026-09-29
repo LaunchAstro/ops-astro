@@ -93,7 +93,9 @@ function reader(answer: unknown): { readonly client: OperationsClient; readonly 
   const client = {
     read: (name: string, body: Readonly<Record<string, unknown>>) => {
       asked.push({ name, body });
-      return Promise.resolve(answer);
+      // A refusal comes back as it is; a result comes back as the call's value.
+      const refused = typeof answer === 'object' && answer !== null && 'refused' in answer;
+      return Promise.resolve(refused ? answer : { ok: true, value: answer });
     },
     mutate: (name: string, body: Readonly<Record<string, unknown>>) => {
       asked.push({ name, body });
@@ -165,7 +167,9 @@ describe('C36 conversation address', () => {
     // A pointer to anywhere but this product is named, never linked.
     expect(page.text()).toContain('javascript:alert(1)');
   });
+});
 
+describe('C36 conversation address, from the drawer', () => {
   it('reachable from the navigation: a started tab links to its address, one not started does not', async () => {
     const { client } = reader(LIVE);
     const page = track(
