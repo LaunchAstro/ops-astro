@@ -50,21 +50,21 @@ export function namedSession(request: Context['req']): string | undefined {
   return id !== undefined && /^[0-9a-f]{32}$/u.test(id) ? id : undefined;
 }
 
-/** Every session cookie the request carries, by name. */
-function sessionCookies(request: Context['req']): Map<string, string> {
-  const found = new Map<string, string>();
-  for (const pair of (request.header('cookie') ?? '').split(';')) {
-    const [name = '', ...rest] = pair.trim().split('=');
-    const value = rest.join('=');
-    if (name.startsWith(SESSION_COOKIE) && value !== '') found.set(name, value);
-  }
-  return found;
+/** Every session cookie the request carries, a repeated name each time. */
+function sessionCookies(request: Context['req']): (readonly [string, string])[] {
+  return (request.header('cookie') ?? '')
+    .split(';')
+    .map((pair) => pair.trim().split('='))
+    .map(([name = '', ...rest]) => [name, rest.join('=')] as const)
+    .filter(([name, value]) => name.startsWith(SESSION_COOKIE) && value !== '');
 }
 
-/** The session cookie of the sign-in the tab names, when there is one. */
+/** The named sign-in's cookie, exactly once, holding a token of that id; else none. */
 export function sessionCookieOf(request: Context['req']): string | undefined {
   const id = namedSession(request);
-  return id === undefined ? undefined : sessionCookies(request).get(cookieNameFor(id));
+  const held = sessionCookies(request).filter(([name]) => name === cookieNameFor(id ?? ''));
+  const token = held.length === 1 ? held[0]?.[1] : undefined;
+  return token !== undefined && sessionIdOf(token) === id ? token : undefined;
 }
 
 /** `CSRF_HEADER` present, and no `Sec-Fetch-Site` naming another site. */
@@ -76,7 +76,7 @@ export function fromOwnPages(request: Context['req']): boolean {
 /** The credential is a cookie (no bearer) and the request fails the check. */
 export function crossSiteSession(request: Context['req']): boolean {
   return (
-    bearerOf(request) === undefined && sessionCookies(request).size > 0 && !fromOwnPages(request)
+    bearerOf(request) === undefined && sessionCookies(request).length > 0 && !fromOwnPages(request)
   );
 }
 
@@ -85,7 +85,7 @@ export function unnamedSession(request: Context['req']): boolean {
   return (
     bearerOf(request) === undefined &&
     namedSession(request) === undefined &&
-    sessionCookies(request).size > 0
+    sessionCookies(request).length > 0
   );
 }
 
