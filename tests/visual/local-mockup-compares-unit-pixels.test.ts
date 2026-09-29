@@ -78,7 +78,7 @@ afterAll(() => {
   rmSync(evidence, { recursive: true, force: true });
 });
 
-it('Sol proof, criterion MP-1-3 3: different component pixels fail the local mockup comparison', () => {
+it('MP-1-3 different component pixels fail the local mockup comparison', () => {
   expect(loaded).toContain('http://app.invalid/gallery/');
   expect(result, report).toBe(1);
   expect(
@@ -88,7 +88,7 @@ it('Sol proof, criterion MP-1-3 3: different component pixels fail the local moc
   ).toBe(true);
 });
 
-it('Sol proof, criterion MP-1-6 3: the local comparison loads an unconnected client or workbench mockup', () => {
+it('MP-1-6 the local comparison loads an unconnected client or workbench mockup', () => {
   expect(
     loaded.some(
       (url) => url.startsWith('http://mockup.invalid') && /\/clients\/|\/workbench\//u.test(url),
