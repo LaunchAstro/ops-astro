@@ -14,7 +14,7 @@ vi.mock('../../apps/web/src/panels.ts', async (importOriginal) => {
   };
 });
 
-it('Sol proof, criterion 12: a derived count paints when its dock tab registers', async () => {
+it('a derived count paints when its dock tab registers', async () => {
   const session = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };
   const held = new Map([['ops-astro.session', JSON.stringify(session)]]);
   const page = await mount(

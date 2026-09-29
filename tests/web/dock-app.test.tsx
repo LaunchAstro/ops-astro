@@ -111,7 +111,7 @@ describe('MP-3-1 gesture opens', () => {
   });
 });
 
-describe('R2-SURFACE-42: the settings dock tab does what it announces', () => {
+describe('the settings dock tab does what it announces', () => {
   it('"Open Settings" opens its panel where you are and "Close Settings" closes it', async () => {
     const went: string[] = [];
     const page = await at('/projects/', memory(), went);
