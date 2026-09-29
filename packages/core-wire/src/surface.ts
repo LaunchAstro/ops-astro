@@ -401,8 +401,12 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.propose', 'write', { targetLock: 'runtime', agent: 'delegated' }),
   // In the agent's reach so a delegated agent is refused by the decision
   // itself, not by the surface: a person decides (case (j) of the matrix).
+  // Asked on the gate's own task (`prepare.ts`, `TARGET_LOOKUPS`), so a
+  // task-scoped decider decides at the bound; an escalated gate then needs
+  // business scope, which the runtime asks under its locks (T3a).
   declare('task.decide', 'decide', {
     targetsExistingRecord: false,
+    authorisedOn: 'target',
     untargetedIdentifiers: ['gateId', 'versionId'],
     agent: 'delegated',
   }),

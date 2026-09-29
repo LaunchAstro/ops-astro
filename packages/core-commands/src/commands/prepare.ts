@@ -408,7 +408,8 @@ const BUSINESS: Scope = { kind: 'business', id: null };
 
 /**
  * A grant at the scope it was issued on, a delegation at its purpose scope,
- * each read only for the command that revokes it.
+ * each read only for the command that revokes it, and a gate's task for the
+ * decision on it.
  *
  * Each command reads its own field, and the other's is refused
  * (`refuseOtherTarget`). One list trying both fields for either command would
@@ -425,6 +426,24 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
         'select scope_kind as kind, scope_id as id from public.grants where business_id = $1 and id = $2',
         id,
       ),
+  ],
+  // T3a (Sol review 1 on #153, criterion 2): a decision is asked on the task
+  // its gate belongs to, so a person holding decide on exactly that task
+  // reaches the runtime, which asks it again under its locks and, once the
+  // gate is escalated, asks business scope. A gate that resolves to nothing
+  // is asked at business scope, so a foreign and a fabricated id answer alike.
+  'task.decide': [
+    'gateId',
+    async (tx, id) => {
+      const rows = await tx.query<{ readonly id: string }>(
+        `select run.task_id as id
+           from public.gates g
+           join public.planned_runs run on run.business_id = g.business_id and run.id = g.run_id
+          where g.business_id = $1 and g.id = $2`,
+        [tx.businessId, id],
+      );
+      return rows[0] === undefined ? undefined : { kind: 'record', id: rows[0].id };
+    },
   ],
   'delegation.revoke': [
     'delegationId',
@@ -487,7 +506,8 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
  * - `record`: the task the body names in `recordId`, or the business when it
  *   names none.
  * - `business`: the business, whatever identifiers the body carries.
- * - `target`: the revoked row's own scope. A grant is asked about at the
+ * - `target`: the revoked row's own scope, or for `task.decide` the task
+ *   its gate is on (the runtime asks decide again). A grant is asked about at the
  *   scope it was issued on and a delegation at its purpose scope, so a manager
  *   whose `manage` covers exactly that scope reaches the handler, which then
  *   asks the full ceiling (`authority-controls.ts`).

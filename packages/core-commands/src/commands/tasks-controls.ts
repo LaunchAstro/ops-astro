@@ -160,6 +160,7 @@ export async function cancelOnTask(
       subjects: subjectsOf(context.session),
       collection: context.declaration.collection,
       taskId: found.taskId,
+      alsoDecide: true,
     },
   });
   if (!result.ok) return refused(result.refusal);
@@ -201,6 +202,12 @@ export async function restartOnTask(
     expiresAt,
   });
   if (!result.ok) return refused(result.refusal);
+  // Decide again now that `propose` holds its locks, at the clock after them:
+  // a decide grant that lapsed while the restart waited refuses it, and the
+  // command's savepoint takes back what `propose` wrote (the criterion Sol
+  // raised on cancel in review 1 on #153, applied to restart).
+  const lapsed = await decideHeld(tx, context, found.taskId);
+  if (lapsed !== null) return lapsed;
   // T3a: a restart opens a new envelope. The task's open one keeps its settled
   // spend and funds nothing new: it is closed here, under the envelope lock
   // `propose` took for it, so the new lineage's approval opens its own. The

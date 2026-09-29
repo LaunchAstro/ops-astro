@@ -228,6 +228,12 @@ export async function cancelAndClassify(
       readonly subjects: readonly Subject[];
       readonly collection: string;
       readonly taskId: string;
+      /**
+       * Asked under the locks beside `write`. `task.cancel` passes `decide`
+       * (T3a, `gate:decide`), so a decide grant that lapses while this waits on
+       * its locks refuses the cancel (Sol review 1 on #153, criterion 3).
+       */
+      readonly alsoDecide?: boolean;
     };
   },
 ): Promise<RuntimeResult<readonly Classification[]>> {
@@ -310,22 +316,30 @@ export async function cancelAndClassify(
   });
 
   if (authority !== undefined) {
-    const current = await checkAuthorityAt(
-      tx,
-      authority.subjects,
-      {
-        collection: authority.collection,
-        action: 'write',
-        scope: { kind: 'record', id: authority.taskId },
-      },
-      await lockedInstant(tx),
-    );
-    if (!current.ok) {
-      return refuse(
-        'SCOPE_NOT_GRANTED',
-        'the write grant this cancellation rested on ended before it could be recorded',
-        'A person with write authority on this task cancels its work.',
+    const at = await lockedInstant(tx);
+    for (const action of authority.alsoDecide === true
+      ? (['write', 'decide'] as const)
+      : (['write'] as const)) {
+      // Sequential: each is asked at the same locked instant, and the first
+      // refusal is the answer.
+      // eslint-disable-next-line no-await-in-loop
+      const current = await checkAuthorityAt(
+        tx,
+        authority.subjects,
+        {
+          collection: authority.collection,
+          action,
+          scope: { kind: 'record', id: authority.taskId },
+        },
+        at,
       );
+      if (!current.ok) {
+        return refuse(
+          'SCOPE_NOT_GRANTED',
+          `the ${action} grant this cancellation rested on ended before it could be recorded`,
+          `A person with ${action} authority on this task cancels its work.`,
+        );
+      }
     }
   }
 
