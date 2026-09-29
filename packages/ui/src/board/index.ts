@@ -10,4 +10,5 @@ export * from './sort.ts';
 export * from './filters.ts';
 export * from './machine.ts';
 export * from './typeahead.ts';
+export * from './funnel.ts';
 export * from './address.ts';
