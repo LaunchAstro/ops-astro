@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The security detections (ticket S0-2, TR-SEC-9): repeated failed sign-ins,
+// The security detections (ticket S0-2, security line 9): repeated failed sign-ins,
 // a permission, grant or custody change, a failed secret scan, a burst of
 // cross-scope refusals, repeated webhook signature failures and unusual
 // export or download volume.
