@@ -5,10 +5,14 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseSync } from 'vite';
 import { expect, it } from 'vitest';
+import { gitHistory } from '../support/git-history.ts';
 
 const BASE = '5116fbdd6dde77b88f4dd0716ce79ef9d8703898';
 const FILE = 'tests/docs/source-comments.test.ts';
 type Node = Record<string, unknown>;
+
+/** This tree. The comparison reads `BASE` from history, so it runs only on a full clone. */
+const root = join(import.meta.dirname, '../..');
 
 /** Count the cases declared in one suite, including every literal `.each` row. */
 function casesIn(source: string): number {
@@ -46,16 +50,21 @@ function casesIn(source: string): number {
   return count;
 }
 
-it('current-main source-comment cases survive and the ledger names current main', () => {
-  const root = join(import.meta.dirname, '../..');
-  const before = execFileSync('git', ['show', `${BASE}:${FILE}`], { cwd: root, encoding: 'utf8' });
-  const after = readFileSync(join(root, FILE), 'utf8');
-  expect(casesIn(after)).toBe(casesIn(before));
-  expect(after).toContain("it('reads a phrase that wraps from one comment line to the next'");
-  const ledger = JSON.parse(
-    readFileSync(join(root, 'tests/docs/test-case-counts.json'), 'utf8'),
-  ) as {
-    before: { head: string };
-  };
-  expect(ledger.before.head).toBe(BASE);
-});
+it.skipIf(gitHistory(root) !== 'full')(
+  'current-main source-comment cases survive and the ledger names current main',
+  () => {
+    const before = execFileSync('git', ['show', `${BASE}:${FILE}`], {
+      cwd: root,
+      encoding: 'utf8',
+    });
+    const after = readFileSync(join(root, FILE), 'utf8');
+    expect(casesIn(after)).toBe(casesIn(before));
+    expect(after).toContain("it('reads a phrase that wraps from one comment line to the next'");
+    const ledger = JSON.parse(
+      readFileSync(join(root, 'tests/docs/test-case-counts.json'), 'utf8'),
+    ) as {
+      before: { head: string };
+    };
+    expect(ledger.before.head).toBe(BASE);
+  },
+);

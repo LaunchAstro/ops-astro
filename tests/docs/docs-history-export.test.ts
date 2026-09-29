@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 
-it('Sol proof, criterion 7: docs history checks skip in a source export', () => {
+it('docs history checks skip in a source export', () => {
   const root = join(import.meta.dirname, '../..');
   const exported = mkdtempSync(join(tmpdir(), 'cq10-history-export-'));
   try {

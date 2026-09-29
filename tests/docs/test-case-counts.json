@@ -1,6 +1,6 @@
 {
   "measured": "vitest 5.0.0 JSON reporter, DATABASE_URL unset so database cases count as skipped rather than vanish; files keyed by their name at this head",
-  "total": 6684,
+  "total": 6685,
   "before": {
     "head": "5116fbdd6dde77b88f4dd0716ce79ef9d8703898",
     "total": 6649,
@@ -639,7 +639,7 @@
     }
   },
   "added": {
-    "total": 35,
+    "total": 36,
     "files": [
       {
         "file": "tests/docs/test-files-by-behaviour.test.ts",
@@ -739,6 +739,16 @@
           }
         ],
         "names": ["current-main source-comment cases survive and the ledger names current main"]
+      },
+      {
+        "file": "tests/docs/docs-history-export.test.ts",
+        "declared": [
+          {
+            "title": "docs history checks skip in a source export",
+            "cases": 1
+          }
+        ],
+        "names": ["docs history checks skip in a source export"]
       }
     ]
   }
