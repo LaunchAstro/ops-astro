@@ -13,6 +13,7 @@
     "tests/reads/mp-5-11-board-status-order.test.ts",
     "tests/reads/mp-5-11-board-agent.test.ts",
     "tests/reads/mp-5-12-board-review.test.ts",
+    "tests/commands/mp-5-9-board-row.test.ts",
     "tests/reads/task-rank.test.ts",
     "tests/commands/task-adhoc.test.ts",
     "tests/commands/task-client-access.test.ts",
