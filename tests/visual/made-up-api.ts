@@ -14,18 +14,24 @@
 // against the mockup's page. Every name and client is made up.
 
 import type {
+  AccessReadResult,
   CapabilitiesResult,
   InboxCountResult,
   InboxReadResult,
   InternalTaskDetail,
   InternalTaskRead,
+  OperationsReadResult,
   PersonListResult,
   QueueResult,
+  SessionPersonResult,
   SettingsReadResult,
   TaskBoardResult,
   TaskExecutionResult,
+  TaskLedgerResult,
+  TaskSearchResult,
   TaskStateView,
   TaskSummary,
+  TeamListResult,
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
@@ -101,6 +107,48 @@ const DETAIL: InternalTaskDetail = {
   alerts: [],
 };
 
+const HARBOUR = { clientId: 'c-harbour', name: 'Harbour Physio' };
+const MERIDIAN = { clientId: 'c-meridian', name: 'Meridian Dental' };
+
+/** The Work log's two days, newest first, as `task.ledger` answers them (MP-8-4). */
+const LEDGER: TaskLedgerResult = {
+  ok: true,
+  earlier: true,
+  days: [
+    {
+      day: '2026-09-26',
+      events: [
+        {
+          id: 'e-3',
+          at: '2026-09-26T01:20:00.000Z',
+          actorName: NATHAN.name,
+          operation: 'task.complete',
+          task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
+        },
+        {
+          id: 'e-2',
+          at: '2026-09-25T23:05:00.000Z',
+          actorName: MIA.name,
+          operation: 'task.comment',
+          task: { key: 'T-15', title: 'Ads rebuild: cost per enquiry' },
+        },
+      ],
+    },
+    {
+      day: '2026-09-25',
+      events: [
+        {
+          id: 'e-1',
+          at: '2026-09-25T03:40:00.000Z',
+          actorName: NATHAN.name,
+          operation: 'task.update',
+          task: { key: 'T-1', title: 'Contract review pack, 31 July' },
+        },
+      ],
+    },
+  ],
+};
+
 const READS = {
   'task.board': { ok: true, tasks: TASKS } satisfies TaskBoardResult,
   'task.read': { ok: true, task: DETAIL } satisfies InternalTaskRead,
@@ -169,9 +217,51 @@ const READS = {
         lastDelivery: 'delivered',
         task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
       },
+      {
+        id: 'i-3',
+        reason: 'run_finished',
+        workState: 'open',
+        access: 'readable',
+        owed: false,
+        counted: false,
+        raisedAt: '2026-09-25T18:10:00.000Z',
+        closedAt: null,
+        seenAt: null,
+        lastDelivery: 'delivered',
+        task: { key: 'T-17', title: 'Shopping feed clean-up' },
+      },
     ],
   } satisfies InboxReadResult,
   'inbox.count': { ok: true, owed: 2 } satisfies InboxCountResult,
+  'session.person': { ok: true, person: { name: NATHAN.name } } satisfies SessionPersonResult,
+  'team.list': {
+    ok: true,
+    you: NATHAN.personId,
+    people: [
+      { personId: NATHAN.personId, name: NATHAN.name, availability: null },
+      { personId: MIA.personId, name: MIA.name, availability: { state: 'away', reason: 'Leave' } },
+    ],
+  } satisfies TeamListResult,
+  'task.ledger': LEDGER,
+  'task.search': {
+    ok: true,
+    hits: TASKS.slice(0, 3).map(({ id, key, title }) => ({ id, key, title })),
+  } satisfies TaskSearchResult,
+  'access.read': {
+    ok: true,
+    team: [
+      { ...NATHAN, permissions: [], grants: [] },
+      { ...MIA, permissions: [], grants: [] },
+    ],
+    clients: [],
+    agents: [],
+    clientRecords: [HARBOUR, MERIDIAN],
+  } satisfies AccessReadResult,
+  'operations.read': {
+    ok: true,
+    privacyIncidents: [],
+    breachRunbook: null,
+  } satisfies OperationsReadResult,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

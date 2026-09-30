@@ -4,10 +4,19 @@ import { READ_NAMES } from '../../apps/web/src/operations/read-names.ts';
 import { pathOf, PREFIX } from '../../packages/core-wire/src/index.ts';
 import { MADE_UP_READS, madeUpAnswer, TASKS } from './made-up-api.ts';
 
-// Reads no batch/1 screen draws at the harness's addresses: a receipt needs a
+// Reads no screen draws at the harness's addresses: a receipt needs a
 // finished run, the preset plan is the command line's, and the unattended list
-// is the operations view's. Each is drawn "could not be read" if asked.
-const NOT_DRAWN = new Set(['task.receipt', 'preset.plan', 'inbox.unattended']);
+// is the operations view's. No screen asks the client list, the preference
+// store (the section tip is not wired yet) or the breach notice drafts (the
+// command line's drill). Each is drawn "could not be read" if asked.
+const NOT_DRAWN = new Set([
+  'task.receipt',
+  'preset.plan',
+  'inbox.unattended',
+  'client.list',
+  'preference.read',
+  'privacy.draft_breach_notices',
+]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
   it('answers a read at the path the app asks it on, with the made-up rows', () => {
