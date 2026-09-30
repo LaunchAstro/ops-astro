@@ -4,9 +4,9 @@
 // in money minor units per run (ORCH37 on the SL13 ask): a skill's figure is
 // built only from the runs pinned to one of its versions, a mean only from
 // more than one priced run, with its spread; the attribution split's buckets
-// add back to the total. The in/out split and the model ids wait on the broker
-// recording them (LEANS-ON SL11), and the process document on Docs (phase 4):
-// each is a named field, unavailable with its reason.
+// add back to the total. The in/out units and the exact model ids come from
+// what the broker's priced settle records per call (AW-01, 0055); the process
+// document waits on Docs (phase 4): a named field, unavailable with its reason.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { grantTo } from '../commands/fixture.ts';
@@ -16,6 +16,10 @@ import type { SkillCostsResult, SkillCostView } from '../../packages/core-wire/s
 import { BRAVO_CANARY, createCostWorld, RECORD_CANARY, type CostWorld } from './world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
+
+/** A settled call that named `model-<model>` and its units. */
+const named = (minor: number, model: string, input: number, output: number) =>
+  ({ state: 'settled', minor, model: `model-${model}`, units: [input, output] }) as const;
 
 const row = (result: SkillCostsResult, id: string): SkillCostView | undefined =>
   result.costing?.skills.find((one) => one.skillId === id);
@@ -52,21 +56,16 @@ describe.skipIf(serverUrl === undefined)('MP-14-9 skill costing', () => {
     const specs = [
       {
         skill: mean.versionId,
-        calls: [
-          { state: 'settled', minor: 40 },
-          { state: 'settled', minor: 60 },
-        ],
+        calls: [named(40, 'one', 1000, 200), named(60, 'two', 500, 100)],
         finish: true,
       },
-      { skill: mean.versionId, calls: [{ state: 'settled', minor: 300 }], finish: true },
+      { skill: mean.versionId, calls: [named(300, 'one', 3000, 700)], finish: true },
+      // The answer named no model and no units: priced, never measured.
       { skill: mean.versionId, calls: [{ state: 'settled', minor: 500 }] },
-      {
-        skill: mean.versionId,
-        calls: [{ state: 'settled', minor: 90 }, { state: 'liability_unknown' }],
-      },
-      { skill: one.versionId, client: clientA, calls: [{ state: 'settled', minor: 250 }] },
+      { skill: mean.versionId, calls: [named(90, 'one', 900, 90), { state: 'liability_unknown' }] },
+      { skill: one.versionId, client: clientA, calls: [named(250, 'three', 2500, 600)] },
       { skill: none.versionId, calls: [{ state: 'liability_unknown' }] },
-      { client: clientB, calls: [{ state: 'settled', minor: 70 }] },
+      { client: clientB, calls: [named(70, 'four', 10, 5)] },
     ] as const;
     for (const spec of specs) {
       // eslint-disable-next-line no-await-in-loop -- the agent holds one delegation at a time
@@ -149,12 +148,35 @@ describe.skipIf(serverUrl === undefined)('MP-14-9 skill costing', () => {
     }
   });
 
-  it('MP-14-9 the in/out split and the model ids are named, unavailable with their reason', async () => {
+  it('MP-14-9 in and out per run: a mean of each only from more than one run whose every call recorded its units', async () => {
     const result = await costs();
-    for (const one of result.costing?.skills ?? []) {
-      expect(one.usage).toStrictEqual({ available: false, reason: expect.any(String) });
-      expect(one.models).toStrictEqual({ available: false, reason: expect.any(String) });
-    }
+    // 1,500 in and 300 out (two calls), then 3,000 and 700; the unmeasured
+    // run and the unpriced one are in neither mean.
+    expect(row(result, skills.mean)?.usage).toStrictEqual({
+      measuredRuns: 2,
+      meanIn: '2250',
+      meanOut: '500',
+    });
+    const alone = { measuredRuns: 1, meanIn: null, meanOut: null };
+    expect(row(result, skills.one)?.usage).toStrictEqual(alone);
+    expect(row(result, skills.none)?.usage).toStrictEqual({ ...alone, measuredRuns: 0 });
+  });
+
+  it('MP-14-9 exact model ids: every id its runs called, and a settled call that named none counted', async () => {
+    const result = await costs();
+    expect(row(result, skills.mean)?.models).toStrictEqual({
+      ids: ['model-one', 'model-two'],
+      unnamedCalls: 1,
+    });
+    expect(row(result, skills.one)?.models).toStrictEqual({
+      ids: ['model-three'],
+      unnamedCalls: 0,
+    });
+    expect(row(result, skills.none)?.models).toStrictEqual({ ids: [], unnamedCalls: 0 });
+    const client = await costs(w.clientReader);
+    expect(client.costing?.skills.map((one) => one.models)).toStrictEqual([
+      { ids: ['model-three'], unnamedCalls: 0 },
+    ]);
   });
 
   it('MP-14-9 refusal finance:read: a member holding every grant but it is refused', async () => {

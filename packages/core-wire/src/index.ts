@@ -105,8 +105,10 @@ export type {
   AgentCostsResult,
   AttributionSplitView,
   CostAttachment,
+  ModelsView,
   SkillCostsResult,
   SkillCostView,
   SkillFigure,
+  SkillUsageView,
   Unavailable,
 } from './cost-views.ts';

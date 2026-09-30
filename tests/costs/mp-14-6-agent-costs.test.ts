@@ -4,8 +4,8 @@
 // units per run (ORCH37 on the SL13 ask): the cost log for a period, one row
 // per run and agent, and spend per agent and per client taken from those same
 // rows. A run without a client is the agency's; a run whose cost is not known
-// says so and is never a zero. The exact model ids wait on the broker
-// recording them (LEANS-ON SL11): a named field, unavailable with its reason.
+// says so and is never a zero. Each row names the exact model ids its calls
+// recorded (AW-01's priced settle, 0055), and counts a call that named none.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { grantTo } from '../commands/fixture.ts';
@@ -16,6 +16,10 @@ import { BRAVO_CANARY, createCostWorld, RECORD_CANARY, type CostWorld } from './
 
 const serverUrl = databaseUrlFromEnvironment();
 const DAY = 24 * 60 * 60 * 1000;
+
+/** A settled call that named its model and units. */
+const named = (minor: number, model: string) =>
+  ({ state: 'settled', minor, model, units: [minor * 10, minor] }) as const;
 
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('MP-14-6 what our agents cost us', () => {
@@ -41,13 +45,13 @@ describe.skipIf(serverUrl === undefined)('MP-14-6 what our agents cost us', () =
     await w.controls.fixture.db.app.withBusiness(w.alpha, async (tx) => {
       await grantTo(tx, w.clientReader, 'read', { kind: 'party', id: clientA }, false, 'finance');
     });
-    runs.a = (await w.run({ client: clientA, calls: [{ state: 'settled', minor: 120 }] })).runId;
+    runs.a = (await w.run({ client: clientA, calls: [named(120, 'model-one')] })).runId;
     runs.b = (await w.run({ client: clientB, calls: [{ state: 'settled', minor: 80 }] })).runId;
-    runs.agency = (await w.run({ calls: [{ state: 'settled', minor: 45 }], finish: true })).runId;
+    runs.agency = (await w.run({ calls: [named(45, 'model-two')], finish: true })).runId;
     runs.unpriced = (
       await w.run({
         client: clientA,
-        calls: [{ state: 'settled', minor: 10 }, { state: 'liability_unknown' }],
+        calls: [named(10, 'model-one'), { state: 'liability_unknown' }],
       })
     ).runId;
     runs.old = (await w.run({ calls: [{ state: 'settled', minor: 999 }], hoursAgo: 48 })).runId;
@@ -130,11 +134,15 @@ describe.skipIf(serverUrl === undefined)('MP-14-6 what our agents cost us', () =
     });
   });
 
-  it('MP-14-6 exact model ids are a named field, unavailable with its reason', async () => {
+  it('MP-14-6 exact model ids per run: the ids its calls named, and a call that named none counted', async () => {
     const result = await costs();
-    for (const one of result.runs) {
-      expect(one.model).toStrictEqual({ available: false, reason: expect.any(String) });
-    }
+    const models = Object.fromEntries(result.runs.map((one) => [one.runId, one.models]));
+    expect(models).toStrictEqual({
+      [runs.a]: { ids: ['model-one'], unnamedCalls: 0 },
+      [runs.b]: { ids: [], unnamedCalls: 1 },
+      [runs.agency]: { ids: ['model-two'], unnamedCalls: 0 },
+      [runs.unpriced]: { ids: ['model-one'], unnamedCalls: 0 },
+    });
   });
 
   it('MP-14-6 internal face only: finance:read, a person’s read with no agent route', () => {

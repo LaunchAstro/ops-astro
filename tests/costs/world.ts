@@ -29,8 +29,15 @@ export const BRAVO_CANARY: string = `bravo-cost-canary-${randomUUID()}`;
 const DIGEST = 'b'.repeat(64);
 
 /** One model call as the broker leaves it: settled at a price, or its cost not known. */
+/** A settled call names the model that answered and its units, as the priced settle writes them, or neither. */
 export type Call =
-  { readonly state: 'settled'; readonly minor: number } | { readonly state: 'liability_unknown' };
+  | {
+      readonly state: 'settled';
+      readonly minor: number;
+      readonly model?: string;
+      readonly units?: readonly [number, number];
+    }
+  | { readonly state: 'liability_unknown' };
 
 export interface RunSpec {
   readonly client?: string;
@@ -92,7 +99,8 @@ async function insertCall(db: FreshDatabase, call: Call, at: CallPlace): Promise
     `insert into public.model_calls
        (business_id, id, run_id, step_id, lease_id, version_id, reservation_id,
         delegation_id, operation_key, route_key, route_reach, credential_kind, state,
-        reserved_minor, actual_minor, accepted_at, started_at, completed_at, ended_at)
+        reserved_minor, actual_minor, accepted_at, started_at, completed_at, ended_at,
+        model_id, input_units, output_units)
      values ($1, $2, $3, $4, $5, $6, $7, $8, 'model.replay_compose', 'local.test',
              'local', 'subscription', $9, $10, $11,
              now() - make_interval(hours => $12::int),
@@ -100,7 +108,8 @@ async function insertCall(db: FreshDatabase, call: Call, at: CallPlace): Promise
              case when $14::boolean then now() - make_interval(hours => $12::int)
                     + make_interval(mins => $13::int + 1) end,
              case when $14::boolean then now() - make_interval(hours => $12::int)
-                    + make_interval(mins => $13::int + 1) end)`,
+                    + make_interval(mins => $13::int + 1) end,
+             $15, $16, $17)`,
     [
       at.business,
       randomUUID(),
@@ -116,6 +125,9 @@ async function insertCall(db: FreshDatabase, call: Call, at: CallPlace): Promise
       at.hoursAgo,
       at.minute,
       settled,
+      settled ? (call.model ?? null) : null,
+      settled ? (call.units?.[0] ?? null) : null,
+      settled ? (call.units?.[1] ?? null) : null,
     ],
   );
 }

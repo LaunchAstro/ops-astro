@@ -39,8 +39,8 @@ import { invalid } from '../commands/operands.ts';
 import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
 
 const unavailable = (reason: string): Unavailable => ({ available: false, reason });
-const USAGE = unavailable('The broker does not record each call’s input and output yet.');
-const MODELS = unavailable('The broker does not record each call’s exact model id yet.');
+const USAGE = { measuredRuns: 0, meanIn: null, meanOut: null };
+const MODELS = { ids: [], unnamedCalls: 0 };
 const DOCUMENT = unavailable('Process documents open at their Docs address once Docs exists.');
 const UNPRICED = 'A call’s cost is not known yet: it is still running or its liability is unknown.';
 
@@ -240,7 +240,7 @@ function logRow(row: RunCostRow): AgentCostRowView {
     cost: unpriced ? null : row.settledMinor,
     unpriced: unpriced ? UNPRICED : null,
     startedAt: row.startedAt.toISOString(),
-    model: MODELS,
+    models: MODELS,
   };
 }
 

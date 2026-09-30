@@ -27,6 +27,23 @@ export type SkillFigure =
   | { readonly kind: 'one'; readonly amount: string }
   | { readonly kind: 'none' };
 
+/**
+ * A skill's input and output units per run, from the runs that used it alone
+ * and whose every call recorded its units: a mean of each only from more than
+ * one such run, as its cost figure is.
+ */
+export interface SkillUsageView {
+  readonly measuredRuns: number;
+  readonly meanIn: string | null;
+  readonly meanOut: string | null;
+}
+
+/** The exact model ids the calls named, and the settled calls that named none. */
+export interface ModelsView {
+  readonly ids: readonly string[];
+  readonly unnamedCalls: number;
+}
+
 /** One skill that has run, in one currency. */
 export interface SkillCostView {
   readonly skillId: string;
@@ -43,10 +60,9 @@ export interface SkillCostView {
   readonly tasks: number;
   readonly figure: SkillFigure;
   readonly soloTotal: string;
-  /** The input and output split of its spend. */
-  readonly usage: Unavailable;
-  /** The exact model ids its runs called. */
-  readonly models: Unavailable;
+  readonly usage: SkillUsageView;
+  /** Every exact model id its runs called. */
+  readonly models: ModelsView;
   /** Its process document at its canonical Docs address. */
   readonly document: Unavailable;
 }
@@ -94,7 +110,7 @@ export interface AgentCostRowView {
   /** Why it has no cost, when it has none. */
   readonly unpriced: string | null;
   readonly startedAt: string;
-  readonly model: Unavailable;
+  readonly models: ModelsView;
 }
 
 /** Spend summed from the log's own rows. */
