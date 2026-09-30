@@ -67,6 +67,7 @@ export type CommandRequest =
       readonly stateKey?: string;
       /** The ticket type (WF-1); `task` when absent. Checked by value in the handler. */
       readonly taskType?: unknown;
+      readonly conversationId?: string | null;
     } & Envelope)
   | WayfinderRequest
   | ({ readonly command: 'task.update'; readonly fields: FieldValues } & Targeted)

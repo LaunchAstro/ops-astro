@@ -39,7 +39,7 @@ import {
   planTaskPlacement,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, TaskStateRow } from '../../../core-records/src/index.ts';
-import { refuseCommand, type CommandRefusal } from './refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { refuseCreateOperands, refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -186,6 +186,8 @@ export async function createTask(
     );
   }
   const stateId = named?.id ?? initialStateId(context.spine.states);
+  const origin = await originOf(tx, context, request.conversationId);
+  if (origin !== undefined && typeof origin !== 'string') return origin;
 
   const id = randomUUID();
   const data: Record<string, unknown> = {
@@ -208,7 +210,31 @@ export async function createTask(
   );
   const written = rows[0];
   if (written === undefined) throw new Error('createTask: the insert returned no row');
-  return applied(id, Number(written.revision), { key: written.key, source: data['source'] });
+  const created = applied(id, Number(written.revision), {
+    key: written.key,
+    source: data['source'],
+  });
+  return origin === undefined ? created : { ...created, originConversationId: origin };
+}
+
+/**
+ * The conversation a task is created from (AW-03): the caller's own, in this
+ * business, its body kept, or one NOT_FOUND for any other, another person's
+ * and a made-up id alike. Absent or null is a task created from no
+ * conversation.
+ */
+async function originOf(
+  tx: TenantQuery,
+  context: CommandContext,
+  conversationId: string | null | undefined,
+): Promise<string | HandlerOutcome | undefined> {
+  if (conversationId === undefined || conversationId === null) return undefined;
+  const rows = await tx.query<{ readonly id: string }>(
+    `select id from public.conversations
+      where business_id = $1 and id = $2 and owner_person_id = $3 and body_purged_at is null`,
+    [tx.businessId, conversationId, context.session.personId],
+  );
+  return rows[0]?.id ?? refused(refuseNotFound(['conversationId']));
 }
 
 /**
