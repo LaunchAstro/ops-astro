@@ -7,15 +7,16 @@
 // Settings come from the environment (deploy/staging/README.md):
 // `DATABASE_FORWARDER_URL`, a login that is a member of `ops_astro_forwarder`
 // alone; the sink's `OPS_ERROR_SINK_DSN`, `OPS_ENVIRONMENT` and `OPS_RELEASE`;
-// `OPS_FORWARDER_HEARTBEAT_URL`, the watcher's heartbeat. Exit 1 names a bad
-// setting, never its value. A pass that fails prints its class alone and
-// pings nothing, so silence is the alert.
+// `OPS_FORWARDER_HEARTBEAT_URL`, the watcher's heartbeat; `OPS_SINK_HEARTBEAT_URL`,
+// the sink's, pinged after each pass while the sink's health page answers. Exit 1
+// names a bad setting, never its value. A pass that fails prints its class alone
+// and does not ping its own heartbeat, so silence is the alert.
 
 import { join } from 'node:path';
 import { sinkFrom } from '../../apps/api/alerts/sink.ts';
 import { createForwarder } from '../../apps/forwarder/forward.ts';
 import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
-import { ping } from './heartbeat.mjs';
+import { ping, sinkAnswers } from './heartbeat.mjs';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 
@@ -54,6 +55,8 @@ export async function main(argv, env) {
       );
       failed = true;
     }
+    // The sink is on the machine, out of the watcher's sight: its heartbeat says it answers.
+    if (await sinkAnswers(env['OPS_ERROR_SINK_DSN'])) await ping(env['OPS_SINK_HEARTBEAT_URL']);
     if (argv.includes('--once')) break;
     // oxlint-disable-next-line no-await-in-loop -- the poll interval
     await new Promise((done) => {
