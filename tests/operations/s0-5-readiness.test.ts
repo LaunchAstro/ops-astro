@@ -2,8 +2,8 @@
 //
 // S0-5: the readiness check, through the real API on a throwaway database.
 //
-// The installation's mode and the eight gate items live in `ops`, which no
-// person or agent can write; the command envelope reads them through one
+// The installation's mode and the eight gate items live in `ops`, written only
+// through the gate's own commands; the command envelope reads them through one
 // function inside the refused command's own transaction. A made-up-data
 // installation (this harness, staging) runs every command. A real-data
 // installation refuses every command the catalogue classes `client-data` or

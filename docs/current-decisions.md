@@ -120,8 +120,9 @@ part): a real-data installation refuses every `client-data` and `invitation`
 command `GATE_SHUT` 409 while any of the eight gate items is open, on the
 person and agent routes, after authority and before the handler. The mode
 and the items live in `ops` (migration 0056); the mode moves one way, from
-made-up to real, only while every item is done. The commands that record an
-item, accept a finding or change the mode are not built yet.
+made-up to real, only while every item is done. Recording an item and changing
+the mode are commands under `operations:manage` in the business that operates
+the installation (migration 0060); accepting a finding is not built yet.
 `task.set_party` refuses `CLIENT_LOCKED` 409 once the task has content (its
 history or a row naming it), under the task's row lock.
 

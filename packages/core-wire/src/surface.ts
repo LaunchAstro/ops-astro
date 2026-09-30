@@ -112,6 +112,10 @@ export type CommandName =
   | 'privacy.set_overseas_service'
   // C81: the data-class register the privacy policy reads.
   | 'privacy.set_data_class'
+  // S0-5: the first-client gate's own acts, `gate item recorded` and
+  // `installation mode changed`.
+  | 'operations.record_gate_item'
+  | 'operations.change_installation_mode'
   // The support controls the contract ledger requires through owning
   // production interfaces: revocation of an existing grant or delegation,
   // cancellation of a run's lineage, an authorised restart as a new lineage,
@@ -426,6 +430,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     deletion: 'any',
     inUse: 'any',
   },
+  'operations.record_gate_item': { item: 'any', evidence: 'any' },
+  'operations.change_installation_mode': { mode: 'any' },
   'client.create': { name: 'any' },
   'access.grant': { holderId: 'id', collection: 'any', action: 'any', clientId: 'id?|null' },
   'access.revoke': { grantId: 'id' },
@@ -621,6 +627,19 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // never by an agent; every change is audited by the envelope.
   declare('privacy.set_data_class', 'manage', {
     collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // S0-5: the first-client gate moves only under `operations:manage` in the
+  // business that operates the installation (`gate-write.ts`), never by an
+  // agent; each act is audited by the envelope.
+  declare('operations.record_gate_item', 'manage', {
+    collection: 'operations',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('operations.change_installation_mode', 'manage', {
+    collection: 'operations',
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),

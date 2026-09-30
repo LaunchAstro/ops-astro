@@ -105,6 +105,11 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
       purpose: 'A made-up credential issued while bravo is watched',
     },
   ],
+  [
+    'operations.record_gate_item',
+    { item: 'tested-backups', evidence: 'https://evidence.example/tested-backups' },
+  ],
+  ['operations.change_installation_mode', { mode: 'real' }],
 ];
 
 /** The twenty-two identifier-bearing operations outside (c) and (d): operand and executed case. */

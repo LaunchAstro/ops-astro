@@ -159,6 +159,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'legal.publish_version': LEGAL,
   'privacy.set_overseas_service': writing(business('overseas_services')),
   'privacy.set_data_class': writing(business('data_classes')),
+  // The installation's own rows: no client's, so no client-scoped write.
+  'operations.record_gate_item': writing(business('ops.gate_items')),
+  'operations.change_installation_mode': writing(business('ops.installation')),
   'credential.issue': CREDENTIAL,
   'credential.revoke': CREDENTIAL,
   'client.create': writing(client('clients')),

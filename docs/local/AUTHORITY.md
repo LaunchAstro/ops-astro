@@ -604,6 +604,15 @@ Setting a class of the data-class register (`privacy.set_data_class`) is
 the overseas-services register, and a policy's draft, approval and publication
 read the classes under it, so the order above holds for both registers.
 
+`operations:manage` moves the first-client gate (S0-5): a gate item recorded
+(`operations.record_gate_item`) and the installation's one-way change to real
+data (`operations.change_installation_mode`). Both are a person's, never an
+agent's. The gate is the installation's, so the grant counts only in the
+business that operates it (`ops.installation.operator_business_id`); the same
+key in another business on the installation is refused `SCOPE_NOT_GRANTED`.
+Each takes the installation's row lock before it checks that, so a refusal
+writes nothing.
+
 ## Agent credentials (API-2)
 
 An agent credential is a standing delegation from the person who issues it to

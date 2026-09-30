@@ -22,6 +22,7 @@ import {
 } from './role-case-bodies.ts';
 import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
+import { createGateBody } from './role-case-gate-bodies.ts';
 
 /** Clients made by the matrix, each under a name of its own (one name per business). */
 let clientsMade = 0;
@@ -38,6 +39,7 @@ async function madeClient(context: BodyContext): Promise<string> {
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration) => Promise<Prepared> {
+  const gateBody = createGateBody(context);
   // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
   return async function positiveBody(declaration: CommandDeclaration): Promise<Prepared> {
     const target = async (): Promise<Record<string, unknown>> => {
@@ -202,6 +204,11 @@ export function createPositiveBody(
       case 'credential.issue':
       case 'credential.revoke':
         return await credentialBody(declaration.name, context);
+      // S0-5: the admin holds `operations:manage` in alpha, which operates the
+      // harness's installation.
+      case 'operations.record_gate_item':
+      case 'operations.change_installation_mode':
+        return await gateBody(declaration.name);
       case 'budget.top_up':
         // The admin approved the plan and holds billing, so a top-up under
         // the band is hers alone (T2e).

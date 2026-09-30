@@ -417,6 +417,25 @@ const ROWS = [
       'This installation takes no real client data or client invitation until every gate item is done',
     source: 'S0-5 TR-SEC5-1',
   },
+  // S0-5: the gate's own commands (0060).
+  {
+    code: 'GATE_ITEM_ALREADY_RECORDED',
+    status: 409,
+    meaning: 'This gate item is already done; its evidence stays as first recorded',
+    source: 'S0-5 ORCH38',
+  },
+  {
+    code: 'INSTALLATION_NOT_READY',
+    status: 409,
+    meaning: 'The installation moves to real data only once every gate item is done',
+    source: 'S0-5 mode one way',
+  },
+  {
+    code: 'INSTALLATION_MODE_ONE_WAY',
+    status: 409,
+    meaning: 'An installation moves from made-up to real data only, never back',
+    source: 'S0-5 mode one way',
+  },
   // C81: a privacy policy reads the data-class register.
   {
     code: 'LEGAL_DATA_CLASSES_CHANGED',

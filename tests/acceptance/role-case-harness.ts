@@ -282,6 +282,9 @@ export async function createHarness(part: string): Promise<Harness> {
       freshTask,
       freshMember: async () =>
         (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
+      clearGateItem: async (item) => {
+        await world.db.admin.execute('delete from ops.gate_items where item = $1', [item]);
+      },
     }),
     approvedReservation,
     reserve,

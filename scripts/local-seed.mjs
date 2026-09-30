@@ -745,6 +745,11 @@ try {
     businessIds[tag] = await businessIdFor(admin, key);
     console.log(`local-seed: business ${key} ${businessIds[tag]}`);
   }
+  // S0-5 (0060): business A operates this installation, as provisioning sets it.
+  await admin.execute(
+    'update ops.installation set operator_business_id = $1 where operator_business_id is null',
+    [businessIds.A],
+  );
 
   for (const tag of Object.keys(BUSINESS_KEYS)) {
     // oxlint-disable-next-line no-await-in-loop

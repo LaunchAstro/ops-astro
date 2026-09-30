@@ -1789,9 +1789,28 @@ function nor `ops.installation`, runs them, as 0056 provisions it made-up.
 The eight items are `ops.gate_items` rows, each with an `https` evidence link:
 `tested-backups`, `second-factor`, `legal-basics`, `privacy-act-statement`,
 `overseas-register`, `breach-runbook`, `security-pass`, `phone-alerts`. The
-application's role reads both tables and writes neither. The mode moves from made-up to real
-only while every item is done, and never back; the row cannot be deleted.
-Recording an item and changing the mode by command are not built yet.
+mode moves from made-up to real only while every item is done, and never back;
+the row cannot be deleted.
+
+Two commands move the gate (migration 0060), each a person's under
+`operations:manage` in the business that operates the installation
+(`ops.installation.operator_business_id`, set at provisioning), never an
+agent's or a delegation's; any other caller, and every caller while no business
+operates it, is refused `SCOPE_NOT_GRANTED` 403 and writes nothing:
+
+- `operations.record_gate_item` takes `{ operationId, item, evidence }`: one of
+  the eight items and one `https` link of at most 2000 characters with no
+  spaces, each refused `FIELD_VALUE_INVALID` 422 naming the field. An item is
+  recorded once; a second record is refused `GATE_ITEM_ALREADY_RECORDED` 409
+  and the first evidence stays.
+- `operations.change_installation_mode` takes `{ operationId, mode: 'real' }`.
+  While any item is open it is refused `INSTALLATION_NOT_READY` 409 naming
+  them; `mode: 'made-up'` is refused `INSTALLATION_MODE_ONE_WAY` 409; an
+  installation already real answers `ok` and changes nothing.
+
+The application's role reads both tables; it may insert a gate item and update
+the mode alone, and nothing else, and it writes them only through these two
+commands.
 
 ## A task's client is locked once it has content (S0-5)
 

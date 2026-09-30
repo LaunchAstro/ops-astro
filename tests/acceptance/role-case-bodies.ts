@@ -78,6 +78,8 @@ export interface BodyContext {
   freshTask(title: string): Promise<Task>;
   /** C58: a new member of this business with a login, for a case that ends one. */
   freshMember?(): Promise<string>;
+  /** S0-5: a gate item's record removed by the owner, so the next record of it applies. */
+  clearGateItem?(item: string): Promise<void>;
 }
 
 export const batchOf = (answer: Answer): string =>

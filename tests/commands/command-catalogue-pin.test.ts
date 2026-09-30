@@ -95,6 +95,11 @@ vi.mock('../../packages/core-commands/src/commands/credential-write.ts', async (
   issueCredential: recorder('issueCredential'),
   revokeCredential: recorder('revokeCredential'),
 }));
+vi.mock('../../packages/core-commands/src/commands/gate-write.ts', async (original) => ({
+  ...(await original<object>()),
+  recordGateItem: recorder('recordGateItem'),
+  changeInstallationMode: recorder('changeInstallationMode'),
+}));
 vi.mock('../../packages/core-commands/src/commands/legal-write.ts', async (original) => ({
   ...(await original<object>()),
   draftVersion: recorder('draftVersion'),
@@ -185,6 +190,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'legal.approve_version': ['versionId'],
   'legal.draft_version': [],
   'legal.publish_version': ['versionId'],
+  'operations.change_installation_mode': [],
+  'operations.record_gate_item': [],
   'privacy.set_overseas_service': [],
   'privacy.set_data_class': [],
   'privacy.record_incident': [],
@@ -221,7 +228,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'legal.approve_version',
   'legal.draft_version',
   'legal.publish_version',
+  'operations.change_installation_mode',
   'operations.read',
+  'operations.record_gate_item',
   'person.list',
   'preset.plan',
   'privacy.draft_breach_notices',
@@ -367,6 +376,8 @@ const REQUESTS: readonly CommandRequest[] = [
     purpose: 'p',
   },
   { command: 'credential.revoke', operationId: 'op', credentialId: 'credential' },
+  { command: 'operations.record_gate_item', operationId: 'op', item: 'i', evidence: 'e' },
+  { command: 'operations.change_installation_mode', operationId: 'op', mode: 'm' },
   { command: 'client.create', operationId: 'op', name: 'n' },
   {
     command: 'access.grant',
@@ -458,6 +469,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'privacy.set_data_class': ['setClass', 'request'],
   'credential.issue': ['issueCredential', 'request'],
   'credential.revoke': ['revokeCredential', 'request'],
+  'operations.record_gate_item': ['recordGateItem', 'request'],
+  'operations.change_installation_mode': ['changeInstallationMode', 'request'],
   'client.create': ['createClientRecord', 'request'],
   'access.grant': ['grantOnAccess', 'request'],
   'access.revoke': ['revokeGrantOnAccess', 'grant'],

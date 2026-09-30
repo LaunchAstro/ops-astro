@@ -26,6 +26,7 @@ import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
 import { issueCredential, revokeCredential } from './credential-write.ts';
 import { setService } from './overseas-write.ts';
 import { setClass } from './data-class-write.ts';
+import { changeInstallationMode, recordGateItem } from './gate-write.ts';
 import { createClientRecord, grantOnAccess } from './access-write.ts';
 import { endAccessOnSettings } from './access-end.ts';
 import { decideOnGate } from './tasks-decide.ts';
@@ -109,6 +110,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'credential.revoke': revokeCredential,
   'privacy.set_overseas_service': setService,
   'privacy.set_data_class': setClass,
+  'operations.record_gate_item': recordGateItem,
+  'operations.change_installation_mode': changeInstallationMode,
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,
