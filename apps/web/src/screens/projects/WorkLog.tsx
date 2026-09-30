@@ -88,9 +88,31 @@ export interface WorkLogProps {
   readonly navigate: (path: string) => void;
 }
 
+/** The search's words in the address (L-01 `q`), so a reload or a shared link opens it searched. */
+const typedInAddress = (): string =>
+  new URLSearchParams(globalThis.location?.search ?? '').get('q') ?? '';
+
+function writeTyped(typed: string): void {
+  const here = globalThis.location;
+  if (here === undefined) return;
+  const query = new URLSearchParams(here.search);
+  if (typed === '') query.delete('q');
+  else query.set('q', typed);
+  const search = query.size === 0 ? '' : `?${query.toString()}`;
+  globalThis.history.replaceState(
+    globalThis.history.state,
+    '',
+    `${here.pathname}${search}${here.hash}`,
+  );
+}
+
 export function WorkLog(props: WorkLogProps): ReactElement {
   const { client, grantKey, navigate } = props;
-  const [typed, setTyped] = useState('');
+  const [typed, setWords] = useState(typedInAddress);
+  const setTyped = (words: string): void => {
+    setWords(words);
+    writeTyped(words);
+  };
   const [known, setKnown] = useState<readonly LedgerDayView[]>([]);
   const search = readSearch(typed, known);
   const query = queryOf(search);

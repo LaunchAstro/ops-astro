@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The request shapes of the privacy records (C55), the legal documents and
-// their registers (C81) and the agent credential (API-2), split from
-// `requests.ts` to keep it under the line limit. `E` is that file's envelope,
-// passed in rather than imported, so the two files do not import each other.
+// their registers (C81), the agent credential (API-2), the first-client gate's
+// own acts (S0-5), and the client record and access (C32, C58), split from
+// `requests.ts` to keep it under the line limit. `E` is that file's envelope, passed in rather than imported, so the
+// two files do not import each other.
 
 export type PrivacyRequest<E> =
   // C55: a privacy incident record's day-0 facts, each checked by the handler
@@ -61,4 +62,26 @@ export type PrivacyRequest<E> =
       readonly retention: unknown;
       readonly deletion: unknown;
       readonly inUse: unknown;
-    } & E);
+    } & E)
+  // S0-5: the first-client gate's own acts, every field checked by the
+  // handler in its own words (`gate-write.ts`).
+  | ({
+      readonly command: 'operations.record_gate_item';
+      readonly item: unknown;
+      readonly evidence: unknown;
+      readonly statement?: unknown;
+    } & E)
+  | ({ readonly command: 'operations.change_installation_mode'; readonly mode: unknown } & E)
+  // C32: the client record and Settings ▸ Access, each field checked by the
+  // handler in its own words (`access-write.ts`).
+  | ({ readonly command: 'client.create'; readonly name: unknown } & E)
+  | ({
+      readonly command: 'access.grant';
+      readonly holderId: unknown;
+      readonly collection: unknown;
+      readonly action: unknown;
+      readonly clientId?: unknown;
+    } & E)
+  | ({ readonly command: 'access.revoke'; readonly grantId: string } & E)
+  // C58: end a person's access in one act (`access-end.ts`).
+  | ({ readonly command: 'access.end'; readonly holderId: unknown } & E);

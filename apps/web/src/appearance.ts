@@ -3,7 +3,7 @@
 // The person's appearance (MP-2-11, SH-60): Light, Dark or System, stored in
 // the one preference store and applied at once. Applying it is setting
 // `data-theme-preference` on the root, which MP-1-1's before-paint step in
-// `index.html` watches and turns into `data-theme`. This tab keeps a copy in
+// `theme-before-paint.js` watches and turns into `data-theme`. This tab keeps a copy in
 // `sessionStorage` (never `localStorage`, the rule the session lives under), so
 // that same step opens a reload in the chosen theme with no flash; signed in on
 // another device, the read below applies the stored value.
@@ -14,7 +14,7 @@ import type { StorageLike } from './session/token.ts';
 
 export type Appearance = 'light' | 'dark' | 'system';
 
-/** The tab's copy, which the before-paint step in `index.html` reads by this name. */
+/** The tab's copy, which the before-paint step (`theme-before-paint.js`) reads by this name. */
 export const APPEARANCE_KEY = 'ops-astro.appearance';
 
 /** How long a chosen appearance crossfades; the CSS reads `data-theme-fade`. */

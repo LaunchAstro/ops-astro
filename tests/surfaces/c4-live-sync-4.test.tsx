@@ -121,7 +121,7 @@ it('C4 live-sync 4: an unsaved edit is untouched, the change is shown, and its s
   const client = new OperationsClient({
     origin: '',
     businessKey: 'b',
-    token: 't',
+    signedIn: true,
     fetch: api.fetch,
   });
   const page = await mount(<TaskDetailScreen client={client} grantKey="b:g" taskKey={ID} />);
@@ -149,7 +149,7 @@ it('C4 live-sync 4: regions not being edited keep updating under a draft, and th
   const client = new OperationsClient({
     origin: '',
     businessKey: 'b',
-    token: 't',
+    signedIn: true,
     fetch: api.fetch,
   });
   const page = await mount(<TaskDetailScreen client={client} grantKey="b:g" taskKey={ID} />);
@@ -178,7 +178,7 @@ it('C4 live-sync 4: an edit typed back to where it began is no edit, and the for
   const client = new OperationsClient({
     origin: '',
     businessKey: 'b',
-    token: 't',
+    signedIn: true,
     fetch: api.fetch,
   });
   const page = await mount(<TaskDetailScreen client={client} grantKey="b:g" taskKey={ID} />);

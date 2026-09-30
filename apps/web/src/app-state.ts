@@ -105,3 +105,14 @@ function nameIn(value: unknown): string | null {
   const name = (person as { readonly name?: unknown }).name;
   return typeof name === 'string' && name.trim() !== '' ? name : null;
 }
+
+/**
+ * Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a
+ * bundler that did not stamp, and the rail then says the build is unstamped.
+ * Read by name, never by index: an indexed read inlines every VITE_ setting
+ * of the build's environment into the bundle (G3).
+ */
+export function buildStamp(): string | null {
+  const build = import.meta.env.VITE_OPS_ASTRO_BUILD ?? '';
+  return build === '' ? null : build;
+}

@@ -19,6 +19,7 @@ export {
   checkAuthority,
   effectiveGrants,
   issueGrant,
+  OPERATIONS_MANAGE,
   revokeGrant,
   subjectsOf,
   type Action,

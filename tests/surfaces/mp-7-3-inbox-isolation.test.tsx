@@ -21,6 +21,7 @@ import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.t
 import { authorised, BUSINESS_KEY, post, tokenFor, type Answer } from '../api/fixture.ts';
 import { clearingWorld, decideBody, ok } from '../commands/inbox-clearing-world.ts';
 import { mount, settle } from './mount.tsx';
+import { asBrowser } from '../support/sign-in.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -39,8 +40,8 @@ describe.skipIf(serverUrl === undefined)('MP-7-3 the inbox screen over INB-1', (
     const client = new OperationsClient({
       origin: 'http://api.test',
       businessKey: key,
-      token,
-      fetch: async (url, init) => await w.api.fetch(new Request(String(url), init)),
+      signedIn: true,
+      fetch: asBrowser(token, async (url, init) => await w.api.fetch(new Request(url, init))),
     });
     const view = await mount(
       (draw as Draw)({

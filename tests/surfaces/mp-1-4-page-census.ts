@@ -17,7 +17,8 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chromium, type Page } from 'playwright';
+import type { Page } from 'playwright';
+import { launchChromium } from '../support/chromium.ts';
 import { madeUpSession, screenOf, serveApp } from '../visual/app-pages.ts';
 import { load, openSide, type Side } from '../visual/capture.ts';
 import { scrollMetrics } from '../visual/drift.ts';
@@ -176,7 +177,7 @@ export async function pageCensus(given: {
 }): Promise<PageCensus[]> {
   const packet = readPacket();
   await fetchAssets(readAssets(), packet);
-  const browser = await chromium.launch(MODE);
+  const browser = await launchChromium(MODE);
   const { app, close } = await serveApp();
   const dir = mkdtempSync(join(tmpdir(), 'page-census-'));
   const out: PageCensus[] = [];

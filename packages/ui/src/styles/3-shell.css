@@ -84,6 +84,14 @@
   text-transform: var(--type-rail-label-case);
   color: var(--ink-faint);
 }
+.rail__build {
+  margin: auto 0 0;
+  padding: 0 var(--s-5);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  color: var(--ink-faint);
+}
 .rail__group {
   position: relative;
   display: flex;

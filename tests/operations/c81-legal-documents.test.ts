@@ -107,7 +107,7 @@ async function c81ExactVersionApprovalOnlyTheVersion(): Promise<void> {
   });
 
   // Each act is audited as its own tracked action.
-  const events = await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) =>
+  const events = await harness.world.db.app.withBusiness(harness.world.alpha, (tx) =>
     tx.query<{ readonly command: string; readonly outcome: string }>(
       `select command, outcome from public.audit_events
         where command like 'legal.%' and outcome = 'applied' order by seq`,

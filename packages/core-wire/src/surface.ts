@@ -128,6 +128,10 @@ export type CommandName =
   | 'privacy.set_overseas_service'
   // C81: the data-class register the privacy policy reads.
   | 'privacy.set_data_class'
+  // S0-5: the first-client gate's own acts, `gate item recorded` and
+  // `installation mode changed`.
+  | 'operations.record_gate_item'
+  | 'operations.change_installation_mode'
   // The support controls the contract ledger requires through owning
   // production interfaces: revocation of an existing grant or delegation,
   // cancellation of a run's lineage, an authorised restart as a new lineage,
@@ -491,6 +495,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     deletion: 'any',
     inUse: 'any',
   },
+  'operations.record_gate_item': { item: 'any', evidence: 'any', statement: 'any?' },
+  'operations.change_installation_mode': { mode: 'any' },
   'client.create': { name: 'any' },
   'access.grant': { holderId: 'id', collection: 'any', action: 'any', clientId: 'id?|null' },
   'access.revoke': { grantId: 'id' },
@@ -715,6 +721,19 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // never by an agent; every change is audited by the envelope.
   declare('privacy.set_data_class', 'manage', {
     collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // S0-5: the first-client gate moves only under `operations:manage` in the
+  // business that operates the installation (`gate-write.ts`), never by an
+  // agent; each act is audited by the envelope.
+  declare('operations.record_gate_item', 'manage', {
+    collection: 'operations',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('operations.change_installation_mode', 'manage', {
+    collection: 'operations',
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),
@@ -954,28 +973,25 @@ export const CONTRACT_NINE: readonly CommandName[] = [
   'task.handback',
 ];
 
-/**
- * The operation identity of an attempt's one effect, derived from the attempt
- * so a retry replays it and "did it happen?" is the register's answer (T2c2).
- * The worker and the server derive it here, from one spelling.
- */
-export function effectOperationId(attemptId: string): string {
-  return `effect:${attemptId}`;
-}
-
-/** The attempt an effect identity names, or `undefined` for any other identity. */
-export function effectAttemptOf(operationId: string): string | undefined {
-  const found = /^effect:([0-9a-f-]{36})$/u.exec(operationId);
-  return found?.[1];
-}
+// An attempt's effect identity (T2c2), in its own file.
+export { effectAttemptOf, effectOperationId } from './effect-identity.ts';
 
 /** The path the HTTP boundary and the command line both derive from the name. */
 export function pathOf(name: CommandName): string {
   return `/${name.replace('.', '/')}`;
 }
 
-// The mounts, the account path, the public prefix and the agent's header.
-export { ACCOUNT_AVAILABILITY_PATH, DELEGATION_HEADER, PREFIX, PUBLIC_PREFIX } from './mounts.ts';
+// Where the surface is served, and the headers it is served with (`paths.ts`).
+export {
+  ACCOUNT_AVAILABILITY_PATH,
+  CSRF_HEADER,
+  DELEGATION_HEADER,
+  PREFIX,
+  PUBLIC_PREFIX,
+  SESSION_COOKIE,
+  SESSION_HEADER,
+  SESSION_PATH,
+} from './paths.ts';
 
 /** The reads, which no caller may reach through the command envelope. */
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(

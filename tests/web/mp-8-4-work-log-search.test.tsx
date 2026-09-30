@@ -144,3 +144,30 @@ describe('MP-8-4 no match says what the ledger holds', () => {
     expect(drawn(view)).toEqual(['a1', 'a2', 'b1', 'c1']);
   });
 });
+
+describe('MP-8-4 the search in the address (L-01 q)', () => {
+  it('typing keeps the words in the address as q, and Clear takes them out', async () => {
+    window.history.replaceState(null, '', '/projects/');
+    const { view } = await opened([{ body: DAY }, { body: FOUND }, { body: DAY }]);
+    await view.type(BOX, 'hinge');
+    await tick();
+    expect(window.location.search).toBe('?q=hinge');
+    expect(window.location.hash).toBe('#worklog');
+    await view.click('.act__find button');
+    await tick();
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('#worklog');
+    window.history.replaceState(null, '', '/');
+  });
+
+  it('an address with q opens the Work log searched: the box holds the words and the first read asks them', async () => {
+    window.history.replaceState(null, '', '/projects/?q=hinge#worklog');
+    const api = server([{ body: FOUND }]);
+    const view = await mount(projects(api.fetch));
+    await tick();
+    expect((view.find('input[type="search"]') as HTMLInputElement | null)?.value).toBe('hinge');
+    expect(api.asked[0]).toMatchObject({ before: null, query: 'hinge' });
+    expect(api.asked).toHaveLength(1);
+    window.history.replaceState(null, '', '/');
+  });
+});

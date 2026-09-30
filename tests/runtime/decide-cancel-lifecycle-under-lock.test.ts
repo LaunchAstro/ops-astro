@@ -40,12 +40,12 @@ import {
   createBusinessResolver,
   post,
   ISSUER,
-  SECRET,
   tokenFor,
   type Answer,
 } from '../api/fixture.ts';
 import { createControls, detailOf, personPath, type Controls } from '../api/controls-fixture.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -66,7 +66,7 @@ function secondOf(c: Controls): Second {
   const database: Database = connect(c.fixture.db.appUrl, { source: 'runtime' });
   const inner: Hono = createApi({
     database,
-    verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
+    verify: createSupabaseVerifier(testSignIn(ISSUER)),
     resolveBusiness: createBusinessResolver(c.fixture.db.admin),
     executeCommand,
     executeRead,

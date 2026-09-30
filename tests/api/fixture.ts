@@ -6,7 +6,7 @@
 // transport's. The cases beside it ask the opposite question — whether the
 // proposal-to-handback journey really runs over HTTP — so nothing here is a
 // substitute except the port: the database is a throwaway one migrated from
-// empty, the tokens are real HS256 bearers the real Supabase adapter verifies,
+// empty, the tokens are real ES256 bearers the real Supabase adapter verifies,
 // the reads go through `reads/execute.ts` and the agent prefix through
 // `commands/agent-envelope.ts`.
 //
@@ -18,7 +18,6 @@
 // empty resolver cache, which is the restart the journey case needs.
 
 import { randomUUID } from 'node:crypto';
-import { sign } from 'hono/jwt';
 import type { Hono } from 'hono';
 import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
@@ -29,6 +28,7 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import type { ServedIdentity } from '../../apps/api/identity.ts';
 import { runtimeKeys, type RuntimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
+import { signBearer, TEST_ISSUER, testSignIn } from '../support/sign-in.ts';
 
 /**
  * The business key to its identifier, on the administrative connection: the
@@ -37,10 +37,7 @@ import { runtimeKeys, type RuntimeKeys } from '../../packages/core-runtime/src/r
  */
 export { createBusinessResolver } from '../../apps/api/server.ts';
 
-/** The HS256 secret this deployment's GoTrue would sign with. Local to the run. */
-export const SECRET = 'a-local-test-secret-for-the-api-journey-cases';
-
-export const ISSUER = 'http://127.0.0.1:54391';
+export const ISSUER: string = TEST_ISSUER;
 
 /** The key the path names the business by, which the server resolves itself. */
 export const BUSINESS_KEY = 'alpha';
@@ -84,28 +81,24 @@ export async function tokenFor(
   options: { readonly expiresIn?: number; readonly secondFactor?: boolean } = {},
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  return await sign(
-    {
-      sub: subject,
-      aud: 'authenticated',
-      iss: ISSUER,
-      role: 'authenticated',
-      exp: now + (options.expiresIn ?? 600),
-      // The first sign-in, as GoTrue stamps it (C58's 12-hour limit is measured
-      // from it); with `secondFactor`, the code given then too (C59's step-up).
-      ...(options.secondFactor === true
-        ? {
-            aal: 'aal2',
-            amr: [
-              { method: 'password', timestamp: now },
-              { method: 'totp', timestamp: now },
-            ],
-          }
-        : { amr: [{ method: 'password', timestamp: now }] }),
-    },
-    SECRET,
-    'HS256',
-  );
+  return await signBearer({
+    sub: subject,
+    aud: 'authenticated',
+    iss: ISSUER,
+    role: 'authenticated',
+    exp: now + (options.expiresIn ?? 600),
+    // The first sign-in, as GoTrue stamps it (C58's 12-hour limit is measured
+    // from it); with `secondFactor`, the code given then too (C59's step-up).
+    ...(options.secondFactor === true
+      ? {
+          aal: 'aal2',
+          amr: [
+            { method: 'password', timestamp: now },
+            { method: 'totp', timestamp: now },
+          ],
+        }
+      : { amr: [{ method: 'password', timestamp: now }] }),
+  });
 }
 
 export interface Answer {
@@ -207,8 +200,7 @@ export async function createApiFixture(part: string): Promise<ApiFixture> {
         keys: { ...runtimeKeys({ ...environment }), ...keys },
         database: db.app,
         admin: db.admin,
-        secret: SECRET,
-        issuer: ISSUER,
+        signIn: testSignIn(ISSUER),
         executeRead,
         ...(identity === undefined ? {} : { identity }),
       }).app;

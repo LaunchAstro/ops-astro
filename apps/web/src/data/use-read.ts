@@ -39,6 +39,25 @@ export interface UseReadResult<T> {
   readonly reload: () => void;
 }
 
+/**
+ * Run the read and offer its answer. An answer the projection cannot take
+ * (its emptiness test throws) shows as unavailable instead of escaping.
+ */
+async function offer<T>(
+  projection: AuthorisedRead<T>,
+  generation: number,
+  run: () => Promise<CallResult<T>>,
+  grantKey: string,
+): Promise<void> {
+  const result = await run();
+  try {
+    projection.accept(generation, result, grantKey);
+  } catch {
+    const because = 'The API answered with something this screen could not read.';
+    projection.accept(generation, { unavailable: true, because }, grantKey);
+  }
+}
+
 export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
   const [state, setState] = useState<ReadState<T>>(() => initialState<T>(options.grantKey));
   const readRef = useRef<AuthorisedRead<T> | null>(null);
@@ -52,9 +71,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
     const projection = readRef.current;
     if (projection === null) return;
     const generation = projection.begin();
-    void (async () => {
-      projection.accept(generation, await runRef.current(), grantKey);
-    })();
+    void offer(projection, generation, runRef.current, grantKey);
   }, [grantKey]);
 
   useEffect(() => {
@@ -66,9 +83,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
     readRef.current = projection;
     setState(projection.state);
     const generation = projection.begin();
-    void (async () => {
-      projection.accept(generation, await runRef.current(), grantKey);
-    })();
+    void offer(projection, generation, runRef.current, grantKey);
     return () => {
       // Retire it, do not merely forget it. Clearing the reference stops the
       // next `reload` from finding it and stops nothing else: the read this

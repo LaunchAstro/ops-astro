@@ -14,7 +14,6 @@
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { sign } from 'hono/jwt';
 import { createApi } from '../../apps/api/app.ts';
 import { createGoTrueFactors } from '../../apps/api/auth/factors.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
@@ -26,7 +25,6 @@ import { liveFactor } from '../../packages/core-records/src/identity/second-fact
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   ACCEPTANCE_ISSUER,
-  ACCEPTANCE_SECRET,
   bearer,
   call,
   createWorld,
@@ -35,6 +33,7 @@ import {
   type World,
 } from '../acceptance/world.ts';
 import { shareWithClient, type Member } from '../commands/fixture.ts';
+import { signBearer, testSignIn } from '../support/sign-in.ts';
 
 export const CANARY = 'CANARY-c59-totp-secret-7f3a9e';
 
@@ -124,21 +123,17 @@ export const tokenFor = async (
     readonly totp?: number;
   },
 ): Promise<string> =>
-  await sign(
-    {
-      sub: subject,
-      aud: 'authenticated',
-      iss: ACCEPTANCE_ISSUER,
-      exp: now() + 600,
-      aal: assurance.aal,
-      amr: [
-        { method: 'password', timestamp: assurance.password },
-        ...(assurance.totp === undefined ? [] : [{ method: 'totp', timestamp: assurance.totp }]),
-      ],
-    },
-    ACCEPTANCE_SECRET,
-    'HS256',
-  );
+  await signBearer({
+    sub: subject,
+    aud: 'authenticated',
+    iss: ACCEPTANCE_ISSUER,
+    exp: now() + 600,
+    aal: assurance.aal,
+    amr: [
+      { method: 'password', timestamp: assurance.password },
+      ...(assurance.totp === undefined ? [] : [{ method: 'totp', timestamp: assurance.totp }]),
+    ],
+  });
 
 export const fresh = async (caller: { readonly subject: string } | Member): Promise<string> =>
   await tokenFor(subjectOf(caller), { aal: 'aal1', password: now() - 60 });
@@ -176,7 +171,7 @@ export const build = (
 ): ReturnType<typeof createApi> =>
   createApi({
     database,
-    verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
+    verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
     resolveBusiness: (key: string) =>
       Promise.resolve({ alpha: world.alpha, bravo: world.bravo }[key]),
     executeCommand,

@@ -61,11 +61,11 @@ let milo: Member;
 let bea: Member;
 
 /**
- * A money command as the envelope sees one. No command on this head holds a
- * money key (wave 0's `budget.*` are `billing:decide` and land later), so the
- * settings command's own row is asked about `billing:decide` and run through
- * the real preparation, grant check and all. The catalogue-wide sweep (S0-5)
- * covers every real money command from the day it exists.
+ * A seeded money command as the envelope sees one: the settings command's own
+ * row asked about `billing:decide` and run through the real preparation, grant
+ * check and all, so the boundary is proved apart from any real command's body.
+ * Every real money command (`budget.*` today) is swept through the API by
+ * `tests/operations/s0-5-step-up-sweep.test.ts`.
  */
 const MONEY: CommandDeclaration = {
   ...declarationOf('settings.set_client_sign_off'),

@@ -90,7 +90,7 @@ const saves = (api: ReturnType<typeof server>): readonly Record<string, unknown>
   api.sent.filter((call) => call.at.endsWith('/preference/save')).map((call) => call.body);
 
 const client = (fetch: typeof globalThis.fetch): OperationsClient =>
-  new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
 
 const page = (fetch: typeof globalThis.fetch): ReactElement => (
   <SettingsGeneralScreen
@@ -178,9 +178,7 @@ it('MP-2-11 theme replayed before paint: a reload opens in the appearance this t
   window.sessionStorage.setItem(APPEARANCE_KEY, 'dark');
   // A reload: MP-1-1's step, run on a fresh root with no preference handed
   // to it and a light system, opens dark from what this tab kept.
-  const html = readFileSync(join(root, 'apps/web/index.html'), 'utf8');
-  const head = new DOMParser().parseFromString(html, 'text/html').head;
-  const step = head.querySelector('script')?.textContent ?? '';
+  const step = readFileSync(join(root, 'apps/web/theme-before-paint.js'), 'utf8');
   const original = document.documentElement;
   const fresh = document.createElement('html');
   document.replaceChild(fresh, original);

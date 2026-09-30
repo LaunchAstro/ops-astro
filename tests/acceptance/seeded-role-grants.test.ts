@@ -62,7 +62,12 @@ describe('the seeded roles', () => {
 
   it('gives the seeded admin every grant a declaration on the surface asks for', () => {
     expect(asked.length).toBeGreaterThan(0);
-    expect(asked.filter((pair) => !held('admin').includes(pair))).toStrictEqual([]);
+    // Bar `operations:manage`, the operator's key (S0-1 G1): the operator cast member holds it
+    // alone and no role has it by default, so the seeded admin is no operator. S0-5's gate
+    // commands ask it too, so the operator moves the gate.
+    expect(asked.filter((pair) => !held('admin').includes(pair))).toStrictEqual([
+      'operations:manage',
+    ]);
   });
 
   it('gives the seeded member exactly what docs/local/PROOFS.md says it holds', () => {

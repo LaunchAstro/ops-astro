@@ -63,7 +63,7 @@ function server() {
   // A throw becomes a rejected fetch, as a network failure does.
   const fetch = ((url: string | URL) =>
     Promise.resolve().then(() => answer(url))) as unknown as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 't', fetch });
+  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   return { api, client };
 }
 

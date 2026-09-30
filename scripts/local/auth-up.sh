@@ -14,10 +14,15 @@
 # then handed over rather than described by a migration of ours.
 #
 # It is convergent with SLICE-DATA's `db-up.sh`. If the Postgres container is
-# already running, this script reads `.local/db.env` and uses it. If it is not,
-# this script starts the same container, at the same pinned digest, on the same
-# port, with the same named volume, so whichever script runs first the other
-# finds what it expects.
+# already running on the pinned digest with the named volume, this script
+# reads `.local/db.env` and uses it. A container on another image or volume
+# (one made before S0-7 moved the local database to Postgres 17) is replaced
+# as `db-up.sh` replaces it: only the container goes, every volume is kept.
+# Otherwise this script starts the same container, at the same pinned digest,
+# on the same port, with the same named volume, so whichever script runs first
+# the other finds what it expects.
+# GoTrue is labelled with the id of the Postgres container it migrated, so
+# whichever script replaced that container, GoTrue is started again on the new one.
 
 set -euo pipefail
 
@@ -26,8 +31,9 @@ LOCAL="${ROOT}/.local"
 mkdir -p "${LOCAL}"
 
 PG_CONTAINER=ops-astro-local-pg
-PG_IMAGE=postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
-PG_VOLUME=ops-astro-local-pgdata
+PG_IMAGE=postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+PG_VOLUME=ops-astro-local-pgdata-17
+PG_DATA_MOUNT=/var/lib/postgresql/data
 PG_PORT=54390
 PG_DATABASE=ops_astro_local
 
@@ -48,18 +54,31 @@ exists() { docker inspect "$1" >/dev/null 2>&1; }
 docker network inspect "${NETWORK}" >/dev/null 2>&1 || docker network create "${NETWORK}" >/dev/null
 
 # --------------------------------------------------------------- the database
-if ! running "${PG_CONTAINER}"; then
-  if exists "${PG_CONTAINER}"; then
+# A container on another image or volume is never reused, running or not.
+if exists "${PG_CONTAINER}"; then
+  pg_mount=$(docker inspect "${PG_CONTAINER}" \
+    --format '{{range .Mounts}}{{if eq .Destination "'"${PG_DATA_MOUNT}"'"}}{{.Name}}{{end}}{{end}}' 2>/dev/null || true)
+  pg_image=$(docker inspect "${PG_CONTAINER}" --format '{{.Config.Image}}' 2>/dev/null || true)
+  if [ "${pg_mount}" != "${PG_VOLUME}" ] || [ "${pg_image}" != "${PG_IMAGE}" ]; then
+    echo "auth-up: replacing ${PG_CONTAINER}: it is on ${pg_image} with ${PG_DATA_MOUNT} from '${pg_mount:-nothing}'"
+    echo "auth-up: every volume is kept; only the container is removed"
+    docker rm -f "${PG_CONTAINER}" >/dev/null
+    pg_replaced=yes
+  fi
+fi
+if [ "${pg_replaced:-no}" = yes ] || ! running "${PG_CONTAINER}"; then
+  if [ "${pg_replaced:-no}" = no ] && exists "${PG_CONTAINER}"; then
     echo "auth-up: starting the existing ${PG_CONTAINER}"
     docker start "${PG_CONTAINER}" >/dev/null
   else
     echo "auth-up: ${PG_CONTAINER} is absent; starting it with the contract's identity"
+    pg_new=yes
     docker volume inspect "${PG_VOLUME}" >/dev/null 2>&1 || docker volume create "${PG_VOLUME}" >/dev/null
     docker run -d \
       --name "${PG_CONTAINER}" \
       --network "${NETWORK}" \
       -p "127.0.0.1:${PG_PORT}:5432" \
-      -v "${PG_VOLUME}:/var/lib/postgresql" \
+      -v "${PG_VOLUME}:${PG_DATA_MOUNT}" \
       -e POSTGRES_PASSWORD=ops_astro_local \
       -e POSTGRES_DB="${PG_DATABASE}" \
       "${PG_IMAGE}" >/dev/null
@@ -103,40 +122,70 @@ fi
 docker exec "${PG_CONTAINER}" psql -U postgres -d "${PG_DATABASE}" -v ON_ERROR_STOP=1 \
   -c 'create schema if not exists auth' >/dev/null
 
-# ------------------------------------------------------------- the JWT secret
-# Generated once and then kept, because regenerating it would invalidate every
-# token the slice has already issued and every seeded session.
-if [ -f "${LOCAL}/auth.env" ]; then
-  # shellcheck disable=SC1091
-  . "${LOCAL}/auth.env"
-else
-  SUPABASE_JWT_SECRET="$(openssl rand -hex 32)"
-  cat > "${LOCAL}/auth.env" <<ENV
-# Written by scripts/local/auth-up.sh. Local only, gitignored.
-SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
-GOTRUE_URL=http://127.0.0.1:${AUTH_PORT}
-ENV
-  echo "auth-up: wrote ${LOCAL}/auth.env"
+# ------------------------------------------------------------ the signing key
+# GoTrue signs ES256 with a key generated once and kept: a new one would end
+# every session already issued. It is owner-only and never in auth.env, which
+# the API reads: the API fetches the public half from GoTrue instead (LF-4).
+KEY_FILE="${LOCAL}/auth-signing-key.json"
+if [ ! -s "${KEY_FILE}" ]; then
+  (umask 077 && node "${ROOT}/scripts/local/signing-key.mjs" > "${KEY_FILE}.tmp")
+  [ -s "${KEY_FILE}.tmp" ] || { echo "BLOCKER: no signing key was generated" >&2; exit 1; }
+  mv "${KEY_FILE}.tmp" "${KEY_FILE}"
+  echo "auth-up: wrote ${KEY_FILE}"
 fi
-# shellcheck disable=SC1091
-. "${LOCAL}/auth.env"
+GOTRUE_JWT_KEYS="$(cat "${KEY_FILE}")"
+KEY_LABEL="$(shasum -a 256 "${KEY_FILE}" | cut -c1-16)"
+
+# Rewritten every run, so an auth.env from before the switch-over loses the
+# shared secret it held.
+GOTRUE_URL="http://127.0.0.1:${AUTH_PORT}"
+cat > "${LOCAL}/auth.env" <<ENV
+# Written by scripts/local/auth-up.sh. Local only, gitignored.
+GOTRUE_URL=${GOTRUE_URL}
+ENV
 
 # ------------------------------------------------------------------- the auth
-# GoTrue must stamp GOTRUE_URL as `iss`, so a container that does not is replaced.
-if running "${AUTH_CONTAINER}" && ! docker inspect "${AUTH_CONTAINER}" | grep -qF "GOTRUE_JWT_ISSUER=${GOTRUE_URL}\""; then
+# GoTrue must stamp GOTRUE_URL as `iss` and sign with this key, so a container
+# that does not (one from before the switch-over included) is replaced.
+signs_with_key() {
+  [ "$(docker inspect -f '{{index .Config.Labels "ops-astro.signing-key"}}' "$1" 2>/dev/null)" = "${KEY_LABEL}" ]
+}
+# GoTrue migrates schema `auth` when it starts, so a Postgres container this run
+# started (a new cluster, or one on the 17 volume it has never served) gets a
+# new GoTrue too, however right the old one's issuer and key are.
+if [ "${pg_new:-no}" = yes ] && exists "${AUTH_CONTAINER}"; then
+  echo "auth-up: ${PG_CONTAINER} was started afresh; replacing ${AUTH_CONTAINER} so it migrates it"
+  docker rm -f "${AUTH_CONTAINER}" >/dev/null
+fi
+# The same holds when db-up.sh replaced the Postgres container before this run:
+# GoTrue carries the id of the container it migrated, and one started against
+# any other container (or carrying none) is replaced.
+PG_ID="$(docker inspect -f '{{.Id}}' "${PG_CONTAINER}" 2>/dev/null || true)"
+serves_this_postgres() {
+  [ "$(docker inspect -f '{{index .Config.Labels "ops-astro.postgres"}}' "$1" 2>/dev/null)" = "${PG_ID}" ]
+}
+if exists "${AUTH_CONTAINER}" && ! serves_this_postgres "${AUTH_CONTAINER}"; then
+  echo "auth-up: ${AUTH_CONTAINER} was started against another ${PG_CONTAINER}; replacing it so it migrates this one"
+  docker rm -f "${AUTH_CONTAINER}" >/dev/null
+fi
+if running "${AUTH_CONTAINER}" && { ! docker inspect "${AUTH_CONTAINER}" | grep -qF "GOTRUE_JWT_ISSUER=${GOTRUE_URL}\"" || ! signs_with_key "${AUTH_CONTAINER}"; }; then
   docker rm -f "${AUTH_CONTAINER}" >/dev/null
 fi
 if running "${AUTH_CONTAINER}"; then
   echo "auth-up: ${AUTH_CONTAINER} already running"
 else
   if exists "${AUTH_CONTAINER}"; then
-    # A stopped container may hold an older secret in its environment, so it is
+    # A stopped container may hold an older key in its environment, so it is
     # replaced rather than started. Its state lives in Postgres, not here.
     docker rm -f "${AUTH_CONTAINER}" >/dev/null
   fi
+  # GoTrue will not start without a JWT secret. It signs with the key above, so
+  # this one is made for the container and kept nowhere.
   docker run -d \
     --name "${AUTH_CONTAINER}" \
     --network "${NETWORK}" \
+    --label "ops-astro.signing-key=${KEY_LABEL}" \
+    --label "ops-astro.postgres=${PG_ID}" \
     -p "127.0.0.1:${AUTH_PORT}:9999" \
     -e GOTRUE_API_HOST=0.0.0.0 \
     -e PORT=9999 \
@@ -145,7 +194,8 @@ else
     -e GOTRUE_DB_DRIVER=postgres \
     -e GOTRUE_DB_NAMESPACE=auth \
     -e DATABASE_URL="postgres://postgres:ops_astro_local@${PG_CONTAINER}:5432/${PG_DATABASE}?sslmode=disable&search_path=auth" \
-    -e GOTRUE_JWT_SECRET="${SUPABASE_JWT_SECRET}" \
+    -e GOTRUE_JWT_KEYS="${GOTRUE_JWT_KEYS}" \
+    -e GOTRUE_JWT_SECRET="$(openssl rand -hex 32)" \
     -e GOTRUE_JWT_AUD=authenticated \
     -e GOTRUE_JWT_ISSUER="${GOTRUE_URL}" \
     -e GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated \

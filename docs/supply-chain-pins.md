@@ -79,11 +79,13 @@ Parsing the workflows as YAML is a recorded follow-up.
 The check holds every `*IMAGE=` line in `scripts/local/*.sh` to the same
 digest and record (`CQ-3 auth image pin`); an image named inline is not read.
 
-| Image                            | Tag         | Digest                                                                    | Verified                                                                                                                                                                                                                               |
-| -------------------------------- | ----------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `postgres`                       | `18-alpine` | `sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` | Resolved from the tag with `docker pull postgres:18-alpine` on 23 September 2026 and read back from `docker image inspect --format '{{index .RepoDigests 0}}'`                                                                         |
-| `public.ecr.aws/supabase/gotrue` | `v2.192.0`  | `sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab` | The local slice's GoTrue, `scripts/local/auth-up.sh`. The tag's index digest, read with `docker buildx imagetools inspect` on 28 September 2026 and matching `docker image inspect --format '{{json .RepoDigests}}'` of the pulled tag |
-| `semgrep/semgrep`                | `1.177.0`   | `sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198` | CI's Semgrep check of the two settings files, `scripts/local/semgrep-settings.sh`. The tag's index digest, read with `docker buildx imagetools inspect` on 28 September 2026                                                           |
+| Image                            | Tag         | Digest                                                                    | Verified                                                                                                                                                                                                                                                                       |
+| -------------------------------- | ----------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `node`                           | `24-alpine` | `sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1` | The staging worker and its outbox forwarder, `deploy/staging/compose.json` (S0-1, S0-2). The tag's index digest, read with `docker buildx imagetools inspect` on 30 September 2026                                                                                             |
+| `postgres`                       | `18-alpine` | `sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873` | CI's look-ahead job only (S0-7). Resolved from the tag with `docker pull postgres:18-alpine` on 23 September 2026 and read back from `docker image inspect --format '{{index .RepoDigests 0}}'`                                                                                |
+| `postgres`                       | `17-alpine` | `sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24` | Production's major (LF-3): staging's backup store, `deploy/staging/compose.json`; CI's required database jobs; `scripts/local/db-up.sh`, `restart-proof.sh` and `auth-up.sh` (S0-7). The tag's index digest, read with `docker buildx imagetools inspect` on 29 September 2026 |
+| `public.ecr.aws/supabase/gotrue` | `v2.192.0`  | `sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab` | The local slice's GoTrue, `scripts/local/auth-up.sh`. The tag's index digest, read with `docker buildx imagetools inspect` on 28 September 2026 and matching `docker image inspect --format '{{json .RepoDigests}}'` of the pulled tag                                         |
+| `semgrep/semgrep`                | `1.177.0`   | `sha256:acaac22ffc7b7cc5926de0751b223bce0b2491c33d18422fa72f632c78d81198` | CI's Semgrep check of the two settings files, `scripts/local/semgrep-settings.sh`. The tag's index digest, read with `docker buildx imagetools inspect` on 28 September 2026                                                                                                   |
 
 Reproduce it the same way when raising the pin:
 
@@ -91,6 +93,16 @@ Reproduce it the same way when raising the pin:
 docker pull postgres:<tag>
 docker image inspect postgres:<tag> --format '{{index .RepoDigests 0}}'
 ```
+
+The hosted database runs Postgres 17, so everything that stands in for it runs
+the 17 digest: staging, the required `database conformance` and `isolation
+tests` jobs, the local database, the restart proof and the local auth stack.
+`tests/ci/s0-7-postgres-major.test.ts` fails if any of them differs, and a
+planted migration calling `uuidv7()`, which only 18 has, fails the required
+job. The `database look-ahead, Postgres 18 (not required)` job runs the same
+conformance suites on the 18 digest on every pull request; its failure is
+reported and blocks nothing. When the provider offers Postgres 18, one ticket
+moves production, staging, CI and the restore drill (S0-3) to it together.
 
 As with an action hash, this establishes which bytes run and nothing about
 whether those bytes are trustworthy. The database conformance job gives that

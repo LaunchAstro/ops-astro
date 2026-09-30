@@ -25,10 +25,11 @@ import type {
   ServiceHealthSection,
   ServiceHealthView,
 } from '../../packages/core-wire/src/index.ts';
-import { ACCEPTANCE_ISSUER, ACCEPTANCE_SECRET, tokenFor } from '../acceptance/cast.ts';
+import { ACCEPTANCE_ISSUER, tokenFor } from '../acceptance/cast.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { bearer, call, personPath, serverUrl, type Answer } from '../acceptance/world.ts';
 import { grantTo, shareWithClient, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
 
 export const CANARY = 'CANARY-c34-health-words-9e2c51';
 
@@ -163,7 +164,7 @@ export type Api = ReturnType<typeof createApi>;
 export const apiWith = (health?: HealthSources): Api =>
   createApi({
     database: harness.world.db.app,
-    verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
+    verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
     resolveBusiness: async (key: string) =>
       await Promise.resolve({ alpha: harness.world.alpha, bravo: harness.world.bravo }[key]),
     executeCommand,

@@ -5,7 +5,8 @@
 // nothing else. It builds no second queue: the entries pass through as the
 // read returned them, and the owed figure is the count's, never a tally of
 // the rows drawn. What the read withholds is not in its answer, so it is
-// never drawn or counted here.
+// never drawn or counted here. It follows the `board` topic, so a new
+// notification appears without a reload.
 //
 // INB-1's entry names no client, so every row sits under the business's own
 // work until the read carries one; the group heads' client links wait on it.
@@ -18,6 +19,8 @@ import type {
 } from '../../../../packages/core-wire/src/index.ts';
 import type { CallResult, OperationsClient } from '../operations/client.ts';
 import { useRead } from '../data/use-read.ts';
+import { hubOf } from '../data/live.ts';
+import { BOARD } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { pathTo } from '../routes.ts';
 
@@ -50,6 +53,8 @@ export function InboxScreen(props: {
     grantKey: props.grantKey,
     run: async () => await readInbox(client),
     deps: [client],
+    // A new notification and the owed count arrive on the board topic (C4).
+    live: { hub: hubOf(client), topic: () => BOARD },
   });
   // Beside needs the dock's drawers (MP-3-1); until then both open in place.
   const onOpenTask = (key: string, _how: OpenHow): void => navigate(taskHref(key));

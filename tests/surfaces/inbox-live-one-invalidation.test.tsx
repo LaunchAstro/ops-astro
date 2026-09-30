@@ -59,7 +59,12 @@ describe('SL04 live Tasks screen', () => {
       }
       throw new Error(`Unexpected request: ${path}`);
     }) as typeof globalThis.fetch;
-    const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch,
+    });
     const view = await mount(
       <Projects client={client} grantKey="alpha:recipient" navigate={() => {}} />,
     );
@@ -72,7 +77,7 @@ describe('SL04 live Tasks screen', () => {
 
       changed = true;
       for (const stream of streams) {
-        stream.enqueue(new TextEncoder().encode('event: invalidate\ndata: task-1\n\n'));
+        stream.enqueue(new TextEncoder().encode('event: invalidate\ndata: board\n\n'));
       }
       await vi.waitFor(
         async () => {

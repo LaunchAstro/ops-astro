@@ -53,10 +53,10 @@ const TASK = {
 
 /**
  * The empty inbox and count, for the inbox the board screen also mounts, and
- * its tab stream (INB-1f), refused, so the channel is down and nothing streams.
+ * the board topic on its tab stream (C4), refused, so the channel is down and nothing streams.
  */
 function inboxReply(url: string): Response | undefined {
-  if (url.endsWith('/live')) return new Response(null, { status: 503 });
+  if (url.includes('/live?')) return new Response(null, { status: 503 });
   if (url.endsWith('/inbox/read')) return Response.json({ ok: true, inbox: [] });
   if (url.endsWith('/inbox/count')) return Response.json({ ok: true, owed: 0 });
   return undefined;

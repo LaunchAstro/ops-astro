@@ -70,7 +70,7 @@ function server(stale = false) {
 }
 
 const open = async (fetch: typeof globalThis.fetch): Promise<Mounted> => {
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   const page = await mount(
     <SettingsScreen client={client} grantKey="alpha:ada" storage={window.sessionStorage} />,
   );

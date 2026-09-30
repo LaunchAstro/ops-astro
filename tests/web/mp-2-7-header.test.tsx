@@ -95,6 +95,7 @@ const FIVE_STATES: readonly Freshness[] = [
 const headerWith = (freshness: Freshness): ReactElement => (
   <Shell
     face="agency"
+    build={null}
     rail={[]}
     here="/projects/"
     title="Projects"

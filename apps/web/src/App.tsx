@@ -17,14 +17,14 @@ import { pathTo } from './routes.ts';
 import { NO_CLIENT_GRANTS, type ClientAccess } from './manifest.ts';
 import { frameAt } from './route-views.tsx';
 import { drawContent } from './app-content.tsx';
-import { useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
+import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { PANELS, dockTabs } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
-import { endIdentitySession } from './session/sign-in.ts';
+import { signOut } from './session/sign-in.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
 import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
 
@@ -149,7 +149,8 @@ export function App(props: AppProps): ReactElement {
       new OperationsClient({
         origin: props.apiOrigin,
         businessKey: session?.businessKey ?? 'alpha',
-        token: session?.token ?? null,
+        signedIn: session !== null,
+        ...(session?.sessionId === undefined ? {} : { sessionId: session.sessionId }),
         fetch: props.fetch,
         onSessionEnded: (refusal) => {
           // `session` here is this client's own generation, captured when it
@@ -160,13 +161,10 @@ export function App(props: AppProps): ReactElement {
     [props.apiOrigin, props.fetch, session],
   );
 
-  // Sign-out (C23). The tab forgets the session first, so a server or an
-  // identity provider that never answers cannot keep the person signed in.
-  // Then, with the ended session's own client and bearer, never the next
-  // session's: `session.end` records the sign-out on the audit chain, and the
-  // identity provider ends this session and no other. Neither answer is
-  // waited for or acted on; a refusal from the old client is ignored by the
-  // session-ended handler because the session it names is no longer in hand.
+  // Sign-out (C23). The tab forgets the session first, so a server that never
+  // answers cannot keep it. Then, with the ended session's own client:
+  // `session.end` records it on the audit chain, and the API clears this
+  // sign-in's cookie and no other (S0-6c). Neither answer is waited for.
   const onSignOut = (): void => {
     const ended = session;
     props.sessions.clear();
@@ -176,11 +174,11 @@ export function App(props: AppProps): ReactElement {
     props.navigate(pathTo('agency:sign-in'));
     if (ended === null) return;
     void client.mutate('session.end', {});
-    void endIdentitySession({ gotrueUrl: props.gotrueUrl, token: ended.token, fetch: props.fetch });
+    const named = ended.sessionId === undefined ? {} : { sessionId: ended.sessionId };
+    void signOut({ apiOrigin: props.apiOrigin, fetch: props.fetch, ...named });
   };
 
   const personName = usePersonName(client, session, props.storage);
-
   const onSwitch = (businessKey: string, address: string): void => {
     if (session === null) return;
     const moved = { ...session, businessKey };
@@ -203,6 +201,7 @@ export function App(props: AppProps): ReactElement {
   const signIn = (
     <SignIn
       gotrueUrl={props.gotrueUrl}
+      apiOrigin={props.apiOrigin}
       fetch={props.fetch}
       onSignedIn={onSignedIn}
       ended={props.sessions.interruption}
@@ -241,6 +240,7 @@ export function App(props: AppProps): ReactElement {
       <PagePresenceProvider>
         <Shell
           face={face}
+          build={buildStamp()}
           rail={rail}
           here={bare}
           strip={

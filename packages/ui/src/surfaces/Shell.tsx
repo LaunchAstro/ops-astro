@@ -29,6 +29,7 @@ import {
 import { BrandMark } from '../primitives/BrandMark.tsx';
 import { Icon, type GlyphName } from '../primitives/Icon.tsx';
 import { useDrawerFocus } from './drawer.ts';
+import { inAppAddress } from './gesture.ts';
 import { useMark } from './mark.ts';
 import { FreshnessMarker, type Freshness } from '../kit/treatments.tsx';
 import { Chevron, TabRow, type TabEntry } from './TabRow.tsx';
@@ -88,19 +89,12 @@ export interface ShellProps {
   /** Whether the open panel is seated as a grid track or floating over. */
   readonly seated: boolean;
   readonly panel?: ReactNode;
+  /**
+   * The build identifier, drawn at the foot of the rail (S0-1, line C2). Null
+   * is a build that carries none, and the rail says so rather than going blank.
+   */
+  readonly build: string | null;
   readonly children: ReactNode;
-}
-
-/** The in-app address a click on a link asked for, or null to leave it to the browser. */
-function inAppAddress(event: MouseEvent<HTMLElement>): string | null {
-  if (event.defaultPrevented || event.button !== 0) return null;
-  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return null;
-  const anchor = (event.target as Element | null)?.closest?.('a[href]') ?? null;
-  if (anchor === null) return null;
-  const target = anchor.getAttribute('target');
-  if ((target !== null && target !== '_self') || anchor.hasAttribute('download')) return null;
-  const href = anchor.getAttribute('href') ?? '';
-  return href.startsWith('/') && !href.startsWith('//') ? href : null;
 }
 
 export function Shell(props: ShellProps): ReactElement {
@@ -211,6 +205,11 @@ export function Shell(props: ShellProps): ReactElement {
             {...(mark.placing ? { 'data-placing': '' } : {})}
           />
         </div>
+        {/* The version stamp's one fixed place. The browser rows read
+            `data-build` here and match it against the served build. */}
+        <p className="rail__build" data-build={props.build ?? ''}>
+          {props.build === null ? 'Build not stamped' : `Build ${props.build}`}
+        </p>
       </nav>
       {open && onToggle !== undefined ? (
         <div

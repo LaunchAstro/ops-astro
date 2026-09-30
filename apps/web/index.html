@@ -3,46 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- S0-6c: only this origin's script files run. First, ahead of every
+      script; the dev server drops it (vite.config.ts). -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'"
+    />
     <title>Ops Astro</title>
-    <!--
-      The theme, before first paint. A classic inline script in the head runs
-      while the parser reads it, ahead of every stylesheet and module, so the
-      first frame already carries data-theme and a dark system never flashes
-      white. A preference is handed to it as data-theme-preference on this
-      element (light, dark or system); anything else follows the system, and
-      keeps following it. Setting the attribute later goes through this same
-      step. With none handed over, the tab's copy of the person's stored
-      appearance (MP-2-11, apps/web/src/appearance.ts) is replayed, so a
-      reload opens in the chosen theme.
-    -->
-    <script>
-      (function () {
-        var root = document.documentElement;
-        var system = window.matchMedia('(prefers-color-scheme: dark)');
-        if (!root.hasAttribute('data-theme-preference')) {
-          var kept = null;
-          try {
-            kept = window.sessionStorage.getItem('ops-astro.appearance');
-          } catch (e) {
-            kept = null;
-          }
-          if (kept === 'light' || kept === 'dark' || kept === 'system') {
-            root.setAttribute('data-theme-preference', kept);
-          }
-        }
-        function apply() {
-          var chosen = root.getAttribute('data-theme-preference');
-          var dark = chosen === 'dark' || (chosen !== 'light' && system.matches);
-          root.setAttribute('data-theme', dark ? 'dark' : 'light');
-        }
-        apply();
-        system.addEventListener('change', apply);
-        new MutationObserver(apply).observe(root, {
-          attributes: true,
-          attributeFilter: ['data-theme-preference'],
-        });
-      })();
-    </script>
+    <!-- The theme, before first paint (MP-1-1): theme-before-paint.js. -->
+    <script src="/theme-before-paint.js"></script>
     <!--
       No font link and no icon stylesheet. The pinned estate pulls Funnel Sans,
       Funnel Display, Chivo Mono and the Flaticon rounded set from two content

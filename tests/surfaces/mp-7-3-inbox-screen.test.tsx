@@ -54,7 +54,7 @@ function served(owed: number): { client: OperationsClient; calls: string[] } {
   const client = new OperationsClient({
     origin: 'http://api.test',
     businessKey: 'alpha',
-    token: 'token',
+    signedIn: true,
     fetch: (url) => {
       const path = new URL(String(url)).pathname;
       calls.push(path);
@@ -100,7 +100,12 @@ describe('MP-7-3 inbox one list', () => {
     ]);
     // The owed figure is inbox.count's, never a tally of the rows drawn.
     expect(view.find('.nt__sum b')?.textContent).toBe('2');
-    expect(calls.toSorted()).toEqual(['/api/b/alpha/inbox/count', '/api/b/alpha/inbox/read']);
+    // Beside the two reads, only the tab's live stream (C4 notifications live).
+    expect(calls.toSorted()).toEqual([
+      '/api/b/alpha/inbox/count',
+      '/api/b/alpha/inbox/read',
+      '/api/b/alpha/live',
+    ]);
 
     // A row opens its own task through the application's navigation.
     await view.click('a[href="/task/T-1"]');
