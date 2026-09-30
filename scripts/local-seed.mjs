@@ -110,9 +110,6 @@ const GRANTS_BY_ROLE = {
     // `inbox.unattended` asks `operations:read` too (INB-1e), and it names
     // other people's items.
     ['operations', 'read'],
-    // S0-5 (0062): the first-client gate's own commands; only the operating
-    // business's grant moves it.
-    ['operations', 'manage'],
     ['privacy', 'manage'],
     // An agent credential of their own (API-2): the owner and administrators
     // hold `credential:write` on install.
