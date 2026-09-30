@@ -116,6 +116,7 @@
     "AW-03 (SL12, session 12) names aw-03-origin (the origin setter: a task created from the owner's conversation names it on its creation audit event, one created without names none; another person's, another business's or a made-up conversation NOT_FOUND alike and no task made; a client and an agent refused; the wrap-up's tasks created counts and points at them) as conformance",
     "C54 (SL12, session 10) names c54-isolation (the three money acts on an unknown effect and the top-up, across another business, another client in the same business and the agent under a live delegation, statuses checked, no foreign task, attempt, hold or envelope id in any body, the hold unmoved) as an invariant, and c54-money (refusal billing:decide, audit readback of each act on an intact chain, and the top-up approver with two approvers at once) as conformance",
     "SL11-23 names aw-04-pin-ledger-cli (AW-04 pin and ledger on the command line: a pinned run's node on task.execution names its file by digest and size, every read in order and the set digest, the CLI process against the served API printing the app route's answer whole; an unpinned run reads null) as an invariant. Not named: tests/reads/aw-11-child-placement.test.ts is a pure projection suite and opens no database.",
+    "SL11-24 names aw-04-missing-audit-copy (AW-04 missing audit copy: a copy the store refuses keeps the read, its ledger row and its audit event, and raises one outage row per business and digest on task.queue, cause audit_copy_missing, fault ours; its isolation case crosses another business, another client and another person's agent) as an invariant.",
     "SL11-16 leaves aw-13-local-target.test.ts unnamed: it opens a database only against a running local trace target (TRACE_TARGET_ENV_FILE from scripts/local/trace-target.ts up), which the required checks never start; aw-13-switch.test.ts is named as an invariant.",
     "T4e REV185B2: role-case-matrix-fixture-clients proves T4-N2's matrix world holds T4a's two clients with one record grant each in both businesses, and role-case-matrix gains the client-to-client case (another client's task, in either business, answers as an id never issued). t2g-decide-parity's crossing now also finds the undecided gate holding its task open (GATE_PENDING on both surfaces) before the grant holder decides; t3f-expired-lease's business crossing settles its own expired lease marked expired."
   ],
@@ -342,6 +343,7 @@
     "tests/runtime/aw-04-accept-command.test.ts",
     "tests/runtime/aw-04-accept-isolation.test.ts",
     "tests/runtime/aw-04-pin-recovery.test.ts",
+    "tests/runtime/aw-04-missing-audit-copy.test.ts",
     "tests/broker/aw-01-model-call.test.ts",
     "tests/broker/aw-05-budget-wait-isolation.test.ts",
     "tests/broker/aw-05-budget-wait.test.ts",
