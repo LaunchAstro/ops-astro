@@ -16,8 +16,9 @@
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import type { Browser, BrowserContext, Page, Route } from 'playwright';
-import { fontCache, readAssets, type Packet } from './packet.ts';
+import type { Browser, BrowserContext, BrowserContextOptions, Page, Route } from 'playwright';
+import { routeRules, sourceOf } from './mockup-routes.ts';
+import { fontCache, readAssets, type Packet, type Theme } from './packet.ts';
 
 export type State = {
   id: string;
@@ -37,7 +38,12 @@ export type Catalogue = {
   drift: { state: string; control: string; token: string };
   states: State[];
 };
-export type Side = { context: BrowserContext; external: Set<string>; unresolved: Set<string> };
+export type Side = {
+  context: BrowserContext;
+  theme: Theme;
+  external: Set<string>;
+  unresolved: Set<string>;
+};
 
 export const MOCKUP_ORIGIN = 'http://mockup.invalid';
 const ASSET_ORIGIN = 'http://assets.invalid';
@@ -74,43 +80,84 @@ function serveMockup(
   blobs: Map<string, Buffer>,
   side: Side,
 ): Promise<void> {
-  const path = url.pathname.endsWith('/') ? `${url.pathname}index.html` : url.pathname;
-  let bytes = blobs.get(path);
-  if (bytes === undefined) {
+  const blob = (file: string): Buffer | undefined => {
+    const kept = blobs.get(file);
+    if (kept !== undefined) return kept;
     try {
-      bytes = execFileSync(
+      const bytes = execFileSync(
         'git',
-        ['-C', source.mockupDir, 'cat-file', 'blob', `${source.tree}:${path.slice(1)}`],
+        ['-C', source.mockupDir, 'cat-file', 'blob', `${source.tree}:${file.slice(1)}`],
         { stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 },
       );
+      blobs.set(file, bytes);
+      return bytes;
     } catch {
-      side.unresolved.add(url.href);
-      return route.fulfill({ status: 404, body: '' });
+      return undefined;
     }
-    blobs.set(path, bytes);
+  };
+  let path = url.pathname.endsWith('/') ? `${url.pathname}index.html` : url.pathname;
+  let bytes = blob(path);
+  if (bytes === undefined) {
+    // A canonical address has no file of its own: its source draws it (routes.json).
+    const manifest = blob('/routes.json');
+    const rules = manifest === undefined ? [] : routeRules(JSON.parse(manifest.toString('utf8')));
+    const file = sourceOf(url.pathname, rules, (one) => blob(one) !== undefined);
+    if (file !== undefined) [path, bytes] = [file, blob(file)];
+  }
+  if (bytes === undefined) {
+    side.unresolved.add(url.href);
+    return route.fulfill({ status: 404, body: '' });
   }
   return route.fulfill({ body: bytes, contentType: typeOf(path) });
 }
 
-/** One side of the comparison: the mockup, or the app at a local address. */
-export async function openSide(
-  browser: Browser,
-  packet: Packet,
-  width: number,
-  source: { mockupDir: string; tree: string } | { app: URL },
-): Promise<Side> {
-  const context = await browser.newContext({
+/** The browser context one capture draws in: the packet's viewport at one width, in one theme. */
+export function contextOptions(packet: Packet, width: number, theme: Theme): BrowserContextOptions {
+  return {
     viewport: { width, height: packet.height },
     deviceScaleFactor: 1,
-    colorScheme: 'light',
+    // The app takes its theme from the system setting before first paint (MP-1-1).
+    colorScheme: theme,
     reducedMotion: 'reduce',
     locale: 'en-AU',
     timezoneId: 'Australia/Brisbane',
     serviceWorkers: 'block',
-  });
-  const side: Side = { context, external: new Set(), unresolved: new Set() };
+  };
+}
+
+/**
+ * A signed-in local fixture session (T4b1), given as a Playwright storage-state
+ * file. The app keeps its session in `sessionStorage`, which storage state does
+ * not carry, so the file's storage entries for the app's own origin are the
+ * session store's contents: they are set in `sessionStorage` before the app's
+ * first script runs, and never in `localStorage`. Its cookies are kept.
+ */
+function sessionOf(
+  file: string,
+  origin: string,
+): { cookies: StorageState['cookies']; entries: [string, string][] } {
+  const state = JSON.parse(readFileSync(file, 'utf8')) as StorageState;
+  const entries = state.origins
+    .filter((one) => one.origin === origin)
+    .flatMap((one) => one.localStorage.map((item): [string, string] => [item.name, item.value]));
+  if (entries.length === 0) {
+    throw new Error(`visual: the session file holds no session for ${origin}`);
+  }
+  return { cookies: state.cookies, entries };
+}
+type StorageState = {
+  cookies: Exclude<BrowserContextOptions['storageState'], string | undefined>['cookies'];
+  origins: { origin: string; localStorage: { name: string; value: string }[] }[];
+};
+
+type SideSource =
+  | { mockupDir: string; tree: string; theme?: Theme | undefined }
+  | { app: URL; session?: string | undefined; colorScheme?: Theme | undefined };
+
+/** Each request a side makes: bundled fonts, pinned sheets, its own origin, or refused. */
+function routeOf(packet: Packet, source: SideSource, side: Side): (route: Route) => Promise<void> {
   const blobs = new Map<string, Buffer>();
-  await context.route('**/*', (route: Route) => {
+  return (route: Route) => {
     const url = new URL(route.request().url());
     const known = packet.external[url.href];
     if (url.origin === ASSET_ORIGIN) {
@@ -128,17 +175,48 @@ export async function openSide(
     }
     side.unresolved.add(url.href);
     return route.abort('blockedbyclient');
+  };
+}
+
+/** One side of the comparison: the mockup, or the app at a local address. */
+export async function openSide(
+  browser: Browser,
+  packet: Packet,
+  width: number,
+  source: SideSource,
+): Promise<Side> {
+  // Light unless the side names its theme (the app's by colour scheme, the mockup's by its key).
+  const theme: Theme = ('app' in source ? source.colorScheme : source.theme) ?? 'light';
+  const session =
+    'app' in source && source.session !== undefined
+      ? sessionOf(source.session, source.app.origin)
+      : undefined;
+  const context = await browser.newContext({
+    ...(session === undefined ? {} : { storageState: { cookies: session.cookies, origins: [] } }),
+    ...contextOptions(packet, width, theme),
   });
+  const side: Side = { context, theme, external: new Set(), unresolved: new Set() };
+  await context.route('**/*', routeOf(packet, source, side));
+  if (session !== undefined && 'app' in source) {
+    await context.addInitScript(
+      ({ origin, entries }: { origin: string; entries: [string, string][] }) => {
+        if (location.origin !== origin) return;
+        for (const [key, value] of entries) sessionStorage.setItem(key, value);
+      },
+      { origin: source.app.origin, entries: session.entries },
+    );
+  }
+  // The mockup takes its theme from its own stored key.
   if ('mockupDir' in source) {
     await context.addInitScript(
-      (key: string) => localStorage.setItem(key, 'light'),
-      packet.themeKey,
+      ([key, value]: [string, Theme]) => localStorage.setItem(key, value),
+      [packet.themeKey, theme] as [string, Theme],
     );
   }
   return side;
 }
 
-/** Loads a page at the fixed clock, with the bundled faces proved in use. */
+/** Loads a page at the fixed clock, with the bundled faces and the side's theme proved in use. */
 export async function load(
   side: Side,
   packet: Packet,
@@ -163,6 +241,17 @@ export async function load(
   }, families);
   if (missing.length > 0) {
     throw new Error(`visual: ${url} did not resolve ${missing.join(', ')} to a bundled face`);
+  }
+  // Each capture is proved to draw in its side's theme: the mockup marks the
+  // body, the app the root element, before first paint. A page that marks no
+  // theme (the drift mode's made-up pages) is its caller's to prove: the
+  // app-only drift mode compares it with its light drawing.
+  const drawn = await page.evaluate(
+    // oxlint-disable-next-line unicorn/prefer-dom-node-dataset -- null, not undefined, when unmarked: the form REV155P3C's test reads
+    () => document.body.dataset['theme'] ?? document.documentElement.getAttribute('data-theme'),
+  );
+  if (drawn !== null && drawn !== side.theme) {
+    throw new Error(`visual: ${url} drew in ${String(drawn)}, not ${side.theme}`);
   }
   // A state behind a tab or a disclosure is opened the way a person would.
   if (prep.open !== undefined) await page.locator(prep.open).first().click();
