@@ -118,17 +118,6 @@ describe('MP-5-8 open beside, from the Projects screen', () => {
     }
   });
 
-  it('the board route hands its rows the application’s panel host, so a click opens beside', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    try {
-      const { board, opened } = await screen(0, true);
-      await press(board.host.querySelector(NAME(A)));
-      expect(opened).toStrictEqual([['TSK-1', 'open', undefined]]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it('the name is a link, so the keyboard reaches it and Enter opens it', async () => {
     const { board } = await screen();
     const link = board.host.querySelector(NAME(A));
@@ -211,5 +200,18 @@ describe('MP-5-8 comment badge door, beside the board', () => {
     expect(mounted.all('[data-panel-door="reply"]')).toStrictEqual([
       mounted.host.querySelector('tr[data-row="b"] .cbd__cmt'),
     ]);
+  });
+});
+
+describe('MP-5-8 open beside, from the application’s board route', () => {
+  it('the board route hands its rows the application’s panel host, so a click opens beside', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { board, opened } = await screen(0, true);
+      await press(board.host.querySelector(NAME(A)));
+      expect(opened).toStrictEqual([['TSK-1', 'open', undefined]]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
