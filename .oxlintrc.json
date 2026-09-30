@@ -15,6 +15,14 @@
   "overrides": [
     { "files": ["tests/review/sl01-s06-proof.test.ts"], "rules": { "no-await-in-loop": "off" } },
     {
+      "files": ["tests/api/live-board-lost-access.test.ts"],
+      "rules": {
+        "no-await-in-loop": "off",
+        "unicorn/no-immediate-mutation": "off",
+        "max-lines-per-function": "off"
+      }
+    },
+    {
       "files": ["tests/ci/staging-special-objects.test.ts"],
       "rules": { "max-lines-per-function": "off" }
     },
