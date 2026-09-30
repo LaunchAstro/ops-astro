@@ -91,12 +91,8 @@ const SENSITIVE = [
 ];
 
 const changed =
-  process.env['CHANGED_FILES'] !== undefined
-    ? process.env['CHANGED_FILES']
-        .split('\n')
-        .map((f) => f.trim())
-        .filter(Boolean)
-    : (() => {
+  process.env['CHANGED_FILES'] === undefined
+    ? (() => {
         const base = process.env['BASE_SHA'];
         if (base === undefined || base === '') return [];
         const mergeBase = execFileSync('git', ['merge-base', base, head], {
@@ -108,7 +104,11 @@ const changed =
           .split('\n')
           .map((f) => f.trim())
           .filter(Boolean);
-      })();
+      })()
+    : process.env['CHANGED_FILES']
+        .split('\n')
+        .map((f) => f.trim())
+        .filter(Boolean);
 
 // The builder's models: every commit's `Agent-model:` trailer in the range.
 const base = process.env['BASE_SHA'] ?? '';
