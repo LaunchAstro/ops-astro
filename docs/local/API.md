@@ -921,6 +921,10 @@ run stops and asks in the same transaction (AW-05, the budget wait in
 is refused as an ended lease is. `RATE_LIMITED` writes nothing and answers two ceilings,
 each counting a call from its hold until it ends: the business's own per
 operation, and its fair share of the route's, which is the installation's.
+The business's own is a durable limit (`hasRoom`, `core-records/src/tenancy/limit.ts`):
+a count read back from the records under a lock keyed by the business, against
+its maximum, held to commit. It is the one limiter: C33's occurrence rates and
+run ceiling reuse it with their own counts.
 A business with calls in flight on a route holds no more than the route's
 ceiling divided by the businesses in flight there, itself counted. The share
 is read through `model_route_room` ([DATA.md](DATA.md), "What the tenancy proofs are"),

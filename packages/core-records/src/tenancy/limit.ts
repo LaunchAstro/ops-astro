@@ -3,7 +3,7 @@
 // AW-01's durable limit, the one limiter: a count read back from the records
 // under a lock, against its maximum.
 
-import type { TenantQuery } from './database.ts';
+import { advisoryLock, type TenantQuery } from './database.ts';
 
 /** One limit: what it counts, read from the records inside the transaction, and at most how many. */
 export interface DurableLimit {
@@ -13,9 +13,22 @@ export interface DurableLimit {
   readonly count: (tx: TenantQuery) => Promise<number>;
 }
 
-export async function hasRoom(
-  _tx: TenantQuery,
-  _limits: readonly DurableLimit[],
-): Promise<boolean> {
+/**
+ * Whether one more fits under every limit. Each count is read after its lock,
+ * so it sees what a transaction that held the lock before committed, and the
+ * lock is held to commit: the caller writes the thing counted before it ends.
+ * Limits lock in the order given. The key names the business, so a business
+ * at its limit never delays another. A limit that is not a whole number of at
+ * least 1 has no room.
+ */
+export async function hasRoom(tx: TenantQuery, limits: readonly DurableLimit[]): Promise<boolean> {
+  for (const { name, limit, count } of limits) {
+    if (!Number.isSafeInteger(limit) || limit < 1) return false;
+    // Sequential: each limit's lock, then its count, in the order given.
+    // eslint-disable-next-line no-await-in-loop
+    await advisoryLock(tx, `limit:${tx.businessId}:${name}`);
+    // eslint-disable-next-line no-await-in-loop
+    if ((await count(tx)) >= limit) return false;
+  }
   return true;
 }
