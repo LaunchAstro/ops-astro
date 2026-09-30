@@ -54,18 +54,39 @@ export function offEgress(
   return undefined;
 }
 
-/** Not paced yet (NATHAN-GLITCHTIP 4): the next commit decides it. */
-export function heartbeatEvery(
-  _env: Readonly<Record<string, string | undefined>>,
-): number | string {
-  return 0;
+const EVERY = 'OPS_HEARTBEAT_EVERY_MS';
+
+/**
+ * The least time between two pings to one address (`OPS_HEARTBEAT_EVERY_MS`),
+ * so a free watcher's budget holds (NATHAN-GLITCHTIP 4); 0 when unset or empty,
+ * every pass pinging as before. A malformed value, as words naming the setting.
+ */
+export function heartbeatEvery(env: Readonly<Record<string, string | undefined>>): number | string {
+  const value = env[EVERY] ?? '';
+  if (value === '') return 0;
+  if (!/^[0-9]+$/u.test(value)) return `${EVERY} is not a whole number of milliseconds`;
+  return Number(value);
 }
 
-/** Not paced yet: every call sends. */
+/**
+ * `send`, but an address pinged `sent` less than `every` ago is not asked
+ * again (`not due`). Only a sent ping starts the wait, so after a failure the
+ * next pass tries again.
+ */
 export function paced(
-  _every: number,
+  every: number,
   send: (address: string | undefined) => Promise<string> = ping,
-  _now: () => number = Date.now,
+  now: () => number = Date.now,
 ): (address: string | undefined) => Promise<string> {
-  return send;
+  if (every <= 0) return send;
+  const last = new Map<string, number>();
+  return async (address) => {
+    const key = address ?? '';
+    const at = now();
+    const before = last.get(key);
+    if (before !== undefined && at - before < every) return 'not due';
+    const outcome = await send(address);
+    if (outcome === 'sent') last.set(key, at);
+    return outcome;
+  };
 }
