@@ -8,7 +8,8 @@
 // On one scratch branch in a disposable worktree, installed once from the
 // store, it first runs every check unmutated, which must be green, then:
 //   T4-N1  deletes the newest migration: `migrations:unchanged` names it;
-//   T4-N2  declares an operation no handler serves: the isolation matrix fails;
+//   T4-N2  declares an operation no handler serves: the isolation matrix, on
+//          T4a's clients (tests/acceptance/role-case-clients.ts), fails;
 //   T4-N3  a registry entry with no screen, a duplicate route id and a changed
 //          pinned-mockup byte each fail their own check, told apart by name;
 //   T4-N4  reverts each T2 and T3 part and reruns its invariant: it goes red;
