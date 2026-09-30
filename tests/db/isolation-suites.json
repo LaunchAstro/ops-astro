@@ -25,6 +25,8 @@
     "tests/commands/task-conversation.test.ts",
     "tests/commands/task-conversation-signals.test.ts",
     "tests/commands/task-writing.test.ts",
-    "tests/commands/task-writing-agent.test.ts"
+    "tests/commands/task-writing-agent.test.ts",
+    "tests/commands/task-panel-fields.test.ts",
+    "tests/commands/task-panel-fields-agent.test.ts"
   ]
 }

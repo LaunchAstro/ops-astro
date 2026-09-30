@@ -44,6 +44,7 @@ import {
   type PanelDoor,
   type Perspective,
 } from './Perspectives.tsx';
+import { PanelFields } from './PanelFields.tsx';
 import { withPageDefaults } from './read-defaults.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
 import { HandlingTicks } from './Ticks.tsx';
@@ -111,6 +112,12 @@ function PanelBody(props: TaskPanelProps & { readonly task: Task }): ReactElemen
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
       <PanelHead task={task} onClose={props.onClose} />
+      <PanelFields
+        client={client}
+        grantKey={props.grantKey}
+        task={task}
+        onChanged={props.onChanged}
+      />
       <TaskFacts task={task} />
       <HandlingTicks client={client} task={task} onChanged={props.onChanged} />
       <Perspectives
@@ -210,7 +217,9 @@ function PanelHead(props: { readonly task: Task; readonly onClose: () => void })
   return (
     <div className="dtp__head">
       <h2 className="t-title" data-panel-title>
-        {task.title}
+        <button className="btn btn--ghost" type="button" data-panel-field="name">
+          {task.title}
+        </button>
       </h2>
       <button
         className="btn"
