@@ -54,7 +54,7 @@
 // collapse the identity model exists to prevent, and it would put the
 // delegating person's identity on the agent's audit rows.
 
-import { admitQuota, resolveAgentLogin } from '../../../core-records/src/index.ts';
+import { admitAgentQuota, resolveAgentLogin } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -132,12 +132,7 @@ export async function executeAgentCommand(
         // that exists for exactly this case (AUTHORITY.md, "every attempt at
         // the door").
         if ('refused' in session) return asCallerVisible(session);
-        // Charged once admitted, as on the person path (`identity/quota.ts`):
-        // the agent's login, and the agent actor it acts as.
-        const overQuota = await admitQuota(tx, 'agent_login', presented, {
-          credential: session.loginId,
-          person: session.actorId,
-        });
+        const overQuota = await admitAgentQuota(tx, presented, session);
         if (overQuota !== undefined) return overQuota;
         return await runAgentCommand(tx, { session, credential, request });
       }),

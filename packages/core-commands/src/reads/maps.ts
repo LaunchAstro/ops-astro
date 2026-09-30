@@ -56,12 +56,8 @@ function componentView(row: ComponentRow): MapComponentView {
   return { id: row.id, kind: row.kind, text: row.body, ticketId: row.ticket_id };
 }
 
-/**
- * Decisions so far: the map's completed tickets in closing order, rendered,
- * never stored. A ticket ruled out of scope is not a step on the route: it is
- * an Out of scope item and stays out of Decisions so far (the wayfinder
- * skill's "Out of scope"; CS-15.6).
- */
+/** Decisions so far: the map's completed tickets in closing order, rendered, never stored. */
+// One ruled out of scope is an Out of scope item and stays out (the wayfinder skill; CS-15.6).
 function decisionsSoFar(tickets: readonly TicketRow[]): MapView['decisions'] {
   return tickets
     .filter((ticket) => ticket.category === 'completed' && ticket.closed_as !== 'out_of_scope')

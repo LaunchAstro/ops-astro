@@ -227,3 +227,16 @@ export async function admitQuota(
   });
   return taken.refusal;
 }
+
+/**
+ * `admitQuota` for an agent's login, charged once admitted as on the person
+ * path: to the agent's login, and to the agent actor it acts as.
+ */
+export async function admitAgentQuota(
+  tx: TenantQuery,
+  presented: VerifiedSubject,
+  session: { readonly loginId: string; readonly actorId: string },
+): Promise<QuotaRefusal | undefined> {
+  const holders = { credential: session.loginId, person: session.actorId };
+  return await admitQuota(tx, 'agent_login', presented, holders);
+}

@@ -55,6 +55,7 @@ export {
 export { recordBodyRefusal } from './identity/authentication-attempts.ts';
 export {
   admitQuota,
+  admitAgentQuota,
   createQuotaGate,
   QUOTAS,
   withQuotaScope,

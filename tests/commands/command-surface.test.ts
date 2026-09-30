@@ -87,23 +87,26 @@ describe('the surface as a table', () => {
   });
 });
 
+/** The thirteen reads the surface declares, sorted. */
+const DECLARED_READS = [
+  'map.frontier',
+  'map.status',
+  'map.view',
+  'person.list',
+  'preset.plan',
+  'session.capabilities',
+  'settings.read',
+  'task.board',
+  'task.context',
+  'task.execution',
+  'task.queue',
+  'task.read',
+  'task.receipt',
+];
+
 describe('the surface as a table', () => {
   it('declares the thirteen reads as reads, and everything else as a write', () => {
-    expect([...READS].toSorted()).toStrictEqual([
-      'map.frontier',
-      'map.status',
-      'map.view',
-      'person.list',
-      'preset.plan',
-      'session.capabilities',
-      'settings.read',
-      'task.board',
-      'task.context',
-      'task.execution',
-      'task.queue',
-      'task.read',
-      'task.receipt',
-    ]);
+    expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
       // A read has nothing to be stale against. It does not always take the

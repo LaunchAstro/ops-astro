@@ -24,6 +24,8 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { Envelope, Targeted } from './request-envelope.ts';
+import type { WayfinderRequest } from './requests-wayfinder.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -52,18 +54,6 @@ export function hasIdentity(request: UncheckedRequest): request is IdentifiedReq
   return typeof request.operationId === 'string' && OPERATION_ID.test(request.operationId);
 }
 
-// Type aliases rather than interfaces, so each member of the union is also an
-// `UncheckedRequest`: a parsed request is still the body it was parsed from.
-type Envelope = {
-  /** The repeat-request identity. Required on every command in the surface. */
-  readonly operationId: string;
-};
-
-type Targeted = Envelope & {
-  readonly recordId: string;
-  readonly expectedRevision?: number;
-};
-
 export type CommandRequest =
   | ({
       readonly command: 'task.create';
@@ -75,41 +65,7 @@ export type CommandRequest =
       /** The ticket type (WF-1); `task` when absent. Checked by value in the handler. */
       readonly taskType?: unknown;
     } & Envelope)
-  // Wayfinder (WF-1). Each operand is `any` on its row and checked by value
-  // in its `wayfinder*.ts` handler, so the refusal names the operand in its own words.
-  | ({ readonly command: 'task.set_type'; readonly taskType: unknown } & Targeted)
-  | ({
-      readonly command: 'map.revise';
-      readonly destination?: unknown;
-      readonly notes?: unknown;
-      readonly addFog?: unknown;
-      readonly addOutOfScope?: unknown;
-      readonly retire?: unknown;
-    } & Targeted)
-  | ({ readonly command: 'map.scope'; readonly client: unknown } & Targeted)
-  | ({
-      readonly command: 'map.chart';
-      readonly title?: unknown;
-      readonly destination?: unknown;
-      readonly notes?: unknown;
-      readonly tickets?: unknown;
-      readonly fog?: unknown;
-      readonly outOfScope?: unknown;
-      readonly preAnswers?: unknown;
-    } & Envelope)
-  | ({ readonly command: 'task.set_blocking'; readonly blockedBy: unknown } & Targeted)
-  | ({ readonly command: 'task.claim' } & Targeted)
-  | ({
-      readonly command: 'map.graduate';
-      readonly patchId: unknown;
-      readonly tickets: unknown;
-    } & Targeted)
-  | ({
-      readonly command: 'task.resolve';
-      readonly answer: unknown;
-      readonly gist: unknown;
-    } & Targeted)
-  | ({ readonly command: 'task.close_out_of_scope'; readonly reason?: unknown } & Targeted)
+  | WayfinderRequest
   | ({ readonly command: 'task.update'; readonly fields: FieldValues } & Targeted)
   | ({ readonly command: 'task.complete' } & Targeted)
   | ({ readonly command: 'task.reopen'; readonly reason: string } & Targeted)

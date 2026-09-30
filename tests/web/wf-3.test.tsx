@@ -145,8 +145,7 @@ describe.skipIf(serverUrl === undefined)('WF-3 the map view', () => {
   it('WF-3 each Decisions so far line links its ticket', async () => {
     const { key, settled, settledKey } = await fullMap('linked');
     const page = await openMap(lead, key);
-    // Only the resolved ticket is a decision: one closed out of scope stays
-    // out of Decisions so far (the wayfinder skill's "Out of scope", CS-15.6).
+    // Only the resolved ticket is a decision; one closed out of scope is not (CS-15.6).
     const lines = page.all('[data-map-section="decisions"] li');
     expect(lines.length).toBe(1);
     for (const line of lines) expect(line.querySelector('a')).not.toBeNull();
