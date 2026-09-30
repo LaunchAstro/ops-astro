@@ -83,10 +83,12 @@ export { planPresetSync, type PresetField, type PresetPlan } from './records/pre
 export { isRecordsRefusal, type RecordsRefusal } from './records/refusals.ts';
 export {
   audienceNotPermitted,
-  CALLER_VISIBLE,
   fourEyesRequired,
   gateAlreadyDecided,
   gatePending,
+} from './gate-refusals.ts';
+export {
+  CALLER_VISIBLE,
   isCommandRefusal,
   REFUSAL_REGISTER,
   refuseCommand,

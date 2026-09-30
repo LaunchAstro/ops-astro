@@ -13,8 +13,8 @@ import {
   fourEyesRequired,
   gateAlreadyDecided,
   gatePending,
-  UNPRODUCED_CODES,
-} from '../../packages/core-records/src/register.ts';
+} from '../../packages/core-records/src/gate-refusals.ts';
+import { UNPRODUCED_CODES } from '../../packages/core-records/src/register.ts';
 
 describe('T2g the gate codes have production constructors', () => {
   it.each([
