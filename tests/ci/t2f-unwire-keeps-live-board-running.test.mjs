@@ -10,7 +10,6 @@ import { PARTS, revertPart } from './self-test/mutations.ts';
 
 const root = resolve(import.meta.dirname, '../..');
 
-// eslint-disable-next-line max-lines-per-function -- a review proof, its body kept byte for byte
 test('T2f unwire keeps the INB-1 live board running', () => {
   const container = process.env.FIXTURE_PG_CONTAINER;
   const databaseUrl = process.env.DATABASE_URL;
