@@ -23,9 +23,12 @@ name: review evidence
 # The trigger is `pull_request`, never its `_target` form: the token stays
 # read-only and no secret reaches the pull request's code.
 
+# `labeled` and `unlabeled`: the `needs-sol` label is half of the owed mark
+# that may stand in for Sol's record (owner, 1 October 2026), so a label
+# change can change the verdict too.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
 
 # Issue 151: `issues: read` lets the job list open issues, so a follow-up
 # outcome can be held to one. Without it GitHub's listing gave this token pull
@@ -70,8 +73,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: The checker's own cases
         run: bash tests/ci/review-evidence-cases.sh
-      # The body as it stands when it is judged, not the event's copy: a run
-      # queued before an edit must not judge the old body.
+      # The body and the labels as they stand when they are judged, not the
+      # event's copy: a run queued before an edit or a label change must not
+      # judge the old ones.
       - name: Read the description as it stands now
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,6 +85,7 @@ jobs:
         # outcome can be held to one. The check itself gets no token.
         run: |
           gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${RUNNER_TEMP}/pr-body.md"
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '(.labels // [])[].name' > "${RUNNER_TEMP}/pr-labels.txt"
           gh api --paginate "repos/${REPO}/issues?state=open&per_page=100" \
             --jq '.[] | select(.pull_request == null) | .number' > "${RUNNER_TEMP}/open-issues.txt"
       - name: The review must cover the head being merged
@@ -89,4 +94,5 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           OPEN_ISSUES="$(cat "${RUNNER_TEMP}/open-issues.txt")" \
+            PR_LABELS="$(cat "${RUNNER_TEMP}/pr-labels.txt")" \
             PR_BODY="$(cat "${RUNNER_TEMP}/pr-body.md")" node scripts/review-evidence-check.mjs
