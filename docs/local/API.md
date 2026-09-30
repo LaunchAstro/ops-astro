@@ -1797,10 +1797,16 @@ owed. Sign-in never reads the key (`apps/api/server.ts`, `providerAdminKey`,
 `goTrueLogins`). Every answer is shaped as C59's are
 (`apps/api/auth/logins.ts`): one destination, no redirect, a time limit the
 answer cannot stretch, a size limit, a shape per call; anything else is a fault
-by its kind and the step stays owed. The route tries the act's own endings as
-soon as it commits; the server retries every owed ending each
-`ACCESS_ENDING_RETRY_SECONDS` (60), business by business under each one's
-tenancy (`retryAccessEndings`). A 30-second claim on the row stops two retries
+by its kind and the step stays owed. Where the server holds the provider key (the local server), the route tries
+the act's own endings as soon as it commits. Hosted, the Vercel function holds
+neither the key nor the owner login, and the endings loop (`pnpm endings`,
+`apps/endings`, on the environment's machine beside the forwarder) asks for
+every owed step each `ACCESS_ENDING_RETRY_SECONDS` (60): it reads business ids
+and the shared check on the owner login only, and settles business by
+business on the application login under each one's tenancy
+(`retryAccessEndings`). It refuses to start without `DATABASE_URL`,
+`DATABASE_ADMIN_URL`, `GOTRUE_URL` (https or loopback) and
+`SUPABASE_SERVICE_KEY`. A 30-second claim on the row stops two retries
 calling the provider at once, and a step done is stamped once and never asked
 again (`settleAccessEndings`, `commands/access-end.ts`).
 

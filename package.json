@@ -85,6 +85,7 @@
     "cli": "node apps/cli/main.ts",
     "worker": "node apps/worker/main.ts",
     "forwarder": "node scripts/ops/forwarder.mjs",
+    "endings": "node apps/endings/main.ts",
     "verify:identity": "node scripts/local/identity-check.mjs"
   },
   "dependencies": {

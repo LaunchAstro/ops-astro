@@ -36,12 +36,10 @@
 // slice.
 
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { sign } from 'hono/jwt';
 import {
   connect,
   connectAsAdmin,
@@ -63,9 +61,7 @@ import {
   executeAgentCommand,
   executeCommand,
   executeRead as readExecutor,
-  settleAccessEndings,
   type LoginProvider,
-  type ProviderAnswer,
 } from '../../packages/core-commands/src/index.ts';
 import {
   CRASH_POINT_VARIABLE,
@@ -76,7 +72,7 @@ import {
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createGoTrueFactors } from './auth/factors.ts';
 import { createLangfuseHealth } from './health/tracing.ts';
-import { createGoTrueLogins } from './auth/logins.ts';
+import { goTrueLogins, providerAdminKey } from './auth/provider-logins.ts';
 import {
   createSupabaseVerifier,
   keySetUrlFor,
@@ -313,8 +309,15 @@ export function composeApi(config: ApiConfig): ComposedApi {
       factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
       ...(config.sessionEnds === undefined ? {} : { sessionEnds: config.sessionEnds }),
       logins,
-      sharedLogin: async (subject, businessId) =>
-        await loginLiveElsewhere(admin, subject, businessId),
+      // Only where a provider key is held (the local server): the Vercel
+      // function has none, so it asks the owner nothing and leaves every
+      // provider step to the endings loop (ORCH47).
+      ...(config.providerAdminKey === undefined
+        ? {}
+        : {
+            sharedLogin: async (subject: string, businessId: string) =>
+              await loginLiveElsewhere(admin, subject, businessId),
+          }),
       // C34: tracing where switched on; the watcher and error sink are C29's.
       health:
         config.tracingUrl === undefined
@@ -340,85 +343,6 @@ export function composeApi(config: ApiConfig): ComposedApi {
   });
 
   return { app: server, logins, resolveBusiness };
-}
-
-/** A local GoTrue: the only issuer a key minted from the checkout's own may reach. */
-const LOOPBACK_ISSUER = /^http:\/\/127\.0\.0\.1:\d+(?:\/|$)/u;
-
-/**
- * C58's admin key (ORCH44 21:13Z): `SUPABASE_SERVICE_KEY`, batch 1's admin
- * credential (hosted, the project's service key), for an `https` or loopback
- * issuer only. On a local stack with none
- * set, a five-minute `service_role` bearer signed with the local auth key in
- * `localDirectory`, minted per call, as the seed tools make it. Otherwise none.
- */
-export function providerAdminKey(
-  environment: Readonly<Record<string, string | undefined>>,
-  localDirectory: string,
-): (() => Promise<string>) | undefined {
-  const issuer = environment['GOTRUE_URL'] ?? '';
-  const loopback = LOOPBACK_ISSUER.test(issuer);
-  const key = environment['SUPABASE_SERVICE_KEY'] ?? '';
-  // Never in clear text: a hosted issuer is reached over TLS or not at all.
-  if (key !== '')
-    return loopback || issuer.startsWith('https://') ? () => Promise.resolve(key) : undefined;
-  const file = join(localDirectory, 'auth-signing-key.json');
-  if (!loopback || !existsSync(file)) return undefined;
-  return async () => {
-    const [jwk, ...others] = JSON.parse(readFileSync(file, 'utf8')) as JsonWebKey[];
-    if (jwk === undefined || others.length > 0) throw new Error('the local key is not one key');
-    const now = Math.floor(Date.now() / 1000);
-    const claims = { role: 'service_role', aud: 'authenticated', iat: now, exp: now + 300 };
-    return await sign({ ...claims, iss: 'ops-astro-local-api' }, jwk, 'ES256');
-  };
-}
-
-/** How often the server retries the provider steps an access ending owes (C58). */
-export const ACCESS_ENDING_RETRY_SECONDS = 60;
-
-/** A provider call not sent: the step stays owed. */
-const notSent = async (): Promise<ProviderAnswer<void>> =>
-  await Promise.resolve({ ok: false, fault: 'unreachable' });
-
-/** GoTrue's calls for an ended login, under the admin key; with none, nothing is sent. */
-function goTrueLogins(
-  adminKey: (() => Promise<string>) | undefined,
-  issuer: string,
-): LoginProvider {
-  if (adminKey === undefined) return { endSessions: notSent, deactivate: notSent };
-  return createGoTrueLogins({ baseUrl: issuer, adminKey });
-}
-
-/**
- * One retry pass (C58): every business with an access ending that still owes
- * the provider a step, each settled under its own tenancy. The owner's
- * connection reads business ids and nothing else; the endings themselves are
- * read and stamped on the application connection, inside the business.
- * Answers how many endings still owe a step.
- */
-export async function retryAccessEndings(
-  admin: AdminConnection,
-  database: Database,
-  logins: LoginProvider,
-  /** A test's shorter claim; the settle's own otherwise. */
-  claimSeconds?: number,
-): Promise<number> {
-  const rows = await admin.execute<{ readonly business_id: string }>(
-    `select distinct business_id from public.access_endings
-      where sessions_ended_at is null or login_deactivated_at is null`,
-  );
-  let owed = 0;
-  for (const row of rows) {
-    if (!isBusinessId(row.business_id)) continue;
-    const business = row.business_id;
-    const settle = settleAccessEndings(database, business, logins, {
-      sharedElsewhere: async (subject) => await loginLiveElsewhere(admin, subject, business),
-      ...(claimSeconds === undefined ? {} : { claimSeconds }),
-    });
-    // eslint-disable-next-line no-await-in-loop -- one business at a time, each under its own tenancy
-    owed += (await settle).owed;
-  }
-  return owed;
 }
 
 async function main(): Promise<void> {
@@ -481,7 +405,7 @@ async function main(): Promise<void> {
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
   // keys through the same resolver the requests will.
-  const { app, logins, resolveBusiness } = composeApi({
+  const { app, resolveBusiness } = composeApi({
     identity: readIdentity(ROOT),
     database,
     admin,
@@ -530,18 +454,10 @@ async function main(): Promise<void> {
       }),
   );
 
-  // C58: the provider steps an access ending still owes, retried until each
-  // is done. A failed pass is logged by its kind and tried again next time.
-  const retry = setInterval(() => {
-    retryAccessEndings(admin, database, logins).catch((cause: unknown) => {
-      console.error(`api: access ending retry failed (${faultCode(cause)}); next pass retries`);
-    });
-  }, ACCESS_ENDING_RETRY_SECONDS * 1000);
-  retry.unref();
+  // C58: what the act could not settle, the endings loop retries (`apps/endings`).
 
   const stop = (): void => {
     sweeper.stop();
-    clearInterval(retry);
     // The live streams first: a question one has in flight ends before its pool does.
     void Promise.allSettled([topics.close()])
       .then(async () => await Promise.allSettled([database.close(), admin.close()]))

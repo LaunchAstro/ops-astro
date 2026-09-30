@@ -15,7 +15,8 @@ import { randomUUID } from 'node:crypto';
 import { sign, verify } from 'hono/jwt';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
-import { composeApi, providerAdminKey } from '../../apps/api/server.ts';
+import { providerAdminKey } from '../../apps/api/auth/provider-logins.ts';
+import { composeApi } from '../../apps/api/server.ts';
 import { TEST_KEY_SET_URL, staticKeySet } from '../support/sign-in.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');

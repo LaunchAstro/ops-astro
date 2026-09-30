@@ -23,7 +23,7 @@ import { loginLiveElsewhere } from '../../packages/core-records/src/index.ts';
 import { describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { createGoTrueLogins } from '../../apps/api/auth/logins.ts';
-import { retryAccessEndings } from '../../apps/api/server.ts';
+import { retryAccessEndings } from '../../apps/endings/pass.ts';
 import { settleAccessEndings, type LoginProvider } from '../../packages/core-commands/src/index.ts';
 import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { serverUrl } from '../acceptance/world.ts';
