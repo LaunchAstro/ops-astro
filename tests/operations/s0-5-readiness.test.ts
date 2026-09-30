@@ -213,18 +213,32 @@ async function agentRouteShut(open: string): Promise<unknown[]> {
   return [picked.status, picked.code, picked.body['names']];
 }
 
+/** Every gated command that was answered as though it ran. */
+async function gatedRan(): Promise<string[]> {
+  const ran: string[] = [];
+  for (const { name } of GATED) {
+    // eslint-disable-next-line no-await-in-loop
+    const answer = await harness.asPerson(name, bodies.get(name)!);
+    if (answer.status < 400) ran.push(`${name}: ${answer.status} ${answer.code}`);
+  }
+  return ran;
+}
+
+/** One harness, every gated command's body, and an agent pickup, all while made-up. */
+async function prepare(): Promise<void> {
+  harness = await createHarness('s05_gate');
+  for (const declaration of GATED) {
+    // eslint-disable-next-line no-await-in-loop
+    bodies.set(declaration.name, await bodyFor(declaration));
+  }
+  const decided = await harness.reserve(await harness.freshTask('s0-5 agent'), 'draft_the_reply');
+  agentPickup = {
+    reservationId: (decided.body['detail'] as Record<string, unknown>)['reservationId'],
+  };
+}
+
 describe.skipIf(serverUrl === undefined)('S0-5 readiness check', () => {
-  beforeAll(async () => {
-    harness = await createHarness('s05_gate');
-    for (const declaration of GATED) {
-      // eslint-disable-next-line no-await-in-loop
-      bodies.set(declaration.name, await bodyFor(declaration));
-    }
-    const decided = await harness.reserve(await harness.freshTask('s0-5 agent'), 'draft_the_reply');
-    agentPickup = {
-      reservationId: (decided.body['detail'] as Record<string, unknown>)['reservationId'],
-    };
-  }, 300_000);
+  beforeAll(prepare, 300_000);
 
   afterAll(async () => {
     await harness?.close();
@@ -260,5 +274,14 @@ describe.skipIf(serverUrl === undefined)('S0-5 readiness check', () => {
     // Every item done: the same commands run on a real-data installation.
     const task = await harness.freshTask('s0-5 real, gate closed');
     expect(task.revision).toBeGreaterThan(0);
+  }, 600_000);
+
+  // Last, as it drops the function. Only a database from before 0056 (neither
+  // the function nor `ops.installation`) runs, as 0056 provisions it made-up.
+  it('S0-5 fails closed: the readiness function gone while the installation remains, every gated command is refused and writes nothing', async () => {
+    await admin('drop function public.first_client_readiness()');
+    const before = await fingerprint();
+    expect(await gatedRan()).toStrictEqual([]);
+    expect(changed(before, await fingerprint())).toStrictEqual([]);
   }, 600_000);
 });
