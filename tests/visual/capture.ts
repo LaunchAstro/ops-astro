@@ -171,7 +171,6 @@ function routeOf(packet: Packet, source: SideSource, side: Side): (route: Route)
       const body = known === 'bundled fonts' ? fontCss() : `/* ${known} */`;
       return route.fulfill({ body, contentType: 'text/css' });
     }
-    // The app reads its sign-in address before it draws (S0-6); no API is behind it.
     if ('app' in source && url.origin === source.app.origin && url.pathname === '/api/sign-in')
       return route.fulfill({ json: { issuer: 'http://127.0.0.1:9/auth/v1' } });
     if ('app' in source && url.origin === source.app.origin) return route.continue();
@@ -232,6 +231,7 @@ export async function load(
   const page = await side.context.newPage();
   await page.clock.setFixedTime(new Date(packet.clock));
   await page.goto(url, { waitUntil: 'load' });
+  await page.waitForFunction(() => document.querySelector('#app:empty') === null);
   await page.addStyleTag({ content: fontCss() });
   if (hide.length > 0)
     await page.addStyleTag({ content: `${hide.join(',')}{display:none!important}` });
