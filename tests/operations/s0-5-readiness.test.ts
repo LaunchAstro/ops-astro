@@ -23,6 +23,7 @@ import {
   type CommandDeclaration,
 } from '../../packages/core-wire/src/index.ts';
 import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
+import { gateRecordBody } from '../acceptance/role-case-gate-bodies.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { serverUrl } from '../acceptance/world.ts';
 
@@ -45,8 +46,8 @@ let harness: Harness;
 const bodies = new Map<string, Record<string, unknown>>();
 let agentPickup: Record<string, unknown>;
 
-const admin = async <T>(sql: string): Promise<T[]> =>
-  (await harness.world.db.admin.execute<T & Record<string, unknown>>(sql)) as T[];
+const admin = async <T>(sql: string, params: unknown[] = []): Promise<T[]> =>
+  (await harness.world.db.admin.execute<T & Record<string, unknown>>(sql, params)) as T[];
 
 async function readiness(): Promise<{ mode: string; open_items: string[] }> {
   const [row] = await admin<{ mode: string; open_items: string[] }>(
@@ -56,9 +57,15 @@ async function readiness(): Promise<{ mode: string; open_items: string[] }> {
 }
 
 async function tickAll(): Promise<void> {
-  const items = GATE_ITEMS.map((item) => `('${item}', 'https://evidence.example/${item}')`);
-  await admin(`insert into ops.gate_items (item, evidence) values ${items.join(', ')}
-    on conflict (item) do nothing`);
+  for (const item of GATE_ITEMS) {
+    const { evidence, statement } = gateRecordBody(item);
+    // eslint-disable-next-line no-await-in-loop
+    await admin(
+      `insert into ops.gate_items (item, evidence, statement) values ($1, $2, $3)
+        on conflict (item) do nothing`,
+      [item, evidence, statement ?? null],
+    );
+  }
 }
 
 async function forceOpen(item: string): Promise<void> {

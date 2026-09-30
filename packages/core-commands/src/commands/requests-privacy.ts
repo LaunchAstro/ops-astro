@@ -69,5 +69,6 @@ export type PrivacyRequest<E> =
       readonly command: 'operations.record_gate_item';
       readonly item: unknown;
       readonly evidence: unknown;
+      readonly statement?: unknown;
     } & E)
   | ({ readonly command: 'operations.change_installation_mode'; readonly mode: unknown } & E);

@@ -430,7 +430,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     deletion: 'any',
     inUse: 'any',
   },
-  'operations.record_gate_item': { item: 'any', evidence: 'any' },
+  'operations.record_gate_item': { item: 'any', evidence: 'any', statement: 'any?' },
   'operations.change_installation_mode': { mode: 'any' },
   'client.create': { name: 'any' },
   'access.grant': { holderId: 'id', collection: 'any', action: 'any', clientId: 'id?|null' },

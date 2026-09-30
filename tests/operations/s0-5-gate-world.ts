@@ -255,7 +255,8 @@ export async function closingLine(
     if (!(await readiness(w)).open_items.includes(item)) wrong.push(`${label}: closed it`);
   }
   const answer = await send(w, RECORD, { item, ...good });
-  if (answer.code !== 'ok') wrong.push(`the record: ${String(answer.code)}`);
+  if (answer.status !== 200)
+    wrong.push(`the record: ${String(answer.status)} ${String(answer.code)}`);
   if ((await readiness(w)).open_items.includes(item)) wrong.push('the record left it open');
   return wrong;
 }

@@ -6,7 +6,7 @@
 // transaction by every command the catalogue classes `client-data` or
 // `invitation` (from its effect metadata, never its name). A made-up-data
 // installation runs them; a real-data installation refuses them while any of
-// the eight items is open. The mode and the items live in `ops`, which the
+// the eight items or the three closing lines is open. The mode and the items live in `ops`, which the
 // application's role reads through `public.first_client_readiness()` and
 // writes only through the gate's own commands (`gate-write.ts`, migration
 // 0060); the readiness value itself is derived, never written.
@@ -16,7 +16,10 @@ import { COMMAND_EFFECTS, classOf, type CommandName } from '../../../core-wire/s
 import type { DataEffects } from '../../../core-wire/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
-/** The eight gate items, as `ops.gate_items` names them. */
+/**
+ * The eight gate items, then the three closing lines (0062), as
+ * `ops.gate_items` names them. A closing line carries the owner's one line.
+ */
 export const GATE_ITEMS = [
   'tested-backups',
   'second-factor',
@@ -26,6 +29,9 @@ export const GATE_ITEMS = [
   'breach-runbook',
   'security-pass',
   'phone-alerts',
+  'privacy-opt-in',
+  'cloudflare-rolled',
+  'training-line',
 ] as const;
 
 export type GateItem = (typeof GATE_ITEMS)[number];

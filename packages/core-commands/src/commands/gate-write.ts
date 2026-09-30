@@ -3,7 +3,8 @@
 // S0-5, the gate's own commands (migration 0060), each a person's under
 // `operations:manage` in the business that operates the installation:
 // `operations.record_gate_item` ticks one item with its https evidence link
-// (`gate item recorded`), and `operations.change_installation_mode` moves the
+// (`gate item recorded`), a closing line with the owner's one line too (0062),
+// and `operations.change_installation_mode` moves the
 // installation from made-up to real data while every item is done
 // (`installation mode changed`).
 //
@@ -26,10 +27,34 @@ type ChangeRequest = CommandRequest & { readonly command: 'operations.change_ins
 const ITEMS: ReadonlySet<string> = new Set(GATE_ITEMS);
 /** As 0056's `gate_items_evidence_link` reads it. */
 const EVIDENCE = /^https:\/\/[^\s]+$/u;
+/** The OAIC's public Privacy Opt-In Register lists its entries on this one page (0062). */
+const OPT_IN_REGISTER =
+  /^https:\/\/www\.oaic\.gov\.au\/privacy\/privacy-registers\/privacy-opt-in-register\/?([?#]\S*)?$/u;
+/** The owner's one line on a closing line, as 0062's `gate_items_statement` reads it. */
+const LINE = /^[^\p{Cc}]{1,500}$/u;
+const CLOSING_LINES: ReadonlySet<string> = new Set([
+  'privacy-opt-in',
+  'cloudflare-rolled',
+  'training-line',
+]);
+
+/** A real calendar date in the line, as the training line must carry. */
+function dated(line: string): boolean {
+  return (line.match(/\d{4}-\d{2}-\d{2}/gu) ?? []).some((day) => {
+    const time = Date.parse(`${day}T00:00:00Z`);
+    return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === day;
+  });
+}
 
 const FIXES: Readonly<Record<string, readonly string[]>> = {
   item: [`Send one of: ${GATE_ITEMS.join(', ')}.`],
-  evidence: ['Send the evidence as one https link of at most 2000 characters, with no spaces.'],
+  evidence: [
+    'Send the evidence as one https link of at most 2000 characters, with no spaces.',
+    "For the privacy opt-in, a lodged form or a receipt keeps it shut: link the OAIC's public Privacy Opt-In Register.",
+  ],
+  statement: [
+    "Send the owner's one line (at most 500 characters) on a closing line only; the training line's is dated YYYY-MM-DD.",
+  ],
   mode: ["Send mode 'real': the only change an installation makes is from made-up to real data."],
 };
 
@@ -69,17 +94,23 @@ export async function recordGateItem(
   context: CommandContext,
   request: RecordRequest,
 ): Promise<HandlerOutcome> {
-  const { item, evidence } = request;
+  const { item, evidence, statement } = request;
   if (typeof item !== 'string' || !ITEMS.has(item)) return invalid('item');
   if (typeof evidence !== 'string' || evidence.length > 2000 || !EVIDENCE.test(evidence)) {
     return invalid('evidence');
   }
+  if (item === 'privacy-opt-in' && !OPT_IN_REGISTER.test(evidence)) return invalid('evidence');
+  const closing = CLOSING_LINES.has(item);
+  if (closing ? typeof statement !== 'string' || !LINE.test(statement) : statement !== undefined) {
+    return invalid('statement');
+  }
+  if (item === 'training-line' && !dated(statement as string)) return invalid('statement');
   const installation = await lockedForOperator(tx, context);
   if (isOutcome(installation)) return installation;
   const inserted = await tx.query<{ readonly item: string }>(
-    `insert into ops.gate_items (item, evidence) values ($1, $2)
+    `insert into ops.gate_items (item, evidence, statement) values ($1, $2, $3)
        on conflict (item) do nothing returning item`,
-    [item, evidence],
+    [item, evidence, closing ? statement : null],
   );
   if (inserted.length === 0) {
     return refused(

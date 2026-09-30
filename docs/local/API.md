@@ -1788,9 +1788,18 @@ function nor `ops.installation`, runs them, as 0056 provisions it made-up.
 
 The eight items are `ops.gate_items` rows, each with an `https` evidence link:
 `tested-backups`, `second-factor`, `legal-basics`, `privacy-act-statement`,
-`overseas-register`, `breach-runbook`, `security-pass`, `phone-alerts`. The
-mode moves from made-up to real only while every item is done, and never back;
-the row cannot be deleted.
+`overseas-register`, `breach-runbook`, `security-pass`, `phone-alerts`. Three
+closing lines are rows too (migration 0062), each with the owner's one line
+(`statement`, at most 500 characters, no line breaks) as well as its link, and
+open until recorded like any item: `privacy-opt-in` (the link is the OAIC's
+public Privacy Opt-In Register page, where the entry is listed; a lodged form
+or a receipt is refused; the line says the published policy matches it),
+`cloudflare-rolled` (the link shows the old credential refused; the line
+records the new one in custody) and `training-line` (item 5's dated line that
+model training is off on both model accounts, carrying a real `YYYY-MM-DD`
+date, with its evidence link). The eight items carry no line. The table holds
+the same rules. The mode moves from made-up to real only while every item and
+line is done, and never back; the row cannot be deleted.
 
 Two commands move the gate (migration 0060), each a person's under
 `operations:manage` in the business that operates the installation
@@ -1798,9 +1807,10 @@ Two commands move the gate (migration 0060), each a person's under
 agent's or a delegation's; any other caller, and every caller while no business
 operates it, is refused `SCOPE_NOT_GRANTED` 403 and writes nothing:
 
-- `operations.record_gate_item` takes `{ operationId, item, evidence }`: one of
-  the eight items and one `https` link of at most 2000 characters with no
-  spaces, each refused `FIELD_VALUE_INVALID` 422 naming the field. An item is
+- `operations.record_gate_item` takes `{ operationId, item, evidence,
+statement? }`: one of the eight items or three closing lines, one `https`
+  link of at most 2000 characters with no spaces, and the owner's line on a
+  closing line only, each refused `FIELD_VALUE_INVALID` 422 naming the field. An item is
   recorded once; a second record is refused `GATE_ITEM_ALREADY_RECORDED` 409
   and the first evidence stays.
 - `operations.change_installation_mode` takes `{ operationId, mode: 'real' }`.
