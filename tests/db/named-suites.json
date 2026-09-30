@@ -122,7 +122,8 @@
     "SL01 (Vercel re-plan section 11 step 3, STAGING-PREP B4, G1) adds s0-1-staging-reset (S0-1 staging reset refuses production: the reset refuses, by setting name and before it connects, a database or sign-in address of another project or of production's, and any file as its input; connected, a database neither marked made-up nor new; a refusal writes nothing and prints no address, password, key or reference; on staging's own database it empties, migrates and seeds invented people only, their sign-ins made through the admin API with no mail sent, and the made-up operator staging's own gate admits).",
     "SL01 (REVB1SL01S34B) adds Sol's proof staging-reset-refuses-invalid-service-key-before-emptying: a service key the admin API refuses leaves the database unemptied and no record written.",
     "SL01 (REVB1SL01S34C) adds Sol's proof staging-reset-refuses-unwritable-record-before-emptying: a run record that cannot be opened for appending leaves the database unemptied.",
-    "SL01 (REVB1SL01S34D) adds Sol's proof staging-reset-refuses-discarded-record-before-emptying: a record target that discards writes (a link to /dev/null) leaves the database unemptied. s0-1-staging-reset-record adds the family: a link to a file, a pipe, a device or a linked folder is refused the same way."
+    "SL01 (REVB1SL01S34D) adds Sol's proof staging-reset-refuses-discarded-record-before-emptying: a record target that discards writes (a link to /dev/null) leaves the database unemptied. s0-1-staging-reset-record adds the family: a link to a file, a pipe, a device or a linked folder is refused the same way.",
+    "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -319,6 +320,7 @@
     "tests/ci/s0-3e-operating-business-installed.test.ts",
     "tests/ci/service-stop.test.ts",
     "tests/ci/service-stop-gated.test.ts",
+    "tests/ci/named-service-stop-reaches-database.test.ts",
     "tests/runtime/storage-backstop-migrations.test.ts",
     "tests/runtime/cap-ceiling-fails-closed.test.ts",
     "tests/tenancy/temporary-tables.test.ts",

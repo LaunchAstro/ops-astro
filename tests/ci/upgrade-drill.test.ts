@@ -198,6 +198,14 @@ function upgradeDrillCases3() {
     expect(atHead.status).toBe(2);
     expect(atHead.output).toMatch(/nothing to upgrade/u);
   }, 60_000);
+
+  it("seeds through the older version's own commands, which fit its schema", () => {
+    // The head's commands write tables 0041 has not got; 0041's own commit seeds it.
+    const { status, result, output } = drill('0041');
+    expect(output).toMatch(/seeded through b5697df's commands/u);
+    expect(result?.differences).toStrictEqual([]);
+    expect(status).toBe(0);
+  }, 180_000);
 }
 
 describe('S0-3 upgrade drill in CI', () => {
@@ -212,7 +220,11 @@ describe('S0-3 upgrade drill in CI', () => {
     expect(step).toContain("if: github.event_name == 'pull_request'");
     expect(step).toContain('git diff --name-only --diff-filter=A "$BASE_SHA" HEAD -- migrations/');
     expect(step).toContain('git ls-tree --name-only "$BASE_SHA" migrations/');
-    expect(step).toContain('pnpm run verify:upgrade-drill --from');
+    expect(step).toContain(
+      'pnpm run verify:upgrade-drill --from "$(basename "$from" .sql)" --base "$BASE_SHA"',
+    );
+    // The seed runs an older commit's checkout, so the shard fetches the history.
+    expect(job).toMatch(/- uses: actions\/checkout@\S+ # \S+\n\s+with:\n\s+fetch-depth: 0\n/u);
     const { scripts } = JSON.parse(readFileSync('package.json', 'utf8')) as {
       scripts: Record<string, string>;
     };

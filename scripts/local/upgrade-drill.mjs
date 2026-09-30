@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The upgrade drill: `pnpm verify:upgrade-drill [--from <version>]`.
+// The upgrade drill: `pnpm verify:upgrade-drill [--from <version>] [--base <commit>]`.
 //
 // It builds its own starting point and never touches an installation's data:
 // a throwaway database on the local server, migrated to an older version and
@@ -16,8 +16,9 @@
 // 217 records identical) and its script was never committed; 0023 is the
 // default for that reason. CI runs it from the base branch's newest migration
 // whenever a pull request adds one (.github/workflows/ci.yml, `database
-// conformance`). The seed runs this checkout's commands against the older
-// schema, so it can seed only where the head's commands still fit that schema.
+// conformance`), naming the base commit. The seed runs the older version's own
+// commands, from a checkout of the commit whose newest migration is --from: the
+// head's commands may need tables the older schema has not got.
 //
 // "The application stopped" is the supported upgrade (scripts/db-migrate.mjs):
 // the seed's pool is closed before the runner starts, and the runner refuses
@@ -35,7 +36,7 @@ import {
 } from '../../packages/core-records/src/tenancy/migrate.ts';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
-import { Failure, seed } from './upgrade-drill-seed.mjs';
+import { Failure, baseCommit, seed } from './upgrade-drill-seed.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const LEDGER = 'ops.schema_migrations';
@@ -202,7 +203,7 @@ function compare(before, after) {
   return differences;
 }
 
-async function drill({ url, from, directory }) {
+async function drill({ url, from, directory, base }) {
   const all = readMigrations(directory);
   const at = all.findIndex((m) => m.version === from || m.version.startsWith(`${from}_`));
   if (at === -1) throw new Refused(`no migration ${from} among the ${all.length} read`);
@@ -210,6 +211,8 @@ async function drill({ url, from, directory }) {
     throw new Refused(`${all[at].version} is the head: nothing to upgrade`);
   const start = all[at].version;
   const to = all.at(-1).version;
+  const { commit, refused } = baseCommit(start, base);
+  if (refused !== undefined) throw new Refused(refused);
 
   // The seed's approval is signed. A throwaway key for this process, unless one is set.
   process.env.GATE_SIGNING_KEY_ID ??= 'upgrade-drill/throwaway@1';
@@ -223,14 +226,17 @@ async function drill({ url, from, directory }) {
     );
     if (owner?.above !== true) throw new Refused('the owner role is subject to row security');
     await applyMigrations(db.admin, all.slice(0, at + 1));
-    await seed(db.app);
+    await seed(db.app, commit);
     // The application stopped: the seed's pool is closed and holds no session.
     await db.closeSessions();
     const before = await snapshot(db.admin);
     const rows = [...before.values()].reduce((sum, t) => sum + t.rows.length, 0);
     if (rows === 0)
       throw new Failure('the seed left no row the owner can read, so nothing would be compared');
-    say(`built at ${start} and seeded: ${rows} rows in ${before.size} tables; application stopped`);
+    say(
+      `built at ${start} and seeded through ${commit.slice(0, 7)}'s commands: ` +
+        `${rows} rows in ${before.size} tables; application stopped`,
+    );
     const { applied } = await applyMigrations(db.admin, all);
     say(`upgraded ${start} -> ${to}: applied ${applied.join(', ')}`);
     const differences = compare(before, await snapshot(db.admin, before));
@@ -251,6 +257,7 @@ async function drill({ url, from, directory }) {
 const { values } = parseArgs({
   options: {
     from: { type: 'string', default: '0023' },
+    base: { type: 'string' },
     migrations: { type: 'string', default: `${root}migrations` },
     json: { type: 'boolean', default: false },
   },
@@ -259,7 +266,12 @@ const { values } = parseArgs({
 const url = serverUrl();
 try {
   if (!url) throw new Refused('no DATABASE_ADMIN_URL. Run scripts/local/db-up.sh first.');
-  const result = await drill({ url, from: values.from, directory: values.migrations });
+  const result = await drill({
+    url,
+    from: values.from,
+    directory: values.migrations,
+    base: values.base,
+  });
   for (const d of result.differences) {
     say(
       d.gone
