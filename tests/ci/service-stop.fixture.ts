@@ -40,8 +40,8 @@ export const definition = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
 ) as { 'x-ops-astro': { artefact: string } };
 
-/** The one call the stop may make: both named services, nothing else. */
-export const THE_STOP = 'docker stop ops-astro-api ops-astro-auth';
+/** The one call the stop may make: production's worker and its forwarder, nothing else. */
+export const THE_STOP = 'docker stop ops-astro-worker ops-astro-forwarder';
 
 export const ISSUER: string = TEST_ISSUER;
 

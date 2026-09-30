@@ -157,7 +157,7 @@ function gatedStopCases1() {
     const record = JSON.parse(records[0]!) as Record<string, unknown>;
     expect(record).toMatchObject({
       action: 'production stopped',
-      services: ['docker:ops-astro-api', 'docker:ops-astro-auth'],
+      services: ['docker:ops-astro-worker', 'docker:ops-astro-forwarder'],
       business: 'alpha',
       operator: operatorPerson,
     });

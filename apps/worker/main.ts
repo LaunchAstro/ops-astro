@@ -19,6 +19,7 @@ const REQUIRED = ['OPS_ASTRO_BUSINESS', 'OPS_ASTRO_TOKEN', 'OPS_ASTRO_DELEGATION
 export async function main(
   argv: readonly string[],
   env: Readonly<Record<string, string | undefined>>,
+  _beat: (address: string | undefined) => Promise<string> = () => Promise.resolve('not set'),
 ): Promise<number> {
   const missing = REQUIRED.filter((name) => (env[name] ?? '') === '');
   if (missing.length > 0) {

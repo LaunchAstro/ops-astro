@@ -243,7 +243,7 @@ it('S0-1 staging apart: own names, own ports, own credentials, no layout', () =>
   const prefix = def['x-ops-astro'].ownPrefix;
   expect(prefix).toBe('ops-astro-staging');
   expect(def.name).toBe(prefix);
-  expect(Object.keys(def.services).toSorted()).toEqual(['auth', 'backups', 'db']);
+  expect(Object.keys(def.services).toSorted().join()).toBe('auth,backups,db,forwarder,worker');
 
   for (const [name, service] of Object.entries(def.services)) {
     expect(service.container_name, name).toBe(`${prefix}-${name}`);
