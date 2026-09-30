@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { codeOf } from './agent-fixture.ts';
@@ -88,6 +89,20 @@ describe.skipIf(serverUrl === undefined)('Assign to AI isolation: client to clie
 });
 
 describe.skipIf(serverUrl === undefined)('Assign to AI isolation: person to person', () => {
+  it('a reader sees no hint of another person’s agent', async () => {
+    const task = await created(w, w.q, 'Sol private agent');
+    const agent = await minted(w, w.q, task);
+    expect(codeOf(await assign(w, w.q, task, { agent }))).toBe('not-a-refusal');
+    const read = await executeRead(w.world.db.app, w.world.business, w.p.presented, {
+      read: 'task.read',
+      recordId: task,
+    });
+    if (isCommandRefusal(read) || !('task' in read))
+      throw new Error('Sol proof: task read refused');
+    expect(read.task.agent).toBeNull();
+    expect(read.task.myAgents).toStrictEqual([]);
+  });
+
   it('P cannot assign Q’s agent; Q’s agent on a task gives P nothing', async () => {
     const task = await created(w, w.q, `Q's ${CANARY}`);
     const agent = await minted(w, w.q, task);

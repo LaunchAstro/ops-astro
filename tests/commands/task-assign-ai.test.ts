@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { revokeDelegation } from '../../packages/core-records/src/index.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import { codeOf } from './agent-fixture.ts';
 import { enrol } from './fixture.ts';
@@ -51,6 +52,14 @@ const counted = async (table: 'leases' | 'reservations'): Promise<number> =>
   );
 
 describe.skipIf(serverUrl === undefined)('Assign to AI: you assign your own agent', () => {
+  it('the person unassign action clears an agent holder', async () => {
+    const task = await created(w, w.p, 'Sol unassign');
+    const agent = await minted(w, w.p, task);
+    expect(codeOf(await assign(w, w.p, task, { agent }))).toBe('not-a-refusal');
+    expect(codeOf(await assign(w, w.q, task, { assignee: null }))).toBe('not-a-refusal');
+    expect(await holder(w, task)).toStrictEqual({ agent: null, person: null });
+  });
+
   it('the delegating person assigns their own agent; it replaces any person assignee', async () => {
     const task = await created(w, w.p, 'Brief the agent');
     await assign(w, w.p, task, { assignee: w.p.personId });
@@ -131,6 +140,53 @@ describe.skipIf(serverUrl === undefined)('Assign to AI: who, and while live', ()
 });
 
 describe.skipIf(serverUrl === undefined)('Assign to AI: revoke clears held tasks', () => {
+  it('revoke preserves an agent value on a non-task record', async () => {
+    const task = await created(w, w.p, 'Sol non-task revoke');
+    const agent = await minted(w, w.p, task);
+    const other = await w.world.db.admin.execute<{
+      readonly id: string;
+      readonly record_type_id: string;
+    }>(
+      `select r.id, r.record_type_id from public.records r join public.record_types t
+         on t.business_id = r.business_id and t.id = r.record_type_id
+        where r.business_id = $1 and t.key <> 'task' limit 1`,
+      [w.world.business],
+    );
+    const recordId = other[0]?.id;
+    if (recordId === undefined) throw new Error('Sol proof: no non-task record exists');
+    await w.world.db.admin.execute(
+      `insert into public.field_defs
+         (business_id, id, record_type_id, key, label, value_type, slot,
+          write_mode, owning_operation, visibility_class, origin)
+       values ($1, $2, $3, 'agent', 'Agent', 'uuid', null, 'generic', null, 'internal', 'preset')`,
+      [w.world.business, randomUUID(), other[0]?.record_type_id],
+    );
+    await w.world.db.admin.execute(
+      `update public.records set data = data || jsonb_build_object('agent', $2::text) where id = $1`,
+      [recordId, agent],
+    );
+    await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+      await revokeDelegation(tx, agent, 'work_retired');
+    });
+    const kept = await w.world.db.admin.execute<{ readonly agent: string | null }>(
+      `select data ->> 'agent' as agent from public.records where id = $1`,
+      [recordId],
+    );
+    expect(kept[0]?.agent).toBe(agent);
+  });
+
+  it('a runtime-cause revoke audits every cleared task', async () => {
+    const task = await created(w, w.p, 'Sol runtime revoke');
+    const agent = await minted(w, w.p, task);
+    expect(codeOf(await assign(w, w.p, task, { agent }))).toBe('not-a-refusal');
+    const before = await assignEvents(w, task);
+    await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+      await revokeDelegation(tx, agent, 'work_retired');
+    });
+    expect(await holder(w, task)).toStrictEqual({ agent: null, person: null });
+    expect(await assignEvents(w, task)).toBe(before + 1);
+  });
+
   it('revoking the delegation clears it from its task, one audited change', async () => {
     const task = await created(w, w.p, 'Held');
     const agent = await minted(w, w.p, task);
