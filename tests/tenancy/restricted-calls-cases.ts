@@ -27,7 +27,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['s', 'ops.slots'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
-  // 0048: a map's versions are history; its summary and frontier are read
+  // 0053: a map's versions are history; its summary and frontier are read
   // models their triggers write, so the application only reads them.
   ['si', 'map_versions'],
   ['s', 'map_frontier map_summaries'],

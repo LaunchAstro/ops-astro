@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0049 wayfinder pre-answers (WF-6). Charting's breadth-first pass answers
+-- 0054 wayfinder pre-answers (WF-6). Charting's breadth-first pass answers
 -- the open questions that recorded decisions already settle, and marks the
 -- obvious calls "decided, veto open" (CS-15.5). Each pre-answer is a map
 -- component of kind `pre_answer`: its question, its answer (the body), and
@@ -11,7 +11,7 @@
 -- The citation is checked by `map.chart` against the charter's own grant
 -- before it is written; the table holds the shape. A purged cited record
 -- leaves its line with no record, which the map view shows as withheld.
--- Inherits 0048's rules and grants: the new columns sit on a table the
+-- Inherits 0053's rules and grants: the new columns sit on a table the
 -- application role may already select, insert and update.
 
 alter table public.map_components
