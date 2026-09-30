@@ -14,236 +14,54 @@
 // the pooler's `<login>.<reference>` form, and the provider's admin API is a
 // stand-in on loopback: nothing hosted is reached.
 
-import { spawn } from 'node:child_process';
-import { randomBytes, randomUUID } from 'node:crypto';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { createServer, type Server } from 'node:http';
-import { tmpdir } from 'node:os';
+import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
+import { describe, expect, it } from 'vitest';
 import { requireOperatingOperator } from '../../scripts/ops/operator.ts';
 import { STAGING_CAST, notInvented } from '../../scripts/ops/staging-reset.ts';
+import { signBearer, TEST_ISSUER } from '../support/sign-in.ts';
 import {
-  createEmptyDatabase,
-  databaseUrlFromEnvironment,
-  type EmptyDatabase,
-} from '../support/fresh-database.ts';
-import {
-  serveTestKeySetApart,
-  signBearer,
-  TEST_ISSUER,
-  type ServedKeySet,
-} from '../support/sign-in.ts';
+  calls,
+  canaryHolds,
+  databaseUrl,
+  db,
+  keySet,
+  login,
+  MIGRATIONS,
+  onDatabase,
+  OTHER,
+  own,
+  OWN_PASSWORD,
+  plantCanary,
+  PRODUCTION,
+  quiet,
+  refusedBeforeConnecting,
+  run,
+  RUN_PASSWORD,
+  runner,
+  scratch,
+  seedDirs,
+  serverUrl,
+  settings,
+  STAGING,
+  stagingResetHooks,
+  users,
+} from './s0-1-staging-reset.fixture.ts';
 
-const RESET = new URL('../../scripts/ops/staging-reset.mjs', import.meta.url).pathname;
 const AUTH_SEED = new URL('../../scripts/local/auth-seed.mjs', import.meta.url).pathname;
-const MIGRATIONS = new URL('../../migrations/', import.meta.url).pathname;
+/** The named test, S0-1 staging reset refuses production, case by case, in order. */
+const live = it.skipIf(serverUrl === undefined);
+const NAME = 'S0-1 staging reset refuses production';
 
-const ref = (): string =>
-  Array.from(randomBytes(20), (byte) => String.fromCodePoint(97 + (byte % 26))).join('');
-const STAGING = ref();
-const PRODUCTION = ref();
-const OTHER = ref();
-const KEY = `service-${randomBytes(16).toString('hex')}`;
-const OWN_PASSWORD = randomBytes(18).toString('hex');
-const RUN_PASSWORD = randomBytes(18).toString('hex');
+/** The same login and password, the pooler's form naming another project. */
+const elsewhere = (role: string, password: string): string =>
+  databaseUrl(`${db?.name ?? ''}_${role}.${OTHER}`, password);
 
-const serverUrl = databaseUrlFromEnvironment();
-const scratch = mkdtempSync(join(tmpdir(), 'staging-reset-'));
-afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+stagingResetHooks();
 
-// ---- the provider's admin API, on loopback ----------------------------------
-
-interface Call {
-  readonly method: string;
-  readonly path: string;
-  readonly key: boolean;
-  readonly body: Record<string, unknown> | undefined;
-}
-const calls: Call[] = [];
-const users = new Map<string, string>();
-let auth: Server;
-let authUrl = '';
-
-function serveAuth(): Promise<void> {
-  auth = createServer((request, response) => {
-    let text = '';
-    request.on('data', (chunk: Buffer) => (text += chunk.toString()));
-    request.on('end', () => {
-      const body = text === '' ? undefined : (JSON.parse(text) as Record<string, unknown>);
-      const path = (request.url ?? '').split('?')[0] ?? '';
-      const key = request.headers['apikey'] === KEY;
-      calls.push({ method: request.method ?? '', path, key, body });
-      const reply = (status: number, value: unknown): void => {
-        response.writeHead(status, { 'content-type': 'application/json' });
-        response.end(JSON.stringify(value));
-      };
-      if (!key) return reply(401, { msg: 'no key' });
-      if (request.method === 'POST' && path === '/admin/users') {
-        const email = String(body?.['email']);
-        if (users.has(email)) return reply(422, { msg: 'already registered' });
-        users.set(email, randomUUID());
-        return reply(200, { id: users.get(email), email });
-      }
-      if (request.method === 'GET' && path === '/admin/users')
-        return reply(200, { users: [...users].map(([email, id]) => ({ id, email })) });
-      if (request.method === 'PUT' && path.startsWith('/admin/users/')) return reply(200, {});
-      return reply(404, {});
-    });
-  });
-  return new Promise((resolve) =>
-    auth.listen(0, '127.0.0.1', () => {
-      const address = auth.address();
-      authUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
-      resolve();
-    }),
-  );
-}
-
-// ---- the command, as a person runs it ---------------------------------------
-
-interface Run {
-  readonly status: number | null;
-  readonly out: string;
-}
-
-function run(env: Record<string, string>, args: readonly string[] = []): Promise<Run> {
-  return new Promise((resolve) => {
-    const child = spawn(process.execPath, [RESET, ...args], {
-      env: { PATH: process.env['PATH'] ?? '', ...env },
-    });
-    let out = '';
-    child.stdout.on('data', (chunk: Buffer) => (out += chunk.toString()));
-    child.stderr.on('data', (chunk: Buffer) => (out += chunk.toString()));
-    child.on('close', (status) => resolve({ status, out }));
-  });
-}
-
-/** Nothing the command prints carries a password, the key or a project reference. */
-function quiet(result: Run): void {
-  for (const secret of [OWN_PASSWORD, RUN_PASSWORD, KEY, STAGING, PRODUCTION, OTHER])
-    expect(result.out).not.toContain(secret);
-}
-
-let db: EmptyDatabase | undefined;
-let own = '';
-let runner = '';
-const login = (role: string): string => `${db?.name ?? ''}_${role}.${STAGING}`;
-
-function databaseUrl(user: string, password: string, host?: string): string {
-  const url = new URL(serverUrl ?? 'postgres://localhost/x');
-  url.pathname = `/${db?.name ?? ''}`;
-  url.username = user;
-  url.password = password;
-  if (host !== undefined) url.hostname = host;
-  return url.toString();
-}
-
-let seedDirs = 0;
-function settings(overrides: Record<string, string> = {}): Record<string, string> {
-  seedDirs += 1;
-  return {
-    STAGING_PROJECT_REF: STAGING,
-    PRODUCTION_PROJECT_REF: PRODUCTION,
-    DATABASE_ADMIN_URL: own,
-    DATABASE_URL: runner,
-    GOTRUE_URL: authUrl,
-    SUPABASE_SERVICE_KEY: KEY,
-    OPS_SEED_DIR: join(scratch, `seed-${seedDirs}`),
-    ...overrides,
-  };
-}
-
-/** A table no reset would keep: still there means nothing was emptied. */
-const canaryHolds = async (): Promise<boolean> =>
-  await onDatabase(async (admin) => {
-    const rows = await admin.execute<{ held: boolean }>(
-      `select to_regclass('public.reset_canary') is not null as held`,
-    );
-    return rows[0]?.held === true;
-  });
-
-async function onDatabase<T>(
-  work: (admin: ReturnType<typeof connectAsAdmin>) => Promise<T>,
-): Promise<T> {
-  const url = new URL(serverUrl ?? '');
-  url.pathname = `/${db?.name ?? ''}`;
-  const admin = connectAsAdmin(url.toString(), { source: 'harness' });
-  try {
-    return await work(admin);
-  } finally {
-    await admin.close();
-  }
-}
-
-const plantCanary = async (): Promise<void> =>
-  await onDatabase(async (admin) => {
-    await admin.execute('create table if not exists public.reset_canary (x text)');
-  });
-
-let keySet: ServedKeySet | undefined;
-
-describe.skipIf(serverUrl === undefined)('S0-1 staging reset refuses production', () => {
-  beforeAll(async () => {
-    await serveAuth();
-    keySet = await serveTestKeySetApart();
-    db = await createEmptyDatabase({ part: 'reset' });
-    await db.app.close();
-    await db.admin.close();
-    const server = connectAsAdmin(serverUrl ?? '', { source: 'harness' });
-    try {
-      // The pooler's `<login>.<reference>` form: the owner stands for the
-      // project's migration login, the runner for its runtime login.
-      await server.execute(
-        `create role "${login('own')}" login superuser password '${OWN_PASSWORD}'`,
-      );
-      await server.execute(
-        `create role "${login('run')}" login nosuperuser nocreatedb nocreaterole nobypassrls ` +
-          `inherit password '${RUN_PASSWORD}' in role ops_astro_app`,
-      );
-      await server.execute(`grant connect on database "${db.name}" to "${login('run')}"`);
-    } finally {
-      await server.close();
-    }
-    own = databaseUrl(login('own'), OWN_PASSWORD);
-    runner = databaseUrl(login('run'), RUN_PASSWORD);
-    await plantCanary();
-  }, 60_000);
-
-  afterAll(async () => {
-    await keySet?.close();
-    await new Promise((resolve) => auth.close(resolve));
-    await db?.drop();
-    const server = connectAsAdmin(serverUrl ?? '', { source: 'harness' });
-    try {
-      for (const role of ['own', 'run'])
-        // oxlint-disable-next-line no-await-in-loop
-        await server.execute(`drop role if exists "${login(role)}"`);
-    } finally {
-      await server.close();
-    }
-  });
-
-  const refusedBeforeConnecting = async (
-    env: Record<string, string>,
-    names: string,
-    args: readonly string[] = [],
-  ): Promise<void> => {
-    const before = calls.length;
-    const result = await run(env, args);
-    expect(result.status).toBe(1);
-    expect(result.out).toContain(names);
-    expect(result.out).toContain('Nothing was done');
-    quiet(result);
-    expect(calls.length).toBe(before);
-    expect(existsSync(env['OPS_SEED_DIR'] ?? '')).toBe(false);
-    expect(await canaryHolds()).toBe(true);
-  };
-
-  it('refuses a database or sign-in address of another project, by setting name', async () => {
-    const elsewhere = (role: string, password: string): string =>
-      databaseUrl(`${db?.name ?? ''}_${role}.${OTHER}`, password);
+live(
+  `${NAME}: refuses a database or sign-in address of another project, by setting name`,
+  async () => {
     await refusedBeforeConnecting(
       settings({ DATABASE_ADMIN_URL: elsewhere('own', OWN_PASSWORD) }),
       'DATABASE_ADMIN_URL',
@@ -265,6 +83,15 @@ describe.skipIf(serverUrl === undefined)('S0-1 staging reset refuses production'
       }),
       'DATABASE_ADMIN_URL',
     );
+    // A host named again in the query, and a login no decoder can read.
+    await refusedBeforeConnecting(
+      settings({ DATABASE_ADMIN_URL: `${own}?host=db.${OTHER}.supabase.co` }),
+      'DATABASE_ADMIN_URL',
+    );
+    await refusedBeforeConnecting(
+      settings({ DATABASE_URL: databaseUrl(`%zz.${STAGING}`, RUN_PASSWORD) }),
+      'DATABASE_URL',
+    );
     await refusedBeforeConnecting(
       settings({ GOTRUE_URL: `https://${OTHER}.supabase.co/auth/v1` }),
       'GOTRUE_URL',
@@ -274,28 +101,31 @@ describe.skipIf(serverUrl === undefined)('S0-1 staging reset refuses production'
       'STAGING_PROJECT_REF',
     );
     await refusedBeforeConnecting(settings({ SUPABASE_SERVICE_KEY: '' }), 'SUPABASE_SERVICE_KEY');
-  });
+  },
+);
 
-  it("refuses production's project, named as staging's or reached", async () => {
-    await refusedBeforeConnecting(
-      settings({ PRODUCTION_PROJECT_REF: STAGING }),
-      'STAGING_PROJECT_REF',
-    );
-    const reaching = databaseUrl(`${db?.name ?? ''}_own.${PRODUCTION}`, OWN_PASSWORD);
-    await refusedBeforeConnecting(settings({ DATABASE_ADMIN_URL: reaching }), 'DATABASE_ADMIN_URL');
-    await refusedBeforeConnecting(
-      settings({ GOTRUE_URL: `https://${PRODUCTION}.supabase.co/auth/v1` }),
-      'GOTRUE_URL',
-    );
-  });
+live(`${NAME}: refuses production's project, named as staging's or reached`, async () => {
+  await refusedBeforeConnecting(
+    settings({ PRODUCTION_PROJECT_REF: STAGING }),
+    'STAGING_PROJECT_REF',
+  );
+  const reaching = databaseUrl(`${db?.name ?? ''}_own.${PRODUCTION}`, OWN_PASSWORD);
+  await refusedBeforeConnecting(settings({ DATABASE_ADMIN_URL: reaching }), 'DATABASE_ADMIN_URL');
+  await refusedBeforeConnecting(
+    settings({ GOTRUE_URL: `https://${PRODUCTION}.supabase.co/auth/v1` }),
+    'GOTRUE_URL',
+  );
+});
 
-  it('refuses a production backup, or any file, as its input', async () => {
-    const dump = join(scratch, 'production.dump');
-    await refusedBeforeConnecting(settings(), 'a backup is never its input', [dump]);
-    await refusedBeforeConnecting(settings(), 'a backup is never its input', ['--from', dump]);
-  });
+live(`${NAME}: refuses a production backup, or any file, as its input`, async () => {
+  const dump = join(scratch, 'production.dump');
+  await refusedBeforeConnecting(settings(), 'a backup is never its input', [dump]);
+  await refusedBeforeConnecting(settings(), 'a backup is never its input', ['--from', dump]);
+});
 
-  it('empties, migrates and seeds invented people, their sign-ins sent no mail', async () => {
+live(
+  `${NAME}: empties, migrates and seeds invented people, their sign-ins sent no mail`,
+  async () => {
     const env = settings();
     const result = await run(env);
     expect(result.status, result.out).toBe(0);
@@ -309,7 +139,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 staging reset refuses production'
       ),
       mark: await admin.execute<{ mark: string | null }>(
         `select shobj_description(oid, 'pg_database') as mark from pg_database
-          where datname = current_database()`,
+        where datname = current_database()`,
       ),
       people: await admin.execute<{ name: string }>(
         'select display_name as name from public.people order by 1',
@@ -343,9 +173,13 @@ describe.skipIf(serverUrl === undefined)('S0-1 staging reset refuses production'
       expect(password).not.toMatch(/^slice-local-/u);
       expect(result.out).not.toContain(password);
     }
-  }, 180_000);
+  },
+  180_000,
+);
 
-  it("admits the made-up operator at staging's own gate, and no one else (G1)", async () => {
+live(
+  `${NAME}: admits the made-up operator at staging's own gate, and no one else (G1)`,
+  async () => {
     const records = mkdtempSync(join(scratch, 'records-'));
     const gate = async (email: string): Promise<boolean> => {
       const subject = users.get(email) ?? '';
@@ -372,9 +206,13 @@ describe.skipIf(serverUrl === undefined)('S0-1 staging reset refuses production'
     expect(await gate(operator?.email ?? '')).toBe(true);
     expect(await gate('ada@alpha.local')).toBe(false);
     expect(await gate('bea@bravo.local')).toBe(false);
-  }, 60_000);
+  },
+  60_000,
+);
 
-  it('runs again on staging: what staging held is emptied, the passwords made fresh', async () => {
+live(
+  `${NAME}: runs again on staging: what staging held is emptied, the passwords made fresh`,
+  async () => {
     await plantCanary();
     const first = JSON.parse(
       readFileSync(join(scratch, `seed-${seedDirs}`, 'synthetic-users.json'), 'utf8'),
@@ -391,9 +229,13 @@ describe.skipIf(serverUrl === undefined)('S0-1 staging reset refuses production'
       expect(first.find((earlier) => earlier.email === member.email)?.password).not.toBe(
         member.password,
       );
-  }, 180_000);
+  },
+  180_000,
+);
 
-  it('refuses a database neither marked made-up nor new, emptying nothing', async () => {
+live(
+  `${NAME}: refuses a database neither marked made-up nor new, emptying nothing`,
+  async () => {
     await onDatabase(async (admin) => {
       await admin.execute(`comment on database "${db?.name ?? ''}" is null`);
     });
@@ -406,8 +248,9 @@ describe.skipIf(serverUrl === undefined)('S0-1 staging reset refuses production'
     quiet(result);
     expect(calls.length).toBe(before);
     expect(await canaryHolds()).toBe(true);
-  }, 60_000);
-});
+  },
+  60_000,
+);
 
 describe('S0-1 staging reset, invented names only', () => {
   it("staging's cast carries invented names and made-up addresses only", () => {

@@ -46,7 +46,7 @@ const PEOPLE = [
     email: 'ada@alpha.local',
     business: 'A',
     businessKey: 'alpha',
-    person: 'Ada Lovelace',
+    person: 'Ada Alpha',
     role: 'admin',
   },
   {

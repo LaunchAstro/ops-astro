@@ -53,8 +53,14 @@ guard switched off is noted, and the seed refuses the database. Writes through
 the application are what people type on staging, and pass. A new database, whose
 tenant tables have never held a row, is confirmed once by a person with
 `LOCAL_SEED_MADE_UP=confirm`. A marked database that was migrated with a data
-change, or refused for any reason, is started again empty: its container's
-data does not survive a restart.
+change, or refused for any reason, is started again empty with the staging
+reset, `node scripts/ops/staging-reset.mjs` (empty, migrate, seed). It refuses
+any database or sign-in address whose Supabase project reference is not
+staging's, or is production's, and takes no file: a backup is never its input.
+It makes the made-up sign-ins through the admin API, confirmed so no mail is
+sent, seeds the made-up operator staging's own gate checks, and writes the
+operating business once. The passwords and keys go to a new owner-only folder,
+`OPS_SEED_DIR`, for the password manager.
 
 Backups are never restored into staging: the restore drill takes no target and
 restores only into a throwaway container of its own.
