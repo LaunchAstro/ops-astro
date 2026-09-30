@@ -88,15 +88,29 @@ export async function itemFor(
   );
 }
 
-/** Every observation of an item's email attempts, oldest first. */
+/**
+ * Every observation of an item's email attempts, oldest first, with any
+ * planted value masked, so a failing case never prints the canary itself.
+ */
 export async function attemptsOf(
   item: string,
 ): Promise<readonly { state: string; evidence: string | null }[]> {
-  return await w.db.admin.execute(
+  const rows = await w.db.admin.execute<{ state: string; evidence: string | null }>(
     `select state, evidence from public.inbox_delivery_attempts
       where item_id = $1 and channel = 'email' order by observed_seq`,
     [item],
   );
+  return rows.map((row) => ({ state: row.state, evidence: masked(row.evidence) }));
+}
+
+/** A text with the planted address and any item link masked. */
+export function masked<T extends string | null>(text: T): T {
+  if (text === null) return text;
+  return text
+    .split(w.canary.split('@')[0] ?? w.canary)
+    .join('[address]')
+    .split(`${MAIL.appOrigin}/inbox/`)
+    .join('[link]/') as T;
 }
 
 async function confirmedAddress(tx: TenantQuery, person: string, value: string): Promise<void> {

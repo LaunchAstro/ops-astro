@@ -17,7 +17,7 @@ import {
   REPLAY_COMPOSE,
 } from '../../packages/core-connectors/src/index.ts';
 import { sendInboxEmail } from '../../packages/core-custody/src/index.ts';
-import { attemptsOf, itemFor, MAIL, noDatabase, useEmailWorld, w } from './email-world.ts';
+import { attemptsOf, itemFor, MAIL, masked, noDatabase, useEmailWorld, w } from './email-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 const ROOT = resolve(import.meta.dirname, '../..');
@@ -48,10 +48,10 @@ it('email_carries_an_address_and_never_a_decision', async () => {
   // The whole message: who, from whom, fixed words and one address. No html,
   // no headers, no tags, no reply or unsubscribe action a scanner could post.
   expect(Object.keys(message).toSorted()).toEqual(['from', 'subject', 'text', 'to']);
-  expect(message['to']).toEqual([w.canary]);
+  expect(masked(JSON.stringify(message['to']))).toBe('["[address]@recipient.example.test"]');
   expect(message['subject']).toBe(EMAIL_SUBJECT);
   const text = String(message['text']);
-  expect(linksIn(text)).toEqual([`${MAIL.appOrigin}/inbox/${item}`]);
+  expect(linksIn(text).map(masked)).toEqual([`[link]/${item}`]);
   // Nothing that decides or names what is decided: no decision word, no gate,
   // no task, no token or query on the address.
   expect(`${text} ${EMAIL_SUBJECT}`).not.toMatch(
@@ -173,5 +173,5 @@ it('AW-07b isolation (send): another client, another business and another person
   // In its own business it goes to its own recipient's address only.
   expect(await send(bravoItem, w.bravo)).toMatchObject({ ok: true });
   const message = JSON.parse(w.provider.outbox.at(-1)?.body ?? '{}') as { to: string[] };
-  expect(message.to).toEqual([`bravo-${w.canary}`]);
+  expect(masked(JSON.stringify(message.to))).toBe('["bravo-[address]@recipient.example.test"]');
 });
