@@ -81,10 +81,13 @@ describe.skipIf(serverUrl === undefined)('settings values jsonb cannot hold', ()
   beforeAll(async () => {
     fixture = await createApiFixture('fr1_jsonb_settings');
     api = fixture.compose();
-    token = await tokenFor(fixture.member.presented.subject);
+    // A second factor: the threshold is a money action (MP-2-11, C59's step-up).
+    token = await tokenFor(fixture.member.presented.subject, { secondFactor: true });
     await fixture.db.app.withBusiness(fixture.business, async (tx) => {
       await grantTo(tx, fixture.member, 'read', WHOLE_BUSINESS, false, 'settings');
       await grantTo(tx, fixture.member, 'manage', WHOLE_BUSINESS, false, 'settings');
+      // MP-2-11: the four-eyes threshold is a money action, `spend:decide`.
+      await grantTo(tx, fixture.member, 'decide', WHOLE_BUSINESS, false, 'spend');
       await installBusinessSettings(tx);
     });
   }, 60_000);

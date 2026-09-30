@@ -339,6 +339,7 @@ const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const SPEND_COLLECTION = 'spend';
 const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
 
@@ -622,9 +623,11 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was
-  // honoured and it is refused rather than dropped.
-  declare('settings.set_four_eyes_threshold', 'manage', {
-    collection: SETTINGS_COLLECTION,
+  // honoured and it is refused rather than dropped. The four-eyes threshold is
+  // a money action (MP-2-11, owner line 71): `spend:decide`, so C59's step-up
+  // judges it, and `settings:manage` alone does not reach it.
+  declare('settings.set_four_eyes_threshold', 'decide', {
+    collection: SPEND_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),

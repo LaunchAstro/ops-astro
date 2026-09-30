@@ -137,14 +137,16 @@ describe('the surface as a table', () => {
     expect(collections.get('task.create')).toBe('task');
     expect(collections.get('person.list')).toBe('person');
     expect(collections.get('preset.plan')).toBe('preset');
-    expect(collections.get('settings.set_four_eyes_threshold')).toBe('settings');
+    // MP-2-11: the four-eyes threshold is a money action (owner line 71).
+    expect(collections.get('settings.set_four_eyes_threshold')).toBe('spend');
     expect(collections.get('settings.set_client_sign_off')).toBe('settings');
     // `settings.read` is on the same collection as the two writes and takes a
     // different action, which is the whole of the asymmetry: every member may
     // see a setting, and changing one is `manage`.
     expect(collections.get('settings.read')).toBe('settings');
     expect(declarationOf('settings.read').action).toBe('read');
-    expect(declarationOf('settings.set_four_eyes_threshold').action).toBe('manage');
+    expect(declarationOf('settings.set_client_sign_off').action).toBe('manage');
+    expect(declarationOf('settings.set_four_eyes_threshold').action).toBe('decide');
     expect(collections.get('session.capabilities')).toBe('session');
     for (const command of COMMAND_SURFACE) {
       expect(command.collection, command.name).toMatch(/^[a-z][a-z_]*$/u);

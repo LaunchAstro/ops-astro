@@ -84,6 +84,8 @@ describe.skipIf(serverUrl === undefined)('the settings revision over HTTP', () =
       await grantTo(tx, mia, 'read');
       await grantTo(tx, mia, 'read', { kind: 'business', id: null }, false, 'settings');
       await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'settings');
+      // MP-2-11: the four-eyes threshold is a money action, `spend:decide`.
+      await grantTo(tx, mia, 'decide', { kind: 'business', id: null }, false, 'spend');
     });
 
     api = createApi({
@@ -92,7 +94,10 @@ describe.skipIf(serverUrl === undefined)('the settings revision over HTTP', () =
       verify: async (request) => {
         const header = request.header('authorization') ?? '';
         const subject = header.replace(/^Bearer /u, '');
-        return subject === '' ? undefined : { provider: 'supabase', subject };
+        // A fresh sign-in with its second factor: the threshold is a money action (C59).
+        const now = Math.floor(Date.now() / 1000);
+        const assurance = { level: 'aal2', signedInAt: now, factorAt: now } as const;
+        return subject === '' ? undefined : { provider: 'supabase', subject, assurance };
       },
       // eslint-disable-next-line @typescript-eslint/require-await -- the port is async
       resolveBusiness: async (key) => (key === BUSINESS_KEY ? alpha : undefined),
