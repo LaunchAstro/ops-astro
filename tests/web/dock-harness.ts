@@ -8,7 +8,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
+import { launchChromium } from '../support/chromium.ts';
 import { madeUpSession, serveApp } from '../visual/app-pages.ts';
 import { openSide, type Catalogue, type Side } from '../visual/capture.ts';
 import {
@@ -42,7 +42,7 @@ export async function onDockSides(
   ) as Catalogue;
   await fetchAssets(readAssets(), packet);
   // No browser, no capture: the launch fails the test, never skips it.
-  const browser = await chromium.launch(MODE);
+  const browser = await launchChromium(MODE);
   const { app, close } = await serveApp();
   const scratch = mkdtempSync(join(tmpdir(), 'dock-harness-'));
   try {
