@@ -7,7 +7,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -236,3 +236,16 @@ export const refusedBeforeConnecting = async (
   expect(existsSync(env['OPS_ASTRO_DEPLOYMENTS'] ?? ''), 'a refusal records nothing').toBe(false);
   expect(await canaryHolds()).toBe(true);
 };
+
+/** Each run is recorded (ORCH40's reset-gate ruling): one line, no setting's value in it. */
+export function recordedOnce(env: Record<string, string>): void {
+  const record = readFileSync(
+    join(env['OPS_ASTRO_DEPLOYMENTS'] ?? '', 'deployments.jsonl'),
+    'utf8',
+  );
+  const lines = record.trim().split('\n');
+  expect(lines).toHaveLength(1);
+  expect(JSON.parse(lines[0] ?? '{}')).toMatchObject({ action: 'staging reset' });
+  for (const [name, value] of Object.entries(env))
+    if (name !== 'OPS_ASTRO_DEPLOYMENTS') expect(lines[0], name).not.toContain(value);
+}
