@@ -177,7 +177,16 @@ access ticks; the description on Team and the agent brief on Agent as
 editable fields; the subtasks and time without their doors; the conversation
 on the tab the reply door named; and the folded trail. The Agent tab says it
 is not connected until the assistant is. Its head names the task, links to
-its page and draws New task unavailable (MP-4-13 builds it). The name is
+its page and opens a new-task draft (MP-4-13, `screens/task/DraftPanel.tsx`)
+in the same slot: name, due, estimate, tags, subtasks, time spent and a note,
+kept in this browser under the business and the person until Create or Cancel
+(X and Escape keep it). Create sends `task.create`, then the client from the
+page's scope (none from the panel yet: the task's client is not on the wire),
+the note, the tags, the subtasks and the time, each by its own command
+(`screens/task/task-draft.ts`); a part refused after the task exists is named,
+never retried as a second task. Closing the panel, or opening another task or
+a draft, while the reader's timer runs on the task stops it through
+`time.stop`. The name is
 edited in place in the head (Enter saves, Escape leaves it), and the field
 grid (`screens/task/PanelFields.tsx`) sets the assignee (a person from
 `person.list`, or Unassigned) through `task.assign` and the due date through

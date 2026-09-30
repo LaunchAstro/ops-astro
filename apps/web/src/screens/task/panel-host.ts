@@ -44,7 +44,7 @@ export function useTaskPanel(): TaskPanelState {
   const [draft, setDraft] = useState<DraftScope | null>(null);
   const [changes, setChanges] = useState(0);
   // Leaving the task (X, Escape, another task, a draft) stops its running
-  // timer through MP-4-6's one stop-and-log step, once (TR-S-PI6-4).
+  // timer through MP-4-6's one stop-and-log step, once.
   const stop = useRef<(() => void) | null>(null);
   const leave = useCallback((): void => {
     const pending = stop.current;

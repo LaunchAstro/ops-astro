@@ -72,7 +72,7 @@ export interface TaskPanelProps {
   readonly onClose: () => void;
   /** The head's New task (MP-4-13): a draft filed from this task. Absent, the door is not drawn live. */
   readonly onNewTask?: (scope: DraftScope) => void;
-  /** Hand the host this person's timer stop while it runs on the task, or null (TR-S-PI6-4). */
+  /** Hand the host this person's timer stop while it runs on the task, or null. */
   readonly onLeaving?: (stop: (() => void) | null) => void;
 }
 
