@@ -642,6 +642,14 @@
   stroke: currentColor;
   opacity: 0.09;
 }
+/* Axis labels in mono 10 at 45%. */
+.chart__axis {
+  fill: currentColor;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  opacity: 0.45;
+}
 .chart__axis-title {
   fill: currentColor;
   font: var(--type-badge);

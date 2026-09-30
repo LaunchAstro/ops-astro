@@ -31,3 +31,7 @@ export {
   type Series,
   type Slice,
 } from './chart-numbers.ts';
+export { LineChart } from './chart-line.tsx';
+export { ColumnChart } from './chart-column.tsx';
+export { DonutChart, Gauge, ScoreDial } from './chart-radial.tsx';
+export { Funnel, Sparkline } from './chart-inline.tsx';
