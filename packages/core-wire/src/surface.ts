@@ -52,6 +52,12 @@ export type CommandName =
   | 'task.set_audience'
   | 'task.reparent'
   | 'task.move'
+  | 'task.set_scores'
+  | 'task.set_adhoc'
+  | 'task.share_with_client'
+  | 'task.revoke_client_share'
+  | 'task.edit_comment'
+  | 'task.delete_comment'
   // The mechanics specification 14.2 and 14.3 name.
   | 'task.rank'
   | 'task.trash'
@@ -108,7 +114,15 @@ export type CommandName =
   // A person records what an unknown effect came to: one of three (T3d1).
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
-  | 'budget.write_off';
+  | 'budget.write_off'
+  // Time tracking (MP-4-6): a person's own time entries on a task, under
+  // `time:write`. None names the task's revision: a time entry is a row
+  // beside the task, not a write to it.
+  | 'time.start'
+  | 'time.stop'
+  | 'time.log'
+  | 'time.set_note'
+  | 'time.delete';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -264,9 +278,11 @@ function declare(
 }
 
 const TASK_COLLECTION = 'task';
+const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const TIME_COLLECTION = 'time';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -316,7 +332,15 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.complete': TARGET,
   'task.reopen': { ...TARGET, reason: 'any' },
   'task.start': TARGET,
-  'task.comment': { ...TARGET, body: 'any', audience: 'any', commentType: 'any' },
+  'task.comment': {
+    ...TARGET,
+    body: 'any',
+    audience: 'any',
+    commentType: 'any',
+    parentId: 'any',
+  },
+  'task.edit_comment': { ...TARGET, commentId: 'any', body: 'any' },
+  'task.delete_comment': { ...TARGET, commentId: 'any' },
   'task.propose': {
     ...TARGET,
     purpose: 'any',
@@ -351,6 +375,10 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.set_stage': FIELDS,
   'task.set_party': FIELDS,
   'task.set_audience': FIELDS,
+  'task.set_scores': FIELDS,
+  'task.set_adhoc': FIELDS,
+  'task.share_with_client': TARGET,
+  'task.revoke_client_share': TARGET,
   'task.reparent': { ...TARGET, parentId: 'any' },
   'task.move': { ...TARGET, board: 'any', boardSection: 'any' },
   'task.rank': { ...TARGET, afterId: 'id?|null', beforeId: 'id?|null' },
@@ -385,6 +413,12 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  // A duration is text the handler parses and answers in its own words.
+  'time.start': { taskId: 'id' },
+  'time.stop': { taskId: 'id' },
+  'time.log': { taskId: 'id', duration: 'any', note: 'any' },
+  'time.set_note': { entryId: 'id', note: 'any' },
+  'time.delete': { entryId: 'id' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -392,7 +426,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['parentId', 'board', 'boardSection'],
   }),
-  declare('task.update', 'write'),
+  // An agent writes the description and its brief on its own task inside its
+  // delegation (MP-4-7), and no other field: `updateTaskText` refuses the rest.
+  declare('task.update', 'write', { agent: 'delegated' }),
   declare('task.complete', 'write'),
   declare('task.reopen', 'write'),
   declare('task.comment', 'comment', { agent: 'delegated' }),
@@ -436,6 +472,23 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.set_audience', 'share'),
   declare('task.reparent', 'write', { serialise: TASK_PLACEMENT_LOCK }),
   declare('task.move', 'write', { serialise: TASK_PLACEMENT_LOCK }),
+  // The three marks the rank reads (MP-4-9). `task:write`, as `task.update`
+  // asks, and an agent sets them inside its delegation like a comment.
+  declare('task.set_scores', 'write', { agent: 'delegated' }),
+  // The Ad hoc mark (MP-4-10, CS-4.9): `task:write`, and an agent sets it on
+  // its own task inside its delegation.
+  declare('task.set_adhoc', 'write', { agent: 'delegated' }),
+  // Client access (MP-4-10, CS-4.10, R45): the task's share grants to its
+  // client's people, created and withdrawn under `access:share`, which an
+  // agent never holds (contract 2.3 to 2.6). The target row is the lock, so
+  // two at once on one task leave one share per person.
+  declare('task.share_with_client', 'share', { collection: ACCESS_COLLECTION }),
+  declare('task.revoke_client_share', 'share', { collection: ACCESS_COLLECTION }),
+  // An author's own message or reply, rewritten or deleted (MP-4-5,
+  // CS-4.34): `task:comment` on the task, as the comment itself, and an
+  // agent inside its delegation on its own words only (the handler's check).
+  declare('task.edit_comment', 'comment', { agent: 'delegated' }),
+  declare('task.delete_comment', 'comment', { agent: 'delegated' }),
 
   declare('task.rank', 'write'),
   declare('task.trash', 'write'),
@@ -574,6 +627,27 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
   }),
+
+  // Time tracking (MP-4-6, CS-4.1, CS-4.28 to CS-4.30): `write` on `time`,
+  // asked of the business, and the handler then asks `task:read` on the task
+  // the entry is against, so a person times only a task they may read. Each
+  // reaches only the caller's own entries. The key catalogue lets an agent
+  // hold `time:write` inside its delegation; the agent path does not serve
+  // these yet, so it is `never` here until it does.
+  ...(['time.start', 'time.stop', 'time.log'] as const).map((name) =>
+    declare(name, 'write', {
+      collection: TIME_COLLECTION,
+      targetsExistingRecord: false,
+      untargetedIdentifiers: ['taskId'],
+    }),
+  ),
+  ...(['time.set_note', 'time.delete'] as const).map((name) =>
+    declare(name, 'write', {
+      collection: TIME_COLLECTION,
+      targetsExistingRecord: false,
+      untargetedIdentifiers: ['entryId'],
+    }),
+  ),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));

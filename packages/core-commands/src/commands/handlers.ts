@@ -16,9 +16,14 @@ import type { CommandRequest } from './requests.ts';
 import type { HandlerOutcome } from './outcome.ts';
 import { createTask, updateTask } from './tasks-write.ts';
 import { setState, writeOwnedFields } from './tasks-state.ts';
+import { setScores } from './tasks-scores.ts';
+import { setAdHoc } from './tasks-adhoc.ts';
+import { setParty } from './tasks-party.ts';
+import { revokeClientShare, shareWithClient } from './tasks-client-access.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
+import { changeFrom, deleteTaskComment, editTaskComment } from './tasks-comment-edit.ts';
 import { setBusinessSetting } from './settings-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
@@ -32,6 +37,7 @@ import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
+import { deleteEntry, logTimeEntry, setEntryNote, startTime, stopTime } from './tasks-time.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -57,8 +63,12 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.assign': writeOwned,
   'task.triage': writeOwned,
   'task.set_stage': writeOwned,
-  'task.set_party': writeOwned,
+  'task.set_party': (tx, context, request) => setParty(tx, context, request.fields),
   'task.set_audience': writeOwned,
+  'task.set_scores': (tx, context, request) => setScores(tx, context, request.fields),
+  'task.set_adhoc': (tx, context, request) => setAdHoc(tx, context, request.fields),
+  'task.share_with_client': (tx, context) => shareWithClient(tx, context),
+  'task.revoke_client_share': (tx, context) => revokeClientShare(tx, context),
 
   'task.reparent': (tx, context, request) => reparentTask(tx, context, request.parentId),
   'task.move': (tx, context, request) =>
@@ -78,7 +88,12 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
       request.body,
       request.audience,
       request.commentType,
+      request.parentId,
     ),
+  'task.edit_comment': (tx, context, request) =>
+    editTaskComment(tx, changeFrom(context), request.commentId, request.body),
+  'task.delete_comment': (tx, context, request) =>
+    deleteTaskComment(tx, changeFrom(context), request.commentId),
 
   // The revision travels with the rest of the envelope rather than as a
   // field of the settings payload, and goes to the settings write as sent,
@@ -114,14 +129,21 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'budget.record_outcome': recordOutcomeOnTask,
   // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
   'budget.write_off': writeOffOnTask,
+  // MP-4-6. The person is the session's, so a body names only the task or
+  // the entry, and what to write.
+  'time.start': (tx, context, request) => startTime(tx, context, request.taskId),
+  'time.stop': (tx, context, request) => stopTime(tx, context, request.taskId),
+  'time.log': (tx, context, request) =>
+    logTimeEntry(tx, context, request.taskId, request.duration, request.note),
+  'time.set_note': (tx, context, request) =>
+    setEntryNote(tx, context, request.entryId, request.note),
+  'time.delete': (tx, context, request) => deleteEntry(tx, context, request.entryId),
 };
 
 function writeOwned(
   tx: TenantQuery,
   context: CommandContext,
-  request: RequestOf<
-    'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_party' | 'task.set_audience'
-  >,
+  request: RequestOf<'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_audience'>,
 ): Promise<HandlerOutcome> {
   return writeOwnedFields(tx, context, request.command, request.fields);
 }

@@ -188,10 +188,17 @@ table exactly:
 | `assignee`      | `uuid_2`             | `task.assign`                                |
 | `title`         | `txt_4`              | `task.update`                                |
 | `description`   | unslotted, in `data` | `task.update`                                |
+| `agent_brief`   | unslotted, in `data` | `task.update` (0045, MP-4-7)                 |
 | `due`           | `ts_1`               | `task.update`                                |
 | `priority`      | `num_1`              | `task.update`                                |
 | `completed_at`  | `ts_2`               | derived on complete, cleared on reopen       |
 | `stage`         | `txt_5`              | `task.set_stage`                             |
+| `impact`        | `num_3`              | `task.set_scores`                            |
+| `confidence`    | `num_4`              | `task.set_scores`                            |
+| `ease`          | `num_5`              | `task.set_scores`                            |
+| `ad_hoc`        | `bool_2`             | `task.set_adhoc`                             |
+| `archived_at`   | unslotted, in `data` | derived on complete, cleared on reopen       |
+| `archived_why`  | unslotted, in `data` | derived on complete, cleared on reopen       |
 | `key`, `source` | `txt_1`, `txt_2`     | system                                       |
 
 There is no `status` column and no second coarse field. Whether a task is done

@@ -20,12 +20,18 @@ import {
   ownAppliedEffect,
   ownUnknownAttempt,
 } from './role-case-bodies.ts';
+import { commentChangeBody } from './role-case-comment-bodies.ts';
+import { timeRecipes } from './time-recipes.ts';
 
 export function createPositiveBody(
   context: BodyContext,
-): (declaration: CommandDeclaration) => Promise<Prepared> {
+): (declaration: CommandDeclaration, author?: unknown) => Promise<Prepared> {
+  const time = timeRecipes(context);
   // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
-  return async function positiveBody(declaration: CommandDeclaration): Promise<Prepared> {
+  return async function positiveBody(
+    declaration: CommandDeclaration,
+    author?: unknown,
+  ): Promise<Prepared> {
     const target = async (): Promise<Record<string, unknown>> => {
       const task = await context.freshTask(`a task for ${declaration.name}`);
       return { recordId: task.id, expectedRevision: task.revision };
@@ -58,6 +64,9 @@ export function createPositiveBody(
       }
       case 'task.comment':
         return { body: { ...(await target()), body: 'a note', audience: 'internal' } };
+      case 'task.edit_comment':
+      case 'task.delete_comment':
+        return { body: await commentChangeBody(context, declaration.name, author) };
       case 'task.assign':
         return { body: { ...(await target()), fields: { assignee: context.assigneePersonId } } };
       case 'task.triage':
@@ -66,6 +75,17 @@ export function createPositiveBody(
         return { body: { ...(await target()), fields: { stage: 'drafting' } } };
       case 'task.set_audience':
         return { body: { ...(await target()), fields: { client_visible: true } } };
+      case 'task.set_scores':
+        return { body: { ...(await target()), fields: { impact: 7, confidence: 9, ease: 8 } } };
+      case 'task.set_adhoc':
+        return { body: { ...(await target()), fields: { ad_hoc: true } } };
+      case 'task.share_with_client': {
+        if (context.clientTask === undefined) return { body: await target() };
+        const task = await context.clientTask('a task the admin shares with its client');
+        return { body: { recordId: task.id, expectedRevision: task.revision } };
+      }
+      case 'task.revoke_client_share':
+        return { body: await target() };
       case 'task.set_party':
         // The party link takes a uuid and nothing in this tree resolves one:
         // the party model is not installed, and `tasks-state.ts` says so where
@@ -205,6 +225,12 @@ export function createPositiveBody(
         // The person renews their own lease (ledger line 38, "current lease
         // owner"). The agent's renewal is in the agent journey.
         return { body: await ownLease(context) };
+      case 'time.start':
+      case 'time.stop':
+      case 'time.log':
+      case 'time.set_note':
+      case 'time.delete':
+        return await time[declaration.name]();
       case 'task.dispatch':
         // The person marks their own lease's step dispatched (T2c1).
         return { body: await ownLease(context) };

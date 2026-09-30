@@ -20,6 +20,7 @@ export {
   effectiveGrants,
   issueGrant,
   readableScope,
+  readableRecordIds,
   revokeGrant,
   subjectsOf,
   type Action,

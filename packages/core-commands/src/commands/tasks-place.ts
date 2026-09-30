@@ -30,6 +30,7 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { refuseReparentOperands } from './operands.ts';
+import { clientOf, refuseOtherClient } from './tasks-party.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 
@@ -186,6 +187,15 @@ export async function reparentTask(
   if (parentId !== null) {
     const unreached = await refuseUnreachedRecord(tx, context, parentId);
     if (unreached !== undefined) return refused(unreached);
+  }
+  // A subtask carries its parent's client (MP-4-4): moving a task under
+  // another client's work is a client change, which is `task.set_party`'s.
+  if (
+    parentId !== null &&
+    (await clientOf(tx, context.spine.taskTypeId, parentId)) !==
+      ((target.data['client'] as string | undefined)?.toLowerCase() ?? null)
+  ) {
+    return refused(refuseOtherClient());
   }
   if (
     parentId !== null &&

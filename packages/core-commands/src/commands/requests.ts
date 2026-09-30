@@ -24,6 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { TimeRequest } from './requests-time.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -85,7 +86,15 @@ export type CommandRequest =
       readonly audience: string;
       /** `note`, `client` or `system`. A person writing a comment writes a note. */
       readonly commentType?: string;
+      /** The top-level message on this task a reply sits under (R42). */
+      readonly parentId?: string | null;
     } & Targeted)
+  | ({
+      readonly command: 'task.edit_comment';
+      readonly commentId: string;
+      readonly body: string;
+    } & Targeted)
+  | ({ readonly command: 'task.delete_comment'; readonly commentId: string } & Targeted)
   // A proposal is a record beside the task and targets it, so it names the
   // revision it was written against like every other targeted command. What it
   // does *not* carry is who is proposing, what they may spend it against or
@@ -168,7 +177,13 @@ export type CommandRequest =
   // definition, so the payload is the values and nothing else.
   | ({
       readonly command:
-        'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_party' | 'task.set_audience';
+        | 'task.assign'
+        | 'task.triage'
+        | 'task.set_stage'
+        | 'task.set_party'
+        | 'task.set_audience'
+        | 'task.set_scores'
+        | 'task.set_adhoc';
       readonly fields: FieldValues;
     } & Targeted)
   | ({ readonly command: 'task.reparent'; readonly parentId: string | null } & Targeted)
@@ -183,6 +198,7 @@ export type CommandRequest =
       readonly afterId?: string | null;
       readonly beforeId?: string | null;
     } & Targeted)
+  | ({ readonly command: 'task.share_with_client' | 'task.revoke_client_share' } & Targeted)
   | ({ readonly command: 'task.trash' } & Targeted)
   | ({ readonly command: 'task.restore'; readonly batchId: string } & Envelope)
   // The purge's window is the business's setting, not an operand. The field is
@@ -264,7 +280,9 @@ export type CommandRequest =
       readonly attemptId: unknown;
       readonly amountMinor: unknown;
       readonly reason: unknown;
-    } & Envelope);
+    } & Envelope)
+  // Time tracking (MP-4-6), in `requests-time.ts`.
+  | TimeRequest<Envelope>;
 
 /**
  * The part of a request the register compares, which is everything except the

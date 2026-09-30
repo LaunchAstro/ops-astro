@@ -98,6 +98,13 @@ const GRANTS_BY_ROLE = {
     // A top-up is a money decision on `billing` (T2e, the permission
     // catalogue's `billing:decide`): the owner and administrators hold it.
     ['billing', 'decide'],
+    // Client access (MP-4-10) shares a task with its client's people under
+    // `access:share`, which the key catalogue gives the owner and
+    // administrators and never an agent.
+    ['access', 'share'],
+    // Time tracking (MP-4-6) asks `time:write`: the owner's and
+    // administrators', and a member's only where granted.
+    ['time', 'write'],
   ],
   member: [
     ['task', 'read'],

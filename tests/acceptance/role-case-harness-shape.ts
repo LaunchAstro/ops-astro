@@ -60,7 +60,7 @@ export interface Harness {
   ): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
   probeBody(declaration: CommandDeclaration): Readonly<Record<string, unknown>>;
-  positiveBody(declaration: CommandDeclaration): Promise<Prepared>;
+  positiveBody(declaration: CommandDeclaration, author?: unknown): Promise<Prepared>;
   approvedReservation(): Promise<{ subject: Task; sibling: Task; decided: Answer }>;
   reserve(task: Task, purpose: string): Promise<Answer>;
   activeRoleKeys(): Promise<readonly string[]>;

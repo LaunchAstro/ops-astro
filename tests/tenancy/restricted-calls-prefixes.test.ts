@@ -98,6 +98,17 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
+  // 0047: no journey step logs time yet.
+  'public.time_entries': {
+    task_id: randomUUID(),
+    person_id: randomUUID(),
+    actor_id: randomUUID(),
+    started_at: '2026-09-30T00:00:00.000Z',
+    ended_at: '2026-09-30T00:01:00.000Z',
+    minutes: 1,
+    ad_hoc: false,
+    source: 'log',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

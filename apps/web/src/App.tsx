@@ -17,6 +17,8 @@ import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { drawScreen } from './screen-registry.tsx';
+import { TaskPanel } from './screens/task/Panel.tsx';
+import { useTaskPanel } from './screens/task/panel-host.ts';
 
 export interface AppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
@@ -142,6 +144,7 @@ export function App(props: AppProps): ReactElement {
 
   const match = matchRoute(here);
   const grantKey = grantKeyOf(session);
+  const taskPanel = useTaskPanel();
 
   const rail: readonly RailEntry[] = Object.entries(ROUTES)
     .filter(([, entry]) => entry.rail)
@@ -174,7 +177,13 @@ export function App(props: AppProps): ReactElement {
           />
         );
       case 'screen':
-        return drawScreen(gate.match, { client, grantKey, notice, storage: props.storage });
+        return drawScreen(gate.match, {
+          client,
+          grantKey,
+          notice,
+          storage: props.storage,
+          taskPanel: taskPanel.host,
+        });
     }
   })();
 
@@ -216,6 +225,21 @@ export function App(props: AppProps): ReactElement {
         props.navigate(here === target ? pathTo('agency:projects-board') : target);
       }}
       seated={false}
+      // The dock task panel (MP-4-8), in the shell's panel slot until the dock
+      // frame (MP-3-1) draws panels in place. A new door or task remounts it.
+      panel={
+        session === null || taskPanel.opening === null ? null : (
+          <TaskPanel
+            key={`${taskPanel.opening.taskKey}\u0000${taskPanel.opening.door}\u0000${taskPanel.opening.tab ?? ''}`}
+            client={client}
+            grantKey={grantKey}
+            opening={taskPanel.opening}
+            changes={taskPanel.host.changes}
+            onChanged={taskPanel.changed}
+            onClose={taskPanel.close}
+          />
+        )
+      }
     >
       {content}
     </Shell>

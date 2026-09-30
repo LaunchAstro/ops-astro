@@ -15,10 +15,10 @@ import {
   COMMENT_SPINE,
   COMMENT_TYPE_KEY,
   externalCommentProjection,
-  readTaskComments,
   writeComment,
   type StoredComment,
 } from '../../packages/core-records/src/tasks/comments.ts';
+import { readTaskComments } from '../../packages/core-records/src/tasks/comment-thread.ts';
 import { installTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
 import { domainModelConformance } from '../../packages/core-records/src/records/conformance.ts';
 import { readFieldDefinitions } from '../../packages/core-records/src/records/field-store.ts';
@@ -92,7 +92,16 @@ describe.skipIf(serverUrl === undefined)('task comments', () => {
         .filter((field) => field.visibilityClass === 'shared')
         .map((field) => field.key)
         .toSorted();
-      expect(shared).toStrictEqual(['audience', 'author', 'body', 'comment_type', 'posted_at']);
+      // `parent` (MP-4-5, R42): a reply goes to its message's audience, so the
+      // id it carries is a client message's on the client side.
+      expect(shared).toStrictEqual([
+        'audience',
+        'author',
+        'body',
+        'comment_type',
+        'parent',
+        'posted_at',
+      ]);
     });
   });
 
@@ -195,6 +204,7 @@ describe.skipIf(serverUrl === undefined)('task comments', () => {
         'body',
         'comment_type',
         'id',
+        'parent',
         'posted_at',
       ]);
       expect(Object.hasOwn(external ?? {}, 'source')).toBe(false);

@@ -43,6 +43,7 @@ import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { refuseCreateOperands, refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { clientOf } from './tasks-party.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
 
@@ -183,6 +184,10 @@ export async function createTask(
   }
   const stateId = named?.id ?? initialStateId(context.spine.states);
 
+  // A subtask carries its parent's client (MP-4-4): the placement above has
+  // already found the parent live in this business.
+  const client = parentId === null ? null : await clientOf(tx, context.spine.taskTypeId, parentId);
+
   const id = randomUUID();
   const data: Record<string, unknown> = {
     ...request.fields,
@@ -194,6 +199,7 @@ export async function createTask(
     ...(placement.board === null ? {} : { board: placement.board }),
     ...(placement.boardSection === null ? {} : { board_section: placement.boardSection }),
     ...(parentId === null ? {} : { parent: parentId }),
+    ...(client === null ? {} : { client }),
   };
 
   const rows = await tx.query<{ readonly revision: string; readonly key: string }>(
@@ -219,8 +225,8 @@ export async function createTask(
  */
 export async function updateTask(
   tx: TenantQuery,
-  context: CommandContext,
-  request: Extract<CommandRequest, { command: 'task.update' }>,
+  context: Pick<CommandContext, 'spine' | 'target'>,
+  request: Pick<Extract<CommandRequest, { command: 'task.update' }>, 'fields'>,
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('updateTask: the envelope read no target');
@@ -266,6 +272,33 @@ export async function updateTask(
   return applied(target.id, Number(written.revision), {
     changed: Object.keys(request.fields).toSorted(),
   });
+}
+
+/** The two task texts an agent writes through `task.update` (MP-4-7). */
+export const AGENT_TEXT_FIELDS: readonly string[] = ['agent_brief', 'description'];
+
+/**
+ * `task.update` as an agent makes it: the description and the brief on its
+ * own delegated task, and nothing else. A body naming any other field is
+ * refused whole, naming those fields, before anything is written: the agent's
+ * reach is the two texts, not the fields a person may edit.
+ */
+export async function updateTaskText(
+  tx: TenantQuery,
+  context: Pick<CommandContext, 'spine' | 'target'>,
+  fields: FieldValues,
+): Promise<HandlerOutcome> {
+  const outside = Object.keys(fields)
+    .filter((key) => !AGENT_TEXT_FIELDS.includes(key))
+    .toSorted();
+  if (outside.length > 0) {
+    return refused(
+      refuseCommand('SCOPE_NOT_GRANTED', outside, [
+        'An agent writes only the description and the agent brief through task.update.',
+      ]),
+    );
+  }
+  return await updateTask(tx, context, { fields });
 }
 
 /**

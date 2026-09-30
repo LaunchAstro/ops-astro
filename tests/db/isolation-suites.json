@@ -17,6 +17,27 @@
     "tests/reads/mp-5-11-board-wait-reason.test.ts",
     "tests/reads/mp-5-12-board-review.test.ts",
     "tests/commands/mp-5-9-board-row.test.ts",
-    "tests/commands/mp-5-10-board-cells.test.ts"
+    "tests/commands/mp-5-10-board-cells.test.ts",
+    "tests/reads/task-rank.test.ts",
+    "tests/reads/task-rank-agent.test.ts",
+    "tests/commands/task-adhoc.test.ts",
+    "tests/commands/task-adhoc-agent.test.ts",
+    "tests/commands/task-client-access.test.ts",
+    "tests/commands/task-client-access-isolation.test.ts",
+    "tests/commands/task-client-access-agent.test.ts",
+    "tests/reads/task-board-crumb.test.ts",
+    "tests/reads/task-steps.test.ts",
+    "tests/commands/task-subtasks.test.ts",
+    "tests/commands/task-completion.test.ts",
+    "tests/commands/task-time-isolation.test.ts",
+    "tests/reads/task-facts.test.ts",
+    "tests/reads/task-perspectives.test.ts",
+    "tests/reads/task-history-trail.test.ts",
+    "tests/commands/task-conversation.test.ts",
+    "tests/commands/task-conversation-signals.test.ts",
+    "tests/commands/task-writing.test.ts",
+    "tests/commands/task-writing-agent.test.ts",
+    "tests/commands/task-panel-fields.test.ts",
+    "tests/commands/task-panel-fields-agent.test.ts"
   ]
 }

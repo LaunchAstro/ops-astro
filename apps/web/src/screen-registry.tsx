@@ -14,6 +14,15 @@ import type { OperationsClient } from './operations/client.ts';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
+import { TaskUnnamed } from './screens/task/Absent.tsx';
+import type { ConversationTab, PanelDoor } from './screens/task/Perspectives.tsx';
+
+/** The dock task panel as a screen reaches it (MP-4-8): open it, and read its change count. */
+export interface TaskPanelHost {
+  readonly open: (taskKey: string, door: PanelDoor, tab?: ConversationTab) => void;
+  /** Changes made in the panel so far: a screen showing the task reads it again on a new one. */
+  readonly changes: number;
+}
 
 /** What the application hands whichever screen the address resolves to. */
 export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRouteId> {
@@ -24,6 +33,8 @@ export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRo
   /** Why the board was reached instead of the address that was held. */
   readonly notice: string | null;
   readonly storage: Storage | null;
+  /** Absent where no panel can open, and then a door cannot be pressed. */
+  readonly taskPanel?: TaskPanelHost;
 }
 
 export const SCREENS: {
@@ -47,8 +58,17 @@ export const SCREENS: {
       client={context.client}
       grantKey={context.grantKey}
       taskKey={context.params.key}
+      {...(context.taskPanel === undefined
+        ? {}
+        : {
+            onOpenPanel: (door: PanelDoor, tab?: ConversationTab) => {
+              context.taskPanel?.open(context.params.key, door, tab);
+            },
+            changes: context.taskPanel.changes,
+          })}
     />
   ),
+  'agency:task-unnamed': () => <TaskUnnamed />,
 };
 
 /** The screen a matched address draws, handed that route's own parameters. */

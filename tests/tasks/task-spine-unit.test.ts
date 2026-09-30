@@ -62,13 +62,19 @@ describe('the spine declaration', () => {
     }
   });
 
-  it('adds exactly two slots beyond that sixteen, both protected', () => {
+  // The two 0006 added, the three marks 0042 added for the rank (MP-4-9), and
+  // the Ad hoc mark 0043 added (MP-4-10).
+  it('adds exactly six slots beyond that sixteen, all protected', () => {
     const beyond = TASK_SPINE.filter(
       (field) => field.slot !== null && !RESERVATION_ORDER.some(([slot]) => slot === field.slot),
     );
     expect(beyond.map((field) => `${field.key}=${field.slot ?? ''}`)).toStrictEqual([
       'client=uuid_7',
       'client_visible=bool_1',
+      'impact=num_3',
+      'confidence=num_4',
+      'ease=num_5',
+      'ad_hoc=bool_2',
     ]);
     expect(beyond.every((field) => field.writeMode !== 'generic')).toBe(true);
   });

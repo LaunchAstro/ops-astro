@@ -66,6 +66,14 @@ export interface BodyContext {
   readonly assigneePersonId: string;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
+  /**
+   * A task on a client with one person standing on it, which is what
+   * `task.share_with_client` needs to succeed (MP-4-10). Absent where a case
+   * only needs the body shape, and the share is refused on authority anyway.
+   */
+  clientTask?(title: string): Promise<Task>;
+  /** A comment `author` (the admin when absent) wrote on a fresh task (MP-4-5). */
+  ownComment?(author?: unknown): Promise<Task & { readonly commentId: string }>;
 }
 
 export const batchOf = (answer: Answer): string =>

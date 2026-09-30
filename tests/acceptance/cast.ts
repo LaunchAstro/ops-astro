@@ -101,6 +101,19 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'billing',
 ];
 
+/**
+ * Pairs the administrator holds beyond the collections above, one each. Client
+ * access (MP-4-10) asks `access:share`, which the key catalogue gives the owner
+ * and administrators; the rest of `access` is not theirs by this fixture, and
+ * `ADMIN_COLLECTIONS` also sizes agent delegations, which never hold `share`.
+ * Time tracking (MP-4-6) asks `time:write`, the owner's and administrators'
+ * and a member's where granted; no agent reaches the `time.*` commands yet.
+ */
+export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
+  ['access', 'share'],
+  ['time', 'write'],
+];
+
 export async function tokenFor(
   subject: string,
   options: { readonly expiresIn?: number } = {},
@@ -128,6 +141,8 @@ export async function enrolCaller(
     readonly membership: boolean;
     readonly actions: readonly Action[];
     readonly collections: readonly string[];
+    /** Single pairs beyond `collections` × `actions`. */
+    readonly extraPairs?: readonly (readonly [string, Action])[];
   },
 ): Promise<Caller> {
   const subject = `${name}-${randomUUID()}`;
@@ -149,6 +164,10 @@ export async function enrolCaller(
           // eslint-disable-next-line no-await-in-loop -- one grant at a time reads as a list
           await grantTo(tx, member, action, WHOLE_BUSINESS, false, collection);
         }
+      }
+      for (const [collection, action] of options.extraPairs ?? []) {
+        // eslint-disable-next-line no-await-in-loop
+        await grantTo(tx, member, action, WHOLE_BUSINESS, false, collection);
       }
     });
   }

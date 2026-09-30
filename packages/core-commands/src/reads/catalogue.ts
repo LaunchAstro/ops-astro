@@ -208,10 +208,20 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         );
         return sharedTask === undefined ? refuseNotFound() : { ok: true, sharedTask };
       }
-      const task = await readTaskDetail(tx, spine.taskTypeId, recordId, {
-        commentTypeId: spine.taskCommentTypeId,
-        internal: true,
-      });
+      const task = await readTaskDetail(
+        tx,
+        spine.taskTypeId,
+        recordId,
+        {
+          commentTypeId: spine.taskCommentTypeId,
+          internal: true,
+          actorId: session.actorId,
+        },
+        // The rank's pool is every open task this reader's grants reach.
+        { kind: 'grants', subjects: subjectsOf(session) },
+        // A member reads their own time on the task (RS-VAULT-9).
+        session.personId,
+      );
       // Not there, or there in another business: one answer, deliberately.
       return task === undefined ? refuseNotFound() : { ok: true, task };
     },

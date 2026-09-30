@@ -37,6 +37,7 @@ import {
 } from './world.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
+import { ownTaskRecipes } from './role-case-own-tasks.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
 export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
@@ -154,6 +155,8 @@ export async function createHarness(part: string): Promise<Harness> {
     );
     return Number(rows[0]?.revision ?? '0');
   }
+
+  const { clientTask, ownComment } = ownTaskRecipes({ world, freshTask, asPerson, revisionOf });
 
   const alphaTask = await freshTask('a task every case can name');
   const inBravo = await asPerson('task.create', { fields: { title: 'a bravo task' } }, 'bravo', {
@@ -275,6 +278,8 @@ export async function createHarness(part: string): Promise<Harness> {
       assigneePersonId: world.mia.personId as string,
       asPerson: async (name, body) => await asPerson(name, body),
       freshTask,
+      clientTask,
+      ownComment: async (author) => await ownComment(author as { readonly token: string }),
     }),
     approvedReservation,
     reserve,

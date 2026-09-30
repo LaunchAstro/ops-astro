@@ -31,6 +31,10 @@ export interface PersonView {
 export interface HistoryEntry {
   readonly at: string;
   readonly actorId: string;
+  /** `person`, `agent` or `worker` (MP-4-16); null for an actor this business does not hold. */
+  readonly actorKind: string | null;
+  /** The person's display name for a person's actor; null for any other. */
+  readonly actorName: string | null;
   readonly operation: string;
 }
 
@@ -62,6 +66,8 @@ export type CommentView = Readonly<Record<string, unknown>>;
 
 export interface TaskDetail extends TaskSummary {
   readonly description: string | null;
+  /** The pre-prompt an agent boots on for this task (MP-4-7); null when none is written. */
+  readonly agentBrief: string | null;
   readonly history: readonly HistoryEntry[];
   /** Oldest first. Empty is a real answer; a denied read never reaches here. */
   readonly comments: readonly CommentView[];
@@ -91,6 +97,78 @@ export interface TaskDetail extends TaskSummary {
   readonly envelope: TaskEnvelope | null;
   /** The task's alerts, newest first (T2h). The detail is the team's, and so are they. */
   readonly alerts: readonly TaskAlert[];
+  /** The derived rank and its calc line (R70, MP-4-9). Worked out at read, never stored. */
+  readonly rank: RankView;
+  /** The Ad hoc mark (MP-4-10, CS-4.9): billing reads it, and new time entries default to it. */
+  readonly adHoc: boolean;
+  /**
+   * Client access (MP-4-10, CS-4.10, R45): true exactly when the task is
+   * shared with at least one of its client's people. The tick draws this and
+   * nothing stored beside it.
+   */
+  readonly clientAccess: boolean;
+  /**
+   * The board the task sits on, as its page's crumb reads it (MP-4-1): null
+   * when it sits on none. A board is a task, so its title is sent only to a
+   * reader who may read that board; anyone else is told there is one.
+   */
+  readonly board: BoardCrumb | null;
+  /** The task's stage as stored (`task.set_stage`), or null when it has none. */
+  readonly stage: string | null;
+  /**
+   * Whether the task is put under a client (`task.set_party`). The facts band
+   * says so; the client's name waits on the client model.
+   */
+  readonly clientSet: boolean;
+  /**
+   * The task's subtasks (MP-4-4, CS-15.19), in their order: each a full task
+   * whose `parent` is this one, and only those the reader may read.
+   */
+  readonly steps: readonly StepView[];
+  /**
+   * Time on this task (MP-4-6): the reader's own entries and running timer,
+   * and the task's total. Null for an agent, which is sent no one's time.
+   */
+  readonly time: TaskTimeView | null;
+}
+
+/**
+ * A task's time as one person reads it (MP-4-6, RS-VAULT-9: a person sees
+ * their own time, never a leaderboard). `entries` are the reader's own, newest
+ * first; `totalMinutes` is every person's finished minutes on the task, one
+ * number with no names, which the burn bar reads against the estimate.
+ */
+export interface TaskTimeView {
+  readonly entries: readonly TimeEntryView[];
+  readonly running: { readonly entryId: string; readonly startedAt: string } | null;
+  readonly totalMinutes: number;
+}
+
+/** One of the reader's own time entries. `minutes` is null while it runs. */
+export interface TimeEntryView {
+  readonly id: string;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+  readonly minutes: number | null;
+  readonly note: string;
+  readonly adHoc: boolean;
+  readonly source: 'timer' | 'log';
+}
+
+/**
+ * One subtask as its parent's page lists it (MP-4-4). `done` is the completed
+ * category; `archived` says when and why a step left the count without being
+ * done (MP-4-15), and is null for a live one.
+ */
+export interface StepView {
+  readonly id: string;
+  readonly key: string;
+  readonly title: string | null;
+  readonly state: TaskStateView | null;
+  readonly done: boolean;
+  readonly archived: { readonly at: string; readonly why: string } | null;
+  readonly assignee: PersonView | null;
+  readonly revision: number;
 }
 
 /** One alert as `task.read` and `task.queue` carry it (`core-runtime/src/alerts.ts`). */
@@ -111,6 +189,24 @@ export interface TaskEnvelope {
   readonly maximumMinor: number;
   readonly heldMinor: number;
   readonly actualMinor: number;
+}
+
+/** A task's board as the crumb draws it: its title, or that it is withheld. */
+export type BoardCrumb =
+  { readonly readable: true; readonly title: string | null } | { readonly readable: false };
+
+/**
+ * A task's derived rank as its reader is shown it (R70, MP-4-9).
+ *
+ * `number` is the task's place among the open tasks this reader may read, or
+ * null when the task is not ranked; `score` is null exactly then. `calc` is the
+ * line drawn under the rank, worked out on the server so every surface shows the
+ * same words, and it names nothing but this task's own marks and modifiers.
+ */
+export interface RankView {
+  readonly number: number | null;
+  readonly score: number | null;
+  readonly calc: string;
 }
 
 /**
@@ -155,6 +251,20 @@ export type InternalCommentView = {
   readonly posted_at: string;
   readonly edited_at: string | null;
   readonly source: string;
+  /** The top-level message this replies to, or null for a message (R42). */
+  readonly parent: string | null;
+  /**
+   * Where a top-level client message stands (DT-19): `owed` (the client's,
+   * awaiting the team), `not_acknowledged` (the team's, awaiting the client)
+   * or `answered`; null on an internal note and on a reply.
+   */
+  readonly signal: 'answered' | 'owed' | 'not_acknowledged' | null;
+  /**
+   * Whether the reader's own actor wrote it, so a screen draws the edit and
+   * delete controls on those rows only (CS-4.34). The commands check the
+   * author again; this only saves offering a control that would be refused.
+   */
+  readonly own: boolean;
 };
 
 export interface EvidenceView {

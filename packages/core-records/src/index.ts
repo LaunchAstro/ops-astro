@@ -37,6 +37,7 @@ export {
   checkAuthority,
   effectiveGrants,
   readableScope,
+  readableRecordIds,
   revokeGrant,
   subjectsOf,
   type Action,
@@ -48,6 +49,7 @@ export {
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { issueShare, withdrawShares } from './authority/shares.ts';
 export {
   EXPIRED_FIXES,
   NO_AGENT_FIXES,
@@ -90,11 +92,19 @@ export {
 export {
   COMMENT_TYPE_KEY,
   externalCommentProjection,
-  readTaskComments,
   writeComment,
   type CommentAudience,
   type CommentType,
+  type StoredComment,
 } from './tasks/comments.ts';
+export {
+  commentSignals,
+  lockComment,
+  readTaskComments,
+  removeComment,
+  rewriteComment,
+  type CommentSignal,
+} from './tasks/comment-thread.ts';
 export {
   DERIVED_ON_CREATE,
   deriveSource,
@@ -108,6 +118,18 @@ export {
   wouldCloseParentLoop,
   type EntryPoint,
 } from './tasks/placement.ts';
+export { readTaskFamily, type FamilyRow, type TaskFamily } from './tasks/family.ts';
+export {
+  deleteTimeEntry,
+  logTime,
+  parseDuration,
+  readTaskTime,
+  setTimeEntryNote,
+  startTimer,
+  stopTimer,
+  type TaskTime,
+  type TimeEntry,
+} from './tasks/time.ts';
 export { slotOf, TASK_SPINE, TASK_TYPE_KEY } from './tasks/spine.ts';
 export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.ts';
 export { TASK_STATE_TYPE_KEY, type MachineCategory } from './tasks/states.ts';

@@ -74,10 +74,13 @@ describe('the surface as a table', () => {
     // the only collection nothing is stored in, because the read under it is
     // about the caller rather than about the business's records. `grant` and
     // `delegation` are the revocation controls': the path names the row a
-    // revocation writes, and the authority it asks is still on tasks.
+    // revocation writes, and the authority it asks is still on tasks. `time`
+    // is MP-4-6's: a person's time entries, which are rows beside a task.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget)\/[a-z_]+$/u.test(path),
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|time)\/[a-z_]+$/u.test(
+          path,
+        ),
       ),
     ).toBe(true);
   });
@@ -187,22 +190,24 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
     expect(missing).toStrictEqual([]);
   });
 
-  it('finds ten of them, which is what makes nine commands too few', () => {
+  it('finds twelve of them, which is what makes nine commands too few', () => {
     expect(named).toStrictEqual([
       'task.assign',
       'task.complete',
       'task.move',
       'task.reopen',
       'task.reparent',
+      'task.set_adhoc',
       'task.set_audience',
       'task.set_party',
+      'task.set_scores',
       'task.set_stage',
       'task.start',
       'task.triage',
     ]);
-    // Ten names, and only two of them — complete and reopen — are among the
-    // contract's nine commands. The other eight are why this part declares
-    // more than nine, and `task.rank` is an eleventh operation the mechanics
+    // Twelve names, and only two of them — complete and reopen — are among the
+    // contract's nine commands. The other ten are why this part declares
+    // more than nine, and `task.rank` is a thirteenth operation the mechanics
     // need that neither list carries.
     expect(named.filter((name) => CONTRACT_NINE.includes(name as CommandName))).toStrictEqual([
       'task.complete',

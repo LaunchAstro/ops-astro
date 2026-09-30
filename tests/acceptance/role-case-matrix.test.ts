@@ -338,7 +338,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           continue;
         }
         // eslint-disable-next-line no-await-in-loop
-        const prepared = await harness.positiveBody(declaration);
+        const prepared = await harness.positiveBody(declaration, caller);
         if ('exception' in prepared) throw new Error(`matrix: ${declaration.name} has no body`);
         // eslint-disable-next-line no-await-in-loop
         const answer = await harness.asPerson(declaration.name, prepared.body, 'alpha', caller);

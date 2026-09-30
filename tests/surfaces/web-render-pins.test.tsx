@@ -15,7 +15,7 @@
 // machine category and one with no state, because the tone map moves too.
 
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { Projects } from '../../apps/web/src/screens/Projects.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
@@ -68,6 +68,14 @@ function taskWith(gate: { readonly state: string; readonly expired: boolean }) {
     completedAt: null,
     revision: 3,
     history: [{ at: '2026-09-22T01:00:00.000Z', actorId: 'p-1', operation: 'task.create' }],
+    board: null,
+    rank: { number: null, score: null, calc: '' },
+    adHoc: false,
+    clientAccess: false,
+    stage: null,
+    clientSet: false,
+    steps: [],
+    time: null,
     comments: [
       {
         id: 'c-1',
@@ -145,6 +153,18 @@ const taskPage = async (client: OperationsClient): Promise<Mounted> => {
   await tick();
   return page;
 };
+
+// The history says how long ago each change was (MP-4-16), so the reader's
+// clock is fixed here: a pin that moved every day would pin nothing. Only
+// Date is faked; the timers the page waits on stay real.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-29T12:00:00.000Z'));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('the task page, pinned whole', () => {
   for (const [name, gate] of [

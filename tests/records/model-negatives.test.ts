@@ -179,8 +179,11 @@ describe.skipIf(serverUrl === undefined)('the model negatives, one per member', 
   describe('D02: each protected field relaxed to generic is named by the task set', () => {
     const PROTECTED_RULE = 'no field in the protected set is generic';
 
-    it('is eleven, read from the spine', () => {
-      expect(PROTECTED_TASK_FIELDS.length).toBe(11);
+    // Fourteen since MP-4-9 added the three marks `task.set_scores` owns, and
+    // fifteen since MP-4-10 added the Ad hoc mark `task.set_adhoc` owns, and
+    // seventeen since MP-4-15 added the two archive fields its transition writes.
+    it('is seventeen, read from the spine', () => {
+      expect(PROTECTED_TASK_FIELDS.length).toBe(17);
     });
 
     it.each([...PROTECTED_TASK_FIELDS])('catches %s relaxed to generic', async (key) => {
@@ -271,6 +274,26 @@ const OWNER_CASES: Readonly<Record<string, OwnerCase>> = {
     command: 'task.set_stage',
     payload: () => ({ fields: { stage: 'drafting' } }),
     stored: () => 'drafting',
+  },
+  impact: {
+    command: 'task.set_scores',
+    payload: () => ({ fields: { impact: 7 } }),
+    stored: () => '7',
+  },
+  confidence: {
+    command: 'task.set_scores',
+    payload: () => ({ fields: { confidence: 9 } }),
+    stored: () => '9',
+  },
+  ease: {
+    command: 'task.set_scores',
+    payload: () => ({ fields: { ease: 8 } }),
+    stored: () => '8',
+  },
+  ad_hoc: {
+    command: 'task.set_adhoc',
+    payload: () => ({ fields: { ad_hoc: true } }),
+    stored: () => true,
   },
   state: {
     command: 'task.start',

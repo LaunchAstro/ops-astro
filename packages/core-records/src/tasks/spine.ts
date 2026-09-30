@@ -249,11 +249,86 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: ['task.set_audience'],
     escalatingOperation: null,
   },
+  // The three marks the derived rank reads (R70, migration 0042): whole
+  // numbers from 1 to 10, or absent, and absent is never 0. One command owns
+  // all three, so a mark changes only as `task scores changed` in the audit.
+  {
+    key: 'impact',
+    label: 'Impact',
+    valueType: 'numeric',
+    slot: 'num_3',
+    writeMode: 'operation',
+    owningOperations: ['task.set_scores'],
+    escalatingOperation: null,
+  },
+  {
+    key: 'confidence',
+    label: 'Confidence',
+    valueType: 'numeric',
+    slot: 'num_4',
+    writeMode: 'operation',
+    owningOperations: ['task.set_scores'],
+    escalatingOperation: null,
+  },
+  {
+    key: 'ease',
+    label: 'Ease',
+    valueType: 'numeric',
+    slot: 'num_5',
+    writeMode: 'operation',
+    owningOperations: ['task.set_scores'],
+    escalatingOperation: null,
+  },
+  {
+    // The Ad hoc mark (MP-4-10, migration 0043): it drives billing and is the
+    // default for the task's new time entries. Absent reads as not ad hoc.
+    key: 'ad_hoc',
+    label: 'Ad hoc',
+    valueType: 'boolean',
+    slot: 'bool_2',
+    writeMode: 'operation',
+    owningOperations: ['task.set_adhoc'],
+    escalatingOperation: null,
+  },
+  // A step left out of its parent's count without being done (MP-4-15,
+  // migration 0046): completing a task archives its unfinished subtasks and
+  // reopening it restores them, both in the transition's own transaction.
+  // System, like `completed_at`, because no operation takes either as an
+  // input; unslotted, because no view filters on them.
+  {
+    key: 'archived_at',
+    label: 'Archived at',
+    valueType: 'timestamptz',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
+    key: 'archived_why',
+    label: 'Archived why',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
   {
     // Unslotted on purpose: long display text that no view filters, sorts or
     // groups on. A slot would buy nothing and cost an index.
     key: 'description',
     label: 'Description',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'generic',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
+    // The pre-prompt an agent boots on for this task (MP-4-7, CS-4.23,
+    // migration 0045). Unslotted and generic like the description.
+    key: 'agent_brief',
+    label: 'Agent brief',
     valueType: 'text',
     slot: null,
     writeMode: 'generic',
@@ -267,11 +342,17 @@ export const TASK_SPINE: readonly SpineField[] = [
  * relaxing one is a visible diff (minimum contract, 5.3 assertion 2).
  */
 export const PROTECTED_TASK_FIELDS: readonly string[] = [
+  'ad_hoc',
+  'archived_at',
+  'archived_why',
   'assignee',
   'client',
   'client_visible',
   'completed_at',
+  'confidence',
   'delegate',
+  'ease',
+  'impact',
   'intake_state',
   'key',
   'parent',

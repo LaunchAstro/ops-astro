@@ -332,6 +332,10 @@ function importsOf(file: string, text: string, packages: ReadonlyMap<string, str
  * belongs in `tests/`.
  */
 const NO_PRODUCT_IMPORTER_YET = new Map([
+  [
+    'packages/core-commands/src/reads/conversation.ts',
+    "MP-4-5's three detail levels of a task conversation, for the agent bundles (API-4) that call it",
+  ],
   ['apps/api/server.ts', 'the API process entry, started by node rather than imported'],
   [
     'apps/worker/main.ts',

@@ -70,8 +70,8 @@ async function comments(page, run) {
   const before = await page.locator('[data-comment-id]').count();
 
   await page.fill('#comment-body', said);
-  await page.selectOption('#comment-audience', 'internal');
-  await page.selectOption('#comment-kind', 'note');
+  // The Internal tab is the audience: an internal note (MP-4-5).
+  await page.click('#conversation-tab-internal');
   await page.click(POST);
   await page
     .waitForFunction((had) => document.querySelectorAll('[data-comment-id]').length > had, before, {
