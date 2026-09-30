@@ -125,7 +125,7 @@ function client(fetch: typeof globalThis.fetch): OperationsClient {
   return new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'tok',
+    signedIn: true,
     fetch,
     newOperationId: () => {
       minted += 1;

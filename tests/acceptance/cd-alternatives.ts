@@ -27,7 +27,7 @@ export const CASE = {
 } as const;
 
 /**
- * The twelve operations that name no identifier, each with a minimal valid body.
+ * The sixteen operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -49,9 +49,13 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['tag.list', {}],
   // The reader's own to-dos (MP-7-1).
   ['task.todos', {}],
+  ['inbox.read', {}],
+  ['inbox.count', {}],
+  ['inbox.unattended', {}],
+  ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
 ];
 
-/** The twenty-three identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The twenty-four identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -78,6 +82,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'time.delete': ['entryId', 'time'],
   'task.add_tag': ['recordId', 'tag'],
   'task.remove_tag': ['recordId', 'tag'],
+  'inbox.seen': ['itemId', 'control'],
 };
 
 /**

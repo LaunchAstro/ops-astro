@@ -7,7 +7,9 @@ dev server on `127.0.0.1:5190` that proxies `/api` to the API on
 `127.0.0.1:8790`, so the browser only ever makes same-origin requests.
 `OperationsClient` takes an `origin`, empty for same-origin, and posts under
 `PREFIX.person` from `core-wire/src/surface.ts`. `App` takes it as `apiOrigin`, which
-`main.tsx` reads from `VITE_API_ORIGIN` (unset in local runs).
+`main.tsx` sets empty: the build bakes no address, so one build serves every
+environment. The identity service's address is the API's own `GOTRUE_URL`,
+which `main.tsx` reads from `GET /api/sign-in` before the first render (G3).
 
 ## Start it
 
@@ -17,7 +19,7 @@ pnpm install
 scripts/local/web-up.sh
 ```
 
-`WEB_PORT`, `API_ORIGIN` and `GOTRUE_URL` override the three addresses. The port
+`WEB_PORT` and `API_ORIGIN` override the two addresses. The port
 is strict: if 5190 is taken the script fails rather than moving, because
 evidence with the wrong address in it is worse than no evidence.
 
@@ -28,7 +30,9 @@ reports the API as unavailable, which is the intended reading.
 ## Sign in
 
 Email and password go to GoTrue's own `/token?grant_type=password`. The
-application never mints or inspects a token. The API verifies the signature.
+application never mints or inspects a token. It hands it to `POST /api/session`,
+which keeps it as an `HttpOnly` cookie no script reads (S0-6c, `API.md`, "Who
+is calling"). The built page's content policy runs only this origin's scripts.
 The business selector (`alpha` or `bravo`) chooses the `/api/b/<key>` prefix. It
 is a routing choice, not a claim, so picking `bravo` with an alpha-only account
 gets `AUTH_NO_MEMBERSHIP` rather than access to bravo.
@@ -635,7 +639,7 @@ changed without reading the rest:
 
 ### What B6 restarts
 
-B6 restarts `ops-astro-local-pg` with the `ops-astro-local-pgdata` volume by
+B6 restarts `ops-astro-local-pg` with the `ops-astro-local-pgdata-17` volume by
 default, which is the registered run. A stack of your own names its pair, and
 B6 restarts the API on `API_URL`'s port:
 
@@ -784,8 +788,32 @@ places this build does not yet reach it.
   to. Offering to switch back, or carrying more than one interruption, is not
   built. The interruption keeps the business key, which is the word in the URL
   prefix, and never the token.
-- Fonts and icons are not fetched. The redistribution question (#32) is open, so
-  the families are a stack with real fallbacks and the brand is its own words.
+- Fonts, icons and the brand marks are bundled, each with its licence recorded
+  in `packages/ui/assets/licences.json` (MP-1-2): Funnel Display, Funnel Sans
+  and Chivo Mono under the SIL Open Font License, Lucide's icons under ISC,
+  and the project's own wordmark and planet mark. The build copies the record
+  and the licence texts into its output.
+- Text is set in the 23 styles of the declared scale, `--type-<name>` in
+  `packages/ui/src/styles/1-tokens.css` (MP-1-4). A rule sets text with the
+  style's `font`, `letter-spacing` and `text-transform` together, or not at
+  all; `pnpm type:census` refuses any other size, weight, family, line height,
+  tracking or case, and lists the four exceptions a ruling keeps (strong text
+  at the medium weight, the two larger button labels, the run hero's mono
+  figure). A stat number keeps one size at every width. Inline `code`, `kbd`
+  and `samp` take the mono style from the base layer. The census reads the
+  sheets; the MP-1-4 visual match also measures every built page as the
+  browser draws it, so an element left on the browser's own default is caught.
+- Charts are hand-drawn SVG in `packages/ui/src/kit/charts.tsx` (MP-1-5), with
+  no chart library: line, column with a dashed line, donut, gauge, score dial,
+  sparkline and the true-scale funnel, shown on `/gallery/`. Line and column
+  charts measure their width with the browser's resize observer and redraw
+  when shown or resized. Line, column and donut charts are one tab stop each;
+  the arrow keys walk the points, and hover or focus shows the value. A
+  second quantity gets its own labelled right-hand axis. They take the
+  mockup's paint: a donut's slices ink, accent, lilac, lilac deep, ink muted
+  and ink faint in that order; a sparkline the accent; a score dial's number
+  at the medium weight. No page draws a chart yet; the Executive page
+  (MP-14-3) is the first.
 - Layouts are written for 1480, 900 and 390. Photographed at all three, light
   and dark, on 2026-09-23 with `node tests/browser/keyboard-and-widths.mjs`,
   which writes `width-<w>-<theme>-<page>.png` into `SHOT_DIR`; that run's
@@ -799,9 +827,10 @@ places this build does not yet reach it.
   - At 390 the sidebar is gone, and with it the only navigation apart from the
     breadcrumb. A person who lands on a task deep-linked has `Projects` in the
     crumb and nothing else.
-  - At 390 the task page's assignee section can still be drawing
-    `Loading the people…` after the record itself is on screen: two reads, two
-    arrival times, and the slower one is a block of text in the middle of the
-    form rather than a field-shaped placeholder.
+  - At 390 the task page's assignee section could still be drawing
+    `Loading the people…` after the record itself was on screen: two reads,
+    two arrival times, and the slower one a block of text in the middle of the
+    form. Fixed by MP-1-3: it now draws a field-shaped placeholder, and the
+    words are kept for a screen reader.
 
   Recorded, not fixed.

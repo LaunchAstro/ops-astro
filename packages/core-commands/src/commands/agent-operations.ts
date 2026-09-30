@@ -371,6 +371,7 @@ async function serveComment(
     request['audience'],
     request['commentType'],
     request['parentId'],
+    request['mentions'],
   );
 }
 

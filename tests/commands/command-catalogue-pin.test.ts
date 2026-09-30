@@ -123,6 +123,7 @@ vi.mock('../../packages/core-commands/src/commands/tasks-comment-edit.ts', async
 vi.mock('../../packages/core-commands/src/commands/settings-write.ts', async (original) => ({
   ...(await original<object>()),
   setBusinessSetting: recorder('setBusinessSetting'),
+  setNotificationChannel: recorder('setNotificationChannel'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
@@ -171,6 +172,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-tags.ts', async (origin
   addTagToTask: recorder('addTagToTask'),
   removeTagFromTask: recorder('removeTagFromTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/inbox-seen.ts', async (original) => ({
+  ...(await original<object>()),
+  stampOwnSeen: recorder('stampOwnSeen'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (original) => ({
   ...(await original<object>()),
   cancelOnTask: recorder('cancelOnTask'),
@@ -203,6 +208,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.write_off': ['recordId', 'attemptId'],
   'delegation.revoke': [],
   'grant.revoke': [],
+  'inbox.seen': ['itemId'],
+  'notifications.set_channel': [],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'task.cancel': ['recordId', 'lineageId'],
@@ -232,6 +239,11 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.write_off',
   'delegation.revoke',
   'grant.revoke',
+  'inbox.count',
+  'inbox.read',
+  'inbox.seen',
+  'inbox.unattended',
+  'notifications.set_channel',
   'person.list',
   'preset.plan',
   'session.capabilities',
@@ -303,6 +315,7 @@ const REQUESTS: readonly CommandRequest[] = [
     audience: 'a-comment',
     commentType: 't-comment',
     parentId: 'p-comment',
+    mentions: 'm-comment',
   },
   {
     command: 'task.edit_comment',
@@ -398,6 +411,8 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'tag.create', operationId: 'op', name: 'n-tag' },
   { command: 'task.add_tag', operationId: 'op', recordId: 'r-add', tagId: 'g-add' },
   { command: 'task.remove_tag', operationId: 'op', recordId: 'r-remove', tagId: 'g-remove' },
+  { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
+  { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -406,7 +421,15 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.update': ['updateTask', 'request'],
   'task.complete': ['setState', 'completed'],
   'task.reopen': ['setState', 'unstarted', 'why-reopen'],
-  'task.comment': ['commentOnTask', 'op', 'b-comment', 'a-comment', 't-comment', 'p-comment'],
+  'task.comment': [
+    'commentOnTask',
+    'op',
+    'b-comment',
+    'a-comment',
+    't-comment',
+    'p-comment',
+    'm-comment',
+  ],
   'task.edit_comment': ['editTaskComment', 'c-edit', 'b-edit'],
   'task.delete_comment': ['deleteTaskComment', 'c-delete'],
   'task.propose': ['proposeOnTask', 'request'],
@@ -460,6 +483,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'tag.create': ['createTagNamed', 'n-tag'],
   'task.add_tag': ['addTagToTask', 'r-add', 'g-add'],
   'task.remove_tag': ['removeTagFromTask', 'r-remove', 'g-remove'],
+  'inbox.seen': ['stampOwnSeen', 'item'],
+  'notifications.set_channel': ['setNotificationChannel', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -499,7 +524,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same thirty-six from an expected revision', () => {
+  it('exempts the same forty-one from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

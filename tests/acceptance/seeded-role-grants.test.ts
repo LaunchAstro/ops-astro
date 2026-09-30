@@ -42,7 +42,10 @@ const held = (role: string): readonly string[] =>
  * family is `task`. `session.capabilities` asks about nothing: it reports
  * what the caller holds.
  */
-const asked = COMMAND_SURFACE.filter((each) => each.name !== 'session.capabilities')
+// A `self` row (the inbox) asks no grant either: it answers about the caller's own rows.
+const asked = COMMAND_SURFACE.filter(
+  (each) => each.name !== 'session.capabilities' && each.authorisedOn !== 'self',
+)
   .map((each) =>
     each.name === 'preset.plan' ? 'task:manage' : `${each.collection}:${each.action}`,
   )

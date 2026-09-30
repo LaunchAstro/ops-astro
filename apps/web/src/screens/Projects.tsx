@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `/projects/`. The board of the business's unboarded tasks, and the form that
-// makes one.
+// `/projects/`. The caller's inbox, the board of the business's unboarded
+// tasks, and the form that makes one.
 //
 // The read is `task.board` with `board: null`, which the contract defines as
 // the business's unboarded tasks — the acceptance case creates a task
@@ -28,9 +28,11 @@ import type {
 } from '../../../../packages/core-wire/src/index.ts';
 import { TASK_STAGES, isInProductLink } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
+import { Inbox } from '../views/inbox.tsx';
 
 /** A create whose outcome is not known, held so the retry is the same attempt. */
 interface PendingCreate {
@@ -85,6 +87,8 @@ export function Projects(props: ProjectsProps): ReactElement {
     deps: [],
   });
   const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
+  // INB-1f: one stream for the tab, shared by the board and the inbox panels.
+  const followInbox = useBoardLive(client, props.grantKey, reload);
 
   // The same attempt while the asked-for task is the same one, a new attempt
   // when the person has changed what they are asking for. Retrying an unknown
@@ -140,6 +144,8 @@ export function Projects(props: ProjectsProps): ReactElement {
 
   return (
     <div className="stack">
+      {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
+      <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
       <form className="taskform projects__create" onSubmit={onCreate}>
         <div className="field">
           <label className="tf__k" htmlFor="create-title">

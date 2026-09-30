@@ -90,6 +90,8 @@ export type CommandRequest =
       readonly commentType?: string;
       /** The top-level message on this task a reply sits under (R42). */
       readonly parentId?: string | null;
+      /** The people the comment names, by person id. */
+      readonly mentions?: unknown;
     } & Targeted)
   | ({
       readonly command: 'task.edit_comment';
@@ -282,6 +284,15 @@ export type CommandRequest =
       readonly attemptId: unknown;
       readonly amountMinor: unknown;
       readonly reason: unknown;
+    } & Envelope)
+  // The recipient opening their own inbox item (INB-1d).
+  | ({ readonly command: 'inbox.seen'; readonly itemId: string } & Envelope)
+  // The caller's own notification setting on one channel (INB-1e).
+  | ({
+      readonly command: 'notifications.set_channel';
+      readonly channel: string;
+      readonly mode: string;
+      readonly category?: string;
     } & Envelope)
   // Time tracking (MP-4-6), in `requests-time.ts`.
   | TimeRequest<Envelope>

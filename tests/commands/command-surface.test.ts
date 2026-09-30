@@ -40,6 +40,9 @@ if (serverUrl === undefined) {
 }
 
 const PINNED_READS = [
+  'inbox.count',
+  'inbox.read',
+  'inbox.unattended',
   'person.list',
   'preset.plan',
   'session.capabilities',
@@ -93,7 +96,7 @@ describe('the surface as a table', () => {
     // is MP-4-11's: the business's tag vocabulary.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|time|tag)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|time|tag|inbox|notifications)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -101,8 +104,9 @@ describe('the surface as a table', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one table, read top to bottom
 describe('the surface as a table', () => {
-  it('declares the eleven reads as reads, and everything else as a write', () => {
+  it('declares the fourteen reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(PINNED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

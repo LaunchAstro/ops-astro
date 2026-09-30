@@ -112,6 +112,16 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   // 0050: no journey step tags a task yet.
   'public.tags': { name: 'a tag', actor_id: randomUUID() },
   'public.task_tags': { task_id: randomUUID(), tag_id: randomUUID(), actor_id: randomUUID() },
+  // 0042: nothing in the journey raises an inbox item yet (INB-1b does).
+  'public.inbox_items': {
+    recipient_person_id: randomUUID(),
+    subject_record_id: randomUUID(),
+    reason: 'assignment',
+    fact_kind: 'record',
+    fact_id: randomUUID(),
+  },
+  'public.inbox_attention': { item_id: randomUUID(), person_id: randomUUID() },
+  'public.inbox_delivery_attempts': { item_id: randomUUID(), channel: 'in_app', state: 'asked' },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

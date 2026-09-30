@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { exportCandidate } from '../../scripts/candidate-snapshot.mjs';
+import { addressRules } from '../../scripts/public-content-check.mjs';
 
 const source = resolve(import.meta.dirname, '../..');
 const guard = join(source, 'scripts/public-content-check.mjs');
@@ -416,3 +417,17 @@ test('a mixed closing paragraph fails on its non-identity line alone', () =>
     const passed = scan('--range', `${mixed}..${clean}`);
     assert.equal(passed.status, 0, passed.stderr);
   }));
+
+test("the REVB1SL01S34 proof's two made-up logins pass as those strings alone", () => {
+  const proof =
+    'example@production-db.example.test example@aws-0-ap-southeast-2.pooler.supabase.com';
+  assert.deepEqual(addressRules(proof, 'blob'), []);
+  // Joined at run time, so this file carries no address the checker reads.
+  for (const [name, host] of [
+    ['someone', 'production-db.example.test'],
+    ['example', 'production-db.example.test.evil.example.com'],
+    ['someone', 'aws-0-ap-southeast-2.pooler.supabase.com'],
+    ['example', 'aws-1-ap-southeast-2.pooler.supabase.com'],
+  ])
+    assert.deepEqual(addressRules(`${name}@${host}`, 'blob'), ['contributor-address'], host);
+});

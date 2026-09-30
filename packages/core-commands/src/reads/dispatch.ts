@@ -204,7 +204,7 @@ async function serveRead<K extends ReadName>(
   // between the decision and the answer. An external party is checked here:
   // a share is a record-scoped read, and it opens the shared task, not a list.
   const listsWithin = row.authority === 'declared-within' && session.roleKey !== null;
-  if (row.authority !== 'holds-any-grant' && !listsWithin) {
+  if (row.authority !== 'holds-any-grant' && row.authority !== 'self' && !listsWithin) {
     const declared = row.authority === 'declared' || row.authority === 'declared-within';
     const authorised = await checkAuthority(tx, subjectsOf(session), {
       // The action is the declaration's, and so is the collection unless the

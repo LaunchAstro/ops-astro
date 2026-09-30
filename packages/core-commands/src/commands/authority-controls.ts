@@ -41,6 +41,7 @@ import {
   subjectsOf,
   revokeDelegation,
   isUuid,
+  raiseIncident,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Action, Scope } from '../../../core-records/src/index.ts';
 import { classifyAuthorityLoss, requireUnchanged } from '../../../core-runtime/src/index.ts';
@@ -268,6 +269,7 @@ export async function revokeGrantAsManager(
     },
   });
   if (!loss.applied || loss.value === null) return already;
+  await raiseIncident(tx, loss.classified);
   return applied(grantId, null, {
     grantId,
     revokedAt: loss.value.toISOString(),
@@ -337,6 +339,7 @@ export async function revokeDelegationAsManager(
       ),
     );
   }
+  await raiseIncident(tx, loss.classified);
   return applied(delegationId, null, {
     delegationId,
     revokedAt: revokedAt.toISOString(),

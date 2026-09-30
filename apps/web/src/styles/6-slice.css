@@ -38,12 +38,15 @@
   border-radius: var(--radius-sm);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 0.9rem;
-  line-height: 1.45;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 
 .signin__ended code {
-  font-family: var(--font-mono);
+  font: var(--type-mono);
+  letter-spacing: var(--type-mono-tracking);
+  text-transform: var(--type-mono-case);
 }
 
 .field {

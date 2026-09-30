@@ -44,6 +44,13 @@ export const READ_NAMES = [
   'tag.list',
   // The reader's own to-dos, the Projects dock panel's list (MP-7-1).
   'task.todos',
+  // The caller's own inbox and owed count (INB-1d), the same read the API and
+  // the command line serve; the working minimum draws them in INB-1g.
+  'inbox.read',
+  'inbox.count',
+  // Items no path reaches (INB-1e), for `operations:read`; the operations view
+  // (C55) draws them.
+  'inbox.unattended',
 ] as const;
 
 /**
