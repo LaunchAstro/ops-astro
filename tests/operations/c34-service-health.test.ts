@@ -11,247 +11,37 @@
 // Bea is bravo's owner and holds it there. A client of alpha holds a share
 // and nothing else, and the agent acts under a live delegation from Ada.
 
+import { describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createApi } from '../../apps/api/app.ts';
-import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
-import { createLangfuseHealth } from '../../apps/api/health/tracing.ts';
-import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
-import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
-import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
-import {
-  HEALTH_STALE_SECONDS,
-  type HealthSource,
-  type HealthSources,
-  type ServiceObservation,
-  type SourceAnswer,
-} from '../../packages/core-commands/src/index.ts';
-import type { ServiceHealthSection } from '../../packages/core-wire/src/index.ts';
+import { HEALTH_STALE_SECONDS, type SourceAnswer } from '../../packages/core-commands/src/index.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
-import { ACCEPTANCE_ISSUER, ACCEPTANCE_SECRET, tokenFor } from '../acceptance/cast.ts';
-import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { agentPath, bearer, call, personPath, serverUrl } from '../acceptance/world.ts';
-import { grantTo, shareWithClient, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
+import {
+  CANARY,
+  seen,
+  answers,
+  statesOf,
+  json,
+  UNREADABLE,
+  HOSTILE_LANGFUSE,
+  harness,
+  credential,
+  clientToken,
+  replyAsLangfuse,
+  heard,
+  watcher,
+  errorSink,
+  apiWith,
+  tracing,
+  view,
+  healthOf,
+  tracingOf,
+  useHealthWorld,
+} from './c34-service-health-world.ts';
 
-const CANARY = 'CANARY-c34-health-words-9e2c51';
-
-const ago = (seconds: number) => new Date(Date.now() - seconds * 1000);
-
-const seen = (name: string, up: boolean | null, secondsAgo: number | null): ServiceObservation => ({
-  name,
-  scope: 'installation',
-  up,
-  observedAt: secondsAgo === null ? null : ago(secondsAgo),
-});
-
-/** A source at the port, counting the times it is asked. */
-class StandIn implements HealthSource {
-  calls = 0;
-  answer: () => Promise<SourceAnswer>;
-  constructor(answer: () => Promise<SourceAnswer>) {
-    this.answer = answer;
-  }
-  async observe(): Promise<SourceAnswer> {
-    this.calls += 1;
-    return await this.answer();
-  }
-}
-
-const answers =
-  (...services: ServiceObservation[]) =>
-  async () =>
-    await Promise.resolve<SourceAnswer>({ ok: true, services });
-
-const statesOf = (section: ServiceHealthSection) =>
-  Object.fromEntries(section.services.map((row) => [`${row.source}:${row.name}`, row.state]));
-
-type Reply = (request: IncomingMessage, response: ServerResponse) => void;
-
-const json =
-  (status: number, value: unknown): Reply =>
-  (_request, response) => {
-    response.writeHead(status, { 'content-type': 'application/json' });
-    response.end(JSON.stringify(value));
-  };
-
-/** Each way a source can fail to be read, and the fault it is shown as. */
-const UNREADABLE: readonly [string, () => Promise<SourceAnswer>, string][] = [
-  ['throws', async () => await Promise.reject(new Error(CANARY)), 'unreachable'],
-  [
-    'never answers',
-    async () =>
-      await new Promise<SourceAnswer>(() => {
-        // Never settles: the time limit ends the read.
-      }),
-    'slow',
-  ],
-  ['a name that is empty', answers(seen('', true, 10)), 'malformed'],
-  ['a name too long', answers(seen('x'.repeat(201), true, 10)), 'malformed'],
-  [
-    'a time that is no time',
-    answers({ ...seen('api', true, 10), observedAt: new Date('x') }),
-    'malformed',
-  ],
-  ['a time ahead of the clock', answers(seen('api', true, -3600)), 'malformed'],
-  [
-    'up that is no boolean',
-    answers({ ...seen('api', true, 10), up: 'yes' as unknown as boolean }),
-    'malformed',
-  ],
-  [
-    'a fault it names',
-    async () => await Promise.resolve<SourceAnswer>({ ok: false, fault: 'refused' }),
-    'refused',
-  ],
-];
-
-/** Each way a Langfuse answer can be wrong, and the fault it is shown as. */
-const HOSTILE_LANGFUSE: readonly [string, Reply, string][] = [
-  [
-    'a redirect to metadata',
-    (_q, response) => {
-      response.writeHead(302, { location: 'http://169.254.169.254/latest/meta-data/' });
-      response.end();
-    },
-    'unreachable',
-  ],
-  ['an oversized answer', json(200, { status: 'OK', pad: 'x'.repeat(64 * 1024) }), 'oversized'],
-  [
-    'not JSON',
-    (_q, response) => {
-      response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(`<html>${CANARY}</html>`);
-    },
-    'malformed',
-  ],
-  ['OK with no status', json(200, { version: '3.0.0' }), 'malformed'],
-  ['a 200 whose status is not OK', json(200, { status: 'starting' }), 'malformed'],
-  ['a status that is no word', json(200, { status: { ok: true } }), 'malformed'],
-  ['a refusal naming the canary', json(401, { message: CANARY }), 'refused'],
-  ['a failure that is not shaped', json(500, { message: CANARY }), 'malformed'],
-  [
-    'no answer in time',
-    () => {
-      // Never answers: the adapter's time limit ends the call.
-    },
-    'slow',
-  ],
-];
-
-interface Heard {
-  readonly route: string;
-  readonly authorization: string | undefined;
-}
+useHealthWorld();
 
 describe.skipIf(serverUrl === undefined)('C34 service health on the operations view', () => {
-  let harness: Harness;
-  let credential: string;
-  let clientToken: string;
-  let langfuse: Server;
-  let langfuseReply: Reply = json(200, { status: 'OK', version: '3.0.0' });
-  let heard: Heard[] = [];
-  const watcher = new StandIn(answers());
-  const errorSink = new StandIn(answers());
-
-  const apiWith = (health?: HealthSources) =>
-    createApi({
-      database: harness.world.db.app,
-      verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
-      resolveBusiness: async (key: string) =>
-        await Promise.resolve({ alpha: harness.world.alpha, bravo: harness.world.bravo }[key]),
-      executeCommand,
-      executeRead,
-      executeAgentCommand,
-      ...(health === undefined ? {} : { health }),
-    });
-
-  const tracing = (timeoutMs = 300) =>
-    createLangfuseHealth({
-      baseUrl: `http://127.0.0.1:${(langfuse.address() as AddressInfo).port}/langfuse`,
-      timeoutMs,
-    });
-
-  const view = async (api: ReturnType<typeof createApi>, token?: string, businessKey = 'alpha') =>
-    await call(
-      api,
-      personPath(businessKey, '/operations/read'),
-      { operationId: `c34-${randomUUID()}` },
-      bearer(token ?? harness.world.ada.token),
-    );
-
-  const healthOf = async (api: ReturnType<typeof createApi>, token?: string, key?: string) => {
-    const answer = await view(api, token, key);
-    expect(answer.status).toBe(200);
-    return answer.body['serviceHealth'] as ServiceHealthSection;
-  };
-
-  const tracingOf = async (api: ReturnType<typeof createApi>) => {
-    const section = await healthOf(api);
-    return {
-      source: section.sources.find((row) => row.source === 'tracing'),
-      states: section.services.filter((row) => row.source === 'tracing').map((row) => row.state),
-    };
-  };
-
-  beforeAll(async () => {
-    harness = await createHarness('c34_health');
-    const { world } = harness;
-    await world.db.app.withBusiness(world.bravo, async (tx) => {
-      await grantTo(
-        tx,
-        world.bea as unknown as Member,
-        'read',
-        WHOLE_BUSINESS,
-        false,
-        'operations',
-      );
-    });
-    const client = await shareWithClient(
-      world.db.app,
-      world.alpha,
-      world.ada as unknown as Member,
-      harness.alphaTask.id,
-    );
-    clientToken = await tokenFor(client.presented.subject);
-    const { decided } = await harness.approvedReservation();
-    expect(decided.code, 'the decision a pickup needs').toBe('ok');
-    const reservationId = (decided.body['detail'] as Record<string, unknown>)['reservationId'];
-    const picked = await harness.asAgent('task.pickup', { reservationId });
-    expect(picked.code, 'the pickup').toBe('ok');
-    credential = String((picked.body['detail'] as Record<string, unknown>)['credential']);
-
-    langfuse = createServer((request, response) => {
-      request.resume();
-      request.on('end', () => {
-        heard.push({
-          route: `${request.method} ${request.url}`,
-          authorization: request.headers.authorization,
-        });
-        langfuseReply(request, response);
-      });
-    });
-    await new Promise<void>((resolve) => {
-      langfuse.listen(0, '127.0.0.1', resolve);
-    });
-  }, 120_000);
-
-  afterEach(() => {
-    langfuseReply = json(200, { status: 'OK', version: '3.0.0' });
-    heard = [];
-    watcher.answer = answers();
-    errorSink.answer = answers();
-  });
-
-  afterAll(async () => {
-    langfuse?.closeAllConnections();
-    await new Promise<void>((resolve) => {
-      langfuse?.close(() => resolve());
-    });
-    await harness?.close();
-  });
-
   it('C34 service health: never observed, stale, read failure and service failure are kept distinct', async () => {
     watcher.answer = answers(
       seen('api', true, 60),
@@ -299,7 +89,8 @@ describe.skipIf(serverUrl === undefined)('C34 service health on the operations v
     });
     expect(section.sources.map((row) => row.state)).toEqual(['read', 'read', 'read']);
   });
-
+});
+describe.skipIf(serverUrl === undefined)('C34 service health on the operations view', () => {
   it('C34 service health: a source that cannot be read is a read failure, never a service failure', async () => {
     for (const [name, answer, fault] of UNREADABLE) {
       watcher.answer = answer;
@@ -334,17 +125,18 @@ describe.skipIf(serverUrl === undefined)('C34 service health on the operations v
     // Called at its health route under the configured base, with no credential.
     expect(heard).toEqual([{ route: 'GET /langfuse/api/public/health', authorization: undefined }]);
 
-    langfuseReply = json(503, { status: 'Database not available' });
+    replyAsLangfuse(json(503, { status: 'Database not available' }));
     expect(await tracingOf(api)).toEqual({
       source: { source: 'tracing', state: 'read', fault: null },
       states: ['service-failure'],
     });
   });
-
+});
+describe.skipIf(serverUrl === undefined)('C34 service health on the operations view', () => {
   it('C34 tracing read: a hostile or malformed Langfuse answer is a read failure, never healthy', async () => {
     const api = apiWith({ watcher, errorSink, tracing: tracing() });
     for (const [name, reply, fault] of HOSTILE_LANGFUSE) {
-      langfuseReply = reply;
+      replyAsLangfuse(reply);
       // oxlint-disable-next-line no-await-in-loop
       const read = await tracingOf(api);
       expect(read, name).toEqual({
@@ -383,7 +175,8 @@ describe.skipIf(serverUrl === undefined)('C34 service health on the operations v
       1, 1, 1,
     ]);
   });
-
+});
+describe.skipIf(serverUrl === undefined)('C34 service health on the operations view', () => {
   it('C34 isolation: another business, another client and a delegated agent', async () => {
     watcher.answer = answers(seen('api', true, 30), {
       ...seen(`${CANARY} client site`, false, 30),
@@ -429,7 +222,8 @@ describe.skipIf(serverUrl === undefined)('C34 service health on the operations v
     expect(agent.code).toBe('DELEGATION_EXCLUDES_OPERATION');
     expect([watcher.calls, heard.length]).toEqual([watcherBefore, heardBefore]);
   });
-
+});
+describe.skipIf(serverUrl === undefined)('C34 service health on the operations view', () => {
   it('C34 canary: a source’s words reach no answer, refusal or log', async () => {
     const logged: string[] = [];
     const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
@@ -439,7 +233,7 @@ describe.skipIf(serverUrl === undefined)('C34 service health on the operations v
     try {
       watcher.answer = async () => await Promise.reject(new Error(CANARY));
       errorSink.answer = answers({ ...seen(CANARY, true, 10), scope: 'client-site' });
-      langfuseReply = json(500, { status: CANARY });
+      replyAsLangfuse(json(500, { status: CANARY }));
       const api = apiWith({ watcher, errorSink, tracing: tracing() });
       const served = [
         await view(api),

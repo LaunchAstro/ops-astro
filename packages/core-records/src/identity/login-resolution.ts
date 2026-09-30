@@ -157,11 +157,7 @@ export async function resolveLogin(
   // and before anything is served: a sign-in that stopped at the password is
   // not yet a sign-in for someone who enrolled a second factor (C59, LF-4).
   const assurance = presented.assurance ?? NO_ASSURANCE;
-  if (
-    rule === 'required' &&
-    assurance.level !== 'aal2' &&
-    found.second_factor_verified === 'true'
-  ) {
+  if (rule === 'required' && stoppedAtPassword(assurance, found)) {
     return await recordRefusal(
       tx,
       presented,
@@ -179,6 +175,11 @@ export async function resolveLogin(
   };
   await recordResolved(tx, presented, session);
   return session;
+}
+
+/** A sign-in short of `aal2` for a person whose second factor is verified (C59, LF-4). */
+function stoppedAtPassword(assurance: Assurance, found: ResolutionRow): boolean {
+  return assurance.level !== 'aal2' && found.second_factor_verified === 'true';
 }
 
 /**

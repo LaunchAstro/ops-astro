@@ -19,12 +19,10 @@
 // outcome and a digest of what identifies it.
 
 import {
-  endOtherSeenSessions,
   liveFactor,
   recordFactorEnrolled,
   recordFactorRemoved,
   recordFactorVerified,
-  STEP_UP_WINDOW_SECONDS,
   withSession,
 } from '../../../core-records/src/index.ts';
 import type {
@@ -42,6 +40,8 @@ import {
   type IssuedFactor,
   type SessionsEnded,
 } from './account-factor-provider.ts';
+import { endOthersOnChange, signOutOthers } from './account-factor-sessions.ts';
+import { codeOf, freshSignIn, tooManyWrongCodes } from './account-factor-checks.ts';
 import { writeAuditEvent } from './audit.ts';
 import { asCallerVisible, refuseCommand, type CommandRefusal } from './refusal.ts';
 
@@ -69,15 +69,6 @@ const LOCKED_FIXES: readonly string[] = [
 ];
 
 /**
- * Wrong codes a person may send before their factor routes stop asking the
- * provider: five in fifteen minutes, counted from their own refused attempts
- * in the audit chain, so a six-digit code cannot be walked by a caller who
- * holds only the password.
- */
-const FAILED_CODE_LIMIT = 5;
-const FAILED_CODE_WINDOW_MINUTES = 15;
-
-/**
  * First enrolment: a person with no factor, after a fresh password sign-in
  * inside the step-up window (TR-A2-2). A person who already has a verified
  * factor replaces it by removing it first, with a code.
@@ -94,9 +85,9 @@ export async function enrolSecondFactor(
       const live = await liveFactor(tx, session.personId);
       if (live?.status === 'verified')
         return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
-      if (!(await freshSignIn(tx, session)))
-        return refuseCommand('FRESH_SIGN_IN_REQUIRED', [], FRESH_FIXES);
-      return undefined;
+      return (await freshSignIn(tx, session))
+        ? undefined
+        : refuseCommand('FRESH_SIGN_IN_REQUIRED', [], FRESH_FIXES);
     },
     'before',
   );
@@ -165,7 +156,7 @@ export async function verifySecondFactor(
     if (live?.id !== target.id) return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
     // The first good code completes an enrolment, which is a factor change;
     // a later one is a step-up and changes nothing.
-    if (live.status !== 'verified') ended = await endOthersOnChange(tx, session, caller);
+    if (live.status !== 'verified') ended = await endOthersOnChange(tx, session, caller.presented);
     await recordFactorVerified(tx, { personId: session.personId, factorId: live.id });
     return undefined;
   });
@@ -222,7 +213,7 @@ export async function removeSecondFactor(
     if (removed !== undefined && !removed.ok) return providerRefusal(removed.fault, 'answer');
     const live = await liveFactor(tx, session.personId, { lock: true });
     if (live?.id !== target.id) return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
-    ended = await endOthersOnChange(tx, session, caller);
+    ended = await endOthersOnChange(tx, session, caller.presented);
     await recordFactorRemoved(tx, { personId: session.personId, factorId: live.id });
     return undefined;
   });
@@ -232,38 +223,6 @@ export async function removeSecondFactor(
     removed: true,
     otherSessions: await signOutOthers(provider, proved.value.accessToken, ended),
   };
-}
-
-/**
- * A factor change ends the person's other sessions (C58): here, in
- * the change's own transaction, so they are refused from its commit.
- */
-async function endOthersOnChange(
-  tx: TenantQuery,
-  session: Session,
-  caller: FactorCaller,
-): Promise<number> {
-  return await endOtherSeenSessions(
-    tx,
-    session.personId,
-    caller.presented.sessionId,
-    'factor_change',
-  );
-}
-
-/**
- * Then at the provider, with the session the code has just raised (the one
- * kept), which revokes every other session's refresh tokens. After the
- * commit: the change stands whatever the provider answers, and the answer
- * says whether it confirmed.
- */
-async function signOutOthers(
-  provider: FactorProvider,
-  accessToken: string,
-  ended: number,
-): Promise<SessionsEnded> {
-  const signedOut = await provider.signOut(accessToken, 'others');
-  return { ended, signedOutAtProvider: signedOut.ok };
 }
 
 /**
@@ -301,39 +260,4 @@ async function judged(
   );
   if (outcome === undefined) return undefined;
   return asCallerVisible(outcome);
-}
-
-/** Whether this person has sent too many wrong codes lately (see `FAILED_CODE_LIMIT`). */
-async function tooManyWrongCodes(tx: TenantQuery, session: Session): Promise<boolean> {
-  const rows = await tx.query<{ readonly failures: number }>(
-    `select count(*)::int as failures
-       from public.audit_events
-      where business_id = $1
-        and actor_id = $2
-        and command in ('account.factor_verify', 'account.factor_remove')
-        and refusal_code = 'SECOND_FACTOR_INVALID'
-        and occurred_at > now() - make_interval(mins => $3)`,
-    [tx.businessId, session.actorId, FAILED_CODE_WINDOW_MINUTES],
-  );
-  return (rows[0]?.failures ?? 0) >= FAILED_CODE_LIMIT;
-}
-
-/** A first enrolment's precondition: a password sign-in inside the window. */
-async function freshSignIn(tx: TenantQuery, session: Session): Promise<boolean> {
-  const signedInAt = session.assurance.signedInAt;
-  if (signedInAt === null) return false;
-  const rows = await tx.query<{ readonly now: number }>(
-    'select floor(extract(epoch from now()))::float8 as now',
-  );
-  const age = (rows[0]?.now ?? Number.POSITIVE_INFINITY) - signedInAt;
-  return age <= STEP_UP_WINDOW_SECONDS && age >= -60;
-}
-
-/** `{ "code": "123456" }` and nothing else: six digits, as authenticator apps show. */
-function codeOf(body: unknown): string | undefined {
-  if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined;
-  const keys = Object.keys(body);
-  const code = (body as Readonly<Record<string, unknown>>)['code'];
-  if (keys.length !== 1 || typeof code !== 'string' || !/^[0-9]{6}$/u.test(code)) return undefined;
-  return code;
 }

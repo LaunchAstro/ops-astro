@@ -23,6 +23,7 @@ import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
+import { bravoRecords } from './ident-audit-bravo-rows.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import {
@@ -231,34 +232,8 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
     [world.bravo, world.bea.personId],
   );
 
-  // A drafted legal document version of bravo's (C81), written directly: the
-  // alpha caller is handed its id and must not learn it exists.
-  const bravoLegal = await world.db.admin.execute<{ readonly id: string }>(
-    `insert into public.legal_document_versions
-       (business_id, id, document, version, body, body_digest, drafted_by_actor)
-     values ($1, gen_random_uuid(), 'breach-runbook', '1.0', 'A bravo draft.', '', $2)
-     returning id`,
-    [world.bravo, world.bea.actorId],
-  );
-
-  // An agent credential of bravo's (API-2), written directly: the alpha caller
-  // is handed its id and must not learn it exists.
-  const bravoCredential = await world.db.admin.execute<{ readonly id: string }>(
-    `insert into public.agent_credentials
-       (business_id, id, agent_actor_id, issued_by_person_id, issued_by_actor_id, purpose, scope,
-        credential_hash, credential_scheme, credential_key_id, expires_at)
-     values ($1, gen_random_uuid(), $2, $3, $2, 'A bravo credential.', array['task:read'],
-             repeat('0', 64), 'hmac-sha256-v1', 'bravo', now() + interval '1 day')
-     returning id`,
-    [world.bravo, world.bea.actorId, world.bea.personId],
-  );
-
-  // C32: a client of bravo's, for the grant an alpha caller could name it in.
-  const bravoClient = await world.db.admin.execute<{ readonly id: string }>(
-    `insert into public.clients (business_id, id, name, created_by_actor_id)
-     values ($1, gen_random_uuid(), 'A bravo client', $2) returning id`,
-    [world.bravo, world.bea.actorId],
-  );
+  // bravo's own legal version, agent credential and client (C81, API-2, C32).
+  const bravoRows = await bravoRecords(world);
 
   // alpha's second agent, with a live lease of its own.
   const secondAgent = await enrolAgent(world.db, world.alpha, world.ada.actorId as string);
@@ -288,9 +263,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       picked: bravoPicked,
       batchId: String(trashed['batchId']),
       grantId: String(bravoGrants[0]?.id),
-      legalVersionId: String(bravoLegal[0]?.id),
-      credentialId: String(bravoCredential[0]?.id),
-      clientId: String(bravoClient[0]?.id),
+      ...bravoRows,
     },
     otherPicked,
     rhea,

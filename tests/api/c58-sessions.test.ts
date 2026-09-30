@@ -11,235 +11,36 @@
 // the provider's sign-out, which revokes the refresh tokens, comes after.
 
 import { randomUUID } from 'node:crypto';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { sign } from 'hono/jwt';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { createApi } from '../../apps/api/app.ts';
-import { createGoTrueFactors } from '../../apps/api/auth/factors.ts';
-import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
-import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
-import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
-import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { describe, expect, it } from 'vitest';
+import { agentPath, bearer, call, personPath, serverUrl } from '../acceptance/world.ts';
 import {
-  ACCEPTANCE_ISSUER,
-  ACCEPTANCE_SECRET,
-  agentPath,
-  bearer,
-  call,
-  createWorld,
-  personPath,
-  serverUrl,
-  type World,
-} from '../acceptance/world.ts';
-import { shareWithClient, type Member } from '../commands/fixture.ts';
+  CANARY,
+  json,
+  HOSTILE,
+  world,
+  seen,
+  answerWith,
+  forgetSeen,
+  api,
+  clientA,
+  clientB,
+  sessionKept,
+  tokenFor,
+  sessions,
+  served,
+  listOf,
+  eventsFor,
+  endedCount,
+  EXPIRED,
+  OK,
+  GOOD,
+  now,
+  useSessionsWorld,
+} from './c58-sessions-world.ts';
 
-const CANARY = 'CANARY-c58-session-words-4b1d7e';
-
-const now = () => Math.floor(Date.now() / 1000);
-
-type Reply = (request: IncomingMessage, response: ServerResponse) => void;
-
-const json =
-  (status: number, value: unknown): Reply =>
-  (_request, response) => {
-    response.writeHead(status, { 'content-type': 'application/json' });
-    response.end(JSON.stringify(value));
-  };
-
-/** GoTrue's sign-out: 204 and no body, whatever the scope. */
-const signedOut: Reply = (_request, response) => {
-  response.writeHead(204);
-  response.end();
-};
-
-const GOOD: Readonly<Record<string, Reply>> = {
-  'POST /logout?scope=others': signedOut,
-  'POST /logout?scope=local': signedOut,
-  'POST /factors': json(200, {
-    id: 'factor-one',
-    type: 'totp',
-    totp: { qr_code: 'data:,x', secret: 'S', uri: 'otpauth://totp/x' },
-  }),
-  'POST /factors/factor-one/challenge': json(200, { id: 'challenge-one', type: 'totp' }),
-  'POST /factors/factor-one/verify': json(200, {
-    access_token: 'aal2-access-token',
-    refresh_token: 'refresh-token',
-    expires_in: 3600,
-  }),
-  'DELETE /factors/factor-one': json(200, { id: 'factor-one' }),
-};
-
-/** Each way a provider's sign-out answer can be wrong. None of them is done. */
-const HOSTILE: Readonly<Record<string, Reply>> = {
-  'a 200 with a body': json(200, { msg: CANARY }),
-  'a 200 with no body': (_request, response) => {
-    response.writeHead(200);
-    response.end();
-  },
-  'a server error naming the canary': json(500, { msg: CANARY }),
-  'a refusal': json(401, { msg: CANARY }),
-  'a redirect to metadata': (_request, response) => {
-    response.writeHead(302, { location: 'http://169.254.169.254/latest/meta-data/' });
-    response.end();
-  },
-  'an oversized answer': (_request, response) => {
-    response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ pad: 'x'.repeat(64 * 1024) }));
-  },
-  'no answer in time': () => {
-    // Never answers: the adapter's time limit ends the call.
-  },
-};
-
-interface Seen {
-  readonly route: string;
-  readonly authorization: string | undefined;
-}
-
-type SessionView = {
-  readonly sessionId: string;
-  readonly current: boolean;
-  readonly firstSeenAt: string;
-  readonly lastSeenAt: string;
-};
+useSessionsWorld();
 
 describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through the API', () => {
-  let world: World;
-  let provider: Server;
-  let replies: Record<string, Reply> = { ...GOOD };
-  let seen: Seen[] = [];
-  let api: ReturnType<typeof createApi>;
-  let clientA: Member;
-  let clientB: Member;
-  /** Client A's session through a factor change, kept from one case to the next. */
-  const sessionKept = randomUUID();
-
-  /** A bearer for one provider session, as GoTrue signs it. */
-  const tokenFor = async (
-    subject: string,
-    sessionId: unknown,
-    assurance?: { readonly aal: 'aal1' | 'aal2'; readonly totp?: number },
-  ) =>
-    await sign(
-      {
-        sub: subject,
-        aud: 'authenticated',
-        iss: ACCEPTANCE_ISSUER,
-        exp: now() + 600,
-        aal: assurance?.aal ?? 'aal1',
-        session_id: sessionId,
-        amr: [
-          { method: 'password', timestamp: now() - 60 },
-          ...(assurance?.totp === undefined ? [] : [{ method: 'totp', timestamp: assurance.totp }]),
-        ],
-      },
-      ACCEPTANCE_SECRET,
-      'HS256',
-    );
-
-  const sessions = async (
-    name: 'list' | 'end-others' | 'sign-out',
-    token: string,
-    body: unknown = {},
-    key = 'alpha',
-  ) => await call(api, personPath(key, `/account/sessions/${name}`), body, bearer(token));
-
-  /** A read the person could make a minute ago: their own capabilities. */
-  const served = async (token: string, key = 'alpha') => {
-    const answer = await call(api, personPath(key, '/session/capabilities'), {}, bearer(token));
-    return { status: answer.status, code: answer.code };
-  };
-
-  const listOf = async (token: string, key = 'alpha') => {
-    const answer = await sessions('list', token, {}, key);
-    expect(answer.status).toBe(200);
-    return (answer.body as { readonly sessions: readonly SessionView[] }).sessions;
-  };
-
-  const eventsFor = async (command: string) =>
-    await world.db.app.withBusiness(
-      world.alpha,
-      async (tx) =>
-        await tx.query<{ readonly outcome: string; readonly refusal_code: string | null }>(
-          `select outcome, refusal_code from public.audit_events
-          where command = $1 order by seq`,
-          [command],
-        ),
-    );
-
-  const endedCount = async () =>
-    await world.db.app.withBusiness(world.alpha, async (tx) => {
-      const rows = await tx.query<{ readonly n: number }>(
-        'select count(*)::int as n from public.ended_sessions',
-      );
-      return rows[0]?.n ?? 0;
-    });
-
-  const EXPIRED = { status: 401, code: 'AUTH_SESSION_EXPIRED' } as const;
-  const OK = { status: 200, code: 'ok' } as const;
-
-  beforeAll(async () => {
-    world = await createWorld('c58s');
-    provider = createServer((request, response) => {
-      request.resume();
-      request.on('end', () => {
-        const route = `${request.method} ${request.url}`;
-        seen.push({ route, authorization: request.headers.authorization });
-        const reply =
-          new Map(Object.entries(replies)).get(route) ?? json(404, { msg: 'no such route' });
-        reply(request, response);
-      });
-    });
-    await new Promise<void>((resolve) => {
-      provider.listen(0, '127.0.0.1', resolve);
-    });
-    api = createApi({
-      database: world.db.app,
-      verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
-      resolveBusiness: async (key: string) =>
-        await Promise.resolve({ alpha: world.alpha, bravo: world.bravo }[key]),
-      executeCommand,
-      executeRead,
-      executeAgentCommand,
-      factors: createGoTrueFactors({
-        baseUrl: `http://127.0.0.1:${(provider.address() as AddressInfo).port}`,
-        timeoutMs: 300,
-      }),
-    });
-
-    const tasks: string[] = [];
-    for (const title of ['client A work', 'client B work']) {
-      // oxlint-disable-next-line no-await-in-loop
-      const created = await executeCommand(world.db.app, world.alpha, world.ada.presented, 'api', {
-        command: 'task.create',
-        operationId: `c58s-${randomUUID()}`,
-        fields: { title },
-      });
-      if (isCommandRefusal(created) || created.recordId === null) {
-        throw new Error('task.create did not create the fixture task');
-      }
-      tasks.push(created.recordId);
-    }
-    const sharer = world.ada as unknown as Member;
-    clientA = await shareWithClient(world.db.app, world.alpha, sharer, tasks[0] ?? '');
-    clientB = await shareWithClient(world.db.app, world.alpha, sharer, tasks[1] ?? '');
-  }, 60_000);
-
-  afterEach(() => {
-    replies = { ...GOOD };
-    seen = [];
-  });
-
-  afterAll(async () => {
-    provider?.closeAllConnections();
-    await new Promise<void>((resolve) => {
-      provider?.close(() => resolve());
-    });
-    await world?.close();
-  });
-
   it('C58 end other sessions: a person sees their sessions and ends the others, and only the others', async () => {
     const [here, phone, laptop] = [randomUUID(), randomUUID(), randomUUID()];
     const token = await tokenFor(world.mia.subject, here);
@@ -280,7 +81,8 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
     const again = await sessions('end-others', token);
     expect(again.body).toEqual({ ended: 0, signedOutAtProvider: true });
   });
-
+});
+describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through the API', () => {
   it('C58 refresh revoked: signing out ends this session here and at the provider, and no other', async () => {
     const [here, other] = [randomUUID(), randomUUID()];
     const token = await tokenFor(clientB.presented.subject, here);
@@ -298,7 +100,8 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
       refusal_code: null,
     });
   });
-
+});
+describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through the API', () => {
   it('C58 refresh revoked: a second-factor change ends every other session, here and at the provider', async () => {
     const subject = clientA.presented.subject;
     const [here, other] = [sessionKept, randomUUID()];
@@ -309,7 +112,7 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
     expect(
       (await call(api, personPath('alpha', '/account/factor/enrol'), {}, bearer(token))).status,
     ).toBe(200);
-    seen = [];
+    forgetSeen();
     const verified = await call(
       api,
       personPath('alpha', '/account/factor/verify'),
@@ -330,7 +133,8 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
     expect(seen.at(-1)?.authorization).toBe('Bearer aal2-access-token');
     expect(await served(otherToken)).toEqual(EXPIRED);
   });
-
+});
+describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through the API', () => {
   it('C58 refresh revoked: removing the second factor ends every other session too', async () => {
     // Client A's factor, completed above, from the session kept there.
     const subject = clientA.presented.subject;
@@ -338,7 +142,7 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
     const aal2 = await tokenFor(subject, here, { aal: 'aal2', totp: now() - 30 });
     const third = await tokenFor(subject, randomUUID(), { aal: 'aal2', totp: now() - 30 });
     expect(await served(third)).toEqual(OK);
-    seen = [];
+    forgetSeen();
     const removed = await call(
       api,
       personPath('alpha', '/account/factor/remove'),
@@ -359,7 +163,8 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
     expect(await served(third)).toEqual(EXPIRED);
     expect(await served(await tokenFor(subject, here))).toEqual(OK);
   });
-
+});
+describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through the API', () => {
   it('C58 hostile provider: a sign-out the provider does not confirm is not done, and the local end stands', async () => {
     for (const [index, [name, reply]] of Object.entries(HOSTILE).entries()) {
       const [here, other] = [randomUUID(), randomUUID()];
@@ -370,7 +175,7 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
       ]);
       // oxlint-disable-next-line no-await-in-loop
       expect(await served(otherToken)).toEqual(OK);
-      replies = { ...GOOD, 'POST /logout?scope=others': reply };
+      answerWith({ ...GOOD, 'POST /logout?scope=others': reply });
       // oxlint-disable-next-line no-await-in-loop
       const ended = await sessions('end-others', token);
       expect(ended.status, name).toBe(200);
@@ -385,7 +190,8 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
     // The redirect was never followed: every call went to the provider alone.
     expect(seen.every((request) => request.route === 'POST /logout?scope=others')).toBe(true);
   }, 60_000);
-
+});
+describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through the API', () => {
   it('C58 end other sessions: a body, a session id that is no uuid and a stale sign-out are refused or ignored', async () => {
     const here = randomUUID();
     const token = await tokenFor(world.mia.subject, here);
@@ -411,7 +217,8 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
     }
     expect(await served(token)).toEqual(OK);
   });
-
+});
+describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through the API', () => {
   it('C58 isolation: another business and another client never see or end a person’s session', async () => {
     const [adaHere, bSession, aSession] = [randomUUID(), randomUUID(), randomUUID()];
     const [adaToken, clientBToken, clientAToken] = await Promise.all([
@@ -447,7 +254,8 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
     expect(await served(clientBToken)).toEqual(OK);
     expect(await served(adaToken)).toEqual(OK);
   });
-
+});
+describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through the API', () => {
   it('C58 isolation: the agent acting for Ada under a live delegation finds no session route', async () => {
     const adaToken = await tokenFor(world.ada.subject, randomUUID());
     expect(await served(adaToken)).toEqual(OK);
@@ -466,7 +274,7 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
 
   it('C58 canary: the provider’s words reach no answer, refusal or record', async () => {
     const token = await tokenFor(world.noah.subject, randomUUID());
-    replies = { ...GOOD, 'POST /logout?scope=others': json(500, { msg: CANARY }) };
+    answerWith({ ...GOOD, 'POST /logout?scope=others': json(500, { msg: CANARY }) });
     const answer = await sessions('end-others', token);
     expect(JSON.stringify(answer)).not.toContain(CANARY);
     const stored = await world.db.app.withBusiness(

@@ -80,7 +80,7 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
     expect(Date.parse(found?.assessBy ?? '')).toBe(day0 + 30 * 86_400_000);
 
     // Audited as the tracked action, with a digest and never the words.
-    const events = await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) =>
+    const events = await harness.world.db.app.withBusiness(harness.world.alpha, (tx) =>
       tx.query<{ readonly outcome: string; readonly row: string }>(
         `select outcome, to_jsonb(e)::text as row from public.audit_events e
           where command = 'privacy.record_incident' order by seq`,

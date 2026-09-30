@@ -19,205 +19,34 @@
 // nothing; Bea is bravo's, holding `access:manage` there. Each case enrols the
 // person it ends. Every name below is made up.
 
+import { describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { sign } from 'hono/jwt';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createApi } from '../../apps/api/app.ts';
 import { createGoTrueLogins } from '../../apps/api/auth/logins.ts';
-import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { retryAccessEndings } from '../../apps/api/server.ts';
-import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
-import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
-import { connect } from '../../packages/core-records/src/tenancy/database.ts';
-import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
-import {
-  settleAccessEndings,
-  type LoginProvider,
-  type ProviderAnswer,
-} from '../../packages/core-commands/src/index.ts';
+import { settleAccessEndings, type LoginProvider } from '../../packages/core-commands/src/index.ts';
 import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
-import { SESSION_ABSOLUTE_SECONDS } from '../../packages/core-records/src/index.ts';
-import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
-import { ACCEPTANCE_ISSUER, ACCEPTANCE_SECRET, tokenFor } from '../acceptance/cast.ts';
-import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
+import { serverUrl } from '../acceptance/world.ts';
+import type { Member } from '../commands/fixture.ts';
 import {
-  agentPath,
-  bearer,
-  call,
-  personPath,
-  serverUrl,
-  type Answer,
-} from '../acceptance/world.ts';
-import {
-  enrol,
-  grantTo,
-  shareWithClient,
-  WHOLE_BUSINESS,
-  type Member,
-} from '../commands/fixture.ts';
+  CANARY,
+  scripted,
+  FAIL,
+  outcome,
+  ownCall,
+  harness,
+  clientToken,
+  apiWith,
+  end,
+  teammate,
+  stateOf,
+  useEndAccessWorld,
+} from './c58-end-access-world.ts';
 
-const CANARY = 'CANARY-c58-end-access-4be91c';
+// WORLD-IMPORTS c58-end-access-world.ts
 
-if (serverUrl === undefined) {
-  console.warn('authority/c58-end-access: DATABASE_URL is unset, so nothing below ran.');
-}
-
-type Step = 'endSessions' | 'deactivate';
-type Scripted = ProviderAnswer<void> | 'throw';
-
-/** A provider that answers from a script, step by step, and records every call. */
-function scripted(script: Partial<Record<Step, Scripted[]>> = {}) {
-  const calls: { readonly step: Step; readonly subject: string }[] = [];
-  const answer = (step: Step, subject: string): Promise<ProviderAnswer<void>> => {
-    calls.push({ step, subject });
-    const next = script[step]?.shift();
-    if (next === 'throw') return Promise.reject(new Error(`the provider fell over: ${CANARY}`));
-    return Promise.resolve(next ?? { ok: true, value: undefined });
-  };
-  const provider: LoginProvider = {
-    endSessions: async (subject) => await answer('endSessions', subject),
-    deactivate: async (subject) => await answer('deactivate', subject),
-  };
-  return { calls, provider };
-}
-
-const FAIL: ProviderAnswer<void> = { ok: false, fault: 'unreachable' };
-
-const outcome = (answer: Answer) => ({ status: answer.status, code: answer.code });
-
-const nowSeconds = () => Math.floor(Date.now() / 1000);
-
-/** A GoTrue-shaped bearer whose first sign-in was `signedInAt`. */
-async function signedIn(subject: string, signedInAt: number | null, iat = nowSeconds()) {
-  return await sign(
-    {
-      sub: subject,
-      aud: 'authenticated',
-      iss: ACCEPTANCE_ISSUER,
-      role: 'authenticated',
-      iat,
-      exp: iat + 3600,
-      ...(signedInAt === null ? {} : { amr: [{ method: 'password', timestamp: signedInAt }] }),
-    },
-    ACCEPTANCE_SECRET,
-    'HS256',
-  );
-}
-
-/** A read the person could make yesterday: their own capabilities. */
-const ownCall = async (api: ReturnType<typeof createApi>, token: string, key = 'alpha') =>
-  await call(api, personPath(key, '/session/capabilities'), {}, bearer(token));
+useEndAccessWorld();
 
 describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act", () => {
-  let harness: Harness;
-  let clientToken: string;
-  let credential: string;
-
-  const apiWith = (logins?: LoginProvider, now?: () => number) =>
-    createApi({
-      database: harness.world.db.app,
-      verify: createSupabaseVerifier({
-        secret: ACCEPTANCE_SECRET,
-        issuer: ACCEPTANCE_ISSUER,
-        ...(now === undefined ? {} : { now }),
-      }),
-      resolveBusiness: (key: string) =>
-        Promise.resolve({ alpha: harness.world.alpha, bravo: harness.world.bravo }[key]),
-      executeCommand,
-      executeRead,
-      executeAgentCommand,
-      ...(logins === undefined ? {} : { logins }),
-    });
-
-  const end = async (
-    api: ReturnType<typeof apiWith>,
-    holderId: unknown,
-    token?: string,
-    key = 'alpha',
-  ) =>
-    await call(
-      api,
-      personPath(key, '/access/end'),
-      { operationId: randomUUID(), holderId },
-      bearer(token ?? harness.world.ada.token),
-    );
-
-  /** A teammate of `businessId` with a task grant, one over a client, and a delegation. */
-  const teammate = async (name: string, businessId = harness.world.alpha) => {
-    const person = await enrol(
-      harness.world.db.app,
-      businessId,
-      `${name}-${randomUUID().slice(0, 6)}`,
-    );
-    await harness.world.db.app.withBusiness(businessId, async (tx) => {
-      await grantTo(tx, person, 'write', WHOLE_BUSINESS);
-      await grantTo(tx, person, 'read', WHOLE_BUSINESS);
-    });
-    return { person, token: await signedIn(person.presented.subject, nowSeconds() - 60) };
-  };
-
-  /** The rows `access.end` touches for one person, to show what changed. */
-  const stateOf = async (person: Member, businessId = harness.world.alpha) =>
-    await harness.world.db.app.withBusiness(businessId, async (tx) => {
-      const one = async (sql: string) =>
-        (await tx.query<{ readonly n: number }>(sql, [person.personId]))[0]?.n ?? -1;
-      return {
-        liveGrants: await one(
-          `select count(*)::int as n from public.grants
-            where subject_kind = 'person' and subject_id = $1 and revoked_at is null`,
-        ),
-        liveDelegations: await one(
-          `select count(*)::int as n from public.delegations
-            where delegate_person_id = $1 and revoked_at is null and settled_at is null`,
-        ),
-        activeMemberships: await one(
-          `select count(*)::int as n from public.memberships where person_id = $1 and active`,
-        ),
-        activeActors: await one(
-          `select count(*)::int as n from public.actors where person_id = $1 and active`,
-        ),
-        endings: await tx.query<{
-          readonly sessions: boolean;
-          readonly login: boolean;
-          readonly attempts: number;
-          readonly fault: string | null;
-          readonly by: string;
-        }>(
-          `select sessions_ended_at is not null as sessions,
-                  login_deactivated_at is not null as login,
-                  attempts, last_fault as fault, ended_by_actor_id::text as by
-             from public.access_endings where person_id = $1`,
-          [person.personId],
-        ),
-      };
-    });
-
-  beforeAll(async () => {
-    harness = await createHarness('c58_access_end');
-    const { world } = harness;
-    await world.db.app.withBusiness(world.bravo, async (tx) => {
-      await grantTo(tx, world.bea as unknown as Member, 'manage', WHOLE_BUSINESS, false, 'access');
-    });
-    const client = await shareWithClient(
-      world.db.app,
-      world.alpha,
-      world.ada as unknown as Member,
-      harness.alphaTask.id,
-    );
-    clientToken = await tokenFor(client.presented.subject);
-    const { decided } = await harness.approvedReservation();
-    expect(decided.code, 'the decision a pickup needs').toBe('ok');
-    const reservationId = (decided.body['detail'] as Record<string, unknown>)['reservationId'];
-    const picked = await harness.asAgent('task.pickup', { reservationId });
-    expect(picked.code, 'the pickup').toBe('ok');
-    credential = String((picked.body['detail'] as Record<string, unknown>)['credential']);
-  }, 120_000);
-
-  afterAll(async () => {
-    await harness?.close();
-  });
-
   it("C58 one act: login, sessions and grants end together, and the person's next call is refused", async () => {
     const { calls, provider } = scripted();
     const api = apiWith(provider);
@@ -261,7 +90,8 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     // Ended once: a second act finds no member to end.
     expect(outcome(await end(api, person.personId))).toEqual({ status: 404, code: 'NOT_FOUND' });
   });
-
+});
+describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act", () => {
   it('C58 audit read-back: the act is its tracked action, audited against the manager, with ids and no body', async () => {
     const api = apiWith(scripted().provider);
     const { person } = await teammate('vic');
@@ -296,7 +126,8 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     }
     expect(await stateOf(person)).toEqual(before);
   });
-
+});
+describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act", () => {
   it('C58 provider retry: a failed provider deactivation is retried until it succeeds, without repeating a finished step', async () => {
     const { calls, provider } = scripted({ deactivate: [FAIL, FAIL] });
     const api = apiWith(provider);
@@ -330,7 +161,8 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     ]);
     expect(outcome(await ownCall(api, token))).toEqual({ status: 403, code: 'AUTH_NO_MEMBERSHIP' });
   });
-
+});
+describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act", () => {
   it("C58 partial failure: a failure after each step leaves the person's next call refused, and a refused act changes nothing", async () => {
     const cases: readonly {
       readonly name: string;
@@ -372,7 +204,8 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
       expect(after.liveGrants, each.name).toBe(0);
     }
   });
-
+});
+describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act", () => {
   it('C58 partial failure: the last business-wide access:manage is never ended, and the refusal writes nothing', async () => {
     const api = apiWith(scripted().provider);
     const bravoBefore = await stateOf(harness.world.bea as unknown as Member, harness.world.bravo);
@@ -387,7 +220,8 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
       bravoBefore,
     );
   });
-
+});
+describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act", () => {
   it('C58 hostile provider: a malformed, oversized, slow, redirected or wrong answer never counts as done, and the step stays owed', async () => {
     const subject = randomUUID();
     const answers: readonly (() => Response | Promise<Response>)[] = [
@@ -430,7 +264,8 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     expect(seen.every((each) => each.url.startsWith('http://127.0.0.1:9/auth/v1/'))).toBe(true);
     expect(seen.every((each) => each.redirect === 'error')).toBe(true);
   });
-
+});
+describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act", () => {
   it("C58 hostile provider: a subject not in the provider's id shape is never sent, and a hostile answer through the act leaves both steps owed", async () => {
     const never = createGoTrueLogins({
       baseUrl: 'http://127.0.0.1:9',
@@ -453,233 +288,5 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     expect((await stateOf(person)).endings).toEqual([
       expect.objectContaining({ sessions: false, login: false, fault: 'malformed' }),
     ]);
-  });
-
-  it("C58 refresh revoked: the provider steps are the global sign-out (every refresh token) and the login's deactivation, each shaped", async () => {
-    const subject = randomUUID();
-    const sent: { url: string; method: string; auth: string | null; body: string | null }[] = [];
-    const logins = createGoTrueLogins({
-      baseUrl: 'http://127.0.0.1:9/auth/v1',
-      adminToken: () => Promise.resolve('admin-bearer'),
-      subjectToken: (who) => Promise.resolve(`subject-bearer-for-${who}`),
-      fetch: (input, init) => {
-        const headers = new Headers(init?.headers);
-        sent.push({
-          url: String(input),
-          method: String(init?.method),
-          auth: headers.get('authorization'),
-          body: typeof init?.body === 'string' ? init.body : null,
-        });
-        return Promise.resolve(
-          String(input).includes('/logout')
-            ? new Response(null, { status: 204 })
-            : Response.json({ id: subject, banned_until: '2999-01-01T00:00:00Z' }),
-        );
-      },
-    });
-    expect(await logins.endSessions(subject)).toEqual({ ok: true, value: undefined });
-    expect(await logins.deactivate(subject)).toEqual({ ok: true, value: undefined });
-    expect(sent).toEqual([
-      {
-        url: 'http://127.0.0.1:9/auth/v1/logout?scope=global',
-        method: 'POST',
-        auth: `Bearer subject-bearer-for-${subject}`,
-        body: null,
-      },
-      {
-        url: `http://127.0.0.1:9/auth/v1/admin/users/${subject}`,
-        method: 'PUT',
-        auth: 'Bearer admin-bearer',
-        body: JSON.stringify({ ban_duration: '876000h' }),
-      },
-    ]);
-  });
-
-  it('C58 session boundaries: 12 hours from the first sign-in, one second either side, no idle limit, and no first-sign-in time is no session', async () => {
-    const { person } = await teammate('ari');
-    let clock = nowSeconds();
-    const api = apiWith(undefined, () => clock);
-    // Each call carries a freshly refreshed token (its `iat` is the real
-    // clock's, as the verifier's signature check reads it); the server's clock
-    // is the one the limit is measured on, moved below.
-    const at = async (signedInAt: number | null) =>
-      outcome(
-        await ownCall(api, await signedIn(person.presented.subject, signedInAt, nowSeconds() - 60)),
-      );
-
-    expect(SESSION_ABSOLUTE_SECONDS).toBe(12 * 60 * 60);
-    expect(await at(clock - SESSION_ABSOLUTE_SECONDS + 1)).toEqual({ status: 200, code: 'ok' });
-    expect(await at(clock - SESSION_ABSOLUTE_SECONDS - 1)).toEqual({
-      status: 401,
-      code: 'AUTH_SESSION_EXPIRED',
-    });
-    expect(await at(null)).toEqual({ status: 401, code: 'AUTH_SESSION_EXPIRED' });
-
-    // Idle for hours inside the 12: signed in at t, a call at t+1h, nothing
-    // for six hours, then a refreshed token at t+7h is still a session.
-    const start = clock;
-    clock = start + 3600;
-    expect(await at(start)).toEqual({ status: 200, code: 'ok' });
-    clock = start + 7 * 3600;
-    expect(await at(start)).toEqual({ status: 200, code: 'ok' });
-    // A refresh moves `iat`, never the first sign-in: at t+12h+1s it has ended.
-    clock = start + SESSION_ABSOLUTE_SECONDS + 1;
-    expect(await at(start)).toEqual({ status: 401, code: 'AUTH_SESSION_EXPIRED' });
-  });
-
-  it("C58 isolation: another business, another client and a delegated agent never end, read or retry another's person", async () => {
-    const { provider } = scripted({ endSessions: [FAIL], deactivate: [FAIL] });
-    const api = apiWith(provider);
-    const alphaMate = await teammate('bo');
-    const bravoMate = await teammate('cy', harness.world.bravo);
-    const alphaBefore = await stateOf(alphaMate.person);
-
-    // Another business: Bea on bravo naming alpha's person gets the answer a
-    // made-up id gets; Bea on alpha's prefix is no member of alpha; Ada naming
-    // bravo's person is NOT_FOUND.
-    const beaAcross = await end(api, alphaMate.person.personId, harness.world.bea.token, 'bravo');
-    const beaMadeUp = await end(api, randomUUID(), harness.world.bea.token, 'bravo');
-    expect(outcome(beaAcross)).toEqual({ status: 404, code: 'NOT_FOUND' });
-    expect(beaAcross.body).toEqual(beaMadeUp.body);
-    expect(outcome(await end(api, alphaMate.person.personId, harness.world.bea.token))).toEqual({
-      status: 403,
-      code: 'AUTH_NO_MEMBERSHIP',
-    });
-    expect(outcome(await end(api, bravoMate.person.personId))).toEqual({
-      status: 404,
-      code: 'NOT_FOUND',
-    });
-
-    // Another client in the same business: a person holding only one client's
-    // grants holds no access:manage over the business, so ends nobody.
-    const party = await enrol(
-      harness.world.db.app,
-      harness.world.alpha,
-      `dee-${randomUUID().slice(0, 6)}`,
-    );
-    await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
-      await grantTo(tx, party, 'manage', { kind: 'party', id: randomUUID() }, false, 'access');
-    });
-    const partyToken = await signedIn(party.presented.subject, nowSeconds() - 60);
-    expect(outcome(await end(api, alphaMate.person.personId, partyToken))).toEqual({
-      status: 403,
-      code: 'SCOPE_NOT_GRANTED',
-    });
-
-    // Another person under a live delegation: the agent acting for Ada is
-    // refused, whatever Ada holds.
-    const agent = await call(
-      api,
-      agentPath('alpha', '/access/end'),
-      { operationId: randomUUID(), holderId: alphaMate.person.personId },
-      { ...bearer(harness.world.agent.token), [DELEGATION_HEADER]: credential },
-    );
-    expect(outcome(agent)).toEqual({ status: 403, code: 'DELEGATION_EXCLUDES_OPERATION' });
-    expect(await stateOf(alphaMate.person)).toEqual(alphaBefore);
-  });
-
-  it("C58 isolation: bravo's ending is bravo's, and retrying alpha's never calls for or changes it", async () => {
-    const { provider, calls } = scripted({ endSessions: [FAIL], deactivate: [FAIL] });
-    const api = apiWith(provider);
-    const bravoMate = await teammate('cy', harness.world.bravo);
-    expect(
-      outcome(await end(api, bravoMate.person.personId, harness.world.bea.token, 'bravo')),
-    ).toEqual({ status: 200, code: 'ok' });
-    const bravoOwed = await stateOf(bravoMate.person, harness.world.bravo);
-    calls.length = 0;
-    await settleAccessEndings(harness.world.db.app, harness.world.alpha, provider, {
-      claimSeconds: 0,
-    });
-    expect(calls.map((each) => each.subject)).not.toContain(bravoMate.person.presented.subject);
-    expect(await stateOf(bravoMate.person, harness.world.bravo)).toEqual(bravoOwed);
-    expect(await stateOf(bravoMate.person)).toMatchObject({ endings: [] });
-  });
-
-  it("C58 canary: a planted secret in the input or the provider's answer reaches no log, audit row, operation row, ending or refusal", async () => {
-    const logged: string[] = [];
-    const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
-    const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
-      vi.spyOn(console, level).mockImplementation(capture),
-    );
-    const { person } = await teammate(`eve-${CANARY}`);
-    try {
-      const api = apiWith(scripted({ endSessions: ['throw'] }).provider);
-      const answers = [
-        await end(api, CANARY),
-        await end(api, `${randomUUID()}${CANARY}`),
-        await end(api, person.personId, harness.world.noah.token),
-        await end(api, person.personId),
-      ];
-      for (const answer of answers.slice(0, 3)) {
-        expect(answer.status).toBeGreaterThanOrEqual(400);
-      }
-      expect(answers[3]?.code).toBe('ok');
-      for (const answer of answers) expect(JSON.stringify(answer.body)).not.toContain(CANARY);
-    } finally {
-      for (const spy of spies) spy.mockRestore();
-    }
-    expect(logged.join('\n')).not.toContain(CANARY);
-    const stored = await harness.world.db.app.withBusiness(
-      harness.world.alpha,
-      async (tx) =>
-        await tx.query<{ readonly row: string }>(
-          `select to_jsonb(e)::text as row from public.audit_events e where command = 'access.end'
-           union all select to_jsonb(o)::text from public.operations o
-           union all select to_jsonb(a)::text from public.access_endings a`,
-        ),
-    );
-    expect(stored.length).toBeGreaterThan(0);
-    expect(stored.map((each) => each.row).join('\n')).not.toContain(CANARY);
-  });
-  // Last on purpose: one of bravo's two managers is ended here.
-  it('C58 ends at once: a grant racing an ending leaves nothing live, and two last managers ending each other leave one', async () => {
-    const { person } = await teammate('gus');
-    const wide = connect(harness.world.db.appUrl, { source: 'runtime', max: 2 });
-    const act = async (
-      body: Readonly<Record<string, unknown>>,
-      as = harness.world.ada.presented,
-      businessId = harness.world.alpha,
-    ) => {
-      const result = await executeCommand(wide, businessId, as, 'api', {
-        operationId: randomUUID(),
-        ...body,
-      } as Parameters<typeof executeCommand>[4]);
-      return isCommandRefusal(result) ? result.code : 'ok';
-    };
-    try {
-      const raced = await Promise.all([
-        act({
-          command: 'access.grant',
-          holderId: person.personId,
-          collection: 'task',
-          action: 'comment',
-        }),
-        act({ command: 'access.end', holderId: person.personId }),
-      ]);
-      expect(raced[1]).toBe('ok');
-      expect(['ok', 'NOT_FOUND']).toContain(raced[0]);
-      expect(await stateOf(person)).toMatchObject({ liveGrants: 0, activeMemberships: 0 });
-
-      const other = await enrol(
-        harness.world.db.app,
-        harness.world.bravo,
-        `hal-${randomUUID().slice(0, 6)}`,
-      );
-      await harness.world.db.app.withBusiness(harness.world.bravo, async (tx) => {
-        await grantTo(tx, other, 'manage', WHOLE_BUSINESS, false, 'access');
-      });
-      const bea = harness.world.bea.presented;
-      const codes = await Promise.all([
-        act({ command: 'access.end', holderId: other.personId }, bea, harness.world.bravo),
-        act(
-          { command: 'access.end', holderId: harness.world.bea.personId },
-          other.presented,
-          harness.world.bravo,
-        ),
-      ]);
-      expect(codes.toSorted()).toEqual(['ACCESS_LAST_MANAGER', 'ok']);
-    } finally {
-      await wide.close();
-    }
   });
 });
