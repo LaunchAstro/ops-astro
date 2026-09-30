@@ -4,7 +4,7 @@
 //
 // The agent's own operations are `AGENT_SURFACE`, and each has a real positive
 // control here: the queue before any pickup, a pickup of a freshly approved
-// reservation, and a read, a comment, a heartbeat, the capabilities read and a
+// reservation, and a read, a comment, a heartbeat, a check, the capabilities read and a
 // handback under the credential that pickup handed out. Each is sent once
 // valid, then again with every classified system-owned field, and the contract
 // outcome is asserted: `FIELD_NOT_WRITABLE` naming the field, every other table
@@ -39,6 +39,7 @@ import {
   type Durable,
 } from './d06-cases.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
+import { revisedState } from './d06-run-state.ts';
 import type { Answer } from './world.ts';
 import { serverUrl } from './world.ts';
 
@@ -53,12 +54,20 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.read',
   'task.comment',
   'task.propose',
+  'run.revise_state',
   'task.heartbeat',
   'task.dispatch',
   'task.observe',
+  'task.check',
+  'model.call',
   'task.pickup',
   'task.handback',
 ];
+
+/** A business-internal field the replay operation may take to its cloud route. */
+/** Bound to the run's own task, which a person entered: only the broker finds a source business-internal (S3). */
+const toneOn = (taskId: string) =>
+  ({ name: 'tone', from: { recordId: taskId, key: 'title' } }) as const;
 
 /** In `AGENT_SURFACE` and still not the agent's: a person decides (case (j) of the matrix). */
 const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide']);
@@ -151,6 +160,9 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       return { body: { operationId, reservationId: await reservation() } };
     }
     if (name === 'task.handback') await release();
+    // A call holds 500 and spends 100 of the reservation's 3,000, so each gets
+    // a lease of its own rather than draining one.
+    if (name === 'model.call') await release();
     const held = await ensureLive();
     const credential = held.credential;
     if (name === 'session.capabilities') return { body: { operationId }, credential };
@@ -185,6 +197,8 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       };
       return { body: { operationId, ...body }, credential };
     }
+    const state = name === 'run.revise_state' ? await revisedState(harness.world, held) : null;
+    if (state !== null) return { body: { operationId, ...state }, credential };
     if (name === 'task.heartbeat' || name === 'task.dispatch') {
       return { body: { operationId, leaseId: held.leaseId, fence: held.fence }, credential };
     }
@@ -204,8 +218,13 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       );
       return { body: { operationId, ...lease, attemptId: held.attemptId }, credential };
     }
-    const outcome = { outcome: 'completed', report: { wrote: 'a draft' } };
-    const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...outcome };
+    const own =
+      name === 'task.check'
+        ? { name: 'the agent checks', outcome: 'passed' }
+        : name === 'model.call'
+          ? { operation: 'model.replay_compose', fields: [toneOn(held.taskId)] }
+          : { outcome: 'completed', report: { wrote: 'a draft' } };
+    const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...own };
     return { body, credential };
   }
 

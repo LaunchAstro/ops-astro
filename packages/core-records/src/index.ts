@@ -35,9 +35,11 @@ export {
 } from './authority/delegations.ts';
 export {
   checkAuthority,
+  coveredScopes,
   effectiveGrants,
   revokeGrant,
   subjectsOf,
+  EFFECTIVE_GRANTS_CTE,
   type Action,
   type Decision,
   type EffectiveGrant,
@@ -144,3 +146,4 @@ export {
   type TenantQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
+export { hasRoom, type DurableLimit } from './tenancy/limit.ts';

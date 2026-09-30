@@ -60,9 +60,10 @@ module.exports = {
       name: 'layer-connectors-take-the-digest-only',
       severity: 'error',
       comment:
-        'Provider operations sit beside the runtime, called by the command package once a ' +
-        'gate has passed. They take the payload digest and nothing else of the product, so ' +
-        'no path from them reaches a record, a grant or a command.',
+        'Provider operations say what a call is, what it may carry and to where, and sit ' +
+        'beside the runtime, called by the command package once a gate has passed. They ' +
+        'hold no credential and take the payload digest and nothing else of the product, ' +
+        'so no path from them reaches a record, a grant or a command.',
       from: { path: '^packages/core-connectors/' },
       to: { path: '^packages/', pathNot: '^packages/core-(connectors|digest)/' },
     },
@@ -89,6 +90,16 @@ module.exports = {
       comment: 'The digest is a leaf: it imports no other package.',
       from: { path: '^packages/core-digest/' },
       to: { path: '^packages/', pathNot: '^packages/core-digest/' },
+    },
+    {
+      name: 'custody-process-imports-no-package',
+      severity: 'error',
+      comment:
+        "Custody's process holds every provider credential, so adapter, connector and " +
+        'database code never load in it (AW-01): its entry and the two modules it runs on ' +
+        'import no other package.',
+      from: { path: '^packages/core-custody/src/(custody-main|egress|credentials)\\.ts$' },
+      to: { path: '^packages/', pathNot: '^packages/core-custody/' },
     },
     {
       name: 'index-only',

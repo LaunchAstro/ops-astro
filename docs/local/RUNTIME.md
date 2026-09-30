@@ -155,8 +155,11 @@ that expires while the decision waits on the chain or the cap does not count
 The runtime's other person checks under the locks are judged the same way. In
 pickup, heartbeat and handback, a person's write on the task, and for an agent
 pickup the delegating person's read, comment and write, are judged at the locked
-instant (`checkAuthorityAt`, `lockedAt`). A grant that expires while the call
-waits on its locks does not count. An agent pickup refused this way answers
+instant (`checkAuthorityAt`, `lockedAt`). An agent's delegation reaches the
+task's collection, and `run` too where the delegating person holds `run:write`
+at that instant, held to `write` alone (MP-6-2, `delegatedCollections`). A
+grant that expires while the call waits on its locks does not count. An agent
+pickup refused this way answers
 `DELEGATION_WIDENS`, in `mintDelegation`'s own words, before anything is minted
 (`pickup`, `pickup.ts`; `heartbeat.ts`; `handback.ts`;
 `tests/runtime/grants-at-locked-instant.test.ts`).
@@ -1365,7 +1368,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:782-793`). With neither setting present, the
+  rewrites it (`local-seed.mjs:792-803`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1415,15 +1418,254 @@ lost response on a legacy pickup replays its handles with `credential: null` and
 pickup once the old lease has expired. No migration or code path relabels a
 legacy row as derivable, and 0022's trigger forbids it.
 
+## The model call's ledger
+
+`0042_model_calls` (AW-01; numbered after main's 0041 at the rebase) adds two tables,
+both tenancy-scoped with row security forced, and the fair share's count
+(`model_route_room`, with its role `ops_astro_broker`; [DATA.md](DATA.md)).
+
+- `model_calls`: one row per priced model call or recorded refusal, bound to
+  its run, step, lease, approved version, reservation and delegation. Its
+  state is `reserved`, `dispatched`, `settled`, `released`, `refused` or
+  `liability_unknown`, and constraints tie each state to its amounts, facts
+  and drop. A call holds its operation's priced maximum out of the run's
+  reservation from `reserved` until it settles. `accepted_at`, `started_at`,
+  `completed_at` and `landed_at` are separate, and a call reaches no level
+  past what its operation declares. The route, its reach, the credential kind
+  and the account that carried it are recorded; a replay call records no
+  account. The application group may select, insert and update.
+- `copy_registrations`: the copy register's registration half. A call's
+  outbound prompt is registered before it is first materialised, and nothing
+  is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses
+  update and delete, and the application group may select and insert only.
+
+The broker (`core-custody/src/broker.ts`, with its steps in the
+`broker-*.ts` files beside it) writes both, and the `model.call`
+command ([API.md](API.md), "The model call") is its one product caller. The
+lease-expiry sweep's half is `sweepModelCalls`: a started call on a dead lease
+is held as `liability_unknown`, never released; an unsent one is released.
+Neither the prompt nor the model's words are stored in either table.
+
+A call on a task a client is on is refused before any route is chosen
+(C60, `CLIENT_MODEL_USE_OFF`, recorded as its step). A client's model use is
+off by default and cannot be switched on while no local model exists (owner
+line 72); the setting is stored on the client record once there is one (C32).
+The broker reads the task's client link, the spine's client slot, holding the
+run's task `for share` ahead of the lease (class `task` before `lease`), so a
+`task.set_party` in flight is waited on, never missed. The start reads it
+again under the same locks, and a task that gained a client since the hold
+releases the call unsent.
+
+A field reaches a cloud route only when the broker finds its source
+business-internal (S3). The field is bound, `from: { recordId, key }`, to
+what the agent may read: the run's own task and a field the spine marks
+`shared`. The task is a business-internal source when one of the business's
+people entered it through the app, the API or the command line (the spine's
+`source`) and no agent or worker has written to it since (the register's
+applied operations on it, less those that leave its data alone). A caller's
+claim of `business_internal` counts as `outside`. The task is already held
+`for share`, so an edit in flight is waited on; the start reads it again and
+sends the values read there. Client persons and guests do not exist yet
+(C32); when they do, their writes must disqualify a task too.
+
+## Instruction files pinned by digest
+
+`0043_bootstrap_pins` (AW-02; numbered after main's 0041 at the rebase) adds three
+tables, each tenancy-scoped with row security forced. A file's identity is its
+digest and its size; the path is provenance only.
+
+- `run_definition_pins`: the run's definition reference slot, one per run.
+  `ref_kind` is `bootstrap_file` (path, digest, size, read time) or, from C33,
+  `definition_version` (the version's id and digest), each shape checked by
+  the server. The accept-time manifest (every file the run may read, sorted by
+  path) and its digest sit beside the pin.
+- `bootstrap_reads`: the read ledger. One row per instruction read, entry and
+  non-entry, in read order (`sequence`), exactly one `is_entry` per run. A
+  ledger row needs its run's pin.
+- `bootstrap_bytes`: the audit copy, one per business and digest. The server
+  checks the bytes against their own digest and size.
+
+The application group may select and insert a pin and a ledger row, and never
+update or delete one; it may insert an audit copy and never read, update or
+delete it. The worker and broker roles hold nothing on any of them. The run
+itself is never rewritten either: 0043 takes back the application's update on
+`planned_runs` (granted whole by 0010) and grants it on `state` alone, so a
+run keeps its version, task and lineage. Restricted calls pin the column grant
+at the full schema and every prefix.
+
+The audit copy may hold client material, so it retains as the run records it
+copies (skill-migration contract 4.4; #27 row 5, retained and never deleted):
+the retention register (`core-records/src/tasks/trash.ts`) puts it, the pin
+and the read ledger in the `runtime` class beside `runs`, and the purge answers
+each of them exactly as it answers the runs.
+
+`core-runtime/src/definitions.ts` holds the operations, all first used by
+AW-04's plan accept, the only activation. `admitActivation` refuses anything
+but a person's manual act before a run exists (`ACTIVATION_MODE_NOT_PERMITTED`
+for a schedule, event, timer or the system; `DELEGATION_EXCLUDES_ACTIVATION`
+for an agent). `captureManifest` takes the accept-time manifest,
+`pinBootstrapFile` writes the pin from an admitted activation only, and
+`readPinned` is the pinned read. It runs under the caller's live lease on the
+run, which it takes `for update` (lock class `lease`, its only lock) and then
+judges on the database clock, so a lease released or expired while the read
+waited is refused and nothing is recorded. With no pin it resolves nothing by name or path (`DEFINITION_UNAVAILABLE`),
+and bytes that are not the manifest's are `DEFINITION_DIGEST_MISMATCH`. It
+writes its ledger row, the audit copy and its one audit event before it returns
+the bytes, so a read that cannot be recorded fails the transaction and returns
+nothing. `setDigest` is the path-sorted set digest over a run's reads.
+
+## The budget wait
+
+The approved ceiling is the stop (AW-05; `0044_budget_wait`, numbered after
+main's 0041 at the rebase). A model call whose priced maximum does not fit in what the
+run's reservation has left is refused `BUDGET_UNAVAILABLE`, and in the same
+transaction the run stops and asks (`raiseBudgetWait`,
+`core-custody/src/broker-wait.ts`). The reserve holds the run's task, the run,
+the lease, the delegation and the reservation in the contract's order, so two
+calls on one run reaching the ceiling at once stop it once.
+
+- **The ask.** `budget_asks`, one row per stop: the run, the reservation, the
+  lease that reached it, the decision that approved the plan, the ceiling (the
+  reservation's hold), the spend to date (what the reservation has committed)
+  and the currency. The rows are the persisted count. A run asks three times
+  at most and the third is the consolidated decision (execution decisions
+  15.2); a stop after it raises no fourth ask and is refused with words that
+  say so. The application may insert and read an ask, never update or delete
+  one; worker and broker hold nothing on it.
+- **Nothing spends.** The lease ends (`released`) and its delegation is
+  retired (`work_retired`), so a later call on it is refused before any hold.
+  The reservation stays `held`: the approved ceiling is kept for the answer.
+- **No machine path out.** `planned_runs.state` gains `waiting_budget`, entered
+  from `claimed` only. The trigger `planned_runs_budget_wait_holds` refuses
+  any change out of it (23514) except by a person's answer (below). Restart recovery (`discoverEligible`) does not
+  classify a waiting run's hold on its ended lease or retired delegation:
+  neither is a transition to classify, and the wait is not a clock. A
+  cancelled, rejected or superseded lineage is still classified.
+- **Not here yet.** The question in the conversation where the plan was
+  approved, with its two buttons (AW-04's origin, SL12's drawer), and the
+  second-factor check on a money answer (C59). The answers themselves are
+  commands, `run.top_up` and `run.end_at_budget_stop`, on the API, the command
+  line and the app's client
+  ([API.md](API.md#the-answers-at-the-budget-stop)).
+
+## The answers at the budget stop
+
+A waiting run leaves the wait only by a person's answer to its latest ask
+(AW-05; `0045_budget_answers`, numbered after main's 0041 at the rebase;
+`core-runtime/src/budget-answer.ts`). The trigger lets it become `planned`
+only when that ask has a `top_up` answer, and `cancelled` only when it has an
+`end`. `budget_answers` (one per ask) and `budget_approvals` (one per person
+per ask) are append-only: the application may insert and read, never update
+or delete.
+
+- **Found, then locked, then decided.** An answer finds its rows first and
+  takes no authority from them. The grants are held `for share`, then the cap,
+  envelope, task, run, lineage and reservation are locked in the contract's
+  order and everything is read again: the run still waiting, its latest ask
+  unanswered, the grant live at the locked instant. The four-eyes threshold
+  is read `for share` under those locks, so a change in flight is waited on.
+  Two answers at once meet on the run lock and the second is refused
+  `TRANSITION_NOT_PERMITTED`. Every write is in one transaction: a failure at
+  any step applies nothing.
+- **The top-up** (`topUpAtBudgetStop`, `billing:decide` on the task, a
+  person). An agent is refused `DELEGATION_EXCLUDES_DECISION`. The plan's
+  lineage must be live (`LINEAGE_TERMINAL`), the currency the envelope's
+  (`CAP_BINDING_MISMATCH`) and the amount within the business cap
+  (`BUDGET_EXHAUSTED`): the cap is the hard ceiling and no answer raises it.
+  The plan approver approves where they still hold `billing:decide`,
+  otherwise any holder (`SCOPE_NOT_GRANTED` names the approver). Four eyes
+  is the core's one rule (`four-eyes.ts`), the one T2e's top-up and T3c's
+  write-off use: the band is `four_eyes_threshold` in the envelope currency's
+  major unit, read `for share` under the locks, null is off and no stored row
+  is the shipped 500. Above it the first approval is recorded and applies
+  nothing, the same person again is `FOUR_EYES_REQUIRED` naming the
+  threshold, a different amount is `FIELD_VALUE_INVALID`, and a second,
+  distinct holder approving the same amount completes it, but only while the
+  first approver still holds `billing:decide` on the task at the locked
+  instant; a lapsed first approval pairs with no one, and the second is then
+  a first approval of its own (`budget-answer-eyes.ts`). Completing raises
+  the envelope's maximum by the amount, moves the spend to date from held to
+  actual, sets the reservation's hold to the raised ceiling less that spend,
+  and sends the run back to `planned`. Pickup's replacement branch then fences
+  the released lease, classifies the old hold and re-holds that amount on a
+  fresh reservation, so the run spends the raised ceiling once and the cap
+  counts the spend once.
+- **The end** (`endAtBudgetStop`, `gate:decide` on the task, a person). One
+  call with no confirmation (U7). The hold becomes `abandoned` with the cause
+  `budget_stop_ended`; the envelope releases the unspent part and keeps the
+  spend to date as actual. The run becomes `cancelled`. The task is not
+  written: it stays open for a person. A hold a lineage cancel already
+  classified is not released again.
+- **The spend to date** is counted as the broker counts it: settled calls at
+  their actual, calls still open at the maximum they hold.
+
+## The diagnostic trace export
+
+AW-13, `0046_trace_export` and `0047_trace_export_horizon`. A run's durable events leave as timings, counts
+and codes, never a sentence, to a trace target an operator reads.
+
+- `core-runtime/src/trace-span.ts`: the span is a typed allowlist
+  (`traceSpan`): a derived trace id (32 hex) and span id (16 hex), the event
+  kind from a closed list, the transform version, start and duration in whole
+  milliseconds, the event's place in its task's order, and a drop's cause
+  from a closed list. Any other field, or a value outside a list, throws
+  `TraceRefused`, which names the field and never the value. `otlp` writes
+  OTLP/HTTP JSON with those cells as the only attributes. Ids are
+  HMAC-SHA256 under the installation's trace key over the business and the
+  run or event, so a replay sends the same ids and nothing maps a trace back
+  without the key.
+- `core-runtime/src/trace-export.ts`: `exportOnce` reads up to 100 events after
+  the business's cursor, registers each run's copy (`diagnostic_trace`,
+  `run:<id>`, retained as `trace`) before it is materialised, delivers through
+  the `Deliver` port, then advances the cursor or records a gap. The read and
+  the advance are separate transactions and no transaction is open while the
+  target is asked. Anything short of a 2xx JSON reply is a gap with a fixed
+  code (`target_unreachable`, `target_redirect`, `target_timeout`,
+  `target_oversized_reply`, `target_malformed_reply`, `target_refused`,
+  `target_forbidden`) and the cursor stays. No run reads either table and no
+  run waits on the exporter.
+- `trace_export_cursors`: one row per business, the last delivered event by
+  its writing transaction's id and its own, `(tx, id)` (`run_events.tx`,
+  `xid8`, 0047). The read takes only events below its snapshot's horizon
+  (`pg_snapshot_xmin`): every transaction below it has finished and any later
+  write has a higher id, so an event that commits late never lands behind
+  the cursor. A long transaction anywhere on the cluster holds the export
+  back until it ends; it never loses an event. The cursor moves forward only: two exports at once may read the
+  same batch, and the slower one never moves it back (the upsert's row lock
+  orders them, the comparison under it keeps the later). `trace_export_gaps`: append only (a trigger refuses
+  update and delete). Both under tenancy; the application group may select and
+  insert, and update the cursor.
+- The port is custody's egress (`apps/api/trace-exporter.ts`): a custody
+  process of the exporter's own with the target as its one destination,
+  redirects refused, replies bounded by time and bytes. The target's project
+  key pair sits in custody's credential file as `user:secret` under
+  `scheme: "basic"` and leaves as HTTP Basic (the pinned target's OpenTelemetry
+  route refuses a Bearer key), so the target's origin is https unless it is
+  this machine's loopback address; the trace key is read by the exporter from its
+  own file. `TRACE_EXPORT=on` is the one change that starts it
+  ([API.md](API.md#the-composition-root)); the server then exports every
+  recovered business on an interval, and a failure is logged by kind only.
+- The pinned local target, `scripts/local/trace-target/`, proved by
+  `AW-13 pinned profile`: the vendor's compose file at v4.33.0, byte-identical (its
+  environment example is not stored: nothing runs it), a checked override (images from Docker Hub by digest,
+  telemetry, media upload and batch export off, no SSRF allowlist, AI or
+  cloud variable, signup closed, only the web port and only on loopback, every
+  secret required from the run), and the model they render to, which is what
+  runs. `node scripts/local/trace-target.ts check | up <port> | down` checks the
+  pin and a fresh render, starts it with generated secrets in
+  `.local/trace-target.env` without pulling, and destroys it with its volumes.
+  Retention (the product's job deleting by derived id, the raw bucket's
+  lifecycle rule) and the operator readers are AW-13's remaining lines.
+
 ## What is not here
 
 - **No machine write-off.** The worker (`apps/worker/`, T2b), effect
-  activation (T2c1, T2c2), the top-up (T2e, `topUp` in `budget.ts`), the sweep
-  (T3b), the reconciliation pass with a person's recorded outcome
-  (`budget.record_outcome`, T3d1) and a person's write-off
-  (`budget.write_off`, `recovery/write-off.ts`, T3c) are built. An unknown
-  liability the register cannot answer waits for a person's outcome or
-  write-off; no timer, pass or worker reaches either.
+  activation (T2c1, T2c2), the top-up (T2e, `topUp` in `budget.ts`), AW-05's
+  top-up at the budget stop (above), the sweep (T3b), the reconciliation pass
+  with a person's recorded outcome (`budget.record_outcome`, T3d1) and a
+  person's write-off (`budget.write_off`, `recovery/write-off.ts`, T3c) are
+  built. An unknown liability the register cannot answer waits for a person's
+  outcome or write-off; no timer, pass or worker reaches either.
 - **No audit row from this package.** `audit_events` is written through L3's
   command envelope, which owns the actor and the operation identity. The first
   attempt to write one from `handback.ts` aborted the whole transaction on a
@@ -1431,8 +1673,8 @@ legacy row as derivable, and 0022's trigger forbids it.
   reaching into another unit's trail.
 - **No HTTP surface of its own.** This package is reached only through L3's
   command surface: `task.propose`, `task.decide`, `task.pickup`,
-  `task.handback`, `task.queue`, `task.cancel`, `task.restart` and
-  `task.heartbeat` are routed there, and its codes are registered, with their
+  `task.handback`, `task.queue`, `task.cancel`, `task.restart`,
+  `task.heartbeat`, `run.top_up` and `run.end_at_budget_stop` are routed there, and its codes are registered, with their
   statuses, in `core-records/src/register.ts`
   ([API.md](API.md#the-operations-l4s-runtime-made-possible)).
 - **No operation-identity replay.** `propose` and `decide` take no

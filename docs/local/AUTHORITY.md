@@ -66,7 +66,11 @@ The order of its checks matters:
    purpose-scoped to one task", and R1's own grant is business-wide. Without
    the stored scope, a call on a sibling task reaches that same grant and passes
    exactly as a call on the picked-up task does. A business- or party-scoped
-   request under a delegation is refused here too.
+   request under a delegation is refused here too. A collection may also carry
+   fewer actions than the delegation lists: `run` carries `write` only (MP-6-2,
+   `CEILING` in `delegations.ts`), so a delegation that reaches `run` answers
+   any other action on it here, and a mint that asks `run` for no `write` is
+   `DELEGATION_WIDENS` naming the ceiling.
 3. `DELEGATION_ALREADY_LIVE`: the agent already holds a live delegation for
    this purpose. `delegations_one_live_per_purpose_idx` (`0008:195`) is unique
    on `(business_id, agent_actor_id, purpose)` where
@@ -368,11 +372,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:666-696`, run at `:826-834`). It gets a login and an acting identity,
-  and no membership and no business grant (`:121-124`, `:273-275`). The seed
+  user (`:671-701`, run at `:836-844`). It gets a login and an acting identity,
+  and no membership and no business grant (`:131-134`, `:283-285`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:707-727`, `:861-871`).
+  (`:712-732`, `:866-876`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -526,9 +530,10 @@ body naming `olderThanDays` is refused `COMMAND_BODY_INVALID`
 and no accepted source names one for the work window (C122-1's seven-day floor
 is the conversation window's). `conversation_window_days` and
 `client_sign_off_required` still have no consumer among the first slice's
-operations. `four_eyes_threshold` has one: above it, `budget.top_up` needs a
+operations. `four_eyes_threshold` has two: above it, `budget.top_up` needs a
 second approver, a different person holding `billing:decide` on the task
-(T2e, `core-runtime/src/budget.ts`).
+(T2e, `core-runtime/src/budget.ts`), and so does AW-05's top-up at the budget
+stop, `run.top_up`, which reads it under its locks ([RUNTIME.md](RUNTIME.md)).
 
 **Every setting has a revision** (0020), for the reason a record has one: two
 administrators editing one row from two browser tabs both wrote, and the second
@@ -576,8 +581,10 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   grant, the caller must hold `manage` on the grant's collection and the
   grant's own (collection, action), both live and both at a scope covering
   the grant's. For a delegation, the same test runs for every (collection,
-  action) the delegation reaches, at its purpose scope. A manager without
-  `share` cannot revoke a `share` grant.
+  action) the delegation reaches, at its purpose scope; a pair on `run` is
+  asked on `task` there, since run reach exists only inside a task delegation
+  on that task and no one holds `run:manage` (MP-6-2, ORCH34). A manager
+  without `share` cannot revoke a `share` grant.
 - `revokeGrant` and `revokeDelegation` write `revoked_at` and now return the
   instant they wrote, or null when they wrote nothing. A second revocation is
   `TRANSITION_NOT_PERMITTED` for a grant and `DELEGATION_NOT_LIVE` for a
@@ -683,6 +690,22 @@ foreign and a fabricated id get the same answer (`SCOPE_OF.claim`,
 `commands/prepare.ts`). A restart of a live, completed or already restarted
 lineage is `TRANSITION_NOT_PERMITTED` 409, the same code a second
 grant revocation answers.
+
+AW-05's two answers at the budget stop are authorised the same way as
+`task.cancel`: on the task named in `recordId`, `decide` on `billing` for
+`run.top_up` and `decide` on `gate` for `run.end_at_budget_stop`. The handler
+refuses a run that is not on that task with the bytes a made-up run gets, and
+the runtime asks the same pair of the run's own task again under the run's
+locks. No agent holds `decide`, and neither row is in the agent's reach. The
+seed gives both pairs to `admin` only (`scripts/local-seed.mjs`).
+
+MP-6-2's `run.revise_state` asks `write` on `run` of the task named in
+`recordId` (ORCH33: `run:write` is the only key on `run`; its reads stay
+`task:read`). The handler refuses a run on another task with the bytes a
+made-up run gets. An agent reaches it only under a delegation minted with
+`run`, which pickup mints where the delegating person holds `run:write` and
+holds to `write` alone; the agent is the recorded actor. The seed gives
+`run:write` to no role.
 
 ## The restricted worker role
 

@@ -1,13 +1,52 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Provider operations: the catalogue's registration rule, the one guarded
-// provider call, the fenced page capture, and the live correction's six
-// operations with the executable that performs its one real effect (C80).
+// Provider operations: what a model call is, what it may carry and to where
+// (AW-01); the catalogue's registration rule, the one guarded provider call,
+// the fenced page capture, and the live correction's six operations with the
+// executable that performs its one real effect (C80).
 //
-// Credentials are borrowed through a port the caller supplies; custody itself
-// (C31) is not here. Nothing in this package runs unless a worker under a
-// lease calls it after the gate.
+// Nothing here holds a credential: custody does (`core-custody`), and adapter
+// code never runs in its process; a connector borrows through a port the
+// caller supplies. Nothing in this package runs unless a worker under a lease
+// calls it after the gate.
 
+export {
+  catalogue,
+  DECLARATIONS,
+  registerModelOperation,
+  SETTLE_LEVELS,
+  type AdapterRequest,
+  type Declaration,
+  type ModelAnswer,
+  type ModelOperation,
+  type ModelOperationDeclaration,
+  type Registration,
+  type SettleLevel,
+} from './operation.ts';
+export {
+  effectiveClass,
+  eligibleRoutes,
+  LOCAL_MODEL_REQUIRED_WORDS,
+  type DataClass,
+  type FieldSource,
+  type ModelRoute,
+  type PromptField,
+  type RouteChoice,
+  type RouteReach,
+} from './data-class.ts';
+export {
+  readReplayAnswer,
+  replayAdapter,
+  replayCostMinor,
+  REPLAY_COMPOSE,
+  REPLAY_MODEL_WINDOW,
+  REPLAY_NOTHING_HAPPENED,
+  REPLAY_PATH,
+  startReplayProvider,
+  type ReplayMode,
+  type ReplayProvider,
+  type SeenRequest,
+} from './replay.ts';
 export {
   CREDENTIAL_HOSTS,
   DECLARATION_NAMES,

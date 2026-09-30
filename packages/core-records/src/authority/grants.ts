@@ -96,6 +96,53 @@ export const EFFECTIVE = `
             or (c.expires_at is not null and c.expires_at <= p.expires_at))
   )`;
 
+/**
+ * The same expression for a read that must take grants in its own statement,
+ * so what it shows and the rows beside it are one snapshot (MP-6-4's scope
+ * stamp). It opens `with recursive effective as (...)`; the reader follows it
+ * with its own select over `effective`.
+ */
+export const EFFECTIVE_GRANTS_CTE: string = EFFECTIVE;
+
+/**
+ * Where the caller holds this collection and action right now: the whole
+ * business, or the records its record-scoped grants name. A list read hands
+ * both to its own query, so the rows it returns are filtered by the caller's
+ * grant inside the statement that reads them.
+ */
+export interface CoveredScopes {
+  readonly business: boolean;
+  readonly records: readonly string[];
+}
+
+export async function coveredScopes(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+  request: { readonly collection: string; readonly action: Action },
+): Promise<CoveredScopes> {
+  const rows = await tx.query<{ readonly scope_kind: string; readonly scope_id: string | null }>(
+    `${EFFECTIVE}
+     select distinct e.scope_kind, e.scope_id
+       from effective e
+      where e.collection = $1
+        and e.action = $2
+        and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
+                     where s.kind = e.subject_kind and s.id = e.subject_id)`,
+    [
+      request.collection,
+      request.action,
+      subjects.map((subject) => subject.kind),
+      subjects.map((subject) => subject.id),
+    ],
+  );
+  return {
+    business: rows.some((row) => row.scope_kind === 'business'),
+    records: rows.flatMap((row) =>
+      row.scope_kind === 'record' && row.scope_id !== null ? [row.scope_id] : [],
+    ),
+  };
+}
+
 /** Every grant that authorises this request right now. Empty is a refusal, not an answer. */
 export async function effectiveGrants(
   tx: TenantQuery,

@@ -43,7 +43,9 @@ function version(id: string, n: number, gate: Record<string, unknown> | null) {
     supersededAt: null,
     runId: null,
     evidence: null,
-    gate,
+    // The projection's gate carries its version's digest, as the server sends it.
+    gate: gate === null ? null : { ...gate, payloadDigest: `digest-${id}` },
+    checks: [],
   };
 }
 

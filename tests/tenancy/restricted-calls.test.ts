@@ -16,12 +16,17 @@
 import { readdirSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
-import { walkTheJourney, walkTheOtherLineages } from '../acceptance/restart-harness.ts';
+import {
+  callModelOnTheJourney,
+  walkTheJourney,
+  walkTheOtherLineages,
+} from '../acceptance/restart-harness.ts';
 import { APPLICATION_ROLE } from '../support/fresh-database.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   APPLICATION_EXECUTES,
   WORKER_ROLE,
+  BROKER_ROLE,
   APPLICATION_GRANTS,
   catalogueFunctions,
   catalogueTables,
@@ -47,6 +52,7 @@ import {
   type CallerName,
   type Callers,
 } from './restricted-calls-callers.ts';
+import { columnUpdateFindings } from './restricted-calls-columns.ts';
 
 /**
  * One owner-written row per business in the tables the journey leaves
@@ -55,6 +61,75 @@ import {
  * world assertions move.
  */
 const UNREACHED: Readonly<Record<string, string>> = {
+  // The journey holds no conversation (AW-03), so one row per business in each
+  // of its three tables: the conversation owned by the business's first person
+  // actor, its message and its wrap-up on that conversation, where the business
+  // has them. Bravo's rows name ids that key nothing, written with foreign keys
+  // off, as every seed here is.
+  'public.conversations': `insert into public.conversations
+       (business_id, id, owner_actor_id, owner_person_id, title)
+     select $1, gen_random_uuid(), coalesce(a.id, gen_random_uuid()),
+            coalesce(a.person_id, gen_random_uuid()), 'restricted calls seed'
+       from (select 1) one
+       left join lateral (
+         select id, person_id from public.actors
+          where business_id = $1 and person_id is not null order by id limit 1) a on true
+     returning 1`,
+  'public.conversation_messages': `insert into public.conversation_messages
+       (business_id, id, conversation_id, role, author_actor_id, body)
+     select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), 'person',
+            coalesce(c.owner_actor_id, gen_random_uuid()), 'restricted calls seed'
+       from (select 1) one
+       left join lateral (
+         select id, owner_actor_id from public.conversations
+          where business_id = $1 order by id limit 1) c on true
+     returning 1`,
+  'public.conversation_wrap_ups': `insert into public.conversation_wrap_ups
+       (business_id, id, conversation_id, version, written_by_operation, code_revision,
+        request_quotation, items, left_open, activity_through)
+     select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), 1, 'conversation.wrap_up',
+            'seed', 'restricted calls seed', '[{},{},{},{},{},{},{}]'::jsonb, '[]'::jsonb, now()
+       from (select 1) one
+       left join lateral (
+         select id from public.conversations where business_id = $1 order by id limit 1) c on true
+     returning 1`,
+  // The journey records no check (MP-6-1), so one is written against the
+  // business's own lease, run, version and attempt where it has one, as
+  // `recordCheck` does; Bravo holds no lease, so its row names ids that key
+  // nothing. Written with foreign keys off, as every seed here is and as the prefixes
+  // suite writes every reference row.
+  // The journey revises no run's state (MP-6-2): one version on the business's
+  // first run, where it has one; otherwise ids that key nothing.
+  'public.run_states': `insert into public.run_states
+       (business_id, id, run_id, task_id, version, knowledge, unknowns, revised_by_actor_id)
+     select $1, gen_random_uuid(), coalesce(r.id, gen_random_uuid()),
+            coalesce(r.task_id, gen_random_uuid()), 1, '["restricted calls seed"]', '[]',
+            coalesce(a.id, gen_random_uuid())
+       from (select 1) one
+       left join lateral (
+         select id, task_id from public.planned_runs where business_id = $1 order by id limit 1) r on true
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
+  'public.run_checks': `insert into public.run_checks
+       (business_id, id, task_id, run_id, version_id, lease_id, attempt_id, actor_id,
+        fence, name, outcome)
+     select $1, gen_random_uuid(), coalesce(w.task_id, gen_random_uuid()),
+            coalesce(w.run_id, gen_random_uuid()), coalesce(w.version_id, gen_random_uuid()),
+            coalesce(w.lease_id, gen_random_uuid()), coalesce(w.attempt_id, gen_random_uuid()),
+            coalesce(w.actor_id, gen_random_uuid()), coalesce(w.fence, 1),
+            'restricted calls seed', 'passed'
+       from (select 1) one
+       left join lateral (
+         select l.task_id, run.id as run_id, run.version_id, l.id as lease_id,
+                att.id as attempt_id, l.holder_actor_id as actor_id, l.fence
+           from public.leases l
+           join public.reservations res on res.business_id = l.business_id and res.lease_id = l.id
+           join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+           join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
+          where l.business_id = $1
+          order by l.id limit 1) w on true
+     returning 1`,
   'public.person_identifiers': `insert into public.person_identifiers
        (business_id, id, person_id, kind, value, observed_value, source_system)
      select business_id, gen_random_uuid(), id, 'email', 'restricted-calls-seed',
@@ -101,6 +176,84 @@ const UNREACHED: Readonly<Record<string, string>> = {
        left join lateral (select id, fence from public.leases
                            where business_id = c.business_id order by id limit 1) l on true
       where c.business_id = $1 order by c.id limit 1 returning 1`,
+  // AW-01: the copy register, which the journey never reaches.
+  'public.copy_registrations': `insert into public.copy_registrations
+       (business_id, id, copy_class, copy_key, invalidation_trigger, retention_class)
+     values ($1, gen_random_uuid(), 'outbound_prompt', 'model_call:' || gen_random_uuid(),
+             'call_ended', 'transient') returning 1`,
+  // AW-02: nothing writes a pin before AW-04's plan accept. The pin rides on
+  // a run the journey made; a business with none gets a made-up run id, which
+  // the owner's seed writes with foreign keys off.
+  'public.run_definition_pins': `insert into public.run_definition_pins
+       (business_id, run_id, ref_kind, path, content_digest, content_size, read_at,
+        manifest, manifest_digest, pinned_by_actor_id)
+     select $1,
+            coalesce((select id from public.planned_runs where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            'bootstrap_file', 'skills/seed.md', encode(sha256('seed'::bytea), 'hex'), 4, now(),
+            '[]'::jsonb, encode(sha256('seed'::bytea), 'hex'),
+            coalesce((select id from public.actors where business_id = $1 order by id limit 1),
+                     gen_random_uuid())
+     returning 1`,
+  'public.bootstrap_reads': `insert into public.bootstrap_reads
+       (business_id, id, run_id, sequence, path, content_digest, content_size, is_entry)
+     select p.business_id, gen_random_uuid(), p.run_id, 1, p.path, p.content_digest,
+            p.content_size, true
+       from public.run_definition_pins p where p.business_id = $1 order by p.run_id limit 1
+     returning 1`,
+  // AW-05: an ask stands on a lease the journey made, with its run and
+  // reservation, and a decision; a business with none gets made-up ids, which
+  // the owner's seed writes with foreign keys off.
+  'public.budget_asks': `insert into public.budget_asks
+       (business_id, id, run_id, reservation_id, lease_id, decision_id, ask_number, kind,
+        ceiling_minor, spent_minor, currency)
+     select $1, gen_random_uuid(),
+            coalesce((select run_id from public.leases where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select reservation_id from public.leases where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select id from public.leases where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select id from public.gate_decisions where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            1, 'stop', 400, 0, 'AUD'
+     returning 1`,
+  // AW-05: an answer stands on an ask the journey raised, with its run and a
+  // person and actor of the business; a business with none gets made-up ids,
+  // which the owner's seed writes with foreign keys off.
+  'public.budget_approvals': `insert into public.budget_approvals
+       (business_id, id, ask_id, run_id, person_id, actor_id, amount_minor, currency)
+     select $1, gen_random_uuid(),
+            coalesce((select id from public.budget_asks where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select run_id from public.budget_asks where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select id from public.people where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select id from public.actors where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            300, 'AUD'
+     returning 1`,
+  'public.budget_answers': `insert into public.budget_answers
+       (business_id, id, ask_id, run_id, kind, first_person_id)
+     select $1, gen_random_uuid(),
+            coalesce((select id from public.budget_asks where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            coalesce((select run_id from public.budget_asks where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            'end',
+            coalesce((select id from public.people where business_id = $1 order by id limit 1),
+                     gen_random_uuid())
+     returning 1`,
+  // AW-13: nothing starts the exporter on the journey.
+  'public.trace_export_cursors': `insert into public.trace_export_cursors (business_id)
+     values ($1) returning 1`,
+  'public.trace_export_gaps': `insert into public.trace_export_gaps
+       (business_id, id, code, events)
+     values ($1, gen_random_uuid(), 'target_unreachable', 1) returning 1`,
+  'public.bootstrap_bytes': `insert into public.bootstrap_bytes
+       (business_id, content_digest, content_size, bytes)
+     values ($1, encode(sha256('seed'::bytea), 'hex'), 4, 'seed'::bytea) returning 1`,
 };
 
 /**
@@ -116,8 +269,6 @@ const UNREACHED_OWN: Readonly<Record<string, string>> = {
        join public.planned_runs run on run.business_id = att.business_id and run.id = att.run_id
       where r.business_id = $1 order by att.id limit 1 returning 1`,
 };
-
-const OWNER_ONLY: ReadonlySet<string> = new Set(['public.live_correction_receipts']);
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */
 class RolledBack extends Error {
@@ -153,11 +304,12 @@ async function roleClasses(
                  when r.rolname = $1 then 'application group'
                  when pg_has_role(r.rolname, $1, 'member') then 'application login'
                  when r.rolname = $2 then 'worker'
+                 when r.rolname = $3 then 'broker'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
        from pg_roles r where r.rolname !~ '^pg_' order by 1`,
-    [APPLICATION_ROLE, WORKER_ROLE],
+    [APPLICATION_ROLE, WORKER_ROLE, BROKER_ROLE],
   );
   const classes: Record<string, string[]> = {};
   for (const row of rows) (classes[row.class] ??= []).push(row.rolname);
@@ -174,19 +326,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   beforeAll(async () => {
     world = await createWorld('rcf');
     await walkTheOtherLineages(world);
-    await walkTheJourney(world);
+    const walked = await walkTheJourney(world);
+    await callModelOnTheJourney(world, walked);
     for (const business of [world.alpha, world.bravo]) {
       for (const [table, text] of Object.entries(UNREACHED)) {
-        // A receipt names a lease, and only the journey's business holds one:
-        // the other's is written with foreign keys off, as the prefix suite writes.
-        const seeded = OWNER_ONLY.has(table)
-          ? // oxlint-disable-next-line no-await-in-loop
-            await world.db.admin.transaction(async (execute) => {
-              await execute('set local session_replication_role = replica');
-              return await execute(text, [business]);
-            })
-          : // oxlint-disable-next-line no-await-in-loop
-            await world.db.admin.execute(text, [business]);
+        // oxlint-disable-next-line no-await-in-loop
+        const seeded = await world.db.admin.transaction(async (execute) => {
+          await execute('set local session_replication_role = replica');
+          return await execute(text, [business]);
+        });
         if (seeded.length !== 1) throw new Error(`no seed row for ${table}`);
       }
     }
@@ -234,6 +382,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(classes['unclassified'] ?? []).toStrictEqual([]);
     expect(classes['application group']).toStrictEqual([APPLICATION_ROLE]);
     expect(classes['worker']).toStrictEqual(['ops_astro_worker']);
+    expect(classes['broker']).toStrictEqual([BROKER_ROLE]);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -265,6 +414,11 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
     expect(executed.length).toBe(tables.length * OPERATIONS.length * TABLE_CALLERS.length);
   }, 120_000);
+
+  it('grants update column by column only as the contract says, and answers every caller on it', async () => {
+    const wrong = await columnUpdateFindings(world.db.admin, callers, TABLE_CALLERS, world.alpha);
+    expect(wrong).toStrictEqual([]);
+  });
 
   it('refuses a whole own-business row re-sent by every other caller, and it does not land', async () => {
     const wrong: string[] = [];
@@ -389,19 +543,38 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  describe('the security definer function', () => {
+  describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
+    const definer = (signature: string): CatalogueFunction | undefined =>
+      definers().find((fn) => fn.signature === signature);
 
-    it('is exactly one, a trigger on handback_reports with its search path pinned', () => {
+    // Exactly two, each for a named reason. The append-only trigger refuses
+    // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
+    // AW-01) is the one read across businesses: a provider route's ceiling is
+    // the installation's, which a tenant transaction cannot count under row
+    // security. It answers one number and no id, and only the broker's role
+    // may execute it (tests/broker/aw-01-broker-fair-share.test.ts).
+    it('are exactly two, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
         'handback_reports_append_only()',
+        'model_route_room(text,integer)',
       ]);
-      const [fn] = definers();
+    });
+
+    it('the first is a trigger on handback_reports', () => {
+      const fn = definer('handback_reports_append_only()');
       expect(fn?.trigger).toBe(true);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
       expect(fn?.firedBy).toStrictEqual([
         { table: 'public.handback_reports', events: 'delete update' },
       ]);
+    });
+
+    it("the second is the fair share's count, fired by nothing and pinned to read every business", () => {
+      const fn = definer('model_route_room(text,integer)');
+      expect(fn?.trigger).toBe(false);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public', 'row_security=off']);
+      expect(fn?.firedBy).toStrictEqual([]);
     });
   });
 

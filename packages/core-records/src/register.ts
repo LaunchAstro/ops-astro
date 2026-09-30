@@ -27,6 +27,7 @@
 // contract already named. `UNPRODUCED_CODES` names them, so a later part
 // closing one shows as a diff to this file rather than as nothing at all.
 
+import { LIVE_CORRECTION_ROWS } from './site/refusal-rows.ts';
 export type Visibility = 'caller' | 'audit';
 
 /**
@@ -472,32 +473,6 @@ const ROWS = [
     runtime: true,
   },
 
-  // C80, the live correction (release decision 3.4 and cases 4 to 9).
-  {
-    code: 'CHANGE_ENVELOPE_EXCEEDED',
-    status: 422,
-    meaning: 'The change is more than one word on one line of one file',
-    source: 'C80, release decision 3.2',
-  },
-  {
-    code: 'APPROVER_NOT_CONFIGURED',
-    status: 409,
-    meaning: 'No staff approver is configured for live corrections',
-    source: 'C80, TR-S-R4-5',
-  },
-  {
-    code: 'APPROVER_NOT_CONFIGURED_ONE',
-    status: 403,
-    meaning: 'Only the configured staff approver approves a live correction',
-    source: 'C80, TR-S-R4-5',
-  },
-  {
-    code: 'SELF_APPROVAL_REFUSED',
-    status: 403,
-    meaning: 'The requester cannot approve their own change',
-    source: 'C80, release decision 3.4',
-  },
-
   // Budget, T1k. For the runtime, the envelope cannot hold the accepted maximum.
   {
     code: 'BUDGET_UNAVAILABLE',
@@ -617,6 +592,35 @@ const ROWS = [
     source: 'L4 RUNTIME.md',
     runtime: true,
   },
+  // Instruction files pinned by digest (AW-02, `core-runtime/src/definitions.ts`).
+  {
+    code: 'ACTIVATION_MODE_NOT_PERMITTED',
+    status: 403,
+    meaning: 'An instruction file has no activation modes: only a person activates it, by hand',
+    source: 'AW-02, automations contract E4',
+    runtime: true,
+  },
+  {
+    code: 'DELEGATION_EXCLUDES_ACTIVATION',
+    status: 403,
+    meaning: 'An agent never activates an instruction file, in any mode',
+    source: 'AW-02, automations contract 3.3',
+    runtime: true,
+  },
+  {
+    code: 'DEFINITION_DIGEST_MISMATCH',
+    status: 409,
+    meaning: "The file's bytes are not the ones the run pinned; a changed file is a new file",
+    source: 'AW-02, automations contract 5.1',
+    runtime: true,
+  },
+  {
+    code: 'DEFINITION_UNAVAILABLE',
+    status: 409,
+    meaning: 'The pinned instruction file cannot be read at its exact identity',
+    source: 'AW-02, automations contract 5.1',
+    runtime: true,
+  },
   // T2c1, the dispatch transaction's recheck of the effect-time facts
   // (`core-runtime/src/dispatch.ts`). Each is 409: the call was well formed,
   // and state moved under it, so nothing was dispatched.
@@ -664,10 +668,81 @@ const ROWS = [
     source: 'T3 T3d1',
     runtime: true,
   },
+  // The broker's model call (AW-01, `core-custody/src/broker.ts`). The six
+  // facts are verified against rows under lock; everything after them is
+  // recorded as a step of the run. AUTHORITY_LOST, DECISION_STALE and
+  // EFFECT_NOT_RECONCILABLE are the core's (T2c1, above), and the broker
+  // answers with them.
+  {
+    code: 'OPERATION_NOT_CATALOGUED',
+    status: 403,
+    meaning: 'The operation is not in the reviewed catalogue, whatever the grant',
+    source: 'AW-01',
+  },
+  // Owner line 72: the product has no local-model route yet, so the call waits
+  // on one. 501, because what it rests on is not built.
+  {
+    code: 'LOCAL_MODEL_REQUIRED',
+    status: 501,
+    meaning: 'Personal information stays out of cloud AI until a local model exists',
+    source: 'AW-01, owner line 72',
+  },
+  // C60 (LF-5): a client's model use is off by default and, while no local
+  // model exists, cannot be switched on, so a call on its task reaches no route.
+  {
+    code: 'CLIENT_MODEL_USE_OFF',
+    status: 403,
+    meaning: "Model use is off for the task's client, so no route is chosen",
+    source: 'C60, LF-5, owner line 72',
+  },
+  // S3: a bound field's row is another business's, made up, trashed, or holds
+  // no text at the key. The same words whoever's row it was.
+  {
+    code: 'SOURCE_UNREADABLE',
+    status: 422,
+    meaning: "A bound field's row could not be read, so the call is not made",
+    source: 'AW-01 S3, owner line 72',
+  },
+  {
+    code: 'SUBSCRIPTION_UNATTENDED',
+    status: 403,
+    meaning: "A subscription carries only a person's own attended work",
+    source: 'AW-01, LF-5',
+  },
+  {
+    code: 'SUBSCRIPTION_OTHER_TENANT',
+    status: 403,
+    meaning: "A subscription never carries another installation's tenant",
+    source: 'AW-01, LF-5',
+  },
+  {
+    code: 'SUBSCRIPTION_NOT_OWN_WORK',
+    status: 403,
+    meaning: "A subscription never carries another person's work",
+    source: 'AW-01, LF-5',
+  },
+  {
+    code: 'RATE_LIMITED',
+    status: 409,
+    meaning: "The operation's ceiling on calls in flight is reached; wait and ask again",
+    source: 'AW-01',
+  },
+  {
+    code: 'COPY_NOT_REGISTERED',
+    status: 409,
+    meaning: 'A copy of business content was not registered before it was made',
+    source: 'AW-01',
+  },
+  {
+    code: 'LIABILITY_UNKNOWN',
+    status: 409,
+    meaning: 'The provider may have acted; the maximum is held until a person records an outcome',
+    source: 'AW-01, O6, O9',
+  },
 ] as const;
 
 /** Every registered code. Declared by the rows above and nowhere else. */
-export type RefusalCode = (typeof ROWS)[number]['code'];
+export type RefusalCode = (typeof ROWS | typeof LIVE_CORRECTION_ROWS)[number]['code'];
 
 /**
  * The codes `core-runtime` returns as its own (`core-runtime/src/refusals.ts`).
@@ -690,7 +765,7 @@ export interface RegisterEntry {
   readonly runtime: boolean;
 }
 
-export const REFUSAL_REGISTER: readonly RegisterEntry[] = ROWS.map(
+export const REFUSAL_REGISTER: readonly RegisterEntry[] = [...ROWS, ...LIVE_CORRECTION_ROWS].map(
   (row: Declared & { readonly code: RefusalCode }) => ({
     code: row.code,
     status: row.status,
@@ -823,7 +898,8 @@ export function isCommandRefusal(value: object): value is CommandRefusal {
  * write-off. The write-off is deferred, so nothing in `apps/` or `packages/`
  * returns `GATE_NOT_APPROVED`: it is registered, unproduced and not on this
  * list, so this list is not every code nothing produces. `FOUR_EYES_REQUIRED`
- * is produced by the top-up (T2e, `core-runtime/src/budget.ts`) and, since
+ * is produced by the top-up (T2e, `core-runtime/src/budget.ts`), by AW-05's
+ * top-up at the budget stop, `run.top_up` (`core-runtime/src/budget-answer.ts`), and, since
  * T2g, by the gate: the task's assignee is refused a decision on its gate.
  * Asserted by name in `tests/commands/refusal-register.test.ts`, so a part
  * that closes one has to come here and take it off the list.
@@ -894,6 +970,13 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // reservations: the second pickup meets the first one's live lease.
   'EVIDENCE_MISMATCH',
   'LEASE_EXPIRED',
+  // AW-02's four. The pinned-file stores are built, and their one entry point
+  // is AW-04's plan accept, which activates a file and starts the run that
+  // reads it; each comes off this list with that accept.
+  'ACTIVATION_MODE_NOT_PERMITTED',
+  'DEFINITION_DIGEST_MISMATCH',
+  'DEFINITION_UNAVAILABLE',
+  'DELEGATION_EXCLUDES_ACTIVATION',
   // Three codes are deliberately **not** on this list, and each is a command
   // path rather than a module one.
   //

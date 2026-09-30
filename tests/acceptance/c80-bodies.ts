@@ -7,6 +7,8 @@
 import { randomUUID } from 'node:crypto';
 import { insertLiveCorrection } from '../../packages/core-records/src/site/live-corrections.ts';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
+import type { CommandName } from '../../packages/core-wire/src/surface.ts';
+import type { BodyContext, Prepared } from './role-case-bodies.ts';
 
 /** C80's one-word request, less the party and the task each recipe names. */
 export const C80_REQUEST = {
@@ -52,3 +54,25 @@ const C80_REQUEST_ROW = {
   baseRevision: C80_REQUEST.baseRevision,
   versionDigest: 'sha256:matrix',
 };
+
+/** The matrix's positive bodies for C80's three commands (`role-case-positive-body.ts`). */
+export async function c80PositiveBody(name: CommandName, context: BodyContext): Promise<Prepared> {
+  if (name === 'settings.set_live_correction_approver') {
+    return { body: { value: context.assigneePersonId } };
+  }
+  if (name === 'live_correction.request') {
+    const task = await context.freshTask('a task a live correction is worked under');
+    return { body: { ...C80_REQUEST, partyId: randomUUID(), taskId: task.id } };
+  }
+  // Another member's request, and the admin named as the approver just
+  // before: the requester never approves, and only the configured one does.
+  if (context.seedCorrection === undefined || context.adminPersonId === undefined) {
+    return { exception: 'this harness seeds no live correction (C80)' };
+  }
+  const correction = await context.seedCorrection();
+  const named = await context.asPerson('settings.set_live_correction_approver', {
+    value: context.adminPersonId,
+  });
+  if (named.code !== 'ok') throw new Error(`matrix: approver refused ${named.code}`);
+  return { body: { ...correction, decision: 'approve' } };
+}

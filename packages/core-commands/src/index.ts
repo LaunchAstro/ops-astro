@@ -18,6 +18,11 @@ export {
   type RunnerPorts,
   type RunResult,
 } from './commands/live-correction-runner.ts';
+export {
+  modelCallExecutor,
+  type ModelBroker,
+  type ModelCallExecutor,
+} from './commands/model-call.ts';
 export { isCommandRefusal, refuseCommand, type CommandRefusal } from './commands/refusal.ts';
 export { type CommandRequest } from './commands/requests.ts';
 // T3d1: the pass asks the register whether an unknown step's effect happened.
@@ -25,3 +30,18 @@ export { lookupEffect } from './commands/register-store.ts';
 export { executeRead } from './reads/execute.ts';
 export { isReadName } from './reads/catalogue.ts';
 export { type ReadRequest } from './reads/requests.ts';
+export {
+  purgeConversation,
+  writeWrapUp,
+  type PurgeOutcome,
+  type PurgeRefusalCode,
+  type PurgeRequest,
+  type WrapUpOutcome,
+  type WrapUpRequest,
+} from './commands/conversation-lifecycle.ts';
+export {
+  sweepConversations,
+  sweepPurgeOperationId,
+  type SweepReport,
+  type SweepRequest,
+} from './commands/conversation-sweep.ts';

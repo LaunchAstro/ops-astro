@@ -552,13 +552,33 @@ async function authoriseClaimant(
     delegatePersonId: request.authorisedByPersonId,
     mintedByActorId: request.mintedByActorId,
     purpose: found.purpose,
-    collections: [request.collection],
+    collections: await delegatedCollections(tx, request, lockedAt),
     actions: [...actions],
     expiresAt,
     purposeScope: { kind: 'record', id: found.task_id },
   });
   if (!minted.ok) return { ok: false, refusal: minted.refusal };
   return { ok: true, value: minted.value };
+}
+
+/**
+ * The collections the agent's delegation reaches: the work's own, and `run`
+ * where the delegating person holds `run:write` at the locked instant, so the
+ * agent may revise its run's state (MP-6-2). The mint holds `run` to `write`;
+ * a person without it mints the task delegation it always was.
+ */
+async function delegatedCollections(
+  tx: TenantQuery,
+  request: PickupRequest,
+  lockedAt: string,
+): Promise<readonly string[]> {
+  const runWrite = await checkAuthorityAt(
+    tx,
+    [{ kind: 'person', id: request.authorisedByPersonId }],
+    { collection: 'run', action: 'write', scope: { kind: 'business', id: null } },
+    lockedAt,
+  );
+  return runWrite.ok ? [request.collection, 'run'] : [request.collection];
 }
 
 interface NewLease {
@@ -749,6 +769,19 @@ function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
         'RESERVATION_NOT_CLAIMABLE',
         `attempt ${state.attempt_id} carries a dispatch marker or an observation and is quarantined`,
         'A marked attempt keeps its hold and goes to the recorded reconciliation owner, not to a worker.',
+      ),
+    };
+  }
+  // AW-05: a run waiting for budget is claimed again only after a person's
+  // top-up sends it back to `planned`. Refused here, before any write, rather
+  // than by 0035's trigger after the old hold was classified.
+  if (state.run_state === 'waiting_budget') {
+    return {
+      kind: 'refuse',
+      refusal: refuse(
+        'RESERVATION_NOT_CLAIMABLE',
+        'this run waits for a person to top it up or end it',
+        'Nothing is picked up until a person answers the budget stop.',
       ),
     };
   }

@@ -181,7 +181,9 @@ describe.skipIf(serverUrl === undefined)('W02 (a): the pickup payload, field by 
       'task.read',
       'task.comment',
       'task.heartbeat',
+      'task.check',
       'task.handback',
+      'model.call',
     ]);
     const excluded = detail['excludedOperations'] as { operation: string; reason: string }[];
     expect(excluded.map((entry) => entry.operation)).toStrictEqual([

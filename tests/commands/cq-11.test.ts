@@ -91,18 +91,16 @@ describe('CQ-11 the tree', () => {
     }
   });
 
-  it('CQ-11 contractNine and the empty custody directory are gone, and ARCHITECTURE.md says when it is created', () => {
+  it('CQ-11 contractNine is gone, and the two packages exist only once the ticket that builds them has (AW-01)', () => {
     expect(carrying('contractNine')).toStrictEqual([]);
-    expect(existsSync('packages/core-custody')).toBe(false);
     const architecture = readFileSync('ARCHITECTURE.md', 'utf8');
-    const custody = architecture.split('\n').find((line) => line.includes('packages/core-custody'));
-    expect(custody).toContain('The package is created by the ticket that builds it.');
-    // C80 created the provider-operations package; its row now says what it holds.
-    expect(existsSync('packages/core-connectors/src/index.ts')).toBe(true);
-    const connectors = architecture
-      .split('\n')
-      .find((line) => line.includes('packages/core-connectors'));
-    expect(connectors).toContain('(C80)');
+    for (const name of ['core-custody', 'core-connectors']) {
+      // No empty directory standing in for a package: it holds source, or it is not there.
+      expect(existsSync(`packages/${name}/src/index.ts`), name).toBe(true);
+      expect(existsSync(`packages/${name}/.gitkeep`), name).toBe(false);
+      const row = architecture.split('\n').find((line) => line.includes(`packages/${name}`));
+      expect(row, name).toContain('(AW-01), with tests.');
+    }
   });
 });
 

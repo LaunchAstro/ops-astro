@@ -26,6 +26,27 @@ export {
 } from './propose.ts';
 export { restart, type Restarted, type RestartRequest } from './restart.ts';
 export {
+  admitActivation,
+  captureManifest,
+  identityOf,
+  isInstructionPath,
+  pinBootstrapFile,
+  setDigest,
+  type ActivationMode,
+  type ActivationRequest,
+  type Activator,
+  type AdmittedActivation,
+  type CapturedManifest,
+  type FileIdentity,
+  type InstructionSource,
+} from './definitions.ts';
+export {
+  readPinned,
+  type PinnedRead,
+  type ReadAuditNote,
+  type ReadRequest,
+} from './definitions-read.ts';
+export {
   heartbeat,
   MAXIMUM_LEASE_LIFETIME_SECONDS,
   MAXIMUM_RENEWAL_SECONDS,
@@ -40,6 +61,13 @@ export { readAlerts, type Alert } from './alerts.ts';
 export { priceUsage, SYNTHETIC_PRICES, type Usage } from './price-book.ts';
 export { openEnvelopeOf, topUp, type Settlement, type TopUp, type TopUpRequest } from './budget.ts';
 export { CRASH_POINT_VARIABLE, crashPointAfterCommit, crashSeamProblem } from './crash-point.ts';
+export {
+  CHECK_OUTCOMES,
+  recordCheck,
+  type CheckOutcome,
+  type CheckRequest,
+  type RecordedCheck,
+} from './checks.ts';
 export { renderEvidence, RENDERER, type RenderedPack } from './evidence.ts';
 export {
   decide,
@@ -123,6 +151,18 @@ export {
   keyResolver,
   type KeyResolver,
 } from './signing.ts';
+export {
+  endAtBudgetStop,
+  topUpAtBudgetStop,
+  type EndOutcome,
+  type BudgetStopTopUpRequest,
+  type TopUpOutcome,
+} from './budget-answer.ts';
+export type {
+  BudgetAnswerCode,
+  BudgetAnswerRequest,
+  BudgetAnswerResult,
+} from './budget-answer-facts.ts';
 export { acquire, LOCK_ORDER, type LockClass, type LockRequest, type LockSet } from './locks.ts';
 export {
   isRuntimeRefusal,
@@ -139,3 +179,24 @@ export {
   withRuntimeKeys,
   type RuntimeKeys,
 } from './runtime-config.ts';
+export {
+  TRACE_ERRORS,
+  TRACE_STAGES,
+  TRANSFORM_VERSION,
+  TraceRefused,
+  derivedId,
+  otlp,
+  traceSpan,
+  type TraceError,
+  type TraceSpan,
+  type TraceStage,
+} from './trace-span.ts';
+export {
+  TRACE_BATCH,
+  exportOnce,
+  type Deliver,
+  type Delivered,
+  type ExportOutcome,
+  type GapCode,
+  type TraceDatabase,
+} from './trace-export.ts';

@@ -1,0 +1,528 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The Agent pane (MP-6-1): the run summary, the workflow, the staged output
+   and the gate, ported from the mockup's `app.css` (8454-8466, 8836-8864,
+   12607-12657) onto the product's tokens. The workflow's ring takes its tone
+   from the job's own state word; the demonstration note is not ported (R44). */
+
+.agent {
+  display: grid;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.gate {
+  display: flex;
+  gap: var(--s-4);
+  align-items: flex-start;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-muted);
+  background: var(--surface);
+  padding: var(--s-4) var(--s-5);
+}
+.gate--armed {
+  border-left-color: var(--warning);
+}
+.gate__mark {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-top: 0.3rem;
+  border: 1px solid var(--text-muted);
+}
+.gate--armed .gate__mark {
+  border-color: var(--warning);
+  background: var(--warning);
+}
+.gate__word {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--text);
+}
+.gate__say {
+  margin: 0.3rem 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-2);
+  max-width: 74ch;
+}
+
+.sout__box {
+  border: 1px solid var(--border);
+  padding: var(--s-3);
+  display: grid;
+  gap: var(--s-3);
+}
+.sout__where {
+  font-size: var(--fs-mono-sm);
+  color: var(--ink-faint);
+}
+.sout__row {
+  display: grid;
+  gap: 0.3rem;
+}
+.sout__v {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--text-2);
+}
+.sout__t {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text);
+}
+.sout__meta {
+  font-size: var(--fs-mono-sm);
+  color: var(--ink-faint);
+}
+.sout__say {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.45;
+}
+
+/* The diff is two stacked halves, not side by side: the dock's panel is 380px
+   at rest, and two columns of prose there are a column of one word each. The
+   rule down the left edge says which is which: an edge, never a fill, so a
+   diff is never mistaken for a status. */
+.sout__diff {
+  display: grid;
+  gap: var(--s-3);
+}
+.sout__d {
+  display: grid;
+  gap: 0.25rem;
+  padding-left: var(--s-3);
+  border-left: 2px solid var(--border);
+}
+.sout__d--was .sout__t {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+}
+.sout__d--will {
+  border-left-color: var(--success);
+}
+
+/* The pull request's two counts are a quantity with a sign, not a status. */
+.sout__adds {
+  color: var(--success);
+}
+.sout__dels {
+  color: var(--danger);
+}
+
+.sout__ads {
+  display: grid;
+  gap: var(--s-3);
+}
+.sout__ad {
+  display: grid;
+  gap: 0.25rem;
+}
+.sout__adname {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.sout__band {
+  color: var(--text-muted);
+}
+.sout__acts {
+  display: grid;
+  gap: 0.4rem;
+  justify-items: start;
+}
+
+.trs {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  padding: var(--s-3);
+  display: grid;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.trs[data-tone='gate'] {
+  border-left-color: var(--warning);
+}
+.trs[data-tone='run'] {
+  border-left-color: var(--accent);
+}
+.trs[data-tone='done'] {
+  border-left-color: var(--success);
+}
+.trs[data-tone='bad'] {
+  border-left-color: var(--danger);
+}
+.trs__top {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  justify-content: space-between;
+  min-width: 0;
+}
+.trs__say {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+}
+.trs__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--border);
+}
+.trs__c {
+  display: grid;
+  gap: 0.15rem;
+  padding: var(--s-2) var(--s-2) var(--s-2) 0;
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+}
+.trs__c:nth-child(odd) {
+  border-right: 1px solid var(--border);
+}
+.trs__c:nth-child(even) {
+  padding-left: var(--s-2);
+}
+.trs__c:nth-last-child(-n + 2) {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.trs__v {
+  font-size: var(--text-sm);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.trs__snap {
+  color: var(--text-muted);
+}
+@media (max-width: 640px) {
+  .trs__grid {
+    grid-template-columns: 1fr;
+  }
+  .trs__c:nth-child(odd) {
+    border-right: 0;
+  }
+  .trs__c:nth-child(even) {
+    padding-left: 0;
+  }
+  .trs__c:nth-last-child(-n + 2) {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: var(--s-2);
+  }
+  .trs__c:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+}
+
+.wf {
+  min-width: 0;
+}
+.wf__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-2) 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.wf__toggle:hover {
+  color: var(--accent);
+}
+.wf__list {
+  display: grid;
+  gap: 0;
+}
+.wf__list[hidden] {
+  display: none;
+}
+.wf__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--s-2);
+  align-items: start;
+  padding: var(--s-2) 0;
+  border-top: 1px solid var(--border);
+}
+.wf__row:first-child {
+  border-top: 0;
+}
+/* The state mark is an outline ring, never a fill. */
+.wf__mark {
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: 0.1rem;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.wf__mark[data-tone='done'],
+.wf__mark[data-tone='approved'] {
+  border-color: var(--success);
+  color: var(--success);
+}
+.wf__mark[data-tone='running'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.wf__mark[data-tone='pending'] {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+.wf__mark[data-tone='failed'],
+.wf__mark[data-tone='refused'] {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.wf__mark[data-tone='waiting'] {
+  border-style: dashed;
+}
+.wf__body {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.wf__t {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.wf__fail {
+  font-size: var(--text-overline);
+  color: var(--danger);
+}
+.wf__state {
+  flex: none;
+}
+.wf__par {
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  padding-left: var(--s-2);
+  margin: var(--s-1) 0;
+}
+.wf__parlab {
+  display: block;
+  padding-top: var(--s-1);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.wf__par .wf__row:first-of-type {
+  border-top: 0;
+}
+
+.gatebox {
+  display: grid;
+  gap: var(--s-2);
+  border: 1px solid var(--warning);
+  padding: var(--s-3);
+  min-width: 0;
+}
+.gatebox--stale {
+  border-color: var(--border-strong);
+}
+.gatebox__acts {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+/* The scope stamp (MP-6-4, DS-TASK-3; mockup app.css:8814-8820): read-only,
+   mono parts, the clearance as an outlined chip that keeps its accent in dark. */
+.mstamp {
+  display: grid;
+  gap: 0.3rem;
+  padding: var(--s-3) 0 0;
+}
+.mstamp__v {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--text-2);
+}
+.mstamp__lock {
+  inline-size: 0.6rem;
+  block-size: 0.5rem;
+  border: 1.5px solid var(--ink-faint);
+  border-radius: 2px;
+}
+.mstamp__p {
+  color: var(--text-2);
+}
+.mstamp__x {
+  color: var(--ink-faint);
+}
+.mstamp__chip {
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+.mstamp__say {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--ink-faint);
+}
+
+/* C36: a conversation at its own address, and the drawer's link to it. */
+.aip__address {
+  padding: var(--s-2) var(--s-5) 0;
+  font-size: var(--text-overline);
+}
+.convrec {
+  display: grid;
+  gap: var(--s-4);
+  max-width: 72ch;
+  padding: var(--s-5);
+}
+.convrec__subject,
+.convrec__note,
+.convrec__who {
+  color: var(--text-muted);
+}
+.convrec__log {
+  display: grid;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.convrec__msg p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.convrec__request {
+  margin: 0;
+  padding-left: var(--s-3);
+  border-left: 2px solid var(--border);
+}
+
+/* ── Token tracked (MP-6-5, DS-TASK-9, DA-08, DA-09; mockup app.css:9453-9531,
+   :5264-5269, :8237). The allowance is money in the envelope's currency: the
+   reservation ledger reserves money. Label, value and provenance on one line
+   while there is room; nothing in a run row truncates. */
+.tokpanel,
+.tokempty {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+.tokpanel__est,
+.tokpanel__sk,
+.tokpanel__src,
+.toksplit {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.3rem var(--s-3);
+}
+.tokpanel__by {
+  color: var(--text-muted);
+  font-size: var(--text-overline);
+}
+.tokpanel__chips,
+.tokrun__skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.tokrun__skills {
+  flex-basis: 100%;
+}
+/* A skill chip is a door to the Docs panel, drawn unavailable until it exists. */
+.tokchip {
+  background: none;
+  cursor: not-allowed;
+  color: var(--text-muted);
+  text-transform: none;
+}
+.tokest__n,
+.tokrun__n {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.tokpanel .tt__bar {
+  height: 4px;
+  margin: 0.25rem 0 0.15rem;
+  background: color-mix(in oklch, var(--ink) 12%, transparent);
+}
+.tt__fill {
+  height: 100%;
+  background: var(--accent);
+}
+.tt__fill.is-over {
+  background: var(--danger);
+}
+.brn__over {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--danger);
+  white-space: nowrap;
+}
+.tokruns {
+  display: grid;
+  gap: 0.1rem;
+}
+.tokrun {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.55rem;
+  padding: 0.38rem 0;
+  border-top: 1px solid var(--rule-faint);
+}
+.tokrun:first-child {
+  border-top: 0;
+}
+/* The run dot by outcome: the ruled carve-out (§115 item 5). */
+.tokrun__dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--ink-faint);
+}
+.tokrun__dot[data-outcome='settled'] {
+  background: var(--success);
+}
+.tokrun__dot[data-outcome='held'] {
+  background: var(--accent);
+}
+.tokrun__dot[data-outcome='quarantined'] {
+  background: var(--warning);
+}
+/* The run id keeps its case: mono family, never `.u-mono`, never truncated. */
+.tokrun__model {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--text-2);
+  word-break: break-word;
+}
+.tokrun__io {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+.tokrun__k,
+.tokrun__when,
+.tokempty__say {
+  color: var(--text-muted);
+  font-size: var(--text-overline);
+}
+.tokempty__say {
+  margin: 0;
+}

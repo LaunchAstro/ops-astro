@@ -175,8 +175,12 @@ identity, grant, record and command-envelope spine ported from
 `ops-astro-t1-draft@60f2009`. Two companion files describe the later ones.
 [AUTHORITY.md](AUTHORITY.md) covers the agent-authority, settings and
 delegation migrations, and [RUNTIME.md](RUNTIME.md) covers the proposal, gate,
-decision, budget, lease and attempt migrations. Read `ls migrations/` for the
-current set.
+decision, budget, lease and attempt migrations, and the model-call ledger and
+copy register (`0042_model_calls`), and the pinned instruction files
+(`0043_bootstrap_pins`), the budget wait (`0044_budget_wait`), its answers
+(`0045_budget_answers`) and the diagnostic trace export (`0046_trace_export`, and `0047_trace_export_horizon`,
+which stamps each run event with its writing transaction's id).
+Read `ls migrations/` for the current set.
 
 There is no `tasks` table. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field
@@ -261,7 +265,21 @@ foreign insert into `delegations` is refused with `check_violation`
 (migration 0018), but no application role reaches it: the group holds only
 `select` and `insert` on `handback_reports`, so the privilege check refuses
 `update` and `delete` before the trigger runs. Its only live caller is the owner,
-whom it refuses. `live_correction_receipts_append_only` (migration 0042, C80)
+whom it refuses. `model_route_room` (migration 0042, AW-01's fair share) is
+the second, and the one read across businesses: a route's ceiling is the
+installation's, which a tenant transaction cannot count under row security.
+It answers one whole number, 1 when the transaction's own business may hold
+one more call on the route and 0 when it may not, with no id and no count;
+the business is `app_business_id()`, never an argument, and none is 0. It
+runs with `row_security = off`, so an owner that does not bypass row security
+is refused rather than answered from one business's rows. PUBLIC and the
+application group may not execute it. Only `ops_astro_broker` may, a
+`nologin` role that holds nothing else; the group may take it (`SET`) but does
+not inherit it, so the broker takes it for the one statement with
+`set_config('role', ..., true)` and gives it back. The suites sort that role
+into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
+proves the separation and the grants.
+`live_correction_receipts_append_only` (migration 0042, C80)
 is `security invoker`: raising needs no privilege, and the group holds only
 `select` and `insert` on `live_correction_receipts`, so the definer set is
 unchanged. `live_corrections` takes `select`, `insert` and `update`, and a

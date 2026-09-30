@@ -3,9 +3,7 @@
 // C80's command requests, a member of `CommandRequest` (`requests.ts`), split
 // out so that file stays under the per-file size cap.
 
-// The repeat-request identity, as `requests.ts` declares it for every command;
-// restated here, not imported, because that file imports this one.
-type Envelope = { readonly operationId: string };
+import type { Envelope } from './request-envelope.ts';
 
 // The request carries the one file's text before and after, which the
 // handler checks against the envelope before anything is written, and keeps

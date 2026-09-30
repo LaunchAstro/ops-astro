@@ -91,6 +91,11 @@ const GRANTS_BY_ROLE = {
     // SCOPE_NOT_GRANTED for every synthetic user and the runtime journey could
     // not be walked over HTTP: the same shape as the `settings:manage` gap.
     ['task', 'decide'],
+    // AW-05's answers at the budget stop (`core-wire/src/surface.ts`): a
+    // top-up is `decide` on `billing` (T2e's pair, below) and the one-click
+    // end `decide` on `gate`, each a person's act. The same gap as the two
+    // above: without it no synthetic user could end a run waiting at its ceiling.
+    ['gate', 'decide'],
     // Settings are business facts, and a reader is not a writer. The write
     // stays `manage` above; this is the half that lets a screen show the
     // four-eyes band instead of guessing at it.
@@ -99,12 +104,17 @@ const GRANTS_BY_ROLE = {
     // catalogue's `billing:decide`): the owner and administrators hold it.
     ['billing', 'decide'],
     // C80: a live correction is asked for as run work and approved as a gate
-    // decision (the permission key catalogue's `run:write` and `gate:decide`),
-    // and an administrator is whom the catalogue names for both. Only the
-    // configured approver passes an approval, so the grant alone approves nothing.
+    // decision (the permission key catalogue's `run:write` and `gate:decide`,
+    // the second seeded above), and an administrator is whom the catalogue
+    // names for both. Only the configured approver passes an approval, so the
+    // grant alone approves nothing.
     ['run', 'read'],
     ['run', 'write'],
-    ['gate', 'decide'],
+    // A person's own conversations with the agent (AW-03): the owner and
+    // administrators hold `conversation:write` (the permission key catalogue).
+    // `conversation:read`, the read-any grant, is seeded to nobody: it is given
+    // to a named person on purpose, never held by a role on install.
+    ['conversation', 'write'],
   ],
   member: [
     ['task', 'read'],

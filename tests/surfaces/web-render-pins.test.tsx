@@ -95,6 +95,7 @@ function taskWith(gate: { readonly state: string; readonly expired: boolean }) {
             payload: { step: 'draft the quote' },
             supersededAt: null,
             runId: null,
+            checks: [],
             evidence: null,
             gate: {
               id: 'g-1',
