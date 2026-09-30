@@ -8,8 +8,10 @@
 // never drawn or counted here. It follows the `board` topic, so a new
 // notification appears without a reload.
 //
-// INB-1's entry names no client, so every row sits under the business's own
-// work until the read carries one; the group heads' client links wait on it.
+// Rows group under the client each entry names: `inbox.read` names it only
+// where the reader reaches that client, so an entry without one sits under
+// the reader's own work. A client head is a name until the Clients panel
+// exists to open it in.
 
 import type { ReactElement } from 'react';
 import { InboxPage, type InboxGroupRef, type OpenHow } from '@launchastro/ui';
@@ -24,8 +26,20 @@ import { BOARD } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { pathTo } from '../routes.ts';
 
-/** The one group until INB-1's read names a client: the business's own work. */
+/** The group of an entry that names no client: the reader's own work. */
 const OWN_WORK: InboxGroupRef = { key: 'own', name: 'Your work' };
+
+/** Each entry's group, by the client the read named on it. */
+function groupsByEntry(items: Inbox['items']): (item: { readonly id: string }) => InboxGroupRef {
+  const refs = new Map(
+    items.flatMap((entry) =>
+      entry.client === undefined
+        ? []
+        : [[entry.id, { key: entry.client.clientId, name: entry.client.name }] as const],
+    ),
+  );
+  return (item) => refs.get(item.id) ?? OWN_WORK;
+}
 
 const taskHref = (key: string): string => pathTo('agency:task-detail', { key });
 
@@ -64,7 +78,7 @@ export function InboxScreen(props: {
         <InboxPage
           items={inbox.items}
           owedCount={inbox.owed}
-          groupOf={() => OWN_WORK}
+          groupOf={groupsByEntry(inbox.items)}
           taskHref={taskHref}
           onOpenTask={onOpenTask}
           onOpenClient={() => {}}

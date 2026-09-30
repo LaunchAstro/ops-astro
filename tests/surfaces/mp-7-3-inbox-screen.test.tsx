@@ -130,7 +130,8 @@ describe('MP-7-3 client group order', () => {
       entry('1', 'T-1', { client: harbour }),
       entry('2', 'T-2', { client: summit }),
       entry('3', 'T-3', { client: summit }),
-      entry('4', 'T-4'),
+      // Owed like Harbour's one row, and older, so it follows it.
+      entry('4', 'T-4', { raisedAt: '2026-09-29T09:00:00.000Z' }),
     ]);
     view = await mount(
       (drawInbox() as Draw)({

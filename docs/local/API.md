@@ -1326,7 +1326,10 @@ T2h's latest alert on that run (the same record, `id`, `kind`,
 `waitingReason` and `raisedAt`, that the task page and the queue read show);
 no other read carries it. A readable entry carries its pointers, its task's `key` and `title`,
 and `closedBy`, the decider's `personId` and `name` once it is cleared, all
-read in the same transaction, so the item stores none of them. A gone entry
+read in the same transaction, so the item stores none of them. It carries
+`client`, its task's `clientId` and `name`, only where the caller reaches that
+client as `client.list` does (MP-7-3's groups): a caller who holds the task
+alone is not told its client. A gone entry
 carries its own identity and axes and nothing of the task. The board screen
 draws both reads above the board (`apps/web/src/views/inbox.tsx`, INB-1g).
 
