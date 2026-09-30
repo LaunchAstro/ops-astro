@@ -48,6 +48,10 @@ export interface ProjectRow {
     readonly mentions: number;
     readonly latest: string | null;
   };
+  /** The reader's own agents that may take this task (Assign to AI); never anyone else's. */
+  readonly agents?: readonly AgentOption[];
+  /** True when the reader's agent holds the task and its tick sends it to Needs review (P-30). */
+  readonly toReview?: boolean;
 }
 
 /**
@@ -76,6 +80,8 @@ export interface RowActions {
   readonly people?: readonly PersonOption[];
   /** The assignee chosen in place: a person's id, or null to leave it unassigned. */
   readonly onAssign?: (row: ProjectRow, person: string | null) => void;
+  /** One of the row's `agents` chosen in place (Assign to AI), by its delegation id. */
+  readonly onAssignAgent?: (row: ProjectRow, delegation: string) => void;
   /** The due date chosen in place, as a calendar day (`YYYY-MM-DD`), or null to clear it. */
   readonly onDue?: (row: ProjectRow, due: string | null) => void;
   /** The stage chosen in place. */
@@ -88,6 +94,12 @@ export interface RowActions {
 
 /** One person the assignee editor offers. */
 export interface PersonOption {
+  readonly id: string;
+  readonly name: string;
+}
+
+/** One of the reader's own agents the assignee editor offers: its delegation and purpose. */
+export interface AgentOption {
   readonly id: string;
   readonly name: string;
 }
