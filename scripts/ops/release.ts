@@ -22,20 +22,13 @@
 // settings when it runs. The output is checked with `buildOutputProblems`
 // before this step reports it; a problem fails the release.
 
-import { createHash } from 'node:crypto';
-import {
-  cpSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { build } from 'vite';
-import { buildOutputProblems } from './build-output.ts';
+import { buildOutputProblems, outputDigest } from './build-output.ts';
+
+export { outputDigest };
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const NO_STORE = { 'cache-control': 'private, no-store' };
@@ -60,35 +53,6 @@ const CONFIG = {
 export interface Release {
   readonly build: string;
   readonly digest: string;
-}
-
-function filesUnder(directory: string): string[] {
-  return readdirSync(directory).flatMap((name) => {
-    const path = join(directory, name);
-    return statSync(path).isDirectory() ? filesUnder(path) : [path];
-  });
-}
-
-/** A file as digested: `build.json` without the digest it records. */
-function digested(out: string, path: string): Buffer {
-  const bytes = readFileSync(join(out, path));
-  if (path !== 'build.json') return bytes;
-  const { digest: _digest, ...record } = JSON.parse(bytes.toString('utf8')) as Record<
-    string,
-    unknown
-  >;
-  return Buffer.from(JSON.stringify(record));
-}
-
-/** One digest over every file's path and bytes, in path order. */
-export function outputDigest(out: string): string {
-  const hash = createHash('sha256');
-  for (const path of filesUnder(out)
-    .map((file) => relative(out, file))
-    .toSorted()) {
-    hash.update(`${path}\0`).update(digested(out, path)).update('\0');
-  }
-  return `sha256:${hash.digest('hex')}`;
 }
 
 /** Writes the build output at `out` from the stamped web build at `dist`. */

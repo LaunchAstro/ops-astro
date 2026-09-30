@@ -21,7 +21,8 @@
 // finds, in plain words and naming paths inside the output only; an empty list
 // is the one passing answer. Nothing it cannot read is taken as passing.
 
-import { lstatSync, readdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 /** A Node.js runtime as Vercel names one, and only that. */
@@ -108,4 +109,33 @@ export function buildOutputProblems(root: string): string[] {
   walk(root, functions, found, problems);
   if (found.length === 0) problems.push('The build output holds no function.');
   return problems;
+}
+
+function filesUnder(directory: string): string[] {
+  return readdirSync(directory).flatMap((name) => {
+    const path = join(directory, name);
+    return statSync(path).isDirectory() ? filesUnder(path) : [path];
+  });
+}
+
+/** A file as digested: `build.json` without the digest it records. */
+function digested(out: string, path: string): Buffer {
+  const bytes = readFileSync(join(out, path));
+  if (path !== 'build.json') return bytes;
+  const { digest: _digest, ...record } = JSON.parse(bytes.toString('utf8')) as Record<
+    string,
+    unknown
+  >;
+  return Buffer.from(JSON.stringify(record));
+}
+
+/** One digest over every file's path and bytes, in path order. */
+export function outputDigest(out: string): string {
+  const hash = createHash('sha256');
+  for (const path of filesUnder(out)
+    .map((file) => relative(out, file))
+    .toSorted()) {
+    hash.update(`${path}\0`).update(digested(out, path)).update('\0');
+  }
+  return `sha256:${hash.digest('hex')}`;
 }

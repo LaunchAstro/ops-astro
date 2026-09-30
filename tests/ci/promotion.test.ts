@@ -20,6 +20,7 @@ import {
   type ServiceRef,
   type ServiceState,
 } from '../../scripts/ops/promotion.ts';
+import { outputDigest } from '../../scripts/ops/build-output.ts';
 
 const COMMAND = new URL('../../scripts/ops/promote.mjs', import.meta.url).pathname;
 const definition = JSON.parse(
@@ -44,8 +45,10 @@ const store = (builds: Record<string, string | null>): string => {
   for (const [name, stamp] of Object.entries(builds)) {
     mkdirSync(join(root, name), { recursive: true });
     writeFileSync(join(root, name, 'index.html'), `<meta name="ops-astro-build">`);
-    if (stamp !== null)
-      writeFileSync(join(root, name, 'build.json'), JSON.stringify({ build: stamp }));
+    if (stamp === null) continue;
+    writeFileSync(join(root, name, 'build.json'), JSON.stringify({ build: stamp }));
+    const digest = outputDigest(join(root, name));
+    writeFileSync(join(root, name, 'build.json'), JSON.stringify({ build: stamp, digest }));
   }
   return root;
 };
@@ -134,6 +137,25 @@ function promotionSameArtefactCases1() {
         const outcome = promote(request({ ...over, dryRun }), effects);
         expect(outcome.kind).toBe('refused');
         if (outcome.kind === 'refused') expect(outcome.reason).toMatch(reason);
+        expect(calls).toEqual([]);
+      }
+    }
+  });
+
+  it('the same bytes: an artefact changed after its digest, or recording none, is refused', () => {
+    const changed = STORE();
+    writeFileSync(join(changed, named(STAGED), 'index.html'), '<p>another build</p>');
+    const bare = STORE();
+    writeFileSync(join(bare, named(STAGED), 'build.json'), JSON.stringify({ build: STAGED }));
+    const cases = [
+      [changed, /does not hold the bytes its digest records/u],
+      [bare, /records no digest/u],
+    ] as const;
+    for (const [root, reason] of cases) {
+      for (const dryRun of [true, false]) {
+        const { calls, effects } = watched([state(API, false), state(AUTH, false)]);
+        const outcome = promote(request({ store: root, dryRun }), effects);
+        expect(outcome).toMatchObject({ kind: 'refused', reason: expect.stringMatching(reason) });
         expect(calls).toEqual([]);
       }
     }
