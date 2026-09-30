@@ -4,9 +4,9 @@
 -- invite.
 --
 -- Both tables are about the installation, not a business, so they live in
--- `ops` beside the migration ledger, which the application's role cannot
--- reach. The readiness value is derived here on every read and stored
--- nowhere a person or agent can write.
+-- `ops`. The application's role may read them and write neither, so the
+-- readiness value is derived here on every read and stored nowhere a person
+-- or agent can write.
 --
 -- `ops.installation` holds one row: the mode. A made-up-data installation
 -- (staging, the test harness) runs every command; a real-data installation
@@ -42,13 +42,15 @@ create table ops.gate_items (
   )
 );
 
--- The mode and the open items, read together. SECURITY DEFINER so the
--- application's role reads the answer without reaching either table; executable
--- by that role alone.
+-- The application reads both tables and writes neither.
+grant select on ops.installation, ops.gate_items to ops_astro_app;
+
+-- The mode and the open items, read together. SECURITY INVOKER, so it reads no
+-- more than its caller may; executable by the application's role alone.
 create function public.first_client_readiness(out mode text, out open_items text[])
   language sql
   stable
-  security definer
+  security invoker
   set search_path = pg_catalog, ops
 as $$
   select i.mode,
