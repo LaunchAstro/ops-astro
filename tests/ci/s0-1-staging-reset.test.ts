@@ -110,10 +110,13 @@ live(`${NAME}: refuses production's project, named as staging's or reached`, asy
     'STAGING_PROJECT_REF',
   );
   const reaching = databaseUrl(`${db?.name ?? ''}_own.${PRODUCTION}`, OWN_PASSWORD);
-  await refusedBeforeConnecting(settings({ DATABASE_ADMIN_URL: reaching }), 'DATABASE_ADMIN_URL');
+  await refusedBeforeConnecting(
+    settings({ DATABASE_ADMIN_URL: reaching }),
+    "DATABASE_ADMIN_URL reaches production's project",
+  );
   await refusedBeforeConnecting(
     settings({ GOTRUE_URL: `https://${PRODUCTION}.supabase.co/auth/v1` }),
-    'GOTRUE_URL',
+    "GOTRUE_URL reaches production's project",
   );
 });
 
