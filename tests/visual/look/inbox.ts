@@ -8,7 +8,7 @@
 // mockup's page covers its bell, so the panel is measured at 1480 in both
 // themes; the narrower widths are the harness captures' (no sideways scroll).
 
-import type { LookScreen } from './index.ts';
+import type { LookScreen } from './types.ts';
 
 const PANEL = { path: '/agency/projects/', open: '[data-dock-tab="notifs"]' } as const;
 const APP = { page: 'agency:inbox' } as const;

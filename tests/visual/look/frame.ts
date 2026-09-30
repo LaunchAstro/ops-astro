@@ -6,7 +6,7 @@
 // draws a lagging state: its colour is a state's, and only its shape is
 // compared. The person menu and the rail are the shell's (look/shell.ts).
 
-import type { LookScreen } from './index.ts';
+import type { LookScreen } from './types.ts';
 
 const WIDTHS = [1480, 900, 390] as const;
 

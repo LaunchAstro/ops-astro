@@ -7,7 +7,7 @@
 // and 390 the mockup's page covers the dock tab, so this is 1480 in both
 // themes; the harness captures hold the narrow widths.
 
-import type { LookScreen } from './index.ts';
+import type { LookScreen } from './types.ts';
 
 const PANEL = { path: '/agency/projects/', open: '[data-dock-tab="team"]' } as const;
 const APP = { page: 'agency:team' } as const;

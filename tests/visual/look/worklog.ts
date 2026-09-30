@@ -5,7 +5,7 @@
 // app opens it by its tab. Day heads, rows and their type are compared; the
 // rows' text is made up, so their heights are not.
 
-import type { LookScreen } from './index.ts';
+import type { LookScreen } from './types.ts';
 
 const PAGE = { path: '/agency/projects/#worklog' } as const;
 const APP = { page: 'agency:projects-board', open: 'role=tab[name="Work log"]' } as const;
