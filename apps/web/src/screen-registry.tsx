@@ -13,6 +13,7 @@ import { Gallery } from '@launchastro/ui';
 import type { AuthenticatedRouteId, ParamsOf, RouteMatch } from './routes.ts';
 import type { OperationsClient } from './operations/client.ts';
 import { AccessScreen } from './screens/Access.tsx';
+import { InboxScreen } from './screens/Inbox.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
@@ -48,6 +49,9 @@ export const SCREENS: {
   'agency:gallery': () => <Gallery />,
   'agency:settings': (context) => (
     <SettingsScreen client={context.client} grantKey={context.grantKey} storage={context.storage} />
+  ),
+  'agency:inbox': (context) => (
+    <InboxScreen client={context.client} grantKey={context.grantKey} navigate={context.navigate} />
   ),
   'agency:team': (context) => <TeamScreen client={context.client} grantKey={context.grantKey} />,
   'agency:access': (context) => (

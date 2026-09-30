@@ -48,9 +48,10 @@ export interface LedgerPage {
 }
 
 /**
- * The page's query: the applied writes to live tasks, the newest days with any
- * before `$5` (all of them when it is null) in the zone `$3`, and how many days
- * were found, so one day past the page says whether there are earlier ones.
+ * The page's query: the applied writes to live tasks (only those in `$8` when
+ * it is not null), the newest days with any before `$5` (all of them when it
+ * is null) in the zone `$3`, and how many days were found, so one day past the
+ * page says whether there are earlier ones.
  */
 const LEDGER_PAGE = `with changes as (
      select e.id, e.seq, e.occurred_at, e.command, e.actor_id,
@@ -67,6 +68,7 @@ const LEDGER_PAGE = `with changes as (
         and e.command <> all($4::text[])
         and ($5::date is null
              or e.occurred_at < ($5::date)::timestamp at time zone $3::text)
+        and ($8::uuid[] is null or r.id = any($8::uuid[]))
    ),
    found as (
      select distinct day from changes order by day desc limit $6
@@ -103,7 +105,8 @@ function groupByDay(rows: readonly LedgerRow[]): LedgerPage['days'] {
 
 /**
  * One page of the ledger: the newest days with events before `before` (all
- * of them when it is null), and whether any day before those has one.
+ * of them when it is null), and whether any day before those has one. With
+ * `taskIds`, only those tasks' events: a search's answer, never widened.
  *
  * `timeZone` has been checked against the server's zone names by the caller;
  * it is still only ever a bound parameter.
@@ -111,7 +114,12 @@ function groupByDay(rows: readonly LedgerRow[]): LedgerPage['days'] {
 export async function readLedger(
   tx: TenantQuery,
   taskTypeId: string,
-  page: { readonly before: string | null; readonly timeZone: string },
+  page: {
+    readonly before: string | null;
+    readonly timeZone: string;
+    /** The tasks a search found; null for every task. */
+    readonly taskIds: readonly string[] | null;
+  },
 ): Promise<LedgerPage> {
   const rows = await tx.query<LedgerRow>(LEDGER_PAGE, [
     tx.businessId,
@@ -121,6 +129,7 @@ export async function readLedger(
     page.before,
     LEDGER_DAYS_PER_PAGE + 1,
     LEDGER_DAYS_PER_PAGE,
+    page.taskIds,
   ]);
   return { days: groupByDay(rows), earlier: (rows[0]?.days_found ?? 0) > LEDGER_DAYS_PER_PAGE };
 }

@@ -173,6 +173,11 @@ const NONE = (): { readonly ok: true; readonly operands: Readonly<Record<never, 
 
 /** The longest query a search takes, which is longer than anything typed into ⌘K. */
 const QUERY_LENGTH = 200;
+const QUERY_FIX = `Send query as up to ${String(QUERY_LENGTH)} characters with a word in them.`;
+
+/** A search's words: a string no longer than the limit, with a word in it. */
+const isQuery = (query: unknown): query is string =>
+  typeof query === 'string' && query.length <= QUERY_LENGTH && wordsOf(query).length > 0;
 
 /**
  * A zone name as the zone database spells one: letters, digits and `_+-`, in
@@ -280,10 +285,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // scopes they hold are what the statement is handed (`reads/search.ts`).
   'task.search': {
     identifiers: [],
-    parse: ({ query }) =>
-      typeof query === 'string' && query.length <= QUERY_LENGTH && wordsOf(query).length > 0
-        ? parsed({ query })
-        : rejected('query', `Send query as up to ${QUERY_LENGTH} characters with a word in them.`),
+    parse: ({ query }) => (isQuery(query) ? parsed({ query }) : rejected('query', QUERY_FIX)),
     spine: true,
     authority: 'holds-any-grant',
     outsiderNotFound: false,
@@ -295,14 +297,17 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // record" false for the rest.
   'task.ledger': {
     identifiers: [],
-    parse({ before, timeZone }) {
+    parse({ before, timeZone, query }) {
       if (typeof timeZone !== 'string' || !ZONE_SHAPE.test(timeZone)) {
         return rejected('timeZone', ZONE_FIX);
       }
       if (before !== undefined && before !== null && !isCalendarDay(before)) {
         return rejected('before', BEFORE_FIX);
       }
-      return parsed({ before: before ?? null, timeZone });
+      if (query !== undefined && query !== null && !isQuery(query)) {
+        return rejected('query', QUERY_FIX);
+      }
+      return parsed({ before: before ?? null, timeZone, query: query ?? null });
     },
     spine: true,
     authority: 'declared',
@@ -315,7 +320,15 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // answer is the outsider's, so it says nothing about what is kept.
       if (!isInternalReader(session.roleKey)) return refuseNotFound();
       if (!(await isKnownTimeZone(tx, operands.timeZone))) return invalid('timeZone', ZONE_FIX);
-      return { ok: true, ...(await readLedger(tx, spine.taskTypeId, operands)) };
+      // A search is C1's one service: the ledger reads the events of the tasks it
+      // found, within its own twenty best, and runs no second search.
+      const found =
+        operands.query === null
+          ? null
+          : await searchTasks(tx, session, { taskTypeId: spine.taskTypeId, query: operands.query });
+      if (found !== null && isCommandRefusal(found)) return found;
+      const taskIds = found === null ? null : found.hits.map((hit) => hit.id);
+      return { ok: true, ...(await readLedger(tx, spine.taskTypeId, { ...operands, taskIds })) };
     },
   },
   'person.list': {

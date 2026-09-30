@@ -42,6 +42,13 @@ export interface PanelRegistration {
 
 export const PANELS: readonly PanelRegistration[] = [
   {
+    id: 'notifications',
+    label: 'Notifications',
+    ariaLabel: 'Notifications: what is waiting on you',
+    route: 'agency:inbox',
+    icon: 'bell',
+  },
+  {
     id: 'settings',
     label: 'Settings',
     ariaLabel: 'Business settings',

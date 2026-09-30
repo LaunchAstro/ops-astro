@@ -132,12 +132,13 @@ browser.
 | `/projects/` | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening |
 | `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                           |
 | `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`                                                                            |
+| `/inbox/`    | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count                              |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
 
-The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
-goes to `/settings`. An open dock tab is announced as "Close Settings"
+The dock's tabs are `PANELS` in `apps/web/src/panels.ts`: Notifications goes to
+`/inbox/`, Settings to `/settings` and Team to `/team`. An open dock tab is announced as "Close Settings"
 (`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
 leaves its address for the board when pressed (`onDockTab` in
 `apps/web/src/App.tsx`).

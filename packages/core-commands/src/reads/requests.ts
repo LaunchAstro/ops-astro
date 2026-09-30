@@ -78,7 +78,12 @@ export interface ReadOperands {
    * null. The zone is the reader's, and it is what a day means: an event at
    * 23:30 in Townsville is on a different day than it is in UTC.
    */
-  readonly 'task.ledger': { readonly before: string | null; readonly timeZone: string };
+  readonly 'task.ledger': {
+    readonly before: string | null;
+    readonly timeZone: string;
+    /** Words for C1's search (MP-8-4); null lists every task's events. */
+    readonly query: string | null;
+  };
   readonly 'person.list': NoOperands;
   /** The words to find among the tasks the caller may read (C1). */
   readonly 'task.search': { readonly query: string };
