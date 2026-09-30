@@ -160,6 +160,13 @@ version, the artefact, the digest, the deployment's own address, the region
 and the function runtime. The folder, `.vercel` included, is removed either
 way.
 
+`scripts/ops/web-deploy.mjs --maintenance`, behind the same gate, puts the
+maintenance page on the main address the same way (`maintenance recorded`)
+without asking the database: one static page for every path, nothing that
+runs. Deploying a version again takes it off. The page answers 200, so the
+watcher's web check stays green; its keyword check on the page's marker
+(`alerts.mjs plan`, watch `maintenance`) alerts while it is up.
+
 The promotion refuses while production's API or auth server runs (owner line
 63), so a person stops them first with `scripts/ops/stop-production.mjs`. It
 asks the operator gate before anything else, then stops the containers

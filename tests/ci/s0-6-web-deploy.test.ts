@@ -5,132 +5,27 @@
 // in Sydney`. The stored build output is checked by its digest, deployed with
 // `vercel deploy --prebuilt --prod` under the person's own Vercel sign-in, and
 // its region read back from Vercel; only a deploy in `syd1` alone is recorded.
-// The maintenance deployment (S0-6's owner check, case R8; O-1) goes out the
-// same prebuilt way and is watched by its own alert, which fires while the
-// page answers 200. `vercel` here is a fake on PATH that logs its arguments, working folder and
-// environment and answers as told: no real deploy, no network. The operator
-// gate in front of the command is proved in operator-only.test.ts.
+// `vercel` is the fixture's fake (web-deploy.fixture.ts). The operator gate in
+// front of the command is proved in operator-only.test.ts.
 
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { outputDigest } from '../../scripts/ops/build-output.ts';
-import { plainAlert } from '../../apps/api/alerts/catalogue.ts';
-import { MAINTENANCE_MARKER, writeMaintenanceOutput } from '../../scripts/ops/maintenance.ts';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
 import { artefactName } from '../../scripts/ops/promotion.ts';
-import { deployMaintenance, deployWeb } from '../../scripts/ops/web-deploy.ts';
-
-const STAGED = '0123456789ab';
-const CANARY = 'canary-5d19e0-web-deploy-secret';
-const URL_MADE = 'https://ops-astro-staging-a1b2c3d4e.vercel.app';
-const ORG = 'team_madeUpOrg0123';
-const PROJECT = 'prj_madeUpProject0123';
-
-let scratch = '';
-beforeAll(() => {
-  scratch = mkdtempSync(join(tmpdir(), 's0-6-web-'));
-});
-afterAll(() => rmSync(scratch, { recursive: true, force: true }));
-
-let made = 0;
-const folder = (name: string): string => {
-  made += 1;
-  const path = join(scratch, `${name}-${String(made)}`);
-  mkdirSync(path, { recursive: true });
-  return path;
-};
-
-type Files = Record<string, string | object>;
-const SYDNEY = { runtime: 'nodejs24.x', handler: 'index.mjs', regions: ['syd1'] };
-const OUTPUT: Files = {
-  'config.json': { version: 3, routes: [{ handle: 'filesystem' }] },
-  'static/index.html': '<!doctype html><title>Ops Astro</title>',
-  'functions/api.func/.vc-config.json': SYDNEY,
-  'functions/api.func/index.mjs': 'export {};',
-};
-
-/** An artefact store holding one release output for `version`, stamped and digested. */
-function store(files: Files = OUTPUT, version = STAGED): string {
-  const root = folder('store');
-  const out = join(root, artefactName(version));
-  for (const [path, body] of Object.entries(files)) {
-    mkdirSync(dirname(join(out, path)), { recursive: true });
-    writeFileSync(join(out, path), typeof body === 'string' ? body : JSON.stringify(body));
-  }
-  writeFileSync(join(out, 'build.json'), JSON.stringify({ build: version }));
-  writeFileSync(
-    join(out, 'build.json'),
-    JSON.stringify({ build: version, digest: outputDigest(out) }),
-  );
-  return root;
-}
-
-interface Answers {
-  deploy?: { out: string; status: number };
-  inspect?: { out: string; status: number };
-}
-
-/** A `vercel` on PATH that logs each call and answers as told. */
-function fakeVercel(answers: Answers = {}) {
-  const bin = folder('bin');
-  const log = join(bin, 'calls.log');
-  const deploy = answers.deploy ?? { out: URL_MADE, status: 0 };
-  const inspect = answers.inspect ?? {
-    out: JSON.stringify({ url: URL_MADE.slice('https://'.length), regions: ['syd1'] }),
-    status: 0,
-  };
-  writeFileSync(join(bin, 'deploy.out'), `${deploy.out}\n`);
-  writeFileSync(join(bin, 'inspect.out'), `${inspect.out}\n`);
-  writeFileSync(
-    join(bin, 'vercel'),
-    [
-      '#!/bin/sh',
-      `log='${log}'`,
-      'printf "argv %s\\n" "$*" >> "$log"',
-      'printf "cwd %s\\n" "$PWD" >> "$log"',
-      'env | sed "s/^/env /" >> "$log"',
-      'if [ "$1" = deploy ]; then',
-      '  printf "output %s\\n" "$(cat .vercel/output/build.json 2>/dev/null)" >> "$log"',
-      '  printf "page %s\\n" "$(tr -d "\\n" < .vercel/output/static/index.html)" >> "$log"',
-      '  mkdir -p .vercel && echo "{}" > .vercel/project.json',
-      `  cat '${join(bin, 'deploy.out')}'; exit ${String(deploy.status)}`,
-      'fi',
-      `if [ "$1" = inspect ]; then cat '${join(bin, 'inspect.out')}'; exit ${String(inspect.status)}; fi`,
-      'exit 2',
-    ].join('\n'),
-  );
-  chmodSync(join(bin, 'vercel'), 0o755);
-  const lines = (kind: string): string[] =>
-    existsSync(log)
-      ? readFileSync(log, 'utf8')
-          .split('\n')
-          .filter((line) => line.startsWith(`${kind} `))
-          .map((line) => line.slice(kind.length + 1))
-      : [];
-  return { path: `${bin}:${process.env['PATH'] ?? ''}`, log, lines };
-}
-
-const settings = (path: string): Record<string, string> => ({
-  PATH: path,
-  HOME: process.env['HOME'] ?? '',
-  VERCEL_ORG_ID: ORG,
-  VERCEL_PROJECT_ID: PROJECT,
-  OPS_ASTRO_TOKEN: CANARY,
-  DATABASE_URL: `postgres://app:${CANARY}@127.0.0.1:1/never`,
-  DATABASE_ADMIN_URL: `postgres://owner:${CANARY}@127.0.0.1:1/never`,
-});
-
-const clean = (): Promise<string[]> => Promise.resolve([]);
+import { deployWeb } from '../../scripts/ops/web-deploy.ts';
+import {
+  CANARY,
+  clean,
+  fakeVercel,
+  OUTPUT,
+  PROJECT,
+  scratch,
+  settings,
+  STAGED,
+  store,
+  SYDNEY,
+  URL_MADE,
+} from './web-deploy.fixture.ts';
 
 describe('S0-6 deploy recorded, on Vercel', () => {
   recordedCase();
@@ -266,97 +161,5 @@ function failedCliCases() {
       expect(outcome.kind, deploy.out).toBe('failed');
       expect(vercel.lines('argv'), deploy.out).toStrictEqual(['deploy --prebuilt --prod']);
     }
-  });
-}
-
-describe('S0-6 maintenance deployment', () => {
-  maintenanceOutputCase();
-  maintenanceDeployCases();
-  maintenanceAlertCases();
-});
-
-function maintenanceOutputCase() {
-  it('is static pages only, every path to the one page, which carries the marker and nothing else to run', () => {
-    const out = folder('maintenance');
-    writeMaintenanceOutput(out);
-    expect(existsSync(join(out, 'functions'))).toBe(false);
-    const config = JSON.parse(readFileSync(join(out, 'config.json'), 'utf8')) as unknown;
-    expect(config).toStrictEqual({
-      version: 3,
-      routes: [{ handle: 'filesystem' }, { src: '^/.*$', dest: '/index.html' }],
-    });
-    const page = readFileSync(join(out, 'static', 'index.html'), 'utf8');
-    expect(page).toContain(MAINTENANCE_MARKER);
-    expect(page).toMatch(/maintenance/iu);
-    expect(page).not.toMatch(/<script|https?:|src=|href=/iu);
-  });
-}
-
-function maintenanceDeployCases() {
-  it('goes to the main address prebuilt, never asks the database, and records the deployment', async () => {
-    const vercel = fakeVercel();
-    const outcome = await deployMaintenance({ env: settings(vercel.path) });
-    expect(outcome).toStrictEqual({
-      kind: 'deployed',
-      record: { action: 'maintenance recorded', deployment: URL_MADE },
-    });
-    expect(vercel.lines('argv')).toStrictEqual(['deploy --prebuilt --prod']);
-    expect(vercel.lines('page')[0]).toContain(MAINTENANCE_MARKER);
-    expect(readFileSync(vercel.log, 'utf8')).not.toContain(CANARY);
-    expect(existsSync(vercel.lines('cwd')[0]!)).toBe(false);
-  });
-
-  it('a token, a bad project id or no deployment address records nothing', async () => {
-    for (const [over, deploy] of [
-      [{ VERCEL_TOKEN: CANARY }, undefined],
-      [{ VERCEL_PROJECT_ID: 'prj_' }, undefined],
-      [{}, { out: 'Error', status: 1 }],
-    ] as const) {
-      const vercel = fakeVercel(deploy === undefined ? {} : { deploy });
-      // oxlint-disable-next-line no-await-in-loop -- each case on its own
-      const outcome = await deployMaintenance({ env: { ...settings(vercel.path), ...over } });
-      expect(outcome.kind, JSON.stringify(over)).not.toBe('deployed');
-      expect(JSON.stringify(outcome)).not.toContain(CANARY);
-    }
-  });
-}
-
-function maintenanceAlertCases() {
-  it('the watcher alerts while the maintenance page answers: a keyword check for its marker, per place', () => {
-    const result = spawnSync(process.execPath, ['scripts/ops/alerts.mjs', 'plan'], {
-      encoding: 'utf8',
-      env: {
-        PATH: process.env['PATH'] ?? '',
-        OPS_ALERT_OWNER_EMAIL: 'owner@example.test',
-        OPS_ALERT_SECOND_OPERATOR_EMAIL: 'second@example.test',
-        OPS_ERROR_SINK_DSN: 'https://publickey@example.test/3',
-        OPS_WATCH_STAGING_URL: 'https://staging.example.test/',
-        OPS_WATCH_PRODUCTION_URL: 'https://ops.example.test/',
-      },
-    });
-    expect(result.status, result.stderr).toBe(0);
-    const { monitors } = JSON.parse(result.stdout) as { monitors: Record<string, unknown>[] };
-    const watching = monitors.filter((m) => m['watch'] === 'maintenance');
-    expect(watching.map((m) => m['environment'])).toStrictEqual(['staging', 'production']);
-    expect(watching).toStrictEqual(
-      (['staging', 'production'] as const).map((where) => ({
-        environment: where,
-        watch: 'maintenance',
-        type: 'keyword',
-        url: where === 'staging' ? 'https://staging.example.test/' : 'https://ops.example.test/',
-        keyword: MAINTENANCE_MARKER,
-        alertWhen: 'exists',
-        name: plainAlert('maintenance-on', where).title,
-        message: plainAlert('maintenance-on', where).text,
-      })),
-    );
-  });
-
-  it("the app's own pages never carry the marker, so the check is quiet while the app serves", () => {
-    const listed = spawnSync('git', ['grep', '-l', '-F', MAINTENANCE_MARKER, '--', 'apps'], {
-      encoding: 'utf8',
-    });
-    expect(listed.stdout).toBe('');
-    expect(MAINTENANCE_MARKER).toMatch(/^[a-z-]{16,}$/u);
   });
 }

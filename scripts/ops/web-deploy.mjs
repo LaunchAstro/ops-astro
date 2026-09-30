@@ -7,6 +7,10 @@
 // Vercel as themself; VERCEL_ORG_ID and VERCEL_PROJECT_ID name staging's
 // project):
 //   node scripts/ops/web-deploy.mjs --version <id> --artefacts <store>
+//   node scripts/ops/web-deploy.mjs --maintenance
+//
+// `--maintenance` puts the maintenance page on the main address (`maintenance
+// recorded`); deploying a version again takes it off.
 //
 // The operator gate (`operator.ts`) answers before any argument is read and
 // before Vercel is asked; a refusal writes nothing. The deployment record is
@@ -16,7 +20,7 @@
 import { parseArgs } from 'node:util';
 import { stagingSigns } from './deploy.ts';
 import { recordDeployment, requireOperator } from './operator.ts';
-import { deployWeb } from './web-deploy.ts';
+import { deployMaintenance, deployWeb } from './web-deploy.ts';
 
 const gate = await requireOperator();
 if (!gate.ok) {
@@ -27,24 +31,32 @@ if (!gate.ok) {
 let values;
 try {
   ({ values } = parseArgs({
-    options: { version: { type: 'string' }, artefacts: { type: 'string' } },
+    options: {
+      version: { type: 'string' },
+      artefacts: { type: 'string' },
+      maintenance: { type: 'boolean' },
+    },
   }));
 } catch (error) {
   console.error(`web-deploy: ${error.message}`);
   process.exit(2);
 }
-if (values.version === undefined || values.artefacts === undefined) {
-  console.error('web-deploy: --version and --artefacts are both needed');
+const both = values.version !== undefined && values.artefacts !== undefined;
+if (values.maintenance ? (values.version ?? values.artefacts) : !both) {
+  console.error('web-deploy: either --version and --artefacts, or --maintenance alone');
   process.exit(2);
 }
 
-const outcome = await deployWeb(
-  { version: values.version, store: values.artefacts },
-  { env: process.env, preflight: stagingSigns },
-);
+const outcome = values.maintenance
+  ? await deployMaintenance({ env: process.env })
+  : await deployWeb(
+      { version: values.version, store: values.artefacts },
+      { env: process.env, preflight: stagingSigns },
+    );
 if (outcome.kind !== 'deployed') {
   console.error(`web-deploy: ${outcome.kind.toUpperCase()}: ${outcome.reason}`);
   process.exit(1);
 }
-console.log(`web-deploy: staging serves ${outcome.record.version} at ${outcome.record.deployment}`);
+const serves = values.maintenance ? 'the maintenance page' : outcome.record.version;
+console.log(`web-deploy: staging serves ${serves} at ${outcome.record.deployment}`);
 console.log(JSON.stringify(await recordDeployment(gate, outcome.record)));

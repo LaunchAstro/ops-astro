@@ -19,12 +19,18 @@
 // login reaches it. The folder, `.vercel` and all, is removed whatever happens.
 // Only a deploy read back in Sydney returns its record: the version, the
 // artefact, the digest, the deployment, the region and the function runtime.
+//
+// The maintenance page (`deployMaintenance`, `maintenance.ts`) goes out the
+// same prebuilt way, with no database asked, so a broken database never keeps
+// it off; it holds no function, so there is no region to read back. Deploying
+// a version again takes it off.
 
 import { spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildOutputProblems, outputDigest } from './build-output.ts';
+import { writeMaintenanceOutput } from './maintenance.ts';
 import { storedArtefact } from './promotion.ts';
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -39,8 +45,10 @@ export interface WebDeployRecord {
   readonly runtime: string;
 }
 
-export type WebDeployOutcome =
-  { kind: 'refused' | 'failed'; reason: string } | { kind: 'deployed'; record: WebDeployRecord };
+type Unrecorded = { kind: 'refused' | 'failed'; reason: string };
+export type WebDeployOutcome = Unrecorded | { kind: 'deployed'; record: WebDeployRecord };
+export type MaintenanceOutcome =
+  Unrecorded | { kind: 'deployed'; record: { action: 'maintenance recorded'; deployment: string } };
 
 /** The project Vercel deploys into, by its ids: `team_…` and `prj_…`, nothing else. */
 const IDS = {
@@ -100,7 +108,7 @@ function settingProblems(env: Environment): string[] {
   return problems;
 }
 
-const refused = (why: string): WebDeployOutcome => ({
+const refused = (why: string): Unrecorded => ({
   kind: 'refused',
   reason: `${why}. Nothing was deployed.`,
 });
@@ -122,7 +130,7 @@ function deployPrebuilt(folder: string, env: Environment): string | undefined {
   return made.ok && DEPLOYMENT.test(deployment) ? deployment : undefined;
 }
 
-const NO_ADDRESS: WebDeployOutcome = {
+const NO_ADDRESS: Unrecorded = {
   kind: 'failed',
   reason: 'vercel deploy did not answer a deployment address; nothing was recorded',
 };
@@ -174,9 +182,16 @@ export async function deployWeb(
   return inFolder((folder) => deployCopy(folder, options.env, request.version, selected));
 }
 
-/** The maintenance page to the main address (ticket S0-6): not built yet. */
-export async function deployMaintenance(_options: {
-  env: Environment;
-}): Promise<{ kind: 'refused' | 'failed'; reason: string } | { kind: 'deployed'; record: object }> {
-  return await Promise.resolve(refused('not built'));
+/** The maintenance page to the main address: its deployment, recorded; no database is asked. */
+export function deployMaintenance(options: { env: Environment }): Promise<MaintenanceOutcome> {
+  const settings = settingProblems(options.env);
+  if (settings.length > 0) return Promise.resolve(refused(settings.join('; ')));
+  return Promise.resolve(
+    inFolder((folder): MaintenanceOutcome => {
+      writeMaintenanceOutput(join(folder, '.vercel', 'output'));
+      const deployment = deployPrebuilt(folder, options.env);
+      if (deployment === undefined) return NO_ADDRESS;
+      return { kind: 'deployed', record: { action: 'maintenance recorded', deployment } };
+    }),
+  );
 }
