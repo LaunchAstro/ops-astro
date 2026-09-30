@@ -44,8 +44,10 @@ import {
   expectedRevisionOf,
   irrelevantIdentifiers,
   lockTask,
+  REVISION_FIXES,
   SYSTEM_OWNED_FIXES,
 } from './prepare.ts';
+import { resolveTicketAsAgent } from './wayfinder-resolve.ts';
 import { retainLateHandback } from './agent-late-handback.ts';
 import { modelCallOperands, type ModelCallOperands } from './model-call-operands.ts';
 import type {
@@ -406,6 +408,28 @@ async function servePropose(
   );
 }
 
+/**
+ * The run's answer on its own ticket (WF-7). `authorise` has held the purpose
+ * scope to this record and `task:write` to the delegating person's live grant.
+ * The ticket is locked and its revision compared as the person path does it.
+ */
+async function serveResolve(
+  tx: TenantQuery,
+  { request }: AgentCall,
+  _operands: NoOperands,
+  _delegation: Delegation,
+  taskId: string | undefined,
+) {
+  if (taskId === undefined) return NOT_FOUND();
+  const spine = await readTaskSpine(tx);
+  const target = await lockTask(tx, spine.taskTypeId, taskId);
+  if (target === undefined) return NOT_FOUND();
+  if (expectedRevisionOf(request) !== target.revision) {
+    return refused(refuseCommand('VERSION_STALE', [`revision=${target.revision}`], REVISION_FIXES));
+  }
+  return await resolveTicketAsAgent(tx, { spine, target }, request as never);
+}
+
 async function serveHeartbeat(
   tx: TenantQuery,
   { session, request }: AgentCall,
@@ -657,6 +681,16 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       replay: 'reauthorise',
       operands: recordIdOperand(() => refuseNotFound()),
       serve: servePropose,
+    }),
+  ],
+  [
+    'task.resolve',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveResolve,
     }),
   ],
   [

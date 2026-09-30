@@ -3,7 +3,8 @@
 // WF-7 (#640) "`ticket resolved (answer, gist)` · `task:write`, yes inside its
 // delegation". The run's agent resolves the research ticket it picked up,
 // under the delegation pickup minted: its own ticket only, only while its
-// person still holds `task:write` there, and never a grilling or prototype
+// person still holds `task:write` there, only a research ticket (a task or
+// build ticket closes through its own run), and never a grilling or prototype
 // ticket, which needs `task:decide`, a key no agent holds. On the real agent
 // entry against Postgres.
 
@@ -22,6 +23,7 @@ import {
   openSchedules,
   pickup,
   propose,
+  racer,
   revisionOf,
   seedSchedules,
   type Schedules,
@@ -38,6 +40,8 @@ const pickedTicket = async (
   const ticket = await createTask(on, title);
   const proposal = await propose(on, ticket, { purpose: freshPurpose() });
   const picked = await pickup(on, (await approve(on, proposal))['reservationId']);
+  // A new task is of type task already.
+  if (taskType === 'task') return { ticket, credential: String(picked['credential']) };
   appliedDetail(
     await asPerson(on, {
       command: 'task.set_type',
@@ -97,6 +101,24 @@ it('WF-7 ticket resolved inside its delegation: the agent resolves its own resea
   expect(chain.intact).toBe(true);
 }, 120_000);
 
+it('WF-7 ticket resolved inside its delegation: two resolves at once on one revision, under the ticket lock, one applies', async () => {
+  const { ticket, credential } = await pickedTicket(s, 'wf7 resolve race', 'research');
+  const [one, two] = [racer(s), racer(s)];
+  try {
+    const body = await resolveBody(s, ticket);
+    const answers = await Promise.all([
+      asAgent(s, body, credential, one),
+      asAgent(s, { ...body, operationId: randomUUID() }, credential, two),
+    ]);
+    expect(answers.map((answer) => codeOf(answer)).toSorted()).toStrictEqual([
+      'VERSION_STALE',
+      'applied',
+    ]);
+  } finally {
+    await Promise.all([one.close(), two.close()]);
+  }
+}, 120_000);
+
 it('WF-7 ticket resolved inside its delegation: another ticket is out of purpose, and nothing is written', async () => {
   const { credential } = await pickedTicket(s, 'wf7 resolve picked', 'research');
   const sibling = await createTask(s, 'wf7 resolve sibling');
@@ -113,6 +135,20 @@ it('WF-7 ticket resolved inside its delegation: a grilling ticket needs decide, 
   expect(codeOf(answer)).toBe('DELEGATION_EXCLUDES_DECISION');
   expect(await ticketData(s, ticket)).toStrictEqual(before);
 }, 120_000);
+
+it('WF-7 ticket resolved inside its delegation: the run resolves a research ticket only, never a task or build ticket', async () => {
+  for (const taskType of ['task', 'build']) {
+    // eslint-disable-next-line no-await-in-loop -- one ticket at a time, each checked
+    const { ticket, credential } = await pickedTicket(s, `wf7 resolve ${taskType}`, taskType);
+    // eslint-disable-next-line no-await-in-loop
+    const before = await ticketData(s, ticket);
+    // eslint-disable-next-line no-await-in-loop
+    const answer = await asAgent(s, await resolveBody(s, ticket), credential);
+    expect(codeOf(answer), taskType).toBe('DELEGATION_OUT_OF_PURPOSE');
+    // eslint-disable-next-line no-await-in-loop
+    expect(await ticketData(s, ticket)).toStrictEqual(before);
+  }
+}, 180_000);
 
 it('WF-7 refusal task:write: an agent whose person no longer holds task:write resolves nothing', async () => {
   // A business of its own, so revoking its person's write leaves the others'.
@@ -140,7 +176,7 @@ it('WF-7 ticket resolved inside its delegation: another business’s ticket is n
     await resolveBody(other, foreign),
     credential,
   );
-  expect(codeOf(answer)).not.toBe('applied');
+  expect(codeOf(answer)).toBe('AUTH_NO_AGENT_IDENTITY');
   expect(answer).not.toHaveProperty('recordId');
   expect(await ticketData(other, foreign)).toStrictEqual(before);
 }, 120_000);

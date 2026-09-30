@@ -5,8 +5,8 @@
 // (see `wayfinder-chart.ts`).
 
 import { OWNER_TYPES, wayfinderFacts } from '../../../core-records/src/index.ts';
-import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { refuseCommand } from './refusal.ts';
+import type { TenantQuery, WayfinderFacts } from '../../../core-records/src/index.ts';
+import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import { invalid, notPermitted, refuseUnlessOwner, textOk, type RequestOf } from './wayfinder.ts';
@@ -14,8 +14,13 @@ import { applyRevision } from './wayfinder-revision.ts';
 
 const GIST_LIMIT = 200;
 const ANSWER_LIMIT = 20_000;
+const AGENT_RESEARCH_ONLY =
+  'A run resolves a research ticket; a task or build ticket closes by its run.';
 
-export function completed(context: CommandContext, stateId: unknown): boolean {
+/** What a closing command reads from its context: the spine and the locked ticket. */
+type Closing = Pick<CommandContext, 'spine' | 'target'>;
+
+export function completed(context: Closing, stateId: unknown): boolean {
   return (
     context.spine.states.find((state) => state.id === stateId)?.machineCategory === 'completed'
   );
@@ -28,7 +33,7 @@ export function completed(context: CommandContext, stateId: unknown): boolean {
  */
 async function completeWith(
   tx: TenantQuery,
-  context: CommandContext,
+  context: Closing,
   extra: Readonly<Record<string, string>>,
 ): Promise<HandlerOutcome> {
   const target = context.target;
@@ -66,6 +71,48 @@ export async function resolveTicket(
   context: CommandContext,
   request: RequestOf<'task.resolve'>,
 ): Promise<HandlerOutcome> {
+  return await resolveWith(tx, context, request, async (facts) =>
+    OWNER_TYPES.has(facts.type)
+      ? await refuseUnlessOwner(tx, context, facts, {
+          decide: 'Resolving a grilling or prototype ticket needs task:decide.',
+          owner: "Only the map's owner resolves a grilling or prototype ticket.",
+        })
+      : undefined,
+  );
+}
+
+/**
+ * The same, by the run's agent on the ticket its delegation is minted for
+ * (WF-7). The delegation has already held the call to that ticket and to
+ * `task:write` on the person's live grant. Only a research ticket: a task or
+ * build ticket closes through its own run, and a grilling or prototype ticket
+ * needs `task:decide`, which no agent holds.
+ */
+export async function resolveTicketAsAgent(
+  tx: TenantQuery,
+  context: Closing,
+  request: RequestOf<'task.resolve'>,
+): Promise<HandlerOutcome> {
+  return await resolveWith(tx, context, request, (facts) => {
+    if (facts.type === 'research') return Promise.resolve(undefined);
+    return Promise.resolve(
+      OWNER_TYPES.has(facts.type)
+        ? refuseCommand(
+            'DELEGATION_EXCLUDES_DECISION',
+            ['task:decide'],
+            ["A grilling or prototype ticket is resolved by the map's owner, not an agent."],
+          )
+        : refuseCommand('DELEGATION_OUT_OF_PURPOSE', ['type'], [AGENT_RESEARCH_ONLY]),
+    );
+  });
+}
+
+async function resolveWith(
+  tx: TenantQuery,
+  context: Closing,
+  request: RequestOf<'task.resolve'>,
+  typeRule: (facts: WayfinderFacts) => Promise<CommandRefusal | undefined>,
+): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('resolveTicket: the envelope read no target');
   const facts = await wayfinderFacts(tx, target.id);
@@ -93,13 +140,8 @@ export async function resolveTicket(
       `The answer, and a one-line gist of up to ${String(GIST_LIMIT)} characters.`,
     ]);
   }
-  if (OWNER_TYPES.has(facts.type)) {
-    const refusal = await refuseUnlessOwner(tx, context, facts, {
-      decide: 'Resolving a grilling or prototype ticket needs task:decide.',
-      owner: "Only the map's owner resolves a grilling or prototype ticket.",
-    });
-    if (refusal !== undefined) return refused(refusal);
-  }
+  const refusal = await typeRule(facts);
+  if (refusal !== undefined) return refused(refusal);
   return await completeWith(tx, context, {
     answer: (answer as string).trim(),
     gist: (gist as string).trim(),

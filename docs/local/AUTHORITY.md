@@ -723,6 +723,15 @@ with nothing planned. Writing the claim asks what `task.claim` asks,
 who already holds the claim needs none. The starter is then the assignee, so T2g's four eyes
 leave the run's gate to another person.
 
+WF-7's `ticket resolved (answer, gist)` is `task.resolve`, `task:write`, and
+an agent reaches it inside its delegation (`agent-operations.ts`): only the
+ticket its pickup minted the delegation for (another is
+`DELEGATION_OUT_OF_PURPOSE`), only while its person holds `task:write` there
+(`DELEGATION_NARROWED`), and only a research ticket: a task or build ticket is
+`DELEGATION_OUT_OF_PURPOSE` (it closes through its own run), and a grilling or
+prototype ticket, which needs `task:decide` and the map's owner,
+`DELEGATION_EXCLUDES_DECISION`. The agent is the recorded actor.
+
 ## The restricted worker role
 
 `ops_astro_worker` (0008) exists at the database level with no privilege

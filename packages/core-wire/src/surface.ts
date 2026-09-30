@@ -752,8 +752,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.claim', 'assign'),
   declare('map.graduate', 'write', { serialise: WAYFINDER_MAP_LOCK }),
   // `write` for research, task and build; the handler asks `decide` and the
-  // map's owner for grilling and prototype.
-  declare('task.resolve', 'write'),
+  // map's owner for grilling and prototype. The run's agent resolves the
+  // ticket its delegation is minted for (WF-7), never grilling or prototype.
+  declare('task.resolve', 'write', { agent: 'delegated' }),
   declare('task.close_out_of_scope', 'decide', { serialise: WAYFINDER_MAP_LOCK }),
   read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
   // API-4: the frontier, the fog and the counts, one query on the read models.

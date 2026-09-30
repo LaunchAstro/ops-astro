@@ -61,6 +61,7 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.observe',
   'task.check',
   'model.call',
+  'task.resolve',
   'task.pickup',
   'task.handback',
 ];
@@ -112,6 +113,8 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     // A call holds 500 and spends 100 of the reservation's 3,000, so each gets
     // a lease of its own rather than draining one.
     if (name === 'model.call') await hold.release();
+    // Resolving completes the task, so each resolve is on a lease of its own.
+    if (name === 'task.resolve') await hold.release();
     const held = await hold.ensureLive();
     const credential = held.credential;
     if (name === 'session.capabilities') return { body: { operationId }, credential };
@@ -145,6 +148,19 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
         step: { kind: 'synthetic_comment', payload: {} },
       };
       return { body: { operationId, ...body }, credential };
+    }
+    if (name === 'task.resolve') {
+      const read = await harness.asAgent(
+        'task.read',
+        { operationId: randomUUID(), recordId: held.taskId },
+        credential,
+      );
+      const task = (read.body['detail'] as { task: { revision: number } }).task;
+      // The run resolves a research ticket only (WF-7); the person types it so.
+      const typed = { recordId: held.taskId, expectedRevision: task.revision };
+      await harness.asPerson('task.set_type', { ...typed, taskType: 'research' });
+      const body = { recordId: held.taskId, expectedRevision: task.revision + 1 };
+      return { body: { operationId, ...body, answer: 'an answer', gist: 'a gist' }, credential };
     }
     const state = name === 'run.revise_state' ? await revisedState(harness.world, held) : null;
     if (state !== null) return { body: { operationId, ...state }, credential };
