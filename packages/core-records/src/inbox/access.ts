@@ -2,8 +2,13 @@
 //
 // An inbox item's access axis (INB-1a), derived on every read from the
 // recipient's live grants and never stored: readable, withheld or gone.
-import { effectiveGrants, type Action, type Scope, type Subject } from '../authority/grants.ts';
-import { grantedScopes } from '../authority/grant-reach.ts';
+import {
+  EFFECTIVE,
+  effectiveGrants,
+  type Action,
+  type Scope,
+  type Subject,
+} from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /**
@@ -72,27 +77,22 @@ export async function holdsOnTask(
 }
 
 /**
- * Where a person reads tasks now, for a query that filters inside itself
- * (INB-1e): the whole business, these tasks, or these clients' tasks. The
- * same grants `taskAccess` asks, listed once instead of asked per task.
+ * Where person $2 reads tasks now, for a query that filters inside itself
+ * (INB-1e): `reach`, one row of the whole business, these tasks, or these
+ * clients' tasks. The same grants `taskAccess` asks, walked in the statement
+ * that uses them, so a grant revoked before that statement runs reaches
+ * nothing in it. Opens a `with` list for the caller's own queries to follow.
  */
-export async function readScopes(
-  tx: TenantQuery,
-  personId: string,
-): Promise<{
-  readonly business: boolean;
-  readonly records: readonly string[];
-  readonly parties: readonly string[];
-}> {
-  const scopes = await grantedScopes(tx, await recipientSubjects(tx, personId), {
-    collection: 'task',
-    action: 'read',
-  });
-  const ids = (kind: Scope['kind']): string[] =>
-    scopes.flatMap((scope) => (scope.kind === kind && scope.id !== null ? [scope.id] : []));
-  return {
-    business: scopes.some((scope) => scope.kind === 'business'),
-    records: ids('record'),
-    parties: ids('party'),
-  };
-}
+export const REACH: string = `${EFFECTIVE},
+  reach as (
+    select coalesce(bool_or(e.scope_kind = 'business'), false) as business,
+           coalesce(array_agg(e.scope_id) filter (where e.scope_kind = 'record'), '{}') as records,
+           coalesce(array_agg(e.scope_id) filter (where e.scope_kind = 'party'), '{}') as parties
+      from effective e
+     where e.collection = 'task' and e.action = 'read'
+       and (e.scope_kind = 'business' or e.scope_id is not null)
+       and ((e.subject_kind = 'person' and e.subject_id = $2)
+            or (e.subject_kind = 'actor' and e.subject_id in (
+                  select a.id from public.actors a
+                   where a.business_id = $1 and a.person_id = $2 and a.kind = 'person' and a.active)))
+  )`;
