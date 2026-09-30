@@ -35,6 +35,7 @@ export {
   type AdmissionAt,
   type Viewer,
 } from './reads/execute.ts';
+export { joinLiveBoard, shownInbox } from './reads/live-join.ts';
 export { isReadName } from './reads/catalogue.ts';
 export {
   HEALTH_STALE_SECONDS,

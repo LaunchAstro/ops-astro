@@ -45,8 +45,8 @@ const held = (role: string): readonly string[] =>
  */
 const ASKS_NOTHING: ReadonlySet<string> = new Set(['session.capabilities', 'client.list']);
 const asked = COMMAND_SURFACE.filter(
-  // The two `self` operations (C23) ask about nothing either: they are the
-  // caller's own account, which every signed-in person holds.
+  // The `self` operations ask about nothing either: the caller's own account
+  // (C23) or own rows (the inbox), which every signed-in person holds.
   (each) => !ASKS_NOTHING.has(each.name) && each.authorisedOn !== 'self',
 )
   .map((each) =>

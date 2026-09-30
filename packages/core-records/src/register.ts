@@ -567,6 +567,12 @@ const ROWS = [
     meaning: 'The caller may not write in that audience',
     source: 'contract 4.3',
   },
+  {
+    code: 'MENTION_NOT_READABLE',
+    status: 422,
+    meaning: 'A person the comment names cannot read it, so it is not saved',
+    source: 'INB-1 (CS-16.8)',
+  },
 
   // The preset planner, `records/preset-plan.ts`. A preset that is itself
   // wrong comes back naming the field keys so the author can classify them.

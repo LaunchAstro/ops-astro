@@ -32,6 +32,7 @@ import {
   isLive,
   isRecordsRefusal,
   mergeFieldValues,
+  raiseAssignment,
   setTaskState,
 } from '../../../core-records/src/index.ts';
 import type {
@@ -43,7 +44,6 @@ import type {
 import { acquire } from '../../../core-runtime/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
-import { refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
@@ -268,9 +268,6 @@ export async function writeOwnedFields(
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('writeOwnedFields: the envelope read no target');
-  // First, because every check below reads `fields` as a map.
-  const operands = refuseUpdateOperands(fields);
-  if (operands !== undefined) return refused(operands);
 
   const definitions = await readFieldDefinitions(tx, context.spine.taskTypeId);
   const live = new Map(definitions.filter((field) => isLive(field)).map((f) => [f.key, f]));
@@ -325,7 +322,8 @@ export async function writeOwnedFields(
 
   // Stored in the spelling the uuid cast answers, so the task names the
   // person in the one form every read and join compares against.
-  const merged = mergeFieldValues(target.data, canonicalPersonLinks(fields));
+  const links = canonicalPersonLinks(fields);
+  const merged = mergeFieldValues(target.data, links);
   const rows = await tx.query<{ readonly revision: string }>(
     `update records set data = $3 where business_id = $1 and id = $2 and deleted_at is null
      returning revision::text as revision`,
@@ -334,6 +332,11 @@ export async function writeOwnedFields(
   const written = rows[0];
   if (written === undefined) {
     return refuse('NOT_FOUND', [], ['No live task carries that identifier here.']);
+  }
+  // INB-1: the assignment is raised by the write that makes it (CS-16.8).
+  if ('assignee' in links) {
+    const assignee = typeof links['assignee'] === 'string' ? links['assignee'] : null;
+    await raiseAssignment(tx, { taskId: target.id, assignee, by: context.session.personId });
   }
   return applied(target.id, Number(written.revision), { changed: keys });
 }

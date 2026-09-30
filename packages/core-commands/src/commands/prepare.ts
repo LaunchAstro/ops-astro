@@ -58,10 +58,14 @@ export const REVISION_FIXES: readonly string[] = [
   'A write against a stale revision is refused, never merged.',
 ];
 
-/** The one write an external party (R4) may reach, and then only in the client audience. */
-// Signing out is the other: it writes nothing about the business, only the
-// record that this person's session ended (C23), and a client signs out too.
-const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment', 'session.end']);
+/**
+ * The writes an external party (R4) may reach: a comment, only in the client
+ * audience; signing out, which writes nothing about the business, only the
+ * record that this person's session ended (C23); and opening their own inbox
+ * item (`inbox.seen`, a `self` row whose handler stamps the caller's own item
+ * on a task they can read, and nothing else).
+ */
+const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment', 'session.end', 'inbox.seen']);
 
 const EXTERNAL_FIXES: readonly string[] = [
   'A person without a membership may read what was shared with them and nothing more.',
@@ -286,54 +290,6 @@ function refuseUnstorableOperands(request: UncheckedRequest): Refused | undefine
   return refused(refuseUnstorable(unstorable));
 }
 
-/**
- * The identifier operands a handler binds to a uuid parameter without typing
- * them first, by command: optional ones, which may be absent or `null`, and
- * required ones, which must be there.
- *
- * `refuseMalformedIdentifier` answers a *string* that is not a uuid, and it
- * lets any other type through, because `task.move` and `task.reparent` answer
- * a non-string `board` or `parentId` by name in their own handlers. The
- * handlers listed here do not, so `afterId: 5`, `lineageId: 5` or a `gateId`
- * of 5 or none would reach the bind and answer 503. They are refused by name,
- * as API.md says of every absent or mistyped operand. `task.cancel` and
- * `task.restart` type their `lineageId` themselves and are not listed.
- *
- * `decide()` lower-cases `versionId`, which throws on one that is absent or
- * not a string, and `task.create` carries `parentId`, `board` and
- * `boardSection` into its placement without typing any of them.
- */
-const TYPED_IDENTIFIERS: Readonly<
-  Record<string, { readonly optional?: readonly string[]; readonly required?: readonly string[] }>
-> = {
-  'task.rank': { optional: ['afterId', 'beforeId'] },
-  'task.propose': { optional: ['lineageId'] },
-  'task.create': { optional: ['parentId', 'board', 'boardSection'] },
-  'task.decide': { required: ['gateId', 'versionId'] },
-};
-
-const TYPED_IDENTIFIER_FIXES: readonly string[] = [
-  'Send each name above as the identifier string you were given.',
-];
-
-function refuseMistypedIdentifier(
-  request: UncheckedRequest,
-  declaration: CommandDeclaration,
-): Refused | undefined {
-  const typed = TYPED_IDENTIFIERS[declaration.name];
-  if (typed === undefined) return undefined;
-  const named = request;
-  const mistyped = [
-    ...(typed.optional ?? []).filter(
-      (field) =>
-        named[field] !== undefined && named[field] !== null && typeof named[field] !== 'string',
-    ),
-    ...(typed.required ?? []).filter((field) => typeof named[field] !== 'string'),
-  ];
-  if (mistyped.length === 0) return undefined;
-  return refused(refuseCommand('FIELD_VALUE_INVALID', mistyped.toSorted(), TYPED_IDENTIFIER_FIXES));
-}
-
 const BODY_FIXES: readonly string[] = [
   'Send only the fields this command declares.',
   'A command that targets no existing record takes no record identifier.',
@@ -533,7 +489,7 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
  */
 const SCOPE_OF: Readonly<
   Record<
-    CommandDeclaration['authorisedOn'],
+    Exclude<CommandDeclaration['authorisedOn'], 'self'>,
     (tx: TenantQuery, request: UncheckedRequest, declaration: CommandDeclaration) => Promise<Scope>
   >
 > = {
@@ -549,8 +505,6 @@ const SCOPE_OF: Readonly<
     return firstScope(tx, request, own === undefined ? [] : [own]);
   },
   claim: (tx, request) => firstScope(tx, request, CLAIM_LOOKUPS),
-  // Never asked: `self` takes no grant row (see `prepareCommand`).
-  self: () => Promise.resolve(BUSINESS),
 };
 
 /** Everything the handler needs first, or the refusal that stops it. */
@@ -580,8 +534,8 @@ export async function prepareCommand(
   const recordId = typeof request['recordId'] === 'string' ? request['recordId'] : undefined;
   // R4 before any grant row. A session with no membership stands on a read
   // share, and whatever else a row may say it holds, it writes nothing but a
-  // client-audience comment (minimum contract 8.1 R4; the audience is
-  // `tasks-comment.ts`'s to narrow).
+  // client-audience comment and the seen stamp on its own inbox item (minimum
+  // contract 8.1 R4; the audience is `tasks-comment.ts`'s to narrow).
   if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
@@ -608,15 +562,11 @@ export async function prepareCommand(
   // the revision the first call sent is still a field this row takes.
   const undescribed = refuseUndescribed(request, declarationOf(declaration.name));
   if (undescribed !== undefined) return refused(undescribed);
-  // The operands' own shape, after authority as every handler's operand
-  // refusal is, so a caller holding nothing is told `SCOPE_NOT_GRANTED` and
-  // nothing about its body; before the target is read or locked.
-  // The body against its row's operands, once, after authority as every
-  // operand check on this prefix has always come: the typed request the
-  // command is handed, or the refusal naming what did not match, which a
-  // missing target answers first when it is not an identifier's.
-  const mistyped = refuseMistypedIdentifier(request, declaration);
-  if (mistyped !== undefined) return mistyped;
+  // The body against its row's operands, once, after authority so a caller
+  // holding nothing is told `SCOPE_NOT_GRANTED` and nothing about its body:
+  // the typed request the command is handed, or the refusal naming what did
+  // not match, which a missing target answers first when it is not an
+  // identifier's.
   const parsed = parseRequest(request, declaration);
   if ('refusal' in parsed && !parsed.afterTarget) return refused(parsed.refusal);
   const unstorable = refuseUnstorableOperands(request);

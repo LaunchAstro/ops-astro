@@ -101,31 +101,33 @@ plain-text 500 when an operand was missing. Each now answers
 `FIELD_VALUE_INVALID` 422, naming the operand, with a fix line
 (`packages/core-commands/src/commands/operands.ts`):
 
-| Operation                                    | Operand                                  | What it has to be                                                                                                                         | Checked at                                                                                             |
-| -------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `task.create`                                | `fields`                                 | an object of field keys to values, not an array                                                                                           | `refuseCreateOperands`, from `createTask` (`tasks-write.ts`)                                           |
-| `task.update` and the five owning operations | `fields`                                 | an object of field keys to values, not an array                                                                                           | `refuseUpdateOperands`, from `updateTask` (`tasks-write.ts`) and `writeOwnedFields` (`tasks-state.ts`) |
-| `task.reparent`                              | `parentId`                               | a string, or `null` for the top level; absent or any other type is refused                                                                | `refuseReparentOperands`, from `reparentTask` (`tasks-place.ts`)                                       |
-| `task.restore`                               | `batchId`                                | a non-empty string, the one `task.trash` answered                                                                                         | `refuseRestoreOperands`, from `restoreTasks` (`tasks-trash.ts`)                                        |
-| `task.purge`                                 | none                                     | no window operand, see below                                                                                                              | `refusePurgeOperands`, from `purgeTasks` (`tasks-trash.ts`)                                            |
-| `task.read`                                  | `recordId`                               | a string                                                                                                                                  | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                              |
-| `task.board`                                 | `board`                                  | a board task's id, or `null` for tasks on no board                                                                                        | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                              |
-| `task.ledger`                                | `timeZone`, `before?`                    | a zone name the server knows (`pg_timezone_names`, exact spelling), and a day `YYYY-MM-DD` from 1970 or absent/`null` for the newest days | the row's `parse` for the shapes, its `serve` for the zone, from `serveRead` (`reads/dispatch.ts`)     |
-| `preset.plan`                                | `recordTypeKey`, `presetKey`, `fields[]` | two non-empty strings, and an array of field objects, which may be empty                                                                  | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                              |
-| `task.rank`                                  | `afterId`, `beforeId`                    | each a string or `null`, or absent                                                                                                        | `refuseMistypedIdentifier`, from `prepareCommand` (`commands/prepare.ts`)                              |
-| `task.propose`                               | `lineageId`                              | a string or `null`, or absent to open a new lineage                                                                                       | `refuseMistypedIdentifier`, from `prepareCommand` (`commands/prepare.ts`)                              |
-| `task.create`                                | `parentId`, `board`, `boardSection`      | each a string or `null`, or absent                                                                                                        | `refuseMistypedIdentifier`, from `prepareCommand` (`commands/prepare.ts`)                              |
-| `task.decide`                                | `gateId`, `versionId`                    | each a string; absent is refused                                                                                                          | `refuseMistypedIdentifier`, from `prepareCommand` (`commands/prepare.ts`)                              |
+| Operation                                    | Operand                                    | What it has to be                                                                                                                         | Checked at                                                                                         |
+| -------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `task.create`                                | `fields`                                   | an object of field keys to values, not an array                                                                                           | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
+| `task.update` and the five owning operations | `fields`                                   | an object of field keys to values, not an array                                                                                           | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
+| `task.reparent`                              | `parentId`                                 | a string, or `null` for the top level; absent or any other type is refused                                                                | `refuseReparentOperands`, from `reparentTask` (`tasks-place.ts`)                                   |
+| `task.restore`                               | `batchId`                                  | a non-empty string, the one `task.trash` answered                                                                                         | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
+| `task.purge`                                 | none                                       | no window operand, see below                                                                                                              | `refusePurgeOperands`, from `purgeTasks` (`tasks-trash.ts`)                                        |
+| `task.read`                                  | `recordId`                                 | a string                                                                                                                                  | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                          |
+| `task.board`                                 | `board`                                    | a board task's id, or `null` for tasks on no board                                                                                        | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                          |
+| `task.ledger`                                | `timeZone`, `before?`                      | a zone name the server knows (`pg_timezone_names`, exact spelling), and a day `YYYY-MM-DD` from 1970 or absent/`null` for the newest days | the row's `parse` for the shapes, its `serve` for the zone, from `serveRead` (`reads/dispatch.ts`) |
+| `preset.plan`                                | `recordTypeKey`, `presetKey`, `fields[]`   | two non-empty strings, and an array of field objects, which may be empty                                                                  | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                          |
+| `task.rank`                                  | `afterId`, `beforeId`                      | each a string or `null`, or absent                                                                                                        | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
+| `task.propose`                               | `lineageId`                                | a string or `null`, or absent to open a new lineage                                                                                       | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
+| `task.create`                                | `parentId`, `board`, `boardSection`        | each a string or `null`, or absent                                                                                                        | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
+| `task.decide`                                | `gateId`, `versionId`, `recipientPersonId` | each a string; absent is refused, except `recipientPersonId`, which may be absent or `null`                                               | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
 
-The five `refuse…Operands` functions are in `commands/operands.ts`, beside
-`isFieldMap` and `invalid`, which the read catalogue shares. A read's operand
+`parseRequest` and the two `refuse…Operands` functions are in
+`commands/operands.ts`, beside `isFieldMap` and `invalid`, which the read
+catalogue shares. A read's operand
 check is the `parse` column of its `READ_CATALOGUE` row (`reads/catalogue.ts`).
 It answers the read's typed operands (`ReadOperands`) or the refusal, and the
 row's `subject`, `authority` and `serve` see only those operands. `ReadRequest`
 is the unchecked body.
 
-The last four rows are `TYPED_IDENTIFIERS` (`commands/prepare.ts`), checked
-once the caller is authorised and before the target is read. So a `lineageId`
+The `parseRequest` rows are their operations' `WRITE_OPERANDS`
+(`core-wire/src/surface.ts`), checked once the caller is authorised, an
+identifier before the target is read and any other operand after it. So a `lineageId`
 on `task.propose` that is neither a string nor `null` is `FIELD_VALUE_INVALID`
 naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
 (`commands/tasks-propose.ts`) is not reached through a command.
@@ -185,9 +187,9 @@ because `trashSubtree` locks each row it walks and walks again until nothing
 new appears. A restored task whose parent is live outside the batch takes that
 parent's board, and so do the batch's rows below it.
 
-The five command checks run in their handlers, each as the handler's first
-check (`refuseUpdateOperands` in both `updateTask` and `writeOwnedFields`), so
-the refusal is registered and audited like any other command refusal.
+The `task.reparent` and `task.purge` checks run as their handlers' first
+check and the rest in `parseRequest`, so the refusal is registered and audited
+like any other command refusal.
 The read checks run inside the audited read (the row's `parse`, called from
 `serveRead` in `reads/dispatch.ts`), after the system-field and identifier
 checks and before the grant check, so a refused read writes its audit row like
@@ -201,9 +203,8 @@ that is neither a string nor `null` (`tests/api/boundary-read-targets.test.ts`).
 (`tests/commands/placement-operands.test.ts`). A `parentId` string that is not an
 identifier is the envelope's `NOT_FOUND` (`refuseMalformedIdentifier`,
 `commands/prepare.ts`). The five owning operations (`task.assign` and the rest)
-joined next: `writeOwnedFields` (`commands/tasks-state.ts`) calls
-`refuseUpdateOperands` first, so an absent, null, string or array `fields` is
-refused naming `fields` and nothing is written. An empty map stays
+joined next: their rows take `fields` as a map, so `parseRequest` refuses an
+absent, null, string or array `fields` naming `fields` and nothing is written. An empty map stays
 `FIELD_UNKNOWN` (`tests/commands/owning-operation-fields.test.ts`).
 On the agent prefix, `task.read` does not go through `reads/dispatch.ts`. A
 `recordId` that is present and not a string is refused before any authority,
@@ -427,13 +428,13 @@ Four rows joined the surface when L2's model modules landed, and one came off
 the pending list. Each reaches the API and the command line by generation, with
 no route written by hand.
 
-| Operation                          | Route                               | Body                                                                              | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                               |
-| ---------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `task.comment`                     | `/task/comment`                     | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 (naming `body` when it is absent, blank or holds a NUL or an unpaired surrogate, or `audience` or `comment_type`), `AUDIENCE_NOT_PERMITTED` 422 (an external party writing `internal`; the agent prefix writing `client`), `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
-| `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                          | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422                                                                                                                                                                       |
-| `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                    | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                              |
-| `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                             | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                              |
-| `settings.set_money_step_up`       | `/settings/set_money_step_up`       | `operationId`, `value` (boolean), `expectedRevision?`                             | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                              |
+| Operation                          | Route                               | Body                                                                                           | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `task.comment`                     | `/task/comment`                     | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?`, `mentions?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 (naming `body` when it is absent, blank or holds a NUL or an unpaired surrogate, or `audience`, `comment_type` or `mentions`), `AUDIENCE_NOT_PERMITTED` 422 (an external party writing `internal`; the agent prefix writing `client`), `MENTION_NOT_READABLE` 422 (naming each person mentioned who cannot read the comment; nothing saves), `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
+| `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                                       | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422                                                                                                                                                                                                                                                                                         |
+| `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                                 | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
+| `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
+| `settings.set_money_step_up`       | `/settings/set_money_step_up`       | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
 
 A settings `value` of any other type, including a string, an object or an
 array, is `FIELD_VALUE_INVALID` naming `value` before any write
@@ -443,7 +444,10 @@ cannot hold reaches `business_settings`.
 `task.comment` writes a comment record beside the task and leaves the task's
 own revision alone, so a caller may keep writing against the revision they
 hold. The author is the acting actor and the posting time is the server's;
-neither is a payload field.
+neither is a payload field. `mentions` lists person ids; each one mentioned
+is raised an inbox item in the same transaction (INB-1), and one who cannot
+read the task, or an outside party named in an `internal` comment, refuses
+the whole comment before it saves.
 
 `preset.plan` is declared `kind: 'read'` because it writes nothing, even on
 success. It is the one read that does not take the `read` action, which is why
@@ -1265,7 +1269,8 @@ it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `task.ledger`, `task.search`, `person.list`,
-`team.list`, `preset.plan`, `settings.read`, `session.capabilities` and `access.read` are
+`team.list`, `preset.plan`, `settings.read`, `session.capabilities`, `access.read`,
+`inbox.read`, `inbox.count` and `inbox.unattended` are
 declared in `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
@@ -1277,6 +1282,51 @@ exported as `executeRead` from `packages/core-commands/src/reads/execute.ts`,
 returning either the contract's `{ ok: true, ... }` shape or a command refusal.
 `executeRead` is a required option of `createApi`, so every declared read has
 an executor.
+
+`inbox.read` answers the caller's own items as `{ ok: true, inbox }`: every
+open item, and the newest 50 closed ones (`INBOX_HISTORY_PAGE`) about a task
+the caller reads now, oldest raised first. `inbox.count` answers
+`{ ok: true, owed }`, the list's counted entries, counted in one query under
+the same rule (`reads/inbox.ts`). Access is derived for every item inside the
+read's own query, so neither read grows with a person's closed history. The
+page of closed items is found from the caller's grants: each task they read
+(the whole business on the history index; otherwise each task a grant names
+or reaches through its client, on the per-task history index; both migration 0044) gives its newest 50, and the newest 50 of those are the page.
+An item about a task the caller cannot read is never looked at for the page,
+so it takes no place in it and another client's change never moves it. Those
+items are read beside the page, newest first, from the page's oldest item on
+and at most 200 closed items (`INBOX_HISTORY_SCAN`); the records read returns
+them as withheld and the list does not show them. A readable entry about a planned run carries `alert`,
+T2h's latest alert on that run (the same record, `id`, `kind`,
+`waitingReason` and `raisedAt`, that the task page and the queue read show);
+no other read carries it. A readable entry carries its pointers, its task's `key` and `title`,
+and `closedBy`, the decider's `personId` and `name` once it is cleared, all
+read in the same transaction, so the item stores none of them. A gone entry
+carries its own identity and axes and nothing of the task. The board screen
+draws both reads above the board (`apps/web/src/views/inbox.tsx`, INB-1g).
+
+The board screen follows one event stream per tab (INB-1f),
+`GET <person prefix><business>/live` naming no `topic` (a join naming topics
+is C4's stream for a tab's pages, `apps/api/live-follow.ts`), beside T2f's
+`/live/task/:recordId` and through the same door (`apps/api/app.ts`, `apps/api/live-board.ts`). The
+join is `joinLiveBoard` (`reads/live-join.ts`): a person inside the business,
+never an external reader or an agent, holding a live grant. It sends `resync`
+on connect and after the listener reconnects, `invalidate` whose data is a
+task's identifier only when the caller may read that task now (asked per event
+as T2f asks `task.execution`), `inbox` with no data when what `inbox.read`
+shows the caller changed (the topic names no item, so the stream compares a
+digest of that read, `shownInbox`, and a change to an item the caller is not
+shown says nothing), and `closed` the first time the join is refused again (at
+every recheck, 30 seconds by default, and before each batch). The stream hears
+the inbox of the person the bearer resolves to, asked at each batch and again
+after each task read and each changed inbox digest, before its frame: if that is now another person,
+the previous person's topic is dropped unsaid, the new one's is heard, and the
+stream says nothing until its next recheck sends `resync`. The inbox topic is
+`business:inbox:person`, sent at commit by migration 0043's trigger on
+`inbox_items`, and the fan-out (`apps/api/live.ts`) hands it only to that
+person's streams in that business. The page re-reads the board on
+`invalidate` and the inbox list and count on `inbox`; while the stream is
+down its 30-second floor re-reads both (`apps/web/src/data/board-live.ts`).
 
 `task.read` carries the task's comments. An internal reader, meaning a
 membership role of `owner`, `admin` or `member`, is given every comment in full.

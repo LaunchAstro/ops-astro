@@ -73,10 +73,12 @@ const writing = (
 const READ = writing([]);
 // A task is a row of `records`, with its unique values beside it.
 const TASK = writing(client('records', 'record_unique_values'));
+// A proposal raises the decision's inbox items (INB-1b).
 const PROPOSAL = writing(
   client(
     'evidence_packs',
     'gates',
+    'inbox_items',
     'planned_runs',
     'planned_steps',
     'proposal_lineages',
@@ -105,7 +107,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.comment': writing(client('records')),
   'task.propose': PROPOSAL,
   'task.decide': writing(
-    client('attempts', 'gate_decisions', 'gates', 'reservations', 'task_envelopes'),
+    client('attempts', 'gate_decisions', 'gates', 'inbox_items', 'reservations', 'task_envelopes'),
   ),
   // An agent's pickup also mints its delegation.
   'task.pickup': writing([
@@ -117,6 +119,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
       'alerts',
       'attempts',
       'handback_reports',
+      'inbox_items',
       'leases',
       'planned_runs',
       'reservations',
@@ -126,7 +129,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...business('delegations'),
   ]),
   'task.start': TASK,
-  'task.assign': TASK,
+  // An assignment raises the assignee's inbox item (INB-1b).
+  'task.assign': writing(client('inbox_items', 'records', 'record_unique_values')),
   'task.triage': TASK,
   'task.set_stage': TASK,
   'task.set_party': TASK,
@@ -187,7 +191,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...client('attempts', 'leases', 'planned_runs', 'reservations', 'task_envelopes'),
     ...business('delegations'),
   ]),
-  'task.cancel': writing(client('alerts', 'planned_runs', 'proposal_lineages')),
+  'task.cancel': writing(client('alerts', 'inbox_items', 'planned_runs', 'proposal_lineages')),
   'task.restart': PROPOSAL,
   'task.heartbeat': writing(client('leases')),
   'task.dispatch': writing(client('attempts', 'planned_steps')),
@@ -196,4 +200,12 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'budget.top_up': writing(client('task_envelopes')),
   'budget.record_outcome': writing(client('alerts', 'attempts', 'reservations', 'task_envelopes')),
   'budget.write_off': writing(client('attempts', 'reservations', 'task_envelopes')),
+  // The caller's own inbox (INB-1d, INB-1e): three reads; `seen` stamps the
+  // caller's attention row on an item about a task; the channel setting
+  // stores nothing yet.
+  'inbox.read': READ,
+  'inbox.count': READ,
+  'inbox.unattended': READ,
+  'inbox.seen': writing(client('inbox_attention')),
+  'notifications.set_channel': READ,
 };

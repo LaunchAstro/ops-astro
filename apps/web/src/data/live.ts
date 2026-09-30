@@ -14,12 +14,15 @@
 // book, and `presence` says who is on a topic changed; the page re-reads it
 // through that seat (`presence.ts`). A stream joined again is a new seat, and
 // one that is down is no seat.
+// The board (INB-1f) keeps its own stream, `followLive`: every task of the
+// business and the caller's own inbox, which no topic of this hub names.
 
 export const FLOOR_MS = 30_000;
 const REJOIN_MS = 2_000;
-const EVENT = /^event: (invalidate|resync|closed|seat|presence)\ndata: (.*)$/mu;
+const EVENT = /^event: (invalidate|resync|closed|seat|presence|inbox)\ndata: (.*)$/mu;
 
-export type LiveChange = 'changed' | 'closed';
+/** `inbox`: the caller's own inbox changed (INB-1f's board stream only). */
+export type LiveChange = 'changed' | 'closed' | 'inbox';
 
 type OnChange = (change: LiveChange) => void;
 type OnSeat = (seat: string | null) => void;
@@ -243,4 +246,46 @@ export function hubOf(client: { openLive: OpenTopics }): LiveHub {
     createLiveHub(async (topics, signal) => await client.openLive(topics, signal));
   hubs.set(client, hub);
   return hub;
+}
+
+export interface FollowOptions {
+  readonly visible?: () => boolean;
+}
+
+/** Follow the board's stream (INB-1f) until the returned function is called. */
+export function followLive(
+  open: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array> | null>,
+  onChange: (change: LiveChange) => void,
+  { visible = () => document.visibilityState === 'visible' }: FollowOptions = {},
+): () => void {
+  const abort = new AbortController();
+  const refresh = (): void => {
+    if (visible()) onChange('changed');
+  };
+  const onEvent = (name: string): void => {
+    if (name === 'closed') onChange('closed');
+    else if (name === 'inbox' && visible()) onChange('inbox');
+    else refresh();
+  };
+  let floor: ReturnType<typeof setInterval> | undefined;
+  const run = async (): Promise<void> => {
+    const body = await open(abort.signal).catch(() => null);
+    if (body === null) floor ??= setInterval(refresh, FLOOR_MS);
+    else {
+      clearInterval(floor);
+      floor = undefined;
+      await readEvents(body, onEvent, abort.signal).catch(() => {});
+    }
+    await wait(body === null ? FLOOR_MS : REJOIN_MS, abort.signal);
+    if (!abort.signal.aborted) await run();
+  };
+  void run();
+  document.addEventListener('visibilitychange', refresh);
+  window.addEventListener('online', refresh);
+  return () => {
+    abort.abort();
+    clearInterval(floor);
+    document.removeEventListener('visibilitychange', refresh);
+    window.removeEventListener('online', refresh);
+  };
 }

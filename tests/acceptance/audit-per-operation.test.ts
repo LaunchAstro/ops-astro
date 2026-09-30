@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 66 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 71 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 66; on
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 71; on
 // the two that are his own account (C23) he is refused for naming someone. For
 // the three lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
@@ -254,9 +254,43 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     };
   }
 
+  /** R2 on the caller's own account and rows asks no grant: each is refused for what it names. */
+  function refusedOwn(name: CommandName): Cell | undefined {
+    const noah = w.h.world.noah;
+    switch (name) {
+      case 'session.person':
+      case 'session.end':
+        // His own account (C23) needs no grant, so what he is refused for is
+        // aiming it at something: a record id, which neither takes.
+        return personCell(noah, name, { recordId: w.h.alphaTask.id }, 'COMMAND_BODY_INVALID');
+      case 'preference.save':
+        // Self-scoped: noah may save his own key, so the refusal is the
+        // value's. A refused save is audited; an applied one is not (CS-2.8,
+        // below).
+        return personCell(
+          noah,
+          name,
+          { preference: 'appearance', value: 'sepia' },
+          'FIELD_VALUE_INVALID',
+        );
+      case 'inbox.seen':
+        // Self-scoped: noah holds `preference:write` like every signed-in
+        // person, so the refusal is the item's. One not his is NOT_FOUND.
+        return personCell(noah, name, { itemId: randomUUID() }, 'NOT_FOUND');
+      case 'notifications.set_channel':
+        // Self-scoped too (INB-1e): the refusal is the setting's. In-app is
+        // always on, so switching it off is refused.
+        return personCell(noah, name, { channel: 'in_app', mode: 'off' }, 'FIELD_VALUE_INVALID');
+      default:
+        return undefined;
+    }
+  }
+
   async function refused(declaration: CommandDeclaration): Promise<Cell> {
     const { name } = declaration;
     const noah = w.h.world.noah;
+    const own = refusedOwn(name);
+    if (own !== undefined) return own;
     switch (name) {
       // R2 against work that exists and would admit its owner, so the refusal
       // is authority's and not a missing reservation's or a stranger's lease.
@@ -278,21 +312,6 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
               : { leaseId: lease.leaseId, fence: lease.fence };
         return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
       }
-      case 'session.person':
-      case 'session.end':
-        // His own account (C23) needs no grant, so what he is refused for is
-        // aiming it at something: a record id, which neither takes.
-        return personCell(noah, name, { recordId: w.h.alphaTask.id }, 'COMMAND_BODY_INVALID');
-      case 'preference.save':
-        // Self-scoped: noah may save his own key, so the refusal is the
-        // value's. A refused save is audited; an applied one is not (CS-2.8,
-        // below).
-        return personCell(
-          noah,
-          name,
-          { preference: 'appearance', value: 'sepia' },
-          'FIELD_VALUE_INVALID',
-        );
       default: {
         // `session.capabilities` included: contract 8.2 case 3 names every
         // endpoint, and the root's routing (ROOT-REVIEW-74d583c-ROUTING) says
@@ -402,12 +421,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 66 exported operations both ways', () => {
+  it('covered all 71 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(66);
+    expect(names).toHaveLength(71);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 66.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 71.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 

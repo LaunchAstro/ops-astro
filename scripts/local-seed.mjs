@@ -101,8 +101,8 @@ const GRANTS_BY_ROLE = {
     // Settings ▸ Access (C32): the owner and administrators hold
     // `access:manage` on install (the key catalogue's default holders).
     ['access', 'manage'],
-    // The operations view and the privacy incident record (C55): the owner
-    // and administrators hold both on install, and no agent ever does.
+    // The operations view (C55; `inbox.unattended` asks it, INB-1e) and the
+    // privacy incident record: owner and administrators on install, never an agent.
     ['operations', 'read'],
     ['privacy', 'manage'],
     // An agent credential of their own (API-2): the owner and administrators

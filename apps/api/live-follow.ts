@@ -42,7 +42,8 @@ export function topicsOf(named: readonly string[]): readonly Watch[] | undefined
   return watches.every((watch): watch is Watch => watch.taskId !== undefined) ? watches : undefined;
 }
 
-const RECHECK_MS = 30_000;
+export const RECHECK_MS = 30_000;
+const noop = (): void => {};
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 
 /**
@@ -61,8 +62,17 @@ export async function follow(
   const ended = new Promise<void>((resolve) => {
     stream.onAbort(resolve);
   });
+  let finished = noop;
+  const done = new Promise<void>((resolve) => {
+    finished = resolve;
+  });
+  // Closing the topics stops the stream and waits until no question it asked is in flight.
+  const stop = async (): Promise<void> => {
+    stream.abort();
+    await done;
+  };
   const follower = new Follower(stream, asks);
-  for (const watch of watches) follower.watch(watch, live.topics, seated);
+  for (const watch of watches) follower.watch(watch, live.topics, seated, stop);
   const timer = setInterval(() => follower.checkAll(), live.recheckMs ?? RECHECK_MS);
   try {
     if (seated !== undefined)
@@ -74,7 +84,9 @@ export async function follow(
     await ended;
   } finally {
     clearInterval(timer);
+    await follower.settled();
     follower.stopAll();
+    finished();
   }
 }
 
@@ -96,11 +108,22 @@ class Follower {
     this.#asks = asks;
   }
 
-  watch(watch: Watch, topics: LiveTopics, seated: Seated | undefined): void {
+  watch(
+    watch: Watch,
+    topics: LiveTopics,
+    seated: Seated | undefined,
+    stop: () => Promise<void>,
+  ): void {
     const { businessId } = this.#asks;
-    const unsubscribe = topics.subscribe(businessId, watch.taskId, (signal) => {
-      this.want(watch, signal);
-    });
+    const unsubscribe = topics.subscribe(
+      businessId,
+      watch.taskId,
+      (signal) => {
+        this.want(watch, signal);
+      },
+      // Each topic's own handle: a topic closed alone must not take the stream's stop with it.
+      async () => await stop(),
+    );
     const leave = seated?.presence.seat(businessId, watch.taskId, seated.session, () => {
       this.#queue(watch);
       this.#presence.add(watch);
@@ -113,6 +136,11 @@ class Follower {
 
   checkAll(): void {
     for (const watch of this.#stops.keys()) this.want(watch, 'check');
+  }
+
+  /** Resolves once the delivery in flight, and its question, is done. */
+  async settled(): Promise<void> {
+    await this.#chain;
   }
 
   stopAll(): void {

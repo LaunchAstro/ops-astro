@@ -46,6 +46,7 @@ import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
+import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
 
@@ -87,7 +88,8 @@ interface RowBase<K extends ReadName> {
    * collection it names instead. `holds-any-grant`: no collection is asked;
    * the read refuses a caller holding nothing (see `session.capabilities`).
    * `self`: no grant is asked; the answer is about the caller alone and names
-   * nobody else (`session.person`).
+   * nobody else (`session.person`), or serves the caller's own rows only and
+   * derives access on each (the inbox).
    */
   readonly authority:
     'declared' | 'holds-any-grant' | 'self' | ((operands: ReadOperands[K]) => string);
@@ -553,6 +555,46 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: false,
     serve: async (tx, _session, operands) => await readBreachNotices(tx, operands),
+  },
+  // The caller's own items: the query names the caller as recipient and each
+  // item's access is asked of their live grants, which is the permission
+  // check (INB-1d). The count is the same read, counted. A caller holding no
+  // live grant is refused, as `session.capabilities` refuses one, and never
+  // answered with a list of withheld items or a zero.
+  'inbox.read': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'self',
+    outsiderNotFound: false,
+    serve: async (tx, session) =>
+      (await holdsAnyGrant(tx, session))
+        ? { ok: true, inbox: await readInbox(tx, session.personId) }
+        : NO_GRANT_AT_ALL,
+  },
+  'inbox.count': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'self',
+    outsiderNotFound: false,
+    serve: async (tx, session) =>
+      (await holdsAnyGrant(tx, session))
+        ? { ok: true, owed: await countOwed(tx, session.personId) }
+        : NO_GRANT_AT_ALL,
+  },
+  // Every path to a person broken (INB-1e): `operations:read` on the business,
+  // declared, and within it only the items whose task the caller reads.
+  'inbox.unattended': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx, session) => ({
+      ok: true,
+      unattended: await readUnattendedInbox(tx, session.personId),
+    }),
   },
 };
 
