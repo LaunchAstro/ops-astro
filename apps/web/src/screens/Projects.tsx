@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `/projects/`. The board of the business's unboarded tasks, and the form that
-// makes one.
+// `/projects/`. Two tabs: the board of the business's unboarded tasks with the
+// form that makes one, and the Work log (MP-8-4), reached by `#worklog` as the
+// mockup's `/projects/#worklog` is. The Work log reads nothing until it is
+// first opened, and stays drawn once it has been, as every tab pane does.
 //
 // The read is `task.board` with `board: null`, which the contract defines as
 // the business's unboarded tasks — the acceptance case creates a task
@@ -13,7 +15,7 @@
 // stores is recorded rather than papered over by dropping the columns.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { Board, Empty, type BoardRow } from '@launchastro/ui';
+import { Board, Empty, TabPanel, TabStrip, type BoardRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { titleOf } from '../views/task-title.ts';
 import type { TaskBoardResult, TaskSummary } from '../../../../packages/core-wire/src/index.ts';
@@ -22,6 +24,7 @@ import { RecordState } from '../views/record-state.tsx';
 import { drawTaskState } from '../views/task-state.ts';
 import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
+import { WorkLog } from './projects/WorkLog.tsx';
 
 /** A create whose outcome is not known, held so the retry is the same attempt. */
 interface PendingCreate {
@@ -32,9 +35,55 @@ interface PendingCreate {
 export interface ProjectsProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
+  /** Goes to an address inside the application. */
+  readonly navigate: (path: string) => void;
+}
+
+type ProjectsTab = 'board' | 'worklog';
+
+const TABS = [
+  { id: 'board', label: 'Board' },
+  { id: 'worklog', label: 'Work log' },
+] as const;
+
+const WORK_LOG = '#worklog';
+
+const tabInAddress = (): ProjectsTab =>
+  globalThis.location?.hash === WORK_LOG ? 'worklog' : 'board';
+
+/** Keeps the address on the open tab, so a reload lands on it. */
+function writeTab(tab: ProjectsTab): void {
+  const here = globalThis.location;
+  if (here === undefined) return;
+  const address = `${here.pathname}${here.search}${tab === 'worklog' ? WORK_LOG : ''}`;
+  globalThis.history.replaceState(globalThis.history.state, '', address);
 }
 
 export function Projects(props: ProjectsProps): ReactElement {
+  const [tab, setTab] = useState<ProjectsTab>(tabInAddress);
+  const [workLogOpened, setWorkLogOpened] = useState(tab === 'worklog');
+  const select = (id: string): void => {
+    const next: ProjectsTab = id === 'worklog' ? 'worklog' : 'board';
+    setTab(next);
+    if (next === 'worklog') setWorkLogOpened(true);
+    writeTab(next);
+  };
+  return (
+    <div className="stack">
+      <TabStrip label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
+      <TabPanel name="projects" tab="board" selected={tab}>
+        <ProjectBoard client={props.client} grantKey={props.grantKey} />
+      </TabPanel>
+      <TabPanel name="projects" tab="worklog" selected={tab}>
+        {workLogOpened ? (
+          <WorkLog client={props.client} grantKey={props.grantKey} navigate={props.navigate} />
+        ) : null}
+      </TabPanel>
+    </div>
+  );
+}
+
+function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
   const client = props.client;
   // While this is true the create is in flight and the form is not editable:
   // the input, the submit and `Start a different task` are all disabled. A

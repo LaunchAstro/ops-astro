@@ -56,39 +56,41 @@ const CASES = OWNING.flatMap((command) =>
 const refusal = (answer: CommandResult) =>
   isCommandRefusal(answer) ? { code: answer.code, names: answer.names } : { applied: answer };
 
-describe.skipIf(serverUrl === undefined)('the owning operations', () => {
-  let db: FreshDatabase;
-  let business: string;
-  let worker: Member;
+let db: FreshDatabase;
+let business: string;
+let worker: Member;
 
-  const run = async (command: Readonly<Record<string, unknown>>) =>
-    await executeCommand(db.app, business, worker.presented, 'api', command as unknown as Request);
+const run = async (command: Readonly<Record<string, unknown>>) =>
+  await executeCommand(db.app, business, worker.presented, 'api', command as unknown as Request);
 
-  const revisionOf = async (recordId: string) =>
-    await db.app.withBusiness(business, async (tx) => {
-      const rows = await tx.query<{ readonly revision: string }>(
-        `select revision::text as revision from records where business_id = $1 and id = $2`,
-        [business, recordId],
-      );
-      return Number(rows[0]?.revision);
-    });
-
-  beforeAll(async () => {
-    db = await createFreshDatabase({ part: 'f' });
-    business = await insertBusiness(db.app, 'owning-operation-fields');
-    await installSpine(db.app, business);
-    worker = await enrol(db.app, business, 'owner');
-    await db.app.withBusiness(business, async (tx) => {
-      await grantTo(tx, worker, 'write');
-      await grantTo(tx, worker, 'assign');
-      await grantTo(tx, worker, 'share');
-    });
-  }, 60_000);
-
-  afterAll(async () => {
-    await db?.drop();
+const revisionOf = async (recordId: string) =>
+  await db.app.withBusiness(business, async (tx) => {
+    const rows = await tx.query<{ readonly revision: string }>(
+      `select revision::text as revision from records where business_id = $1 and id = $2`,
+      [business, recordId],
+    );
+    return Number(rows[0]?.revision);
   });
 
+beforeAll(async () => {
+  if (serverUrl === undefined) return;
+  db = await createFreshDatabase({ part: 'f' });
+  business = await insertBusiness(db.app, 'owning-operation-fields');
+  await installSpine(db.app, business);
+  worker = await enrol(db.app, business, 'owner');
+  await db.app.withBusiness(business, async (tx) => {
+    await grantTo(tx, worker, 'write');
+    await grantTo(tx, worker, 'assign');
+    await grantTo(tx, worker, 'share');
+  });
+}, 60_000);
+
+afterAll(async () => {
+  if (serverUrl === undefined) return;
+  await db?.drop();
+});
+
+describe.skipIf(serverUrl === undefined)('the owning operations', () => {
   it.each(CASES)(
     '%s refuses fields %s by name and writes nothing',
     async (command, _l, operand) => {

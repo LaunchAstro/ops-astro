@@ -75,6 +75,18 @@ own code so the person can repeat it, and says that anything unsaved was not
 saved. Signing in again returns to the remembered address, so a task page stays
 a task page. With nothing remembered it goes to `/projects/`.
 
+**Ended access is the third way a session ends (C58).** Ending a person's access
+deactivates their login and ends their memberships, but their bearer still
+verifies until its hour is up, so the API answers their next call 403
+`AUTH_NO_MEMBERSHIP`. A login that was never a member gets the same answer, and
+for it that is a denial to draw (the browser's N2 row). So the client remembers
+whether its bearer has had an answer, and only a bearer that has ends its
+session on that refusal, with the same notice. A person who signs out in the tab
+lands on `/sign-in` with a notice of its own (`data-reason="signed-out"`) saying
+that any edit they had not saved was not saved. In every ending the draft lived
+only in the screen's state, so it goes with the screen: no browser storage holds
+record content for a signed-out tab (`C58 no draft after session end`).
+
 **The refusal belongs to the session that made the request.** A client keeps the
 bearer it was built with, so a call can be answered after that bearer has
 stopped being anybody's session. Two reads leave together, the first 401 sends
@@ -112,12 +124,12 @@ browser.
 
 ## Addresses
 
-| Address      | What it draws                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------ |
-| `/sign-in`   | Credentials and the business selector                                                            |
-| `/projects/` | `task.board` for the unboarded tasks (`board: null`), and the create form                        |
-| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision |
-| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`  |
+| Address      | What it draws                                                                                                                                                              |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/sign-in`   | Credentials and the business selector                                                                                                                                      |
+| `/projects/` | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening |
+| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                           |
+| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`                                                                            |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.

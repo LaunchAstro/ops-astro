@@ -30,27 +30,52 @@
 // subject and a missing login do: telling them apart tells an outsider which
 // businesses exist.
 
+import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { streamSSE, type SSEStreamingApi } from 'hono/streaming';
+import { streamSSE } from 'hono/streaming';
 import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
   EXPIRED_FIXES,
+  PUBLIC_LEGAL_DOCUMENTS,
+  readPublishedLegal,
   recordBodyRefusal,
   statusOf,
 } from '../../packages/core-records/src/index.ts';
-import type { Database, VerifiedSubject } from '../../packages/core-records/src/index.ts';
+import type {
+  Database,
+  LegalDocument,
+  VerifiedSubject,
+} from '../../packages/core-records/src/index.ts';
 import {
   agentAnswer,
+  endOtherSessions,
+  enrolSecondFactor,
+  listOwnSessions,
   isCommandRefusal,
   isReadName,
   refuseCommand,
+  refuseNotFound,
+  setOwnAvailability,
+  viewerOf,
+  removeSecondFactor,
+  signOutSession,
+  verifySecondFactor,
 } from '../../packages/core-commands/src/index.ts';
 import {
+  readServiceHealth,
+  settleAccessEndings,
+  type FactorProvider,
+  type HealthSources,
+  type LoginProvider,
+} from '../../packages/core-commands/src/index.ts';
+import {
+  ACCOUNT_AVAILABILITY_PATH,
   COMMAND_SURFACE,
   DELEGATION_HEADER,
   PREFIX,
+  PUBLIC_PREFIX,
   pathOf,
 } from '../../packages/core-wire/src/index.ts';
 import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
@@ -60,9 +85,13 @@ import type {
   executeAgentCommand,
   CommandRefusal,
   executeRead,
+  admitReads,
+  AdmissionAt,
 } from '../../packages/core-commands/src/index.ts';
-import type { Verifier } from './auth/supabase.ts';
-import type { LiveSignal, LiveTopics } from './live.ts';
+import { bearerOf, type Verifier } from './auth/supabase.ts';
+import type { LiveTopics } from './live.ts';
+import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
+import { follow, topicsOf, TOPICS, type Seated, type Watching } from './live-follow.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -115,6 +144,27 @@ export interface ApiOptions {
    * which is the honest answer for a deployment that has not enabled it.
    */
   readonly executeAgentCommand?: AgentExecutor;
+  /**
+   * The sign-in provider's second-factor calls (C59), `auth/factors.ts` in a
+   * deployment. Absent means the three factor routes are not mounted, which is
+   * the honest answer for a deployment whose provider has no second factor.
+   * They are mounted on the person prefix only: a factor is a person's own,
+   * and no agent holds `account:write`.
+   */
+  readonly factors?: FactorProvider;
+  /**
+   * The installation's service-health sources (C34): the watcher, the error
+   * sink and, where switched on, tracing. Read for `operations.read` after its
+   * grant check, outside the serving transaction.
+   */
+  readonly health?: HealthSources;
+  /**
+   * The sign-in provider's calls for a login whose access has ended (C58),
+   * `auth/logins.ts` in a deployment. `access.end` ends access locally either
+   * way; with a provider, the owed provider steps are tried as soon as the act
+   * commits. Absent, they stay owed for the server's retry.
+   */
+  readonly logins?: LoginProvider;
   readonly live?: LiveOptions;
 }
 
@@ -122,7 +172,16 @@ export interface ApiOptions {
 export interface LiveOptions {
   readonly topics: LiveTopics;
   readonly recheckMs?: number;
+  /** `reads/execute.ts`'s `admitReads`: the channel's checks, which serve and audit nothing. */
+  readonly admit: ReadAdmitter;
+  /** C2: who else is on each watched task; absent, the stream carries no presence. */
+  readonly presence?: LivePresence;
+  /** `reads/execute.ts`'s `viewerOf`, unless a test hands in its own. */
+  readonly viewer?: typeof viewerOf;
 }
+
+/** The live channel's check: `admitReads`'s signature. */
+export type ReadAdmitter = typeof admitReads;
 
 /** The person path's executor: `commands/envelope.ts`'s signature. */
 export type CommandExecutor = typeof executeCommand;
@@ -244,6 +303,14 @@ export function createApi(options: ApiOptions): Hono {
         read: name,
       });
       if (isCommandRefusal(read)) return refuse(context, read);
+      // C34: the operations view's service-health section, read only after
+      // the grant check above let the caller in, and outside the serving
+      // transaction, so a refused caller asks no source and no source call
+      // holds a transaction open.
+      if (name === 'operations.read') {
+        const serviceHealth = await readServiceHealth(options.health ?? {}, new Date());
+        return context.json({ ...read, serviceHealth }, 200);
+      }
       return context.json(read, 200);
     }
 
@@ -253,6 +320,14 @@ export function createApi(options: ApiOptions): Hono {
     });
 
     if (isCommandRefusal(result)) return refuse(context, result);
+    // C58: the provider steps an ending owes are tried as soon as it commits,
+    // outside its transaction; what fails stays owed for the server's retry.
+    if (name === 'access.end' && options.logins !== undefined) {
+      const only = endingIdsOf(result);
+      if (only.length > 0) {
+        await settleAccessEndings(options.database, businessId, options.logins, { only });
+      }
+    }
     return context.json({ ...result }, 200);
   });
 
@@ -288,84 +363,252 @@ export function createApi(options: ApiOptions): Hono {
     api.get(`${PREFIX.person}:businessKey/live/task/:recordId`, async (context) => {
       const admitted = await admit(options, context, PERSON, false);
       if (admitted instanceof Response) return admitted;
-      const may = async () => await mayWatch(options, context, admitted.businessId);
-      const taskId = await may();
+      const asks = watching(options, live, context, admitted.businessId);
+      const [taskId] = await asks.atDoor([context.req.param('recordId')]);
+      if (taskId === undefined) throw new Error('the door answered no topic');
       if (typeof taskId !== 'string') return refuse(context, taskId);
       return streamSSE(context, async (stream) => {
-        await follow(stream, live, admitted.businessId, taskId, may);
+        await follow(stream, live, [{ label: taskId, taskId }], asks);
       });
     });
+
+    // C4: one stream per tab carries every topic its pages follow. Each topic
+    // is asked about at join as T2f asks about its one task; one refused is
+    // closed alone, all refused is the first refusal (`tests/api/c4-live-stream.test.ts`).
+    api.get(`${PREFIX.person}:businessKey/live`, async (context) => {
+      const admitted = await admit(options, context, PERSON, false);
+      if (admitted instanceof Response) return admitted;
+      const named = topicsOf(context.req.queries('topic') ?? []);
+      if (named === undefined) {
+        return refuse(context, refuseCommand('FIELD_VALUE_INVALID', ['topic'], [TOPICS]));
+      }
+      const asks = watching(options, live, context, admitted.businessId);
+      const answers = await asks.atDoor(named.map((each) => each.taskId));
+      const watched = named.filter((_, at) => typeof answers[at] === 'string');
+      const [first] = answers;
+      if (watched.length === 0 && first !== undefined && typeof first !== 'string') {
+        return refuse(context, first);
+      }
+      return streamSSE(context, async (stream) => {
+        for (const watch of named.filter((each) => !watched.includes(each))) {
+          // eslint-disable-next-line no-await-in-loop -- written in the order named.
+          await stream.writeSSE({ event: 'closed', data: watch.label });
+        }
+        await follow(stream, live, watched, asks, await seatOf(options, live, context, asks));
+      });
+    });
+
+    // C2: presence on the stream's seat. Both routes check their input before
+    // anything is read, resolve the caller as a recheck does and ask about the
+    // task again, and write nothing (`tests/api/c2-presence-live.test.ts`).
+    const { presence } = live;
+    if (presence !== undefined) {
+      api.post(`${PREFIX.person}:businessKey/live/mark`, async (context) => {
+        const body = await readObject(context);
+        const asked =
+          body === undefined ? refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]) : markOf(body);
+        return await onSeat(options, live, context, asked, (mark, viewer, businessId) =>
+          presence.mark(businessId, mark.taskId, mark.seat, viewer, mark.field)
+            ? { marked: true }
+            : undefined,
+        );
+      });
+      api.get(`${PREFIX.person}:businessKey/live/presence`, async (context) => {
+        const asked = presenceAskOf(context.req.queries());
+        return await onSeat(options, live, context, asked, (ask, viewer, businessId) => {
+          const seenBy = presence.seenBy(businessId, ask.taskId, ask.seat, viewer);
+          return seenBy === undefined ? undefined : { seenBy };
+        });
+      });
+    }
   }
+  const factors = options.factors;
+  if (factors !== undefined) mountFactorRoutes(api, options, factors);
+  mountPublicLegal(api, options);
+
+  // MP-7-10: the person's own availability, on the person prefix alone (their
+  // own account; no agent holds it), audited with its row.
+  api.post(`${PREFIX.person}:businessKey${ACCOUNT_AVAILABILITY_PATH}`, async (context) => {
+    const admitted = await admit(options, context, PERSON);
+    if (admitted instanceof Response) return admitted;
+    const { database } = options;
+    const result = await setOwnAvailability(
+      database,
+      admitted.businessId,
+      admitted.presented,
+      admitted.body,
+    );
+    return isCommandRefusal(result) ? refuse(context, result) : context.json(result, 200);
+  });
 
   return api;
 }
 
 /**
- * Whether this caller may watch the task, asked after verifying the bearer
- * again of `task.execution`, the internal activity the channel reports:
- * expiry, a revoked grant and any external reader all refuse.
- * The answer is the task's identifier, the topic.
+ * A presence route once its input has passed: the door, the caller's standing
+ * (nothing recorded), the task asked about again as the stream asks, then
+ * `answer` for the caller's own person; undefined from it is no such seat.
+ */
+async function onSeat<A extends SeatAsk>(
+  options: ApiOptions,
+  live: LiveOptions,
+  context: Context,
+  asked: A | CommandRefusal,
+  answer: (asked: A, personId: string, businessId: string) => object | undefined,
+): Promise<Response> {
+  const admitted = await admit(options, context, PERSON, false);
+  if (admitted instanceof Response) return admitted;
+  if (isCommandRefusal(asked)) return refuse(context, asked);
+  const { businessId, presented } = admitted;
+  const viewer = await (live.viewer ?? viewerOf)(options.database, businessId, presented);
+  if (isCommandRefusal(viewer)) return refuse(context, viewer);
+  const task = { read: 'task.execution' as const, recordId: asked.taskId };
+  const again = await live.admit(options.database, businessId, presented, [task], 'recheck');
+  const [admission] = isCommandRefusal(again) ? [again] : again;
+  if (admission === undefined || isCommandRefusal(admission)) {
+    return refuse(context, admission ?? refuseNotFound());
+  }
+  const answered = answer(asked, viewer.personId, businessId);
+  return answered === undefined ? refuse(context, refuseNotFound()) : context.json(answered);
+}
+
+/** The stream's seat in the presence book, for a caller whose standing still resolves. */
+async function seatOf(
+  options: ApiOptions,
+  live: LiveOptions,
+  context: Context,
+  asks: Watching,
+): Promise<Seated | undefined> {
+  const { presence } = live;
+  const presented = await options.verify(context.req);
+  if (presence === undefined || presented === undefined || presented === 'expired')
+    return undefined;
+  const viewer = await (live.viewer ?? viewerOf)(options.database, asks.businessId, presented);
+  if (isCommandRefusal(viewer)) return undefined;
+  const { personId, name, staff } = viewer;
+  const session = { sessionId: randomUUID(), personId, name, side: staff ? 'staff' : 'client' };
+  return { presence, session: session as Seated['session'] };
+}
+
+function watching(
+  options: ApiOptions,
+  live: LiveOptions,
+  context: Context,
+  businessId: string,
+): Watching {
+  const ask = async (taskIds: readonly string[], at: AdmissionAt) => {
+    const answers = await mayWatch(options, live, context, businessId, taskIds, at);
+    return isCommandRefusal(answers) ? taskIds.map(() => answers) : answers;
+  };
+  return {
+    businessId,
+    atDoor: async (taskIds) => await ask(taskIds, 'door'),
+    async again(taskId) {
+      const [answer] = await ask([taskId], 'recheck');
+      if (answer === undefined) throw new Error('the recheck answered no topic');
+      return answer;
+    },
+  };
+}
+
+/**
+ * Whether this caller may watch each task, asked after verifying the bearer
+ * again, of `task.execution`'s own admission, the internal activity the channel
+ * reports: expiry, a lost membership, a revoked grant, a trashed or foreign
+ * task and any external reader all refuse. It serves and audits nothing, since
+ * the channel shows the person no content (C4 live-sync 6). Each answer is the
+ * task's identifier, the topic, or its refusal.
  */
 async function mayWatch(
   options: ApiOptions,
+  live: LiveOptions,
   context: Context,
   businessId: string,
-): Promise<string | CommandRefusal> {
+  taskIds: readonly string[],
+  at: AdmissionAt,
+): Promise<readonly (string | CommandRefusal)[] | CommandRefusal> {
   const presented = await options.verify(context.req);
   if (presented === undefined || presented === 'expired') {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
   }
-  const read = await options.executeRead(options.database, businessId, presented, {
-    read: 'task.execution',
-    recordId: context.req.param('recordId'),
+  const requests = taskIds.map((recordId) => ({ read: 'task.execution' as const, recordId }));
+  const admitted = await live.admit(options.database, businessId, presented, requests, at);
+  if (isCommandRefusal(admitted)) return admitted;
+  return admitted.map((answer) => {
+    if (isCommandRefusal(answer)) return answer;
+    if (answer.recordId === undefined) throw new Error('task.execution admitted no task');
+    return answer.recordId;
   });
-  if (isCommandRefusal(read)) return read;
-  if ('execution' in read) return read.execution.taskId;
-  throw new Error('task.execution answered something other than an execution');
 }
 
-const RECHECK_MS = 30_000;
-const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
+/**
+ * A business's published legal documents (C81), read with no sign-in: the
+ * version published most recently, its words and their digest. No business,
+ * nothing published, the breach runbook (the operators' own) and a name that
+ * is no document are one answer, so the address tells an outsider nothing
+ * about which businesses exist or what they have drafted.
+ */
+function mountPublicLegal(api: Hono, options: ApiOptions): void {
+  const PUBLIC: ReadonlySet<string> = new Set(PUBLIC_LEGAL_DOCUMENTS);
+  api.get(`${PUBLIC_PREFIX}:businessKey/legal/:document`, async (context) => {
+    const document = context.req.param('document');
+    const businessId = PUBLIC.has(document)
+      ? await options.resolveBusiness(context.req.param('businessKey'))
+      : undefined;
+    const published =
+      businessId === undefined
+        ? undefined
+        : await options.database.withBusiness(
+            businessId,
+            async (tx) => await readPublishedLegal(tx, document as LegalDocument),
+          );
+    if (published === undefined) return context.json({ code: 'NOT_FOUND' }, 404);
+    return context.json({ ...published, publishedAt: published.publishedAt.toISOString() }, 200);
+  });
+}
 
 /**
- * One open stream: `resync` once subscribed, then each signal once the caller
- * is asked again, and `closed` the first time the answer is no. Signals that
- * arrive while one is pending merge into it, the strongest kept.
+ * The person's own second factor (C59): `account/factor/enrol`, `verify` and
+ * `remove`; and their own sessions (C58): `account/sessions/list`,
+ * `end-others` and `sign-out`. Each goes through the same door as every
+ * person route. The bearer goes to the provider as the person's own; the body
+ * is the code, or nothing.
  */
-async function follow(
-  stream: SSEStreamingApi,
-  live: LiveOptions,
-  businessId: string,
-  taskId: string,
-  may: () => Promise<string | CommandRefusal>,
-): Promise<void> {
-  const ended = new Promise<void>((resolve) => {
-    stream.onAbort(resolve);
-  });
-  let pending: LiveSignal | 'check' | null = null;
-  let chain = Promise.resolve();
-  const send = async (): Promise<void> => {
-    const signal = pending;
-    pending = null;
-    if (signal === null || stream.aborted) return;
-    if (typeof (await may()) !== 'string') {
-      await stream.writeSSE({ event: 'closed', data: taskId });
-      stream.abort();
-    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: taskId });
-  };
-  const want = (signal: LiveSignal | 'check'): void => {
-    if (pending === null) chain = chain.then(send).catch(() => stream.abort());
-    if (pending === null || RANK[signal] > RANK[pending]) pending = signal;
-  };
-  const unsubscribe = live.topics.subscribe(businessId, taskId, want);
-  const timer = setInterval(() => want('check'), live.recheckMs ?? RECHECK_MS);
-  try {
-    await stream.writeSSE({ event: 'resync', data: taskId });
-    await ended;
-  } finally {
-    clearInterval(timer);
-    unsubscribe();
+function mountFactorRoutes(api: Hono, options: ApiOptions, factors: FactorProvider): void {
+  const routes = new Hono();
+  type Caller = Parameters<typeof enrolSecondFactor>[0];
+  const acts = {
+    'factor/enrol': async (caller: Caller) => await enrolSecondFactor(caller, factors),
+    'factor/verify': async (caller: Caller, body: unknown) =>
+      await verifySecondFactor(caller, body, factors),
+    'factor/remove': async (caller: Caller, body: unknown) =>
+      await removeSecondFactor(caller, body, factors),
+    'sessions/list': async (caller: Caller, body: unknown) => await listOwnSessions(caller, body),
+    'sessions/end-others': async (caller: Caller, body: unknown) =>
+      await endOtherSessions(caller, body, factors),
+    'sessions/sign-out': async (caller: Caller, body: unknown) =>
+      await signOutSession(caller, body, factors),
+  } as const;
+  for (const [name, act] of Object.entries(acts)) {
+    routes.post(`/account/${name}`, async (context) => {
+      const admitted = await admit(options, context, PERSON);
+      if (admitted instanceof Response) return admitted;
+      const accessToken = bearerOf(context.req.header('authorization'));
+      if (accessToken === undefined) {
+        return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
+      }
+      const caller = {
+        database: options.database,
+        businessId: admitted.businessId,
+        presented: admitted.presented,
+        accessToken,
+      };
+      const result = await act(caller, admitted.body);
+      if (isCommandRefusal(result)) return refuse(context, result);
+      return context.json(result, 200);
+    });
   }
+  api.route(`${PREFIX.person}:businessKey`, routes);
 }
 
 /**
@@ -438,4 +681,12 @@ async function readLimited(request: Request, limit: number): Promise<string | un
   } catch {
     return undefined;
   }
+}
+
+/** The endings an `access.end` answer names (C58): ids, and nothing else. */
+function endingIdsOf(result: object): readonly string[] {
+  const detail = (result as { readonly detail?: unknown }).detail;
+  if (typeof detail !== 'object' || detail === null) return [];
+  const ids = (detail as { readonly endingIds?: unknown }).endingIds;
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
 }

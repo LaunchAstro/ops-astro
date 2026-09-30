@@ -20,6 +20,13 @@ import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { setBusinessSetting } from './settings-write.ts';
+import { recordIncident } from './privacy-write.ts';
+import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
+import { issueCredential, revokeCredential } from './credential-write.ts';
+import { setService } from './overseas-write.ts';
+import { setClass } from './data-class-write.ts';
+import { createClientRecord, grantOnAccess } from './access-write.ts';
+import { endAccessOnSettings } from './access-end.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
@@ -27,7 +34,11 @@ import { dispatchOwnLease } from './tasks-dispatch.ts';
 import { observeOwnLease } from './tasks-observe.ts';
 import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
-import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
+import {
+  revokeDelegationAsManager,
+  revokeGrantAsManager,
+  revokeGrantOnAccess,
+} from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
@@ -89,10 +100,24 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // `any`).
   'settings.set_four_eyes_threshold': setting,
   'settings.set_client_sign_off': setting,
+  'settings.set_money_step_up': setting,
+
+  'privacy.record_incident': recordIncident,
+  'legal.draft_version': draftVersion,
+  'legal.approve_version': approveVersion,
+  'legal.publish_version': publishVersion,
+  'credential.issue': issueCredential,
+  'credential.revoke': revokeCredential,
+  'privacy.set_overseas_service': setService,
+  'privacy.set_data_class': setClass,
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,
 
+  'client.create': createClientRecord,
+  'access.grant': grantOnAccess,
+  'access.revoke': (tx, context, request) => revokeGrantOnAccess(tx, context, request.grantId),
+  'access.end': endAccessOnSettings,
   'grant.revoke': (tx, context, request) => revokeGrantAsManager(tx, context, request.grantId),
   'delegation.revoke': (tx, context, request) =>
     revokeDelegationAsManager(tx, context, request.delegationId),
@@ -135,7 +160,11 @@ function writeOwned(
 function setting(
   tx: TenantQuery,
   context: CommandContext,
-  request: RequestOf<'settings.set_four_eyes_threshold' | 'settings.set_client_sign_off'>,
+  request: RequestOf<
+    | 'settings.set_four_eyes_threshold'
+    | 'settings.set_client_sign_off'
+    | 'settings.set_money_step_up'
+  >,
 ): Promise<HandlerOutcome> {
   return setBusinessSetting(tx, context, request.command, request.value, request.expectedRevision);
 }

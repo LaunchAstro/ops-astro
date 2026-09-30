@@ -44,7 +44,9 @@ export interface RunningApi {
 export const WORLD_BUSINESS_KEYS = 'alpha,bravo';
 
 const sleep = async (ms: number): Promise<void> => {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 };
 
 async function answers(port: string): Promise<boolean> {

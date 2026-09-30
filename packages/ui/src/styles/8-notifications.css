@@ -1,0 +1,129 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* The Notifications panel and `/inbox/` (MP-7-3): the pinned mockup's `nt__`
+   rules. The count badge is the kit's `cbadge`, placed, never restyled. */
+
+.nt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.nt__sum {
+  margin: 0;
+  color: var(--text-2);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.nt__sum b {
+  color: var(--text);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
+}
+.nt__tabs {
+  border-bottom: 1px solid var(--border);
+}
+.nt__pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+.nt__grp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.nt__ghead {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding-bottom: var(--s-2);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
+}
+.nt__gname {
+  overflow: hidden;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nt__band {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.nt__bh {
+  margin: var(--s-2) 0 0.15rem;
+  color: var(--ink-faint);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+.nt__row {
+  display: block;
+  padding: var(--s-2) var(--s-3);
+  border-left: 2px solid var(--border);
+  color: inherit;
+  text-decoration: none;
+}
+.nt__row:hover,
+.nt__row:focus-visible {
+  outline: none;
+  background: color-mix(in oklch, var(--accent) 6%, transparent);
+}
+.nt__row--owe {
+  border-left-color: var(--accent);
+}
+.nt__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.nt__text {
+  color: var(--text);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.nt__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.45rem;
+  color: var(--text-muted);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+.nt__when {
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.nt__closed {
+  margin-top: var(--s-2);
+}
+.nt__summary {
+  padding: 0.2rem 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+.nt__summary:hover {
+  color: var(--text-2);
+}
+.nt__closed .nt__row {
+  opacity: 0.7;
+}
+
+.bell {
+  position: relative;
+}

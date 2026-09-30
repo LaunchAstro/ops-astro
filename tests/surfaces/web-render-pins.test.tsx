@@ -250,7 +250,7 @@ describe('the board, pinned whole', () => {
       fetch,
       newOperationId: () => 'operation-1',
     });
-    const page = await mount(<Projects client={client} grantKey="alpha:ada" />);
+    const page = await mount(<Projects client={client} grantKey="alpha:ada" navigate={() => {}} />);
     await tick();
     expect(page.host.innerHTML).toMatchSnapshot();
     await page.unmount();

@@ -99,6 +99,16 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
+  // The Team panel (MP-7-10): reached from its dock tab, drawn at an address
+  // of its own until the dock's drawers (MP-3-1) draw it in place. The route
+  // manifest has no page for it, so it has no rail entry.
+  'agency:team': {
+    namespace: 'agency',
+    path: '/team',
+    title: 'Team',
+    surface: 'none',
+    authenticated: true,
+  },
 } as const satisfies Readonly<Record<`${Namespace}:${string}`, RouteDescriptor>>;
 
 export type RouteId = keyof typeof ROUTES;

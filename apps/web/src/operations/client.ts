@@ -38,11 +38,23 @@
 // and `onSessionEnded` is how the application hears it. The refusal is still
 // returned unchanged: this module reports, it does not swallow.
 //
+// **Access ended is the third way a session ends (C58).** Ending a person's
+// access deactivates their login and ends their memberships, but the bearer in
+// the tab still verifies until its hour is up, so the API answers their next
+// call 403 `AUTH_NO_MEMBERSHIP`. A login that was never a member gets the same
+// answer on its first call, and that one is a denial to draw, not a session to
+// end. So the client remembers whether its bearer has been answered as a
+// member, and only a bearer that has been ends its session on that refusal.
+//
 // The wire spells the envelope `operationId` and `expectedRevision`, camelCase,
 // matching `commands/requests.ts`, though the slice contract's prose writes
 // `operation_id`. There is one spelling on the wire and this is it.
 
-import { PREFIX, pathOf } from '../../../../packages/core-wire/src/index.ts';
+import {
+  ACCOUNT_AVAILABILITY_PATH,
+  PREFIX,
+  pathOf,
+} from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
 import type { NotARead, ReadName } from './read-names.ts';
 
@@ -126,6 +138,8 @@ export interface MutationOptions {
 
 export class OperationsClient {
   readonly #options: ClientOptions;
+  /** Whether this bearer has had an answer, so it belonged to a member here. */
+  #answered = false;
 
   constructor(options: ClientOptions) {
     this.#options = options;
@@ -147,7 +161,7 @@ export class OperationsClient {
    * to be idempotent about and no revision to be stale against.
    */
   async read<T>(name: ReadName, body: Readonly<Record<string, unknown>>): Promise<CallResult<T>> {
-    return this.#post<T>(name, body);
+    return await this.#post<T>(pathOf(name), body);
   }
 
   /**
@@ -166,16 +180,22 @@ export class OperationsClient {
     if (options.expectedRevision !== undefined) {
       payload['expectedRevision'] = options.expectedRevision;
     }
-    return this.#post<CommandOutcome>(name, payload);
+    return await this.#post<CommandOutcome>(pathOf(name), payload);
   }
 
-  /** The task's live channel (T2f), or nothing if the join is refused or unreachable. */
+  /** The person's own availability (MP-7-10), on the path the surface names. */
+  setAvailability(body: Readonly<Record<string, unknown>>): Promise<CallResult<unknown>> {
+    return this.#post(ACCOUNT_AVAILABILITY_PATH, body);
+  }
+
+  /** One live stream naming every topic (C4), or nothing if the join is refused or unreachable. */
   async openLive(
-    recordId: string,
+    topics: readonly string[],
     signal: AbortSignal,
   ): Promise<ReadableStream<Uint8Array> | null> {
     const { origin, businessKey, token } = this.#options;
-    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live/task/${encodeURIComponent(recordId)}`;
+    const query = topics.map((topic) => `topic=${encodeURIComponent(topic)}`).join('&');
+    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live?${query}`;
     const headers: Record<string, string> =
       token === null ? {} : { authorization: `Bearer ${token}` };
     try {
@@ -186,11 +206,22 @@ export class OperationsClient {
     }
   }
 
-  async #post<T>(
-    name: CommandName,
-    body: Readonly<Record<string, unknown>>,
-  ): Promise<CallResult<T>> {
-    const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${pathOf(name)}`;
+  /** A presence route under `live/` (C2), its JSON when it answered 2xx, else null. */
+  async live(path: string, init: RequestInit): Promise<unknown> {
+    const { origin, businessKey, token } = this.#options;
+    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live/${path}`;
+    const headers = new Headers(init.headers);
+    if (token !== null) headers.set('authorization', `Bearer ${token}`);
+    try {
+      const response = await this.#options.fetch(url, { ...init, headers });
+      return response.ok ? ((await response.json()) as unknown) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async #post<T>(path: string, body: Readonly<Record<string, unknown>>): Promise<CallResult<T>> {
+    const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${path}`;
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     // The only credential this client sends. No actor header, no business
     // header, no forwarded host: there is nothing here for a tampered request
@@ -213,11 +244,7 @@ export class OperationsClient {
     const parsed: unknown = await response.json().catch(() => {});
 
     if (isWireRefusal(parsed)) {
-      if (
-        response.status === 401 &&
-        SESSION_ENDED.has(parsed.code) &&
-        this.#options.token !== null
-      ) {
+      if (this.#options.token !== null && this.#endsSession(response.status, parsed.code)) {
         this.#options.onSessionEnded?.(parsed);
       }
       return parsed;
@@ -231,7 +258,13 @@ export class OperationsClient {
     if (parsed === undefined) {
       return { unavailable: true, because: 'The API answered with something that was not JSON.' };
     }
+    this.#answered = true;
     return { ok: true, value: parsed as T };
+  }
+
+  #endsSession(status: number, code: string): boolean {
+    if (status === 401) return SESSION_ENDED.has(code);
+    return status === 403 && code === 'AUTH_NO_MEMBERSHIP' && this.#answered;
   }
 }
 

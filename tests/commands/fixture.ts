@@ -37,7 +37,12 @@ export interface Member {
   readonly presented: VerifiedSubject;
 }
 
-/** A person who can sign in. No grants: those are the caller's to issue. */
+/**
+ * A person who can sign in. No grants: those are the caller's to issue. They
+ * signed in with the second factor as they were enrolled, so a money act of
+ * theirs is inside C59's step-up window; a case about the step-up itself
+ * presents the assurance it means instead.
+ */
 export async function enrol(database: Database, businessId: string, name: string): Promise<Member> {
   return await database.withBusiness(businessId, async (tx) => {
     const personId = await insertPerson(tx, name);
@@ -46,7 +51,9 @@ export async function enrol(database: Database, businessId: string, name: string
     const subject = `${name}-${randomUUID()}`;
     const loginId = await insertLogin(tx, subject);
     await insertMapping(tx, loginId, personId, actorId);
-    return { personId, actorId, presented: { provider: 'supabase', subject } };
+    const now = Math.floor(Date.now() / 1000);
+    const assurance = { level: 'aal2', signedInAt: now, factorAt: now } as const;
+    return { personId, actorId, presented: { provider: 'supabase', subject, assurance } };
   });
 }
 

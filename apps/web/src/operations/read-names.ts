@@ -28,6 +28,7 @@ export const READ_NAMES = [
   'task.read',
   'task.board',
   'person.list',
+  'team.list',
   'settings.read',
   'session.capabilities',
   // The last two reads, which the client reached only through `mutate()` and
@@ -46,6 +47,15 @@ export const READ_NAMES = [
   'session.person',
   // The caller's own preferences (MP-2-11a); MP-2-11 draws them.
   'preference.read',
+  // The activity ledger (MP-8-4), a read from the day it was declared.
+  'task.ledger',
+  // Settings ▸ Access (C32), under `access:manage` on the server.
+  'access.read',
+  'client.list',
+  // The operations view (C55), under `operations:read` on the server.
+  'operations.read',
+  // The breach drill's notices (C81), under `privacy:manage` on the server.
+  'privacy.draft_breach_notices',
 ] as const;
 
 /**

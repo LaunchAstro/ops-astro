@@ -54,6 +54,8 @@ export interface DockTab {
   readonly open: boolean;
   /** The panel's glyph, as the mockup registers each panel with one; the grid glyph when none is named. */
   readonly icon?: GlyphName;
+  /** What is waiting in the panel, painted with the first frame; none at zero. */
+  readonly count?: number;
 }
 
 export interface ShellProps {
@@ -266,7 +268,9 @@ export function Shell(props: ShellProps): ReactElement {
             className="dock__tab"
             type="button"
             aria-expanded={tab.open}
-            aria-label={`${tab.open ? 'Close' : 'Open'} ${tab.label}`}
+            aria-label={`${tab.open ? 'Close' : 'Open'} ${tab.label}${
+              (tab.count ?? 0) > 0 ? `, ${String(tab.count)} unread` : ''
+            }`}
             onClick={() => {
               props.onDockTab(tab.id);
             }}
@@ -280,6 +284,11 @@ export function Shell(props: ShellProps): ReactElement {
             <span className="dock__tablabel" aria-hidden="true">
               {tab.label}
             </span>
+            {(tab.count ?? 0) > 0 ? (
+              <span className="cbadge dock__count" aria-hidden="true">
+                {tab.count}
+              </span>
+            ) : null}
           </button>
         ))}
         {props.panel}

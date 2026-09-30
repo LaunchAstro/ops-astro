@@ -71,7 +71,7 @@ export function subjectsOf(session: Session): readonly Subject[] {
 // The depth guard is not decoration. `parent_grant_id` sits under the same
 // UPDATE privilege that writes `revoked_at`, so a cycle is reachable, and an
 // unbounded recursive term that meets a cycle does not return.
-const EFFECTIVE = `
+export const EFFECTIVE = `
   with recursive effective as (
     select g.*, 1 as depth
       from public.grants g
@@ -124,34 +124,26 @@ export async function effectiveGrants(
 }
 
 /**
- * Every live grant of this collection and action, at whatever scope it names.
- *
- * `effectiveGrants` answers "is this one scope covered"; a search asks the
- * other question, "which scopes are", so the answer can be a predicate of the
- * statement that finds candidates rather than a filter over what it found
- * (ticket C1, CS-2.4). Same `EFFECTIVE`, so a delegated
- * grant whose parent was revoked is as dead here as it is there.
+ * Every grant the subjects hold right now, as one opaque value. It changes
+ * whenever one of them is issued, revoked or expires, or loses the parent it
+ * was delegated under, so a cache keyed by it never outlives the authority it
+ * was worked out under (C4 rollup scope).
  */
-export async function heldScopes(
+export async function grantFingerprint(
   tx: TenantQuery,
   subjects: readonly Subject[],
-  request: Omit<ScopeRequest, 'scope'>,
-): Promise<readonly Scope[]> {
-  return await tx.query<Scope>(
+): Promise<string> {
+  const [row] = await tx.query<{ readonly fingerprint: string }>(
     `${EFFECTIVE}
-     select distinct e.scope_kind as kind, e.scope_id as id
+     select encode(sha256(convert_to(coalesce(string_agg(e.id::text, ',' order by e.id), ''),
+                                     'UTF8')), 'hex') as fingerprint
        from effective e
-      where e.collection = $1
-        and e.action = $2
-        and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
+      where exists (select 1 from unnest($1::text[], $2::uuid[]) as s (kind, id)
                      where s.kind = e.subject_kind and s.id = e.subject_id)`,
-    [
-      request.collection,
-      request.action,
-      subjects.map((subject) => subject.kind),
-      subjects.map((subject) => subject.id),
-    ],
+    [subjects.map((subject) => subject.kind), subjects.map((subject) => subject.id)],
   );
+  if (row === undefined) throw new Error('grant fingerprint answered no row');
+  return row.fingerprint;
 }
 
 /**
@@ -270,10 +262,17 @@ async function exceedsGranter(
  * It answers with the timestamp this call wrote, or null when it wrote none
  * because the grant was already revoked or is not in this business. Callers
  * that only needed the write may ignore it; `grant.revoke` returns it.
+ *
+ * `now()` is when this transaction began. A revocation that waited on the
+ * access lock behind a grant made after it began (C58: ending a person's
+ * access while a grant to them commits) would otherwise be stamped before the
+ * grant existed, which `grants_revoked_after_granted` refuses; it is stamped
+ * no earlier than the grant.
  */
 export async function revokeGrant(tx: TenantQuery, grantId: string): Promise<Date | null> {
   const rows = await tx.query<{ readonly revoked_at: Date }>(
-    'update public.grants set revoked_at = now() where id = $1 and revoked_at is null returning revoked_at',
+    `update public.grants set revoked_at = greatest(now(), granted_at)
+      where id = $1 and revoked_at is null returning revoked_at`,
     [grantId],
   );
   return rows[0]?.revoked_at ?? null;

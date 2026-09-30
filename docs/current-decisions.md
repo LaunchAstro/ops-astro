@@ -109,6 +109,14 @@ commands a principal may call, and through which surface. That discovery is
 replaced by the catalogue, not ported. The required check `command parity`
 runs `node scripts/command-parity.mjs --check`.
 
+**Amended 30 September 2026** (S0-5, its first part). Each catalogue row
+carries the command's data effects (`packages/core-wire/src/data-effects.ts`):
+the tables it writes with their scope, its intake, outside effects and
+whether it admits an outside person. Its class (`invitation`, `client-data`
+or `made-up-safe`) is derived from them, never set by hand. A command with
+no entry does not compile, and each entry is proved against the rows its
+fixture changes. The readiness check that reads the class is not built yet.
+
 No external engineer review, legal opinion, security assessment, hosted enforcement,
 mailbox delivery, or service deployment is certified here. A public technical
 evidence digest with adjudicated verdicts remains outstanding. The

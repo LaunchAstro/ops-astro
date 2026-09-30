@@ -17,7 +17,7 @@
     "unicorn(no-immediate-mutation)": 2,
     "unicorn(no-negated-condition)": 12,
     "unicorn(no-useless-promise-resolve-reject)": 1,
-    "unicorn(no-useless-undefined)": 82,
+    "unicorn(no-useless-undefined)": 83,
     "unicorn(prefer-dom-node-dataset)": 66,
     "unicorn(prefer-import-meta-properties)": 5,
     "unicorn(prefer-native-coercion-functions)": 1,

@@ -20,6 +20,20 @@ import {
   ownAppliedEffect,
   ownUnknownAttempt,
 } from './role-case-bodies.ts';
+import { privacyBody } from './role-case-privacy-bodies.ts';
+import { credentialBody } from './role-case-credential-bodies.ts';
+
+/** Clients made by the matrix, each under a name of its own (one name per business). */
+let clientsMade = 0;
+const nextClientName = (): string =>
+  `A made-up client ${String((clientsMade += 1))} ${randomUUID()}`;
+
+/** A client of the context's business, made by its admin (C32). */
+async function madeClient(context: BodyContext): Promise<string> {
+  const made = await context.asPerson('client.create', { name: nextClientName() });
+  if (made.code !== 'ok') throw new Error(`matrix: client.create refused ${made.code}`);
+  return String((made.body['detail'] as Record<string, unknown>)['clientId']);
+}
 
 export function createPositiveBody(
   context: BodyContext,
@@ -67,13 +81,9 @@ export function createPositiveBody(
       case 'task.set_audience':
         return { body: { ...(await target()), fields: { client_visible: true } } };
       case 'task.set_party':
-        // The party link takes a uuid and nothing in this tree resolves one:
-        // the party model is not installed, and `tasks-state.ts` says so where
-        // it excludes `client` from the person links it checks. So this is the
-        // operation succeeding on a well-formed identifier, which is the whole
-        // of what it claims to check — written down so a reader is not left
-        // believing a party was proved to exist.
-        return { body: { ...(await target()), fields: { client: randomUUID() } } };
+        // The party link names a client of this business (C32), so the admin
+        // makes one first.
+        return { body: { ...(await target()), fields: { client: await madeClient(context) } } };
       case 'task.reparent':
         return { body: { ...(await target()), parentId: null } };
       case 'task.move':
@@ -124,8 +134,11 @@ export function createPositiveBody(
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
         return { body: { board: null } };
+      case 'task.ledger':
+        return { body: { timeZone: 'UTC' } };
       case 'task.queue':
       case 'person.list':
+      case 'team.list':
       // Both take an empty body and neither carries an `expectedRevision`:
       // `settings.read` because `business_settings` has no revision column to
       // be stale against, `session.capabilities` because it reports the
@@ -133,28 +146,76 @@ export function createPositiveBody(
       // `settings.read` needs `settings:read`, which the seed grants the
       // admin; `session.capabilities` needs a live grant of any kind, which
       // the admin holds, so the admin reaches both here.
-      // The person menu's two (C23), `session.person` and `session.end`, take
-      // an empty body too: the caller's own name, and the caller's own
-      // sign-out, which records it and leaves the bearer working. The
-      // caller's own preferences (MP-2-11a) ask a live grant of any kind, as
-      // `session.capabilities` does, which the admin holds.
+      // The person menu's two (C23) take an empty body too: the caller's own
+      // name, and their own sign-out, which leaves the bearer working. The
+      // caller's own preferences (MP-2-11a) ask a live grant of any kind.
+      // `access.read` needs `access:manage`, which the fixture admin holds on
+      // every collection; `operations.read` needs `operations:read`, which the
+      // fixture admin holds as the owner does (C55); and `client.list` (C32),
+      // any live grant, which the admin holds.
       case 'settings.read':
       case 'session.capabilities':
       case 'session.person':
       case 'session.end':
       case 'preference.read':
+      case 'access.read':
+      case 'operations.read':
+      case 'client.list':
         return { body: {} };
       case 'preference.save':
         return { body: { preference: 'appearance', value: 'dark' } };
       case 'task.search':
         // A word no audit row carries, so digest-only is checked on it.
         return { body: { query: 'brochure' } };
+      // C32: `record:write`, a name no other call has used.
+      case 'client.create':
+        return { body: { name: nextClientName() } };
+      // C32: `access:manage`. The key is one the member already holds over
+      // the whole business, so the answer is that grant and no caller's
+      // holdings change under the cases that read them.
+      case 'access.grant':
+        return {
+          body: { holderId: context.assigneePersonId, collection: 'task', action: 'read' },
+        };
+      // C32: a grant the admin has just given over one client, revoked. The
+      // member already holds the same key over the whole business.
+      case 'access.revoke': {
+        const given = await context.asPerson('access.grant', {
+          holderId: context.assigneePersonId,
+          collection: 'task',
+          action: 'read',
+          clientId: await madeClient(context),
+        });
+        if (given.code !== 'ok') throw new Error(`matrix: access.grant refused ${given.code}`);
+        return { body: { grantId: (given.body['detail'] as Record<string, unknown>)['grantId'] } };
+      }
+      // C58: `access:manage`, ending a member made for the case, so no
+      // caller's standing changes under the cases that read it.
+      case 'access.end': {
+        if (context.freshMember === undefined) return { exception: 'no member maker here' };
+        return { body: { holderId: await context.freshMember() } };
+      }
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
       case 'settings.set_four_eyes_threshold':
         return { body: { value: 1200 } };
       case 'settings.set_client_sign_off':
         return { body: { value: true } };
+      case 'settings.set_money_step_up':
+        return { body: { value: true } };
+      // C81: the admin holds `privacy:manage`, as the owner does.
+      case 'legal.draft_version':
+      case 'legal.approve_version':
+      case 'legal.publish_version':
+      case 'privacy.set_overseas_service':
+      case 'privacy.set_data_class':
+      case 'privacy.draft_breach_notices':
+      case 'privacy.record_incident':
+        return await privacyBody(declaration.name, context);
+      // API-2: the admin holds `credential:write`, as the owner does.
+      case 'credential.issue':
+      case 'credential.revoke':
+        return await credentialBody(declaration.name, context);
       case 'budget.top_up':
         // The admin approved the plan and holds billing, so a top-up under
         // the band is hers alone (T2e).

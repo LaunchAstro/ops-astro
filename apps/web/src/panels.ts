@@ -48,6 +48,13 @@ export const PANELS: readonly PanelRegistration[] = [
     route: 'agency:settings',
     icon: 'settings-sliders',
   },
+  {
+    id: 'team',
+    label: 'Team',
+    ariaLabel: 'Team: who is here and who is away',
+    route: 'agency:team',
+    icon: 'comments',
+  },
 ];
 
 /**

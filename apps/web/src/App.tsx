@@ -25,6 +25,8 @@ import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { endIdentitySession } from './session/sign-in.ts';
+import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
+import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
 
 export interface AppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
@@ -66,6 +68,8 @@ export function App(props: AppProps): ReactElement {
     readonly held: Interruption;
     readonly offer: HeldOffer | null;
   } | null>(null);
+  // The person signed out here, so sign-in says their unsaved edit went with it (C58).
+  const [signedOut, setSignedOut] = useState(false);
 
   const onSignedIn = useCallback(
     (next: Session) => {
@@ -75,6 +79,7 @@ export function App(props: AppProps): ReactElement {
       props.sessions.set(next);
       setSession(next);
       setNotice(null);
+      setSignedOut(false);
       if (back === null) {
         props.navigate(pathTo('agency:projects-board'));
         return;
@@ -167,6 +172,7 @@ export function App(props: AppProps): ReactElement {
     props.sessions.clear();
     setSession(null);
     setNotice(null);
+    setSignedOut(true);
     props.navigate(pathTo('agency:sign-in'));
     if (ended === null) return;
     void client.mutate('session.end', {});
@@ -200,6 +206,7 @@ export function App(props: AppProps): ReactElement {
       fetch={props.fetch}
       onSignedIn={onSignedIn}
       ended={props.sessions.interruption}
+      signedOut={signedOut}
     />
   );
 
@@ -225,57 +232,68 @@ export function App(props: AppProps): ReactElement {
           />
         ),
       storage: props.storage,
+      navigate: props.navigate,
     },
   });
 
   return (
-    <>
-      <Shell
-        face={face}
-        rail={rail}
-        here={bare}
-        strip={
-          <FrameStrip
-            face={face}
-            identity={identity}
-            clientSlug={at?.client ?? null}
-            steps={props.steps}
-            onSearch={searchable ? search.open : null}
-            searchRef={search.box}
-            session={session}
-            personName={personName}
-            navigate={navigate}
-            onSignOut={onSignOut}
-          />
-        }
-        tabs={tabs}
-        freshness={offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }}
-        nav={{ open: navOpen, onToggle: setNavOpen }}
-        onNavigate={navigate}
-        title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
-        // An open tab is announced as "Close", so pressing it leaves the address
-        // for the board rather than pushing the same address again.
-        dock={session === null || face === 'client' ? [] : dockTabs(here)}
-        onDockTab={(id) => {
-          const panel = PANELS.find((entry) => entry.id === id);
-          if (panel === undefined || panel.route === null) return;
-          const target = pathTo(panel.route);
-          props.navigate(here === target ? pathTo('agency:projects-board') : target);
-        }}
-        seated={false}
-      >
-        <FaceProvider face={face}>{content}</FaceProvider>
-      </Shell>
-      {search.showing && searchable ? (
-        <SearchPalette
-          client={client}
-          onOpen={(address) => {
-            search.dismiss();
-            navigate(address);
+    <PageFreshnessProvider>
+      <PagePresenceProvider>
+        <Shell
+          face={face}
+          rail={rail}
+          here={bare}
+          strip={
+            <FrameStrip
+              face={face}
+              identity={identity}
+              clientSlug={at?.client ?? null}
+              steps={props.steps}
+              onSearch={searchable ? search.open : null}
+              searchRef={search.box}
+              session={session}
+              personName={personName}
+              navigate={navigate}
+              onSignOut={onSignOut}
+            />
+          }
+          tabs={tabs}
+          freshness={offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }}
+          nav={{ open: navOpen, onToggle: setNavOpen }}
+          onNavigate={navigate}
+          meta={
+            session === null ? null : (
+              <>
+                <StripFreshness />
+                <StripPresence />
+              </>
+            )
+          }
+          title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
+          // An open tab is announced as "Close", so pressing it leaves the address
+          // for the board rather than pushing the same address again.
+          dock={session === null || face === 'client' ? [] : dockTabs(here)}
+          onDockTab={(id) => {
+            const panel = PANELS.find((entry) => entry.id === id);
+            if (panel === undefined || panel.route === null) return;
+            const target = pathTo(panel.route);
+            props.navigate(here === target ? pathTo('agency:projects-board') : target);
           }}
-          onClose={search.close}
-        />
-      ) : null}
-    </>
+          seated={false}
+        >
+          <FaceProvider face={face}>{content}</FaceProvider>
+        </Shell>
+        {search.showing && searchable ? (
+          <SearchPalette
+            client={client}
+            onOpen={(address) => {
+              search.dismiss();
+              navigate(address);
+            }}
+            onClose={search.close}
+          />
+        ) : null}
+      </PagePresenceProvider>
+    </PageFreshnessProvider>
   );
 }

@@ -40,7 +40,14 @@ const plus = (counts: Counts, delta: Counts) =>
 const now = () => Math.floor(Date.now() / 1000);
 const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
 const GOTRUE = { sub: 'mia', aud: 'authenticated', iss: ISSUER };
-const claims = (over: object = {}) => ({ ...GOTRUE, iat: now(), exp: now() + 600, ...over });
+const claims = (over: object = {}) => ({
+  ...GOTRUE,
+  iat: now(),
+  exp: now() + 600,
+  // The first sign-in, as GoTrue stamps it (C58's 12-hour limit is measured from it).
+  amr: [{ method: 'password', timestamp: now() }],
+  ...over,
+});
 const PAST = { exp: now() - 60 };
 
 async function swapped(): Promise<string> {

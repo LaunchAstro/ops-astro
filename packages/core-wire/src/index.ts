@@ -13,7 +13,9 @@ export {
   effectOperationId,
   DELEGATION_HEADER,
   pathOf,
+  ACCOUNT_AVAILABILITY_PATH,
   PREFIX,
+  PUBLIC_PREFIX,
   READS,
   type CommandDeclaration,
   type CommandName,
@@ -21,15 +23,35 @@ export {
   type OperandKind,
   type OperandSpec,
 } from './surface.ts';
+// The keys a grant may carry (C32).
+export { isGrantableKey, SELF_SCOPED_COLLECTIONS } from './permission-keys.ts';
 // The one refusal shape, for the clients that parse it off the wire. Type-only,
 // so no records code reaches a bundle.
 export type { CommandRefusal } from '../../core-records/src/index.ts';
 // What the reads answer, declared once for the server and every client.
 export type {
+  AccessAgent,
+  AccessPermission,
+  AccessPerson,
+  AccessReadResult,
   AttemptView,
+  BreachNoticeDraft,
+  BreachNoticesResult,
+  BreachRunbookLink,
+  HealthFault,
+  HealthSourceName,
+  HealthSourceState,
+  HealthSourceView,
+  OperationsReadResult,
+  PrivacyIncidentView,
+  ServiceHealthSection,
+  ServiceHealthState,
+  ServiceHealthView,
   Capability,
   CapabilitiesResult,
   SessionPersonResult,
+  ClientListResult,
+  ClientView,
   CommentView,
   DecisionLink,
   EvidenceView,
@@ -41,7 +63,11 @@ export type {
   InternalTaskDetail,
   InternalTaskRead,
   LeaseView,
+  LedgerDayView,
+  LedgerEventView,
   PersonListResult,
+  TeamListResult,
+  TeamMemberView,
   PersonView,
   PresetPlanResult,
   ProposalVersionView,
@@ -63,6 +89,7 @@ export type {
   TaskEnvelope,
   TaskExecution,
   TaskExecutionResult,
+  TaskLedgerResult,
   TaskReadResult,
   TaskSearchResult,
   TaskStateView,
@@ -70,3 +97,5 @@ export type {
 } from './views.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
+// each command's data effects and its class, read by the first-client gate (S0-5)
+export * from './data-effects.ts';

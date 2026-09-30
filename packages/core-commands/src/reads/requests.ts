@@ -25,10 +25,16 @@
 // the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
+import type { BreachNoticeOperands } from './operations.ts';
 import type {
+  AccessReadResult,
+  BreachNoticesResult,
+  ClientListResult,
   CapabilitiesResult,
   SessionPersonResult,
+  OperationsReadResult,
   PersonListResult,
+  TeamListResult,
   PresetPlanResult,
   QueueResult,
   SettingsReadResult,
@@ -36,6 +42,7 @@ import type {
   TaskBoardResult,
   TaskDetail,
   TaskSearchResult,
+  TaskLedgerResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { Receipt } from '../../../core-runtime/src/index.ts';
@@ -62,9 +69,17 @@ export interface ReadOperands {
   readonly 'task.read': { readonly recordId: string };
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
   readonly 'task.board': { readonly board: string | null };
+  /**
+   * The activity ledger's page: the newest days with events before `before`
+   * (a `YYYY-MM-DD` in `timeZone`), or the newest days of all when it is
+   * null. The zone is the reader's, and it is what a day means: an event at
+   * 23:30 in Townsville is on a different day than it is in UTC.
+   */
+  readonly 'task.ledger': { readonly before: string | null; readonly timeZone: string };
   readonly 'person.list': NoOperands;
   /** The words to find among the tasks the caller may read (C1). */
   readonly 'task.search': { readonly query: string };
+  readonly 'team.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
   /**
@@ -110,6 +125,16 @@ export interface ReadOperands {
   readonly 'session.person': NoOperands;
   /** The caller's own saved preferences (MP-2-11a). */
   readonly 'preference.read': NoOperands;
+  /** Who may do what here: Team, Clients and Agents with their previews (C32). */
+  readonly 'access.read': NoOperands;
+  readonly 'client.list': NoOperands;
+  /** What needs the operator's eye: privacy incidents first (C55). */
+  readonly 'operations.read': NoOperands;
+  /**
+   * The breach drill's notices from the published runbook (C81), for the
+   * recipients named. It writes nothing and sends nothing, so it is a read.
+   */
+  readonly 'privacy.draft_breach_notices': BreachNoticeOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -130,7 +155,9 @@ export type ReadResult =
   | SharedTaskRead
   | TaskBoardResult
   | TaskSearchResult
+  | TaskLedgerResult
   | PersonListResult
+  | TeamListResult
   | QueueResult
   | PresetPlanResult
   | SettingsReadResult
@@ -138,4 +165,8 @@ export type ReadResult =
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
   | SessionPersonResult
-  | { readonly ok: true; readonly preferences: Readonly<Record<string, unknown>> };
+  | { readonly ok: true; readonly preferences: Readonly<Record<string, unknown>> }
+  | AccessReadResult
+  | ClientListResult
+  | OperationsReadResult
+  | BreachNoticesResult;

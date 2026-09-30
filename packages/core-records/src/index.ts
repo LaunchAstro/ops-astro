@@ -16,7 +16,18 @@ export {
   LEGACY_SCHEME,
   withCredentialKeys,
   type CredentialKeysDecision,
+  type DelegationCredentialKeys,
 } from './authority/credential-keys.ts';
+export {
+  CREDENTIAL_EXCLUDED_ACTIONS,
+  CREDENTIAL_MAX_DAYS,
+  deriveAgentCredential,
+  issueAgentCredential,
+  lockAgentCredential,
+  revokeAgentCredential,
+  type AgentCredential,
+  type CredentialKey,
+} from './authority/agent-credentials.ts';
 export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
@@ -36,7 +47,7 @@ export {
 export {
   checkAuthority,
   effectiveGrants,
-  heldScopes,
+  grantFingerprint,
   revokeGrant,
   subjectsOf,
   type Action,
@@ -47,6 +58,24 @@ export {
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { heldScopes } from './authority/held-scopes.ts';
+export { heldPermissions, type HeldPermission } from './authority/held-permissions.ts';
+export {
+  grantAccess,
+  lastManager,
+  lockAccess,
+  otherManagers,
+  type AccessGrant,
+} from './authority/access.ts';
+export {
+  clientsReached,
+  CLIENT_NAME_MOST,
+  createClient,
+  isClientHere,
+  listAllClients,
+  type AccessDecision,
+  type ClientRow,
+} from './clients/clients.ts';
 export {
   EXPIRED_FIXES,
   NO_AGENT_FIXES,
@@ -56,10 +85,82 @@ export {
 export { recordBodyRefusal } from './identity/authentication-attempts.ts';
 export {
   NO_MEMBERSHIP_FIXES,
+  standsOnShares,
   withSession,
+  type SecondFactorRule,
   type Session,
   type VerifiedSubject,
 } from './identity/login-resolution.ts';
+export { withStanding } from './identity/standing.ts';
+export {
+  NO_ASSURANCE,
+  SESSION_ABSOLUTE_SECONDS,
+  type Assurance,
+  type AssuranceLevel,
+} from './identity/verified-subject.ts';
+export {
+  liveFactor,
+  recordFactorEnrolled,
+  recordFactorRemoved,
+  recordFactorVerified,
+  type FactorStatus,
+  type SecondFactor,
+} from './identity/second-factor.ts';
+export {
+  endOtherSeenSessions,
+  endOwnSession,
+  listSeenSessions,
+  type SeenSession,
+  type SessionEndReason,
+} from './identity/sessions.ts';
+export {
+  isMoneyKey,
+  judgeStepUp,
+  MONEY_STEP_UP_SETTING,
+  refuseStaleMoneyStep,
+  STEP_UP_WINDOW_SECONDS,
+} from './authority/step-up.ts';
+export {
+  INFORMATION_KINDS,
+  readPrivacyIncident,
+  readPrivacyIncidents,
+  recordPrivacyIncident,
+  type InformationKind,
+  type PrivacyIncident,
+  type PrivacyIncidentFacts,
+} from './operations/privacy-incidents.ts';
+export {
+  draftBreachNotices,
+  type BreachNotice,
+  type BreachNoticeInput,
+  type NoticeRecipient,
+} from './operations/breach-notices.ts';
+export {
+  LEGAL_DOCUMENTS,
+  PUBLIC_LEGAL_DOCUMENTS,
+  approveLegalVersion,
+  draftLegalVersion,
+  publishLegalVersion,
+  readPublishedLegal,
+  type DraftedVersion,
+  type LegalDocument,
+  type PublishedVersion,
+  type VersionRefusal,
+} from './operations/legal-documents.ts';
+export {
+  readDataClasses,
+  setDataClass,
+  type DataClass,
+  type DataClassesState,
+  type ListedDataClass,
+} from './operations/data-classes.ts';
+export {
+  readRegister,
+  setOverseasService,
+  type ListedService,
+  type OverseasService,
+  type RegisterState,
+} from './operations/overseas-services.ts';
 export {
   admitsPreference,
   isPreferenceKey,
@@ -94,6 +195,7 @@ export {
   type RefusalCode,
   type RuntimeRefusalCode,
 } from './register.ts';
+export { UNPRODUCED_CODES } from './register-unproduced.ts';
 export {
   COMMENT_TYPE_KEY,
   externalCommentProjection,
@@ -115,6 +217,7 @@ export {
   wouldCloseParentLoop,
   type EntryPoint,
 } from './tasks/placement.ts';
+export { changesSince, type ChangesSince, type TaskChange } from './tasks/changes.ts';
 export { slotOf, TASK_SPINE, TASK_TYPE_KEY } from './tasks/spine.ts';
 export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.ts';
 export { TASK_STATE_TYPE_KEY, type MachineCategory } from './tasks/states.ts';
