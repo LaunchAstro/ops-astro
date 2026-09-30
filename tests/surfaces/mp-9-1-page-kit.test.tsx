@@ -59,8 +59,11 @@ describe('MP-9-1 a tip dismissal is stored per person against its page and text'
     const store = tipStore();
     const tip = { page: '/dashboard/portfolio/', id: 'intro', text: 'Read the rollup here.' };
     mounted = await mount(<SectionTip tip={tip} preferences={store} />);
-    expect(mounted.text()).toContain('Read the rollup here.');
-    await mounted.click('.sectip button[aria-label="Dismiss this tip"]');
+    // The kit's info banner (DS-PRIM-22), dismissed by the kit's icon button.
+    expect(mounted.find('.sectip .banner.banner--info .banner__body')?.textContent).toBe(
+      'Read the rollup here.',
+    );
+    await mounted.click('.sectip .banner button.ibtn[aria-label="Dismiss this tip"]');
     expect(store.saved).toEqual([tipKey(tip)]);
     expect(mounted.find('.sectip')).toBeNull();
   });
@@ -122,6 +125,7 @@ describe('MP-9-1 KPI tiles with delta, term tips and of-tracks', () => {
     expect(first?.querySelector('.stat__num')?.textContent).toContain('12');
     expect(first?.querySelector('.stat__of')?.textContent?.trim()).toBe('of 20');
     const meter = first?.querySelector('[role="meter"]');
+    expect(meter?.className).toBe('meter meter--stat');
     expect(meter?.getAttribute('aria-valuenow')).toBe('12');
     expect(meter?.getAttribute('aria-valuemax')).toBe('20');
     const fill = meter?.querySelector('.meter__fill') as HTMLElement | null;
@@ -233,7 +237,8 @@ describe('MP-9-1 section heads number top to bottom', () => {
     expect(mounted.find('h2.sec__head')?.textContent).toBe('Skill costing');
     expect(mounted.find('.sec__meta')?.textContent).toContain('4 skills');
     const order = mounted.all('.sec > *').map((el) => el.className.split(' ')[0]);
-    expect(order).toEqual(['sec__meta', 'sec__head', 'banner']);
+    expect(order).toEqual(['sec__meta', 'sec__head', 'sectip']);
+    expect(mounted.find('.sec > .sectip > .banner.banner--info')).not.toBeNull();
   });
 
   it('refuses an index that is not a whole number from 1', () => {

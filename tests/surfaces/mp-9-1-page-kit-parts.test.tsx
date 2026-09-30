@@ -131,13 +131,14 @@ describe('MP-9-1 meters as page parts draw the value, the whole and the target',
     expect(mounted.find('.pmeter__label')?.textContent).toBe('Hours used');
     expect(mounted.find('.pmeter__val')?.textContent).toBe('30h of 40');
     const meter = mounted.find('[role="meter"]');
-    expect(meter?.className).toBe('meter');
+    // The kit's meter (DS-PRIM-23), toned where the kit colours its fill.
+    expect(meter?.className).toBe('meter meter--meter is-warn');
     expect(meter?.getAttribute('aria-label')).toBe('Hours used');
     expect(meter?.getAttribute('aria-valuenow')).toBe('30');
     expect(meter?.getAttribute('aria-valuemax')).toBe('40');
     const fill = meter?.querySelector('.meter__fill');
     expect(widthOf(fill)).toBe('75%');
-    expect(fill?.classList.contains('is-warn')).toBe(true);
+    expect(fill?.className).toBe('meter__fill');
     const target = meter?.querySelector('.meter__target') as HTMLElement | null;
     expect(target?.style.left).toBe('80%');
   });
