@@ -1280,6 +1280,16 @@ ledger: {
     openedBy: { versionId } | null;    // the approval whose reservation opened it
     cap: { key; limitMinor; currency };// the cap it draws on
   }[];                                 // empty before any approval
+  stops: {                             // AW-05's asks on the task's runs, oldest first
+    askId; runId; number; kind: 'stop' | 'consolidated';
+    ceilingMinor; spentMinor; currency; raisedAt;
+    answer: 'top_up' | 'end' | null;
+    awaitingSecond: { amountMinor } | null;
+  }[];
+  states: {                            // MP-6-2: each run's kept versions, newest first
+    runId; version; knowledge: string[]; unknowns: string[];
+    revisedBy: { actorId }; revisedAt;
+  }[];
 }
 ```
 
@@ -1288,7 +1298,9 @@ the held reservations and the spent ones add up to its `heldMinor` and
 `actualMinor`. It is read only and adds no audit event beyond the read's own.
 It names the business's cap and its limit, so only an internal reader is shown
 it: an agent's `task.read` answers `ledger: null` (I09).
-AW-05's ceiling and its stops are not on it yet (SL11).
+The stops and the states are read through a run on this task in this
+business, so nothing of another task's runs is read; the states are the
+writer's text (`run.revise_state`), for a page to show as text.
 The task page's Agent pane draws it as the token panel (DS-TASK-9): the
 current envelope (the open one, else the newest closed), its reservations as
 the per-run rows by `runId`, and the skills and data source its opening

@@ -107,7 +107,10 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revision lists on Postgre
     expect(foreign.body).toStrictEqual(madeUp.body);
     // Another client, on the one task shared with them: no ledger, so no states.
     const client = await externalClient(world, ada, one.recordId);
-    expect(await statesOf(client, one.recordId)).toBeNull();
+    const shared = await asPerson(world, client, 'task.read', { recordId: one.recordId });
+    expect(shared.code).toBe('ok');
+    expect(JSON.stringify(shared.body)).not.toContain('"states"');
+    expect(JSON.stringify(shared.body)).not.toContain('first knowledge');
     const theirs = await asPerson(world, client, 'task.read', { recordId: two.recordId });
     expect(theirs.status).toBeGreaterThanOrEqual(403);
     // Another person under a live delegation: the agent on ada's other work.

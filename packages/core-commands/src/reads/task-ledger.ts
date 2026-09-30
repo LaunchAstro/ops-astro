@@ -16,9 +16,16 @@
 // ask on a run of this task, its answer if one was given, and a first top-up
 // still waiting for a second person above the band. The panel shows them and
 // the pane's answers are C54's, sent to `run.top_up` and
-// `run.end_at_budget_stop`, which decide under their own locks.
+// `run.end_at_budget_stop`, which decide under their own locks. MP-6-2's
+// state revision lists are one more shape again: each kept version of the
+// task's runs, written by `run.revise_state`.
 
-import type { BudgetStopView, EnvelopeView, TaskLedgerView } from '../../../core-wire/src/index.ts';
+import type {
+  BudgetStopView,
+  EnvelopeView,
+  RunStateView,
+  TaskLedgerView,
+} from '../../../core-wire/src/index.ts';
 
 export interface EnvelopeRow {
   readonly id: string;
@@ -112,6 +119,36 @@ const stopView = (row: StopRow): BudgetStopView => ({
   awaitingSecond: row.pending_minor === null ? null : { amountMinor: Number(row.pending_minor) },
 });
 
+export interface StateRow {
+  readonly run_id: string;
+  readonly version: number;
+  readonly knowledge: readonly string[];
+  readonly unknowns: readonly string[];
+  readonly revised_by_actor_id: string;
+  readonly revised_at: string;
+}
+
+/**
+ * MP-6-2's state revision lists, `$1` the business, `$2` the task: each kept
+ * version of a run on this task, the run found on this task in this business
+ * as the stops' is. Newest version first within each run.
+ */
+export const STATES = `select row_number() over (order by run.created_at, run.id, s.version desc) as ordinal,
+            s.run_id, s.version, s.knowledge, s.unknowns, s.revised_by_actor_id, s.revised_at
+       from public.run_states s
+       join public.planned_runs run
+         on run.business_id = s.business_id and run.id = s.run_id and run.task_id = s.task_id
+      where s.business_id = $1 and run.task_id = $2::uuid`;
+
+const stateView = (row: StateRow): RunStateView => ({
+  runId: row.run_id,
+  version: Number(row.version),
+  knowledge: row.knowledge,
+  unknowns: row.unknowns,
+  revisedBy: { actorId: row.revised_by_actor_id },
+  revisedAt: isoTime(row.revised_at),
+});
+
 /**
  * The task's envelopes, in the projection's order (the open one first, then
  * the closed ones, newest first), and its stops, from the statement's rows.
@@ -119,4 +156,5 @@ const stopView = (row: StopRow): BudgetStopView => ({
 export const ledgerOf = (rows: Readonly<Record<string, readonly unknown[]>>): TaskLedgerView => ({
   envelopes: ((rows['envelopes'] ?? []) as readonly EnvelopeRow[]).map((row) => envelopeView(row)),
   stops: ((rows['stops'] ?? []) as readonly StopRow[]).map((row) => stopView(row)),
+  states: ((rows['states'] ?? []) as readonly StateRow[]).map((row) => stateView(row)),
 });
