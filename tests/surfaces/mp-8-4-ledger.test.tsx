@@ -195,9 +195,14 @@ describe('MP-8-4 paging per the long-lists ruling', () => {
 describe('MP-8-4 empty ledger says what it holds', () => {
   it('draws the sentence and no list or paging when there is nothing', async () => {
     mounted = await mount(<Ledger {...props({ days: [], earlier: false })} />);
-    expect(mounted.find('.act__none')?.textContent).toBe(
-      'Nothing has happened here yet. Every change to a task you can see is listed here, newest first.',
+    // The kit's one empty state (MP-1-3), never the mockup's `act__none` dialect.
+    expect(mounted.find('.empty.empty--block .empty__title')?.textContent).toBe(
+      'Nothing has happened here yet.',
     );
+    expect(mounted.find('.empty__desc')?.textContent).toBe(
+      'Every change to a task you can see is listed here, newest first.',
+    );
+    expect(mounted.find('.act__none')).toBeNull();
     expect(mounted.find('.act__list')).toBeNull();
     expect(mounted.find('button.act__more')).toBeNull();
   });

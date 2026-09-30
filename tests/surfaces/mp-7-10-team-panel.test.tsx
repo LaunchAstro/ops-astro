@@ -110,7 +110,9 @@ describe('MP-7-10 the Team panel opens with the people strip and availability', 
     mounted = await mount(<TeamPanel {...props()} />);
     expect(mounted.all('.tmc__strip [data-person]')).toHaveLength(3);
     expect(mounted.find('.tmc__me')?.textContent).toContain('You are in');
-    expect(mounted.find('.tmc__conv .dp__empty')?.textContent).toBe('Nobody selected.');
+    expect(mounted.find('.tmc__conv .empty.empty--inline .empty__title')?.textContent).toBe(
+      'Nobody selected.',
+    );
     expect(mounted.all('.tmc__strip .is-on')).toHaveLength(0);
   });
 

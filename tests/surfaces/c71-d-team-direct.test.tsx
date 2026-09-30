@@ -122,7 +122,9 @@ describe('C71-D R36 opening selects the first unread thread and marks it read on
   it('with nothing unread anywhere the panel opens on nobody', async () => {
     const p = props({ threads: [thread('p-len')] });
     mounted = await mount(<TeamPanel {...p} />);
-    expect(mounted.find('.tmc__conv .dp__empty')?.textContent).toBe('Nobody selected.');
+    expect(mounted.find('.tmc__conv .empty.empty--inline .empty__title')?.textContent).toBe(
+      'Nobody selected.',
+    );
     expect(mounted.all('.tmc__strip .is-on')).toHaveLength(0);
   });
 });

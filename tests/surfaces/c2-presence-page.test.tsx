@@ -58,6 +58,11 @@ it('C2 presence shown (page): the app strip shows who else is on this page from 
   expect(onStrip(ben)).toEqual(['Ana Ng']);
   expect(onStrip(ana)).toEqual(['Ben Ode']);
   expect(onStrip(elsewhere)).toEqual([]);
+  // Each face is the kit's avatar in the kit's stack (DS-PRIM-16), named for a screen reader.
+  const face = ben.find('[data-presence="page"] .avstack .av.av--person');
+  expect(face?.getAttribute('role')).toBe('img');
+  expect(face?.getAttribute('aria-label')).toBe('Ana Ng');
+  expect(face?.textContent).toBe('AN');
 
   await ana.unmount();
   opened.splice(opened.indexOf(ana), 1);

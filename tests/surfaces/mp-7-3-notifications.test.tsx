@@ -122,3 +122,21 @@ describe('MP-7-3 band heads', () => {
     expect(mounted.all('.nt__band').length).toBeGreaterThan(0);
   });
 });
+
+describe("MP-7-3 nothing waiting is said with the kit's one empty state", () => {
+  it('an empty inbox and an empty tab each draw the one empty state, never a dialect', async () => {
+    mounted = await mount(<NotificationsPanel {...props({ items: [], owedCount: 0 })} />);
+    expect(mounted.find('.empty.empty--block .empty__title')?.textContent).toBe(
+      'Nothing is waiting on you.',
+    );
+    expect(mounted.find('.empty__desc')?.textContent).toBe(
+      'Assignments, decisions and mentions land here and stay until they are dealt with.',
+    );
+    const quiet = ITEMS.filter((entry) => entry.owed);
+    await mounted.render(<NotificationsPanel {...props({ items: quiet })} />);
+    expect(
+      pane(mounted, 'info')?.querySelector('.empty.empty--inline .empty__title')?.textContent,
+    ).toBe('Nothing new to read.');
+    expect(mounted.find('.dp__empty')).toBeNull();
+  });
+});
