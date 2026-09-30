@@ -161,7 +161,13 @@ const json = (body: unknown): Response =>
     headers: { 'content-type': 'application/json' },
   });
 
-const task = (id: string, key: string, label: string, position: number) => ({
+const task = (
+  id: string,
+  key: string,
+  label: string,
+  position: number,
+  waitReason: string | null = null,
+) => ({
   id,
   key,
   title: `Task ${key}`,
@@ -175,29 +181,57 @@ const task = (id: string, key: string, label: string, position: number) => ({
   stage: null,
   clientSet: false,
   statePosition: position,
+  waitReason,
+  awaitingDecision: false,
 });
+
+/** The Projects screen, mounted over a task.board answer of these tasks. */
+const screen = async (tasks: readonly ReturnType<typeof task>[]): Promise<Mounted> => {
+  const fetch = (() =>
+    Promise.resolve(
+      json({ ok: true, tasks, changedAt: null, withheld: 0 }),
+    )) as unknown as typeof globalThis.fetch;
+  const client = new OperationsClient({
+    origin: '',
+    businessKey: 'alpha',
+    token: 'a-token',
+    fetch,
+    newOperationId: () => 'operation-1',
+  });
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
+  mounted = await mount(<Projects client={client} grantKey="alpha:ada" />);
+  await settle();
+  return mounted;
+};
 
 describe('MP-5-11 groups in the workflow’s order, drawn from task.board', () => {
   it('draws the banners in the positions the read carries, not the order it lists', async () => {
-    const tasks = [
+    const board = await screen([
       task('11111111-1111-4111-8111-111111111111', 'TSK-1', 'Complete', 5000),
       task('22222222-2222-4222-8222-222222222222', 'TSK-2', 'Active', 2000),
       task('33333333-3333-4333-8333-333333333333', 'TSK-3', 'Needs review', 1000),
-    ];
-    const fetch = (() =>
-      Promise.resolve(
-        json({ ok: true, tasks, changedAt: null, withheld: 0 }),
-      )) as unknown as typeof globalThis.fetch;
-    const client = new OperationsClient({
-      origin: '',
-      businessKey: 'alpha',
-      token: 'a-token',
-      fetch,
-      newOperationId: () => 'operation-1',
-    });
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
-    mounted = await mount(<Projects client={client} grantKey="alpha:ada" />);
-    await settle();
-    expect(banners(mounted)).toStrictEqual(['Needs review', 'Active', 'Complete']);
+    ]);
+    expect(banners(board)).toStrictEqual(['Needs review', 'Active', 'Complete']);
+  });
+});
+
+describe('MP-5-11 waiting reasons after the heading, drawn from task.board', () => {
+  it('prints “approval” after the heading of a group with a run awaiting approval', async () => {
+    const board = await screen([
+      task('11111111-1111-4111-8111-111111111111', 'TSK-1', 'Waiting on client', 3000),
+      task(
+        '22222222-2222-4222-8222-222222222222',
+        'TSK-2',
+        'Waiting on client',
+        3000,
+        'needs_approval',
+      ),
+      task('33333333-3333-4333-8333-333333333333', 'TSK-3', 'Active', 2000),
+    ]);
+    const reasons = board
+      .all('tbody tr.cbd__grp .cbd__grpb')
+      .map((each) => each.querySelector('.cbd__grpr')?.textContent ?? null);
+    expect(banners(board)).toStrictEqual(['Active', 'Waiting on client']);
+    expect(reasons).toStrictEqual([null, 'approval']);
   });
 });

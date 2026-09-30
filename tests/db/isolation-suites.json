@@ -14,6 +14,7 @@
     "tests/reads/mp-5-8-board-agent.test.ts",
     "tests/reads/mp-5-11-board-status-order.test.ts",
     "tests/reads/mp-5-11-board-agent.test.ts",
+    "tests/reads/mp-5-11-board-wait-reason.test.ts",
     "tests/reads/mp-5-12-board-review.test.ts",
     "tests/commands/mp-5-9-board-row.test.ts",
     "tests/commands/mp-5-10-board-cells.test.ts"
