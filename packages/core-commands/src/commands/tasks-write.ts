@@ -42,7 +42,6 @@ import type { TenantQuery, TaskStateRow } from '../../../core-records/src/index.
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { isInProductLink } from '../../../core-wire/src/index.ts';
-import { refuseCreateOperands, refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { clientOf } from './tasks-party.ts';
 import { oneKind } from './tasks-agent.ts';
@@ -118,9 +117,6 @@ export async function createTask(
   context: CommandContext,
   request: Extract<CommandRequest, { command: 'task.create' }>,
 ): Promise<HandlerOutcome> {
-  // First, because every check below reads `fields` as a map.
-  const operands = refuseCreateOperands(request.fields);
-  if (operands !== undefined) return refused(operands);
   const spoofed = refuseSpoof(request.fields, SPOOFABLE_ON_CREATE);
   if (spoofed !== undefined) return spoofed;
 
@@ -234,9 +230,6 @@ export async function updateTask(
   const target = context.target;
   if (target === undefined) throw new Error('updateTask: the envelope read no target');
 
-  // First, because every check below reads `fields` as a map.
-  const operands = refuseUpdateOperands(request.fields);
-  if (operands !== undefined) return refused(operands);
   const spoofed = refuseSpoof(request.fields, SPOOFABLE_ON_UPDATE);
   if (spoofed !== undefined) return spoofed;
 

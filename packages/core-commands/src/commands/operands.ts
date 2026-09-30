@@ -12,10 +12,11 @@
 // Each check answers `FIELD_VALUE_INVALID` 422 by name with a fix line, the
 // pattern `task.decide` uses for its own operands. The one exception is
 // `task.purge`: any `olderThanDays` is `COMMAND_BODY_INVALID` 400, because the
-// operation takes no window at all (`refusePurgeOperands` below). The command
-// checks are called by their handlers, and a read's operand check is on its
-// row in `reads/catalogue.ts`, so either refusal is registered and audited
-// like any other.
+// operation takes no window at all (`refusePurgeOperands` below). A write's
+// body is parsed against its surface row (`parseRequest`), an operand whose
+// kind its handler answers in its own words is checked there, and a read's
+// operand check is on its row in `reads/catalogue.ts`, so every refusal is
+// registered and audited like any other.
 
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { isUuid } from '../../../core-records/src/index.ts';
@@ -32,21 +33,6 @@ export function invalid(name: string, fix: string): CommandRefusal {
   return refuseCommand('FIELD_VALUE_INVALID', [name], [fix]);
 }
 
-/** `task.create` writes the fields it is sent, so it needs a map of them. */
-export function refuseCreateOperands(fields: unknown): CommandRefusal | undefined {
-  if (isFieldMap(fields)) return undefined;
-  return invalid('fields', 'Send fields as an object of field keys to values, such as { title }.');
-}
-
-/**
- * `task.update` writes the fields it is sent as `task.create` does, so it needs
- * the same map, and so do the five owning operations (`task.assign` and the
- * rest), which `writeOwnedFields` in `tasks-state.ts` checks with this first.
- */
-export function refuseUpdateOperands(fields: unknown): CommandRefusal | undefined {
-  return refuseCreateOperands(fields);
-}
-
 /**
  * `task.reparent` takes the new parent, or `null` for the top level. An absent
  * `parentId` is not a request for the top level: taking it as one would detach
@@ -60,12 +46,6 @@ export function refuseReparentOperands(parentId: unknown): CommandRefusal | unde
     'parentId',
     'Send the parent task’s id, or null to move the task to the top level.',
   );
-}
-
-/** `task.restore` restores one batch, which `task.trash` named. */
-export function refuseRestoreOperands(batchId: unknown): CommandRefusal | undefined {
-  if (typeof batchId === 'string' && batchId !== '') return undefined;
-  return invalid('batchId', 'Send the batchId that task.trash answered with.');
 }
 
 /**
@@ -103,9 +83,10 @@ export function isIdentifier(value: unknown): value is string {
  * it returns rather than the body.
  *
  * The answer and its precedence are the ones the operands' own checks gave:
- * every mistyped identifier by name, then a target that is not a string, which
- * names nothing (root ruling 2), then the first other operand in the row's
- * order, with the fix its own check gives. The last two are `afterTarget`: a
+ * every mistyped identifier by name (the required ones alone when any is),
+ * then a target that is not a string, which names nothing (root ruling 2),
+ * then the first other operand in the row's order, with the fix its own check
+ * gives. The last two are `afterTarget`: a
  * foreign or missing record answers `NOT_FOUND` before them, as it did when a
  * command raised them, so another business's record and a fabricated one
  * still read the same.
@@ -122,7 +103,10 @@ export function parseRequest(
     .map(([name]) => name);
   if (isDescribed(request, mismatched)) return { request };
   const ids = mismatched.filter((name) => name !== 'recordId' && kindOf(spec[name]) === 'id');
-  if (ids.length > 0) return { refusal: mistyped(declaration, ids.toSorted()), afterTarget: false };
+  const required = ids.filter((name) => spec[name] === 'id');
+  const named = required.length > 0 ? required : ids;
+  if (named.length > 0)
+    return { refusal: mistyped(declaration, named.toSorted()), afterTarget: false };
   if (mismatched.includes('recordId')) return { refusal: refuseNotFound(), afterTarget: true };
   return { refusal: mistyped(declaration, mismatched.slice(0, 1)), afterTarget: true };
 }

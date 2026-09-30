@@ -10,6 +10,7 @@ import type { CommandDeclaration, CommandName } from '../../packages/core-wire/s
 import { READ_CATALOGUE, isReadName } from '../../packages/core-commands/src/reads/catalogue.ts';
 import type { Answer, Caller, World } from './world.ts';
 import type { Prepared, Task } from './role-case-bodies.ts';
+import type { FixtureClient } from './role-case-clients.ts';
 
 /**
  * The grant pair a declaration is actually checked against.
@@ -45,6 +46,8 @@ export interface Harness {
   readonly heldBy: ReadonlyMap<string, ReadonlySet<string>>;
   /** Everyone but the admin, in the order case (e) sweeps them. */
   readonly otherCallers: readonly Caller[];
+  /** T4a's two clients in each business, each shown one task (`role-case-clients.ts`). */
+  readonly clients: readonly FixtureClient[];
   /** The grant pair a declaration is actually checked against. */
   pairFor(declaration: CommandDeclaration): string;
   asPerson(
