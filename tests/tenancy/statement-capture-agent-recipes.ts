@@ -51,6 +51,23 @@ export const AGENT_RECIPES: Partial<Record<CommandName, AgentRecipe>> = {
     });
     return { prefix: 'person', body: { grantId } };
   },
+  // The run's worker's, never a person's (AW-01): the agent makes it under the
+  // delegation its pickup minted, through the broker the world mounts.
+  'model.call': async (harness) => {
+    const picked = await pickedUp(harness);
+    return {
+      prefix: 'agent',
+      body: {
+        leaseId: picked['leaseId'],
+        fence: picked['fence'],
+        operation: 'model.replay_compose',
+        // Bound to the run's own task, which a person entered: only the
+        // broker finds a source business-internal (S3).
+        fields: [{ name: 'tone', from: { recordId: picked['taskId'], key: 'title' } }],
+      },
+      credential: String(picked['credential']),
+    };
+  },
 };
 
 /**

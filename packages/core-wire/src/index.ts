@@ -43,6 +43,8 @@ export type {
   DecisionLink,
   EvidenceView,
   ExecutionEvent,
+  ExecutionGraph,
+  ExecutionNode,
   ExecutionRun,
   GateView,
   HistoryEntry,

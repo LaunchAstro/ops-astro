@@ -11,6 +11,7 @@
 // and `unavailable` are refusals and faults, and `loading` is the client's.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { projectGraph, type ExecutionGraph } from './execution-graph.ts';
 
 /** The most events one read returns. `next` is the handle for the rest. */
 export const EXECUTION_PAGE = 200;
@@ -49,6 +50,8 @@ export interface TaskExecution {
   readonly next: number | null;
   readonly runs: readonly ExecutionRun[];
   readonly events: readonly ExecutionEvent[];
+  /** Planned and observed, per run (AW-06, `execution-graph.ts`). */
+  readonly graph: ExecutionGraph;
 }
 
 export async function readTaskExecution(
@@ -56,7 +59,7 @@ export async function readTaskExecution(
   taskId: string,
   cursor: number,
 ): Promise<TaskExecution> {
-  const { runs, sourceRevision, events } = await snapshot(tx, taskId, cursor);
+  const { runs, sourceRevision, events, facts } = await snapshot(tx, taskId, cursor);
   const last = events.at(-1)?.position ?? cursor;
   const complete = last >= sourceRevision;
   return {
@@ -67,6 +70,7 @@ export async function readTaskExecution(
     next: complete ? null : last,
     runs,
     events,
+    graph: projectGraph(facts, sourceRevision, complete),
   };
 }
 
@@ -74,9 +78,52 @@ export async function readTaskExecution(
 const ISO = `'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`;
 
 /**
- * The runs, the event head and one page of events, read by one statement so
- * all three come from one snapshot: separate reads could see a successor's
- * events without its run. Counters come back as
+ * Each run's facts for the graph (AW-06, `execution-graph.ts`): its gate, its
+ * version, its latest lease and attempt, its reservations and its last event
+ * at or before the head. `$1` is the business, `$2` the task; `head` is the
+ * statement's own event head.
+ */
+const RUN_FACTS = `coalesce((select json_agg(json_build_object(
+    'runId', run.id, 'state', run.state,
+    'superseded', ver.superseded_at is not null,
+    'currency', ver.currency, 'gateState', gate.state,
+    'lease', (select json_build_object(
+        'state', l.state,
+        'expiresAt', to_char(l.expires_at at time zone 'UTC', ${ISO}),
+        'lapsed', l.state = 'live' and l.expires_at <= now(),
+        'holderActorId', l.holder_actor_id,
+        'agent', l.delegation_id is not null)
+      from public.leases l where l.business_id = $1 and l.run_id = run.id
+      order by l.acquired_at desc, l.id desc limit 1),
+    'attempt', (select json_build_object('id', a.id, 'state', a.state, 'outcome', a.outcome)
+      from public.attempts a where a.business_id = $1 and a.run_id = run.id
+      order by a.created_at desc, a.id desc limit 1),
+    'effectObserved', coalesce((select bool_or(a.observed or a.state = 'settled')
+      from public.attempts a where a.business_id = $1 and a.run_id = run.id), false),
+    'heldMinor', (select sum(res.held_minor)::float8 from public.reservations res
+      where res.business_id = $1 and res.run_id = run.id and res.state = 'held'),
+    'spentMinor', (select sum(res.actual_minor)::float8 from public.reservations res
+      where res.business_id = $1 and res.run_id = run.id and res.state = 'actual'),
+    'lastKind', last.kind, 'lastFault', last.detail ->> 'fault')
+  order by run.created_at, run.id)
+  from public.planned_runs run
+  join public.proposal_versions ver
+    on ver.business_id = run.business_id and ver.id = run.version_id
+  left join public.gates gate
+    on gate.business_id = run.business_id and gate.version_id = run.version_id
+  left join lateral (select ev.kind, ev.detail from public.run_events ev
+      where ev.business_id = $1 and ev.run_id = run.id
+        and ev.position <= (select n from head)
+      order by ev.position desc limit 1) last on true
+ where run.business_id = $1 and run.task_id = $2), '[]')`;
+
+/**
+ * The runs, the event head, one page of events and each run's facts for the
+ * graph, read by one statement so all four come from one snapshot: separate
+ * reads could see a successor's events without its run, or a hand-back's
+ * event without its settled attempt. The facts read the whole run, never the
+ * page, so a condition does not depend on the cursor; `lastKind` stops at the
+ * head, as the page does. Counters come back as
  * `float8`, exact to 2^53 as a JS number is, so the rows need no mapping.
  */
 async function snapshot(
@@ -87,11 +134,13 @@ async function snapshot(
   readonly runs: readonly ExecutionRun[];
   readonly sourceRevision: number;
   readonly events: readonly ExecutionEvent[];
+  readonly facts: unknown;
 }> {
   const rows = await tx.query<{
     readonly runs: readonly ExecutionRun[];
     readonly sourceRevision: number;
     readonly events: readonly ExecutionEvent[];
+    readonly facts: unknown;
   }>(
     `with head as (
        select coalesce(max(position), 0) as n
@@ -114,7 +163,8 @@ async function snapshot(
                 'leaseId', lease_id, 'attemptId', attempt_id, 'actorId', actor_id,
                 'detail', detail, 'at', to_char(created_at at time zone 'UTC', ${ISO}))
               order by position)
-              from page), '[]') as events`,
+              from page), '[]') as events,
+            ${RUN_FACTS} as facts`,
     [tx.businessId, taskId, cursor, EXECUTION_PAGE],
   );
   const [row] = rows;

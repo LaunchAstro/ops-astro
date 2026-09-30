@@ -91,7 +91,7 @@ agent then passes `--agent` or sets `OPS_ASTRO_AGENT=1`, and calls go to
 `DELEGATION_EXCLUDES_OPERATION`. A successful `task.pickup` saves the
 delegation credential to the delegation file and prints the answer with that
 credential replaced by `(saved to <file>)`. Later calls
-(`task.heartbeat`, `task.read`, `task.comment`, `task.handback`) send it in the
+(`task.heartbeat`, `task.read`, `task.comment`, `model.call`, `task.handback`) send it in the
 `x-agent-delegation` header. A successful `task.handback` removes the file when
 it holds the credential that handback was sent with. A handback sent with
 another credential through `OPS_ASTRO_DELEGATION`, such as a replay of an older
@@ -102,7 +102,17 @@ export OPS_ASTRO_AGENT=1 OPS_ASTRO_BUSINESS=alpha
 pnpm cli task.queue
 pnpm cli task.pickup --json '{"reservationId":"<reservationId>","operationId":"<your-id>"}'
 pnpm cli task.heartbeat --json '{"leaseId":"<leaseId>","fence":<fence>}'
+pnpm cli model.call --json '{"leaseId":"<leaseId>","fence":<fence>,"operation":"model.replay_compose","fields":[{"name":"tone","from":{"recordId":"<taskId>","key":"title"}}]}'
 pnpm cli task.handback --json '{"leaseId":"<leaseId>","fence":<fence>,"outcome":"completed","report":{}}'
+```
+
+A person answers a run waiting at its approved ceiling on the person prefix
+(AW-05). The top-up is in the currency's minor units; above the business's
+four-eyes threshold a second person sends the same body to complete it.
+
+```sh
+pnpm cli run.top_up --json '{"recordId":"<taskId>","runId":"<runId>","amountMinor":1000,"currency":"AUD"}'
+pnpm cli run.end_at_budget_stop --json '{"recordId":"<taskId>","runId":"<runId>"}'
 ```
 
 `reservationId` comes from the queue; `leaseId` and `fence` from the pickup's

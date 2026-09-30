@@ -182,6 +182,11 @@ export async function createHarness(part: string): Promise<Harness> {
       ...(declaration.name === 'preset.plan'
         ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
         : {}),
+      // Well formed, so what answers is authority: the call's operands are
+      // read by type before the delegation, as a handback's are.
+      ...(declaration.name === 'model.call'
+        ? { leaseId: randomUUID(), fence: 1, operation: 'model.replay_compose', fields: [] }
+        : {}),
     };
   }
 
@@ -274,6 +279,7 @@ export async function createHarness(part: string): Promise<Harness> {
       alphaTaskId: alphaTask.id,
       assigneePersonId: world.mia.personId as string,
       asPerson: async (name, body) => await asPerson(name, body),
+      asAgent,
       freshTask,
     }),
     approvedReservation,

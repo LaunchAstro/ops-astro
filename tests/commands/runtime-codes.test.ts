@@ -7,6 +7,8 @@
 // `DECISION_STALE` and `EFFECT_NOT_RECONCILABLE` (`core-runtime/src/dispatch.ts`),
 // T2c2's observe `EFFECT_NOT_OBSERVED` (`core-runtime/src/observe.ts`), and
 // T3d1's recorded outcome `LIABILITY_NOT_UNKNOWN` (`core-runtime/src/recovery/reconcile.ts`).
+// AW-02 adds four: the pinned read's and the activation refusal's
+// (`core-runtime/src/definitions.ts`).
 //
 // `RuntimeRefusalCode` is read off the register's rows marked `runtime`, and
 // each row carries its status, so a runtime code cannot be unregistered or
@@ -33,8 +35,8 @@ import {
 const RUNTIME_CODES = Object.keys(SUGGESTED_STATUS) as readonly RuntimeRefusalCode[];
 
 describe('the runtime refusal codes L3 registers', () => {
-  it('registers all twenty-six', () => {
-    expect(RUNTIME_CODES).toHaveLength(26);
+  it('registers all thirty', () => {
+    expect(RUNTIME_CODES).toHaveLength(30);
     for (const code of RUNTIME_CODES) {
       expect(registeredRefusal(code as RefusalCode), code).toBeDefined();
     }
@@ -46,7 +48,7 @@ describe('the runtime refusal codes L3 registers', () => {
     }
   });
 
-  it('shows every one of them to the caller, because all twenty are caller-visible', () => {
+  it('shows every one of them to the caller, because all thirty are caller-visible', () => {
     for (const code of RUNTIME_CODES) {
       expect(CALLER_VISIBLE.has(code as RefusalCode), code).toBe(true);
     }

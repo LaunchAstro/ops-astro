@@ -2,7 +2,7 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 17 of the 47. For each of the other 30 this file
+// `recordId`, which reaches 17 of the 53. For each of the other 36 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
@@ -48,7 +48,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['conversation.list', {}],
 ];
 
-/** The nineteen identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -65,6 +65,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.receipt': ['attemptId', 'control'],
   'task.check': ['leaseId', 'agent'],
   'task.handback': ['leaseId', 'agent'],
+  'model.call': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
@@ -73,6 +74,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'conversation.read': ['conversationId', 'conversation'],
   'conversation.rename': ['conversationId', 'conversation'],
   'conversation.set_scope': ['conversationId', 'conversation'],
+  'run.top_up': ['runId and recordId', 'control'],
+  'run.end_at_budget_stop': ['runId and recordId', 'control'],
 };
 
 /**

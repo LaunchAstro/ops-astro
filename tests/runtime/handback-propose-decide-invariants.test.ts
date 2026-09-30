@@ -807,15 +807,16 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const other = await newTask(database.app, fixture.businessId, fixture.decider);
     const onOther = await proposeOn(database, fixture, { taskId: other });
 
+    const moveRun = `update public.planned_runs set task_id = $3 where business_id = $1 and id = $2`;
+    const parameters = [fixture.businessId, onOther.runId, fixture.taskId];
+    // The application may not rewrite a run's task at all (AW-02, 0043)...
     await expect(
-      database.app.withBusiness(fixture.businessId, (tx) =>
-        tx.query(`update public.planned_runs set task_id = $3 where business_id = $1 and id = $2`, [
-          fixture.businessId,
-          onOther.runId,
-          fixture.taskId,
-        ]),
-      ),
-    ).rejects.toThrow(/planned_runs_lineage_on_same_task/u);
+      database.app.withBusiness(fixture.businessId, async (tx) => tx.query(moveRun, parameters)),
+    ).rejects.toMatchObject({ code: '42501' });
+    // ...and the owner, who may, meets the constraint.
+    await expect(database.admin.execute(moveRun, parameters)).rejects.toThrow(
+      /planned_runs_lineage_on_same_task/u,
+    );
   });
 
   // R2. The envelope's own cap is the cap, and a request naming another is refused.

@@ -349,6 +349,13 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         }
         // eslint-disable-next-line no-await-in-loop
         const prepared = await harness.positiveBody(declaration);
+        if ('exception' in prepared && declaration.name === 'model.call') {
+          // A person's write grant carries no model call: the person prefix
+          // refuses it (tests/broker/aw-01-model-call.test.ts), and the agent
+          // makes it in case (h).
+          except(caller.name, 'e-member-positive', declaration.name, prepared.exception);
+          continue;
+        }
         if ('exception' in prepared) throw new Error(`matrix: ${declaration.name} has no body`);
         // eslint-disable-next-line no-await-in-loop
         const answer = await harness.asPerson(declaration.name, prepared.body, 'alpha', caller);
@@ -564,8 +571,10 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(
         declaration.name,
-        ['task.heartbeat', 'task.dispatch', 'task.observe', 'task.check'].includes(declaration.name)
-          ? // A heartbeat, a dispatch, an observe or a check, like a handback, names its task
+        ['task.heartbeat', 'task.dispatch', 'task.observe', 'task.check', 'model.call'].includes(
+          declaration.name,
+        )
+          ? // A heartbeat, a dispatch, an observe, a check or a model call, like a handback, names its task
             // through the lease and never through a stray `recordId` (final review R1 #23), so
             // the sibling is reached by its own lease.
             {
@@ -583,6 +592,14 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         credential,
       );
       observe('agent-after-pickup', table, declaration.name, answer, expected);
+      if (declaration.name === 'model.call') {
+        // eslint-disable-next-line no-await-in-loop
+        const held = await harness.world.db.admin.execute<{ readonly n: string }>(
+          `select count(*)::text as n from public.model_calls where lease_id = $1`,
+          [siblingLease['leaseId']],
+        );
+        expect(held[0]?.n, 'no call held on a lease outside the purpose').toBe('0');
+      }
     }
 
     // (k) The operations the admin's positive control could not reach from the
