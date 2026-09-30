@@ -1,6 +1,31 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* The activity ledger (MP-8-4): the pinned mockup's `act__` rules. The day head
-   sticks while its day scrolls under it. */
+   sticks while its day scrolls under it. The search row, the reading line (in
+   the accent: what the box understood) and the count line sit above the list. */
+
+.act__find {
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+  max-width: 40rem;
+}
+.act__find .search {
+  flex: 1;
+}
+.act__read {
+  margin: var(--s-3) 0 0;
+  color: var(--accent);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.act__count {
+  margin: var(--s-2) 0 0;
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
 
 .act__list {
   margin-top: var(--s-5);

@@ -109,11 +109,11 @@ describe('MP-8-4 clear the ledger search', () => {
     const { api, view } = await opened([{ body: DAY }, { body: FOUND }, { body: DAY }]);
     await view.type(BOX, 'hinge');
     await tick();
-    await view.click('[data-ledger-clear]');
+    await view.click('.act__find button');
     await tick();
-    expect((view.find(BOX) as HTMLInputElement).value).toBe('');
+    expect((view.find('input[type="search"]') as HTMLInputElement).value).toBe('');
     expect(read(view)).toBeNull();
-    expect(api.asked.at(-1)).toMatchObject({ query: null });
+    expect(api.asked.at(-1)).toEqual({ timeZone: 'Australia/Brisbane', before: null });
     expect(drawn(view)).toEqual(['a1', 'a2', 'b1', 'c1']);
   });
 });
@@ -135,9 +135,11 @@ describe('MP-8-4 no match says what the ledger holds', () => {
     await view.type(BOX, 'Cy comment');
     await tick();
     expect(drawn(view)).toEqual([]);
-    expect(view.find('.empty__title')?.textContent).toBe('Nothing matches that.');
-    expect(view.find('.empty__desc')?.textContent).toMatch(/every change to a task you can see/u);
-    await view.click('.empty__action button');
+    expect(view.find('.act__page .empty__title')?.textContent).toBe('Nothing matches that.');
+    expect(view.find('.act__page .empty__desc')?.textContent).toMatch(
+      /every change to a task you can see/u,
+    );
+    await view.click('.act__page .empty__action button');
     await tick();
     expect(drawn(view)).toEqual(['a1', 'a2', 'b1', 'c1']);
   });
