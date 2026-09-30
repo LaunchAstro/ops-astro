@@ -79,7 +79,7 @@ async function join(api: Hono, key: string, recordId: string, token: string): Pr
     const text = await response.text();
     return {
       status: response.status,
-      refusal: text === '' ? {} : (JSON.parse(text) as Record<string, unknown>),
+      refusal: text.startsWith('{') ? (JSON.parse(text) as Record<string, unknown>) : {},
       events,
       ended: true,
       stop: async () => {},
@@ -265,6 +265,30 @@ describe.skipIf(serverUrl === undefined)(
       if (otherTask === undefined) throw new Error('party: two tasks');
       const mine = await createTask(s, `t2f-isolation-${randomUUID()}`);
 
+      // Joins first, so they run with no live listener: another business's member, either key.
+      const foreignToken = await tokenFor(other.member.presented.subject);
+      expect((await join(api, key, mine, foreignToken)).status).not.toBe(200);
+      const [otherRow] = await s.db.admin.execute<{ key: string }>(
+        'select key from public.businesses where id = $1',
+        [other.id],
+      );
+      const otherKey = String(otherRow?.key);
+      expect((await join(api, otherKey, mine, foreignToken)).status).not.toBe(200);
+
+      // Two clients here, one task shared with each.
+      const sibling = await createTask(s, `t2f-sibling-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
+      await world.client(s.business, s.decider, 't2f-client-1', mine);
+      await world.client(s.business, s.decider, 't2f-client-2', sibling);
+      const outsider = await enrol(s.db.app, s.business, `t2f-no-grant-${randomUUID()}`);
+      expect((await open(mine, outsider)).status).not.toBe(200);
+      // Client to client (external readers have their own case): a member granted on one task.
+      const scoped = await enrol(s.db.app, s.business, `t2f-scoped-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await grantTo(tx, scoped, 'read', { kind: 'record', id: mine });
+      });
+      expect((await open(mine, scoped)).status).toBe(200);
+      expect((await open(sibling, scoped)).status).toBe(403);
       const heard = { mine: 0, theirs: 0, forged: 0, forgedBack: 0 };
       const off = [
         topics.subscribe(s.business, mine, () => (heard.mine += 1)),
@@ -283,29 +307,6 @@ describe.skipIf(serverUrl === undefined)(
       expect(heard.forged).toBe(0);
       expect(heard.forgedBack).toBe(0);
       for (const unsubscribe of off) unsubscribe();
-
-      // At join: the other business's member names this task, under either key.
-      const foreignToken = await tokenFor(other.member.presented.subject);
-      expect((await join(api, key, mine, foreignToken)).status).not.toBe(200);
-      const [otherRow] = await s.db.admin.execute<{ key: string }>(
-        'select key from public.businesses where id = $1',
-        [other.id],
-      );
-      const otherKey = String(otherRow?.key);
-      expect((await join(api, otherKey, mine, foreignToken)).status).not.toBe(200);
-
-      // Two clients here, one grant each: each is refused its own task and the
-      // other's.
-      const sibling = await createTask(s, `t2f-sibling-${randomUUID()}`);
-      await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
-      const first = await world.client(s.business, s.decider, 't2f-client-1', mine);
-      const second = await world.client(s.business, s.decider, 't2f-client-2', sibling);
-      // External readers stay off the channel entirely (Sol, #111).
-      expect((await open(mine, first)).status).not.toBe(200);
-      expect((await open(sibling, first)).status).not.toBe(200);
-      expect((await open(mine, second)).status).not.toBe(200);
-      const outsider = await enrol(s.db.app, s.business, `t2f-no-grant-${randomUUID()}`);
-      expect((await open(mine, outsider)).status).not.toBe(200);
     });
 
     it('an external shared reader cannot join the internal activity channel', async () => {
@@ -318,6 +319,7 @@ describe.skipIf(serverUrl === undefined)(
       });
       expect(read).toHaveProperty('sharedTask');
 
+      expect((await open(taskId, s.decider)).status, 'the grant holder joins').toBe(200);
       const joined = await open(taskId, external);
       expect(joined.status).not.toBe(200);
     });
