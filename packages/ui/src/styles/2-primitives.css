@@ -19,3 +19,508 @@
    (actions to the icon), then this one (blocks, the MP-1-6 treatments, the
    charts and the gallery page).
    ============================================================================ */
+
+/* -- Blocks (DS-PRIM-20 to DS-PRIM-24, DS-PRIM-28 to DS-PRIM-33, DS-COMP-7,
+      DS-COMP-8, DS-COMP-13, DS-COMP-26; MP-1-3). ------------------------- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.tablewrap {
+  display: grid;
+  gap: var(--s-2);
+  overflow-x: auto;
+}
+.table__tools {
+  display: flex;
+  justify-content: flex-end;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+/* The one table head style: the mockup's two dialects become this. */
+.table th {
+  position: relative;
+  padding: 8.8px 16px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  text-align: left;
+  white-space: nowrap;
+}
+.table td {
+  padding: 0.65rem 16px;
+  border-bottom: 1px solid var(--border);
+}
+.table tbody tr {
+  transition: background var(--dur-fast) var(--ease);
+}
+.table tbody tr:hover {
+  background: var(--surface-2);
+}
+.table--dense td {
+  padding: 0.4rem 16px;
+}
+.table .r {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.table .c {
+  text-align: center;
+}
+.table__sort {
+  display: inline-flex;
+  gap: var(--s-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.table__sort:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.table th[aria-sort='ascending'],
+.table th[aria-sort='descending'] {
+  color: var(--text);
+}
+.table th[aria-sort='ascending'] .table__arrow,
+.table th[aria-sort='descending'] .table__arrow {
+  color: var(--accent);
+}
+@media (width <= 640px) {
+  .table {
+    min-width: 44rem;
+  }
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+  padding: var(--s-5);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--dur-1) var(--ease);
+}
+.card > * {
+  min-width: 0;
+}
+.card--flush {
+  padding: 0;
+}
+.card--current {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+.card--flush .card__head {
+  padding: var(--s-5) var(--s-5) 0;
+}
+.card__title {
+  margin: 0;
+  font: var(--type-card-title);
+  letter-spacing: var(--type-card-title-tracking);
+  text-transform: var(--type-card-title-case);
+}
+.card__sub {
+  margin: 0;
+  color: var(--text-muted);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.doorcard {
+  display: grid;
+  gap: var(--s-1);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition:
+    border-color var(--dur-1) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.doorcard--card {
+  padding: var(--s-5);
+}
+.doorcard--card:hover {
+  border-color: var(--accent);
+}
+.doorcard--row {
+  padding: 16px 24px;
+  border-width: 1px 0 0;
+  background: transparent;
+}
+.doorcard--row:hover {
+  background: var(--surface-2);
+}
+.doorcard--cta {
+  padding: var(--s-4) var(--s-5);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.doorcard--cta:hover {
+  border-color: var(--accent);
+}
+.doorcard__title {
+  font: var(--type-card-title);
+  letter-spacing: var(--type-card-title-tracking);
+  text-transform: var(--type-card-title-case);
+}
+.doorcard__sub {
+  color: var(--text-muted);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.lrow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  list-style: none;
+  transition: background var(--dur-fast) var(--ease);
+}
+.lrow:hover {
+  background: var(--surface-2);
+}
+.lrow__lead:empty {
+  display: none;
+}
+.lrow__main {
+  display: grid;
+  min-width: 0;
+  grid-column: 2;
+}
+.lrow__title {
+  color: var(--text);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.lrow__meta {
+  color: var(--text-muted);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.lrow__trail {
+  grid-column: 3;
+}
+.lrow--panel {
+  padding: 9px 20px;
+}
+.lrow--notice {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.lrow--record {
+  grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr);
+}
+.lrow[data-state='selected'] {
+  background: var(--surface-2);
+}
+.lrow[data-state='done'] .lrow__title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.lrow[data-state='archived'] .lrow__title {
+  color: var(--text-2);
+}
+@media (width <= 390px) {
+  .lrow[data-state='gate'] .lrow__trail {
+    grid-column: 1 / -1;
+  }
+}
+.form {
+  display: grid;
+  gap: var(--s-4);
+  padding: var(--s-4);
+  background: var(--surface-2);
+}
+.form__grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--s-4);
+}
+.form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+@media (width <= 1279px) {
+  .form__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+@media (width <= 900px) {
+  .form__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (width <= 640px) {
+  .form__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-4);
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--warning);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.banner__body {
+  flex: 1;
+  margin: 0;
+}
+.banner--bad {
+  border-left-color: var(--danger);
+}
+.banner--info {
+  border-left-color: var(--info);
+}
+@media print {
+  .banner--info {
+    display: none;
+  }
+}
+.meter {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 6px;
+  background: var(--surface-3);
+}
+.meter__fill {
+  display: block;
+  height: 100%;
+  background: var(--text);
+}
+.meter.is-ok .meter__fill {
+  background: var(--success);
+}
+.meter.is-warn .meter__fill {
+  background: var(--warning);
+}
+.meter.is-bad .meter__fill,
+.meter.is-over .meter__fill {
+  background: var(--danger);
+}
+.meter.is-info .meter__fill {
+  background: var(--info);
+}
+.meter.is-idle .meter__fill {
+  background: var(--text-muted);
+}
+.meter--stat {
+  height: 3px;
+  background: var(--border);
+}
+.meter--stat .meter__fill,
+.meter--time .meter__fill {
+  background: var(--accent);
+}
+.meter--time {
+  height: 4px;
+  background: var(--border);
+}
+.meter__target {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: var(--text);
+}
+.stat {
+  display: grid;
+  gap: 8px;
+  padding: 16px 24px 16px 0;
+}
+.stat__label {
+  color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+.stat__num {
+  font: var(--type-num-lg);
+  letter-spacing: var(--type-num-lg-tracking);
+  text-transform: var(--type-num-lg-case);
+  font-variant-numeric: tabular-nums;
+}
+.stat__of {
+  color: var(--text-muted);
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+}
+.stat__foot {
+  color: var(--text-muted);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+/* The one empty state (DS-PRIM-28): no icon, no fill, in three looks. */
+.empty {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+}
+.empty > p {
+  margin: 0;
+}
+.empty--block {
+  justify-items: center;
+  padding: 48px 24px;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  text-align: center;
+}
+.empty--inline {
+  max-width: 60ch;
+  padding-block: 16px;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.empty--row {
+  padding: 0;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.empty__title {
+  color: var(--text-muted);
+}
+.empty__desc,
+.empty__hint {
+  max-width: 340px;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+.empty__action {
+  margin-top: 8px;
+}
+/* DS-PRIM-29 (DR-37): a skeleton at the size of what it stands for. A slow
+   pulse, and none at all under reduced motion. */
+.skel {
+  display: block;
+  background: var(--surface-2);
+  animation: skel-pulse var(--dur-2) ease-in-out infinite alternate;
+}
+.skel--field {
+  width: 100%;
+  height: 38px;
+}
+.skel--line {
+  width: 60%;
+  height: 0.9em;
+}
+.skel--tile {
+  width: 10rem;
+  height: 5rem;
+}
+@keyframes skel-pulse {
+  to {
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel {
+    animation: none;
+  }
+}
+.rownote {
+  margin: 0;
+  color: var(--text-2);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+/* DS-PRIM-32: sample data only. The edge is inset so the mark never moves
+   layout, and a marked region inside another keeps only its edge. */
+.is-mock {
+  background: var(--mock-tint);
+  box-shadow: inset 0 0 0 1px var(--mock-edge);
+}
+.is-mock--nested,
+.is-mock .is-mock {
+  background: none;
+}
+.mocktag {
+  padding: 0 0.3rem;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+/* DS-PRIM-33: one accent ring pulse where a link landed. */
+.flash-target {
+  animation: locate-flash var(--dur-flash) var(--ease) 1;
+}
+@keyframes locate-flash {
+  from {
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 75%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flash-target {
+    animation: none;
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 75%, transparent);
+  }
+}
+.popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  right: 0;
+  display: grid;
+  gap: 12px;
+  width: 352px;
+  max-width: calc(100vw - 32px);
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  box-shadow: var(--shadow-overlay);
+}
+
+/* -- The stamp (DS-PRIM-25): a timestamp or provenance line. ------------- */
+.stamp {
+  color: var(--text-muted);
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
+}
