@@ -16,7 +16,7 @@
 //      hash. A tag can be moved; a hash cannot.
 //   2. Every `image:` in .github/workflows is pinned to a sha256 digest. A
 //      service container runs code in the job like any action does, and
-//      `postgres:18-alpine` is a tag its publisher can move under us. This
+//      `postgres:17-alpine` is a tag its publisher can move under us. This
 //      rule arrived with the database conformance job, which was the first
 //      service container in this repository; until then the check read only
 //      `uses:` and a moved image tag would have passed it.
