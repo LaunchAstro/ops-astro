@@ -104,6 +104,9 @@ const GRANTS_BY_ROLE = {
     // The operations view and the privacy incident record (C55): the owner
     // and administrators hold both on install, and no agent ever does.
     ['operations', 'read'],
+    // S0-5 (0060): the first-client gate's own commands; only the operating
+    // business's grant moves it.
+    ['operations', 'manage'],
     ['privacy', 'manage'],
     // An agent credential of their own (API-2): the owner and administrators
     // hold `credential:write` on install.
