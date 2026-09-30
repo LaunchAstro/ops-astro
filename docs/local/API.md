@@ -304,6 +304,13 @@ caching`, `tests/api/api-answers-never-cached.test.ts`). It reads no environment
 socket and starts no process. `main()` runs only as the process entry
 (`import.meta.main`). It reads the environment, calls `composeApi`, runs
 restart recovery through that same resolver, and only then binds the port.
+`apps/api/function.ts` is the Vercel function entry: it builds the same
+`composeApi` from the function's settings, with no identity route, live channel,
+recovery or sweeper, which belong to a long-running process. It answers only
+requests whose `Host` is `SERVED_HOST`, the environment's own host; any other,
+a deployment's generated address included, is refused 421 before anything is
+read, so a promotion leaves the previous deployment serving nothing
+(`tests/api/function-entry.test.ts`).
 Tests build the server with `composeApi` (`compose` in `tests/api/fixture.ts`),
 so they run the wiring the server listens with rather than a copy of it. A
 test that hands the boundary its own executor or recorder calls `createApi`

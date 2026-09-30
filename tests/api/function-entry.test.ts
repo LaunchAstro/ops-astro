@@ -86,7 +86,9 @@ function hostCase() {
     // The same entry, its own host: the app answers, and says the database is not there.
     const own = await handle(request(HOST.toUpperCase()));
     expect(own.status).toBe(503);
-    expect(await own.json()).toMatchObject({ database: 'unreachable' });
+    const body = await own.text();
+    expect(JSON.parse(body)).toMatchObject({ database: 'unreachable' });
+    expect(body).not.toContain('entry-canary-7f3c');
   });
 }
 
@@ -99,6 +101,13 @@ function settingsCase() {
         expect(start, name).toThrow(name);
       }
     }
+    // Neither keyring setting: refused, never a key file made for this instance.
+    const {
+      DELEGATION_CREDENTIAL_KEY_ID: _id,
+      DELEGATION_CREDENTIAL_KEYS: _keys,
+      ...bare
+    } = unreachable;
+    expect(() => createFunctionHandler(bare)).toThrow('DELEGATION_CREDENTIAL_KEY_ID');
     const hosted = { ...unreachable, GOTRUE_URL: 'https://project.supabase.co/auth/v1' };
     const refused: readonly Settings[] = [
       // A stand-in key set is for a loopback issuer only.

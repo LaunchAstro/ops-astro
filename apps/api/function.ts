@@ -5,6 +5,13 @@
 // `server.ts`'s `main`. It builds the same served app, `composeApi`, from the
 // function's environment and hands it each request.
 //
+// **Only the environment's own host is served.** Every deployment also answers
+// at a generated address of its own, and a promotion leaves the previous one
+// running. `SERVED_HOST` names the one host this environment answers on; a
+// request for any other, a forwarding header notwithstanding, is refused 421
+// before anything is read. So once the alias has moved, the deployment it moved
+// from serves nothing.
+//
 // What `main` does that a function does not: the loopback identity route, the
 // live channel's LISTEN, restart recovery and the sweeper. Those belong to a
 // long-running process, the worker (re-plan, section 11).
@@ -19,6 +26,9 @@ import { composeApi } from './server.ts';
 type Settings = Readonly<Record<string, string | undefined>>;
 
 const ROOT = join(import.meta.dirname, '..', '..');
+/** A bare host name: no scheme, path, port or trailing dot. */
+const HOST = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/u;
+
 /**
  * The function's request handler, built from its settings. A problem throws,
  * naming the setting and never its value, so the function does not start.
@@ -31,6 +41,8 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     if (value === undefined || value === '') throw new Error(`${name} is not set.`);
     return value;
   };
+  const servedHost = required('SERVED_HOST').toLowerCase();
+  if (!HOST.test(servedHost)) throw new Error('SERVED_HOST is not a bare host name.');
   const databaseUrl = required('DATABASE_URL');
   const adminUrl = required('DATABASE_ADMIN_URL');
   const issuer = required('GOTRUE_URL');
@@ -40,6 +52,10 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
       'SUPABASE_KEY_SET_URL may name a loopback key set only, for a loopback issuer.',
     );
   }
+  // The keyring from the settings alone: without them `runtimeKeys` falls back
+  // to creating a local key file, and a function has none to share.
+  required('DELEGATION_CREDENTIAL_KEY_ID');
+  required('DELEGATION_CREDENTIAL_KEYS');
   const keys = runtimeKeys(settings);
   if (!keys.delegation.ok) {
     throw new Error(`delegation credential keys: ${keys.delegation.problem}`);
@@ -55,6 +71,9 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   });
 
   return async (request) => {
+    if ((request.headers.get('host') ?? '').toLowerCase() !== servedHost) {
+      return new Response(null, { status: 421, headers: { 'cache-control': 'private, no-store' } });
+    }
     return await app.fetch(request);
   };
 }

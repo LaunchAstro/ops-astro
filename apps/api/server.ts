@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The composition root. The only place that reads the environment, opens a
-// connection, chooses an authentication adapter and binds a port.
+// The composition root. With the function entry (`function.ts`), which builds
+// the same `composeApi` on Vercel, the only place that reads the environment,
+// opens a connection, chooses an authentication adapter and binds a port.
 //
 // Everything the boundary needs is handed to it here, which is what makes the
 // claims in `app.ts` checkable: there is exactly one construction of the

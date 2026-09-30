@@ -333,6 +333,10 @@ function importsOf(file: string, text: string, packages: ReadonlyMap<string, str
  */
 const NO_PRODUCT_IMPORTER_YET = new Map([
   [
+    'apps/api/function.ts',
+    "the Vercel function entry, loaded by Vercel's Node.js runtime rather than imported",
+  ],
+  [
     'apps/worker/main.ts',
     'the worker process entry (`pnpm worker`), started by node rather than imported',
   ],
