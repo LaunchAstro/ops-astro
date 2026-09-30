@@ -6,28 +6,46 @@
 // a real boot failure would pass for a flake. The page here is a stand-in
 // served from a local port: one boot waits on a request that is never
 // answered, one throws before it draws.
+//
+// A boot a network change interrupts is loaded again. On a Linux runner,
+// Chromium fails every request in flight with ERR_NETWORK_CHANGED when the
+// host's interfaces change, which a container's network coming up does
+// (hosted run 36788748271: a docker compose test beside MP-1-4). The app's
+// modules never arrive and `#app` stays empty. No switch makes Chromium do
+// that on demand, so the stand-in holds the boot's first request and the
+// failure is reported on the page as Chromium reports it.
 
+import type { EventEmitter } from 'node:events';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, expect, it } from 'vitest';
-import type { Browser } from 'playwright';
+import type { Browser, Request } from 'playwright';
 import { launchChromium } from '../support/chromium.ts';
+import { boot } from './boot.ts';
 import { load, openSide } from './capture.ts';
 import { MODE, readPacket } from './packet.ts';
 
-const page = (boot: string): string =>
-  `<!doctype html><div id="app"></div><script type="module">${boot}</script>`;
+const page = (script: string): string =>
+  `<!doctype html><div id="app"></div><script type="module">${script}</script>`;
 const BOOTS: Record<string, string> = {
   '/stalled': page(
     "await fetch('/api/never-answered'); document.querySelector('#app').textContent = 'x';",
   ),
   '/throws': page("throw new Error('the boot threw before drawing');"),
+  '/interrupted': page(
+    "await fetch('/api/second-answer'); document.querySelector('#app').textContent = 'x';",
+  ),
 };
 
 let server: Server;
 let app: URL;
 let browser: Browser;
 const held: { end: () => void }[] = [];
+let asked = 0;
+let firstHeld: () => void = () => {};
+const heldOnce = new Promise<void>((resolve) => {
+  firstHeld = resolve;
+});
 
 beforeAll(async () => {
   server = createServer((request, response) => {
@@ -37,8 +55,14 @@ beforeAll(async () => {
       response.end(body);
       return;
     }
-    // The stalled request: held open until the test ends.
+    // The interrupted boot's request is answered from its second time on.
+    if (request.url === '/api/second-answer' && (asked += 1) > 1) {
+      response.end('{}');
+      return;
+    }
+    // A stalled request: held open until the test ends.
     held.push(response);
+    if (request.url === '/api/second-answer') firstHeld();
   });
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', resolve);
@@ -80,4 +104,22 @@ it('a capture whose boot throws fails naming the error', async () => {
   const failure = await failureOf('/throws');
   expect(failure).toContain('drew nothing in #app');
   expect(failure).toContain('page error: the boot threw before drawing');
+}, 20_000);
+
+it('a boot a network change interrupts is loaded again and draws', async () => {
+  const side = await openSide(browser, readPacket(), 390, { app });
+  side.context.setDefaultTimeout(2000);
+  const tab = await side.context.newPage();
+  const changed = {
+    url: () => `${app.origin}/api/second-answer`,
+    failure: () => ({ errorText: 'net::ERR_NETWORK_CHANGED' }),
+  } as unknown as Request;
+  // Playwright's page is an event emitter; its type leaves `emit` out.
+  void heldOnce.then(() => (tab as unknown as EventEmitter).emit('requestfailed', changed));
+  try {
+    await boot(tab, new URL('/interrupted', app).href, readPacket().clock);
+    expect(await tab.textContent('#app')).toBe('x');
+  } finally {
+    await side.context.close();
+  }
 }, 20_000);
