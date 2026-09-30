@@ -62,3 +62,6 @@ tests/review/sl01-relc-lookup-grant-pin-proof.test.mjs
 
 # Sol's REV187W proof, byte-for-byte as the review patch held it.
 tests/ci/named-service-stop-reaches-database.test.ts
+
+# Sol's REV258B proof, byte-for-byte as the review patch held it.
+tests/ci/named-service-stop-proof-two-urls.test.ts
