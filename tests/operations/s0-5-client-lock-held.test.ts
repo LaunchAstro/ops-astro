@@ -15,3 +15,6 @@ it.todo(
 it.todo(
   'S0-5 content marker and lock order: a command that reads or writes before taking the task row lock fails the build, proved by a planted write-before-lock racing task.set_party (NEXT: a statement-order detector over the fixture run)',
 );
+it.todo(
+  "S0-5 client change refused once the task has content: the change first, a writer holding client A only is refused and one holding A and B writes under B (LEANS-ON task authority by the task's client: today a task command is authorised against the task or the whole business, never a client grant)",
+);

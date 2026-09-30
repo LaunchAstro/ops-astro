@@ -13,10 +13,10 @@
 // client. Run through the real API and the CLI client on a throwaway database.
 // The app and agent-credential legs are held in `s0-5-client-lock-held.test.ts`.
 
+import { spawn } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { serverUrl } from '../acceptance/world.ts';
-import { grantTo, type Member } from '../commands/fixture.ts';
 import {
   CONTENT,
   kindsUnreached,
@@ -34,6 +34,7 @@ if (serverUrl === undefined) {
 }
 
 let harness: Harness;
+const CONTAINER = process.env['FIXTURE_PG_CONTAINER'] ?? '';
 
 /** A fresh task on `client`, changed there while empty. */
 async function taskOn(client: string, title: string): Promise<string> {
@@ -41,14 +42,6 @@ async function taskOn(client: string, title: string): Promise<string> {
   const set = await harness.asPerson('task.set_party', await setPartyBody(task.id, client));
   expect(set.code).toBe('ok');
   return task.id;
-}
-
-/** Mia's comment grant on one client. */
-async function miaMayComment(client: string): Promise<void> {
-  const mia = harness.world.mia as unknown as Member;
-  await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
-    await grantTo(tx, mia, 'comment', { kind: 'party', id: client });
-  });
 }
 
 /** Mia comments on the task, as a person. */
@@ -66,36 +59,50 @@ async function miaComments(taskId: string): Promise<{ code: string }> {
   );
 }
 
-async function untilWaiting(
-  execute: Parameters<Parameters<Harness['world']['db']['admin']['transaction']>[0]>[0],
-): Promise<void> {
-  for (let tries = 0; tries < 200; tries += 1) {
-    // eslint-disable-next-line no-await-in-loop
-    const [waiting] = await execute<{ n: number }>(
-      `select count(*)::int as n from pg_stat_activity where wait_event_type = 'Lock' and datname = current_database()`,
-    );
-    if ((waiting?.n ?? 0) > 0) return;
-    // eslint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => {
-      setTimeout(resolve, 25);
-    });
-  }
+async function clientOf(taskId: string): Promise<string> {
+  const [row] = await harness.world.db.admin.execute<{ client: string }>(
+    'select uuid_7::text as client from records where id = $1',
+    [taskId],
+  );
+  return row!.client;
 }
 
 /**
- * The client change lands first: Mia's comment has read its authority for the
- * task's client and waits on the task's row lock, held here while the client
- * is changed to `to` and committed. Her answer once the lock is let go.
+ * The client change lands first. A separate session (the fixture container's
+ * own psql, off the harness's connections) takes the task's row lock, waits
+ * until another transaction is queued behind it, changes the client to `to`
+ * and commits. Mia's comment is sent meanwhile. Whether the session saw it
+ * waiting, and her answer.
  */
-async function changeLandsFirst(taskId: string, to: string): Promise<{ code: string }> {
-  const { pending } = await harness.world.db.admin.transaction(async (execute) => {
-    await execute('select id from records where id = $1 for update', [taskId]);
-    const waiting = miaComments(taskId);
-    await untilWaiting(execute);
-    await execute('update records set uuid_7 = $2 where id = $1', [taskId, to]);
-    return { pending: waiting };
+async function changeLandsFirst(taskId: string, to: string): Promise<[boolean, string]> {
+  const [{ db }] = (await harness.world.db.admin.execute<{ db: string }>(
+    'select current_database() as db',
+  )) as [{ db: string }];
+  const locker = spawn(
+    'docker',
+    ['exec', '-i', CONTAINER, 'psql', '-U', 'postgres', '-d', db, '-v', 'ON_ERROR_STOP=1', '-q'],
+    { stdio: ['pipe', 'ignore', 'ignore'] },
+  );
+  const done = new Promise<number>((resolve) => {
+    locker.on('close', (code) => resolve(code ?? 1));
   });
-  return await pending;
+  locker.stdin.end(`set statement_timeout = '10s';
+begin;
+select id from records where id = '${taskId}' for update;
+do $$ begin
+  loop
+    exit when exists (select 1 from pg_locks where not granted and locktype = 'transactionid');
+    perform pg_sleep(0.02);
+  end loop;
+end $$;
+update records set data = jsonb_set(data, '{client}', to_jsonb('${to}'::text)) where id = '${taskId}';
+commit;
+`);
+  await new Promise((resolve) => {
+    setTimeout(resolve, 400);
+  });
+  const answer = await miaComments(taskId);
+  return [(await done) === 0, answer.code];
 }
 
 /** An empty task's client changes, twice. */
@@ -142,17 +149,19 @@ describe.skipIf(serverUrl === undefined)('S0-5 the task client lock', () => {
 
   it('S0-5 client change refused once the task has content: a content write and a client change interleaved, in both orders', async () => {
     const [clientA, clientB] = [await newClient(), await newClient()];
-    await miaMayComment(clientA);
-    // Content first: the comment lands, and the change is refused.
+    // Content first (Mia comments, then Ada changes the client): refused.
     const first = await taskOn(clientA, 's0-5 content first');
     expect((await miaComments(first)).code).toBe('ok');
     const refused = await harness.asPerson('task.set_party', await setPartyBody(first, clientB));
     expect([refused.status, refused.code]).toStrictEqual([409, 'CLIENT_LOCKED']);
-    // The change first: the comment is judged for client B, after the lock.
-    const onlyA = await taskOn(clientA, 's0-5 change first, writer holds A');
-    expect((await changeLandsFirst(onlyA, clientB)).code).toBe('SCOPE_NOT_GRANTED');
-    await miaMayComment(clientB);
-    const onBoth = await taskOn(clientA, 's0-5 change first, writer holds A and B');
-    expect((await changeLandsFirst(onBoth, clientB)).code).toBe('ok');
+    // The change first: the comment waits on the row lock, is refused stale
+    // against the change's revision and writes nothing; its retry lands on the
+    // task as it now stands, and from then on the client is locked.
+    const second = await taskOn(clientA, 's0-5 change first');
+    expect(await changeLandsFirst(second, clientB)).toStrictEqual([true, 'VERSION_STALE']);
+    expect(await clientOf(second)).toBe(clientB);
+    expect((await miaComments(second)).code).toBe('ok');
+    const after = await harness.asPerson('task.set_party', await setPartyBody(second, clientA));
+    expect([after.status, after.code]).toStrictEqual([409, 'CLIENT_LOCKED']);
   }, 180_000);
 });

@@ -122,6 +122,8 @@ person and agent routes, after authority and before the handler. The mode
 and the items live in `ops` (migration 0051); the mode moves one way, from
 made-up to real, only while every item is done. The commands that record an
 item, accept a finding or change the mode are not built yet.
+`task.set_party` refuses `CLIENT_LOCKED` 409 once the task has content (its
+history or a row naming it), under the task's row lock.
 
 No external engineer review, legal opinion, security assessment, hosted enforcement,
 mailbox delivery, or service deployment is certified here. A public technical
