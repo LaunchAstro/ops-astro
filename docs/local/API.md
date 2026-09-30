@@ -297,7 +297,10 @@ passes it with no cast.
 
 `apps/api/server.ts` exports `composeApi(config)`. It builds the served app
 with `/api/health`, the boundary and the fault mapping (`server.onError`), and
-returns it with the app's business resolver. It reads no environment, opens no
+returns it with the app's business resolver. Every answer under `/api`, a
+refusal, a fault and a missing route included, is sent `Cache-Control: private,
+no-store`, since the API is served behind Vercel's edge network (`S0-6 no edge
+caching`, `tests/api/api-answers-never-cached.test.ts`). It reads no environment, opens no
 socket and starts no process. `main()` runs only as the process entry
 (`import.meta.main`). It reads the environment, calls `composeApi`, runs
 restart recovery through that same resolver, and only then binds the port.
