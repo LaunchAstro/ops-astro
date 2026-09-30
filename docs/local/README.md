@@ -435,9 +435,11 @@ two clients with one record grant each in both businesses, must fail),
 adds a route with no screen, a duplicate route id and a changed pinned-mockup
 byte (the route registry check, the typecheck's TS1117 and T4c's mockup pin
 must each fail, told apart by name), and reverts each T2 and T3 part, T2a to
-T3f, and reruns its named invariant, which must go red (`T4-N4`) while no
-crossing the part declares (`crossings`: its business, client and person
-cases) stays green. T4a to T4d
+T3f, and reruns its named invariant, which must go red (`T4-N4`), as must
+every crossing the part declares (`crossings`: its business, client and person
+cases); one green, absent or skipped fails the line. T2b and T2f are UNPROVEN
+until their follow-ups (#191, #192), and the run fails unless exactly they
+are. T4a to T4d
 are test tooling: each is proven by its own planted-mutation cases, named on
 its `T4-P` line, which plant the fault and assert the failure. The parts, their
 invariants, their commits, their crossings and the planted cases are catalogued

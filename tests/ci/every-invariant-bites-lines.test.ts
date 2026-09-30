@@ -14,7 +14,7 @@ import {
   classify,
   everyInvariantBites,
 } from './self-test/mutations.ts';
-import { crossingOf, everyLine, ran } from './self-test/fake-lines.ts';
+import { bites, crossingOf, everyLine, ran } from './self-test/fake-lines.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 
@@ -58,13 +58,43 @@ describe('every_invariant_bites: a revert fails by its declared crossing', () =>
       'T4-N4 T3f reverted',
       ran({
         cases: [
-          { name: 'expired_lease_money_only: the case', passed: false },
-          { name: `T3f ${client}`, passed: false },
+          ...(bites('T3f').cases ?? []),
           { name: 'T3f an isolation-free structural check', passed: true },
         ],
       }),
     );
     expect(red.status, red.detail).toBe('pass');
+  });
+});
+
+describe('every_invariant_bites: UNPROVEN is exactly the known list', () => {
+  it('holds T2b (#191) and T2f (#192), and only them, as UNPROVEN, never a pass', () => {
+    const known = PARTS.filter((one) => one.knownUnproven !== undefined);
+    expect(known.map((one) => `${one.id} ${String(one.knownUnproven)}`)).toEqual([
+      'T2b #191',
+      'T2f #192',
+    ]);
+    const lines = everyLine();
+    const t2b = lines.find((line) => line.case.startsWith('T4-N4 T2b'));
+    expect([t2b?.status, t2b?.detail.startsWith('UNPROVEN, follow-up #191')]).toEqual([
+      'unproven',
+      true,
+    ]);
+    expect(everyInvariantBites(lines).status).toBe('pass');
+    // T2f biting in full, before #192 closes and the list is updated, fails the run.
+    const t2f = PARTS.find((one) => one.id === 'T2f');
+    const full = ran({
+      cases: [
+        ...(bites('T2f').cases ?? []),
+        ...(t2f?.crossings ?? []).map((one) => ({ name: one.case, passed: false })),
+      ],
+    });
+    const bitten = lines.map((line) =>
+      line.case.startsWith('T4-N4 T2f') ? classify(line.case, full) : line,
+    );
+    expect(everyInvariantBites(bitten).detail).toContain(
+      'unproven T2b, not exactly the known T2b, T2f',
+    );
   });
 });
 

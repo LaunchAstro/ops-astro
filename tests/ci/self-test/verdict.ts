@@ -11,16 +11,21 @@ import {
   PARTS,
   controlOf,
   type CaseLine,
+  type Crossing,
   type Part,
   type Ran,
 } from './catalogue.ts';
 
+const crossingSaid = (one: Crossing): string => `${one.case} (${one.crosses.join(', ')})`;
+
 /**
  * For a part's revert (`T4-N4 <part>`), red means the part's own named
  * invariant failed: a sibling case, a file that no longer loads or a hook
- * does not stand in for it. A crossing the part declares (`crossings` in
- * parts.json) that stays green under the revert fails the line by name and
- * kind, whatever its title says, since it then proves nothing about the part.
+ * does not stand in for it. Every crossing the part declares (`crossings` in
+ * parts.json) must have run and failed under the revert, by name and kind,
+ * whatever its title says: one that stayed green proves nothing about the
+ * part, and one that is absent or was skipped (a skipped case never reaches
+ * `cases`) is unproven.
  */
 function partVerdict(part: Part, ran: Ran): string | undefined {
   const cases = ran.cases ?? [];
@@ -28,14 +33,24 @@ function partVerdict(part: Part, ran: Ran): string | undefined {
     (name) => !cases.some((one) => !one.passed && one.name.includes(name)),
   );
   if (silent.length > 0) return `its named invariant did not fail: ${silent.join(', ')}`;
+  const unrun = (part.crossings ?? []).filter(
+    (declared) => !cases.some((one) => one.name.includes(declared.case)),
+  );
   const green = cases.flatMap((one) => {
     const crossing = part.crossings?.find((declared) => one.name.includes(declared.case));
     return one.passed && crossing !== undefined
       ? [`${one.name} (${crossing.crosses.join(', ')})`]
       : [];
   });
-  if (green.length > 0) return `a declared crossing stayed green: ${green.join('; ')}`;
-  return undefined;
+  const why = [
+    ...(unrun.length > 0
+      ? [
+          `a declared crossing did not run, so it is unproven: ${unrun.map((one) => crossingSaid(one)).join('; ')}`,
+        ]
+      : []),
+    ...(green.length > 0 ? [`a declared crossing stayed green: ${green.join('; ')}`] : []),
+  ];
+  return why.length > 0 ? why.join('; ') : undefined;
 }
 
 /**
@@ -85,6 +100,14 @@ export function classify(name: string, ran: Ran): CaseLine {
   }
   if (!ran.red) return fail('stayed green under its mutation');
   const why = part === undefined ? undefined : partVerdict(part, ran);
+  const follow = part?.knownUnproven;
+  if (why !== undefined && follow !== undefined && !why.startsWith('its named invariant')) {
+    return {
+      case: name,
+      status: 'unproven',
+      detail: `UNPROVEN, follow-up ${follow}: ${why} (${ran.detail})`,
+    };
+  }
   if (why !== undefined) return fail(why);
   const named = part === undefined ? '' : `${part.invariants.join(', ')} failed; `;
   return { case: name, status: 'pass', detail: `red under its mutation: ${named}${ran.detail}` };
@@ -122,15 +145,25 @@ export function everyInvariantBites(
   lines: readonly CaseLine[],
   parts: readonly Part[] = PARTS,
 ): CaseLine {
-  const short = lines.filter((line) => line.status !== 'pass').map((line) => line.case);
+  const short = lines.filter((line) => line.status === 'fail').map((line) => line.case);
   const missing = missingLines(lines, parts);
-  const status = short.length === 0 && missing.length === 0 ? 'pass' : 'fail';
+  // The unproven set must be exactly the catalogue's known list: never more, and never a known part passing.
+  const known = parts.filter((part) => part.knownUnproven !== undefined).map((part) => part.id);
+  const unproven = lines
+    .filter((line) => line.status === 'unproven')
+    .map((line) => partOf(line.case)?.id);
+  const off = known.toSorted().join(', ') !== unproven.toSorted().join(', ');
+  const status = short.length === 0 && missing.length === 0 && !off ? 'pass' : 'fail';
   const said: string[] = [];
   if (missing.length > 0) said.push(`missing: ${missing.join('; ')}`);
   if (short.length > 0) said.push(`not proven: ${short.join('; ')}`);
+  if (off)
+    said.push(
+      `unproven ${unproven.join(', ') || 'none'}, not exactly the known ${known.join(', ')}`,
+    );
   const detail =
     status === 'pass'
-      ? `${String(lines.length)} checks: each control green, each mutation red under its own check with no declared crossing green, each T4 part's planted mutation caught`
+      ? `${String(lines.length)} checks: each control green, each mutation red under its own check with every declared crossing run and red, UNPROVEN only the known ${known.join(', ')}, each T4 part's planted mutation caught`
       : said.join('; ');
   return { case: 'every_invariant_bites', status, detail };
 }

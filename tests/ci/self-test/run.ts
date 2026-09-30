@@ -198,7 +198,7 @@ function reverts(scratch: Scratch, parts: readonly Part[]): void {
     const name = `T4-N4 ${part.id} reverted: ${part.invariants.join(', ')}`;
     const whole = revertAndRun(scratch, part, name, false);
     // A file that no longer loads never runs the invariant; unwire the part instead.
-    const unloadable = whole.status === 'fail' && whole.detail.includes('fails whole');
+    const unloadable = whole.status !== 'pass' && whole.detail.includes('fails whole');
     report(unloadable ? revertAndRun(scratch, part, name, true) : whole);
   }
 }

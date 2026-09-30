@@ -24,11 +24,14 @@ export const ran = (over: Partial<Ran>): Ran => ({
   ...over,
 });
 
-/** A part's revert under which its named invariants fail and nothing else is asserted. */
+/** A part's revert under which its named invariants fail, and its crossings unless `knownUnproven`. */
 export const bites = (id: string): Ran => {
   const part = PARTS.find((one) => one.id === id);
-  const names = part?.invariants ?? [];
-  return ran({ cases: names.map((name) => ({ name: `${name}: the case`, passed: false })) });
+  const names = [
+    ...(part?.invariants ?? []).map((name) => `${name}: the case`),
+    ...(part?.knownUnproven === undefined ? (part?.crossings ?? []) : []).map((one) => one.case),
+  ];
+  return ran({ cases: names.map((name) => ({ name, passed: false })) });
 };
 
 /** A T4 part's file run unmutated: each planted-mutation case passed under its named invariant. */

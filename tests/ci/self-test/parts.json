@@ -9,6 +9,8 @@
     "proven by its own planted-mutation cases, `planted`, run unmutated (a T4-P line).",
     "`crossings` names each T2 and T3 part's data-separation cases and what each crosses: one",
     "green under the part's revert fails its line by name, whatever the title says.",
+    "`knownUnproven` names the follow-up for a part whose crossings do not bite yet (T2b #191, T2f #192):",
+    "its line is UNPROVEN, never a pass, and every_invariant_bites fails unless that set is exactly this list.",
     "See tests/ci/self-test/mutations.ts and verdict.ts."
   ],
   "parts": [
@@ -40,6 +42,7 @@
     },
     {
       "id": "T2b",
+      "knownUnproven": "#191",
       "invariants": ["worker_boundary"],
       "files": ["tests/api/t2b-worker.test.ts", "tests/worker/worker-boundary.test.ts"],
       "keep": ["tests/"],
@@ -129,7 +132,7 @@
     {
       "id": "T2d",
       "invariants": ["settles_at_observed"],
-      "files": ["tests/runtime/t2d-settle.test.ts"],
+      "files": ["tests/runtime/t2d-settle.test.ts", "tests/runtime/t2d-settle-isolation.test.ts"],
       "keep": ["tests/"],
       "commits": [
         "7766d9f7535453b66219b8e361f01ffc5b0a7b19",
@@ -142,6 +145,16 @@
         "845bd490d13dcd1a059c4bc4c2c9699753273330",
         "4024eeb7be4ded81d16e735c91136420b0cd281c",
         "c8cd56f3277e46121ecc4bccf6e246c62a755ae8"
+      ],
+      "crossings": [
+        {
+          "case": "a populated foreign envelope and a wrong client stay isolated",
+          "crosses": ["business", "client"]
+        },
+        {
+          "case": "the money line reaches only a reader holding the task grant",
+          "crosses": ["client", "person"]
+        }
       ]
     },
     {
@@ -174,6 +187,7 @@
     },
     {
       "id": "T2f",
+      "knownUnproven": "#192",
       "invariants": ["event_visible_under_2s"],
       "files": ["tests/api/t2f-live-channel.test.ts", "tests/surfaces/t2f-live-task.test.tsx"],
       "keep": ["tests/"],
@@ -294,13 +308,24 @@
     {
       "id": "T3c",
       "invariants": ["write_off_needs_a_person"],
-      "files": ["tests/runtime/t3c-write-off.test.ts"],
+      "files": [
+        "tests/runtime/t3c-write-off.test.ts",
+        "tests/runtime/t3c-write-off-isolation.test.ts"
+      ],
       "keep": ["tests/"],
       "commits": [
         "966cb6c76831d4defe119ad90a2385e93172e93a",
         "c24f948d8ce53190f49959a2b7a343cf7da249b8"
       ],
       "crossings": [
+        {
+          "case": "business to business: a write-off moves only its own business's liability",
+          "crosses": ["business"]
+        },
+        {
+          "case": "client to client: two clients, each granted on its own task, reach no write-off on the other's, and no body names it",
+          "crosses": ["client"]
+        },
         {
           "case": "person to person: a first approval whose holder lost the grant pairs with no one",
           "crosses": ["person"]

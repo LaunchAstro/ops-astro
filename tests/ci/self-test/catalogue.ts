@@ -25,6 +25,8 @@ export interface Part {
    * line by name, whatever its title says (`verdict.ts`).
    */
   readonly crossings?: readonly Crossing[];
+  /** The follow-up issue for a part whose crossings are known not to bite yet: its line is UNPROVEN, never a pass. */
+  readonly knownUnproven?: string;
 }
 
 export interface Crossing {
@@ -83,6 +85,6 @@ export interface Ran {
 
 export interface CaseLine {
   readonly case: string;
-  readonly status: 'pass' | 'fail';
+  readonly status: 'pass' | 'fail' | 'unproven';
   readonly detail: string;
 }
