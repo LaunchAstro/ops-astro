@@ -68,6 +68,7 @@
     "SL01 (Vercel re-plan section 11 step 1) adds pooled-interleaved (S0-6 pooled transactions: two requests interleave on one pooled backend, each in two transactions with the other's between them, and sent at once; each sees only its own business, and between every transaction the backend holds no tenant setting, no prepared statement and no readable row, after a throw, a statement error, a statement timeout and a cancellation as after a clean end; a session-wide set_config or prepare: true turns it red).",
     "SL01 (Vercel re-plan section 11 step 1) adds function-entry (S0-6 the function entry: the Vercel entry serves composeApi only to the environment's own host, SERVED_HOST; a deployment's generated address, a near-miss spelling or a forwarding header is refused 421 before anything is read, and a signed-in read on the own host answers private and no-store).",
     "SL01 (Vercel re-plan section 11 step 1) adds s0-6-isolation (S0-6 isolation: the three crossings through the Vercel function entry on its own host, runtime and lookup logins only: another business (404 NOT_FOUND, 403 AUTH_NO_MEMBERSHIP), the other client of the same business with one record grant each (403 SCOPE_NOT_GRANTED), and an agent under a person's live delegation reaching past its one task (403 DELEGATION_OUT_OF_PURPOSE); each own read answered, no refusal naming the other side's record or title).",
+    "SL01 (REVB1SL01RELB) adds sl01-rel-g2-health-proof (Sol's proof: with the lookup login reachable and the runtime login not, health answers 503 database unreachable).",
     "SL01 (Vercel re-plan section 6, the orchestrator's ruling G2 (a)) adds business-lookup (the business lookup identity, 0046: a login in ops_astro_lookup reads every business's id and key and no other column; every other table is refused a select, insert, update and delete, and businesses every write, each 42501; another business's records, another record in the same business and another person are refused over rows that exist; the served resolver reads a key through it, and without its set local role it answers nothing).",
     "REV158K2 and REV158S3 criterion 13 (ORCH-DECISION 22:06Z and 22:09Z; the restore challenge withdrawn) adds backup-carried-attest (S0-3 carried archive: a pass is the appointed operator's own act; the store takes one only through the store login the installation appointed as that person, in the operating business, for the archive that login read with its whole digest; the restore identity alone records a failed drill and never a pass; a read of one of two archives taken in one transaction never attests the other).",
     "REV158S2 criteria 12 and 13 (ORCH28-REV158S2) adds backup-store-read-binding (S0-3 store read binding: every part read_part hands out leaves its own receipt; a read of one archive never attests a carried receipt of another taken in the same transaction; the carried record is joined to its read on the archive id, never a time).",
@@ -400,6 +401,7 @@
     "tests/api/t2c2-worker.test.ts",
     "tests/cli/t2e-top-up-surfaces.test.ts",
     "tests/cli/t3c-write-off-surfaces.test.ts",
-    "tests/cli/t3f-two-workers.test.ts"
+    "tests/cli/t3f-two-workers.test.ts",
+    "tests/review/sl01-rel-g2-health-proof.test.ts"
   ]
 }
