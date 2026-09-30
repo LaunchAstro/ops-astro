@@ -39,6 +39,7 @@ const identity = (file: { path: string; bytes: string }) => ({
 
 type Graph = { nodes: readonly { nodeId: string; definition?: unknown }[] };
 
+// eslint-disable-next-line max-lines-per-function -- one world, one served API
 describe.skipIf(serverUrl === undefined)('AW-04 pin and ledger on the command line', () => {
   let world: World;
   let api: ServedApi | undefined;

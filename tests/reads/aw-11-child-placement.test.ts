@@ -43,6 +43,7 @@ function runFacts(runId: string, lineageId: string, planStepKey: string | null) 
     spentMinor: null,
     lastKind: null,
     lastFault: null,
+    definition: null,
     helpers: [
       {
         childDelegationId: `${runId}-child`,

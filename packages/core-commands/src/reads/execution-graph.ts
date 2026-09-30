@@ -36,38 +36,9 @@
 // run state this module does not know is kept raw (`runState`) with the
 // condition `unrecognised`, never dropped.
 
-import { helpersOf, type HelperEntry, type PlacedStep } from './execution-helpers.ts';
-
-/** What `execution.ts` reads for each run. */
-export interface RunFacts {
-  readonly runId: string;
-  readonly lineageId: string;
-  readonly state: string;
-  /** The plan step its proposal named (0061), or null. */
-  readonly planStepKey: string | null;
-  readonly superseded: boolean;
-  readonly gateState: string | null;
-  readonly currency: string;
-  readonly lease: {
-    readonly state: string;
-    readonly expiresAt: string;
-    readonly lapsed: boolean;
-    readonly holderActorId: string;
-    readonly agent: boolean;
-  } | null;
-  readonly attempt: {
-    readonly id: string;
-    readonly state: string;
-    readonly outcome: string | null;
-  } | null;
-  readonly effectObserved: boolean;
-  readonly heldMinor: number | null;
-  readonly spentMinor: number | null;
-  readonly lastKind: string | null;
-  readonly lastFault: string | null;
-  /** AW-11's helpers, as `execution-helpers.ts` reads them. */
-  readonly helpers: readonly HelperEntry[];
-}
+import type { RunDefinition } from './execution-definition.ts';
+import type { HelperEntry, PlacedStep } from './execution-helpers.ts';
+import { validateFacts, type RunFacts } from './execution-facts.ts';
 
 export type ObservedCondition =
   'not_started' | 'in_progress' | 'settled' | 'superseded' | 'unrecognised';
@@ -108,6 +79,8 @@ export interface GraphNode {
   readonly observed: ObservedLayer;
   /** The helpers the run's work was handed to, each with its own steps (AW-11). */
   readonly helpers: readonly HelperEntry<PlacedStep>[];
+  /** The instruction file the run was pinned to and every file it read, or null (AW-04). */
+  readonly definition: RunDefinition | null;
 }
 
 /** A step of the bound plan, with the runs proposed under it (none yet: planned). */
@@ -177,6 +150,7 @@ export function projectGraph(
           ...helper,
           steps: helper.steps.map((one) => ({ ...one, planned, unplanned: outside })),
         })),
+        definition: run.definition,
       };
     }),
   });
@@ -235,60 +209,6 @@ function observe(run: RunFacts): ObservedLayer {
       ? other('not_started', null)
       : other('in_progress', { kind: 'agent', actorId: null });
   return other('unrecognised', null);
-}
-
-function validateFacts(facts: unknown): readonly RunFacts[] {
-  if (!Array.isArray(facts)) throw new Error('task.execution: the run facts are not a list');
-  return facts.map((fact: unknown, index) => {
-    const where = `task.execution: run fact ${String(index)}`;
-    if (!isRecord(fact)) throw new Error(`${where} is not an object`);
-    for (const key of ['runId', 'lineageId', 'state', 'currency'] as const) {
-      if (typeof fact[key] !== 'string') throw new Error(`${where}: ${key} is not a string`);
-    }
-    for (const key of ['superseded', 'effectObserved'] as const) {
-      if (typeof fact[key] !== 'boolean') throw new Error(`${where}: ${key} is not a boolean`);
-    }
-    for (const key of ['gateState', 'lastKind', 'lastFault', 'planStepKey'] as const) {
-      if (fact[key] !== null && typeof fact[key] !== 'string')
-        throw new Error(`${where}: ${key} is neither null nor a string`);
-    }
-    for (const key of ['heldMinor', 'spentMinor'] as const) {
-      const value = fact[key];
-      if (
-        value !== null &&
-        !(typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
-      )
-        throw new Error(`${where}: ${key} is neither null nor a whole non-negative number`);
-    }
-    const { lease, attempt } = fact;
-    if (
-      lease !== null &&
-      !(
-        isRecord(lease) &&
-        typeof lease['state'] === 'string' &&
-        typeof lease['expiresAt'] === 'string' &&
-        typeof lease['lapsed'] === 'boolean' &&
-        typeof lease['holderActorId'] === 'string' &&
-        typeof lease['agent'] === 'boolean'
-      )
-    )
-      throw new Error(`${where}: the lease is malformed`);
-    if (
-      attempt !== null &&
-      !(
-        isRecord(attempt) &&
-        typeof attempt['id'] === 'string' &&
-        typeof attempt['state'] === 'string' &&
-        (attempt['outcome'] === null || typeof attempt['outcome'] === 'string')
-      )
-    )
-      throw new Error(`${where}: the attempt is malformed`);
-    return { ...(fact as unknown as RunFacts), helpers: helpersOf(fact['helpers'], where) };
-  });
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function deepFreeze<T>(value: T): T {

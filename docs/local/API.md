@@ -585,6 +585,17 @@ carry them. A call carries no plan key, so each step takes its run's
 placement: `planned` is the node's, and `unplanned` is true exactly when the
 node reads `unplanned` (`tests/reads/aw-11-child-placement.test.ts`).
 `tests/broker/aw-11-child-graph.test.ts` and its isolation suite hold it.
+Each node also carries `definition` (AW-04, `reads/execution-definition.ts`):
+the instruction file the run was pinned to and every file it read, or `null`
+for a run with no pin. It is
+`{ kind, path, versionId, digest, size, manifestDigest, reads, readSet }`:
+`kind` is `bootstrap_file` (with its `path`) or `definition_version` (with its
+`versionId`), `digest` and `size` are the file's identity, and
+`manifestDigest` is the accept-time manifest's. `reads` is the read ledger in
+read order, `{ sequence, entry, path, digest, size }`, each row written by the
+read itself; `readSet` is the path-sorted set digest over them and their
+distinct count (`setDigest`). The command line prints the same answer
+(`tests/cli/aw-04-pin-ledger-cli.test.ts`).
 A drop raises no alert (T3e2): `task.queue` carries the team's `outages`
 beside the alerts, newest first, each
 `{ id, cause, fault, openedAt, lastDropAt, closedAt, runs: [{ taskId, runId, attemptId, reactivated }] }`,

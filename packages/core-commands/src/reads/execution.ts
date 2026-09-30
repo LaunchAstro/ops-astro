@@ -13,6 +13,7 @@
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { PLAN_CANDIDATES, projectedPlan } from '../../../core-runtime/src/index.ts';
 import { projectGraph, type ExecutionGraph } from './execution-graph.ts';
+import { DEFINITION_FACTS } from './execution-definition.ts';
 import { HELPER_FACTS } from './execution-helpers.ts';
 
 /** The most events one read returns. `next` is the handle for the rest. */
@@ -82,7 +83,7 @@ const ISO = `'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`;
 /**
  * Each run's facts for the graph (AW-06, `execution-graph.ts`): its gate, its
  * version, its latest lease and attempt, its reservations, its last event at
- * or before the head, and its helpers (AW-11). `$1` is the business, `$2`
+ * or before the head, its helpers (AW-11) and its pin and read ledger (AW-04). `$1` is the business, `$2`
  * the task; `head` is the statement's own event head.
  */
 const RUN_FACTS = `coalesce((select json_agg(json_build_object(
@@ -110,7 +111,9 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
       where res.business_id = $1 and res.run_id = run.id and res.state = 'actual'),
     'lastKind', last.kind, 'lastFault', last.detail ->> 'fault',
     -- The helpers the run's work was handed to (AW-11, execution-helpers.ts).
-    'helpers', ${HELPER_FACTS})
+    'helpers', ${HELPER_FACTS},
+    -- Its pinned instruction file and read ledger (AW-04, execution-definition.ts).
+    'definition', ${DEFINITION_FACTS})
   order by run.created_at, run.id)
   from public.planned_runs run
   join public.proposal_versions ver
