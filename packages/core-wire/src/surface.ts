@@ -116,6 +116,9 @@ export type CommandName =
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
   | 'budget.write_off'
+  // AW-04 (U10): a person sets the business's planning cap, the allowance the
+  // planning replies spend before the accept.
+  | 'budget.set_planning_cap'
   // A check the run performed, recorded under its worker lease (MP-6-1,
   // CS-16.3): a system write whose authority is the live lease, not a grant.
   | 'task.check'
@@ -427,6 +430,12 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'budget.record_outcome': { recordId: 'any', attemptId: 'any', outcome: 'any' },
   // The task, the attempt held unknown, the minor units charged and why (T3c).
   'budget.write_off': { recordId: 'any', attemptId: 'any', amountMinor: 'count', reason: 'text' },
+  // Minor units in the price book's currency, against the limit last seen (null: unset).
+  'budget.set_planning_cap': {
+    limitMinor: 'count',
+    currency: 'text',
+    fromLimitMinor: 'count|null',
+  },
   'task.observe': {
     leaseId: 'any',
     recordId: 'any',
@@ -715,6 +724,13 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
+  }),
+  // `billing:decide` on the whole business (AW-04, U10): owners and
+  // administrators set the planning cap; no agent route serves it.
+  declare('budget.set_planning_cap', 'decide', {
+    collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
   }),
   // The lease holder's, asked of the lease's task like the heartbeat. The
   // agent path checks the delegation; the broker then verifies the lease, the

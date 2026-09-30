@@ -1710,6 +1710,24 @@ nothing; a different live holder naming the same attempt and amount applies
 it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
 `operationId` replays the stored answer.
 
+### `budget.set_planning_cap` (AW-04, U10)
+
+`POST /api/b/<key>/budget/set_planning_cap` with `limitMinor` (whole minor
+units above zero), `currency` (the price book's, `AUD`) and `fromLimitMinor`
+(the limit the caller last saw, `null` while none is set). It asks `decide` on
+`billing` for the whole business, so owners and administrators; a grant on one
+task does not reach it, and no agent route serves it
+(`DELEGATION_EXCLUDES_OPERATION`). It writes the business's `budget_caps` row
+keyed `planning` and no other; the body names no key. A `fromLimitMinor` that
+is not the current limit is `VERSION_STALE` 409 naming the limit it is at
+(`limitMinor=<n>`, or `limitMinor=unset`), as a settings write names its
+revision, and two setters at once from one limit leave one applied. The answer is the cap's id
+and `{ key: 'planning', limitMinor, currency }`. A lower limit is taken even
+below what is committed: the next planning reply that no longer fits is
+refused ([RUNTIME.md](RUNTIME.md#the-planning-budget)). No default is set: until
+a person sets the cap, planning replies are refused. Not here yet: the recent
+sign-in a money action asks (C59).
+
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `gate.pending`, `person.list`,
