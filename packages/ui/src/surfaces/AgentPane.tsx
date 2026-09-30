@@ -17,6 +17,7 @@ import { Attempts } from './agent/attempts.tsx';
 import { Gate, type GateDecision, type GateRef } from './agent/gate.tsx';
 import { RunKnowledge } from './agent/knowledge.tsx';
 import { ProposalHeader, Summary, Workflow } from './agent/header.tsx';
+import { Given } from './agent/given.tsx';
 import { Scope } from './agent/scope.tsx';
 import { StagedOutput } from './agent/staged.tsx';
 import { scopeStamp } from '../state/agent-scope.ts';
@@ -131,7 +132,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
   );
 }
 
-/** The side column: the scope the run was granted and the task's allowance. */
+/** The side column: the scope the run was granted, what it was given and the task's allowance. */
 function RunSide(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement {
   const lineage = (props.lineages ?? []).find((each) => each.lineageId === props.shown.lineageId);
   return (
@@ -142,6 +143,7 @@ function RunSide(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
         nameOf={props.nameOf}
         ledgerHref={props.ledgerHref}
       />
+      <Given head={props.shown.head} />
       <TokenTracked ledger={props.ledger} lineages={props.lineages ?? []} />
     </aside>
   );
