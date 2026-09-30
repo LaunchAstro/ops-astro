@@ -42,6 +42,8 @@ export interface ChildWorld {
   bravoHelper: Helper;
   /** Picked up before the decider held `run:write`: its delegation reaches `task` only. */
   taskOnly: Delegation;
+  taskOnlyWork: Work;
+  taskOnlyCredential: string;
 }
 
 export const w = {} as ChildWorld;
@@ -76,7 +78,10 @@ export function useChildWorld(label: string): void {
     if (noDatabase) return;
     w.s = await openSchedules(label, 1_000_000);
     w.bravo = await seedSchedules(w.s.db, `${label}-bravo`, 1_000_000);
-    w.taskOnly = (await parentWork(w.s)).parent;
+    const taskOnly = await parentWork(w.s);
+    w.taskOnly = taskOnly.parent;
+    w.taskOnlyWork = taskOnly.work;
+    w.taskOnlyCredential = taskOnly.credential;
     await grantRunWrite(w.s);
     await grantRunWrite(w.bravo);
     w.helper = await insertHelper(w.s);

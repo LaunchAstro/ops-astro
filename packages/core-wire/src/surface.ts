@@ -138,7 +138,11 @@ export type CommandName =
   // A run's current knowledge and unknowns, revised as a new version (MP-6-2,
   // CS-16.4): `run:write` on the run's task, a person's or an agent's inside
   // its delegation, the agent the recorded actor.
-  | 'run.revise_state';
+  | 'run.revise_state'
+  // AW-11: the parent's holder hands part of its work to a helper that can do
+  // strictly less, and the helper hands its result back. Both agents only.
+  | 'run.delegate_child'
+  | 'run.child_handback';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -452,6 +456,19 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     knowledge: 'any',
     unknowns: 'any',
   },
+  // The parent's own lease and fence, then the helper and its narrower set.
+  'run.delegate_child': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    helperActorId: 'any',
+    purpose: 'any',
+    collections: 'any',
+    actions: 'any',
+    expiresInSeconds: 'any',
+  },
+  // The helper's credential says whose work it is; the body only how it went.
+  'run.child_handback': { outcome: 'any', refusal: 'any' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -730,6 +747,26 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'runId'],
+    agent: 'delegated',
+  }),
+  // AW-11: `run:write` inside the parent's delegation, asked of its lease's
+  // task like the heartbeat; the runtime binds the parent to that lease at its
+  // fence under the locks. A person holding a lease has no route to it.
+  declare('run.delegate_child', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // The helper's handback answers to its own child credential, bound to its
+  // own login by the runtime, not to a grant: a revoked or run-out child still
+  // hands its partial work back, and the handback grants nothing.
+  declare('run.child_handback', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
     agent: 'delegated',
   }),
 ];

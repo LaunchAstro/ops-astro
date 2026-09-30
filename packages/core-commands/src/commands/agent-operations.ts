@@ -453,6 +453,10 @@ export function modelCallRow(
   });
 }
 
+/** Red: AW-11's command surface, not built. */
+const NOT_BUILT = (): Refused =>
+  refused(refuseCommand('DEPENDENCY_NOT_LANDED', ['child work: not built'], []));
+
 const NO_BROKER_FIXES: readonly string[] = [
   'This deployment has no credential broker configured, so it makes no model call.',
 ];
@@ -690,6 +694,25 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
           session.actorId,
         );
       },
+    }),
+  ],
+  [
+    'run.delegate_child',
+    row({
+      authority: 'record',
+      subjectTask: 'lease',
+      replay: 'reauthorise',
+      operands: NONE,
+      serve: () => Promise.resolve(NOT_BUILT()),
+    }),
+  ],
+  [
+    'run.child_handback',
+    row({
+      authority: 'purpose',
+      replay: 'reauthorise',
+      operands: NONE,
+      serve: () => Promise.resolve(NOT_BUILT()),
     }),
   ],
   [

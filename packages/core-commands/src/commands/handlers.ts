@@ -36,6 +36,7 @@ import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
 import { messageConversation, startConversation } from './conversations.ts';
 import { renameConversation, setConversationScope } from './conversation-tabs.ts';
+import { refuseChildWorkAsPerson } from './child-work-person.ts';
 import { refuseModelCallAsPerson } from './model-call-person.ts';
 import { endOnRun, topUpOnRun } from './run-answers.ts';
 import { reviseStateOnRun } from './run-state.ts';
@@ -139,6 +140,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // MP-6-2: a run's state revised, a person's under run:write; the agent's is
   // served on its own prefix (`agent-operations.ts`).
   'run.revise_state': reviseStateOnRun,
+  // AW-11: the parent's and the helper's, on the agent prefix only.
+  'run.delegate_child': refuseChildWorkAsPerson,
+  'run.child_handback': refuseChildWorkAsPerson,
 };
 
 function writeOwned(
