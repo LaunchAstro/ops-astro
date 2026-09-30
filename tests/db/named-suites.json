@@ -103,7 +103,8 @@
     "C1a names search as an invariant (task.search, ticket C1 lines C2 and C3): the viewer's live task:read scopes are a predicate of the statement that finds candidates, so no row of another client's, person's or business's task is returned to the process, not even as a count; red against a planted post-filter build.",
     "C1 names c1-isolation as an invariant (ticket C1, SL05): task.search shows no foreign title, id or count across the three crossings, another business and another client in the same business on the read, and an agent under a live delegation over the real HTTP route; red when the statement's scope is widened.",
     "C23 names c23-isolation as an invariant (ticket C23, SL05): session.person and session.end cross nothing over the real HTTP route: another business is refused naming nobody and ends nobody, one client's person is answered as themselves and cannot end the other client's person, and an agent under a live delegation is refused both while the person stays signed in.",
-    "C23 also names c23-session-end (ticket C23, SL05): session.end and session.person through the envelope on a real database, the sign-out appended to the audit chain in the same transaction, applied and refused events read back, and account:write on the caller's own account only."
+    "C23 also names c23-session-end (ticket C23, SL05): session.end and session.person through the envelope on a real database, the sign-out appended to the audit chain in the same transaction, applied and refused events read back, and account:write on the caller's own account only.",
+    "C23 names c23-session-surfaces in conformance (ticket C23, SL05, parity on main's command-line harness): session.person and session.end on the command line as its own process, the person and agent HTTP routes and the in-process entries. Each surface answers the caller's own name and records one applied sign-out; a sign-out naming another person, and the agent with and without its delegation, are refused alike on each, with nothing recorded for anyone named."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -371,6 +372,7 @@
     "tests/api/t2c2-worker.test.ts",
     "tests/cli/t2e-top-up-surfaces.test.ts",
     "tests/cli/t3c-write-off-surfaces.test.ts",
-    "tests/cli/t3f-two-workers.test.ts"
+    "tests/cli/t3f-two-workers.test.ts",
+    "tests/cli/c23-session-surfaces.test.ts"
   ]
 }
