@@ -35,8 +35,8 @@ import {
 const RUNTIME_CODES = Object.keys(SUGGESTED_STATUS) as readonly RuntimeRefusalCode[];
 
 describe('the runtime refusal codes L3 registers', () => {
-  it('registers all thirty', () => {
-    expect(RUNTIME_CODES).toHaveLength(30);
+  it('registers all thirty-four', () => {
+    expect(RUNTIME_CODES).toHaveLength(34);
     for (const code of RUNTIME_CODES) {
       expect(registeredRefusal(code as RefusalCode), code).toBeDefined();
     }
@@ -48,7 +48,7 @@ describe('the runtime refusal codes L3 registers', () => {
     }
   });
 
-  it('shows every one of them to the caller, because all thirty are caller-visible', () => {
+  it('shows every one of them to the caller, because all thirty-four are caller-visible', () => {
     for (const code of RUNTIME_CODES) {
       expect(CALLER_VISIBLE.has(code as RefusalCode), code).toBe(true);
     }

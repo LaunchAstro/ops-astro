@@ -1665,6 +1665,48 @@ and codes, never a sentence, to a trace target an operator reads.
   Retention (the product's job deleting by derived id, the raw bucket's
   lifecycle rule) and the operator readers are AW-13's remaining lines.
 
+## An automation occurrence's run
+
+AW-01 J, `core-commands/src/commands/occurrence-run.ts` and migration 0049
+(ORCH36's ruling, option B). C33 records an occurrence, C52-A's dispatch
+rechecks the activation and its standing approval under the activation's lock,
+and then asks `startOccurrenceRun` for the run. It is never a command: no API
+route, command-line verb or agent operation reaches it.
+
+- **The task.** A new task in the definition's own business and client,
+  landing `intake_state: accepted`: the standing approval is the decision that
+  accepts it (automations contract 4.2). Its source is `system:automation`.
+- **The run.** On that task, naming its occurrence, definition and approver,
+  with no plan lineage or version: a plan version opens a per-run gate, which
+  is what the standing approval stands in for. The agent's output on the task
+  still takes its own review round (AW-09). One run per occurrence: the
+  occurrence's advisory lock makes a second start answer the first as
+  replayed, and past the code the database's unique index holds it.
+- **Who writes it.** An active worker of the business, never a person or an
+  agent (`WORKER_REQUIRED`). The run row goes in through
+  `ops_astro_occurrence`, taken for the one insert with
+  `set_config('role', ..., true)`; 0049's trigger refuses an origin written by
+  any other role, and any change to an origin after the insert.
+- **What refuses it.** An unknown or malformed occurrence
+  (`OCCURRENCE_UNKNOWN`); a revoked, ended or superseded approval, or one that
+  names no person of the business (`APPROVAL_NOT_STANDING`); a revoked version
+  (`DEFINITION_REVOKED`); a malformed id, digest, size, client or title
+  (`DEFINITION_UNAVAILABLE`). Each writes nothing. A newer release of the
+  definition does not refuse it: the activation pins its version (automations
+  contract 4.3).
+- **What it writes.** The task, the run, its definition pin (0043, kind
+  `definition_version`, pinned by the worker) and one `occurrence.run_start`
+  audit event by the worker, whose payload digest covers the occurrence, run,
+  task, definition, version, approval and approver.
+- **Pickup.** Pickup claims reservations on approved plan versions, and 0049
+  binds a reservation's run and version together, so no reservation can name
+  an occurrence's run. AW-04 builds its claim.
+
+The approval and version facts come through `ReadOccurrenceAuthority`, which
+C52-A fills from its own rows under the activation lock; its foreign keys and
+that read join at the batch 3 join. Tests: `aw-01-occurrence-run` and
+`aw-01-occurrence-run-isolation`.
+
 ## What is not here
 
 - **No machine write-off.** The worker (`apps/worker/`, T2b), effect

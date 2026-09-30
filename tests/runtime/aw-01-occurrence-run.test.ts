@@ -121,15 +121,24 @@ it('AW-01 occurrence run: once per occurrence, replayed and raced', async () => 
   await Promise.all([left.close(), right.close()]);
 });
 
+/** An insert through the occurrence role, as the worker's own write takes it. */
+const asOccurrenceRole = async (text: string, parameters: readonly unknown[]) =>
+  await w.s.db.app.withBusiness(w.s.business, async (tx) => {
+    await tx.query(`select set_config('role', 'ops_astro_occurrence', true)`);
+    await tx.query(text, parameters);
+  });
+
 it('AW-01 occurrence run: one run per occurrence is held by the database, past the code', async () => {
   const occurrenceId = randomUUID();
   const first = await start(w.s, occurrenceId, authorityFor(w.s), w.worker);
   if (!first.ok) throw new Error(`refused ${first.refusal.code}`);
+  const origin = [randomUUID(), w.s.decider.actorId];
   await expect(
-    w.s.db.admin.execute(
-      `insert into public.planned_runs (business_id, id, task_id, origin_occurrence_id)
-       values ($1, $2, $3, $4)`,
-      [w.s.business, randomUUID(), first.value.taskId, occurrenceId] as never,
+    asOccurrenceRole(
+      `insert into public.planned_runs (business_id, id, task_id, origin_occurrence_id,
+         origin_definition_id, origin_approved_by_actor_id)
+       values ($1, $2, $3, $4, $5, $6)`,
+      [w.s.business, randomUUID(), first.value.taskId, occurrenceId, ...origin],
     ),
   ).rejects.toThrow(/planned_runs_occurrence_idx/u);
   // A run with an origin and a plan version at once is no run at all.
@@ -140,9 +149,10 @@ it('AW-01 occurrence run: one run per occurrence is held by the database, past t
     [w.s.business],
   );
   await expect(
-    w.s.db.admin.execute(
-      `insert into public.planned_runs (business_id, id, lineage_id, version_id, task_id, origin_occurrence_id)
-       values ($1, $2, $3, $4, $5, $6)`,
+    asOccurrenceRole(
+      `insert into public.planned_runs (business_id, id, lineage_id, version_id, task_id,
+         origin_occurrence_id, origin_definition_id, origin_approved_by_actor_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         w.s.business,
         randomUUID(),
@@ -150,7 +160,8 @@ it('AW-01 occurrence run: one run per occurrence is held by the database, past t
         plan?.['version_id'],
         plan?.['task_id'],
         randomUUID(),
-      ] as never,
+        ...origin,
+      ],
     ),
   ).rejects.toThrow(/planned_runs_one_origin/u);
 });
@@ -225,13 +236,14 @@ it('AW-01 occurrence run: audited as a system write naming the definition, its v
     approvalId: authority.approvalId,
     approverActorId: authority.approverActorId,
   };
-  const events = async () =>
-    await rows<Record<string, unknown>>(
+  const events = async () => [
+    ...(await rows<Record<string, unknown>>(
       w.s,
       `select actor_id, outcome, payload_digest, attempted from public.audit_events
         where business_id = $1 and command = 'occurrence.run_start' and subject_record_id = $2`,
       [w.s.business, started.value.taskId],
-    );
+    )),
+  ];
   const expected = [
     {
       actor_id: w.worker,

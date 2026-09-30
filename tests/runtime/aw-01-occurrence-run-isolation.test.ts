@@ -84,12 +84,17 @@ it('AW-01 occurrence run: the application role cannot write an occurrence run it
       [w.s.business, randomUUID(), started.value.taskId, randomUUID()],
     ),
   ).rejects.toThrow(/OCCURRENCE_RUN_ROLE/u);
-  // Nor move an existing run off, or onto, an occurrence.
+  // Nor move an existing run off, or onto, an occurrence: the application may
+  // update a run's state alone (0043), and past that, the trigger refuses
+  // even the owner.
+  const moveOff = `update public.planned_runs set origin_occurrence_id = null,
+      origin_definition_id = null, origin_approved_by_actor_id = null
+    where business_id = $1 and id = $2`;
+  await expect(asApp(moveOff, [w.s.business, started.value.runId])).rejects.toThrow(
+    /permission denied for table planned_runs/u,
+  );
   await expect(
-    asApp(
-      `update public.planned_runs set origin_occurrence_id = null where business_id = $1 and id = $2`,
-      [w.s.business, started.value.runId],
-    ),
+    w.s.db.admin.execute(moveOff, [w.s.business, started.value.runId] as never),
   ).rejects.toThrow(/OCCURRENCE_RUN_ROLE/u);
   const [grants] = await rows<Record<string, boolean>>(
     w.s,
@@ -116,22 +121,15 @@ it('AW-01 occurrence run: pickup can never reach one', async () => {
   // occurrence run has none, and the database refuses one naming it.
   const listed = await w.s.db.app.withBusiness(w.s.business, async (tx) => await queue(tx));
   expect(listed.map((entry) => entry.runId)).not.toContain(started.value.runId);
-  const [held] = await rows<Record<string, string>>(
+  const [held] = await rows<{ readonly id: string }>(
     w.s,
-    `select envelope_id, version_id from public.reservations where business_id = $1 limit 1`,
+    `select id from public.reservations where business_id = $1 limit 1`,
     [w.s.business],
   );
   await expect(
     w.s.db.admin.execute(
-      `insert into public.reservations (business_id, id, envelope_id, version_id, run_id, held_minor)
-       values ($1, $2, $3, $4, $5, 1)`,
-      [
-        w.s.business,
-        randomUUID(),
-        held?.['envelope_id'],
-        held?.['version_id'],
-        started.value.runId,
-      ] as never,
+      `update public.reservations set run_id = $3 where business_id = $1 and id = $2`,
+      [w.s.business, held?.id, started.value.runId] as never,
     ),
   ).rejects.toThrow(/reservations_run_in_same_version/u);
 });

@@ -280,6 +280,15 @@ not inherit it, so the broker takes it for the one statement with
 into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
 proves the separation and the grants.
 
+`ops_astro_occurrence` (migration 0049, AW-01 J) follows the same pattern
+without a function: it holds `insert` on `planned_runs`, `select` on a task's
+`business_id`, `id` and `revision` (for 0032's trigger) and execute on
+`app_business_id()`, and nothing else. The worker's occurrence path takes it
+for the one insert of an occurrence's run; the trigger
+`planned_runs_occurrence_origin` refuses an origin written by any other role
+and any later change to one. The suites sort it into a class of its own
+(`occurrence`), and the column-grant contract names its three reads.
+
 At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist
 (the header of `restricted-calls-prefixes.test.ts`, and its

@@ -105,6 +105,7 @@ describe('CQ-8 runtime structure', () => {
       .map((file) => relative(ROOT, file))
       .toSorted();
     expect(callers).toEqual([
+      'packages/core-commands/src/commands/occurrence-run.ts',
       'packages/core-commands/src/commands/prepare.ts',
       'packages/core-custody/src/broker-reserve.ts',
       'packages/core-records/src/tasks/placement.ts',
