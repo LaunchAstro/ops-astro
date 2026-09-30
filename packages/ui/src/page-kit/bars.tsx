@@ -5,6 +5,7 @@
 // the bar list and legend are page-level parts the kit does not draw.
 
 import type { ReactElement } from 'react';
+import { Meter } from '../kit/blocks.tsx';
 
 export interface Bar {
   readonly id: string;
@@ -76,25 +77,13 @@ export function PageMeter(props: PageMeterProps): ReactElement {
         <span className="pmeter__val">{drawn ? `${value} of ${figure(props.max)}` : value}</span>
       </div>
       {drawn ? (
-        <span
-          className="meter"
-          role="meter"
-          aria-label={props.label}
-          aria-valuemin={0}
-          aria-valuemax={props.max}
-          aria-valuenow={props.value}
-        >
-          <span
-            className={props.tone === undefined ? 'meter__fill' : `meter__fill is-${props.tone}`}
-            style={{ width: `${String(share(props.value, props.max))}%` }}
-          />
-          {props.target === undefined ? null : (
-            <span
-              className="meter__target"
-              style={{ left: `${String(share(props.target, props.max))}%` }}
-            />
-          )}
-        </span>
+        <Meter
+          label={props.label}
+          value={props.value}
+          max={props.max}
+          target={props.target}
+          tone={props.tone}
+        />
       ) : null}
     </div>
   );

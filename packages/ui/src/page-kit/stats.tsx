@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The stat row (DS-COMP-6) and the KPI tile it holds (DS-PRIM-24), with the
-// delta, the term tip and the of-track. The tile's markup is the kit's `stat`
-// and its track the kit's stat meter (DS-PRIM-23), so the row places the kit's
-// parts rather than drawing its own.
+// delta, the term tip and the of-track. The tile's markup is the kit's `stat`,
+// its label's tip the kit's `Term` (DS-PRIM-18) and its track the kit's stat
+// `Meter` (DS-PRIM-23). The kit's `Kpi` is not placed whole: its value and
+// delta are plain strings, and this tile draws a unit suffix and a delta that
+// says its direction.
 
 import type { ReactElement, ReactNode } from 'react';
-import { PageTerm } from './term.tsx';
+import { Meter } from '../kit/blocks.tsx';
+import { Term } from '../kit/marks.tsx';
 
 export interface StatDelta {
   /** Signed change against `period`. */
@@ -42,36 +45,18 @@ function Delta(props: { readonly delta: StatDelta }): ReactElement {
 
 export function Stat(props: StatProps): ReactElement {
   const of = props.of;
-  const share =
-    of !== undefined && of > 0 ? Math.min(100, Math.max(0, (props.value / of) * 100)) : undefined;
   return (
     <div className="stat">
       <span className="stat__label">
-        {props.term === undefined ? (
-          props.label
-        ) : (
-          <PageTerm definition={props.term}>{props.label}</PageTerm>
-        )}
+        {props.term === undefined ? props.label : <Term tip={props.term}>{props.label}</Term>}
       </span>
       <span className="stat__num">
         {figure(props.value)}
         {props.suffix === undefined ? null : <span className="stat__suffix">{props.suffix}</span>}
         {of === undefined ? null : <span className="stat__of"> of {figure(of)}</span>}
       </span>
-      {props.track !== true || share === undefined || of === undefined ? null : (
-        <span
-          className="meter meter--stat"
-          role="meter"
-          aria-label={props.label}
-          aria-valuemin={0}
-          aria-valuemax={of}
-          aria-valuenow={props.value}
-        >
-          <span
-            className="meter__fill"
-            style={{ width: `${String(Math.round(share * 10) / 10)}%` }}
-          />
-        </span>
+      {props.track !== true || of === undefined || !(of > 0) ? null : (
+        <Meter label={props.label} look="stat" value={props.value} max={of} />
       )}
       {props.delta === undefined ? null : (
         <span className="stat__foot">

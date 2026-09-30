@@ -10,6 +10,8 @@
 // package imports no `core-*` package.
 
 import { useState, type ReactElement } from 'react';
+import { Banner } from '../kit/blocks.tsx';
+import { IconButton } from '../kit/controls.tsx';
 
 export interface Tip {
   /** The page's canonical address, as the route manifest names it. */
@@ -53,19 +55,24 @@ export function SectionTip(props: {
   const [dismissedHere, setDismissedHere] = useState(false);
   if (dismissedHere || !visibleTip(props.tip, props.preferences)) return null;
   return (
-    <div className="banner banner--info sectip" role="note">
-      <p className="banner__body">{props.tip.text}</p>
-      <button
-        type="button"
-        className="banner__x"
-        aria-label="Dismiss this tip"
-        onClick={() => {
-          setDismissedHere(true);
-          props.preferences.dismiss(tipKey(props.tip));
-        }}
+    // The kit's info banner (DS-PRIM-22). Its own dismiss says only "Dismiss",
+    // so the tip passes the kit's icon button as the banner's action instead.
+    <div className="sectip">
+      <Banner
+        tone="info"
+        action={
+          <IconButton
+            icon="cross-small"
+            label="Dismiss this tip"
+            onClick={() => {
+              setDismissedHere(true);
+              props.preferences.dismiss(tipKey(props.tip));
+            }}
+          />
+        }
       >
-        <span aria-hidden="true">×</span>
-      </button>
+        {props.tip.text}
+      </Banner>
     </div>
   );
 }

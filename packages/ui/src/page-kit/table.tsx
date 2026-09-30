@@ -9,7 +9,7 @@
 // scrolls inside its own box, so a wide one never widens the page.
 
 import { useState, type ReactElement, type ReactNode } from 'react';
-import { PageTerm } from './term.tsx';
+import { Term } from '../kit/marks.tsx';
 
 export type SortValue = string | number | null | undefined;
 
@@ -103,7 +103,7 @@ function SortHead(props: {
         </button>
       ) : (
         <>
-          <PageTerm definition={props.term}>{props.label}</PageTerm>
+          <Term tip={props.term}>{props.label}</Term>
           <button
             type="button"
             className="table__sort"
