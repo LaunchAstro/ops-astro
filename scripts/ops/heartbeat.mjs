@@ -11,7 +11,7 @@
 // a GET to a public https address, with no redirect followed, a 10-second
 // limit and its answer's body discarded.
 
-export { ping, UNREACHABLE } from '../../apps/worker/heartbeat.ts';
+export { offEgress, ping, UNREACHABLE } from '../../apps/worker/heartbeat.ts';
 
 /**
  * Whether the error sink behind `dsn` answers its health page. The sink is on

@@ -38,10 +38,15 @@ it('S0-2 heartbeats: the worker and its forwarder are one unit, and the stop nam
     'OPS_ASTRO_BUSINESS',
     'OPS_ASTRO_DELEGATION',
     'OPS_ASTRO_TOKEN',
+    'OPS_EGRESS_HEARTBEAT_HOST',
     'OPS_WORKER_HEARTBEAT_URL',
   ]);
   expect(names(forwarder)).toEqual([
     'DATABASE_FORWARDER_URL',
+    'OPS_EGRESS_HEARTBEAT_HOST',
+    'OPS_EGRESS_POOLER_HOST',
+    'OPS_EGRESS_POOLER_PORT',
+    'OPS_EGRESS_SINK_HOST',
     'OPS_ENVIRONMENT',
     'OPS_ERROR_SINK_DSN',
     'OPS_FORWARDER_HEARTBEAT_URL',

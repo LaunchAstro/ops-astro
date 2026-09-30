@@ -8,17 +8,27 @@
 // `DATABASE_FORWARDER_URL`, a login that is a member of `ops_astro_forwarder`
 // alone; the sink's `OPS_ERROR_SINK_DSN`, `OPS_ENVIRONMENT` and `OPS_RELEASE`;
 // `OPS_FORWARDER_HEARTBEAT_URL`, the watcher's heartbeat; `OPS_SINK_HEARTBEAT_URL`,
-// the sink's, pinged after each pass while the sink's health page answers. Exit 1
-// names a bad setting, never its value. A pass that fails prints its class alone
+// the sink's, pinged after each pass while the sink's health page answers. On
+// staging each must leave by the egress host setting given beside it (the
+// `OPS_EGRESS_*` hosts the relay lists). Exit 1 names a bad setting, never its value. A pass that fails prints its class alone
 // and does not ping its own heartbeat, so silence is the alert.
 
 import { join } from 'node:path';
 import { sinkFrom } from '../../apps/api/alerts/sink.ts';
 import { createForwarder } from '../../apps/forwarder/forward.ts';
 import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
-import { ping, sinkAnswers } from './heartbeat.mjs';
+import { offEgress, ping, sinkAnswers } from './heartbeat.mjs';
 
 const ROOT = join(import.meta.dirname, '..', '..');
+
+/** On staging, each address leaves by the egress host beside it (S0-1 egress allow-list). */
+const offRoute = (env) =>
+  offEgress(env, [
+    ['DATABASE_FORWARDER_URL', 'OPS_EGRESS_POOLER_HOST', env['OPS_EGRESS_POOLER_PORT']],
+    ['OPS_ERROR_SINK_DSN', 'OPS_EGRESS_SINK_HOST'],
+    ['OPS_FORWARDER_HEARTBEAT_URL', 'OPS_EGRESS_HEARTBEAT_HOST'],
+    ['OPS_SINK_HEARTBEAT_URL', 'OPS_EGRESS_HEARTBEAT_HOST'],
+  ]);
 
 export async function main(argv, env) {
   const url = env['DATABASE_FORWARDER_URL'] ?? '';
@@ -30,6 +40,8 @@ export async function main(argv, env) {
     }
     sink = sinkFrom(env);
     if (sink === undefined) throw new Error('OPS_ERROR_SINK_DSN is not set.');
+    const off = offRoute(env);
+    if (off !== undefined) throw new Error(`${off}.`);
   } catch (error) {
     process.stderr.write(`forwarder: ${error.message}\n`);
     return 1;

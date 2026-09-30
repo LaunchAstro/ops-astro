@@ -25,7 +25,7 @@ const { allowList, serverName } = (await import(
 const ROOT = resolve(import.meta.dirname, '../..');
 const CANARY = 'canary-egress-7f3c.example.test';
 const LIST = {
-  OPS_EGRESS_API_HOST: 'api.example.test',
+  STAGING_WEB_URL: 'https://api.example.test',
   OPS_EGRESS_POOLER_HOST: 'pooler.example.test',
   OPS_EGRESS_POOLER_PORT: '6543',
   OPS_EGRESS_HEARTBEAT_HOST: 'beat.example.test',

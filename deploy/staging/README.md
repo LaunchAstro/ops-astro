@@ -46,14 +46,18 @@ worker, and production's stop names the pair. The worker holds no database.
 Staging's one way out is two egress hops of the same image and a script of
 ours (`scripts/ops/egress.mjs`, `S0-1 egress allow-list` in
 `tests/ci/staging-egress.test.ts`). `egress` sits on `staging` and answers
-there for exactly four host names, each a setting: the API host
-(`STAGING_EGRESS_API_HOST`), the pooler's host and port
+there for exactly four host names: the API, taken from the worker's own
+`STAGING_WEB_URL` (the relay refuses to start unless its API alias,
+`STAGING_EGRESS_API_HOST`, is that host), the pooler's host and port
 (`STAGING_EGRESS_POOLER_HOST`, `STAGING_EGRESS_POOLER_PORT`), the watcher's
 heartbeat host (`STAGING_EGRESS_HEARTBEAT_HOST`) and the error sink's host
-(`STAGING_EGRESS_SINK_HOST`). It picks the destination from the TLS hello's
-server name on 443, or the pooler's port, and hands the bytes over an internal
-link to `egress-out`, the one service on a routed network (`egress`), which
-checks the list again. Neither hop ends TLS, so the worker, the forwarder and
+(`STAGING_EGRESS_SINK_HOST`). The worker, the forwarder and the backup run
+refuse to start when an address of theirs is not on its listed host (the
+backup's env sets `OPS_EGRESS_POOLER_HOST` and `OPS_EGRESS_POOLER_PORT`); the
+relay holds host names and a port only, never a credential. It picks the
+destination from the TLS hello's server name on 443, or the pooler's port, and
+hands the bytes over an internal link to `egress-out`, the one service on a
+routed network (`egress`), which checks the list again. Neither hop ends TLS, so the worker, the forwarder and
 the backup dump still check each host's own certificate; anything else is
 closed with nothing sent on.
 

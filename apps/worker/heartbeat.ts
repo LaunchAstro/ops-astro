@@ -27,3 +27,25 @@ export async function ping(
     return 'failed';
   }
 }
+
+/**
+ * Staging's way out lists host names (`scripts/ops/egress.mjs`): each row is an
+ * address setting, the egress host setting it must leave by, and that place's
+ * port (443 unless named). The first address that leaves anywhere else, as a
+ * message naming both settings, never a value; a row whose egress setting is
+ * unset is off staging and not judged.
+ */
+export function offEgress(
+  env: Readonly<Record<string, string | undefined>>,
+  rows: readonly (readonly [address: string, egress: string, port?: string])[],
+): string | undefined {
+  for (const [address, egress, port = '443'] of rows) {
+    const host = env[egress] ?? '';
+    if (host === '') continue;
+    const url = URL.parse(env[address] ?? '');
+    const own = url?.port || (url?.protocol === 'https:' ? '443' : '5432');
+    if (url?.hostname !== host.toLowerCase() || own !== port)
+      return `${address} does not leave by ${egress}`;
+  }
+  return undefined;
+}

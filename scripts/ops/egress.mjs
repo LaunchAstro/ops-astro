@@ -15,9 +15,15 @@
 // the bytes unchanged. Neither ends TLS, so every client still checks the real
 // host's certificate. A pair off the list is closed with nothing sent on.
 //
-// Settings: OPS_EGRESS_API_HOST, OPS_EGRESS_HEARTBEAT_HOST, OPS_EGRESS_SINK_HOST
-// (https, port 443), OPS_EGRESS_POOLER_HOST and OPS_EGRESS_POOLER_PORT (the
-// Supabase pooler). Exit 1 names a bad one, never its value.
+// Settings: STAGING_WEB_URL, the very address the worker is given for the API,
+// whose host is the API's place (one source, so no setting can swap it);
+// OPS_EGRESS_HEARTBEAT_HOST, OPS_EGRESS_SINK_HOST (https, port 443),
+// OPS_EGRESS_POOLER_HOST and OPS_EGRESS_POOLER_PORT (the Supabase pooler). The
+// relay also takes OPS_EGRESS_API_ALIAS, the name it answers to for the API,
+// and refuses to start unless it is that host. The worker unit and the dump
+// check their own addresses against the same host settings when they start
+// (`offEgress`, apps/worker/heartbeat.ts), so the four are what they need.
+// Exit 1 names a bad setting, never its value.
 
 import { connect, createServer } from 'node:net';
 
@@ -25,6 +31,16 @@ const HOST =
   /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/u;
 const LINK_PORT = 9443;
 const HELLO_LIMIT = 16_384;
+
+/** The API's host from the worker's own address: https, port 443, nothing but a host. */
+function apiHost(env) {
+  const url = URL.parse(env['STAGING_WEB_URL'] ?? '');
+  const bare = url?.username === '' && url.password === '' && url.search === '' && url.hash === '';
+  if (url?.protocol !== 'https:' || url.port !== '' || !bare || !['/', ''].includes(url.pathname))
+    throw new Error('STAGING_WEB_URL is not an https address of a host alone.');
+  if (!HOST.test(url.hostname)) throw new Error('STAGING_WEB_URL is not set to a host name.');
+  return url.hostname;
+}
 
 /** The allow-list: exactly four destinations, each from its setting. */
 export function allowList(env) {
@@ -38,7 +54,7 @@ export function allowList(env) {
     throw new Error('OPS_EGRESS_POOLER_PORT is not a port other than 443.');
   }
   return [
-    [host('OPS_EGRESS_API_HOST'), 443],
+    [apiHost(env), 443],
     [host('OPS_EGRESS_POOLER_HOST'), port],
     [host('OPS_EGRESS_HEARTBEAT_HOST'), 443],
     [host('OPS_EGRESS_SINK_HOST'), 443],
@@ -142,6 +158,8 @@ if (import.meta.main) {
   try {
     if (mode !== 'relay' && mode !== 'out') throw new Error('usage: egress.mjs relay | out');
     list = allowList(process.env);
+    if (mode === 'relay' && process.env['OPS_EGRESS_API_ALIAS'] !== list[0][0])
+      throw new Error('OPS_EGRESS_API_ALIAS is not the host of STAGING_WEB_URL.');
   } catch (error) {
     process.stderr.write(`egress: ${error.message}\n`);
     process.exit(1);
