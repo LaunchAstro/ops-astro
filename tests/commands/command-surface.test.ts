@@ -39,6 +39,19 @@ if (serverUrl === undefined) {
   console.warn('command surface: DATABASE_URL is unset, so nothing below ran, nothing is proved.');
 }
 
+const PINNED_READS = [
+  'person.list',
+  'preset.plan',
+  'session.capabilities',
+  'settings.read',
+  'tag.list',
+  'task.board',
+  'task.execution',
+  'task.queue',
+  'task.read',
+  'task.receipt',
+];
+
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
     expect([...CONTRACT_NINE].toSorted()).toStrictEqual([
@@ -89,18 +102,7 @@ describe('the surface as a table', () => {
 
 describe('the surface as a table', () => {
   it('declares the ten reads as reads, and everything else as a write', () => {
-    expect([...READS].toSorted()).toStrictEqual([
-      'person.list',
-      'preset.plan',
-      'session.capabilities',
-      'settings.read',
-      'tag.list',
-      'task.board',
-      'task.execution',
-      'task.queue',
-      'task.read',
-      'task.receipt',
-    ]);
+    expect([...READS].toSorted()).toStrictEqual(PINNED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
       // A read has nothing to be stale against. It does not always take the

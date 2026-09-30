@@ -36,7 +36,7 @@ export function tagNameOf(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const name = value.trim();
   // oxlint-disable-next-line no-control-regex -- control characters are what it refuses
-  if (name.length === 0 || name.length > TAG_NAME_LIMIT || /[\u0000-\u001f\u007f]/u.test(name)) {
+  if (name.length === 0 || name.length > TAG_NAME_LIMIT || /[\u0000-\u001F\u007F]/u.test(name)) {
     return undefined;
   }
   return name;
