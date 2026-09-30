@@ -106,13 +106,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
-  // A cleared secret, whole with no sealed value (C31, 0042).
+  // A cleared secret, whole with no sealed value (C31, 0048).
   'public.custody_secrets': {
     name: 'restricted-calls.seed',
     scope_kind: 'business',
     scope_id: null,
   },
-  // The connector fleet (MP-14-7a, 0043): nothing the journey does writes one.
+  // The connector fleet (MP-14-7a, 0049): nothing the journey does writes one.
   'public.connections': {
     connector_key: 'restricted-calls',
     label: 'restricted calls',
@@ -128,7 +128,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     connection_revision: 1,
     started_by_actor_id: randomUUID(),
   },
-  // Grants, tripwires and the night round (MP-14-8, 0044): nothing the journey
+  // Grants, tripwires and the night round (MP-14-8, 0050): nothing the journey
   // does writes a tripwire or a step.
   'public.tripwires': {
     what: 'restricted calls',
@@ -144,7 +144,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     who: 'restricted calls',
     say: 'restricted calls',
   },
-  // Graduation and standing mandates (MP-14-10a, 0045): the journey files none.
+  // Graduation and standing mandates (MP-14-10a, 0051): the journey files none.
   'public.graduation_classes': {
     client_id: randomUUID(),
     client_label: 'restricted calls client',
@@ -160,7 +160,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     label: 'restricted calls',
     authored_by_actor_id: randomUUID(),
   },
-  // Automations (C33, 0046): the journey releases and fires none.
+  // Automations (C33, 0052): the journey releases and fires none.
   'public.automation_definitions': {
     kind: 'automation',
     name: 'restricted calls',
@@ -188,7 +188,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     due_at: '2026-09-29T00:00:00Z',
     outcome: 'activation_off',
   },
-  // Standing approvals (C52-A, 0047): the journey adopts, revokes and dispatches none.
+  // Standing approvals (C52-A, 0053): the journey adopts, revokes and dispatches none.
   'public.standing_approvals': {
     activation_id: randomUUID(),
     definition_id: randomUUID(),
@@ -206,7 +206,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     occurrence_id: randomUUID(),
     outcome: 'activation_off',
   },
-  // New client onboarding (C41-A, 0048): the journey starts none.
+  // New client onboarding (C41-A, 0054): the journey starts none.
   'public.onboardings': {
     client_id: randomUUID(),
     template_key: 'restricted-calls',
