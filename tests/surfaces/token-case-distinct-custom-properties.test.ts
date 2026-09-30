@@ -9,7 +9,7 @@ import { expect, it } from 'vitest';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
-it('Sol proof, criterion 1: case-distinct custom properties cannot hide token drift', () => {
+it('case-distinct custom properties cannot hide token drift', () => {
   const directory = mkdtempSync(join(tmpdir(), 'sol-proof-criterion-1-'));
   try {
     const css = join(directory, 'tokens.css');
