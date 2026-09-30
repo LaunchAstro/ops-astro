@@ -100,6 +100,34 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
       async (tx) => (await readInboxItems(tx, person)).find((x) => x.id === item)?.access,
     );
 
+  it('a closed item becomes withheld when its recipient loses read', async () => {
+    const task = await inAlpha(async (tx) => {
+      const spine = await installTaskSpine(tx);
+      return await createTask(tx, spine, { title: 'closed then withheld', parentId: null });
+    });
+    const grant = await grantRead({ kind: 'record', id: task });
+    const item = await inAlpha(
+      async (tx) =>
+        await raiseInboxItem(tx, {
+          recipientPersonId: ada,
+          subjectRecordId: task,
+          reason: 'mention',
+          fact: { kind: 'record', id: randomUUID() },
+        }),
+    );
+    await inAlpha(async (tx) => {
+      await tx.query(
+        `update public.inbox_items
+            set work_state = 'cleared', closed_at = now(), closed_by_person_id = $3
+          where business_id = $1 and id = $2`,
+        [tx.businessId, item, bea],
+      );
+    });
+    expect(await accessOf(ada, item)).toBe('readable');
+    await inAlpha(async (tx) => await revokeGrant(tx, grant));
+    expect(await accessOf(ada, item)).toBe('withheld');
+  });
+
   beforeAll(async () => {
     db = await createFreshDatabase({ part: 'inb1a' });
     alpha = await insertBusiness(db.app, 'alpha');
