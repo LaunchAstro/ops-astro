@@ -13,17 +13,8 @@
 // (MP-4-6, U19), the one clock the task page's time section also reads.
 
 import type { RowActions } from '@launchastro/ui';
-import type {
-  BoardTask,
-  CommandName,
-  PersonView,
-} from '../../../../packages/core-wire/src/index.ts';
+import type { BoardTask, PersonView } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
-
-// LEANS-ON SL08-B-2 (slice/SL08-u19): `time.start` joins the wire's command
-// names with U19. Until this slice rebases onto it the name is widened here,
-// in this one place; the rebase deletes the cast.
-const TIME_START = 'time.start' as string as CommandName;
 
 export function rowActions(options: {
   readonly client: OperationsClient;
@@ -62,7 +53,7 @@ export function rowActions(options: {
     },
     // No revision: a time entry is its own record, not a change to the task.
     onStartTimer: (row) => {
-      send(client.mutate(TIME_START, { taskId: row.id }));
+      send(client.mutate('time.start', { taskId: row.id }));
     },
     ...cellActions(client, options.people, at, send),
   };
