@@ -308,6 +308,7 @@
     "tests/automations/c33-occurrences.test.ts",
     "tests/automations/c33-commands.test.ts",
     "tests/automations/c33-authority.test.ts",
+    "tests/automations/c33-limits.test.ts",
     "tests/automations/c52a-firing.test.ts",
     "tests/automations/c52a-pins.test.ts",
     "tests/automations/c52a-commands.test.ts",
