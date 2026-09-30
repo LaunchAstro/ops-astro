@@ -9,8 +9,9 @@
 // out of `data` would still return the right answer on a record the trigger had
 // stopped projecting, which is the failure worth catching.
 //
-// `description`, `agent_brief` and `page_link` are the exceptions and have to be: they are
-// unslotted on purpose (`tasks/spine.ts`), so `data` is where they live.
+// `description`, `agent_brief`, `page_link` and `estimated_minutes` are the
+// exceptions and have to be: they are unslotted on purpose (`tasks/spine.ts`),
+// so `data` is where they live.
 //
 // A task that is not here, and a task that is in another business, produce
 // nothing to distinguish them: the query is scoped by the business the session
@@ -50,6 +51,7 @@ interface TaskRowRead {
   readonly description: string | null;
   readonly agent_brief: string | null;
   readonly page_link: string | null;
+  readonly estimated_minutes: string | null;
   readonly state_id: string | null;
   readonly state_key: string | null;
   readonly state_label: string | null;
@@ -83,6 +85,7 @@ const SELECT = `
          r.data ->> 'description' as description,
          r.data ->> 'agent_brief' as agent_brief,
          r.data ->> 'page_link' as page_link,
+         r.data ->> 'estimated_minutes' as estimated_minutes,
          s.id as state_id,
          s.data ->> 'key' as state_key,
          s.data ->> 'label' as state_label,
@@ -292,6 +295,7 @@ export async function readTaskDetail(
     description: row.description,
     agentBrief: row.agent_brief,
     pageLink: row.page_link,
+    estimateMinutes: row.estimated_minutes === null ? null : Number(row.estimated_minutes),
     history: await historyOf(tx, row.id, comments.internal),
     comments: await commentsFor(tx, comments.commentTypeId, row.id, comments),
     // The proposals go to every reader of the detail, internal or external,

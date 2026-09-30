@@ -281,7 +281,35 @@ function refuseValues(
   definitions: Parameters<typeof refuseWrongValueType>[0],
   fields: FieldValues,
 ): CommandRefusal | undefined {
-  return refuseWrongValueType(definitions, fields) ?? refuseLinkOutside(fields);
+  return (
+    refuseWrongValueType(definitions, fields) ??
+    refuseLinkOutside(fields) ??
+    refuseEstimateOutside(fields)
+  );
+}
+
+/** The most an estimate holds, in minutes: about two years of working days. */
+const ESTIMATE_LIMIT = 1_000_000;
+
+/**
+ * An estimate (MP-4-8) kept as whole minutes from 0 to `ESTIMATE_LIMIT`, on
+ * create and on update: the burn bar divides by it. Null clears it.
+ */
+function refuseEstimateOutside(fields: FieldValues): CommandRefusal | undefined {
+  const minutes = fields['estimated_minutes'];
+  if (minutes === undefined || minutes === null) return undefined;
+  if (
+    Number.isInteger(minutes) &&
+    (minutes as number) >= 0 &&
+    (minutes as number) <= ESTIMATE_LIMIT
+  ) {
+    return undefined;
+  }
+  return refuseCommand(
+    'FIELD_VALUE_INVALID',
+    ['estimated_minutes'],
+    [`An estimate is whole minutes from 0 to ${ESTIMATE_LIMIT}, or null to clear it.`],
+  );
 }
 
 /**
@@ -301,14 +329,16 @@ function refuseLinkOutside(fields: FieldValues): CommandRefusal | undefined {
 
 /**
  * The fields an agent writes through `task.update`: the two texts (MP-4-7),
- * and the name, the due date and the page link, which MP-4-8's and MP-4-12's
- * Permissions tables give it "inside its delegation". Each is still held to
- * the delegation's `task:write` and to the task's own field rules.
+ * and the name, the due date, the estimate and the page link, which MP-4-8's
+ * and MP-4-12's Permissions tables give it "inside its delegation". Each is
+ * still held to the delegation's `task:write` and to the task's own field
+ * rules.
  */
 export const AGENT_UPDATE_FIELDS: readonly string[] = [
   'agent_brief',
   'description',
   'due',
+  'estimated_minutes',
   'page_link',
   'title',
 ];

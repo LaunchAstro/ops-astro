@@ -70,6 +70,8 @@ export interface TaskDetail extends TaskSummary {
   readonly agentBrief: string | null;
   /** The in-product address this task is about, path and hash (MP-4-12); null when unlinked. */
   readonly pageLink: string | null;
+  /** The time the burn bar measures against, whole minutes (MP-4-8); null when not set. */
+  readonly estimateMinutes: number | null;
   readonly history: readonly HistoryEntry[];
   /** Oldest first. Empty is a real answer; a denied read never reaches here. */
   readonly comments: readonly CommentView[];

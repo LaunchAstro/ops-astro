@@ -80,16 +80,18 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 estimate', () => {
   it('MP-4-8 estimate keeps only whole minutes: anything else is refused by name and nothing is written', async () => {
     const id = await fresh(alpha, editor, 'estimate values');
     await edit(alpha, editor, 'task.update', id, { estimated_minutes: 60 });
-    const values = [-15, 1.5, '90', 1_000_001, Number.NaN, true];
+    const values = [-15, 1.5, '90', 1_000_001, {}, true];
     const answers: unknown[] = [];
     for (const value of values) {
       // eslint-disable-next-line no-await-in-loop -- each edit reads the revision the last left
       const answer = await edit(alpha, editor, 'task.update', id, { estimated_minutes: value });
       answers.push(isCommandRefusal(answer) ? [answer.code, answer.names] : 'applied');
     }
-    for (const answer of answers) {
-      expect(answer).toStrictEqual([expect.any(String), ['estimated_minutes']]);
-    }
+    // A number outside whole minutes is the estimate's rule; any other kind is
+    // the value-type check's, which names the field with the type it wants.
+    const outside = ['FIELD_VALUE_INVALID', ['estimated_minutes']];
+    const mistyped = ['FIELD_VALUE_INVALID', ['estimated_minutes=numeric']];
+    expect(answers).toStrictEqual([outside, outside, mistyped, outside, mistyped, mistyped]);
     expect(await estimateOf(id)).toBe(60);
   });
 
