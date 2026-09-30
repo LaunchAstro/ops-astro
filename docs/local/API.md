@@ -1331,6 +1331,22 @@ sees only its own records' gates, and a caller holding no `decide` anywhere is
 refused `SCOPE_NOT_GRANTED` 403 rather than answered with an empty list
 (`reads/awaiting-review.ts`; `tests/api/mp-6-1-isolation.test.ts`).
 
+`definition.attribution` (AW-04) is attribution across runs, by an
+instruction file's digest (`{ digest }`, 64 lowercase hex, else
+`FIELD_VALUE_INVALID` naming `digest`): the runs whose read ledger holds the
+file, entry and non-entry reads alike, each with its task, the paths it read
+the file at, whether it was the entry, and the operations its model calls
+reached (a refused call reached nothing), and the union of those operations.
+It is pre-review: the answer and every run in it carry `label: 'pre-review'`;
+it may floor a declaration of reach and nothing else, and no evaluation set,
+promotion input or conformance claim takes it (the deps cruise rule
+`pre-review-attribution-stays-in-its-read` holds the module to its catalogue
+row). It is the team's: a reader outside the team, or one holding no `read` on
+tasks, is refused `SCOPE_NOT_GRANTED` 403; each run is filtered by the
+caller's task `read` inside the statement, as `gate.pending` filters by
+`decide`, and a trashed task's runs are not listed. No agent route
+(`reads/attribution.ts`; `tests/runtime/aw-04-attribution.test.ts`).
+
 A `task.read` answer's gate states, decisions and reservations come from one
 database snapshot. `readTaskProposals` (`reads/proposals.ts`) takes the
 versions, gates and reservations in the same statement that reads the decision
@@ -1692,7 +1708,7 @@ it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `gate.pending`, `person.list`,
-`preset.plan`, `settings.read`, `session.capabilities`, `conversation.read` and `conversation.list` are declared in `COMMAND_SURFACE`
+`preset.plan`, `settings.read`, `session.capabilities`, `conversation.read`, `conversation.list` and `definition.attribution` are declared in `COMMAND_SURFACE`
 with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 

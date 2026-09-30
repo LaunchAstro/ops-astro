@@ -224,6 +224,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'conversation.rename',
   'conversation.set_scope',
   'conversation.start',
+  'definition.attribution',
   'delegation.revoke',
   'gate.pending',
   'grant.revoke',
@@ -509,7 +510,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same forty-two from an expected revision', () => {
+  it('exempts the same forty-three from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

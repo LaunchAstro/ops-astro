@@ -27,6 +27,7 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 const PINNED_SHAPE = {
   'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'definition.attribution': { spine: true, subject: false, authority: 'holds-any-grant' },
   'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
@@ -42,6 +43,7 @@ const PINNED_SHAPE = {
 const PINNED_IDENTIFIERS = {
   'conversation.list': [],
   'conversation.read': ['conversationId'],
+  'definition.attribution': [],
   'gate.pending': [],
   'person.list': [],
   'preset.plan': [],
@@ -135,6 +137,12 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'session.capabilities': BODIES.map(() => null),
   'conversation.read': BODIES.map(() => null),
   'conversation.list': BODIES.map(() => null),
+  // AW-04: the file's digest, which none of these bodies carries.
+  'definition.attribution': BODIES.map(() => ({
+    code: 'FIELD_VALUE_INVALID',
+    names: ['digest'],
+    fixes: ['Send digest as the file’s sha-256, 64 lowercase hex characters.'],
+  })),
 };
 
 /** The refusal without its `refused` flag, or null. */
@@ -146,7 +154,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same twelve reads', () => {
+  it('names the same thirteen reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

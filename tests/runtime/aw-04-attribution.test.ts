@@ -229,4 +229,16 @@ it('AW-04 attribution pre-review isolation: another business, another client, an
   );
   expect(agentSees).toMatchObject({ code: 'DELEGATION_EXCLUDES_OPERATION' });
   absent(agentSees, [...alphaIds(), other.run_id], ['model.']);
+
+  // A trashed task's runs are not listed.
+  await w.alpha.db.admin.execute(
+    `update public.records set deleted_at = now(), trash_batch_id = $2, deleted_by_actor_id = $3
+      where id = $1`,
+    [world.second.taskId, randomUUID(), w.alpha.decider.actorId],
+  );
+  const afterTrash = await attribution(w.alpha, ENTRY_DIGEST);
+  expect(afterTrash).toMatchObject({
+    attribution: { runs: [{ runId: world.runA }], operations: ['model.compose'] },
+  });
+  absent(afterTrash, [world.runB, world.second.taskId], ['model.review']);
 }, 180_000);
