@@ -51,6 +51,7 @@ const STEPS = [
   ['public:content:tree', 'public content policy, over the working tree'],
   ['licences:cases', 'the licence checker refuses what it must'],
   ['licences', 'licence compatibility'],
+  ['type:census', 'every text style on the declared scale'],
   ['spdx:cases', 'source licence header rejection cases'],
   ['spdx', 'source licence headers'],
   ['deps:cases', 'the dependency cruise refuses a cruise that read nothing'],
