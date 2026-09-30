@@ -21,33 +21,18 @@ interface JsonReport {
   }[];
 }
 
-/** Each test that ran, with how it ended. */
-function ran(report: string): (readonly [string, string])[] {
-  const { testResults } = JSON.parse(readFileSync(report, 'utf8')) as JsonReport;
-  return testResults
-    .flatMap((file) => file.assertionResults)
-    .filter((test) => test.status === 'passed' || test.status === 'failed')
-    .map((test) => [test.title, test.status] as const);
-}
-
-/**
- * Whether the capture's own launcher opens a browser here, decided before the
- * capture runs and never read from its errors.
- */
-async function browserOpens(): Promise<boolean> {
-  try {
-    const browser = await launchChromium(MODE);
-    await browser.close();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 it('MP-1-1 the named page capture passes in a browser, and CI without one fails', async (context) => {
-  if (!(await browserOpens())) {
-    // CI installs the browser, so there a browser that will not open fails
-    // the check. Locally it is skipped with the reason, never passed.
+  // Whether the capture's own launcher opens a browser here, decided before
+  // the capture runs and never read from its errors. CI installs the browser,
+  // so there one that will not open fails the check; locally it is skipped
+  // with the reason, never passed.
+  const opens = await launchChromium(MODE)
+    .then((browser) => browser.close())
+    .then(
+      () => true,
+      () => false,
+    );
+  if (!opens) {
     if ((process.env['CI'] ?? '') !== '') {
       throw new Error('No browser opens on CI: the named page capture cannot run.');
     }
@@ -73,8 +58,13 @@ it('MP-1-1 the named page capture passes in a browser, and CI without one fails'
     );
     // The capture's own recorded outcome: it ran and passed. Any failure of
     // it, or no run at all, fails the check.
+    const { testResults } = JSON.parse(readFileSync(report, 'utf8')) as JsonReport;
+    const ran = testResults
+      .flatMap((file) => file.assertionResults)
+      .filter((test) => test.status === 'passed' || test.status === 'failed')
+      .map((test) => [test.title, test.status]);
     const output = `${run.stdout}\n${run.stderr}`;
-    expect(ran(report), output).toEqual([[capture, 'passed']]);
+    expect(ran, output).toEqual([[capture, 'passed']]);
     expect(run.status, output).toBe(0);
   } finally {
     rmSync(temp, { recursive: true, force: true });

@@ -27,10 +27,8 @@ export default defineConfig({
       'tests/support/global-setup.ts',
       'tests/support/temp-guard.ts',
     ],
-    // Gives the browser-capture proof and the proofs that run it a longer
-    // timeout, file by file (see the file). A second project would do it too,
-    // but labels every `vitest list` line, which scripts/db-conformance.mjs
-    // reads as paths.
+    // The capture chain's longer timeout, file by file (see the file); a second
+    // project would label the `vitest list` lines scripts/db-conformance.mjs reads.
     setupFiles: ['tests/support/capture-chain-timeout.ts'],
     // Hooks are where every database-bound file migrates a fresh database from
     // empty (`beforeAll`) and drops it (`afterAll`). That is legitimately slow
