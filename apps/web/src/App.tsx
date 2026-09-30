@@ -106,11 +106,12 @@ export function App(props: AppProps): ReactElement {
   );
 
   const onSignOut = useCallback(() => {
-    const sessionId = props.sessions.session?.sessionId;
+    const { sessionId, businessKey } = props.sessions.session ?? {};
     void signOut({
       apiOrigin: props.apiOrigin,
       fetch: props.fetch,
       ...(sessionId === undefined ? {} : { sessionId }),
+      ...(businessKey === undefined ? {} : { businessKey }),
     });
     props.sessions.clear();
     setSession(null);

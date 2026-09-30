@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C58 refresh revoked, the API's half: a signed-out token is refused from the
-// next call, not at its expiry. The browser signs out at `/api/session/end`
-// (S0-6c), a person at `/account/sessions/sign-out`; either ends the
-// provider's session for this API in every business the login reaches, then
-// asks the provider to end it too. Only the session the tab names ends, and a
-// cookie whose token does not verify ends nothing.
+// next call, not at its expiry. The web client signs out on the person prefix
+// (`/account/sessions/sign-out`, the only path its cookie is sent to), then
+// clears the cookie at `/api/session/end` (S0-6c). That ends the provider's
+// session for this API in every business the login reaches, then asks the
+// provider to end it too. Only the session the tab names ends, and a cookie
+// whose token does not verify ends nothing. The browser here keeps cookies to
+// their Path, as a real one does (the interim review's cookie-path proof).
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { cookieNameFor, sessionIdOf } from '../../apps/api/auth/session.ts';
+import { cookieNameFor, SESSION_COOKIE_OPTIONS, sessionIdOf } from '../../apps/api/auth/session.ts';
+import { signOut } from '../../apps/web/src/session/sign-in.ts';
 import { CSRF_HEADER, SESSION_HEADER } from '../../packages/core-wire/src/index.ts';
 import { ACCEPTANCE_ISSUER, call, personPath, serverUrl } from '../acceptance/world.ts';
 import {
@@ -48,8 +51,32 @@ const asTab = (token: string): Record<string, string> => ({
   ...SAME_ORIGIN,
 });
 
-/** The browser's sign-out: batch 1's route, naming the tab's own sign-in. */
-const endInBrowser = async (token: string) => await call(api, '/api/session/end', {}, asTab(token));
+/** RFC 6265 5.1.4: a browser sends a cookie only to a path its Path matches. */
+const pathMatches = (path: string, cookiePath: string): boolean =>
+  path === cookiePath ||
+  (path.startsWith(cookiePath) && (cookiePath.endsWith('/') || path[cookiePath.length] === '/'));
+
+/**
+ * The web client's own sign-out (`signOut`), through a browser holding the
+ * tab's cookie at the Path the API set it with, so `/api/session/end` gets no
+ * cookie and the person-prefix route does.
+ */
+async function endInBrowser(token: string): Promise<void> {
+  const cookie = `${cookieNameFor(sessionIdOf(token))}=${token}`;
+  const browser = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const headers = new Headers(init?.headers);
+    headers.set('sec-fetch-site', 'same-origin');
+    const path = new URL(String(url)).pathname;
+    if (pathMatches(path, SESSION_COOKIE_OPTIONS.path)) headers.set('cookie', cookie);
+    return await api.fetch(new Request(String(url), { ...init, headers }));
+  };
+  await signOut({
+    apiOrigin: 'http://api.test',
+    fetch: browser as typeof fetch,
+    sessionId: sessionIdOf(token),
+    businessKey: 'alpha',
+  });
+}
 
 /** A read on the browser's cookie, as the page makes it. */
 const servedAsTab = async (token: string, key = 'alpha') => {
@@ -72,9 +99,7 @@ async function browserSignOut(): Promise<void> {
   const token = await tokenFor(world.mia.subject, session);
   expect(await servedAsTab(token)).toEqual(OK);
 
-  const ended = await endInBrowser(token);
-  expect(ended.status).toBe(200);
-  expect(ended.body).toEqual({ ok: true });
+  await endInBrowser(token);
 
   expect(await servedAsTab(token)).toEqual(EXPIRED);
   expect(await served(token)).toEqual(EXPIRED);
@@ -98,7 +123,7 @@ async function everyBusiness(): Promise<void> {
     }
   }
 
-  expect((await endInBrowser(browserToken)).status).toBe(200);
+  await endInBrowser(browserToken);
   // Signed out in alpha on the account route; bravo never saw that sign-out.
   expect((await sessions('sign-out', accountToken)).status).toBe(200);
 
@@ -121,7 +146,7 @@ async function lateSignOut(): Promise<void> {
   const freshToken = await tokenFor(world.mia.subject, fresh);
   expect(await servedAsTab(freshToken)).toEqual(OK);
 
-  expect((await endInBrowser(oldToken)).status).toBe(200);
+  await endInBrowser(oldToken);
 
   expect(await served(oldToken)).toEqual(EXPIRED);
   expect(await servedAsTab(freshToken)).toEqual(OK);
@@ -142,10 +167,7 @@ async function checksFirst(): Promise<void> {
 
   for (const token of [forged, lapsed]) {
     // oxlint-disable-next-line no-await-in-loop
-    const answer = await endInBrowser(token);
-    // The cookie is still cleared; nothing else happens.
-    expect(answer.status).toBe(200);
-    expect(answer.body).toEqual({ ok: true });
+    await endInBrowser(token);
   }
   expect(seen).toEqual([]);
   expect(await served(genuine)).toEqual(OK);
@@ -157,9 +179,7 @@ async function hostileProvider(): Promise<void> {
     // oxlint-disable-next-line no-await-in-loop
     const token = await tokenFor(world.mia.subject, randomUUID());
     // oxlint-disable-next-line no-await-in-loop
-    const answer = await endInBrowser(token);
-    expect(answer.status, name).toBe(200);
-    expect(answer.text, name).not.toContain('CANARY');
+    await endInBrowser(token);
     // oxlint-disable-next-line no-await-in-loop
     const next = await served(token);
     expect(next, name).toEqual(EXPIRED);

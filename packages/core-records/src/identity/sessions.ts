@@ -10,7 +10,6 @@
 // ends their own sessions and nobody else's.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import { END_PROVIDER_SESSIONS } from '../tenancy/session-ends.ts';
 import { SESSION_ABSOLUTE_SECONDS } from './verified-subject.ts';
 
 export type SessionEndReason = 'sign_out' | 'end_others' | 'factor_change';
@@ -21,6 +20,15 @@ export interface SeenSession {
   readonly lastSeenAt: Date;
   readonly current: boolean;
 }
+
+/**
+ * Ends provider sessions installation-wide (0065): login resolution refuses a
+ * token whose session is named there, in every business. Asking again changes
+ * nothing.
+ */
+const END_PROVIDER_SESSIONS = `insert into ops.ended_provider_sessions (session_id)
+  select ids.id from unnest($1::uuid[]) as ids (id)
+  on conflict (session_id) do nothing`;
 
 /** The most sessions one list names; a person has a handful, never hundreds. */
 const LISTED = 50;
