@@ -77,6 +77,12 @@ function sink(down = false) {
   };
 }
 
+function latch() {
+  let complete!: () => void;
+  const promise = new Promise<void>((done) => { complete = done; });
+  return { promise, open: () => complete() };
+}
+
 function forwarder(to: ReturnType<typeof sink>, pings: string[] = []) {
   return createForwarder({
     database: forwarderDb,
@@ -142,6 +148,10 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
     deliveryHeartbeatCases();
     deliveryAlertCases();
     deliveryErrorCases();
+    acceptedAlertCase();
+    outOfOrderSignalCase();
+    inFlightSignalCase();
+    missingHeartbeatCase();
   },
 );
 
@@ -255,6 +265,114 @@ function deliveryErrorCases() {
     });
     await retry.once();
     expect(accepted.size).toBe(1);
+  });
+}
+
+function acceptedAlertCase() {
+  it('reuses the delivery id when an accepted alert loses its sink response', async () => {
+    await clear();
+    const outbox = connectOutbox(fixture.db.appUrl, { source: 'runtime' });
+    const alerts = createOutboxAlerts({ outbox, key: KEY, where: 'staging', root: ROOT });
+    for (let i = 0; i < 10; i += 1) {
+      alerts.observe({ kind: 'cross-scope-refusal', business: 'alpha', person: 'mia' });
+    }
+    await alerts.settled();
+    await outbox.close();
+    const accepted = new Set<string>();
+    const lostResponse = createForwarder({
+      database: forwarderDb,
+      send: (event) => {
+        accepted.add(event.event_id);
+        return Promise.reject(new Error('response lost after alert acceptance'));
+      },
+      where: 'staging',
+      root: ROOT,
+    });
+    await expect(lostResponse.once()).rejects.toThrow('response lost after alert acceptance');
+    const retry = createForwarder({
+      database: forwarderDb,
+      send: (event) => Promise.resolve(void accepted.add(event.event_id)),
+      where: 'staging',
+      root: ROOT,
+    });
+    await retry.once();
+    expect(accepted.size).toBe(1);
+  });
+}
+
+function outOfOrderSignalCase() {
+  it('clears every signal counted into a burst when timestamps arrive out of id order', async () => {
+    await clear();
+    const scope = 'ab'.repeat(32);
+    for (let i = 0; i < 10; i += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- each insert gets the next identity value
+      await fixture.db.admin.execute(
+        `insert into ops.api_events (kind, scope, at)
+           values ('cross-scope-refusal', $1, now() - make_interval(secs => $2))`,
+        [scope, i],
+      );
+    }
+    const to = sink();
+    await forwarder(to).once();
+    expect(to.alerts()).toEqual(['cross-scope-burst']);
+    expect(await count()).toBe(0);
+  });
+}
+
+function inFlightSignalCase() {
+  it('keeps a signal that commits after replay and before burst deletion', async () => {
+    await clear();
+    const scope = 'ab'.repeat(32);
+    const gate = latch();
+    const ready = latch();
+    const held = fixture.db.admin.transaction(async (execute) => {
+      await execute(
+        `insert into ops.api_events (kind, scope) values ('cross-scope-refusal', $1)`,
+        [scope],
+      );
+      ready.open();
+      await gate.promise;
+    });
+    await ready.promise;
+    const outbox = connectOutbox(fixture.db.appUrl, { source: 'runtime' });
+    for (let i = 0; i < 10; i += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- each insert is committed before replay
+      await outbox.append({
+        kind: 'cross-scope-refusal', scope, weight: 1,
+      });
+    }
+    await outbox.close();
+    const to = sink();
+    const forward = createForwarder({
+      database: forwarderDb,
+      send: (event) => {
+        gate.open();
+        return held.then(() => void to.events.push(event));
+      },
+      where: 'staging', root: ROOT,
+    });
+    try {
+      await forward.once();
+      expect(to.alerts()).toEqual(['cross-scope-burst']);
+      expect(await count()).toBe(1);
+    } finally {
+      gate.open();
+      await held;
+    }
+  });
+}
+
+function missingHeartbeatCase() {
+  it('refuses a completed pass when its watcher heartbeat is not set', async () => {
+    await clear();
+    const forward = createForwarder({
+      database: forwarderDb,
+      send: sink().send,
+      where: 'staging',
+      root: ROOT,
+      heartbeat: () => Promise.resolve('not set'),
+    });
+    await expect(forward.once()).rejects.toThrow('heartbeat');
   });
 }
 
