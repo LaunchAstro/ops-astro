@@ -13,6 +13,7 @@ import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
 import { TASK } from './task.ts';
 import { TEAM } from './team.ts';
+import { WORKLOG } from './worklog.ts';
 
 export interface LookProbe {
   /** `<screen>.<element>`, unique across screens. */
@@ -45,4 +46,5 @@ export const LOOK_SCREENS: readonly LookScreen[] = [
   SIGN_IN,
   INBOX,
   TEAM,
+  WORKLOG,
 ];
