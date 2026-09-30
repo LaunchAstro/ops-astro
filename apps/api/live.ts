@@ -27,25 +27,24 @@ export type BoardSignal =
 interface Board {
   readonly personId: string;
   readonly send: (signal: BoardSignal) => void;
-  readonly stop: () => Promise<void>;
 }
 
+/** Ends a stream, resolving once none of its questions is in flight. */
+type Stop = () => Promise<void>;
+
 export interface LiveTopics {
-  /** Hear `taskId` in `businessId`; the returned function stops. */
-  subscribe(businessId: string, taskId: string, send: Send): () => void;
-  /**
-   * Hear every task in `businessId` and `personId`'s own inbox there (INB-1f);
-   * `stop` ends the stream and resolves once none of its questions is in flight.
-   */
+  /** Hear `taskId` in `businessId`, `stop` ending the stream; the returned function stops hearing. */
+  subscribe(businessId: string, taskId: string, send: Send, stop?: Stop): () => void;
+  /** Hear every task in `businessId` and `personId`'s own inbox there (INB-1f); as above. */
   subscribeBoard(
     businessId: string,
     personId: string,
     send: (signal: BoardSignal) => void,
-    stop: () => Promise<void>,
+    stop: Stop,
   ): () => void;
   /** Whether LISTEN has been in force since the last (re)connect, for `/api/health`. */
   readonly listening: boolean;
-  /** Stops every board stream, waiting out their questions in flight, then stops listening. */
+  /** Stops every stream, waiting out their questions in flight, then stops listening. */
   close(): Promise<void>;
 }
 
@@ -54,13 +53,12 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
   const subscribers = new Map<string, Set<Send>>();
   // A business to its board streams.
   const boards = new Map<string, Set<Board>>();
+  const stops = new Set<Stop>();
   let listening = false;
 
   await listener.listen(
     LIVE_CHANNEL,
-    (payload) => {
-      hand(payload, subscribers, boards);
-    },
+    (payload) => hand(payload, subscribers, boards),
     () => {
       if (listening) {
         for (const sends of subscribers.values()) for (const send of sends) send('resync');
@@ -71,36 +69,43 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
   );
 
   return {
-    subscribe(businessId, taskId, send) {
+    subscribe(businessId, taskId, send, stop) {
       const key = `${businessId}:${taskId}`;
       const sends = subscribers.get(key) ?? new Set<Send>();
       subscribers.set(key, sends.add(send));
-      return () => {
+      return holding(stops, stop, () => {
         sends.delete(send);
         if (sends.size === 0 && subscribers.get(key) === sends) subscribers.delete(key);
-      };
+      });
     },
     subscribeBoard(businessId, personId, send, stop) {
-      const board: Board = { personId, send, stop };
+      const board: Board = { personId, send };
       const set = boards.get(businessId) ?? new Set<Board>();
       boards.set(businessId, set.add(board));
-      return () => {
+      return holding(stops, stop, () => {
         set.delete(board);
         if (set.size === 0 && boards.get(businessId) === set) boards.delete(businessId);
-      };
+      });
     },
     get listening() {
       return listening;
     },
     async close() {
       listening = false;
-      await Promise.allSettled([...boards.values()].flatMap((set) => Array.from(set, stopOf)));
+      await Promise.allSettled(Array.from(stops, async (stop) => await stop()));
       await listener.close();
     },
   };
 }
 
-const stopOf = async (board: Board): Promise<void> => await board.stop();
+/** `unsubscribe`, with the stream's `stop` held for `close` until it runs. */
+function holding(stops: Set<Stop>, stop: Stop | undefined, unsubscribe: () => void): () => void {
+  if (stop) stops.add(stop);
+  return () => {
+    if (stop) stops.delete(stop);
+    unsubscribe();
+  };
+}
 
 /** One `business:kind:topic` to its hearers: a task to its own and to its business's boards, an inbox to its person's boards. */
 function hand(

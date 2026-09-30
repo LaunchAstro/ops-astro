@@ -385,12 +385,15 @@ async function mayShowInbox(
 }
 
 const RECHECK_MS = 30_000;
+const noop = (): void => {};
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 
 /**
  * One open stream: `resync` once subscribed, then each signal once the caller
  * is asked again, and `closed` the first time the answer is no. Signals that
- * arrive while one is pending merge into it, the strongest kept.
+ * arrive while one is pending merge into it, the strongest kept. Stopping it
+ * (the tab leaving, or the topics closing) lets go only once no question it
+ * asked is in flight.
  */
 export async function follow(
   stream: SSEStreamingApi,
@@ -417,14 +420,24 @@ export async function follow(
     if (pending === null) chain = chain.then(send).catch(() => stream.abort());
     if (pending === null || RANK[signal] > RANK[pending]) pending = signal;
   };
-  const unsubscribe = live.topics.subscribe(businessId, taskId, want);
+  let finished = noop;
+  const done = new Promise<void>((resolve) => {
+    finished = resolve;
+  });
+  const stop = async (): Promise<void> => {
+    stream.abort();
+    await done;
+  };
+  const unsubscribe = live.topics.subscribe(businessId, taskId, want, stop);
   const timer = setInterval(() => want('check'), live.recheckMs ?? RECHECK_MS);
   try {
     await stream.writeSSE({ event: 'resync', data: taskId });
     await ended;
   } finally {
     clearInterval(timer);
+    await chain;
     unsubscribe();
+    finished();
   }
 }
 
