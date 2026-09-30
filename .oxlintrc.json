@@ -77,7 +77,8 @@
         "tests/ci/restore-includes-sign-in-tables.test.ts",
         "tests/ci/restore-includes-staging-guards.test.ts",
         "tests/api/hosted-recovery-waits-for-pass.test.ts",
-        "tests/ci/staging-archive-restores-guards.test.ts"
+        "tests/ci/staging-archive-restores-guards.test.ts",
+        "tests/ci/restore-drill-keeps-staging-guards.test.ts"
       ],
       "rules": {
         "no-await-in-loop": "off",
