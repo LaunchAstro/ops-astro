@@ -15,6 +15,17 @@
   "overrides": [
     { "files": ["tests/review/sl01-s06-proof.test.ts"], "rules": { "no-await-in-loop": "off" } },
     {
+      "files": [
+        "tests/api/live-board-closed-recheck-review.test.ts",
+        "tests/api/live-board-scoped-revocation-review.test.ts"
+      ],
+      "rules": {
+        "no-await-in-loop": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "max-lines-per-function": "off"
+      }
+    },
+    {
       "files": ["tests/api/live-board-lost-access.test.ts"],
       "rules": {
         "no-await-in-loop": "off",

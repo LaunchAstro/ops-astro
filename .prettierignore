@@ -77,3 +77,7 @@ tests/ci/two-url-service-stop-skip-fails-required-job.test.ts
 # The Opus batch-1 blind review's proofs, byte-for-byte as the review patches held them.
 tests/api/session-cookie-expired-cleared.test.ts
 tests/browser/built-page-refuses-planted-scripts.test.ts
+
+# Sol's REVB1ENDFIXAPIA proofs, byte-for-byte as the review patch held them.
+tests/api/live-board-closed-recheck-review.test.ts
+tests/api/live-board-scoped-revocation-review.test.ts
