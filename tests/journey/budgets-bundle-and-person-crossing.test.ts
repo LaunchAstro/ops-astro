@@ -42,8 +42,14 @@ describe('journey budgets, the bundle and a same-business crossing', () => {
   it('journey isolation attempts a same-business person crossing', async () => {
     const seen = new Set<string>();
     vi.stubGlobal('fetch', async (_url: string, options: RequestInit) => {
-      const headers = options.headers as Record<string, string>;
-      seen.add(headers['authorization'] ?? '');
+      // The credential each call carried: the CLI's bearer, or the app's
+      // session cookie (S0-6c), whose value is the person's token.
+      const headers = new Headers(options.headers);
+      const cookie = headers.get('cookie');
+      seen.add(
+        headers.get('authorization') ??
+          (cookie === null ? '' : `Cookie ${cookie.replace(/^[^=]*=/u, '')}`),
+      );
       return new Response(JSON.stringify({ refused: true, code: 'NOT_FOUND' }), {
         status: 403,
         headers: { 'content-type': 'application/json' },
@@ -51,10 +57,10 @@ describe('journey budgets, the bundle and a same-business crossing', () => {
     });
     const context: PassContext = {
       world: {
-        ada: { token: 'owner' },
-        bea: { token: 'other-business' },
-        noah: { token: 'same-business-other-person' },
-        agent: { token: 'agent' },
+        ada: { token: 'ops-astro-test-only-owner' },
+        bea: { token: 'ops-astro-test-only-other-business' },
+        noah: { token: 'ops-astro-test-only-same-business-other-person' },
+        agent: { token: 'ops-astro-test-only-agent' },
       } as World,
       api: 'http://127.0.0.1:1',
       app: 'http://127.0.0.1:1',
@@ -62,7 +68,7 @@ describe('journey budgets, the bundle and a same-business crossing', () => {
     };
     const cast: Cast = {
       canary: { id: 'foreign-task', title: 'Foreign task' },
-      external: { token: 'other-client' } as Cast['external'],
+      external: { token: 'ops-astro-test-only-other-client' } as Cast['external'],
       shared: { id: 'shared-task', delegation: 'held' },
     };
     const pass = {
@@ -82,7 +88,7 @@ describe('journey budgets, the bundle and a same-business crossing', () => {
     } as PassResult;
     try {
       await crossings(context, cast, [pass]);
-      expect(seen).toContain('Bearer same-business-other-person');
+      expect(seen).toContain('Cookie ops-astro-test-only-same-business-other-person');
     } finally {
       vi.unstubAllGlobals();
     }

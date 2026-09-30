@@ -16,10 +16,10 @@
 // makes would be drawn to a person as an outage.
 
 import { describe, expect, it } from 'vitest';
-import { sign } from 'hono/jwt';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { asBrowser, signBearer, TEST_ISSUER, testSignIn } from '../support/sign-in.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import {
@@ -29,8 +29,7 @@ import {
 } from '../../apps/web/src/operations/client.ts';
 import { describeRefusal } from '../../apps/web/src/records/submit.ts';
 
-const SECRET = 'a-local-test-secret-that-is-not-the-running-one';
-const ISSUER = 'http://127.0.0.1:54391';
+const ISSUER: string = TEST_ISSUER;
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const MIA = '22222222-2222-4222-8222-222222222222';
 
@@ -42,7 +41,7 @@ const MIA = '22222222-2222-4222-8222-222222222222';
  */
 const stubDatabase = (): Database =>
   ({
-    log: { record: () => undefined, statements: () => [] },
+    log: { record: () => {}, statements: () => [] },
     withBusiness: async (businessId: string, run: (tx: unknown) => Promise<unknown>) =>
       await run({
         businessId,
@@ -58,8 +57,8 @@ const stubDatabase = (): Database =>
 
 const api = createApi({
   database: stubDatabase(),
-  verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
-  resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
+  verify: createSupabaseVerifier(testSignIn(ISSUER)),
+  resolveBusiness: (key) => Promise.resolve(key === 'alpha' ? ALPHA : undefined),
   executeCommand,
   executeRead,
 });
@@ -71,32 +70,28 @@ const api = createApi({
  * one `createApi` built, with its own status, its own headers and its own
  * bytes. No case here may construct a body.
  */
-const transport = ((url: string | URL, init?: RequestInit) =>
-  api.fetch(new Request(String(url), init))) as unknown as typeof globalThis.fetch;
+const transport = (url: string, init?: RequestInit) =>
+  Promise.resolve(api.fetch(new Request(url, init)));
 
 const client = (token: string | null): OperationsClient =>
   new OperationsClient({
     origin: 'http://api.test',
     businessKey: 'alpha',
-    token,
-    fetch: transport,
+    signedIn: token !== null,
+    fetch: asBrowser(token, transport),
     newOperationId: () => '33333333-3333-4333-8333-333333333333',
   });
 
 const tokenFor = async (subject: string): Promise<string> =>
-  await sign(
-    {
-      sub: subject,
-      aud: 'authenticated',
-      iss: ISSUER,
-      role: 'authenticated',
-      exp: Math.floor(Date.now() / 1000) + 600,
-      // The first sign-in, as GoTrue stamps it (C58's 12-hour limit is measured from it).
-      amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }],
-    },
-    SECRET,
-    'HS256',
-  );
+  await signBearer({
+    sub: subject,
+    aud: 'authenticated',
+    iss: ISSUER,
+    role: 'authenticated',
+    exp: Math.floor(Date.now() / 1000) + 600,
+    // The first sign-in, as GoTrue stamps it (C58's 12-hour limit is measured from it).
+    amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }],
+  });
 
 describe('a refusal crossing the boundary into the browser client', () => {
   it('is read as a refusal, not as the API being unavailable', async () => {
@@ -124,8 +119,8 @@ describe('a refusal crossing the boundary into the browser client', () => {
     const stranger = new OperationsClient({
       origin: 'http://api.test',
       businessKey: 'bravo',
-      token: await tokenFor(MIA),
-      fetch: transport,
+      signedIn: true,
+      fetch: asBrowser(await tokenFor(MIA), transport),
       newOperationId: () => '44444444-4444-4444-8444-444444444444',
     });
 

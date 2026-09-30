@@ -1,12 +1,25 @@
 {
   "invariant": [
     "tests/acceptance/external-party.test.ts",
+    "tests/acceptance/external-party-inbox.test.ts",
     "tests/identity/external-party.test.ts",
     "tests/tenancy/restricted-calls.test.ts",
     "tests/tenancy/restricted-calls-prefixes.test.ts",
     "tests/tenancy/pooled-crossover.test.ts",
+    "tests/tenancy/pooled-interleaved.test.ts",
+    "tests/api/s0-6-isolation.test.ts",
+    "tests/db/business-lookup.test.ts",
+    "tests/db/api-events.test.ts",
+    "tests/db/api-events-forwarder.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
+    "tests/ci/operator-only.test.ts",
+    "tests/ci/s0-3e-operating-business.test.ts",
+    "tests/ci/s0-3e-operating-business-installed.test.ts",
+    "tests/ci/operator-only-acts.test.ts",
+    "tests/ci/operator-only-promotion.test.ts",
+    "tests/ci/service-stop.test.ts",
+    "tests/ci/service-stop-gated.test.ts",
     "tests/fixture/fixture-shape.test.ts",
     "tests/fixture/snapshot/snapshot-clone-and-privileges.test.ts",
     "tests/api/c59-factor-routes.test.ts",
@@ -33,6 +46,11 @@
     "tests/api/c58-sessions.test.ts",
     "tests/operations/c34-service-health.test.ts",
     "tests/web/mp-2-1-isolation-api.test.tsx",
-    "tests/api/api-1-isolation.test.ts"
+    "tests/api/api-1-isolation.test.ts",
+    "tests/db/inbox-records.test.ts",
+    "tests/reads/inbox.test.ts",
+    "tests/commands/inbox-clearing-client-isolation.test.ts",
+    "tests/reads/inbox-named.test.ts",
+    "tests/api/inb1f-live-board.test.ts"
   ]
 }

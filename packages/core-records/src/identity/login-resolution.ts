@@ -225,7 +225,6 @@ const STANDING = `
      and ((g.subject_kind = 'person' and g.subject_id = $1)
           or (g.subject_kind = 'actor' and a.person_id = $1))`;
 
-/** Exported so the Access preview (C32) asks the one rule sign-in asks. */
 export async function standsOnShares(tx: TenantQuery, personId: string): Promise<boolean> {
   const rows = await tx.query<{ readonly shares: number; readonly business: number }>(STANDING, [
     personId,

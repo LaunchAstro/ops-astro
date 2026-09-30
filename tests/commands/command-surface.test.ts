@@ -79,7 +79,7 @@ describe('the surface as a table', () => {
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|access|operations|privacy|legal|credential|client)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -87,11 +87,15 @@ describe('the surface as a table', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one table, read top to bottom
 describe('the surface as a table', () => {
-  it('declares the thirteen reads as reads, and everything else as a write', () => {
+  it('declares the sixteen reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
       'access.read',
       'client.list',
+      'inbox.count',
+      'inbox.read',
+      'inbox.unattended',
       'operations.read',
       'person.list',
       'preset.plan',

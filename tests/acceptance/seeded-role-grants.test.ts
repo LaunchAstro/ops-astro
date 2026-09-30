@@ -44,7 +44,10 @@ const held = (role: string): readonly string[] =>
  * clients the caller's grants reach.
  */
 const ASKS_NOTHING: ReadonlySet<string> = new Set(['session.capabilities', 'client.list']);
-const asked = COMMAND_SURFACE.filter((each) => !ASKS_NOTHING.has(each.name))
+// A `self` row (the inbox) asks no grant either: it answers about the caller's own rows.
+const asked = COMMAND_SURFACE.filter(
+  (each) => !ASKS_NOTHING.has(each.name) && each.authorisedOn !== 'self',
+)
   .map((each) =>
     each.name === 'preset.plan' ? 'task:manage' : `${each.collection}:${each.action}`,
   )

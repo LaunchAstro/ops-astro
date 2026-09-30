@@ -489,6 +489,19 @@ const ROWS = [
     meaning: 'It would leave the business with nobody who can change access',
     source: 'C32 CS-2.15',
   },
+  // S0-6c. 403s: the session may be good, and ending it would hand the sign-out to others.
+  {
+    code: 'AUTH_CROSS_SITE',
+    status: 403,
+    meaning: 'A session cookie arrived without the same-origin header',
+    source: 'S0-6 csrf',
+  },
+  {
+    code: 'AUTH_SESSION_MISMATCH',
+    status: 403,
+    meaning: 'Session cookies arrived and the tab named none of its own',
+    source: 'S0-6 isolation',
+  },
 
   // Delegation and lease, T1's pickup and handback. No table yet.
   {
@@ -585,6 +598,12 @@ const ROWS = [
     status: 422,
     meaning: 'The caller may not write in that audience',
     source: 'contract 4.3',
+  },
+  {
+    code: 'MENTION_NOT_READABLE',
+    status: 422,
+    meaning: 'A person the comment names cannot read it, so it is not saved',
+    source: 'INB-1 (CS-16.8)',
   },
 
   // The preset planner, `records/preset-plan.ts`. A preset that is itself

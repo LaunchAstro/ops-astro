@@ -20,11 +20,19 @@
 // address that a person reloads (checklist B5), and a dev server that 404s it
 // would make the reload case untestable for a reason that has nothing to do
 // with the product.
+//
+// One thing both do: stamp the build (S0-1, line C2). The identifier from
+// `build-stamp.ts` is compiled into the bundle for the shell to draw, written
+// into the entry document as a `<meta>`, and, in a build, written into the
+// artefact as `build.json`. The dev server stamps its page too, with the
+// checkout it started from, so a browser run can tell which build served it.
 
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { isLoopback, readIdentity } from '../api/identity.ts';
+import { buildIdentifier, STAMP_FILE, STAMP_META } from './build-stamp.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -86,6 +94,57 @@ function servedIdentity(): Plugin {
   };
 }
 
+/**
+ * The version stamp, always read from the checkout being built: nothing in the
+ * environment can name a build, so no artefact carries a version it was not
+ * made from. `scripts/build.mjs` reads the artefact back and checks it.
+ */
+function buildStamp(): Plugin {
+  const build = buildIdentifier(root);
+  return {
+    name: 'ops-astro-build-stamp',
+    config: () => ({ define: { 'import.meta.env.VITE_OPS_ASTRO_BUILD': JSON.stringify(build) } }),
+    transformIndexHtml: () => [
+      { tag: 'meta', attrs: { name: STAMP_META, content: build }, injectTo: 'head' },
+    ],
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: STAMP_FILE,
+        source: `${JSON.stringify({ build })}\n`,
+      });
+    },
+  };
+}
+
+/**
+ * The theme step (MP-1-1), a classic script index.html loads first by name:
+ * the content policy runs no inline script. The dev server serves it from the
+ * app's root; the build emits it beside index.html under the same name, since
+ * the public folder is the interface's licensed assets.
+ */
+function themeBeforePaint(): Plugin {
+  const file = 'theme-before-paint.js';
+  return {
+    name: 'ops-astro-theme-before-paint',
+    apply: 'build',
+    generateBundle() {
+      const source = readFileSync(new URL(`./${file}`, import.meta.url), 'utf8');
+      this.emitFile({ type: 'asset', fileName: file, source });
+    },
+  };
+}
+
+/** The dev server drops the content policy: fast refresh is an inline script. */
+function devWithoutContentPolicy(): Plugin {
+  return {
+    name: 'ops-astro-dev-without-content-policy',
+    apply: 'serve',
+    transformIndexHtml: (html) =>
+      html.replace(/<meta\s+http-equiv="Content-Security-Policy"[^>]*>/u, ''),
+  };
+}
+
 const relative = (id: string): string => id.slice(root.length).replace(/\?.*$/u, '');
 
 const apiTarget = process.env['API_ORIGIN'] ?? 'http://127.0.0.1:8790';
@@ -96,7 +155,14 @@ export default defineConfig({
   // The interface's asset licence record and licence texts ship beside the
   // fonts and icons they cover (MP-1-2), at `/licences.json` and `/licences/`.
   publicDir: fileURLToPath(new URL('../../packages/ui/assets', import.meta.url)),
-  plugins: [react(), moduleGraphManifest(), servedIdentity()],
+  plugins: [
+    react(),
+    moduleGraphManifest(),
+    servedIdentity(),
+    buildStamp(),
+    themeBeforePaint(),
+    devWithoutContentPolicy(),
+  ],
   resolve: {
     alias: {
       '@launchastro/ui': fileURLToPath(new URL('../../packages/ui/src/index.ts', import.meta.url)),

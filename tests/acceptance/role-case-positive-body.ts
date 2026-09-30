@@ -136,24 +136,20 @@ export function createPositiveBody(
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
         return { body: { board: null } };
+      // An empty body, and no `expectedRevision`: `business_settings` has no revision column,
+      // and `session.capabilities` reports the caller's own grants. The admin holds what each
+      // asks: `settings:read`, `access:manage` and `operations:read` (C55, INB-1e), and a live
+      // grant of any kind for `session.capabilities`, `client.list` (C32) and the inbox (INB-1d).
       case 'task.queue':
       case 'person.list':
-      // Both take an empty body and neither carries an `expectedRevision`:
-      // `settings.read` because `business_settings` has no revision column to
-      // be stale against, `session.capabilities` because it reports the
-      // caller's own grants and there is nothing of the caller's to be stale.
-      // `settings.read` needs `settings:read`, which the seed grants the
-      // admin; `session.capabilities` needs a live grant of any kind, which
-      // the admin holds, so the admin reaches both here.
-      // `access.read` needs `access:manage`, which the fixture admin holds on
-      // every collection; `operations.read` needs `operations:read`, which the
-      // fixture admin holds as the owner does (C55); and `client.list` (C32),
-      // any live grant, which the admin holds.
       case 'settings.read':
       case 'session.capabilities':
       case 'access.read':
       case 'operations.read':
       case 'client.list':
+      case 'inbox.read':
+      case 'inbox.count':
+      case 'inbox.unattended':
         return { body: {} };
       // C32: `record:write`, a name no other call has used.
       case 'client.create':
@@ -182,6 +178,17 @@ export function createPositiveBody(
       case 'access.end': {
         if (context.freshMember === undefined) return { exception: 'no member maker here' };
         return { body: { holderId: await context.freshMember() } };
+      }
+      case 'notifications.set_channel':
+        // Self-scoped (INB-1e): in-app is always on, the one mode it takes.
+        return { body: { channel: 'in_app', mode: 'on' } };
+      case 'inbox.seen': {
+        // The caller's own item: a proposal raises a decision item for every
+        // decide holder, the admin among them, read back from their inbox.
+        await lineageOn(context, await context.freshTask('a task whose item is opened'));
+        const listed = await context.asPerson('inbox.read', {});
+        const items = listed.body['inbox'] as readonly Record<string, unknown>[];
+        return { body: { itemId: String(items.at(-1)?.['id']) } };
       }
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };

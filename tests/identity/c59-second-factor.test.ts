@@ -15,7 +15,6 @@
 // command path is in `c59-second-factor-commands.test.ts`, and the setting
 // being a person's alone in `c59-step-up-person.test.ts`.
 
-import { sign } from 'hono/jwt';
 import { describe, expect, it } from 'vitest';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import {
@@ -28,12 +27,12 @@ import {
   type Assurance,
 } from '../../packages/core-records/src/identity/verified-subject.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
+import { signBearer, signForged, testSignIn } from '../support/sign-in.ts';
 
-const SECRET = 'c59-test-secret-not-any-running-deployment';
 const ISSUER = 'http://127.0.0.1:54391';
 // The server's clock a little after the fixed sign-in times below, so each is
 // inside C58's 12-hour limit whatever the real date.
-const verify = createSupabaseVerifier({ secret: SECRET, issuer: ISSUER, now: () => 1_900_000_200 });
+const verify = createSupabaseVerifier({ ...testSignIn(ISSUER), now: () => 1_900_000_200 });
 const SIGNED_IN = { method: 'password', timestamp: 1_900_000_000 };
 
 /** A request as the adapter sees one: only the authorisation header is read. */
@@ -46,11 +45,14 @@ function requestWith(token: string) {
 
 async function tokenWith(claims: Record<string, unknown>): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  return await sign(
-    { sub: 'sub-c59', aud: 'authenticated', iss: ISSUER, exp: now + 600, iat: now, ...claims },
-    SECRET,
-    'HS256',
-  );
+  return await signBearer({
+    sub: 'sub-c59',
+    aud: 'authenticated',
+    iss: ISSUER,
+    exp: now + 600,
+    iat: now,
+    ...claims,
+  });
 }
 
 describe('C59 the adapter passes the assurance through beside sub', () => {
@@ -128,13 +130,15 @@ describe('C59 the adapter passes the assurance through beside sub', () => {
     );
   });
 
-  it('C59 aal passes through beside sub: a token claiming aal2 under the wrong secret is nobody', async () => {
+  it('C59 aal passes through beside sub: a token claiming aal2 under a key the set does not hold is nobody', async () => {
     const now = Math.floor(Date.now() / 1000);
-    const forged = await sign(
-      { sub: 'sub-c59', aud: 'authenticated', iss: ISSUER, exp: now + 600, aal: 'aal2' },
-      'not-the-secret',
-      'HS256',
-    );
+    const forged = await signForged({
+      sub: 'sub-c59',
+      aud: 'authenticated',
+      iss: ISSUER,
+      exp: now + 600,
+      aal: 'aal2',
+    });
     expect(await verify(requestWith(forged))).toBeUndefined();
   });
 });

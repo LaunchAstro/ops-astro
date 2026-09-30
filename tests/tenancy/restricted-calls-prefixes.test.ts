@@ -98,6 +98,16 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
+  // 0042: nothing in the journey raises an inbox item yet (INB-1b does).
+  'public.inbox_items': {
+    recipient_person_id: randomUUID(),
+    subject_record_id: randomUUID(),
+    reason: 'assignment',
+    fact_kind: 'record',
+    fact_id: randomUUID(),
+  },
+  'public.inbox_attention': { item_id: randomUUID(), person_id: randomUUID() },
+  'public.inbox_delivery_attempts': { item_id: randomUUID(), channel: 'in_app', state: 'asked' },
   // 0047 (C59): no journey enrols a second factor.
   'public.second_factors': {
     person_id: randomUUID(),

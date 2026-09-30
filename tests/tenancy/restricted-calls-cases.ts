@@ -22,6 +22,12 @@ export const WORKER_ROLE = 'ops_astro_worker';
  */
 const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
+  // 0045: the installation's operating business; the application reads it only.
+  ['s', 'ops.operating_business'],
+  // 0047: the API's outbox; the application inserts its four columns, and reads nothing.
+  ['i', 'ops.api_events'],
+  // 0048: the forwarder's kept alerts; the application holds nothing on them.
+  ['', 'ops.api_alerts'],
   ['s', 'ops.slots'],
   // 0056 (S0-5): the installation's mode and the gate items are read by the
   // application through first_client_readiness().
@@ -33,6 +39,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.gate_items'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
+  // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
+  ['si', 'inbox_attention inbox_delivery_attempts'],
+  ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],

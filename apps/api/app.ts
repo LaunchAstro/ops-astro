@@ -33,6 +33,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { streamSSE, type SSEStreamingApi } from 'hono/streaming';
+import { deleteCookie, setCookie } from 'hono/cookie';
 import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
@@ -54,6 +55,8 @@ import {
   listOwnSessions,
   isCommandRefusal,
   isReadName,
+  joinLiveBoard,
+  shownInbox,
   refuseCommand,
   removeSecondFactor,
   signOutSession,
@@ -71,6 +74,7 @@ import {
   DELEGATION_HEADER,
   PREFIX,
   PUBLIC_PREFIX,
+  SESSION_PATH,
   pathOf,
 } from '../../packages/core-wire/src/index.ts';
 import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
@@ -81,8 +85,23 @@ import type {
   CommandRefusal,
   executeRead,
 } from '../../packages/core-commands/src/index.ts';
-import { bearerOf, type Verifier } from './auth/supabase.ts';
+import type { Verifier } from './auth/supabase.ts';
 import type { LiveSignal, LiveTopics } from './live.ts';
+import { followBoard } from './live-board.ts';
+import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
+import {
+  bearerOf,
+  cookieNameFor,
+  CROSS_SITE_FIXES,
+  crossSiteSession,
+  fromOwnPages,
+  MISMATCH_FIXES,
+  namedSession,
+  sessionIdOf,
+  unnamedSession,
+  sessionCookieOf,
+  SESSION_COOKIE_OPTIONS,
+} from './auth/session.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -157,6 +176,11 @@ export interface ApiOptions {
    */
   readonly logins?: LoginProvider;
   readonly live?: LiveOptions;
+  /**
+   * The security detections (ticket S0-2): each answer's outcome, as a signal
+   * with no content. Absent in a deployment without an error sink.
+   */
+  readonly observe?: (signal: SecuritySignal) => void;
 }
 
 /** The live task channel (T2f); absent, unmounted. `recheckMs`: how often a quiet stream re-asks. */
@@ -219,8 +243,15 @@ async function admit(
   entry: Entry,
   readsBody = true,
 ): Promise<Admitted | Response> {
+  // A session cookie from another site's page stops here, before the
+  // verifier reads it (`auth/session.ts`).
+  if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
   const presented = await options.verify(context.req);
+  if (presented !== undefined && presented !== 'expired') context.set(PRESENTED, presented);
   if (presented === undefined) {
+    // A tab that names no sign-in of its own reads nothing on the cookies of
+    // others: not them, their business or their clients.
+    if (unnamedSession(context.req)) return refuse(context, MISMATCH());
     return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
   }
   // An expired bearer is its own answer on both paths. It is the re-login
@@ -247,6 +278,35 @@ async function admit(
 export function createApi(options: ApiOptions): Hono {
   const api = new Hono();
 
+  // The browser trades the provider's token for the session cookie here, and
+  // gives it back at `/end`; both only from this application's own pages.
+  api.post(SESSION_PATH, async (context) => {
+    if (!fromOwnPages(context.req)) return refuse(context, CROSS_SITE());
+    const token = bearerOf(context.req);
+    const presented = token === undefined ? undefined : await options.verify(context.req);
+    if (presented === 'expired') {
+      return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES));
+    }
+    if (token === undefined || presented === undefined) {
+      return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
+    }
+    // No `Max-Age`: the cookie ends with the browser session and the token's
+    // own `exp` ends it sooner. Its lifetime under the 12-hour limit is C58's.
+    // Each sign-in its own cookie; the tab names it in `SESSION_HEADER`.
+    const session = sessionIdOf(token);
+    setCookie(context, cookieNameFor(session), token, SESSION_COOKIE_OPTIONS);
+    return context.json({ ok: true, session }, 200);
+  });
+  api.post(`${SESSION_PATH}/end`, (context) => {
+    if (!fromOwnPages(context.req)) return refuse(context, CROSS_SITE());
+    // Only the named sign-in's cookie: a late answer cannot end any other.
+    const session = namedSession(context.req);
+    if (session !== undefined) {
+      deleteCookie(context, cookieNameFor(session), SESSION_COOKIE_OPTIONS);
+    }
+    return context.json({ ok: true }, 200);
+  });
+
   /** One route per surface declaration under `prefix`, each through the door. */
   function mountSurface(
     prefix: string,
@@ -261,8 +321,15 @@ export function createApi(options: ApiOptions): Hono {
     for (const declaration of COMMAND_SURFACE) {
       routes.post(pathOf(declaration.name), async (context) => {
         const admitted = await admit(options, context, entry);
-        if (admitted instanceof Response) return admitted;
-        return await run(context, declaration, admitted);
+        const response =
+          admitted instanceof Response ? admitted : await run(context, declaration, admitted);
+        const outcome = outcomeOf(context, declaration);
+        const signal = options.observe && signalOf(outcome);
+        if (signal) options.observe?.(signal);
+        // Download volume (security line 9): the records each read handed out, per business and reader.
+        const { business, person: who, items } = outcome;
+        if (items > 0) options.observe?.({ kind: 'export', business, who, items });
+        return response;
       });
     }
     api.route(prefix, routes);
@@ -285,6 +352,7 @@ export function createApi(options: ApiOptions): Hono {
         read: name,
       });
       if (isCommandRefusal(read)) return refuse(context, read);
+      context.set(HANDED_OUT, recordsIn(read));
       // C34: the operations view's service-health section, read only after
       // the grant check above let the caller in, and outside the serving
       // transaction, so a refused caller asks no source and no source call
@@ -334,6 +402,8 @@ export function createApi(options: ApiOptions): Hono {
         { ...body, command: declaration.name },
       );
       if (isCommandRefusal(result)) return refuse(context, result);
+      // An agent's read hands out records too (security line 9, download volume): its queue, a task.
+      if (declaration.kind === 'read') context.set(HANDED_OUT, recordsIn(result.detail ?? {}));
       return context.json(agentAnswer(declaration.name, result), 200);
     });
   }
@@ -350,6 +420,37 @@ export function createApi(options: ApiOptions): Hono {
       if (typeof taskId !== 'string') return refuse(context, taskId);
       return streamSSE(context, async (stream) => {
         await follow(stream, live, admitted.businessId, taskId, may);
+      });
+    });
+    // INB-1f: the board's one stream per tab, through the same door. Each task
+    // it names is asked as the task's own stream asks it; the inbox topic is
+    // the caller's own person, which the join resolves, asked again each batch.
+    api.get(`${PREFIX.person}:businessKey/live`, async (context) => {
+      const admitted = await admit(options, context, PERSON, false);
+      if (admitted instanceof Response) return admitted;
+      const join = async () => await mayJoinBoard(options, context, admitted.businessId);
+      const joined = await join();
+      if (isCommandRefusal(joined)) return refuse(context, joined);
+      return streamSSE(context, async (stream) => {
+        await followBoard(
+          stream,
+          live.topics,
+          {
+            businessId: admitted.businessId,
+            personId: joined.personId,
+            recheckMs: live.recheckMs ?? RECHECK_MS,
+          },
+          {
+            joinedAs: async () => {
+              const again = await join();
+              return isCommandRefusal(again) ? undefined : again.personId;
+            },
+            reads: async (taskId) =>
+              typeof (await mayWatch(options, context, admitted.businessId, taskId)) === 'string',
+            shown: async (personId) =>
+              await mayShowInbox(options, context, admitted.businessId, personId),
+          },
+        );
       });
     });
   }
@@ -370,6 +471,7 @@ async function mayWatch(
   options: ApiOptions,
   context: Context,
   businessId: string,
+  recordId: string | undefined = context.req.param('recordId'),
 ): Promise<string | CommandRefusal> {
   const presented = await options.verify(context.req);
   if (presented === undefined || presented === 'expired') {
@@ -377,22 +479,50 @@ async function mayWatch(
   }
   const read = await options.executeRead(options.database, businessId, presented, {
     read: 'task.execution',
-    recordId: context.req.param('recordId'),
+    recordId,
   });
   if (isCommandRefusal(read)) return read;
   if ('execution' in read) return read.execution.taskId;
   throw new Error('task.execution answered something other than an execution');
 }
 
+/** Whether this caller may hold the board's stream (INB-1f), with the bearer verified again. */
+async function mayJoinBoard(
+  options: ApiOptions,
+  context: Context,
+  businessId: string,
+): Promise<{ readonly personId: string } | CommandRefusal> {
+  const presented = await options.verify(context.req);
+  if (presented === undefined || presented === 'expired') {
+    return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
+  }
+  return await joinLiveBoard(options.database, businessId, presented);
+}
+
+/** What `inbox.read` shows the stream's own person now, asked with the bearer verified again. */
+async function mayShowInbox(
+  options: ApiOptions,
+  context: Context,
+  businessId: string,
+  personId: string,
+): Promise<string | undefined> {
+  const presented = await options.verify(context.req);
+  if (presented === undefined || presented === 'expired') return undefined;
+  return await shownInbox(options.database, businessId, presented, personId);
+}
+
 const RECHECK_MS = 30_000;
+const noop = (): void => {};
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 
 /**
  * One open stream: `resync` once subscribed, then each signal once the caller
  * is asked again, and `closed` the first time the answer is no. Signals that
- * arrive while one is pending merge into it, the strongest kept.
+ * arrive while one is pending merge into it, the strongest kept. Stopping it
+ * (the tab leaving, or the topics closing) lets go only once no question it
+ * asked is in flight.
  */
-async function follow(
+export async function follow(
   stream: SSEStreamingApi,
   live: LiveOptions,
   businessId: string,
@@ -417,14 +547,24 @@ async function follow(
     if (pending === null) chain = chain.then(send).catch(() => stream.abort());
     if (pending === null || RANK[signal] > RANK[pending]) pending = signal;
   };
-  const unsubscribe = live.topics.subscribe(businessId, taskId, want);
+  let finished = noop;
+  const done = new Promise<void>((resolve) => {
+    finished = resolve;
+  });
+  const stop = async (): Promise<void> => {
+    stream.abort();
+    await done;
+  };
+  const unsubscribe = live.topics.subscribe(businessId, taskId, want, stop);
   const timer = setInterval(() => want('check'), live.recheckMs ?? RECHECK_MS);
   try {
     await stream.writeSSE({ event: 'resync', data: taskId });
     await ended;
   } finally {
     clearInterval(timer);
+    await chain;
     unsubscribe();
+    finished();
   }
 }
 
@@ -480,7 +620,8 @@ function mountFactorRoutes(api: Hono, options: ApiOptions, factors: FactorProvid
     routes.post(`/account/${name}`, async (context) => {
       const admitted = await admit(options, context, PERSON);
       if (admitted instanceof Response) return admitted;
-      const accessToken = bearerOf(context.req.header('authorization'));
+      // The person's own token, as the door took it: the bearer, or the browser's session cookie.
+      const accessToken = bearerOf(context.req) ?? sessionCookieOf(context.req);
       if (accessToken === undefined) {
         return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
       }
@@ -504,6 +645,7 @@ function mountFactorRoutes(api: Hono, options: ApiOptions, factors: FactorProvid
  * and none of them mints a code by hand.
  */
 function refuse(context: Context, refusal: CommandRefusal): Response {
+  context.set(REFUSAL, refusal.code);
   // `refused: true` is the flag that makes this a refusal on the wire and not
   // merely a status code. A caller reading the status alone cannot tell a
   // decision the server made from a server that fell over, and the mounted
@@ -517,7 +659,32 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
   );
 }
 
+const PRESENTED = 'presented';
+const REFUSAL = 'refusal';
+const HANDED_OUT = 'handed-out';
+
+/** How many records a read handed out: a task is one, a list is its length. */
+function recordsIn(read: object): number {
+  const lists = ['tasks', 'persons', 'queue'].map((key) => (read as Record<string, unknown>)[key]);
+  const listed = lists.find((list): list is readonly unknown[] => Array.isArray(list));
+  if (listed !== undefined) return listed.length;
+  return 'task' in read || 'sharedTask' in read ? 1 : 0;
+}
+/** The answer's outcome, as the detector reads it: no content, only scopes and a code. */
+function outcomeOf(context: Context, declaration: CommandDeclaration): Outcome {
+  const presented = context.get(PRESENTED) as VerifiedSubject | undefined;
+  return {
+    business: context.req.param('businessKey') ?? '',
+    person: presented === undefined ? '' : `${presented.provider}\u0000${presented.subject}`,
+    refusal: context.get(REFUSAL) as string | undefined,
+    items: (context.get(HANDED_OUT) as number | undefined) ?? 0,
+    command: declaration.name,
+  };
+}
+
 const SIGN_IN = 'Sign in. This endpoint reads the caller from verified authentication only.';
+const CROSS_SITE = (): CommandRefusal => refuseCommand('AUTH_CROSS_SITE', [], CROSS_SITE_FIXES);
+const MISMATCH = (): CommandRefusal => refuseCommand('AUTH_SESSION_MISMATCH', [], MISMATCH_FIXES);
 const OBJECT = 'Send a JSON object holding the command’s own fields.';
 
 /** The largest body a surface route reads. Files go by signed link, never through the API. */

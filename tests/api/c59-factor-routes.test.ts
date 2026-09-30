@@ -126,7 +126,7 @@ describe.skipIf(serverUrl === undefined)(
       ]).finally(async () => await wide.close());
 
       expect([first.status, second.status]).toEqual([200, 200]);
-      const rows = await world.db.app.withBusiness(world.alpha, async (tx) =>
+      const rows = await world.db.app.withBusiness(world.alpha, (tx) =>
         tx.query<{ readonly provider_factor_id: string; readonly status: string }>(
           `select provider_factor_id, status from public.second_factors
             where person_id = $1 order by enrolled_at, provider_factor_id`,
@@ -182,7 +182,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(await factorOf(world.mia.personId)).toBeUndefined();
       // The person row's mirror follows the factor rows: no verified factor
       // left, so a sign-in without one is enough again.
-      const mirrored = await world.db.app.withBusiness(world.alpha, async (tx) =>
+      const mirrored = await world.db.app.withBusiness(world.alpha, (tx) =>
         tx.query<{ readonly on: boolean }>(
           'select second_factor_verified as on from public.people where id = $1',
           [world.mia.personId],

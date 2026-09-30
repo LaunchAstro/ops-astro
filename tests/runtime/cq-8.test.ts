@@ -105,6 +105,8 @@ describe('CQ-8 runtime structure', () => {
       .map((file) => relative(ROOT, file))
       .toSorted();
     expect(callers).toEqual([
+      // The outbox forwarder's one lock, alone in its own transaction: no command order.
+      'apps/forwarder/forward.ts',
       'packages/core-commands/src/commands/prepare.ts',
       // C32: the business's one access lock, taken first by every change to
       // who may do what (a grant given, a grant revoked, access ended),

@@ -9,10 +9,12 @@
 // the way `db:seed` makes the cast's, and each run leaves that one ended
 // person behind.
 
-import { createHmac, randomBytes, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { SESSION_ABSOLUTE_SECONDS } from '../../packages/core-records/src/index.ts';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
+import { localServiceToken } from '../../scripts/local/signing-key.mjs';
 import { WEB, root } from './harness.mjs';
 import { identityOf } from './i10-open-page.mjs';
 
@@ -29,12 +31,20 @@ const authEnv = (name) =>
 
 const segment = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
 
-/** HS256 over `header.payload` with the provider's key, as the API verifies it. */
-function signed(unsigned) {
-  const signature = createHmac('sha256', authEnv('SUPABASE_JWT_SECRET'))
-    .update(unsigned)
-    .digest('base64url');
-  return `${unsigned}.${signature}`;
+/** ES256 over `header.payload` with the local provider's key (S0-6b), as GoTrue signs. */
+async function signed(unsigned) {
+  const [key] = JSON.parse(readFileSync(`${root}.local/auth-signing-key.json`, 'utf8'));
+  const { kty, crv, x, y, d } = key;
+  const curve = { name: 'ECDSA', namedCurve: 'P-256' };
+  const privateKey = await crypto.subtle.importKey('jwk', { kty, crv, x, y, d }, curve, false, [
+    'sign',
+  ]);
+  const signature = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    privateKey,
+    Buffer.from(unsigned),
+  );
+  return `${unsigned}.${Buffer.from(signature).toString('base64url')}`;
 }
 
 /**
@@ -42,26 +52,17 @@ function signed(unsigned) {
  * ago, signed again with the provider's key. Nothing else changes, so the only
  * reason the API has to refuse it is the absolute limit.
  */
-export function pastTheLimit(token) {
+export async function pastTheLimit(token) {
   const [header, payload] = token.split('.');
   const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
   const then = Math.floor(Date.now() / 1000) - SESSION_ABSOLUTE_SECONDS - 1;
   for (const entry of claims.amr ?? []) entry.timestamp = then;
-  return signed(`${header}.${segment(claims)}`);
+  return await signed(`${header}.${segment(claims)}`);
 }
 
 /** A login in the provider, made through its admin API as `auth:seed` does. */
 async function providerLogin(email, password) {
-  const now = Math.floor(Date.now() / 1000);
-  const service = signed(
-    `${segment({ alg: 'HS256', typ: 'JWT' })}.${segment({
-      role: 'service_role',
-      aud: 'authenticated',
-      iss: 'ops-astro-browser-nd1',
-      iat: now,
-      exp: now + 300,
-    })}`,
-  );
+  const service = await localServiceToken(root);
   const created = await fetch(`${authEnv('GOTRUE_URL')}/admin/users`, {
     method: 'POST',
     headers: {

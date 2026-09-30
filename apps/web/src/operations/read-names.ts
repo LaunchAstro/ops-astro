@@ -47,6 +47,13 @@ export const READ_NAMES = [
   'operations.read',
   // The breach drill's notices (C81), under `privacy:manage` on the server.
   'privacy.draft_breach_notices',
+  // The caller's own inbox and owed count (INB-1d), the same read the API and
+  // the command line serve; the working minimum draws them in INB-1g.
+  'inbox.read',
+  'inbox.count',
+  // Items no path reaches (INB-1e), for `operations:read`; the operations view
+  // (C55) draws them.
+  'inbox.unattended',
 ] as const;
 
 /**

@@ -156,6 +156,8 @@ async function runFaults(declaration: CommandDeclaration): Promise<string[]> {
 const NO_CHANGE: Readonly<Record<string, string>> = {
   'task.purge':
     'a fresh trash is inside the retention window; the purge is tests/commands/purge-retention.test.ts',
+  'notifications.set_channel':
+    'in-app is always on, so its one mode stores nothing; the rule is tests/commands/inbox-unattended.test.ts',
 };
 
 describe.skipIf(serverUrl === undefined)('S0-5 gate coverage: the effect metadata, proved', () => {

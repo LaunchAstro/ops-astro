@@ -107,7 +107,7 @@ async function accessEnded(page, task, leaver, adaToken) {
 async function twelveHours(page, task) {
   await signIn(page, 'mia@alpha.local', 'alpha');
   const token = await openAndType(page, task);
-  const aged = pastTheLimit(token);
+  const aged = await pastTheLimit(token);
   await page.route('**/api/**', (route) =>
     route.continue({
       headers: { ...route.request().headers(), authorization: `Bearer ${aged}` },

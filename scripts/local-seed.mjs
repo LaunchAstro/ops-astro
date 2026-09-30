@@ -21,7 +21,7 @@
 // API path cannot be demonstrated against them.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { createHmac, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { connect, connectAsAdmin } from '../packages/core-records/src/tenancy/database.ts';
 import { installTaskSpine } from '../packages/core-records/src/tasks/install.ts';
@@ -34,14 +34,18 @@ import { shareRecord } from '../packages/core-records/src/authority/shares.ts';
 import { ensureCredentialKeyFile } from '../packages/core-records/src/authority/credential-keys.ts';
 import { declarationOf } from '../packages/core-wire/src/surface.ts';
 import { readEnvFile } from '../packages/core-records/src/env-file.ts';
+import { admitMadeUp, bindSeed, markMadeUp, SEED_TAG } from './ops/made-up-only.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const usersFile = `${root}.local/synthetic-users.json`;
-const agentsFile = `${root}.local/synthetic-agents.json`;
-const gateFile = `${root}.local/gate.env`;
+// The staging reset names a new owner-only folder of its own (OPS_SEED_DIR), so
+// no local sign-in or key is carried into staging.
+const local = process.env['OPS_SEED_DIR'] || `${root}.local`;
+const usersFile = `${local}/synthetic-users.json`;
+const agentsFile = `${local}/synthetic-agents.json`;
+const gateFile = `${local}/gate.env`;
 
 function fromEnvFile(name) {
-  return process.env[name] || readEnvFile(`${root}.local/db.env`)[name] || undefined;
+  return process.env[name] || readEnvFile(`${local}/db.env`)[name] || undefined;
 }
 
 /**
@@ -103,6 +107,8 @@ const GRANTS_BY_ROLE = {
     ['access', 'manage'],
     // The operations view and the privacy incident record (C55): the owner
     // and administrators hold both on install, and no agent ever does.
+    // `inbox.unattended` asks `operations:read` too (INB-1e), and it names
+    // other people's items.
     ['operations', 'read'],
     // S0-5 (0060): the first-client gate's own commands; only the operating
     // business's grant moves it.
@@ -184,7 +190,8 @@ async function businessIdFor(admin, key) {
   if (rows[0]) return rows[0].id;
   const id = randomUUID();
   await admin.execute(
-    'insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $3)',
+    `insert into public.businesses (business_id, id, key, name)
+       select $1, $1, $2, $3 from ${SEED_TAG}`,
     [id, key, key],
   );
   return id;
@@ -429,6 +436,20 @@ if (!adminUrl || !appUrl) {
   process.exit(1);
 }
 
+// Staging holds made-up data only (S0-1). A database the seed cannot vouch for
+// from its own mark and guard is refused here, before a row or a file is
+// written; the guard is in place, and judged again, before the first write.
+const admin = connectAsAdmin(adminUrl, { source: 'seed' });
+await bindSeed(admin);
+const confirmed = process.env['LOCAL_SEED_MADE_UP'] === 'confirm';
+const signs = await admitMadeUp(admin, confirmed);
+if (signs.length > 0) {
+  console.error(`local-seed: REFUSED, not provably made-up data: ${signs.join('; ')}.`);
+  console.error('local-seed: a person confirms a new database once: LOCAL_SEED_MADE_UP=confirm');
+  await admin.close();
+  process.exit(1);
+}
+
 const { users, placeholder } = readUsers();
 if (placeholder) {
   console.warn('local-seed: .local/synthetic-users.json was absent, so a PLACEHOLDER was written.');
@@ -616,7 +637,7 @@ async function seedAgentUser(auth, agent) {
     headers,
     body: JSON.stringify({ email: agent.email, password: agent.password, email_confirm: true }),
   });
-  const body = await created.json().catch(() => undefined);
+  const body = await created.json().catch(() => {});
   if (typeof body?.id === 'string') return { subject: body.id, reachable: true };
   // Already there: find it, and keep the subject GoTrue already issued.
   const listed = await fetch(`${auth.url}/admin/users?page=1&per_page=200`, { headers });
@@ -627,42 +648,20 @@ async function seedAgentUser(auth, agent) {
   return { subject: found?.id ?? agent.subject, reachable: found !== undefined };
 }
 
-/** A short-lived service token for the GoTrue admin API, as auth-seed mints one. */
-const base64url = (input) =>
-  Buffer.from(input)
-    .toString('base64')
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replaceAll('=', '');
-
-function authAdmin() {
-  const secret = fromEnvFile('SUPABASE_JWT_SECRET') ?? readAuthEnv('SUPABASE_JWT_SECRET');
-  if (secret === undefined || secret === '') return undefined;
-  const now = Math.floor(Date.now() / 1000);
-  const header = base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const payload = base64url(
-    JSON.stringify({
-      role: 'service_role',
-      aud: 'authenticated',
-      iss: 'ops-astro-local-seed',
-      iat: now,
-      exp: now + 300,
-    }),
-  );
-  const signature = createHmac('sha256', secret)
-    .update(`${header}.${payload}`)
-    .digest('base64')
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replaceAll('=', '');
-  return {
-    url: readAuthEnv('GOTRUE_URL') ?? 'http://127.0.0.1:54391',
-    token: `${header}.${payload}.${signature}`,
-  };
+/**
+ * The GoTrue admin API and its bearer, signed with the local auth server's own
+ * key as auth-seed's is. Absent when `auth-up.sh` has not run yet.
+ */
+async function authAdmin() {
+  // On staging, the provider's admin key the staging reset hands over.
+  const { localServiceToken } = await import('./local/signing-key.mjs');
+  const token = process.env['SUPABASE_SERVICE_KEY'] || (await localServiceToken(root));
+  if (token === undefined) return;
+  return { url: readAuthEnv('GOTRUE_URL') ?? 'http://127.0.0.1:54391', token };
 }
 
 function readAuthEnv(name) {
-  return process.env[name] || readEnvFile(`${root}.local/auth.env`)[name] || undefined;
+  return process.env[name] || readEnvFile(`${local}/auth.env`)[name] || undefined;
 }
 
 /**
@@ -739,7 +738,6 @@ async function shareWithExternal(tx, taskName, adminEmail, externalEmail, people
   return { recordId: rows[0].id, grantId: shared.value };
 }
 
-const admin = connectAsAdmin(adminUrl, { source: 'seed' });
 const database = connect(appUrl, { source: 'seed' });
 try {
   const businessIds = {};
@@ -801,7 +799,7 @@ try {
   // the same function the API uses. It is its own key, never the gate key
   // above, and an existing file is never rewritten: every live delegation's
   // pickup replay depends on the key it was minted under (`credential-keys.ts`).
-  const credentialFile = `${root}.local/delegation.env`;
+  const credentialFile = `${local}/delegation.env`;
   const credentialExisted = existsSync(credentialFile);
   const credentialKeys = ensureCredentialKeyFile(credentialFile);
   if (!credentialKeys.ok) throw new Error(`local-seed: ${credentialKeys.problem}`);
@@ -811,7 +809,7 @@ try {
   );
 
   const { agents, fresh: agentsFresh } = readAgents();
-  const auth = authAdmin();
+  const auth = await authAdmin();
   let authReachable = 0;
   for (const agent of agents) {
     // oxlint-disable-next-line no-await-in-loop
@@ -875,6 +873,8 @@ try {
       );
     });
   }
+  const made = [...people.values()].map((person) => person.personId);
+  await markMadeUp(admin, Object.values(businessIds), made);
 
   const shareTask = process.env['LOCAL_SEED_SHARE_TASK'];
   if (shareTask) {
@@ -887,13 +887,6 @@ try {
         `through shareRecord (grant ${shared.grantId}, record scope, read)`,
     );
   }
-
-  const counted = await admin.execute(
-    `select (select count(*) from public.records r
-               join public.record_types t on t.id = r.record_type_id
-              where t.key = 'task')::text as tasks`,
-  );
-  console.log(`local-seed: tasks in the database: ${counted[0].tasks} (this script seeds none)`);
 } finally {
   await database.close();
   await admin.close();

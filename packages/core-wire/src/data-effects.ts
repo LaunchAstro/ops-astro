@@ -81,6 +81,8 @@ const PROPOSAL = writing(
     'planned_steps',
     'proposal_lineages',
     'proposal_versions',
+    // A proposal raises a decision item for each decide holder (INB-1).
+    'inbox_items',
   ),
 );
 const SETTINGS = writing(business('business_settings'));
@@ -105,7 +107,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.comment': writing(client('records')),
   'task.propose': PROPOSAL,
   'task.decide': writing(
-    client('attempts', 'gate_decisions', 'gates', 'reservations', 'task_envelopes'),
+    client('attempts', 'gate_decisions', 'gates', 'inbox_items', 'reservations', 'task_envelopes'),
   ),
   // An agent's pickup also mints its delegation.
   'task.pickup': writing([
@@ -117,6 +119,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
       'alerts',
       'attempts',
       'handback_reports',
+      'inbox_items',
       'leases',
       'planned_runs',
       'reservations',
@@ -126,7 +129,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...business('delegations'),
   ]),
   'task.start': TASK,
-  'task.assign': TASK,
+  // An assignment raises the assignee's item (INB-1).
+  'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
   'task.triage': TASK,
   'task.set_stage': TASK,
   'task.set_party': TASK,
@@ -150,6 +154,13 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'operations.read': READ,
   // Drafts the notices and returns them; nothing is sent or stored.
   'privacy.draft_breach_notices': READ,
+  'inbox.read': READ,
+  'inbox.count': READ,
+  'inbox.unattended': READ,
+  // The caller's own seen stamp, on an item that points at a task.
+  'inbox.seen': writing(client('inbox_attention')),
+  // Validated only: in-app is always on, and nothing is stored (INB-1e).
+  'notifications.set_channel': READ,
   'settings.set_four_eyes_threshold': SETTINGS,
   'settings.set_client_sign_off': SETTINGS,
   'settings.set_money_step_up': SETTINGS,
@@ -177,7 +188,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...client('attempts', 'leases', 'planned_runs', 'reservations', 'task_envelopes'),
     ...business('delegations'),
   ]),
-  'task.cancel': writing(client('alerts', 'planned_runs', 'proposal_lineages')),
+  'task.cancel': writing(client('alerts', 'inbox_items', 'planned_runs', 'proposal_lineages')),
   'task.restart': PROPOSAL,
   'task.heartbeat': writing(client('leases')),
   'task.dispatch': writing(client('attempts', 'planned_steps')),

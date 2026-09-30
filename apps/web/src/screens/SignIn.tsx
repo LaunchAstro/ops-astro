@@ -32,11 +32,12 @@
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { FieldError } from '@launchastro/ui';
-import { signIn } from '../session/sign-in.ts';
+import { openSession } from '../session/sign-in.ts';
 import type { Interruption, Session } from '../session/token.ts';
 
 export interface SignInProps {
   readonly gotrueUrl: string;
+  readonly apiOrigin: string;
   readonly fetch: typeof globalThis.fetch;
   readonly onSignedIn: (session: Session) => void;
   /** Set when the person was put here by a session that ended under them. */
@@ -65,14 +66,20 @@ export function SignIn(props: SignInProps): ReactElement {
     setBecause(null);
     setBusy(true);
     void (async () => {
-      const result = await signIn({
+      const result = await openSession({
         gotrueUrl: props.gotrueUrl,
+        apiOrigin: props.apiOrigin,
         email,
         password,
         fetch: props.fetch,
       });
       setBusy(false);
-      if (result.ok) props.onSignedIn({ token: result.token, businessKey, email });
+      if (result.ok)
+        props.onSignedIn({
+          businessKey,
+          email,
+          ...(result.sessionId === undefined ? {} : { sessionId: result.sessionId }),
+        });
       else setBecause(result.because);
     })();
   };

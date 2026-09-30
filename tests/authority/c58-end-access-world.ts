@@ -5,7 +5,6 @@
 // level there, under the same skip as its cases.
 
 import { randomUUID } from 'node:crypto';
-import { sign } from 'hono/jwt';
 import { afterAll, beforeAll, expect } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
@@ -13,7 +12,7 @@ import { executeAgentCommand } from '../../packages/core-commands/src/commands/a
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { type LoginProvider, type ProviderAnswer } from '../../packages/core-commands/src/index.ts';
-import { ACCEPTANCE_ISSUER, ACCEPTANCE_SECRET, tokenFor } from '../acceptance/cast.ts';
+import { ACCEPTANCE_ISSUER, tokenFor } from '../acceptance/cast.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { bearer, call, personPath, serverUrl, type Answer } from '../acceptance/world.ts';
 import {
@@ -23,6 +22,7 @@ import {
   WHOLE_BUSINESS,
   type Member,
 } from '../commands/fixture.ts';
+import { signBearer, testSignIn } from '../support/sign-in.ts';
 
 export const CANARY = 'CANARY-c58-end-access-4be91c';
 
@@ -70,19 +70,16 @@ export async function signedIn(
   signedInAt: number | null,
   iat: number = nowSeconds(),
 ): Promise<string> {
-  return await sign(
-    {
-      sub: subject,
-      aud: 'authenticated',
-      iss: ACCEPTANCE_ISSUER,
-      role: 'authenticated',
-      iat,
-      exp: iat + 3600,
-      ...(signedInAt === null ? {} : { amr: [{ method: 'password', timestamp: signedInAt }] }),
-    },
-    ACCEPTANCE_SECRET,
-    'HS256',
-  );
+  return await signBearer({
+    sub: subject,
+    aud: 'authenticated',
+    iss: ACCEPTANCE_ISSUER,
+    role: 'authenticated',
+    iat,
+    exp: iat + 3600,
+    // `amr: undefined` signs a bearer with no first-sign-in time at all.
+    amr: signedInAt === null ? undefined : [{ method: 'password', timestamp: signedInAt }],
+  });
 }
 
 /** A read the person could make yesterday: their own capabilities. */
@@ -100,8 +97,7 @@ export const apiWith = (logins?: LoginProvider, now?: () => number): ReturnType<
   createApi({
     database: harness.world.db.app,
     verify: createSupabaseVerifier({
-      secret: ACCEPTANCE_SECRET,
-      issuer: ACCEPTANCE_ISSUER,
+      ...testSignIn(ACCEPTANCE_ISSUER),
       ...(now === undefined ? {} : { now }),
     }),
     resolveBusiness: (key: string) =>

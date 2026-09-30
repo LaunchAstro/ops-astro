@@ -187,8 +187,9 @@ export function expectedOutcome(
   const granted = applicationGrantsAt(table.qualified, at);
   if (granted === undefined) return `no contract for ${table.qualified}`;
   if (!granted.includes(GRANT_LETTER[operation])) return 'denied';
-  // A write granted on an installation-wide table passes privilege and then
-  // meets the table's own constraints or triggers: the permitted path.
+  // A write granted on an installation-wide table (0047's outbox, SL09's gate
+  // tables) passes privilege and then meets the table's own constraints or
+  // triggers: the permitted path.
   if (!table.tenant) return operation === 'select' ? `rows ${String(own)}` : 'past privilege';
   // The own tenant's writes pass privilege and tenancy and then meet the
   // table's own constraints or triggers; getting that far is the permitted path.

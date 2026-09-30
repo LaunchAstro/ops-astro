@@ -7,7 +7,6 @@
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { sign } from 'hono/jwt';
 import { afterAll, afterEach, beforeAll, expect } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
 import { createGoTrueFactors } from '../../apps/api/auth/factors.ts';
@@ -18,7 +17,6 @@ import { isCommandRefusal } from '../../packages/core-commands/src/commands/refu
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import {
   ACCEPTANCE_ISSUER,
-  ACCEPTANCE_SECRET,
   bearer,
   call,
   createWorld,
@@ -28,6 +26,7 @@ import {
   type World,
 } from '../acceptance/world.ts';
 import { shareWithClient, type Member } from '../commands/fixture.ts';
+import { signBearer, testSignIn } from '../support/sign-in.ts';
 
 export const CANARY = 'CANARY-c58-session-words-4b1d7e';
 
@@ -125,22 +124,18 @@ export const tokenFor = async (
   sessionId: unknown,
   assurance?: { readonly aal: 'aal1' | 'aal2'; readonly totp?: number },
 ): Promise<string> =>
-  await sign(
-    {
-      sub: subject,
-      aud: 'authenticated',
-      iss: ACCEPTANCE_ISSUER,
-      exp: now() + 600,
-      aal: assurance?.aal ?? 'aal1',
-      session_id: sessionId,
-      amr: [
-        { method: 'password', timestamp: now() - 60 },
-        ...(assurance?.totp === undefined ? [] : [{ method: 'totp', timestamp: assurance.totp }]),
-      ],
-    },
-    ACCEPTANCE_SECRET,
-    'HS256',
-  );
+  await signBearer({
+    sub: subject,
+    aud: 'authenticated',
+    iss: ACCEPTANCE_ISSUER,
+    exp: now() + 600,
+    aal: assurance?.aal ?? 'aal1',
+    session_id: sessionId,
+    amr: [
+      { method: 'password', timestamp: now() - 60 },
+      ...(assurance?.totp === undefined ? [] : [{ method: 'totp', timestamp: assurance.totp }]),
+    ],
+  });
 
 export const sessions = async (
   name: 'list' | 'end-others' | 'sign-out',
@@ -209,7 +204,7 @@ export async function openSessionsWorld(): Promise<void> {
   });
   api = createApi({
     database: world.db.app,
-    verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
+    verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
     resolveBusiness: async (key: string) =>
       await Promise.resolve({ alpha: world.alpha, bravo: world.bravo }[key]),
     executeCommand,

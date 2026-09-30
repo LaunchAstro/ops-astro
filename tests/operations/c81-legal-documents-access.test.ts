@@ -53,7 +53,9 @@ describe.skipIf(serverUrl === undefined)('C81 the legal documents', () => {
       await tx.query('select pg_sleep(0.3)');
       return refusal;
     });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 100);
+    });
     const second = wide.withBusiness(
       harness.world.alpha,
       async (tx) => await publishLegalVersion(tx, versionId, actorId),
