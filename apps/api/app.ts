@@ -34,6 +34,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { streamSSE, type SSEStreamingApi } from 'hono/streaming';
 import { deleteCookie, setCookie } from 'hono/cookie';
+import type { AgentLimits } from './auth/agent-quota.ts';
 import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
@@ -181,6 +182,14 @@ export interface ApiOptions {
    * with no content. Absent in a deployment without an error sink.
    */
   readonly observe?: (signal: SecuritySignal) => void;
+  /**
+   * The agent credential on the agent route (API-2): the clock its expiry is
+   * read against and its quota. Absent, the wall clock and the defaults.
+   */
+  readonly agentCredentials?: {
+    readonly now?: () => Date;
+    readonly limits?: AgentLimits;
+  };
 }
 
 /** The live task channel (T2f); absent, unmounted. `recheckMs`: how often a quiet stream re-asks. */
