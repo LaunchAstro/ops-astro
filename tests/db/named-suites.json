@@ -314,7 +314,9 @@
     "tests/surfaces/inbox-three-surfaces.test.tsx",
     "tests/cli/inbox-readback.test.ts",
     "tests/commands/inbox-unattended.test.ts",
-    "tests/commands/inbox-escalation-settings.test.ts"
+    "tests/commands/inbox-escalation-settings.test.ts",
+    "tests/ci/staging-no-production-data.test.ts",
+    "tests/ci/staging-no-production-data-guard.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
@@ -386,6 +388,7 @@
     "tests/runtime/seed-revoke-in-flight.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
     "tests/support/fresh-database-leak.test.ts",
+    "tests/ci/s0-7-postgres-major.test.ts",
     "tests/records/owning-operation-constraints.test.ts",
     "tests/cli/t2c1-dispatch-surfaces.test.ts",
     "tests/api/t2c1-rejected-decision-crash-seam.test.ts",

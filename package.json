@@ -58,6 +58,7 @@
     "deps:cruise": "node scripts/deps-cruise.mjs",
     "deps:cases": "node --test tests/ci/deps-cruise-cases.mjs tests/ci/db-shard-declaration-cruise.test.mjs",
     "db:conformance": "node scripts/db-conformance.mjs",
+    "local:cases": "node --test tests/ci/s0-7-auth-up-replaces-18.test.mjs tests/ci/s0-7-auth-up-cases.mjs tests/ci/s0-7-auth-up-restarts-gotrue.test.mjs tests/ci/s0-7-db-up-then-auth-up-remigrates.test.mjs",
     "db:cases": "node --test tests/ci/db-conformance-cases.mjs tests/ci/docker-leak-cases.mjs",
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
     "db:up": "bash scripts/local/db-up.sh",
