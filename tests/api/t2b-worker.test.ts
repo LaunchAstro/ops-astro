@@ -281,6 +281,9 @@ describe.skipIf(serverUrl === undefined)(
           'beta',
         );
         expect(answer.body).toMatchObject({ refused: true, code: 'AUTH_NO_AGENT_IDENTITY' });
+        // The control: on its own key the same proposal reaches the task and meets its revision.
+        const own = await asAgent('task.propose', proposal(task.route.id, 99), credential.route);
+        expect(own.body).toMatchObject({ refused: true, code: 'VERSION_STALE' });
       });
 
       it('the person routes refuse an agent login, and write nothing', async () => {
@@ -342,6 +345,8 @@ describe.skipIf(serverUrl === undefined)(
       });
 
       it('T2 isolation: client to client', async () => {
+        // The canary the crossings must not show: the worker's proposal on the first client's task.
+        expect(await proposalsOn(task.worker.id)).toHaveLength(1);
         expect((await read(first, task.worker.id)).status).toBe(200);
         for (const [who, recordId] of [
           [first, task.sibling.id],
