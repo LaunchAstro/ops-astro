@@ -12,9 +12,12 @@ import { type ReactElement, type ReactNode } from 'react';
 import { IconButton } from './controls.tsx';
 import { Term, type MarkTone } from './marks.tsx';
 
-/** DS-PRIM-22, and the section error of DS-PRIM-30 (`bad`). A tip is info with a dismiss. */
+/**
+ * DS-PRIM-22, and the section error of DS-PRIM-30 (`bad`). A tip is info with a
+ * dismiss. `hint` is the agent's aside (DR-5): marked AI, and not a status.
+ */
 export interface BannerProps {
-  readonly tone?: 'warn' | 'bad' | 'info' | undefined;
+  readonly tone?: 'warn' | 'bad' | 'info' | 'hint' | undefined;
   readonly lead?: string | undefined;
   readonly children: ReactNode;
   readonly action?: ReactNode;
@@ -23,8 +26,11 @@ export interface BannerProps {
 
 export function Banner(props: BannerProps): ReactElement {
   const tone = props.tone ?? 'warn';
+  const Box = tone === 'hint' ? 'aside' : 'div';
+  const role = tone === 'hint' ? undefined : tone === 'bad' ? 'alert' : 'status';
   return (
-    <div className={`banner banner--${tone}`} role={tone === 'bad' ? 'alert' : 'status'}>
+    <Box className={`banner banner--${tone}`} role={role}>
+      {tone === 'hint' ? <span className="banner__mark">AI</span> : null}
       <p className="banner__body">
         {props.lead === undefined ? null : <strong>{props.lead} </strong>}
         {props.children}
@@ -33,7 +39,7 @@ export function Banner(props: BannerProps): ReactElement {
       {props.onDismiss === undefined ? null : (
         <IconButton icon="cross-small" label="Dismiss" onClick={props.onDismiss} />
       )}
-    </div>
+    </Box>
   );
 }
 
