@@ -77,9 +77,11 @@ async function join(api: Hono, key: string, recordId: string, token: string): Pr
   const events: string[] = [];
   if (response.status !== 200 || response.body === null) {
     const text = await response.text();
+    // Only a gone route's plain 404 (T2f unwired) is let through: any other non-JSON answer throws.
+    const gone = response.status === 404 && !text.startsWith('{');
     return {
       status: response.status,
-      refusal: text.startsWith('{') ? (JSON.parse(text) as Record<string, unknown>) : {},
+      refusal: gone ? {} : (JSON.parse(text) as Record<string, unknown>),
       events,
       ended: true,
       stop: async () => {},
@@ -265,17 +267,7 @@ describe.skipIf(serverUrl === undefined)(
       if (otherTask === undefined) throw new Error('party: two tasks');
       const mine = await createTask(s, `t2f-isolation-${randomUUID()}`);
 
-      // Joins first, so they run with no live listener: another business's member, either key.
-      const foreignToken = await tokenFor(other.member.presented.subject);
-      expect((await join(api, key, mine, foreignToken)).status).not.toBe(200);
-      const [otherRow] = await s.db.admin.execute<{ key: string }>(
-        'select key from public.businesses where id = $1',
-        [other.id],
-      );
-      const otherKey = String(otherRow?.key);
-      expect((await join(api, otherKey, mine, foreignToken)).status).not.toBe(200);
-
-      // Two clients here, one task shared with each.
+      // Joins first (they run with no live listener). Two clients, one task shared with each.
       const sibling = await createTask(s, `t2f-sibling-${randomUUID()}`);
       await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
       await world.client(s.business, s.decider, 't2f-client-1', mine);
@@ -289,6 +281,15 @@ describe.skipIf(serverUrl === undefined)(
       });
       expect((await open(mine, scoped)).status).toBe(200);
       expect((await open(sibling, scoped)).status).toBe(403);
+      // Another business's member, under either key: refused, each with its own status.
+      const foreignToken = await tokenFor(other.member.presented.subject);
+      expect((await join(api, key, mine, foreignToken)).status).toBe(403);
+      const [otherRow] = await s.db.admin.execute<{ key: string }>(
+        'select key from public.businesses where id = $1',
+        [other.id],
+      );
+      const otherKey = String(otherRow?.key);
+      expect((await join(api, otherKey, mine, foreignToken)).status).toBe(404);
       const heard = { mine: 0, theirs: 0, forged: 0, forgedBack: 0 };
       const off = [
         topics.subscribe(s.business, mine, () => (heard.mine += 1)),
