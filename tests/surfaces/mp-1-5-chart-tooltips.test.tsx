@@ -19,6 +19,7 @@ import {
   ScoreDial,
   Sparkline,
 } from '../../packages/ui/src/kit/charts.tsx';
+import { GALLERY } from '../../packages/ui/src/kit/gallery.tsx';
 import { mount, type Mounted } from './mount.tsx';
 import {
   DAYS,
@@ -173,6 +174,57 @@ describe('MP-1-5 chart primitives', () => {
       (active as SVGElement).blur();
     });
     expect(mounted.find('[role="tooltip"]')).toBeNull();
+  });
+});
+
+describe('MP-1-5 chart primitives', () => {
+  it('MP-1-5 shown in its own unit on the component gallery', async () => {
+    const charts = GALLERY.filter((entry) =>
+      ['DS-COMP-27', 'DS-COMP-28', 'DS-COMP-29', 'DS-COMP-40'].includes(entry.id),
+    );
+    expect(charts.map((entry) => entry.id)).toEqual([
+      'DS-COMP-27',
+      'DS-COMP-28',
+      'DS-COMP-29',
+      'DS-COMP-40',
+    ]);
+    for (const entry of charts)
+      expect(entry.interactive, entry.id).toBe(
+        entry.id !== 'DS-COMP-29' && entry.id !== 'DS-COMP-40',
+      );
+    // Every state of every chart unit draws a chart.
+    mounted = await mount(
+      <>
+        {charts.map((entry) => (
+          <section key={entry.id} data-unit={entry.id}>
+            {entry.states.map((state) => (
+              <figure key={state.label} data-state={state.label}>
+                {state.render()}
+              </figure>
+            ))}
+          </section>
+        ))}
+      </>,
+    );
+    await resize(600);
+    for (const figure of mounted.all('[data-state]'))
+      expect(
+        figure.querySelector('svg, .funnel'),
+        (figure as HTMLElement).dataset['state'] ?? '',
+      ).not.toBeNull();
+    const drawn = GALLERY.flatMap((entry) => entry.states.map((state) => state.label));
+    for (const shape of [
+      'Line',
+      'Two quantities, right axis',
+      'One point',
+      'Column with dashed line',
+      'Donut with centre label',
+      'Gauge with target',
+      'Score dials, three bands',
+      'Sparkline',
+      'True-scale funnel',
+    ])
+      expect(drawn, shape).toContain(shape);
   });
 });
 

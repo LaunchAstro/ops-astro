@@ -141,3 +141,25 @@ it('MP-1-6 mock data keeps the low-opacity pink on a demo install, and a real cl
     /--mock-tint: color-mix\(in oklab, var\(--mock-pink\) 9%, transparent\);/u,
   );
 });
+
+it('MP-1-6 CS-1.4 on a real client no pink ever shows', () => {
+  // The pink tokens are painted by the mock mark's rules and nothing else.
+  const painted = [
+    ...sheet.replaceAll(/\/\*[\s\S]*?\*\//gu, '').matchAll(/([^{}]+)\{([^}]*--mock-[^}]*)\}/gu),
+  ].map((m) => (m[1] ?? '').trim());
+  expect(painted.length).toBeGreaterThan(0);
+  for (const selector of painted) expect(selector).toMatch(/^\.is-mock/u);
+  // The mark is applied by one component, reached only through a provenance of `mock`.
+  const applies = sources()
+    .filter(({ text }) => /['"`]is-mock/u.test(text))
+    .map((s) => s.path);
+  expect(applies).toEqual(['packages/ui/src/kit/blocks.tsx']);
+  const users = sources()
+    .filter(({ path, text }) => /<MockRegion\b/u.test(text) && !path.endsWith('blocks.tsx'))
+    .map((s) => s.path)
+    .toSorted();
+  expect(users).toEqual([
+    'packages/ui/src/kit/gallery-feedback.tsx',
+    'packages/ui/src/kit/treatments.tsx',
+  ]);
+});
