@@ -422,6 +422,22 @@
   cursor: default;
 }
 
+/* The burn bar (MP-4-6, DT-09): logged time against the estimate, capped at
+   the track's end; the fill turns danger only past the estimate. */
+.sb__burn {
+  height: 4px;
+  margin: var(--s-1) 0;
+  background: var(--border);
+}
+.sb__burn > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.sb__burn[data-danger='true'] > span {
+  background: var(--danger);
+}
+
 /* -- The description and the agent brief (MP-4-7, DP-34, DP-35, TT-01, TA-10).
    One font rule (R60): the description is sans on every surface, and so is
    the rendered brief; mono is kept for the brief's markdown field alone. --- */

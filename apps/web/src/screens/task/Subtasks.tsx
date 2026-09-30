@@ -219,6 +219,7 @@ export function TeamSubtasks(props: {
     readonly id: string;
     readonly steps: readonly StepView[];
     readonly time: TaskTimeView | null;
+    readonly estimateMinutes: number | null;
   };
   readonly showFinished: boolean;
   readonly onShowFinished: (value: boolean) => void;
@@ -243,14 +244,13 @@ export function TeamSubtasks(props: {
           onChanged={props.onChanged}
         />
       }
-      // No estimate is on the record yet, so the burn bar waits for one.
       time={
         task.time === null ? undefined : (
           <TimeLog
             client={props.client}
             taskId={task.id}
             time={task.time}
-            estimateMinutes={null}
+            estimateMinutes={task.estimateMinutes}
             showAll={props.showAllTime}
             onShowAll={props.onShowAllTime}
             onChanged={props.onChanged}
