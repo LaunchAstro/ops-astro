@@ -60,7 +60,12 @@ export function serving(
 
 export const panel = async (
   client: OperationsClient,
-  on: { readonly changed?: () => void; readonly close?: () => void } = {},
+  on: {
+    readonly changed?: () => void;
+    readonly close?: () => void;
+    /** What the panel hands its host to stop before leaving (MP-4-13). */
+    readonly leaving?: (stop: (() => void) | null) => void;
+  } = {},
 ) => {
   const view = await mount(
     <TaskPanel
@@ -79,6 +84,7 @@ export const panel = async (
           /* unread */
         })
       }
+      {...(on.leaving === undefined ? {} : { onLeaving: on.leaving })}
     />,
   );
   await tick();

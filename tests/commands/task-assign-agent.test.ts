@@ -89,6 +89,39 @@ const assign = async (recordId: string, fields: Record<string, unknown>, credent
     credential,
   );
 
+describe.skipIf(serverUrl === undefined)('MP-4-8 an agent’s assign keeps one kind', () => {
+  it('an agent assigning a person clears the prior agent holder', async () => {
+    const decider = await world.decider('sol-dual-holder');
+    const taskId = await created(decider, 'Sol dual holder');
+    const credential = await assigning(decider, taskId);
+    const rows = await world.db.admin.execute<{ readonly id: string }>(
+      `select id from public.delegations where business_id = $1 and purpose_scope_id = $2`,
+      [world.business, taskId],
+    );
+    const agent = rows[0]?.id;
+    if (agent === undefined) throw new Error('Sol proof: no delegation was minted');
+    const byPerson = await world.asPerson(decider, {
+      command: 'task.assign',
+      operationId: randomUUID(),
+      recordId: taskId,
+      expectedRevision: await revision(taskId),
+      fields: { agent },
+    });
+    expect(codeOf(byPerson)).toBe('not-a-refusal');
+    expect(codeOf(await assign(taskId, { assignee: decider.personId }, credential))).toBe(
+      'not-a-refusal',
+    );
+    const held = await world.db.admin.execute<{
+      readonly agent: string | null;
+      readonly person: string | null;
+    }>(
+      `select data ->> 'agent' as agent, uuid_2::text as person from public.records where id = $1`,
+      [taskId],
+    );
+    expect(held[0]).toStrictEqual({ agent: null, person: decider.personId });
+  });
+});
+
 describe.skipIf(serverUrl === undefined)('MP-4-8 agent assigns inside its delegation', () => {
   it('a delegation holding assign sets its own task’s assignee, and it reads back', async () => {
     const decider = await world.decider('decider-assign');

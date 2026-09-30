@@ -258,6 +258,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.remove_tag',
   'task.restart',
   'task.restore',
+  'task.todos',
   'time.delete',
   'time.log',
   'time.set_note',
@@ -498,7 +499,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same thirty-five from an expected revision', () => {
+  it('exempts the same thirty-six from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

@@ -50,6 +50,7 @@ const PINNED_READS = [
   'task.queue',
   'task.read',
   'task.receipt',
+  'task.todos',
 ];
 
 describe('the surface as a table', () => {
@@ -101,7 +102,7 @@ describe('the surface as a table', () => {
 });
 
 describe('the surface as a table', () => {
-  it('declares the ten reads as reads, and everything else as a write', () => {
+  it('declares the eleven reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(PINNED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

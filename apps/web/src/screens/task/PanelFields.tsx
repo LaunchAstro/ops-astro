@@ -32,6 +32,7 @@ import { DatePicker } from './DatePicker.tsx';
 import { todayOn } from './due-dates.ts';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
 import { TagField } from './TagField.tsx';
+import { AssignToAI } from './AssignToAI.tsx';
 
 export interface PanelFieldsProps {
   readonly client: OperationsClient;
@@ -119,6 +120,12 @@ export function PanelFields(props: PanelFieldsProps): ReactElement {
   return (
     <div className="dtp__fields">
       <AssigneeField {...props} {...field} />
+      <AssignToAI
+        client={props.client}
+        task={props.task}
+        scope="panel"
+        onChanged={props.onChanged}
+      />
       <DueField {...props} {...field} />
       <EstimateField {...props} {...field} />
       <TagField client={props.client} task={props.task} onChanged={props.onChanged} />

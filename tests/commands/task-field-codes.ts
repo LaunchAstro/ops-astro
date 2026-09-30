@@ -12,6 +12,7 @@
 // `task.triage` (the root's D03 ruling; it is `SOURCE_SPOOFED` on create).
 export const PROTECTED_FIELD_CODES: Readonly<Record<string, string>> = {
   ad_hoc: 'TRANSITION_PROTECTED',
+  agent: 'TRANSITION_PROTECTED',
   archived_at: 'FIELD_NOT_WRITABLE',
   archived_why: 'FIELD_NOT_WRITABLE',
   assignee: 'TRANSITION_PROTECTED',

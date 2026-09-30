@@ -35,6 +35,7 @@ const PINNED_SHAPE = {
   'task.queue': { spine: false, subject: false, authority: 'declared' },
   'task.read': { spine: true, subject: true, authority: 'declared' },
   'task.receipt': { spine: true, subject: true, authority: 'declared' },
+  'task.todos': { spine: true, subject: false, authority: 'declared' },
 };
 
 const PINNED_IDENTIFIERS = {
@@ -48,6 +49,7 @@ const PINNED_IDENTIFIERS = {
   'task.queue': [],
   'task.read': ['recordId'],
   'task.receipt': ['attemptId'],
+  'task.todos': [],
 };
 
 const PINNED_OUTSIDER_NOT_FOUND = ['task.board', 'task.execution', 'task.read', 'task.receipt'];
@@ -127,6 +129,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'task.queue': BODIES.map(() => null),
   'person.list': BODIES.map(() => null),
   'tag.list': BODIES.map(() => null),
+  'task.todos': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
 };
