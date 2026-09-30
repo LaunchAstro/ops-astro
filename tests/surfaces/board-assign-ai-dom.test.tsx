@@ -49,7 +49,7 @@ const open = async (): Promise<{
     onAssignAgent: (each, delegation) => {
       agents.push([each.id, delegation]);
     },
-    onTick: () => undefined,
+    onTick: () => null,
   };
   mounted = await mount(
     <ProjectsBoard

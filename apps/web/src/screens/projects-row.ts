@@ -6,7 +6,8 @@
 // `task.assign`, `task.update` on the due date and on the estimate (MP-4-8,
 // offering the task panel's choices) and `task.set_stage`; the
 // assignee editor offers the people `person.list` answers, and none while
-// that read has not answered. Each is sent at the revision the
+// that read has not answered, then the reader's own agents for the row
+// (Assign to AI, `task.assign` with `agent`). Each is sent at the revision the
 // board last read for that task, so a change made elsewhere since is refused
 // as stale rather than overwritten, and every outcome re-reads the board. A
 // plain click opens the task beside the board in the dock task panel
@@ -14,7 +15,7 @@
 // The hover box's timer starts the reader's own clock with `time.start`
 // (MP-4-6, U19), the one clock the task page's time section also reads.
 
-import type { RowActions } from '@launchastro/ui';
+import type { ProjectRow, RowActions } from '@launchastro/ui';
 import type { BoardTask, PersonView } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { ESTIMATE_CHOICES } from './task/estimates.ts';
@@ -34,6 +35,14 @@ export interface BoardPanelHost {
 export interface RowOpened {
   readonly id: string;
   readonly door: 'open' | 'reply';
+}
+
+/** The person assigned, or the reader's own agent holding the task (drawn as AI). */
+export function assigneeOf(task: BoardTask, agent: BoardTask['agent']): ProjectRow['assignee'] {
+  if (agent !== null) return { id: agent.delegationId, name: agent.purpose, agent: true };
+  return task.assignee === null
+    ? null
+    : { id: task.assignee.personId, name: task.assignee.name, agent: false };
 }
 
 export function rowActions(options: {
@@ -99,6 +108,10 @@ function cellActions(
             send(
               client.mutate('task.assign', { recordId: row.id, fields: { assignee } }, at(row.id)),
             );
+          },
+          // Assign to AI: one of the reader's own agents the row offers.
+          onAssignAgent: (row, agent) => {
+            send(client.mutate('task.assign', { recordId: row.id, fields: { agent } }, at(row.id)));
           },
         }),
     onDue: (row, due) => {

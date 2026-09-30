@@ -5,7 +5,7 @@
 // `myAgents` become the row's assignee and the assignee menu's AI entries,
 // and choosing one sends `task.assign` with `agent` at the row's revision. A
 // row the reader's agent holds and that is not yet in review carries the
-// review tick.
+// review tick; one already in review carries the plain one.
 
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -27,6 +27,7 @@ const json = (body: unknown): Response =>
 
 const OFFERED = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const HELD = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const IN_REVIEW = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const ADA = { personId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'Ada Park' };
 const AGENT = { delegationId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', purpose: 'draft the menu' };
 
@@ -55,6 +56,11 @@ const TASKS = [
   task(HELD, 'TSK-2', {
     agent: { ...AGENT, accountable: ADA, live: true },
     myAgents: [AGENT],
+  }),
+  task(IN_REVIEW, 'TSK-3', {
+    state: { id: 's-0', key: 'needs_review', label: 'Needs review', machineCategory: 'unstarted' },
+    statePosition: 1000,
+    agent: { ...AGENT, accountable: ADA, live: true },
   }),
 ];
 
@@ -96,6 +102,10 @@ describe('Assign to AI from the Projects screen', () => {
     expect(board.all(`tr[data-row="${HELD}"] input.cbd__tick`)[0]?.getAttribute('title')).toBe(
       'The agent’s work is done — send it to Needs review for your confirmation',
     );
+    // Already in review, the tick completes it: no review title.
+    const reviewed = board.all(`tr[data-row="${IN_REVIEW}"] input.cbd__tick`)[0];
+    expect(reviewed?.getAttribute('aria-label')).toBe('Complete Task TSK-3');
+    expect(reviewed?.hasAttribute('title')).toBe(false);
 
     await board.click(`${CELL(OFFERED, 'assignee')} button.cbd__edb`);
     const option = board

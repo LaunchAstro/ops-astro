@@ -19,7 +19,7 @@
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Empty, ProjectsBoard, type BoardRow, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
-import { rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
+import { assigneeOf, rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
 import type {
   BoardTask,
@@ -238,6 +238,9 @@ const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);
 
 /** One task from the read as a Projects board row (MP-5-8). */
 function rowOf(task: BoardTask): ProjectRow {
+  // A read from a server that predates Assign to AI carries neither: none.
+  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents'>> = task;
+  const agent = read.agent ?? null;
   return {
     id: task.id,
     key: task.key,
@@ -248,10 +251,12 @@ function rowOf(task: BoardTask): ProjectRow {
     // The client's name waits on the client model; `clientSet` says only
     // that there is one.
     client: null,
-    assignee:
-      task.assignee === null
-        ? null
-        : { id: task.assignee.personId, name: task.assignee.name, agent: false },
+    assignee: assigneeOf(task, agent),
+    // The reader's own agents for the task; the read sends no one else's.
+    agents: (read.myAgents ?? []).map((one) => ({ id: one.delegationId, name: one.purpose })),
+    // The tick sends the reader's agent's work to review unless it is there.
+    toReview:
+      agent !== null && task.completedAt === null && task.state?.machineCategory !== 'unstarted',
     due: task.due,
     completed: task.completedAt !== null,
     stage: task.stage === null ? null : TASK_STAGES.labelOf(task.stage),

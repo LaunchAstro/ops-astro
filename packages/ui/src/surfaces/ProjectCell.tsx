@@ -142,19 +142,32 @@ function Due(props: { readonly row: ProjectRow; readonly now: Date }): ReactNode
 
 const change = (what: string, row: ProjectRow): string => `Change the ${what} of ${row.name}`;
 
+/** The value an agent takes in the assignee menu, apart from every person's id. */
+const AGENT = 'agent:';
+
+/**
+ * The people, then the reader's own agents for the row (Assign to AI, P-37),
+ * then Unassigned. The row carries only the reader's own agents, so with none
+ * there is no AI entry and nothing hints that anyone else's exists.
+ */
 function assigneeEditor(row: ProjectRow, drawn: ReactNode, actions: RowActions): ReactNode {
-  const { onAssign, people } = actions;
+  const { onAssign, onAssignAgent, people } = actions;
   if (onAssign === undefined || people === undefined) return drawn;
+  const agents = onAssignAgent === undefined ? [] : (row.agents ?? []);
   const options = [
     ...people.map((person) => ({ value: person.id, label: person.name })),
+    ...agents.map((agent) => ({ value: AGENT + agent.id, label: `Assign to AI: ${agent.name}` })),
     { value: '', label: UNASSIGNED },
   ];
+  const who = row.assignee;
+  const current = who === null ? '' : (who.agent ? AGENT : '') + who.id;
   return (
     <EditableCell
       label={change('assignee', row)}
-      editor={{ kind: 'menu', options, current: row.assignee?.id ?? '' }}
+      editor={{ kind: 'menu', options, current }}
       onChoose={(value) => {
-        onAssign(row, value === '' ? null : value);
+        if (value.startsWith(AGENT)) onAssignAgent?.(row, value.slice(AGENT.length));
+        else onAssign(row, value === '' ? null : value);
       }}
     >
       {drawn}
