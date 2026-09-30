@@ -27,6 +27,15 @@ export interface Part {
   readonly crossings?: readonly Crossing[];
   /** The follow-up issue for a part whose crossings are known not to bite yet: its line is UNPROVEN, never a pass. */
   readonly knownUnproven?: string;
+  /**
+   * The part's unwire at the head, for a file that setting back would strip of
+   * later parts' wiring (SL01's sign-in in the API's server.ts and app.ts): the
+   * file stays as the head has it, less the part's own call sites, each a run
+   * of whole lines that must occur exactly once. An empty `remove` keeps the
+   * file as the head has it: wiring the part shares with a later part (T2f's
+   * topics in server.ts, which INB-1's board also streams). See `revertPart`.
+   */
+  readonly unwire?: readonly { readonly file: string; readonly remove: readonly string[] }[];
 }
 
 export interface Crossing {

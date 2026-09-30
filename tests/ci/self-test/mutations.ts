@@ -211,7 +211,10 @@ function addedBy(scratch: Scratch, part: Part): string[] {
  * With `keepAdded`, the files the part added stay and only its edits to files
  * that were there before are reverted: the part is unwired, its modules left
  * where its invariant can still load them. Used when the whole revert leaves
- * the invariant's file unable to load, so the invariant itself can run.
+ * the invariant's file unable to load, so the invariant itself can run. A
+ * file the part names in `unwire` is not reverted either: it stays at the head
+ * less the part's call sites, and an unwire that no longer applies applies
+ * nothing, so the line fails rather than proving less.
  */
 export function revertPart(
   scratch: Scratch,
@@ -220,8 +223,9 @@ export function revertPart(
 ): { applied: boolean; detail: string } {
   scratch.reset();
   const added = keepAdded ? addedBy(scratch, part) : [];
-  const keep = [...(part.keep ?? []), ...added];
-  const kept = (path: string): boolean => keeps(part, path) || added.includes(path);
+  const unwire = keepAdded ? (part.unwire ?? []) : [];
+  const keep = [...(part.keep ?? []), ...added, ...unwire.map((one) => one.file)];
+  const kept = (path: string): boolean => keeps(part, path) || keep.includes(path);
   const exclude = keep.map((one) => `--exclude=${one.endsWith('/') ? `${one}*` : one}`);
   let restored = 0;
   for (const commit of part.commits.toReversed()) {
@@ -249,6 +253,13 @@ export function revertPart(
     scratch.commit(`self-test: revert ${commit.slice(0, 8)} (${part.id})`);
   }
   scratch.git(['checkout', scratch.base, '--', ...keep]);
+  const stale = unwire.filter(
+    (one) => one.remove.length > 0 && !edit(scratch, one.file, `${one.remove.join('\n')}\n`, ''),
+  );
+  if (stale.length > 0) {
+    const files = stale.map((one) => one.file).join(', ');
+    return { applied: false, detail: `its unwire at the head no longer applies in ${files}` };
+  }
   scratch.commit(`self-test: keep ${part.id}'s invariant files`);
   const changed = scratch
     .git(['diff', '--name-only', scratch.base, 'HEAD'])
@@ -256,6 +267,8 @@ export function revertPart(
     .filter(Boolean);
   let how = restored === 0 ? '' : `, ${String(restored)} files set back`;
   if (keepAdded) how += `, its ${String(added.length)} added files kept`;
+  const removed = unwire.filter((one) => one.remove.length > 0).length;
+  if (unwire.length > 0) how += `, ${String(removed)} call sites removed at the head`;
   return {
     applied: changed.length > 0,
     detail: `${String(part.commits.length)} commits reverted${how}, ${String(changed.length)} files differ`,

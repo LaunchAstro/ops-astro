@@ -13,6 +13,8 @@
     "green under the part's revert fails its line by name, whatever the title says.",
     "`knownUnproven` names the follow-up for a part whose crossings do not bite yet (none since #191, #192):",
     "its line is UNPROVEN, never a pass, and every_invariant_bites fails unless that set is exactly this list.",
+    "`unwire` keeps a file at the head, less the part's own call sites, where setting it back would",
+    "drop later parts' wiring (SL01's sign-in in server.ts and app.ts; T2f and T3b).",
     "See tests/ci/self-test/mutations.ts and verdict.ts."
   ],
   "parts": [
@@ -211,6 +213,27 @@
           "case": "T2 isolation (T2f): join refuses another client and a person without the grant",
           "crosses": ["client", "person"]
         }
+      ],
+      "unwire": [
+        {
+          "file": "apps/api/app.ts",
+          "remove": [
+            "    api.get(`${PREFIX.person}:businessKey/live/task/:recordId`, async (context) => {",
+            "      const admitted = await admit(options, context, PERSON, false);",
+            "      if (admitted instanceof Response) return admitted;",
+            "      const may = async () => await mayWatch(options, context, admitted.businessId);",
+            "      const taskId = await may();",
+            "      if (typeof taskId !== 'string') return refuse(context, taskId);",
+            "      return streamSSE(context, async (stream) => {",
+            "        await follow(stream, live, admitted.businessId, taskId, may);",
+            "      });",
+            "    });"
+          ]
+        },
+        {
+          "file": "apps/api/server.ts",
+          "remove": []
+        }
       ]
     },
     {
@@ -306,6 +329,32 @@
         {
           "case": "client to client and person to person: the unknown amount reaches only a reader holding the task grant",
           "crosses": ["client", "person"]
+        }
+      ],
+      "unwire": [
+        {
+          "file": "apps/api/server.ts",
+          "remove": ["  startSweeper,"]
+        },
+        {
+          "file": "apps/api/server.ts",
+          "remove": [
+            "  // T3b: the sweep, the reconciliation pass's lease-expiry phase, beside",
+            "  // start-time recovery and over the same businesses, as system work on an",
+            "  // interval once the port is bound (T3.md:28). Not an agent route: nothing",
+            "  // on the wire reaches it (RN-10).",
+            "  const sweeper = startSweeper(",
+            "    async () =>",
+            "      await withRuntimeKeys(keys, async () => {",
+            "        return await passDeployment(database, resolveBusiness, scope.keys, registerEffectLookup);",
+            "      }),",
+            "  );",
+            ""
+          ]
+        },
+        {
+          "file": "apps/api/server.ts",
+          "remove": ["    sweeper.stop();"]
         }
       ]
     },
