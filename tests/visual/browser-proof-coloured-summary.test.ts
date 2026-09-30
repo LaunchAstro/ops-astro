@@ -29,7 +29,7 @@ it('MP-1-1 the browser-dependency proof accepts a coloured test summary', () => 
   const directory = mkdtempSync(join(tmpdir(), 'sol-pr155-colour-'));
   try {
     // The capture run is real, with colour forced: the wrapper must still find
-    // the named capture failing only for want of a browser.
+    // the named capture recorded as passed.
     // The child's result is read from its JSON report, not its printed
     // summary: a passing run's compact summary does not name the file.
     const report = join(directory, 'report.json');
@@ -50,7 +50,7 @@ it('MP-1-1 the browser-dependency proof accepts a coloured test summary', () => 
     );
     const output = `${run.stdout}\n${run.stderr}`;
     expect(endings(report, 'tests/visual/harness-capture-needs-browser.test.ts'), output).toEqual([
-      ['MP-1-1 the named page capture requires a browser screenshot', 'passed'],
+      ['MP-1-1 the named page capture passes in a browser, and CI without one fails', 'passed'],
     ]);
     expect(run.status, output).toBe(0);
   } finally {
