@@ -84,7 +84,7 @@ export async function release({ dist, out }: { dist: string; out: string }): Pro
   if (problems.length > 0) throw new Error(problems.join('\n'));
   writeFileSync(join(out, 'build.json'), JSON.stringify({ build: stamp }));
   const record: Release = { build: stamp, digest: outputDigest(out) };
-  writeFileSync(join(out, 'build.json'), JSON.stringify(record, null, 2));
+  writeFileSync(join(out, 'build.json'), JSON.stringify(record));
   return record;
 }
 

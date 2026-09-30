@@ -82,6 +82,9 @@ import {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+/** A well-formed business id that names no business: health's statement reads nothing. */
+const NIL_BUSINESS = '00000000-0000-0000-0000-000000000000';
+
 /**
  * The real environment wins, so a shell can override a local file.
  *
@@ -212,14 +215,18 @@ export function composeApi(config: ApiConfig): ComposedApi {
   // This app's keys, for this request only: no other composition can replace them.
   server.use(async (_context, next) => await withRuntimeKeys(config.keys, next));
 
-  // Measured, not assumed. `reachable` is the result of a statement that ran.
+  // Measured, not assumed. `reachable` is the result of a statement that ran
+  // on the runtime login (G2): the lookup answering proves nothing about it.
+  // The nil id names no business, so the statement reads no row.
   server.get('/api/health', async (context) => {
     let reachable = false;
     let detail = '';
     let notificationQueue: number | null = null;
     try {
-      const [row] = await admin.execute<{ usage: number }>(
-        'select pg_notification_queue_usage() as usage',
+      const [row] = await database.withBusiness(
+        NIL_BUSINESS,
+        async (tx) =>
+          await tx.query<{ usage: number }>('select pg_notification_queue_usage() as usage'),
       );
       notificationQueue = row?.usage ?? null;
       reachable = true;

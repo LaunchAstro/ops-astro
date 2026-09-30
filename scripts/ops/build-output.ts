@@ -118,15 +118,17 @@ function filesUnder(directory: string): string[] {
   });
 }
 
-/** A file as digested: `build.json` without the digest it records. */
+/**
+ * A file as digested: `build.json` without the digest it records, but only when
+ * it is byte for byte the form the release writes; any other byte in it is
+ * digested as it stands, so it no longer matches the recorded digest.
+ */
 function digested(out: string, path: string): Buffer {
   const bytes = readFileSync(join(out, path));
   if (path !== 'build.json') return bytes;
-  const { digest: _digest, ...record } = JSON.parse(bytes.toString('utf8')) as Record<
-    string,
-    unknown
-  >;
-  return Buffer.from(JSON.stringify(record));
+  const { digest, ...record } = JSON.parse(bytes.toString('utf8')) as Record<string, unknown>;
+  const written = Buffer.from(JSON.stringify({ ...record, digest }));
+  return bytes.equals(written) ? Buffer.from(JSON.stringify(record)) : bytes;
 }
 
 /** One digest over every file's path and bytes, in path order. */

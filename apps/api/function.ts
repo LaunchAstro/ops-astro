@@ -91,10 +91,23 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
 
 let handler: ((request: Request) => Promise<Response>) | undefined;
 
+/** The admin login and the backup and restore credentials: the M5 worker's and the operator's. */
+const HELD_ELSEWHERE = [
+  'DATABASE_ADMIN_URL',
+  'BACKUP_SOURCE_URL',
+  'BACKUP_RETENTION_URL',
+  'BACKUP_STORE_URL',
+  'RESTORE_STORE_URL',
+  'RESTORE_KEY_FILE',
+];
+
 /** Vercel's Node.js function signature, one export per method: built on first use. */
 async function handle(request: Request): Promise<Response> {
-  if ((process.env['DATABASE_ADMIN_URL'] ?? '') !== '') {
-    throw new Error('DATABASE_ADMIN_URL is set: the function never holds the admin login.');
+  const held = HELD_ELSEWHERE.filter((name) => (process.env[name] ?? '') !== '');
+  if (held.length > 0) {
+    throw new Error(
+      `${held.join(', ')} set: the function never holds the admin login or a backup credential.`,
+    );
   }
   handler ??= createFunctionHandler(process.env);
   return await handler(request);
