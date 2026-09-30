@@ -20,6 +20,17 @@ const INK = { light: 'oklch(0 0 0)', dark: 'oklch(0.98 0 0)' } as const;
 const ACCENT = 'oklch(0.58 0.21 285)';
 const LILAC = 'oklch(0.78 0.088 305)';
 
+// A colour by value: the browser may give the accent as oklch or, read after a
+// transition, as the same colour in oklab. Both become oklab to four places.
+const oklab = (colour: string): string => {
+  const match = /^okl(ab|ch)\((\S+) (\S+) (\S+)\)$/u.exec(colour);
+  if (match === null) return colour;
+  const [l, x, y] = match.slice(2).map(Number) as [number, number, number];
+  const hue = (y * Math.PI) / 180;
+  const lab = match[1] === 'ch' ? [l, x * Math.cos(hue), x * Math.sin(hue)] : [l, x, y];
+  return lab.map((n) => n.toFixed(4)).join(' ');
+};
+
 let views: PaintView[] = [];
 
 beforeAll(() => {
@@ -75,8 +86,9 @@ describe('MP-1-5 kit paint from the mockup', () => {
   });
 
   it('MP-1-5 the sparkline draws in the accent, its host colour in the mockup, and keeps a named tone', () => {
-    for (const view of views)
-      expect(view.spark, view.name).toEqual({ line: ACCENT, area: ACCENT, end: ACCENT });
+    for (const { name, spark } of views)
+      for (const colour of [spark.line, spark.area, spark.end])
+        expect(oklab(colour), name).toBe(oklab(ACCENT));
     const inked = renderToStaticMarkup(<Sparkline name="Uptime" values={[1, 2]} tone="ink" />);
     expect(inked).toContain('data-tone="ink"');
   });
