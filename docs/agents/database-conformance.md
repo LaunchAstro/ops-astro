@@ -57,7 +57,7 @@ job is a matrix of shards (`database conformance shard <i>`), each running
 `db:conformance --shard <i>/<n>` against a Postgres of its own. The required
 check is the aggregate job named `database conformance`: it needs every shard
 and fails unless all of them succeeded, a skipped or cancelled shard included.
-`scripts/db-shards.mjs` splits the run items by the seconds in
+`scripts/db-shards.ts` splits the run items by the seconds in
 `tests/db/shard-plan.json`; an item with no timing weighs the median, so a
 newly named suite is assigned without editing that file, which only keeps the
 shards even. A suite too long for one shard is listed under the plan's `parts`

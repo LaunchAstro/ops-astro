@@ -16,7 +16,7 @@ import {
   planItems,
   readPlan,
   suitePart,
-} from '../../scripts/db-shards.mjs';
+} from '../../scripts/db-shards.ts';
 
 const read = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');

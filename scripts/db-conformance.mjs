@@ -48,7 +48,7 @@
 //
 // Usage: node scripts/db-conformance.mjs [--manifest <path>] [--shard <i>/<n>]
 //   DATABASE_URL  the database to run against. Required.
-//   --shard       run only shard i of n (scripts/db-shards.mjs decides which
+//   --shard       run only shard i of n (scripts/db-shards.ts decides which
 //                 suites). Rules 2 and 3 still read the whole manifest.
 //   A suite tests/db/shard-plan.json splits into parts runs once per part,
 //   with SUITE_PART=i/k, sharded or not; every rule applies to each part.
@@ -58,7 +58,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import pg from 'pg';
-import { assignShards, itemOf, parseShard, planItems, readPlan } from './db-shards.mjs';
+import { assignShards, itemOf, parseShard, planItems, readPlan } from './db-shards.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 

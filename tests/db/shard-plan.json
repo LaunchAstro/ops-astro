@@ -1,6 +1,6 @@
 {
   "comment": [
-    "Read by scripts/db-shards.mjs, which splits the database conformance run items across the CI shards.",
+    "Read by scripts/db-shards.ts, which splits the database conformance run items across the CI shards.",
     "parts: a suite too long for one shard runs as k items, <path>#i/k, each with SUITE_PART=i/k; the suite registers only the cases inPart gives its part. d06-generated took 882.7s whole (run 36720906105).",
     "seconds: each run item's time in a hosted shard (run 36720906105, the 'moved the database counter by N in Ss' lines; a split suite's parts start as its whole time over k). Only the balance reads them: an item missing here still runs, weighted at the median. Refresh from a recent run when the shards drift apart."
   ],

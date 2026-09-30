@@ -35,7 +35,7 @@ import {
   type Surface,
   type TopCell,
 } from './d06-cases.ts';
-import { inPart, suitePart } from '../../scripts/db-shards.mjs';
+import { inPart, suitePart } from '../../scripts/db-shards.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { serverUrl } from './world.ts';
 

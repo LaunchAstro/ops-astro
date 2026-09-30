@@ -18,8 +18,13 @@
 
 import { readFileSync } from 'node:fs';
 
+export interface Part {
+  readonly index: number;
+  readonly count: number;
+}
+
 /** "i/n" to { index, count }, refusing anything that is not 1 <= i <= n. */
-export const parseShard = (text, what = '--shard') => {
+export const parseShard = (text: string | undefined, what = '--shard'): Part => {
   const match = /^([1-9]\d*)\/([1-9]\d*)$/u.exec(String(text));
   const index = Number(match?.[1]);
   const count = Number(match?.[2]);
@@ -30,16 +35,24 @@ export const parseShard = (text, what = '--shard') => {
 };
 
 /** The plan: suites run in parts, and the recorded seconds per run item. */
-export const readPlan = (path) => {
-  const plan = JSON.parse(readFileSync(path, 'utf8'));
+export const readPlan = (
+  path: string | URL,
+): { parts: Record<string, number>; seconds: Record<string, number> } => {
+  const plan = JSON.parse(readFileSync(path, 'utf8')) as {
+    parts?: Record<string, number>;
+    seconds?: Record<string, number>;
+  };
   return { parts: plan.parts ?? {}, seconds: plan.seconds ?? {} };
 };
 
 /** The run items: each named suite, or its k parts when the plan splits it. */
-export const planItems = (named, parts) =>
+export const planItems = (
+  named: readonly string[],
+  parts: Readonly<Record<string, number>>,
+): string[] =>
   named.flatMap((suite) => {
     if (!Object.hasOwn(parts, suite)) return [suite];
-    const count = parts[suite];
+    const count = parts[suite] ?? 0;
     if (!Number.isInteger(count) || count < 2) {
       throw new Error(`shard plan: ${suite} has ${String(count)} parts; a split needs 2 or more`);
     }
@@ -47,17 +60,17 @@ export const planItems = (named, parts) =>
   });
 
 /** A run item back to its suite path and, for a part, its "i/k". */
-export const itemOf = (item) => {
+export const itemOf = (item: string): { suite: string; part: string | undefined } => {
   const [suite = '', part] = item.split('#');
   return { suite, part };
 };
 
 /** The part a suite is running as: SUITE_PART, or the whole suite when unset. */
-export const suitePart = (text) =>
+export const suitePart = (text: string | undefined): Part =>
   text === undefined || text === '' ? { index: 1, count: 1 } : parseShard(text, 'SUITE_PART');
 
 /** Whether the case at this index belongs to the part. */
-export const inPart = (index, part) => index % part.count === part.index - 1;
+export const inPart = (index: number, part: Part): boolean => index % part.count === part.index - 1;
 
 /**
  * The run items split into `count` shards: longest first onto the shard
@@ -65,19 +78,24 @@ export const inPart = (index, part) => index % part.count === part.index - 1;
  * manifest's order, and the result depends only on its inputs, so every shard
  * of a run computes the same split.
  */
-export const assignShards = (items, seconds, count) => {
+export const assignShards = (
+  items: readonly string[],
+  seconds: Readonly<Record<string, number>>,
+  count: number,
+): string[][] => {
   const known = Object.values(seconds)
     .filter((n) => typeof n === 'number' && n > 0)
     .toSorted((a, b) => a - b);
-  const fallback = known.length > 0 ? known[Math.floor(known.length / 2)] : 1;
-  const weight = (item) => {
+  const fallback = known[Math.floor(known.length / 2)] ?? 1;
+  const weight = (item: string): number => {
     const n = Object.hasOwn(seconds, item) ? seconds[item] : undefined;
     return typeof n === 'number' && n > 0 ? n : fallback;
   };
   const weighed = items
     .map((item, index) => ({ item, index, weight: weight(item) }))
     .toSorted((a, b) => b.weight - a.weight || a.index - b.index);
-  const shards = Array.from({ length: count }, () => ({ load: 0, items: [] }));
+  type Weighed = { item: string; index: number; weight: number };
+  const shards = Array.from({ length: count }, () => ({ load: 0, items: [] as Weighed[] }));
   for (const entry of weighed) {
     const least = shards.reduce((best, shard) => (shard.load < best.load ? shard : best));
     least.load += entry.weight;
