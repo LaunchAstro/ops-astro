@@ -28,6 +28,7 @@
     "tests/reads/inbox.test.ts",
     "tests/commands/inbox-clearing-client-isolation.test.ts",
     "tests/reads/inbox-named.test.ts",
-    "tests/api/inb1f-live-board.test.ts"
+    "tests/api/inb1f-live-board.test.ts",
+    "tests/api/live-board-lost-access.test.ts"
   ]
 }
