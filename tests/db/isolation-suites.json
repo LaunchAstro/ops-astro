@@ -11,6 +11,7 @@
     "tests/api/mp-6-4-isolation.test.ts",
     "tests/api/aw-03-isolation.test.ts",
     "tests/runtime/aw-04-isolation.test.ts",
+    "tests/runtime/aw-04-accept-isolation.test.ts",
     "tests/api/mp-7-11-isolation.test.ts",
     "tests/api/c36-isolation.test.ts",
     "tests/api/mp-6-5-isolation.test.ts",

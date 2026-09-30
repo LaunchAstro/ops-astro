@@ -116,6 +116,20 @@ export type CommandRequest =
       readonly note: string;
       readonly recipientPersonId?: string | null;
     } & Envelope)
+  // The plan accept (AW-04): a decision on the plan's gate, the words and the
+  // structured record it binds, and the instruction files the run may read.
+  // The record and the paths are checked by value, so they are `unknown` here.
+  | ({
+      readonly command: 'task.accept_plan';
+      readonly gateId: string;
+      readonly versionId: string;
+      readonly note: string;
+      readonly planText: unknown;
+      readonly plan: unknown;
+      readonly entryPath: unknown;
+      readonly paths: unknown;
+      readonly conversationId?: string | null;
+    } & Envelope)
   | ({
       readonly command: 'task.pickup';
       readonly reservationId: string;

@@ -47,6 +47,11 @@ export {
   type PlanAcceptResult,
 } from './plan-accept.ts';
 export {
+  configuredInstructionSource,
+  directorySource,
+  INSTRUCTION_ROOT_VARIABLE,
+} from './instruction-root.ts';
+export {
   readPinned,
   type PinnedRead,
   type ReadAuditNote,

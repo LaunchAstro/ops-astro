@@ -21,6 +21,7 @@ import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { setBusinessSetting } from './settings-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
+import { acceptPlanOnGate } from './plan-accept.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
 import { dispatchOwnLease } from './tasks-dispatch.ts';
@@ -96,6 +97,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,
+  // AW-04: the plan accept, the only activation of a run's instruction file.
+  'task.accept_plan': acceptPlanOnGate,
 
   'grant.revoke': (tx, context, request) => revokeGrantAsManager(tx, context, request.grantId),
   'delegation.revoke': (tx, context, request) =>

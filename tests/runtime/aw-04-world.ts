@@ -5,10 +5,15 @@
 // command path and accepted through the real accept, which is the only thing
 // that writes a pin here: nothing is seeded by the admin connection.
 
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { afterAll, beforeAll } from 'vitest';
 import {
   acceptPlan,
   gateSigningKey,
+  INSTRUCTION_ROOT_VARIABLE,
   type InstructionSource,
   type PlanAcceptRequest,
   type PlanAcceptResult,
@@ -22,6 +27,7 @@ import {
   openSchedules,
   propose,
   seedSchedules,
+  type Body,
   type Detail,
   type Schedules,
 } from './schedules-harness.ts';
@@ -126,4 +132,89 @@ export function useAw04World(part: string): void {
     if (noDatabase) return;
     await w.alpha.db.drop();
   });
+}
+
+/** The accept command's structured plan: two steps, the second after the first. */
+export const PLAN: {
+  readonly steps: readonly { key: string; title: string; after: readonly string[] }[];
+} = {
+  steps: [
+    { key: 'draft', title: 'Draft the brief', after: [] },
+    { key: 'check', title: 'Check it against the notes', after: ['draft'] },
+  ],
+};
+
+/** The exact words the person approved, the ceiling and the later launch named. */
+export const PLAN_TEXT: string =
+  'Draft the brief, then check it against the notes. Ceiling: $10.00. ' +
+  'Launch happens later, on the task.';
+
+/** A read-only instruction root on disk holding AW-02's two files, set on this process. */
+export function useInstructionRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), 'aw04-instructions-'));
+  for (const [path, bytes] of FILES) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), bytes);
+  }
+  const previous = process.env[INSTRUCTION_ROOT_VARIABLE];
+  process.env[INSTRUCTION_ROOT_VARIABLE] = root;
+  afterAll(() => {
+    if (previous === undefined) delete process.env[INSTRUCTION_ROOT_VARIABLE];
+    else process.env[INSTRUCTION_ROOT_VARIABLE] = previous;
+    rmSync(root, { recursive: true, force: true });
+  });
+  return root;
+}
+
+/** `task.accept_plan` as the drawer sends it for `plan`. */
+export function acceptBody(plan: Proposed, extra: Readonly<Record<string, unknown>> = {}): Body {
+  return {
+    command: 'task.accept_plan',
+    operationId: randomUUID(),
+    gateId: plan.proposal['gateId'],
+    versionId: plan.proposal['versionId'],
+    note: 'accepted in the drawer',
+    planText: PLAN_TEXT,
+    plan: PLAN,
+    entryPath: ENTRY,
+    paths: [FRAGMENT],
+    ...extra,
+  };
+}
+
+/** A conversation `who` owns in `owner`'s business, as `conversation.start` leaves one. */
+export async function conversationOf(owner: Schedules, who: Member): Promise<string> {
+  const id = randomUUID();
+  await owner.db.app.withBusiness(owner.business, async (tx) => {
+    await tx.query(
+      `insert into public.conversations (business_id, id, owner_actor_id, owner_person_id, title)
+       values ($1, $2, $3, $4, 'plan chat')`,
+      [owner.business, id, who.actorId, who.personId],
+    );
+  });
+  return id;
+}
+
+export interface PlanRecordRow {
+  readonly id: string;
+  readonly decision_id: string;
+  readonly run_id: string;
+  readonly origin_conversation_id: string | null;
+  readonly plan_text: string;
+  readonly text_digest: string;
+  readonly record: unknown;
+  readonly record_digest: string;
+}
+
+/** Every plan record bound on `gateId`, as the owner connection sees it. */
+export async function planRecordsOf(
+  owner: Schedules,
+  gateId: unknown,
+): Promise<readonly PlanRecordRow[]> {
+  return await owner.db.admin.execute<PlanRecordRow>(
+    `select id, decision_id, run_id, origin_conversation_id, plan_text, text_digest, record,
+            record_digest
+       from public.plan_records where gate_id = $1`,
+    [gateId],
+  );
 }
