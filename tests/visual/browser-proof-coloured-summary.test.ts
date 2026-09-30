@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,23 +28,8 @@ function endings(report: string, file: string): (readonly [string, string])[] | 
 it('MP-1-1 the browser-dependency proof accepts a coloured test summary', () => {
   const directory = mkdtempSync(join(tmpdir(), 'sol-pr155-colour-'));
   try {
-    const hook = join(directory, 'child-output.mjs');
-    writeFileSync(
-      hook,
-      [
-        "import childProcess from 'node:child_process';",
-        "import { syncBuiltinESMExports } from 'node:module';",
-        'const original = childProcess.spawnSync;',
-        'childProcess.spawnSync = function (command, args, options) {',
-        "  if (Array.isArray(args) && args.includes('tests/surfaces/mp-1-1-tokens.test.tsx')) {",
-        '    const escape = String.fromCharCode(27);',
-        '    return { status: 1, stdout: `Tests ${escape}[1m${escape}[31m1 failed${escape}[39m${escape}[22m (1)`, stderr: "" };',
-        '  }',
-        '  return original.apply(this, arguments);',
-        '};',
-        'syncBuiltinESMExports();',
-      ].join('\n'),
-    );
+    // The capture run is real, with colour forced, so its summary is coloured
+    // and the named capture test must exist for the count to read 1.
     // The child's result is read from its JSON report, not its printed
     // summary: a passing run's compact summary does not name the file.
     const report = join(directory, 'report.json');
@@ -60,7 +45,7 @@ it('MP-1-1 the browser-dependency proof accepts a coloured test summary', () => 
       {
         cwd: root,
         encoding: 'utf8',
-        env: { ...process.env, NODE_OPTIONS: `--import ${hook}` },
+        env: { ...process.env, FORCE_COLOR: '1' },
       },
     );
     const output = `${run.stdout}\n${run.stderr}`;
