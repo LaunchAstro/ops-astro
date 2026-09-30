@@ -61,7 +61,7 @@ export async function captureBuiltPages(options: {
   out: string;
   /** Only these pages (a ticket's own captures); every built page when not given. */
   pages?: readonly string[];
-  /** Made-up answers to the app's reads, by the read's address (`operations/read`). */
+  /** Made-up answers to the app's reads, by the end of the read's address (`operations/read`). */
   answers?: Readonly<Record<string, unknown>>;
 }): Promise<PageShot[]> {
   const { browser, packet, app, session } = options;
@@ -75,7 +75,7 @@ export async function captureBuiltPages(options: {
       // A public page (sign-in) is drawn signed out, a working page signed in.
       const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
       const signedIn = await openSide(browser, packet, width, { app, session, colorScheme: theme });
-      await answer(signedIn, options.answers ?? {});
+      for (const side of [signedOut, signedIn]) await answer(side, options.answers ?? {});
       try {
         const sides = { signedOut, signedIn };
         shots.push(...(await capturePages(sides, { ...options, mask, width, theme })));
@@ -87,13 +87,16 @@ export async function captureBuiltPages(options: {
   return shots;
 }
 
+/** The parameters a page's address is filled with: a made-up task, business and document. */
+export const MADE_UP_PARAMS = { key: 'T-1', business: 'alpha', document: 'privacy-policy' };
+
 /** Each read named answers its made-up body; a route added last is asked first. */
 export async function answer(
   side: Side,
   answers: Readonly<Record<string, unknown>>,
 ): Promise<void> {
   for (const [read, body] of Object.entries(answers)) {
-    await side.context.route(`**/api/b/*/${read}`, (route) =>
+    await side.context.route(`**/api/**/${read}`, (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) }),
     );
   }
@@ -125,8 +128,7 @@ async function capturePages(
   const shots: PageShot[] = [];
   for (const id of at.pages ?? builtPages()) {
     const name = `${id}@${width}-${theme}`;
-    const address =
-      addressOf(id, { key: 'T-1', business: 'alpha', document: 'privacy-policy' }) ?? '/';
+    const address = addressOf(id, MADE_UP_PARAMS) ?? '/';
     const side = needsSession(id) ? sides.signedIn : sides.signedOut;
     const page = await load(side, packet, new URL(address, app).href);
     // The intended screen is checked before the picture counts.

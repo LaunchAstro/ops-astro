@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // SL09's pages on the width-and-theme harness (MP-1-7), one named capture per
-// ticket: C55's operations view and C58's Settings ▸ Access, each in light and
+// ticket: C55's operations view, C58's Settings ▸ Access and C81's public legal
+// page (drawn signed out), each in light and
 // dark at 1480, 900 and 390, in the pinned headless shell. Each page draws
 // made-up answers to its own read (the shapes the wire declares), so the
 // pictures show its sections rather than its could-not-be-read state, and each
@@ -14,7 +15,13 @@ import { join } from 'node:path';
 import type { Browser } from 'playwright';
 import { afterAll, describe, expect, it } from 'vitest';
 import { launchChromium } from '../support/chromium.ts';
-import { answer, captureBuiltPages, madeUpSession, serveApp } from '../visual/app-pages.ts';
+import {
+  answer,
+  captureBuiltPages,
+  MADE_UP_PARAMS,
+  madeUpSession,
+  serveApp,
+} from '../visual/app-pages.ts';
 import { load, openSide } from '../visual/capture.ts';
 import { comparePng } from '../visual/compare.ts';
 import {
@@ -106,13 +113,24 @@ async function sectionsDrawn(
   const side = await openSide(browser, packet, 390, { app, session });
   try {
     await answer(side, answers);
-    const shown = await load(side, packet, new URL(addressOf(page, {}) ?? '/', app).href);
+    const shown = await load(
+      side,
+      packet,
+      new URL(addressOf(page, MADE_UP_PARAMS) ?? '/', app).href,
+    );
     await shown.waitForSelector(drawn, { timeout: 10_000 });
     expect(await shown.locator(drawn).count()).toBeGreaterThan(0);
   } finally {
     await side.context.close();
   }
 }
+
+const POLICY = {
+  version: '1.0',
+  digest: 'sha256:made-up',
+  publishedAt: '2026-09-28T00:00:00.000Z',
+  body: 'A made-up privacy policy.\n\nIt names each outside service and what it receives.',
+};
 
 /**
  * The pages at every width and theme, each checked to have drawn `drawn`:
@@ -173,5 +191,9 @@ describe('SL09 pages on the width-and-theme harness (MP-1-7)', () => {
 
   it('C58 harness captures: Settings ▸ Access with its End access act, in light and dark at 1480, 900 and 390', async () => {
     await capturesOf('agency:access', { 'access/read': ACCESS }, `[data-end="${MIA.personId}"]`);
+  }, 600_000);
+
+  it('C81 harness captures: the public privacy policy, signed out, in light and dark at 1480, 900 and 390', async () => {
+    await capturesOf('agency:legal', { 'legal/privacy-policy': POLICY }, '[data-paragraph]');
   }, 600_000);
 });
