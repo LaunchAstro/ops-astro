@@ -9,9 +9,11 @@
 // repository path and, when it has one, its hyphenated stem
 // (`declining-reporter`), unless a shipped module under `apps/` or `packages/`
 // has the same stem (`sign-in`): the app says that word for its own module, so
-// it selects nothing, and the fixture is still caught by its path, in the
-// module graph and by its own quoted values that carry the stem
-// (`test-sign-in-es256`), wherever they were copied. Every file the build wrote is searched for each,
+// it selects nothing, and the fixture is still caught by its path and in the
+// module graph. Every test sign-in value is the one marker
+// (`tests/support/marker.ts`) plus random bytes made at run time, so no value
+// exists to copy, and the marker is a selector (the owner's option A). Every
+// file the build wrote is searched for each,
 // ignoring case, and the module graph Rollup recorded (`module-graph.json`) is
 // read for any module under `tests/`, which catches a fixture module whose
 // strings minifying removed. A generic `tests/` is not a selector: the bundle
@@ -19,7 +21,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
-import { parseAst } from 'vite';
+import { TEST_ONLY_MARKER } from '../support/marker.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const FIXTURE_DIRECTORIES = ['tests/fixture', 'tests/support'];
@@ -38,93 +40,17 @@ export function fixtureSelectors(root: string = ROOT): readonly string[] {
       (path) => stemOf(basename(path)),
     ),
   );
-  const selectors = new Set(['fixture']);
+  const selectors = new Set(['fixture', TEST_ONLY_MARKER]);
   for (const directory of FIXTURE_DIRECTORIES) {
     for (const file of readdirSync(join(root, directory))) {
       if (file.includes('.test.')) continue;
       selectors.add(`${directory}/${file}`);
       const stem = stemOf(file);
-      if (!stem.includes('-')) continue;
-      // The app says a shared stem for its own module, so the bare word selects
-      // nothing; the test-only file's own quoted values that carry it still do.
-      const shared = shipped.has(stem);
-      const found = shared ? valuesCarrying(join(root, directory, file), stem) : [stem];
-      for (const selector of found) selectors.add(selector);
+      // The app says a shared stem for its own module, so the bare word selects nothing.
+      if (stem.includes('-') && !shipped.has(stem)) selectors.add(stem);
     }
   }
   return [...selectors];
-}
-
-/**
- * The string values in a test-only file that carry `stem` and are more than it,
- * as the language reads them: Vite's parser decodes every quote style, escape
- * and template part, and a concatenation or template of constant parts is read
- * assembled, so no spelling or split of a value hides it. One it cannot
- * assemble whose constant text carries the stem stops the scan.
- */
-function valuesCarrying(path: string, stem: string): string[] {
-  const values: string[] = [];
-  const carries = (v: string): boolean => v.toLowerCase().includes(stem);
-  const visit = (node: unknown): void => {
-    if (typeof node !== 'object' || node === null) return;
-    const { type, value, operator } = node as {
-      type?: unknown;
-      value?: unknown;
-      operator?: unknown;
-    };
-    if (type === 'Literal' && typeof value === 'string') values.push(value);
-    if (type === 'TemplateElement') values.push((value as { cooked?: string }).cooked ?? '');
-    if ((type === 'BinaryExpression' && operator === '+') || type === 'TemplateLiteral') {
-      const assembled = folded(node);
-      if (assembled !== undefined) values.push(assembled);
-      else if (carries(constantText(node)))
-        throw new Error(
-          `${path}: a value carrying "${stem}" is assembled from parts not known here`,
-        );
-    }
-    for (const child of Object.values(node)) visit(child);
-  };
-  visit(parseAst(readFileSync(path, 'utf8'), { lang: 'ts' }));
-  return values.filter((v) => carries(v) && v.toLowerCase() !== stem);
-}
-
-type Node = {
-  type?: string;
-  value?: unknown;
-  operator?: string;
-  left?: unknown;
-  right?: unknown;
-  expression?: unknown;
-  quasis?: { value: { cooked?: string } }[];
-  expressions?: unknown[];
-};
-
-/** A string expression's value when every part of it is a constant, else undefined. */
-function folded(node: unknown): string | undefined {
-  const n = node as Node;
-  if (n.type === 'Literal') return typeof n.value === 'string' ? n.value : undefined;
-  if (n.type === 'ParenthesizedExpression') return folded(n.expression);
-  if (n.type === 'BinaryExpression' && n.operator === '+') {
-    const [left, right] = [folded(n.left), folded(n.right)];
-    return left === undefined || right === undefined ? undefined : left + right;
-  }
-  if (n.type !== 'TemplateLiteral') return undefined;
-  const parts = (n.expressions ?? []).map((expression) => folded(expression));
-  if (parts.includes(undefined)) return undefined;
-  return (n.quasis ?? [])
-    .map((quasi, i) => `${quasi.value.cooked ?? ''}${parts[i] ?? ''}`)
-    .join('');
-}
-
-/** Every constant string under `node`, joined: what an unassembled value is built from. */
-function constantText(node: unknown): string {
-  if (typeof node !== 'object' || node === null) return '';
-  const n = node as Node;
-  if (n.type === 'Literal') return typeof n.value === 'string' ? n.value : '';
-  if (n.type === 'TemplateElement') return (n.value as { cooked?: string }).cooked ?? '';
-  return Object.values(node)
-    .map((child) => constantText(child))
-    .join('');
 }
 
 function stemOf(file: string): string {

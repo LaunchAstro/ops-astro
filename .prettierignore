@@ -27,12 +27,6 @@ tests/support/fixture-race-vitest.config.mjs
 tests/support/fixture-template-race-hook.mjs
 tests/ci/ownership-proof-keeps-other-runs-template.test.ts
 
-# Sol's REVB1SL01 and REVB1SL01N review proofs, byte-for-byte as the review
-# patches held them; reviewer-proof-patch-bytes pins the first by its digest.
-tests/ci/shared-stem-sign-in-value-caught.test.ts
-tests/ci/reviewer-proof-patch-bytes.test.ts
-tests/ci/shared-stem-hostile-sign-in-values-caught.test.ts
-tests/ci/shared-stem-assembled-sign-in-values-caught.test.ts
 # Sol's REVB1SL01S06 proofs, byte-for-byte as the review patch held them.
 tests/review/sl01-s06-proof.test.ts
 # Sol's REV106D, REV140D and REVB1SL01EARLY proofs, byte-for-byte in the files

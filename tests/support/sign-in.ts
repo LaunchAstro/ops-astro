@@ -13,7 +13,7 @@
 //
 // The private half never leaves this module except as signatures.
 
-import { generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -22,11 +22,15 @@ import type { KeySetFetch } from '../../apps/api/auth/jwks.ts';
 import type { SupabaseVerifierOptions } from '../../apps/api/auth/supabase.ts';
 import { cookieNameFor, sessionIdOf } from '../../apps/api/auth/session.ts';
 import { SESSION_HEADER } from '../../packages/core-wire/src/index.ts';
+import { TEST_ONLY_MARKER } from './marker.ts';
 
-export const TEST_KID = 'test-sign-in-es256';
+/** Made at run time from the one marker (option A), so no test value exists to copy. */
+const made = (): string => `${TEST_ONLY_MARKER}-${randomBytes(6).toString('hex')}`;
+
+export const TEST_KID: string = made();
 
 /** Where an in-process verifier believes the set lives. Never fetched. */
-export const TEST_KEY_SET_URL = 'https://keys.example.test/auth/v1/.well-known/jwks.json';
+export const TEST_KEY_SET_URL: string = `https://${made()}.example.test/auth/v1/.well-known/jwks.json`;
 
 /** A new P-256 pair, the private half as a JWK under the set's `kid`. */
 function keyPair() {
