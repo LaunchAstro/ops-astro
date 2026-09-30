@@ -401,6 +401,7 @@
     "tests/runtime/seed-revoke-in-flight.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
     "tests/support/fresh-database-leak.test.ts",
+    "tests/ci/s0-7-postgres-major.test.ts",
     "tests/records/owning-operation-constraints.test.ts",
     "tests/cli/t2c1-dispatch-surfaces.test.ts",
     "tests/api/t2c1-rejected-decision-crash-seam.test.ts",
