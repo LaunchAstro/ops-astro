@@ -68,12 +68,9 @@ describe('every_invariant_bites: a revert fails by its declared crossing', () =>
 });
 
 describe('every_invariant_bites: UNPROVEN is exactly the known list', () => {
-  it("holds exactly the catalogue's known parts, T2b and T2f, as UNPROVEN, never a pass", () => {
+  it("holds exactly the catalogue's known part, T2b, as UNPROVEN, never a pass", () => {
     const known = PARTS.filter((one) => one.knownUnproven !== undefined);
-    expect(known.map((one) => `${one.id} ${String(one.knownUnproven)}`)).toEqual([
-      'T2b #191',
-      'T2f #192',
-    ]);
+    expect(known.map((one) => `${one.id} ${String(one.knownUnproven)}`)).toEqual(['T2b #191']);
     const lines = everyLine();
     const t2b = lines.find((line) => line.case.startsWith('T4-N4 T2b'));
     expect([t2b?.status, t2b?.detail.startsWith('UNPROVEN, follow-up #191')]).toEqual([
@@ -81,19 +78,19 @@ describe('every_invariant_bites: UNPROVEN is exactly the known list', () => {
       true,
     ]);
     expect(everyInvariantBites(lines).status).toBe('pass');
-    // T2f biting in full, before #192 closes and the list is updated, fails the run.
-    const t2f = PARTS.find((one) => one.id === 'T2f');
+    // T2b biting in full, before #191 closes and the list is updated, fails the run.
+    const part = PARTS.find((one) => one.id === 'T2b');
     const full = ran({
       cases: [
-        ...(bites('T2f').cases ?? []),
-        ...(t2f?.crossings ?? []).map((one) => ({ name: one.case, passed: false })),
+        ...(bites('T2b').cases ?? []),
+        ...(part?.crossings ?? []).map((one) => ({ name: one.case, passed: false })),
       ],
     });
     const bitten = lines.map((line) =>
-      line.case.startsWith('T4-N4 T2f') ? classify(line.case, full) : line,
+      line.case.startsWith('T4-N4 T2b') ? classify(line.case, full) : line,
     );
     expect(everyInvariantBites(bitten).detail).toContain(
-      'unproven T2b, not exactly the known T2b, T2f',
+      'unproven none, not exactly the known T2b',
     );
   });
 });

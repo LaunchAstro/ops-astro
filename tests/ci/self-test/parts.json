@@ -11,7 +11,7 @@
     "proven by its own planted-mutation cases, `planted`, run unmutated (a T4-P line).",
     "`crossings` names each T2 and T3 part's data-separation cases and what each crosses: one",
     "green under the part's revert fails its line by name, whatever the title says.",
-    "`knownUnproven` names the follow-up for a part whose crossings do not bite yet (T2b #191, T2f #192):",
+    "`knownUnproven` names the follow-up for a part whose crossings do not bite yet (T2b #191):",
     "its line is UNPROVEN, never a pass, and every_invariant_bites fails unless that set is exactly this list.",
     "See tests/ci/self-test/mutations.ts and verdict.ts."
   ],
@@ -189,7 +189,6 @@
     },
     {
       "id": "T2f",
-      "knownUnproven": "#192",
       "invariants": ["event_visible_under_2s"],
       "files": ["tests/api/t2f-live-channel.test.ts", "tests/surfaces/t2f-live-task.test.tsx"],
       "keep": ["tests/"],
