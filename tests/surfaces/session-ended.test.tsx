@@ -77,11 +77,6 @@ function storage(seed: Record<string, string> = {}): {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-// Each refusal is minted per call and never shared. A `Response` body is read
-// once, and a second reader of the same object gets an empty one -- which the
-// client correctly reports as the API failing rather than refusing, and which
-// would quietly make these cases about the wrong thing.
-/** The refusal the API gives for every bearer it cannot vouch for. */
 /** The frame's reads on every screen: C23's name, and MP-2-11's appearance (none stored). */
 const FRAME: Readonly<Record<string, unknown>> = {
   '/session/person': { ok: true, person: { name: 'Mia Hart' } },
@@ -92,6 +87,11 @@ const frame = (at: string): Promise<Response> | undefined => {
   return end === undefined ? undefined : Promise.resolve(json(FRAME[end]));
 };
 
+// Each refusal is minted per call and never shared. A `Response` body is read
+// once, and a second reader of the same object gets an empty one -- which the
+// client correctly reports as the API failing rather than refusing, and which
+// would quietly make these cases about the wrong thing.
+/** The refusal the API gives for every bearer it cannot vouch for. */
 const unknownLogin = (): Response =>
   json({ refused: true, code: 'AUTH_UNKNOWN_LOGIN', names: [], fixes: [] }, 401);
 
