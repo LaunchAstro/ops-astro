@@ -6,9 +6,9 @@
 //
 // 1. Read the correction under the worker lease. Only an approved correction
 //    publishes; an accepted one is observed again, never dispatched again; an
-//    unknown one waits for reconciliation. A stored page the C18-1 fence
-//    refuses stops the run here, before anything is read or sent
-//    (`live-correction-capture.ts`).
+//    unknown one waits for reconciliation. Once the state allows the run, a
+//    stored page the C18-1 fence refuses stops it before anything is read or
+//    sent (`live-correction-capture.ts`).
 // 2. Rebuild the exact approved bytes from the pinned source (the store keeps
 //    digests, never text), then run the executable, which checks approval,
 //    envelope, cancellation and drift before its one dispatch. The capture
@@ -186,6 +186,8 @@ async function rebuild(
 ): Promise<PublishJob | RunResult> {
   const approved = correction.decidedVersionDigest;
   if (correction.state !== 'approved' || approved === null) return refused('APPROVAL_MISSING');
+  const unfenced = await pageRefused(correction, ports);
+  if (unfenced !== undefined) return unfenced;
   const source = await ports.readSource();
   if (source.kind !== 'ok') return refused('CONTENT_DRIFT_UNCHECKED');
   if (contentDigest(source.value.content) !== correction.preImageDigest) {
@@ -267,11 +269,11 @@ export async function runLivePublish(
   if (!held.ok) return refused(held.code);
   const { correction } = held;
   if (correction.state === 'unknown') return refused('OUTCOME_UNKNOWN');
-  const unfenced = await pageRefused(correction, ports);
-  if (unfenced !== undefined) return unfenced;
   if (correction.state === 'accepted') {
     const accepted = acceptedFrom(correction, held.lastPublish);
     if (accepted === undefined) return refused('OUTCOME_UNKNOWN');
+    const unfenced = await pageRefused(correction, ports);
+    if (unfenced !== undefined) return unfenced;
     return await observe(db, run, correction, accepted, ports);
   }
   const job = await rebuild(correction, ports);
