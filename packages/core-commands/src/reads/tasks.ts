@@ -47,7 +47,7 @@ import { readTaskSteps } from './steps.ts';
 // A served row is always in its reader's pool; this is only the type's answer.
 const UNRANKED = { number: null, score: null, calc: '' } as const;
 
-interface TaskRowRead {
+export interface TaskRowRead {
   readonly id: string;
   readonly revision: string;
   /** When the task last changed; the board's freshness stamp (MP-5-7). */
@@ -84,7 +84,7 @@ const STATE_JOIN = `
 // `revision` is bigint and this driver hands a bigint back as a string, so it
 // is read as text and converted once, here. `priority` is numeric, which is
 // the same story for the same reason.
-const SELECT = `
+export const SELECT: string = `
   select r.id,
          r.revision::text as revision,
          r.updated_at,
@@ -112,7 +112,7 @@ const SELECT = `
     left join public.people p
       on p.business_id = r.business_id and p.id = r.uuid_2`;
 
-function summaryOf(row: TaskRowRead): TaskSummary {
+export function summaryOf(row: TaskRowRead): TaskSummary {
   return {
     id: row.id,
     key: row.key ?? '',

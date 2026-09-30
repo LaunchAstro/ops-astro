@@ -29,6 +29,7 @@ import type {
   CapabilitiesResult,
   PersonListResult,
   TagListResult,
+  TaskTodosResult,
   PresetPlanResult,
   QueueResult,
   SettingsReadResult,
@@ -64,6 +65,8 @@ export interface ReadOperands {
   readonly 'person.list': NoOperands;
   /** The business's tag vocabulary (MP-4-11). */
   readonly 'tag.list': NoOperands;
+  /** The reader's own open tasks (MP-7-1). */
+  readonly 'task.todos': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
   /**
@@ -126,6 +129,7 @@ export type ReadResult =
   | TaskBoardResult
   | PersonListResult
   | TagListResult
+  | TaskTodosResult
   | QueueResult
   | PresetPlanResult
   | SettingsReadResult

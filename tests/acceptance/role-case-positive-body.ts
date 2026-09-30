@@ -238,6 +238,9 @@ export function createPositiveBody(
       case 'task.remove_tag':
       case 'tag.list':
         return await tags[declaration.name]();
+      case 'task.todos':
+        // The reader's own to-dos (MP-7-1): no operand.
+        return { body: {} };
       case 'task.dispatch':
         // The person marks their own lease's step dispatched (T2c1).
         return { body: await ownLease(context) };
