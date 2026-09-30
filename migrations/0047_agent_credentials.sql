@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0037 API-2: the agent credential, a standing delegation from the person who
+-- 0047 API-2: the agent credential, a standing delegation from the person who
 -- issues it to a fresh agent actor of theirs (`authority/agent-credentials.ts`).
 --
 -- A person issues one on their own account (`credential.issue`, under

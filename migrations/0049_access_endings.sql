@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0037 access endings (C58, CS-2.25). A person's access ended in one act:
+-- 0049 access endings (C58, CS-2.25). A person's access ended in one act:
 -- `access.end` ends the membership, the person's acting identity, every live
 -- grant and delegation in one transaction, and writes one row here for each
 -- login mapped to the person. The row holds the two steps still owed to the

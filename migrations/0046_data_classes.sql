@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0036 C81: the data-class register, and the privacy policy's versions
+-- 0046 C81: the data-class register, and the privacy policy's versions
 -- reading it.
 --
 -- One row per class of personal information the business holds: why it is
@@ -15,7 +15,7 @@
 -- A privacy-policy version is drafted with the classes in use
 -- (`data_classes`) and their digest (`data_classes_digest`), both written
 -- once with the rest of the draft beside the overseas-services register
--- (0035). Approving or publishing it is refused once the classes' digest has
+-- (0045). Approving or publishing it is refused once the classes' digest has
 -- moved since the draft (`operations/legal-documents.ts`).
 
 create table public.data_classes (

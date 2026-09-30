@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0038 ended sessions (C58). A person sees their sessions and ends
+-- 0050 ended sessions (C58). A person sees their sessions and ends
 -- the others, signs out of this one, and a second-factor change ends the
 -- others. A session is the sign-in provider's `session_id` claim, which a
 -- refresh carries unchanged.

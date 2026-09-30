@@ -608,7 +608,7 @@ read the classes under it, so the order above holds for both registers.
 
 An agent credential is a standing delegation from the person who issues it to
 a fresh agent actor of theirs, with no lease and no run
-(`authority/agent-credentials.ts`, migration 0037). `credential.issue` is
+(`authority/agent-credentials.ts`, migration 0047). `credential.issue` is
 `credential:write` and is always the caller's own. Its scope is the ticked
 `collection:action` keys, each one the caller holds at business scope when it
 is issued, by the grant check's own walk (`CREDENTIAL_SCOPE_WIDENS` otherwise),

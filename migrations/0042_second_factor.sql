@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0032 C59: the second factor a person has enrolled at the sign-in provider.
+-- 0042 C59: the second factor a person has enrolled at the sign-in provider.
 --
 -- The provider holds the factor and its secret; this table holds only that the
 -- person has one, which one (the provider's factor id, not a secret), and where

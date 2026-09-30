@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The overseas-services register (C81, SP-25, migration 0035): one row per
+// The overseas-services register (C81, SP-25, migration 0045): one row per
 // outside service that receives personal information. The privacy policy
 // reads it: a policy version is drafted with the rows in use and their digest,
 // and approving or publishing it checks the register still has that digest

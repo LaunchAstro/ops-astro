@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0033 C55: the privacy incident record (SP-24), shown on the operations view.
+-- 0043 C55: the privacy incident record (SP-24), shown on the operations view.
 --
 -- The breach runbook's first step opens one of these on day 0: what happened,
 -- when it was found, who found it, which clients and people, and what kinds of

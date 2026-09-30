@@ -6,7 +6,7 @@
 // Each act is a person's, on their own account, and served on the person
 // prefix alone. Ending is recorded here first, in the serving transaction with
 // its audit event, so the ended sessions are refused at the door from the
-// commit (`AUTH_SESSION_EXPIRED`, 0038). The provider's sign-out, which
+// commit (`AUTH_SESSION_EXPIRED`, 0050). The provider's sign-out, which
 // revokes the refresh tokens, is asked after the commit and never inside a
 // transaction; the answer says whether it confirmed, and nothing the provider
 // says is kept or echoed. Asking again is always safe: an ended session stays
