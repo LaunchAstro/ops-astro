@@ -209,6 +209,10 @@ export async function proposeFor(
     if (claimedByAnother(current, starter)) {
       return refused(refuseCommand('TRANSITION_NOT_PERMITTED', ['claimed'], [CLAIMED_FIX]));
     }
+    // Writing the claim asks what `task.claim` asks (ORCH36-WF7-ASSIGN).
+    if (!isSet(current.data['assignee']) && !(await mayAssign(tx, target.id, subjects))) {
+      return refused(refuseCommand('SCOPE_NOT_GRANTED', ['task:assign'], [ASSIGN_FIX]));
+    }
   }
   if (fields.expectedRevision !== current.revision) {
     return refused(
@@ -265,6 +269,17 @@ async function researchRunRefusal(
 
 const RUN_WRITE_FIX = 'Starting a research run needs run:write on the ticket; ask for it.';
 const CLAIMED_FIX = 'Someone else has claimed this ticket; its run is theirs to start.';
+const ASSIGN_FIX =
+  'Starting the run claims the ticket, which needs task:assign; ask for it, or for the claim.';
+
+const mayAssign = async (tx: TenantQuery, taskId: string, subjects: readonly Subject[]) =>
+  (
+    await checkAuthority(tx, subjects, {
+      collection: 'task',
+      action: 'assign',
+      scope: { kind: 'record', id: taskId },
+    })
+  ).ok;
 
 const isSet = (value: unknown): boolean => value !== undefined && value !== null;
 

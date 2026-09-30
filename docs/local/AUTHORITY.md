@@ -716,7 +716,10 @@ are unchanged. The start claims the ticket first (ORCH36 ruling P): in the
 same transaction, under the same lock, an unclaimed ticket's assignee becomes
 the starter (an agent's delegating person), and the task's revision moves; a
 ticket someone else holds is refused `TRANSITION_NOT_PERMITTED` ['claimed']
-with nothing planned. The starter is then the assignee, so T2g's four eyes
+with nothing planned. Writing the claim asks what `task.claim` asks,
+`task:assign` on the ticket (ORCH36): without it the start is refused
+`SCOPE_NOT_GRANTED` ['task:assign'] with nothing planned or claimed; a starter
+who already holds the claim needs none. The starter is then the assignee, so T2g's four eyes
 leave the run's gate to another person.
 
 ## The restricted worker role
