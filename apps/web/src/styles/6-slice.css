@@ -18,14 +18,90 @@
   padding: var(--s-4) 0;
 }
 
+/* A read state with nothing to say (the read answered) takes no room. */
+.readstate:empty {
+  display: none;
+}
+
+/* Sign in, signed out and with no shell (B6): the brand mark over one card
+   of kit fields (DS-COMP-26's labels, DS-PRIM-3's input, DS-PRIM-1's primary),
+   centred on the page ground. */
 .signin {
-  display: flex;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--s-5);
+  min-height: 100vh;
   padding: var(--s-6) var(--s-4);
+  background: var(--bg);
+  color: var(--text);
 }
 
 .signin__form {
-  width: min(28rem, 100%);
+  width: min(24rem, 100%);
+}
+
+.signin__brand {
+  display: grid;
+  justify-items: start;
+  gap: 0.4rem;
+}
+
+/* The rail's wordmark as it lands: its 176px ceiling in the rail's column. */
+.signin__brand .brand--wordmark {
+  width: 175px;
+  color: var(--text);
+}
+
+.signin .field,
+.setrow .field {
+  margin-block-end: 0;
+}
+
+.signin__build {
+  margin: 0;
+  padding: 0;
+}
+
+.signin__foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* The settings rows' own parts (B5): the number and its on and off on one
+   line, the provenance under the explanation, and a lost race across the row. */
+.setrow__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+
+.setrow__num {
+  width: 8rem;
+}
+
+.setrow__meta {
+  margin: var(--s-2) 0 0;
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  overflow-wrap: anywhere;
+}
+
+.setrow__conflict {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--s-2);
+  justify-items: start;
+}
+
+@media (width <= 640px) {
+  .setrow__line {
+    justify-content: flex-start;
+  }
 }
 
 /* The session-ended notice. Bordered rather than coloured: the surface has one

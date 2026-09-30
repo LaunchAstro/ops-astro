@@ -7,7 +7,7 @@
 // is drawn in its own words on the screen's refusal line.
 
 import { useState, type ReactElement } from 'react';
-import { ValueLine } from './panels.tsx';
+import { Held, Written } from './panels.tsx';
 import type { SettingsModel } from './use-settings.ts';
 
 const WINDOWS = {
@@ -43,39 +43,43 @@ export function WindowRow(props: {
     else model.save(which, value);
   };
   return (
-    <section className="sb__sect">
-      <div className="sb__sh">
-        <span className="sb__k">{WINDOWS[which].label}</span>
+    <div className="setrow" data-set={which}>
+      <div className="setrow__t">
+        <h3 className="setrow__k">{WINDOWS[which].label}</h3>
+        <p className="setrow__note">{WINDOWS[which].sentence}</p>
+        {model.answered ? <Written which={which} row={model.rowFor(which)} /> : null}
       </div>
-      <p className="card__sub">{WINDOWS[which].sentence}</p>
-      {model.answered ? <ValueLine which={which} row={model.rowFor(which)} /> : null}
-      {props.conflict}
-      <div className="field">
-        <label className="tf__k" htmlFor={id}>
-          Days
-        </label>
-        <input
-          id={id}
-          className="input"
-          type="number"
-          min={0}
-          step={1}
+      <div className="setrow__ctl">
+        <div className="setrow__line">
+          <label className="visually-hidden" htmlFor={id}>
+            {`${WINDOWS[which].label} in days`}
+          </label>
+          <input
+            id={id}
+            className="tf setrow__num"
+            type="number"
+            min={0}
+            step={1}
+            placeholder="Days"
+            disabled={model.disabled}
+            value={days}
+            onChange={(event) => {
+              setDays(event.target.value);
+            }}
+          />
+        </div>
+        <button
+          className="btn btn--sm btn--primary"
+          type="button"
+          data-settings={`save-${which}`}
           disabled={model.disabled}
-          value={days}
-          onChange={(event) => {
-            setDays(event.target.value);
-          }}
-        />
+          onClick={save}
+        >
+          {model.busy === which ? 'Saving…' : `Save ${WINDOWS[which].label.toLowerCase()}`}
+        </button>
+        {model.answered ? <Held which={which} row={model.rowFor(which)} /> : null}
       </div>
-      <button
-        className="btn btn--primary"
-        type="button"
-        data-settings={`save-${which}`}
-        disabled={model.disabled}
-        onClick={save}
-      >
-        {model.busy === which ? 'Saving…' : `Save ${WINDOWS[which].label.toLowerCase()}`}
-      </button>
-    </section>
+      {props.conflict}
+    </div>
   );
 }

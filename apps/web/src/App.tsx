@@ -206,6 +206,7 @@ export function App(props: AppProps): ReactElement {
       onSignedIn={onSignedIn}
       ended={props.sessions.interruption}
       signedOut={signedOut}
+      build={buildStamp()}
     />
   );
 
@@ -234,6 +235,10 @@ export function App(props: AppProps): ReactElement {
       navigate: props.navigate,
     },
   });
+
+  // Signed out, the page is the form alone: every rail entry and dock tab asks
+  // for a session, so the shell would offer nothing a person could open (B6).
+  if (content === signIn) return signIn;
 
   return (
     <PageFreshnessProvider>

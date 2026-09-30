@@ -37,7 +37,14 @@
 import { useState, type ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
-import { CapabilityBanner, ConflictBlock, ReadBanner, ValueLine } from './settings/panels.tsx';
+import {
+  CapabilityBanner,
+  ConflictBlock,
+  Held,
+  OnOff,
+  ReadBanner,
+  Written,
+} from './settings/panels.tsx';
 import { useSettings, type StorageLike, type Which } from './settings/use-settings.ts';
 import { WindowRow } from './settings/windows.tsx';
 
@@ -92,7 +99,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
             ? 'on'
             : 'off';
     return (
-      <p className="card__sub" data-settings={`${which}-known`}>
+      <p className="setrow__meta" data-settings={`${which}-known`}>
         Last confirmed by this browser: {held}
       </p>
     );
@@ -111,24 +118,17 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
 
   return (
     <div className="stack" data-screen="settings" data-business={businessKey}>
-      <header className="tpr">
-        <h2 className="tpr__title">Settings for {businessKey}</h2>
-        <div className="card__sub">
-          Settings the model classifies <code>operation</code>: each has a command of its own and
-          none is reachable through an ordinary edit. The four-eyes threshold is applied to money;
-          the others are stored and shown here.
-        </div>
-      </header>
-
-      <ReadBanner state={model.read} />
+      <ReadBanner state={model.read} onRetry={model.retry} />
 
       {/* The browser's own memory, in the two states where the server did not answer. */}
       {model.fallback ? (
-        <p className="signin__ended" role="status" data-settings="not-readable">
-          What is shown below is the last write this browser had confirmed by the server, not the
-          value the business holds. It is what there is while <code>settings.read</code> is not
-          answering.
-        </p>
+        <div className="banner banner--warn" role="status" data-settings="not-readable">
+          <p className="banner__body">
+            What is shown below is the last write this browser had confirmed by the server, not the
+            value the business holds. It is what there is while <code>settings.read</code> is not
+            answering.
+          </p>
+        </div>
       ) : null}
 
       <CapabilityBanner state={model.capabilities} />
@@ -149,106 +149,119 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
         </div>
       ) : null}
 
-      <section className="sb__sect">
-        <div className="sb__sh">
-          <span className="sb__k">Four-eyes threshold</span>
-        </div>
+      {/* DS-COMP-26's settings rows (AG-X20, AG-X21): one card, a row per setting. */}
+      <section className="card set__card" aria-labelledby="settings-title">
+        <h2 className="card__title" id="settings-title">
+          Settings for {businessKey}
+        </h2>
         <p className="card__sub">
-          The amount above which a second person is to agree before money moves. Off means one
-          person is enough at any amount.
+          Settings the model classifies <code>operation</code>: each has a command of its own and
+          none is reachable through an ordinary edit. The four-eyes threshold is applied to money;
+          the others are stored and shown here.
         </p>
-        {/* `budget.top_up` (T2e) and `budget.write_off` (T3c) read the band. */}
-        <p className="card__sub" data-settings="applied">
-          Applied to task top-ups and write-offs: above this amount a second person approves.
-        </p>
-        {model.answered ? <ValueLine which="four-eyes" row={model.rowFor('four-eyes')} /> : null}
-        {confirmedLine('four-eyes')}
-        {conflictFor('four-eyes')}
-        <div className="field">
-          <label className="tf__k" htmlFor="settings-four-eyes">
-            Threshold
-          </label>
-          <input
-            id="settings-four-eyes"
-            className="input"
-            type="number"
-            min={0}
-            step={1}
-            disabled={model.disabled || off}
-            value={threshold}
-            onChange={(event) => {
-              setThreshold(event.target.value);
-            }}
-          />
-        </div>
-        <div className="field">
-          <label className="tf__k" htmlFor="settings-four-eyes-off">
-            <input
-              id="settings-four-eyes-off"
-              type="checkbox"
-              disabled={model.disabled}
-              checked={off}
-              onChange={(event) => {
-                setOff(event.target.checked);
-              }}
-            />{' '}
-            Turn the band off
-          </label>
-        </div>
-        <button
-          className="btn btn--primary"
-          type="button"
-          data-settings="save-four-eyes"
-          disabled={model.disabled}
-          onClick={saveFourEyes}
-        >
-          {model.busy === 'four-eyes' ? 'Saving…' : 'Save threshold'}
-        </button>
-      </section>
+        <div className="set">
+          <div className="setrow" data-set="four-eyes">
+            <div className="setrow__t">
+              <h3 className="setrow__k">Four-eyes threshold</h3>
+              <p className="setrow__note">
+                The amount above which a second person is to agree before money moves. Off means one
+                person is enough at any amount.{' '}
+                {/* `budget.top_up` (T2e) and `budget.write_off` (T3c) read the band. */}
+                <span data-settings="applied">
+                  Applied to task top-ups and write-offs: above this amount a second person
+                  approves.
+                </span>
+              </p>
+              {model.answered ? (
+                <Written which="four-eyes" row={model.rowFor('four-eyes')} />
+              ) : null}
+              {confirmedLine('four-eyes')}
+            </div>
+            <div className="setrow__ctl">
+              <div className="setrow__line">
+                <label className="visually-hidden" htmlFor="settings-four-eyes">
+                  Threshold in dollars
+                </label>
+                <input
+                  id="settings-four-eyes"
+                  className="tf setrow__num"
+                  type="number"
+                  min={0}
+                  step={1}
+                  placeholder="Dollars"
+                  disabled={model.disabled || off}
+                  value={threshold}
+                  onChange={(event) => {
+                    setThreshold(event.target.value);
+                  }}
+                />
+                <OnOff
+                  label="Four-eyes band"
+                  id="settings-four-eyes-off"
+                  idFor="off"
+                  on={!off}
+                  disabled={model.disabled}
+                  onChange={(on) => {
+                    setOff(!on);
+                  }}
+                />
+              </div>
+              <button
+                className="btn btn--sm btn--primary"
+                type="button"
+                data-settings="save-four-eyes"
+                disabled={model.disabled}
+                onClick={saveFourEyes}
+              >
+                {model.busy === 'four-eyes' ? 'Saving…' : 'Save threshold'}
+              </button>
+              {model.answered ? <Held which="four-eyes" row={model.rowFor('four-eyes')} /> : null}
+            </div>
+            {conflictFor('four-eyes')}
+          </div>
 
-      <section className="sb__sect">
-        <div className="sb__sh">
-          <span className="sb__k">Client sign-off</span>
-        </div>
-        <p className="card__sub">
-          Whether the client is to agree before work is counted as complete.
-        </p>
-        {/* Storage without a consumer, as the band above: nothing asks for it. */}
-        <p className="card__sub" data-settings="not-applied">
-          Stored and shown only: no operation applies it yet.
-        </p>
-        {model.answered ? <ValueLine which="sign-off" row={model.rowFor('sign-off')} /> : null}
-        {confirmedLine('sign-off')}
-        {conflictFor('sign-off')}
-        <div className="field">
-          <label className="tf__k" htmlFor="settings-sign-off">
-            <input
-              id="settings-sign-off"
-              type="checkbox"
-              disabled={model.disabled}
-              checked={signOff}
-              onChange={(event) => {
-                setSignOff(event.target.checked);
-              }}
-            />{' '}
-            Require client sign-off
-          </label>
-        </div>
-        <button
-          className="btn btn--primary"
-          type="button"
-          data-settings="save-sign-off"
-          disabled={model.disabled}
-          onClick={() => {
-            model.save('sign-off', signOff);
-          }}
-        >
-          {model.busy === 'sign-off' ? 'Saving…' : 'Save sign-off'}
-        </button>
-      </section>
+          <div className="setrow" data-set="sign-off">
+            <div className="setrow__t">
+              <h3 className="setrow__k">Client sign-off</h3>
+              <p className="setrow__note">
+                Whether the client is to agree before work is counted as complete.{' '}
+                {/* Storage without a consumer, as the band above: nothing asks for it. */}
+                <span data-settings="not-applied">
+                  Stored and shown only: no operation applies it yet.
+                </span>
+              </p>
+              {model.answered ? <Written which="sign-off" row={model.rowFor('sign-off')} /> : null}
+              {confirmedLine('sign-off')}
+            </div>
+            <div className="setrow__ctl">
+              <OnOff
+                label="Require client sign-off"
+                id="settings-sign-off"
+                idFor="on"
+                on={signOff}
+                disabled={model.disabled}
+                onChange={setSignOff}
+              />
+              <button
+                className="btn btn--sm btn--primary"
+                type="button"
+                data-settings="save-sign-off"
+                disabled={model.disabled}
+                onClick={() => {
+                  model.save('sign-off', signOff);
+                }}
+              >
+                {model.busy === 'sign-off' ? 'Saving…' : 'Save sign-off'}
+              </button>
+              {model.answered ? <Held which="sign-off" row={model.rowFor('sign-off')} /> : null}
+            </div>
+            {conflictFor('sign-off')}
+          </div>
 
-      <WindowRow which="conversation" model={model} conflict={conflictFor('conversation')} />
-      <WindowRow which="retention" model={model} conflict={conflictFor('retention')} />
+          <WindowRow which="conversation" model={model} conflict={conflictFor('conversation')} />
+          <WindowRow which="retention" model={model} conflict={conflictFor('retention')} />
+        </div>
+      </section>
     </div>
   );
 }
