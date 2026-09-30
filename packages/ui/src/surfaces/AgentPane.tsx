@@ -127,7 +127,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
           decisions={lineage?.decisions ?? []}
           onDecide={props.onDecide}
         />
-        <Evidence story={shown} />
+        <Evidence story={shown} versions={lineage?.versions ?? [shown.head]} />
       </div>
       <RunSide {...props} shown={shown} />
     </div>

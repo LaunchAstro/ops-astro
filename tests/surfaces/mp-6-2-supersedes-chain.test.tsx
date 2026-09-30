@@ -45,6 +45,7 @@ const chain = [
   version({ versionId: 'v-1', version: 1, payloadDigest: D1, supersededAt: '2026-09-30T08:00Z' }),
 ];
 
+// eslint-disable-next-line max-lines-per-function -- one fixture chain, each line of TA-05 on it
 describe('MP-6-2 supersedes chain', () => {
   it('MP-6-2 supersedes chain: each version newest first, the current one named, its short digest and the version it supersedes', async () => {
     const page = await withVersions(chain);
