@@ -13,6 +13,10 @@
   },
   "ignorePatterns": ["node_modules", "dist", "tests/gate/canary.txt", ".claude/skills", ".codex"],
   "overrides": [
+    {
+      "files": ["tests/surfaces/receipt-read-refusal-does-not-claim-no-effect.test.tsx"],
+      "rules": { "require-await": "off", "no-promise-executor-return": "off" }
+    },
     { "files": ["tests/review/sl01-s06-proof.test.ts"], "rules": { "no-await-in-loop": "off" } },
     {
       "files": ["tests/ci/staging-special-objects.test.ts"],
