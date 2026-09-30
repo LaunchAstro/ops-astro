@@ -31,6 +31,10 @@
 //   audit row for the attempt. A decision is not an outage: the duplicate is
 //   read and refused here, and the index is never reached.
 //
+// A child delegation (AW-11, `mintChildDelegation`) adds two: its parent run
+// out is `DELEGATION_EXPIRED`, withdrawn or handed back `DELEGATION_REVOKED`,
+// each named at the child's next call because every call walks to the parent.
+//
 // The intersection is the whole mechanism. `effectiveGrants` is asked, inside
 // the serving transaction, what the *person* holds right now; the delegation
 // only ever narrows that. So revoking the person's grant collapses the agent's
@@ -53,7 +57,9 @@ export type DelegationRefusalCode =
   | 'DELEGATION_NARROWED'
   | 'DELEGATION_NOT_LIVE'
   | 'DELEGATION_WIDENS'
-  | 'DELEGATION_ALREADY_LIVE';
+  | 'DELEGATION_ALREADY_LIVE'
+  | 'DELEGATION_EXPIRED'
+  | 'DELEGATION_REVOKED';
 
 /** The same shape `grants.ts` returns, with this module's codes. Returned, never thrown. */
 export type DelegationDecision<T> =
@@ -177,6 +183,9 @@ function refuse(
   return { ok: false, refusal: refuseCommand(code, [], [reason, fix]) };
 }
 
+const decideRefused = (): DelegationDecision<never> =>
+  refuse('DELEGATION_EXCLUDES_DECISION', 'a delegation never carries decide', DECISION_FIX);
+
 export function digestOf(credential: string): string {
   return createHash('sha256').update(credential, 'utf8').digest('hex');
 }
@@ -210,18 +219,14 @@ export async function mintDelegation(
   tx: TenantQuery,
   request: MintRequest,
   keys: CredentialKeysDecision = configuredCredentialKeys(),
+  // Set only by `mintChildDelegation`, after it has judged the parent.
+  parentDelegationId: string | null = null,
 ): Promise<DelegationDecision<MintedDelegation>> {
   // Not a decision about the caller, so not a refusal code of this module.
   // The command layer answers `DEPENDENCY_NOT_LANDED` before it gets here;
   // reaching this line without a key is a fault in whoever called it.
   if (!keys.ok) throw new Error(`delegations: no delegation credential key: ${keys.problem}`);
-  if (request.actions.includes('decide')) {
-    return refuse(
-      'DELEGATION_EXCLUDES_DECISION',
-      'a delegation never carries decide',
-      DECISION_FIX,
-    );
-  }
+  if (request.actions.includes('decide')) return decideRefused();
 
   const person = [{ kind: 'person', id: request.delegatePersonId }] as const;
   for (const collection of request.collections) {
@@ -319,8 +324,8 @@ export async function mintDelegation(
     `insert into public.delegations
        (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
         collections, actions, purpose_scope_kind, purpose_scope_id, credential_hash, expires_at,
-        credential_scheme, credential_key_id)
-     values ($1, $12, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $13, $14)
+        credential_scheme, credential_key_id, parent_delegation_id)
+     values ($1, $12, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $13, $14, $15)
      on conflict (business_id, agent_actor_id, purpose)
        where revoked_at is null and settled_at is null do nothing
      returning ${delegationColumns()}`,
@@ -339,6 +344,7 @@ export async function mintDelegation(
       id,
       DERIVED_SCHEME,
       keyId,
+      parentDelegationId,
     ],
   );
   const written = rows[0];
@@ -367,13 +373,131 @@ export interface ChildMintRequest {
   readonly expiresAt: Date;
 }
 
+/**
+ * One sub-delegation (AW-11): the parent's holder hands part of its work to a
+ * helper that can do strictly less.
+ *
+ * The parent is re-read under a share lock, never taken from the caller, so a
+ * revocation in flight either lands first and is named here or waits for this
+ * transaction. Creating a child is `run:write` inside the parent's delegation.
+ * The child draws on the parent's person, authoriser and record; its
+ * operation set is a strict subset of the parent's, which the application
+ * role holds too (0056), and the ordinary mint then checks the person's live
+ * grants. Depth one: a child mints nothing. `parent` must be the caller's
+ * own, resolved from its credential in this transaction (`resolveDelegation`):
+ * this function re-reads the row by id and cannot tell whose it is.
+ */
 export async function mintChildDelegation(
-  _tx: TenantQuery,
-  _parent: Delegation,
-  _request: ChildMintRequest,
-  _keys: CredentialKeysDecision = configuredCredentialKeys(),
+  tx: TenantQuery,
+  parent: Delegation,
+  request: ChildMintRequest,
+  keys: CredentialKeysDecision = configuredCredentialKeys(),
 ): Promise<DelegationDecision<MintedDelegation>> {
-  return await Promise.reject(new Error('mintChildDelegation: not built'));
+  if (request.actions.includes('decide')) return decideRefused();
+  if (parent.parentDelegationId !== null) {
+    return refuse(
+      'DELEGATION_WIDENS',
+      'a child delegation delegates no further: depth one',
+      'hand the work back to the parent, which may delegate it',
+    );
+  }
+  const held = await parentStanding(tx, parent.id, 'for share');
+  if (!held.ok) return held;
+  const reach = await checkDelegatedAuthority(tx, held.value, {
+    collection: 'run',
+    action: 'write',
+    scope: held.value.purposeScope,
+  });
+  if (!reach.ok) return reach;
+  if (!strictlyNarrower(request, held.value)) {
+    return refuse(
+      'DELEGATION_WIDENS',
+      "a child's operation set is a strict subset of its parent's",
+      'ask for fewer collections or actions than the parent holds',
+    );
+  }
+  return await mintDelegation(
+    tx,
+    {
+      agentActorId: request.agentActorId,
+      delegatePersonId: held.value.delegatePersonId,
+      mintedByActorId: held.value.mintedByActorId,
+      purpose: request.purpose,
+      collections: request.collections,
+      actions: request.actions,
+      purposeScope: held.value.purposeScope,
+      expiresAt: request.expiresAt,
+    },
+    keys,
+    held.value.id,
+  );
+}
+
+const within = (asked: readonly string[], of: readonly string[]): boolean =>
+  asked.every((item) => of.includes(item));
+
+/** Every collection and action the parent's, and at least one of the two fewer. */
+const strictlyNarrower = (child: ChildMintRequest, parent: Delegation): boolean =>
+  within(child.collections, parent.collections) &&
+  within(child.actions, parent.actions) &&
+  !(within(parent.collections, child.collections) && within(parent.actions, child.actions));
+
+const PARENT_FIX = 'the work this helper was given has ended; hand back what it has';
+
+/**
+ * A child's parent as it stands in this transaction (the U6 fallback: the row,
+ * never a token's claims). Precedence as `resolveDelegation`'s: settled, then
+ * expired, then the recorded revocation cause. The holder presented a live
+ * child credential, so the parent's state is named, not folded into
+ * `DELEGATION_NOT_LIVE`; a parent this business cannot see is that.
+ */
+async function parentStanding(
+  tx: TenantQuery,
+  parentId: string,
+  lock: 'for share' | '',
+): Promise<DelegationDecision<Delegation>> {
+  const rows = await tx.query<
+    DelegationRow & {
+      readonly settled: boolean;
+      readonly expired: boolean;
+      readonly cause: RevocationCause | null;
+      readonly revoked: boolean;
+    }
+  >(
+    `select ${delegationColumns()}, settled_at is not null as settled,
+            expires_at <= now() as expired, revoked_at is not null as revoked,
+            revocation_cause as cause
+       from public.delegations where business_id = $1 and id = $2 ${lock}`,
+    [tx.businessId, parentId],
+  );
+  const found = rows[0];
+  if (found === undefined) {
+    return refuse(
+      'DELEGATION_NOT_LIVE',
+      'no live delegation answers as this parent',
+      'ask the authorising person for a current delegation',
+    );
+  }
+  if (found.settled) {
+    return refuse('DELEGATION_REVOKED', 'the parent delegation was handed back', PARENT_FIX);
+  }
+  if (found.expired) {
+    return refuse(
+      'DELEGATION_EXPIRED',
+      'the parent delegation minted at pickup has run out',
+      PARENT_FIX,
+    );
+  }
+  if (found.revoked) {
+    return found.cause === 'authority_lost'
+      ? refuse(
+          'DELEGATION_NARROWED',
+          'the authority the parent delegation drew on was removed from its delegating person',
+          'the authority this delegation draws on was revoked or narrowed; ask for it again',
+        )
+      : refuse('DELEGATION_REVOKED', 'the parent delegation was withdrawn', PARENT_FIX);
+  }
+  return { ok: true, value: delegationOf(found) };
 }
 
 /**
@@ -616,6 +740,14 @@ export async function checkDelegatedAuthority(
         'and this call is for another resource',
       'ask the authorising person for a delegation minted for that record',
     );
+  }
+
+  // A child's call is its parent's call too (AW-11): the parent is re-read
+  // here, in the serving transaction, and asked the same question, so its
+  // expiry, revocation or narrowing bites at the child's next call.
+  if (delegation.parentDelegationId !== null) {
+    const parent = await parentStanding(tx, delegation.parentDelegationId, '');
+    return parent.ok ? await checkDelegatedAuthority(tx, parent.value, request) : parent;
   }
 
   const held = await effectiveGrants(

@@ -118,6 +118,7 @@ pinned, so a rearrangement behind it is not a change to what L3 imports.
 ```ts
 // authority/delegations.ts
 mintDelegation(tx, MintRequest): Promise<DelegationDecision<MintedDelegation>>
+mintChildDelegation(tx, parent: Delegation, ChildMintRequest): Promise<DelegationDecision<MintedDelegation>>
 resolveDelegation(tx, agentActorId: string, credential: string): Promise<DelegationDecision<Delegation>>
 checkDelegatedAuthority(tx, delegation: Delegation, request: ScopeRequest): Promise<DelegationDecision<readonly string[]>>
 revokeDelegation(tx, delegationId: string, cause?: RevocationCause): Promise<Date | null>
@@ -127,7 +128,7 @@ digestOf(credential: string): string
 type DelegationRefusalCode =
   | 'DELEGATION_EXCLUDES_DECISION' | 'DELEGATION_OUT_OF_PURPOSE'
   | 'DELEGATION_NARROWED' | 'DELEGATION_NOT_LIVE' | 'DELEGATION_WIDENS'
-  | 'DELEGATION_ALREADY_LIVE'
+  | 'DELEGATION_ALREADY_LIVE' | 'DELEGATION_EXPIRED' | 'DELEGATION_REVOKED'
 type RevocationCause = 'authority_lost' | 'delegation_revoked' | 'work_retired' // absent: 'delegation_revoked'
 type DelegationDecision<T> = { ok: true; value: T } | { ok: false; refusal: DelegationRefusal }
 
@@ -227,6 +228,8 @@ code on this head, and where that is shown.
 | `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                                                    |
 | `DELEGATION_WIDENS`                                                          | 403    | yes: `grant.revoke` on the approving person's grant, or that grant's expiry, between approval and the agent's pickup   |
 | `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                                           |
+| `DELEGATION_EXPIRED`                                                         | 403    | yes: a child's parent ran out (see [Sub-delegation](#sub-delegation-aw-11))                                            |
+| `DELEGATION_REVOKED`                                                         | 403    | yes: a child's parent was withdrawn or handed back                                                                     |
 | `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                                               |
 | `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                                                    |
 | `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                    |
@@ -300,6 +303,31 @@ and caller-visible ("registers it, gives it 409"), and that it is not one of the
 twenty runtime codes ("is not one of the runtime codes"). The runtime passes
 it through from the authority layer, the same way `DELEGATION_NOT_LIVE` and
 `DELEGATION_OUT_OF_PURPOSE` travel, and does not own its status.
+
+## Sub-delegation (AW-11)
+
+An agent holding a delegation may hand part of its work to a helper agent
+through `mintChildDelegation`: `run:write` inside its own delegation, depth
+one, the parent's person, authoriser and record, and an operation set that
+is a strict subset of the parent's (every collection and action the
+parent's, at least one of the two fewer). The mint re-reads the parent under
+a share lock, so a revocation in flight either lands first and is named or
+waits for the mint.
+
+The database holds the same rules for the application role
+(`delegations_child_within_parent`, 0056), and fixes a delegation's
+operation set, purpose, scope, person, authoriser and parent at mint
+(`delegations_set_is_fixed`); only `expires_at`, revocation and settlement
+move. Token claims add nothing (the U6 fallback): every call a child makes
+re-reads its parent in the serving transaction and asks it the same question
+(`checkDelegatedAuthority`), so the parent's state bites at the child's next
+call: handed back or withdrawn is `DELEGATION_REVOKED`, run out is
+`DELEGATION_EXPIRED`, its person's authority lost is `DELEGATION_NARROWED`.
+The child's own credential, once not live, stays `DELEGATION_NOT_LIVE`.
+
+Not built yet: the child's pickup and reservation against the parent's
+envelope, the merged result, the graph rows, and a command surface for the
+mint.
 
 ## The expired session
 

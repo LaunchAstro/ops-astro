@@ -145,11 +145,18 @@ it('AW-11 set frozen at mint: no update changes a delegation’s operation set, 
   const { parent } = await parentWork(w.s);
   const narrow = await child(w.s, parent, w.helper);
   const id = narrow.delegation.id;
+  const otherPerson = randomUUID();
+  await w.s.db.app.withBusiness(w.s.business, async (tx) => {
+    await tx.query(
+      `insert into public.people (business_id, id, display_name) values ($1, $2, 'Other')`,
+      [w.s.business, otherPerson],
+    );
+  });
   for (const [assignment, parameters] of [
     [`actions = array['read', 'write']`, []],
     [`collections = array['task', 'run']`, []],
     ['purpose_scope_id = $3', [randomUUID()]],
-    ['delegate_person_id = $3', [w.s.decider.personId]],
+    ['delegate_person_id = $3', [otherPerson]],
     ['parent_delegation_id = null', []],
     [`purpose = 'widened'`, []],
   ] as const) {

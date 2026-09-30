@@ -913,10 +913,11 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // mint reads the approver's live grants when the agent picks the work up, not
   // when the person approved it, so a grant revoked or expired in between
   // leaves the pickup asking for authority the approver no longer holds
-  // (`tests/commands/delegation-widens.test.ts`). These
-  // three name a delegation lifecycle (intake, expiry as its own answer, an
-  // explicit revocation) that this head's one-task purpose does not
-  // distinguish.
+  // (`tests/commands/delegation-widens.test.ts`). Intake names a delegation
+  // lifecycle this head's one-task purpose does not distinguish.
+  // `DELEGATION_EXPIRED` and `DELEGATION_REVOKED` are not on this list: a
+  // child delegation's call walks to its parent (AW-11), and a parent that has
+  // run out, or was handed back or withdrawn, answers with them.
   // `DELEGATION_ALREADY_LIVE` is not on this list:
   // `authority/delegations.ts` refuses a second mint under a purpose the agent
   // already holds live, and `task.pickup` reaches it as a 409 rather than the
@@ -924,8 +925,6 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // `agent-envelope.ts` refuses with it any operation outside
   // `AGENT_SURFACE`, and `tests/commands/unproduced-reach.test.ts` reaches it.
   'DELEGATION_EXCLUDES_INTAKE',
-  'DELEGATION_EXPIRED',
-  'DELEGATION_REVOKED',
   // `GATE_PENDING` left the list with T2g, which raises it on completing a
   // task whose gate is open; `PROPOSAL_SUPERSEDED` and
   // `PROPOSAL_SCOPE_EXCEEDED` left it with T3a, which gave each its producer.
