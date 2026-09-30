@@ -113,7 +113,7 @@ function digestCase() {
 function environmentCase() {
   it('bakes no environment value into the output', () => {
     const canaryOut = join(scratch, 'canary');
-    const settings = ['DATABASE_URL', 'DATABASE_ADMIN_URL', 'GOTRUE_URL', 'SERVED_HOST'];
+    const settings = ['DATABASE_URL', 'DATABASE_LOOKUP_URL', 'GOTRUE_URL', 'SERVED_HOST'];
     const run = releaseProcess(
       webBuild('dist-canary'),
       canaryOut,
@@ -133,7 +133,7 @@ function bundledCase() {
     expect(callBundled(out, {}, 'ops.example.test')).toBe('threw SERVED_HOST is not set.');
     const settings = {
       DATABASE_URL: 'postgres://app:x@127.0.0.1:1/none',
-      DATABASE_ADMIN_URL: 'postgres://app:x@127.0.0.1:1/none',
+      DATABASE_LOOKUP_URL: 'postgres://app:x@127.0.0.1:1/none',
       GOTRUE_URL: 'http://127.0.0.1:54391',
       SERVED_HOST: 'ops.example.test',
       DELEGATION_CREDENTIAL_KEY_ID: 'test/release@1',

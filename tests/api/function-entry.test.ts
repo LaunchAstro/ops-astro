@@ -7,12 +7,14 @@
 // forwarding header or a near-miss spelling is refused before anything is
 // read, which is what lets a promotion leave the previous deployment serving
 // nothing. A missing or bad setting stops the entry, naming the setting and
-// never a value.
+// never a value. It holds no admin login (G2): the business key is read on
+// the lookup login (0046), and the entry refuses to start beside an admin one.
 
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createFunctionHandler } from '../../apps/api/function.ts';
+import { createFunctionHandler, GET } from '../../apps/api/function.ts';
 import { PREFIX } from '../../packages/core-wire/src/index.ts';
+import { Client, loginIn } from '../db/backup-identity.fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { serveTestKeySet, type ServedKeySet } from '../support/sign-in.ts';
 import {
@@ -41,7 +43,7 @@ const KEYRING = {
 const unreachable: Settings = {
   ...KEYRING,
   DATABASE_URL: NOWHERE,
-  DATABASE_ADMIN_URL: NOWHERE,
+  DATABASE_LOOKUP_URL: NOWHERE,
   GOTRUE_URL: ISSUER,
   SERVED_HOST: HOST,
 };
@@ -55,6 +57,7 @@ function request(host: string, path = '/api/health', init: RequestInit = {}): Re
 describe('S0-6 the function entry answers only its own host', () => {
   hostCase();
   settingsCase();
+  adminCase();
 });
 
 function hostCase() {
@@ -94,7 +97,7 @@ function hostCase() {
 
 function settingsCase() {
   it('refuses to start without each setting, naming it and never a value', () => {
-    const names = ['DATABASE_URL', 'DATABASE_ADMIN_URL', 'GOTRUE_URL', 'SERVED_HOST'];
+    const names = ['DATABASE_URL', 'DATABASE_LOOKUP_URL', 'GOTRUE_URL', 'SERVED_HOST'];
     for (const name of [...names, ...Object.keys(KEYRING)]) {
       for (const value of [undefined, '']) {
         const start = () => createFunctionHandler({ ...unreachable, [name]: value });
@@ -131,8 +134,24 @@ function settingsCase() {
   });
 }
 
+function adminCase() {
+  it('refuses to start with an admin login in its environment, naming it and never a value', async () => {
+    const saved = { ...process.env };
+    Object.assign(process.env, unreachable, { DATABASE_ADMIN_URL: NOWHERE });
+    try {
+      const started = GET(request(HOST));
+      await expect(started).rejects.toThrow('DATABASE_ADMIN_URL');
+      await expect(started).rejects.not.toThrow('entry-canary-7f3c');
+    } finally {
+      for (const name of Object.keys(process.env)) if (!(name in saved)) delete process.env[name];
+      Object.assign(process.env, saved);
+    }
+  });
+}
+
 let fixture: ApiFixture | undefined;
 let keySet: ServedKeySet | undefined;
+let lookup: { url: string; name: string } | undefined;
 
 describe.skipIf(databaseUrlFromEnvironment() === undefined)(
   'S0-6 the function entry serves the composed app',
@@ -140,21 +159,23 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
     beforeAll(async () => {
       fixture = await createApiFixture('fnentry');
       keySet = await serveTestKeySet();
+      lookup = await loginIn(fixture.db, 'ops_astro_lookup', 'lk');
     }, 60_000);
     afterAll(async () => {
       await keySet?.close();
       await fixture?.drop();
+      if (lookup === undefined) return;
+      const cleanup = new Client(databaseUrlFromEnvironment() ?? '');
+      await cleanup.query(`drop role if exists "${lookup.name}"`).finally(() => cleanup.end());
     });
 
-    it('a signed-in read on its own host, private and no-store', async () => {
+    it('a signed-in read on its own host, private and no-store, with no admin login', async () => {
       const world = fixture as ApiFixture;
-      const admin = new URL(process.env['DATABASE_ADMIN_URL'] ?? '');
-      admin.pathname = `/${world.db.name}`;
       const handle = createFunctionHandler({
         ...world.environment,
         ...KEYRING,
         DATABASE_URL: world.db.appUrl,
-        DATABASE_ADMIN_URL: admin.href,
+        DATABASE_LOOKUP_URL: lookup?.url,
         GOTRUE_URL: ISSUER,
         SUPABASE_KEY_SET_URL: (keySet as ServedKeySet).url,
         SERVED_HOST: HOST,

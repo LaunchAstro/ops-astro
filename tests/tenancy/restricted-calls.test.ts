@@ -133,6 +133,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_backup' then 'backup'
                  when r.rolname = 'ops_astro_backup_retention' then 'backup retention'
                  when r.rolname = 'ops_astro_backup_restore' then 'backup restore'
+                 when r.rolname = 'ops_astro_lookup' then 'lookup'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -208,6 +209,8 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(classes['worker']).toStrictEqual(['ops_astro_worker']);
     // S0-3b: the backup identity reads and is proved in tests/db/backup-identity.test.ts.
     expect(classes['backup']).toStrictEqual(['ops_astro_backup']);
+    // G2: the business lookup reads id and key of businesses, proved in tests/db/business-lookup.test.ts.
+    expect(classes['lookup']).toStrictEqual(['ops_astro_lookup']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });

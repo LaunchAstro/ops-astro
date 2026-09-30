@@ -17,7 +17,7 @@ function handler() {
   return createFunctionHandler({
     SERVED_HOST: host,
     DATABASE_URL: 'postgres://app:unused@127.0.0.1:1/none',
-    DATABASE_ADMIN_URL: 'postgres://app:unused@127.0.0.1:1/none',
+    DATABASE_LOOKUP_URL: 'postgres://app:unused@127.0.0.1:1/none',
     GOTRUE_URL: 'https://issuer.example.test/auth/v1',
     DELEGATION_CREDENTIAL_KEY_ID: keyId,
     DELEGATION_CREDENTIAL_KEYS: `${keyId}:${randomBytes(32).toString('base64url')}`,
