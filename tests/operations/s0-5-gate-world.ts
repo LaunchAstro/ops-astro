@@ -52,7 +52,7 @@ export const admin = async <T>(w: GateWorld, sql: string, params: unknown[] = []
   (await w.harness.world.db.admin.execute<T & Record<string, unknown>>(sql, params)) as T[];
 
 /** Both gate tables, as one digest. */
-async function fingerprint(w: GateWorld): Promise<string> {
+export async function fingerprint(w: GateWorld): Promise<string> {
   const [row] = await admin<{ digest: string }>(
     w,
     `select md5(
@@ -226,39 +226,6 @@ export async function modeToReal(w: GateWorld): Promise<string[]> {
     status: 409,
     code: 'INSTALLATION_MODE_ONE_WAY',
   });
-}
-
-export type Try = readonly [label: string, body: object, field: string];
-
-/**
- * A closing line (S0-5): each try refused on its named field, writing nothing
- * and leaving the line open; then the right record closes it.
- */
-export async function closingLine(
-  w: GateWorld,
-  item: string,
-  tries: readonly Try[],
-  good: object,
-): Promise<string[]> {
-  const wrong: string[] = [];
-  for (const [label, body, field] of tries) {
-    // oxlint-disable-next-line no-await-in-loop
-    const before = await fingerprint(w);
-    // oxlint-disable-next-line no-await-in-loop
-    const answer = await send(w, RECORD, { item, ...body });
-    // oxlint-disable-next-line no-await-in-loop
-    const after = await fingerprint(w);
-    const got = `${String(answer.status)} ${String(answer.code)} ${JSON.stringify(names(answer))}`;
-    if (got !== `422 FIELD_VALUE_INVALID ["${field}"]`) wrong.push(`${label}: ${got}`);
-    if (before !== after) wrong.push(`${label}: wrote`);
-    // oxlint-disable-next-line no-await-in-loop
-    if (!(await readiness(w)).open_items.includes(item)) wrong.push(`${label}: closed it`);
-  }
-  const answer = await send(w, RECORD, { item, ...good });
-  if (answer.status !== 200)
-    wrong.push(`the record: ${String(answer.status)} ${String(answer.code)}`);
-  if ((await readiness(w)).open_items.includes(item)) wrong.push('the record left it open');
-  return wrong;
 }
 
 /** Only through the command: every other direct write by the app's role, and how it was answered. */
