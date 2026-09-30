@@ -54,7 +54,7 @@
     "spdx": "node scripts/spdx-check.mjs",
     "spdx:cases": "node --test tests/licences/spdx-cases.mjs",
     "deps:cruise": "node scripts/deps-cruise.mjs",
-    "deps:cases": "node --test tests/ci/deps-cruise-cases.mjs",
+    "deps:cases": "node --test tests/ci/deps-cruise-cases.mjs tests/ci/db-shard-declaration-cruise.test.mjs",
     "db:conformance": "node scripts/db-conformance.mjs",
     "db:cases": "node --test tests/ci/db-conformance-cases.mjs tests/ci/docker-leak-cases.mjs",
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit",

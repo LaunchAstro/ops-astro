@@ -70,7 +70,7 @@ export async function openProofWorld(part: string): Promise<ProofWorld> {
       where business_id = $1 and key = 'four_eyes_threshold'`,
     [world.alpha],
   );
-  const live: { readonly pid: number }[] = [];
+  const live: { readonly pid: number; exited(): Promise<NodeJS.Signals | null> }[] = [];
 
   const asAda = async (name: Name, body: object): Promise<Record<string, unknown>> => {
     const answer = await fetch(`${origin()}/api/b/alpha${pathOf(name)}`, {
@@ -169,6 +169,9 @@ export async function openProofWorld(part: string): Promise<ProofWorld> {
           // Already gone.
         }
       }
+      // Ended, not merely signalled: the next proof file starts its API on the
+      // same port and refuses one that still answers there.
+      await Promise.all(live.map(async (one) => await one.exited()));
       await admin.close();
       await world.close();
     },
