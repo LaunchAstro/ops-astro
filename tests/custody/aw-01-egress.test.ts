@@ -41,6 +41,10 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/web/src/operations/client.ts': "the browser calls the product's own API, same origin",
   'apps/web/src/session/sign-in.ts':
     "the browser signs in through the product's own API, same origin",
+  // C80, stacked on this slice (SL15): not a model call. Whether its provider
+  // calls should leave through custody instead is for the batch review.
+  'packages/core-connectors/src/capture/transport.ts':
+    "C80's pinned HTTPS transport: only to the address the C18-1 fence checked, no redirect",
 };
 
 const MODULES =

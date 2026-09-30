@@ -6,8 +6,7 @@
 // outside the agency's own stay refused until three other-company
 // adversarial reviews of the pool are recorded closed (D17-14).
 
-import { isIP } from 'node:net';
-import { isDeniedAddress, type Resolver, type Transport } from './transport.ts';
+import { familyOf, isDeniedAddress, type Resolver, type Transport } from './transport.ts';
 
 export interface CapturePool {
   /** The agency's own catalogued pages, exact addresses. */
@@ -155,7 +154,7 @@ async function follow(
   const answer = await options.transport({
     url,
     address: address.value,
-    family: isIP(address.value) === 6 ? 6 : 4,
+    family: familyOf(address.value),
     method: 'GET',
     headers: { accept: limits.type, 'user-agent': USER_AGENT },
     timeoutMs: 10_000,

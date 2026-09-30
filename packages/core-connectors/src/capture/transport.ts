@@ -88,6 +88,9 @@ for (const [network, prefix] of [
   DENIED_V6.addSubnet(network, prefix, 'ipv6');
 }
 
+/** The family a checked address is connected to by, as a transport request carries it. */
+export const familyOf = (address: string): 4 | 6 => (isIP(address) === 6 ? 6 : 4);
+
 /** The hard denies: private, loopback, link-local, metadata, reserved and embedded forms. */
 export function isDeniedAddress(address: string): boolean {
   const family = isIP(address);

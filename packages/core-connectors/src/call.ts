@@ -8,10 +8,10 @@
 // have acted. The credential goes to the provider and nowhere else; no result
 // or record carries a provider's words.
 
-import { isIP } from 'node:net';
 import type { OperationRegistration } from './catalogue.ts';
 import { connectorRelease, credentialHostMatches } from './catalogue.ts';
 import {
+  familyOf,
   isDeniedAddress,
   type Resolver,
   type Transport,
@@ -93,7 +93,7 @@ function requestFor(
   return {
     url: new URL(`https://${connector.host}${path}`),
     address,
-    family: isIP(address) === 6 ? 6 : 4,
+    family: familyOf(address),
     method: connector.method,
     headers: {
       accept: 'application/json',
