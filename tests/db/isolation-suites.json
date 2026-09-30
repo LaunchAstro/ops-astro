@@ -55,6 +55,8 @@
     "tests/commands/task-todos.test.ts",
     "tests/commands/task-todos-isolation.test.ts",
     "tests/commands/task-assign-ai.test.ts",
-    "tests/commands/task-assign-ai-isolation.test.ts"
+    "tests/commands/task-assign-ai-isolation.test.ts",
+    "tests/commands/task-complete-agent.test.ts",
+    "tests/reads/board-agents.test.ts"
   ]
 }
