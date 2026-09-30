@@ -44,6 +44,8 @@ import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
+import { refuseModelCallAsPerson } from './model-call-person.ts';
+import { endOnRun, topUpOnRun } from './run-answers.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -144,6 +146,12 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'budget.record_outcome': recordOutcomeOnTask,
   // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
   'budget.write_off': writeOffOnTask,
+  // AW-01: the run's worker's, through the broker, on the agent prefix only.
+  'model.call': refuseModelCallAsPerson,
+
+  // AW-05: a person's answers to a run waiting at its approved ceiling.
+  'run.top_up': topUpOnRun,
+  'run.end_at_budget_stop': endOnRun,
 };
 
 function writeOwned(

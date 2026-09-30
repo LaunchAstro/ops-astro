@@ -2,7 +2,7 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 16 of the 35. For each of the other 19 this file
+// `recordId`, which reaches 16 of the 45. For each of the other 29 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
@@ -56,7 +56,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['record.create', { type: 'client', fields: { name: 'a target-free client' } }],
 ];
 
-/** The thirty identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -86,10 +86,13 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.observe': ['leaseId', 'agent'],
   'task.receipt': ['attemptId', 'control'],
   'task.handback': ['leaseId', 'agent'],
+  'model.call': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
   'budget.write_off': ['attemptId', 'control'],
+  'run.top_up': ['runId and recordId', 'control'],
+  'run.end_at_budget_stop': ['runId and recordId', 'control'],
 };
 
 /**

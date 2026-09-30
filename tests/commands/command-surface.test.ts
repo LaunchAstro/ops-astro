@@ -49,9 +49,11 @@ if (serverUrl === undefined) {
 // revocation writes, and the authority it asks is still on tasks.
 // `secret` is custody's (C31): the path names the row, the grant is
 // `custody:manage`. `record` and `onboarding` are C41-A's: the client
-// record and the onboarding laid out on it.
+// record and the onboarding laid out on it. `model` is AW-01's call through
+// the broker, asked of the lease's task. `run` is AW-05's two answers at the
+// budget stop, asked of the run's task.
 const PATH_SHAPE =
-  /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret|connection|connector|mandate|graduation|automation|activation|definition|approval|record|onboarding)\/[a-z_]+$/u;
+  /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret|connection|connector|mandate|graduation|automation|activation|definition|approval|record|onboarding|model|run)\/[a-z_]+$/u;
 
 /** Every read the surface declares, sorted. */
 const DECLARED_READS = [
@@ -140,6 +142,16 @@ describe('the surface as a table', () => {
     for (const command of COMMAND_SURFACE) {
       expect(command.collection, command.name).toMatch(/^[a-z][a-z_]*$/u);
     }
+  });
+});
+
+describe("AW-05's answers at the budget stop", () => {
+  it('asks decide on billing for a top-up and on gate for the end', () => {
+    // A top-up is money, the end is a gate, and both decide.
+    expect(declarationOf('run.top_up').collection).toBe('billing');
+    expect(declarationOf('run.end_at_budget_stop').collection).toBe('gate');
+    expect(declarationOf('run.top_up').action).toBe('decide');
+    expect(declarationOf('run.end_at_budget_stop').action).toBe('decide');
   });
 });
 

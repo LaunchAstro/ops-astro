@@ -291,6 +291,21 @@ so they run the wiring the server listens with rather than a copy of it. A
 test that hands the boundary its own executor or recorder calls `createApi`
 directly.
 
+`main()` also starts the credential broker (AW-01) when all four of
+`MODEL_BROKER_CREDENTIALS_FILE`, `MODEL_BROKER_DESTINATIONS`,
+`MODEL_BROKER_ROUTES` and `MODEL_BROKER_INSTALLATION` are set
+(`brokerSettings` and `startModelBroker`, `apps/api/model-broker.ts`): custody's
+own process, forked with only its credential file and destination list, and
+the `model.call` executor over it, handed to `composeApi` as
+`executeModelCall`. None set is no broker, and `model.call` answers
+`DEPENDENCY_NOT_LANDED` 501. Some of them, or a malformed one, stops the server
+with a problem naming the setting, never its value. The model operations and
+their adapters are registered in code there, not configured: the replay
+provider is the only one until the real-provider run. Each route in
+`MODEL_BROKER_ROUTES` declares its `ceiling`, a whole number of at least 1:
+the calls in flight on that route across every business of the installation,
+at most (the fair share, "The model call" below).
+
 ## Task, board and people operations
 
 The everyday task writes, and the two reads the web's board and task page
@@ -503,6 +518,32 @@ only, and `task.queue` carries every live task's beside the queue, to the team
 only; an agent's queue carries none. Nothing delivers them. Each is
 `{ id, taskId, kind, waitingReason, causeId, raisedAt }`, one per cause and
 kind (`migrations/0036_alerts.sql`). `tests/runtime/t2h-alerts.test.ts` holds it.
+
+**The execution graph (AW-06).** `task.execution` carries `graph` beside its
+runs and page of events: `{ plan, sourceRevision, complete, nodes }`, one node
+per run, `{ nodeId, condition, planned, observed }`. The planned layer is the
+structured plan record the plan decision bound (AW-04), which this code does
+not read yet, so `plan` is `unbound`, every `planned` is null, and no node is
+called unplanned. The observed layer is the run's own record, read in the same
+statement as the events and never from the page, so a cursor never changes a
+condition: `not_started`; `in_progress` with `attemptId` and `whoseMove`
+(`{ kind: 'agent' | 'person', actorId }`, the lease's holder, or null actor
+when anyone with the grant may move: a pickup after a drop, a budget answer);
+`settled` with `outcome` (the attempt's, `cancelled`, `refused` for a rejected
+gate, `expired`); `superseded` for a version replaced on its lineage; and
+`unrecognised`, with the raw `runState`, for a state the projection does not
+know. Silence is not a verdict: a run with no progress after its claim stays in
+progress, and past its lease's expiry with no drop its `lease.state` is
+`lapsed`; a drop, once recorded, shows with its `fault`. `heldMinor` and
+`spentMinor` are null when nothing is held or spent, never 0, with the
+version's `currency`. `effectObserved` is true only for an attempt observed or
+settled: a dispatch marker (a staged intent) is not an effect. The projection
+takes facts the grant-checked read already fetched and computes no authority:
+every reader who may see the task gets the same bytes, and the graph is frozen
+(`reads/execution-graph.ts`). Malformed facts throw before projection, so the
+read answers unavailable, never an empty graph.
+`tests/runtime/aw-06-observed-layer.test.ts` and
+`tests/runtime/aw-06-isolation.test.ts` hold it.
 A drop raises no alert (T3e2): `task.queue` carries the team's `outages`
 beside the alerts, newest first, each
 `{ id, cause, fault, openedAt, lastDropAt, closedAt, runs: [{ taskId, runId, attemptId, reactivated }] }`,
@@ -822,10 +863,123 @@ What each one does:
   operations' classifier ([RUNTIME.md](RUNTIME.md)). Both bounds are open items
   below.
 
+## The model call
+
+`model.call` (AW-01) is one priced model call, made by the lease holder
+through the credential broker. The caller names the lease, its fence, a
+catalogued operation and the prompt's fields; it never names a destination, a
+credential, a price, the run's step or itself. The step is the one the lease's
+attempt was reserved for, read under the lease (`stepOfLease`).
+
+| Route                              | Body                                                                                                                                 | Authority                                                                                                            |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `/api/a/b/:key/model/call` (agent) | `operationId`, `leaseId`, `fence`, `operation`, `fields` (each `name`, `source`, `value`, or `name` and `from`, `{ recordId, key }`) | the delegation the pickup minted, on the lease's task (`write`); then the broker's six facts, from rows, under locks |
+| `/api/b/:key/model/call` (person)  | as above                                                                                                                             | refused `SCOPE_NOT_GRANTED`: the call is the run's worker's, not a person's                                          |
+
+It runs in two parts (`commands/model-call.ts`). The agent entry runs the row
+`modelCallRow` (`commands/agent-operations.ts`) through
+`executeAgentOperation` (`commands/agent-envelope.ts`) unchanged: the login,
+the register and its replay, the operands, the delegation and the surface row.
+Its serve is the broker's reserve (`reserveModelCall`,
+`core-custody/src/broker-reserve.ts`) in the same transaction, so the hold at the
+operation's priced maximum, the prompt copy's registration, the register row
+and the audit event commit together. A repeat of the operation id replays the
+register row and sends nothing; two at once cannot both hold, because the
+second loses the register's identity key and replays. After that commit the
+broker starts the call, sends it through custody and settles it
+(`sendReservedCall`), re-reading the task's client link, the lease, the
+delegation and the reservation under their locks, so authority lost in between refuses the call when its
+effect applies.
+
+The answer is the call as its ledger row stands: `callId`, `state`,
+`reservedMinor`, `actualMinor`, `observedMinor`, `drop`, and `text`, the
+model's words, only on the request that made them. The words are never stored,
+so a replay answers the ledger's state without them. A reserve refusal is the
+register's code (`LEASE_NOT_OWNED`, `LEASE_EXPIRED`, `AUTHORITY_LOST`,
+`DECISION_STALE`, `OPERATION_NOT_CATALOGUED`, `EFFECT_NOT_RECONCILABLE`,
+`SOURCE_UNREADABLE`,
+`LOCAL_MODEL_REQUIRED` 501, `CLIENT_MODEL_USE_OFF` (the task's client has
+model use off, C60), the three `SUBSCRIPTION_` codes, `RATE_LIMITED`
+with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
+`model_calls` row. `BUDGET_UNAVAILABLE` is the approved ceiling reached: the
+run stops and asks in the same transaction (AW-05, the budget wait in
+[RUNTIME.md](RUNTIME.md)), its lease ends, and every later call on that lease
+is refused as an ended lease is. `RATE_LIMITED` writes nothing and answers two ceilings,
+each counting a call from its hold until it ends: the business's own per
+operation, and its fair share of the route's, which is the installation's.
+A business with calls in flight on a route holds no more than the route's
+ceiling divided by the businesses in flight there, itself counted. The share
+is read through `model_route_room` ([DATA.md](DATA.md), "What the tenancy proofs are"),
+under one lock per route. A malformed operand is `FIELD_VALUE_INVALID` by name, and
+its value is never echoed into the audit. Where no broker is configured the
+agent envelope's own `model.call` row answers `DEPENDENCY_NOT_LANDED` 501 after
+the delegation check (`AGENT_OPERATIONS`).
+
+A field is supplied, `{ name, source, value }`, or bound to the row it is
+read from, `{ name, from: { recordId, key } }` (S3). A supplied field's
+`source` is the caller's statement and only narrows: a claimed
+`business_internal` counts as `outside`, so the field stays local. A bound
+field reads what the agent may read: the run's own task, held `for share`,
+and a field the task spine marks `shared`. The broker takes the value from
+the row and finds the source itself: `business_internal` only when one of
+the business's people entered the task through the app, the API or the
+command line and no agent or worker has written to it since; otherwise
+`outside`. The field reaches a cloud route only where the source is
+`business_internal` and the operation also declares the field
+business-internal (`effectiveClass`, `core-connectors/src/data-class.ts`;
+`broker-sources.ts`). Any other row (another task, another business's, a
+made-up id), a field the agent is not shown, a key the task does not hold as
+text, or a task in the trash is `SOURCE_UNREADABLE` 422, recorded as a step,
+in the same words whoever's row it was. The start reads the rows again, and a row that stopped being a
+business-internal source since the hold releases the call unsent
+(`LOCAL_MODEL_REQUIRED`); the values sent are the ones read at the start.
+
+## The answers at the budget stop
+
+A run stopped at its approved ceiling waits for a person (AW-05,
+[RUNTIME.md](RUNTIME.md#the-answers-at-the-budget-stop)). The two answers are
+commands on the person prefix, and the command line and the app's client post
+them to the same routes. Both name the task and the run on it, and neither
+writes the task record, so neither takes an `expectedRevision`.
+
+| Operation                | Route                                | Body                                                          | Authority                                                                                                                       |
+| ------------------------ | ------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `run.top_up`             | `/api/b/:key/run/top_up`             | `operationId`, `recordId`, `runId`, `amountMinor`, `currency` | `decide` on `billing`, asked of the task named in `recordId`; the runtime asks it again of the run's task under the run's locks |
+| `run.end_at_budget_stop` | `/api/b/:key/run/end_at_budget_stop` | `operationId`, `recordId`, `runId`                            | `decide` on `gate`, asked the same way                                                                                          |
+
+The handlers are `topUpOnRun` and `endOnRun` (`commands/run-answers.ts`), over
+`topUpAtBudgetStop` and `endAtBudgetStop` (`core-runtime/src/budget-answer.ts`).
+
+- **The top-up** answers `detail: { runId, state: 'applied', answerId,
+heldMinor }`, and the run is back in the queue for a fresh pickup. Above the
+  business's four-eyes threshold the first person's answer is
+  `detail: { runId, state: 'awaiting_second', approvalId, thresholdMinor }`
+  and applies nothing; a second, distinct holder sending the same amount
+  completes it. `amountMinor` is a whole number of the currency's minor units
+  above zero and `currency` the envelope's three-letter code.
+- **The end** answers `detail: { runId, state: 'cancelled', answerId,
+releasedMinor, spentMinor }`. The task stays open for a person. It reaches a
+  task in the trash, as `task.cancel` does; a top-up does not.
+- **Refusals.** A task not in this business, a run that is not on the named
+  task, and a made-up run are all `NOT_FOUND` 404, the last two with the same
+  bytes. `SCOPE_NOT_GRANTED` 403 for a caller without the grant on that task.
+  From the runtime: `FOUR_EYES_REQUIRED` 409 naming the threshold (the same
+  person twice), `SCOPE_NOT_GRANTED` naming the plan approver while they still
+  hold `billing:decide`, `FIELD_VALUE_INVALID` 422 (the amount, the currency,
+  or a second approval of a different amount), `CAP_BINDING_MISMATCH`,
+  `BUDGET_EXHAUSTED` (the business cap is the hard ceiling), `LINEAGE_TERMINAL`
+  and `TRANSITION_NOT_PERMITTED` 409 (the run is not waiting, or the ask is
+  already answered). A refusal writes nothing.
+- **No agent answers.** Neither row is in `AGENT_SURFACE`: the agent prefix
+  answers `DELEGATION_EXCLUDES_OPERATION` 403 with or without a delegation.
+- **Not here yet.** The question and its two buttons in the conversation where
+  the plan was approved (AW-04), and the recent sign-in a money answer asks
+  for (C59).
+
 ## Source-to-route manifest
 
 Every route is generated from `COMMAND_SURFACE`
-(`packages/core-wire/src/surface.ts`, 38 writes and 11 reads) by
+(`packages/core-wire/src/surface.ts`, 39 writes and 11 reads) by
 `mountSurface` in `createApi` (`apps/api/app.ts`), once for the person prefix
 and once for the agent prefix, with the path from `pathOf` in the same file.
 The command line builds its verbs from the same table (`VERBS`,
@@ -861,7 +1015,7 @@ The five support controls, with their owning functions:
 | `task.restart`      | `/api/b/:key/task/restart`              | refused `DELEGATION_EXCLUDES_OPERATION` | `restartOnTask` (`commands/tasks-controls.ts`)                                                                                                                                        | `restart` (`core-runtime/src/restart.ts`) → `propose`, with `refuseRestart` (`core-runtime/src/propose.ts`) |
 | `task.heartbeat`    | `/api/b/:key/task/heartbeat`, own lease | `/api/a/b/:key/task/heartbeat`          | person: `heartbeatOwnLease` (`commands/tasks-lease.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`, `commands/agent-operations.ts`) → `heartbeatLease` (`commands/tasks-lease.ts`) | `heartbeat` (`core-runtime/src/heartbeat.ts`)                                                               |
 
-The other forty-four. `runAgentCommand` (`commands/agent-envelope.ts`) refuses a
+The others. `runAgentCommand` (`commands/agent-envelope.ts`) refuses a
 name outside `AGENT_SURFACE` before it reads anything else. Each name the agent
 is served is a row of `AGENT_OPERATIONS` (`commands/agent-operations.ts`), and
 its `serve` holds the case. `AGENT_SURFACE` and `BEFORE_PICKUP` are read off
@@ -1096,16 +1250,16 @@ answers `DELEGATION_NARROWED` (R-B). A name outside `AGENT_SURFACE` is refused
 delegation on the spot: the collection, the action, and a `scope` that must be
 exactly the one task it was minted for.
 
-| Answer                          | Status | When                                                                                                                                                                                                                                                     |
-| ------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                         |
-| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed                                                                                                                                                                                                 |
-| `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                |
-| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry                                                                                                                                                                                     |
-| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                         |
-| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always: at the envelope with no credential, and from L4's `decideAsAgent` asking L2 under a delegation                                                                                                                                    |
-| `DELEGATION_EXCLUDES_OPERATION` | 403    | any name not in `AGENT_SURFACE`, whose eight members are the queue, a pickup, a handback, a heartbeat, `task.read`, `task.comment`, `task.decide` and `session.capabilities`; or, with no credential, any name but the queue, a pickup and `task.decide` |
-| `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                              |
+| Answer                          | Status | When                                                                                                                                                                                                                                                                  |
+| ------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                                      |
+| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed                                                                                                                                                                                                              |
+| `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                             |
+| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry                                                                                                                                                                                                  |
+| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                                      |
+| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always: at the envelope with no credential, and from L4's `decideAsAgent` asking L2 under a delegation                                                                                                                                                 |
+| `DELEGATION_EXCLUDES_OPERATION` | 403    | any name not in `AGENT_SURFACE`, whose nine members are the queue, a pickup, a handback, a heartbeat, `task.read`, `task.comment`, `task.decide`, `session.capabilities` and `model.call`; or, with no credential, any name but the queue, a pickup and `task.decide` |
+| `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                                           |
 
 A handback or heartbeat names a lease, not a task, so the task it is checked
 against is read from the lease (`namedTaskId`). A handback naming a lease on
@@ -1317,8 +1471,9 @@ rather than keeping a copy; the two are told apart by the key.
 business fact every member works against, and changing one is an authority
 change. The four-eyes band is stored and shown. `settings.set_four_eyes_threshold` writes it
 (`commands/settings-write.ts`) and `settings.read` returns it. Its consumers
-are the top-up (`budget.top_up`, T2e) and the write-off (`budget.write_off`,
-T3c), which produce `FOUR_EYES_REQUIRED`. `task.decide` produces
+are the top-up (`budget.top_up`, T2e), the write-off (`budget.write_off`,
+T3c) and AW-05's top-up at the budget stop, `run.top_up`
+([The answers at the budget stop](#the-answers-at-the-budget-stop)), which produce `FOUR_EYES_REQUIRED`. `task.decide` produces
 `FOUR_EYES_REQUIRED` without the band since T2g: the person a task is assigned
 to may not decide its gate. The seed gives
 `settings:read` to `admin` and to `member`; the write stays with `admin`.

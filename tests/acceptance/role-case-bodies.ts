@@ -66,6 +66,12 @@ export interface BodyContext extends ConnectionsContext {
   /** A person of this business, for the one field that must name one. */
   readonly assigneePersonId: string;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
+  /** The agent's own prefix, where a harness has one (`stopped-run.ts`). */
+  asAgent?(
+    name: CommandName,
+    body: Readonly<Record<string, unknown>>,
+    credential?: string,
+  ): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
 }
 

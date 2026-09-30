@@ -752,6 +752,19 @@ function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
       ),
     };
   }
+  // AW-05: a run waiting for budget is claimed again only after a person's
+  // top-up sends it back to `planned`. Refused here, before any write, rather
+  // than by 0035's trigger after the old hold was classified.
+  if (state.run_state === 'waiting_budget') {
+    return {
+      kind: 'refuse',
+      refusal: refuse(
+        'RESERVATION_NOT_CLAIMABLE',
+        'this run waits for a person to top it up or end it',
+        'Nothing is picked up until a person answers the budget stop.',
+      ),
+    };
+  }
   if (state.state === 'held' && state.lease_id !== null) {
     if (state.bound_lease_state === 'live' && state.bound_lease_expired !== true) {
       return {

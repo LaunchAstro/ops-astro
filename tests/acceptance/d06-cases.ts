@@ -119,8 +119,17 @@ export interface TopCell {
   readonly surface: Surface;
 }
 
-/** Every declared operation, by every classified key, by every surface. */
-export const TOP_LEVEL_CELLS: readonly TopCell[] = COMMAND_SURFACE.flatMap((declaration) =>
+/**
+ * Served on the agent prefix only. The person surfaces refuse it by design,
+ * so it has no person positive control, and its D06 cells run on the agent
+ * prefix (`d06-agent.test.ts`).
+ */
+const AGENT_ONLY: ReadonlySet<CommandName> = new Set(['model.call']);
+
+/** Every operation a person surface serves, by every classified key, by every surface. */
+export const TOP_LEVEL_CELLS: readonly TopCell[] = COMMAND_SURFACE.filter(
+  (declaration) => !AGENT_ONLY.has(declaration.name),
+).flatMap((declaration) =>
   TOP_LEVEL_FIELDS.flatMap((key) =>
     SURFACES.map((surface) => ({ operation: declaration.name, key, surface })),
   ),

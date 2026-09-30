@@ -63,7 +63,7 @@ export const ACCEPTANCE_ISSUER = 'http://127.0.0.1:54391';
  * The grants the fixture gives each role. They are not a copy of
  * `GRANTS_BY_ROLE` in the seed: the fixture member holds `task:comment` and not
  * `person:read` or `settings:read`, and the fixture admin holds every action on
- * four collections where the seed names ten pairs. `seeded-role-grants.test.ts`
+ * six collections where the seed names twelve pairs. `seeded-role-grants.test.ts`
  * pins that difference and checks the seed's roles against the surface.
  *
  * `noah` is absent on purpose and that absence is the whole of case N2: a
@@ -86,18 +86,19 @@ export const MEMBER_ACTIONS: readonly Action[] = ['read', 'write', 'assign', 'co
  * The collections an administrator holds authority over.
  *
  * `task` is not the whole surface any more. `person.list` asks about `person`,
- * the two settings commands about `settings`, and `preset.plan` about the
- * record family it names — so an administrator granted only on tasks is
- * refused `SCOPE_NOT_GRANTED` on four declarations, and a matrix built on that
- * fixture would have recorded four missing positive controls as product
- * failures. The grant is per collection because the surface says it is.
+ * the two settings commands about `settings`, `preset.plan` about the record
+ * family it names, and AW-05's two answers about `billing` and `gate` — so an
+ * administrator granted only on tasks is refused `SCOPE_NOT_GRANTED` on six
+ * declarations, and a matrix built on that fixture would have recorded six
+ * missing positive controls as product failures. The grant is per collection because the surface says it is.
  */
 export const ADMIN_COLLECTIONS: readonly string[] = [
   'task',
   'person',
   'settings',
   'preset',
-  // `budget.top_up` asks `decide` on `billing` (T2e), as the seed's admin holds it.
+  // `budget.top_up` asks `decide` on `billing` (T2e), as the seed's admin holds it;
+  // AW-05's answers ask `decide` on `billing` and `gate`.
   'billing',
   // Custody (C31): `custody:manage` is the owner's and administrators'.
   'custody',
@@ -109,6 +110,7 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'automation',
   // New client onboarding (C41-A): `record:write` makes a client and starts it.
   'record',
+  'gate',
 ];
 
 export async function tokenFor(

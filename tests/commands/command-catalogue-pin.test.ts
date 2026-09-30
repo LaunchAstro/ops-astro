@@ -17,8 +17,12 @@
 // The five untargeted commands that `refuseIrrelevantTarget` never checked
 // were pinned as `unchecked` at 06ab232. Architecture observation 2 flipped
 // them, red first (`stray-identifiers.test.ts`): each now names the
-// identifiers its request type declares, and that change is the one
-// deliberate edit to this pin.
+// identifiers its request type declares, and that change was the first
+// deliberate edit to this pin. AW-01's `model.call` is another: a new
+// untargeted lease write an agent reaches under its delegation, added to each
+// table it belongs in and to the handler map. AW-05's two answers at the
+// budget stop are two more: untargeted person writes naming the task and the
+// run on it, which no agent reaches.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -165,6 +169,15 @@ vi.mock('../../packages/core-commands/src/commands/budget-write-off.ts', async (
   ...(await original<object>()),
   writeOffOnTask: recorder('writeOffOnTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/model-call-person.ts', async (original) => ({
+  ...(await original<object>()),
+  refuseModelCallAsPerson: recorder('refuseModelCallAsPerson'),
+}));
+vi.mock('../../packages/core-commands/src/commands/run-answers.ts', async (original) => ({
+  ...(await original<object>()),
+  topUpOnRun: recorder('topUpOnRun'),
+  endOnRun: recorder('endOnRun'),
+}));
 
 const PINNED_RUNTIME_SHAPED = {
   'task.handback': 'leaseId',
@@ -172,6 +185,7 @@ const PINNED_RUNTIME_SHAPED = {
   'task.dispatch': 'leaseId',
   'task.observe': 'leaseId',
   'task.pickup': 'reservationId',
+  'model.call': 'leaseId',
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
@@ -191,9 +205,12 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'grant.revoke': [],
   'mandate.file': ['clientId'],
   'mandate.revoke': ['mandateId'],
+  'model.call': ['leaseId'],
   'onboarding.start': ['clientId'],
   'onboarding.step_result': ['recordId'],
   'record.create': [],
+  'run.end_at_budget_stop': ['recordId', 'runId'],
+  'run.top_up': ['recordId', 'runId'],
   'secret.clear': ['secretId'],
   'secret.set': ['clientId'],
   'settings.set_client_sign_off': [],
@@ -232,11 +249,14 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'grant.revoke',
   'mandate.file',
   'mandate.revoke',
+  'model.call',
   'onboarding.start',
   'onboarding.step_result',
   'person.list',
   'preset.plan',
   'record.create',
+  'run.end_at_budget_stop',
+  'run.top_up',
   'secret.clear',
   'secret.list',
   'secret.set',
@@ -263,6 +283,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 ];
 
 const PINNED_AGENT_SURFACE = [
+  'model.call',
   'onboarding.step_result',
   'session.capabilities',
   'task.comment',
@@ -382,6 +403,16 @@ const REQUESTS: readonly CommandRequest[] = [
     amountMinor: 0,
     reason: 'why',
   },
+  { command: 'model.call', operationId: 'op' },
+  {
+    command: 'run.top_up',
+    operationId: 'op',
+    recordId: 'r',
+    runId: 'run',
+    amountMinor: 700,
+    currency: 'AUD',
+  },
+  { command: 'run.end_at_budget_stop', operationId: 'op', recordId: 'r', runId: 'run' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -445,6 +476,9 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'model.call': ['refuseModelCallAsPerson', 'request'],
+  'run.top_up': ['topUpOnRun', 'request'],
+  'run.end_at_budget_stop': ['endOnRun', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -469,7 +503,7 @@ const agentReach = (reach: readonly string[]) =>
     .toSorted();
 
 describe('the per-command tables at 06ab232', () => {
-  it('shapes the same runtime identifier for the same three commands', () => {
+  it('shapes the same runtime identifier for the same four commands', () => {
     expect({ ...RUNTIME_SHAPED }).toStrictEqual(PINNED_RUNTIME_SHAPED);
   });
 
@@ -484,7 +518,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same forty-eight from an expected revision', () => {
+  it('exempts the same fifty-one from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
