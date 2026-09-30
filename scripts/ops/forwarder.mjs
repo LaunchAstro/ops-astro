@@ -24,7 +24,7 @@ const ROOT = join(import.meta.dirname, '..', '..');
 /** On staging, each address leaves by the egress host beside it (S0-1 egress allow-list). */
 const offRoute = (env) =>
   offEgress(env, [
-    ['DATABASE_FORWARDER_URL', 'OPS_EGRESS_POOLER_HOST', env['OPS_EGRESS_POOLER_PORT']],
+    ['DATABASE_FORWARDER_URL', 'OPS_EGRESS_POOLER_HOST', 'OPS_EGRESS_POOLER_PORT'],
     ['OPS_ERROR_SINK_DSN', 'OPS_EGRESS_SINK_HOST'],
     ['OPS_FORWARDER_HEARTBEAT_URL', 'OPS_EGRESS_HEARTBEAT_HOST'],
     ['OPS_SINK_HEARTBEAT_URL', 'OPS_EGRESS_HEARTBEAT_HOST'],

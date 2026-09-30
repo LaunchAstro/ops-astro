@@ -44,6 +44,7 @@ describe('S0-1 egress allow-list: one source for each place', () => {
   relayCases();
   helperCase();
   consumerCases();
+  missingSettingCases();
 });
 
 function relayCases() {
@@ -77,10 +78,10 @@ function helperCase() {
   it('an address on the listed host and port passes; anywhere else is named, never shown', () => {
     const judge = (address: string, port?: string) =>
       offEgress(
-        { ...LIST, A: address },
+        { ...LIST, A: address, P: port },
         port === undefined
           ? [['A', 'OPS_EGRESS_HEARTBEAT_HOST']]
-          : [['A', 'OPS_EGRESS_POOLER_HOST', port]],
+          : [['A', 'OPS_EGRESS_POOLER_HOST', 'P']],
       );
     expect(judge(`https://${BEAT}/${CANARY}`)).toBe(undefined);
     expect(judge(`https://${BEAT.toUpperCase()}:443/x`)).toBe(undefined);
@@ -98,7 +99,16 @@ function helperCase() {
       expect(message, address).toMatch(/^A does not leave by OPS_EGRESS_/u);
       expect(message?.includes(CANARY)).toBe(false);
     }
-    expect(offEgress({ A: `https://${ELSEWHERE}/` }, [['A', 'UNSET_HOST']])).toBe(undefined);
+  });
+
+  it('a missing egress host or port setting is a refusal, never a skipped check', () => {
+    const a = { A: `https://${ELSEWHERE}/${CANARY}` };
+    expect(offEgress(a, [['A', 'UNSET_HOST']])).toBe('A is set but UNSET_HOST is not');
+    expect(offEgress({ ...a, H: ELSEWHERE }, [['A', 'H', 'UNSET_PORT']])).toBe(
+      'A is set but UNSET_PORT is not',
+    );
+    // An address that is unset leaves by nothing: there is nothing to judge.
+    expect(offEgress({}, [['A', 'UNSET_HOST']])).toBe(undefined);
   });
 }
 
@@ -142,5 +152,32 @@ function consumerCases() {
     expect(run.status).toBe(1);
     expect(JSON.parse(run.stdout)).toMatchObject({ outcome: 'failed', stage: 'config' });
     expect(run.stdout.includes(CANARY)).toBe(false);
+  });
+}
+
+function missingSettingCases() {
+  it('the worker and the forwarder refuse to start when their egress setting is missing', () => {
+    const worker = start('apps/worker/main.ts', ['--once'], {
+      OPS_ASTRO_API_URL: 'http://127.0.0.1:1',
+      OPS_ASTRO_BUSINESS: 'alpha',
+      OPS_ASTRO_TOKEN: 'unused',
+      OPS_ASTRO_DELEGATION: 'unused',
+      OPS_WORKER_HEARTBEAT_URL: `https://${BEAT}/${CANARY}`,
+    });
+    expect(worker.status).toBe(2);
+    expect(worker.stderr).toContain(
+      'OPS_WORKER_HEARTBEAT_URL is set but OPS_EGRESS_HEARTBEAT_HOST is not',
+    );
+    const forwarder = start('scripts/ops/forwarder.mjs', ['--once'], {
+      DATABASE_FORWARDER_URL: `postgres://${POOLER}:6543/${CANARY}`,
+      OPS_ERROR_SINK_DSN: 'https://made-up-key@example.test/7',
+      OPS_ENVIRONMENT: 'staging',
+      OPS_RELEASE: '0123456789ab',
+    });
+    expect(forwarder.status).toBe(1);
+    expect(forwarder.stderr).toContain(
+      'DATABASE_FORWARDER_URL is set but OPS_EGRESS_POOLER_HOST is not',
+    );
+    for (const run of [worker, forwarder]) expect(run.stderr.includes(CANARY)).toBe(false);
   });
 }

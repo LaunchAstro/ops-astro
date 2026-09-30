@@ -52,9 +52,9 @@ there for exactly four host names: the API, taken from the worker's own
 (`STAGING_EGRESS_POOLER_HOST`, `STAGING_EGRESS_POOLER_PORT`), the watcher's
 heartbeat host (`STAGING_EGRESS_HEARTBEAT_HOST`) and the error sink's host
 (`STAGING_EGRESS_SINK_HOST`). The worker, the forwarder and the backup run
-refuse to start when an address of theirs is not on its listed host (the
-backup's env sets `OPS_EGRESS_POOLER_HOST` and `OPS_EGRESS_POOLER_PORT`); the
-relay holds host names and a port only, never a credential. It picks the
+refuse to start when an address of theirs is not on its listed host, or when
+the egress setting for an address they have is unset (the backup's env must
+set `OPS_EGRESS_POOLER_HOST` and `OPS_EGRESS_POOLER_PORT`); the relay holds host names and a port only, never a credential. It picks the
 destination from the TLS hello's server name on 443, or the pooler's port, and
 hands the bytes over an internal link to `egress-out`, the one service on a
 routed network (`egress`), which checks the list again. Neither hop ends TLS, so the worker, the forwarder and
