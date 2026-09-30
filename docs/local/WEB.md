@@ -177,13 +177,22 @@ access ticks; the description on Team and the agent brief on Agent as
 editable fields; the subtasks and time without their doors; the conversation
 on the tab the reply door named; and the folded trail. The Agent tab says it
 is not connected until the assistant is. Its head names the task, links to
-its page and draws New task unavailable (MP-4-13 builds it). A write in the
-panel counts a change, and the page and the panel each read the task again on
-the new count, so the page shows it without a reload. Escape closes the panel
-unless it began in a field, select or text box; Close returns focus to the
-door that opened it. Its ids carry a `panel-` prefix, so none repeats the
-page's. The field edits (assignee, client, due, estimate, board, category,
-stage, state) and "Duplicate without contents" are MP-4-8's later steps.
+its page and draws New task unavailable (MP-4-13 builds it). The name is
+edited in place in the head (Enter saves, Escape leaves it), and the field
+grid (`screens/task/PanelFields.tsx`) sets the assignee (a person from
+`person.list`, or Unassigned) through `task.assign` and the due date through
+`task.update`, each at the revision the panel read. The due date is chosen in
+`screens/task/DatePicker.tsx`: a Monday-first month, months back and forward
+and arrow keys that move without choosing, Enter or a click to choose, and
+Today, In a week and In two weeks counted on the business clock
+(`screens/task/due-dates.ts`, the clock the task screens date by). A write in
+the panel counts a change, and the page and the panel each read the task
+again on the new count, so the page shows it without a reload. Escape closes
+the panel unless it began in a field, select or text box, or in the date
+picker, which closes itself; Close returns focus to the door that opened it.
+Its ids carry a `panel-` prefix, so none repeats the page's. Estimate,
+category, stage, board, state, Assign to AI, the client and "Duplicate without
+contents" wait on their owners on the record or on other slices.
 
 The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`
 looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an

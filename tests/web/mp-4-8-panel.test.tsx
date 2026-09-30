@@ -4,8 +4,9 @@
 // MP-4-8, the dock task panel's body: what it mounts from the pieces MP-4-3,
 // MP-4-5, MP-4-7, MP-4-10 and MP-4-16 built for it. The frame it sits in
 // (seat line, float, sheet, back and forward, its one close path) is MP-3-1's;
-// the captures wait on MP-1-7; the field edits (assignee, client, due, estimate,
-// board, category, stage, state) and the duplicate are later steps of MP-4-8.
+// the captures wait on MP-1-7; the name, assignee and due edits are
+// mp-4-8-panel-fields and mp-4-8-date-picker, and the client and the duplicate
+// are later steps of MP-4-8.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';

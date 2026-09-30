@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The dock task panel's body (MP-4-8, DS-COMP-38): where a task is changed
-// beside the page. It mounts the pieces built for it: the handling ticks
-// (MP-4-10), the description and agent brief fields (MP-4-7), the subtasks and
-// time (MP-4-4, MP-4-6), the conversation (MP-4-5) and the folded trail
-// (MP-4-16), under the same Team and Agent counts and the same facts as the
-// task page (MP-4-3, MP-4-9, MP-4-2).
+// beside the page. Its own field edits (the name, the assignee and the due
+// date) are `PanelFields.tsx`. It mounts the pieces built for it: the
+// handling ticks (MP-4-10), the description and agent brief fields (MP-4-7),
+// the subtasks and time (MP-4-4, MP-4-6), the conversation (MP-4-5) and the
+// folded trail (MP-4-16), under the same Team and Agent counts and the same
+// facts as the task page (MP-4-3, MP-4-9, MP-4-2).
 //
 // **The frame is not this file's.** Seating, floating, the sheet, back and
 // forward and the one close path are the dock frame's (MP-3-1); until it is
@@ -44,7 +45,7 @@ import {
   type PanelDoor,
   type Perspective,
 } from './Perspectives.tsx';
-import { PanelFields } from './PanelFields.tsx';
+import { PanelFields, PanelName } from './PanelFields.tsx';
 import { withPageDefaults } from './read-defaults.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
 import { HandlingTicks } from './Ticks.tsx';
@@ -111,7 +112,7 @@ function PanelBody(props: TaskPanelProps & { readonly task: Task }): ReactElemen
   });
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
-      <PanelHead task={task} onClose={props.onClose} />
+      <PanelHead {...props} />
       <PanelFields
         client={client}
         grantKey={props.grantKey}
@@ -212,14 +213,12 @@ function PanelAgent(props: SideProps): ReactElement {
 }
 
 /** The head: the task's name, its own page, a New task door not built yet, and close. */
-function PanelHead(props: { readonly task: Task; readonly onClose: () => void }): ReactElement {
+function PanelHead(props: SideProps): ReactElement {
   const { task } = props;
   return (
     <div className="dtp__head">
       <h2 className="t-title" data-panel-title>
-        <button className="btn btn--ghost" type="button" data-panel-field="name">
-          {task.title}
-        </button>
+        <PanelName client={props.client} task={task} onChanged={props.onChanged} />
       </h2>
       <button
         className="btn"
