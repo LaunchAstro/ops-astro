@@ -56,8 +56,8 @@ import {
   type CommandResult,
   type RegisteredAttempt,
 } from './register-store.ts';
+import { comparablePayload } from './payload.ts';
 import {
-  comparablePayload,
   hasIdentity,
   type CommandRequest,
   type IdentifiedRequest,
