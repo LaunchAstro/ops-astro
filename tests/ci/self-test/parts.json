@@ -373,6 +373,33 @@
           "file": "apps/api/recovery-entry.ts",
           "remove": []
         }
+      ],
+      "dependents": [
+        {
+          "part": "T2c2",
+          "reaches": "liability_unknown",
+          "why": "its dropped provider call is held liability_unknown by T3b's owning-state rule (recovery/classifier.ts)"
+        },
+        {
+          "part": "T3c",
+          "reaches": "sweepExpiredLeases",
+          "why": "a write-off closes a step T3b's sweep holds as an unknown liability"
+        },
+        {
+          "part": "T3d1",
+          "reaches": "sweepExpiredLeases",
+          "why": "the reconciliation pass answers steps T3b's sweep holds as unknown liabilities"
+        },
+        {
+          "part": "T3e1",
+          "reaches": "sweepExpiredLeases",
+          "why": "a drop is swept through T3b's sweepExpiredLeases (recovery/drop.ts) and held unknown by its rule"
+        },
+        {
+          "part": "T3e2",
+          "reaches": "sweepExpiredLeases",
+          "why": "an outage's dropped runs are held unknown by T3b's sweep before absence proof resumes them"
+        }
       ]
     },
     {
