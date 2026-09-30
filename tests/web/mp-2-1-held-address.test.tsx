@@ -3,7 +3,7 @@
 //
 // MP-2-1 held address switch (absorbs product issue 74). A session ends on an
 // address in Bravo; the person signs in to Alpha. The application asks Bravo,
-// with the new bearer, whether this person holds a grant there, and only on a
+// on the new sign-in's session (S0-6c), whether this person holds a grant there, and only on a
 // yes does it name Bravo and offer the one-click switch back. On a no, or on no
 // answer at all, it names no business.
 
@@ -11,6 +11,8 @@ import { describe, expect, it } from 'vitest';
 import { json, open, settle, silent } from './mp-2-1-support.tsx';
 
 const FRESH = 'fresh-token';
+/** The session the API names for the new sign-in; the cookie itself is the browser's. */
+const FRESH_SESSION = 'fresh-session';
 const HELD = {
   'ops-astro.return-to': JSON.stringify({
     address: '/task/TSK-1',
@@ -26,8 +28,9 @@ function world(bravo: Bravo, asked: string[] = []): typeof fetch {
   return (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
     if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH });
+    if (at === '/api/session') return json({ ok: true, session: FRESH_SESSION });
     const headers = (init?.headers ?? {}) as Record<string, string>;
-    asked.push(`${at} ${String(headers['authorization'])}`);
+    asked.push(`${at} ${String(headers['x-ops-astro-session'])}`);
     if (!at.startsWith('/api/b/bravo/session/capabilities')) return await silent(url, init);
     if (bravo === 'never') return await silent(url, init);
     if (bravo === 'down') throw new TypeError('network down');
@@ -63,10 +66,10 @@ describe('MP-2-1 held address switch', () => {
 });
 
 function asksThenSwitchesBack(): void {
-  it('asks the held business, with the new bearer, whether the person holds a grant there', async () => {
+  it('asks the held business, on the new session, whether the person holds a grant there', async () => {
     const asked: string[] = [];
     const { view } = await signInToAlpha('granted', asked);
-    expect(asked).toContain(`/api/b/bravo/session/capabilities Bearer ${FRESH}`);
+    expect(asked).toContain(`/api/b/bravo/session/capabilities ${FRESH_SESSION}`);
     await view.unmount();
   });
 
@@ -79,7 +82,7 @@ function asksThenSwitchesBack(): void {
     expect(notice?.textContent).toContain('bravo');
 
     await view.click('[data-switch="held-address"]');
-    expect(sessions.session).toMatchObject({ businessKey: 'bravo', token: FRESH });
+    expect(sessions.session).toMatchObject({ businessKey: 'bravo', sessionId: FRESH_SESSION });
     expect(seen.at(-1)).toBe('/task/TSK-1');
     expect(view.find('[data-notice="other-business"]')).toBeNull();
     await view.unmount();
