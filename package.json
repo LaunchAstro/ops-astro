@@ -84,6 +84,7 @@
     "verify:runtime-proofs": "bash scripts/local/runtime-proofs.sh",
     "cli": "node apps/cli/main.ts",
     "worker": "node apps/worker/main.ts",
+    "forwarder": "node scripts/ops/forwarder.mjs",
     "verify:identity": "node scripts/local/identity-check.mjs"
   },
   "dependencies": {

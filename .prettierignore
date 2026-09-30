@@ -50,6 +50,7 @@ tests/ci/s0-2-canary.test.ts
 # Sol's REVB1SL01S2 proofs, byte-for-byte in the files that carry them.
 tests/api/s0-6-isolation.test.ts
 tests/ci/s0-2-alerts.test.ts
+tests/db/api-events-forwarder.test.ts
 
 # Sol's proof tests in plain .mjs, kept byte-for-byte as applied: a review
 # attests a proof by its bytes. (Proofs in .ts pass through lint-staged.)
