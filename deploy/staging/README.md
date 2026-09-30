@@ -39,6 +39,14 @@ Staging shares a machine with live services, so it is confined (ticket S0-1,
   service can write are sized tmpfs mounts inside its memory limit, so staging
   cannot fill the machine's disk.
 
+The staging worker and its outbox forwarder (`worker`, `forwarder`) are one
+unit: the same pinned Node image, running the checkout the runbook copies into
+the read-only volume `ops-astro-staging-app`. Starting the forwarder starts the
+worker, and production's stop names the pair. The worker holds no database.
+Their one way out, to staging's own web app and Supabase project and to the
+watcher, is not built yet: on the internal network alone they reach none of
+them (re-plan step 3's containment).
+
 The database's files live on a 512 MB tmpfs volume, so staging's data does not
 survive the database container stopping. It holds made-up data only, and the
 runbook migrates and seeds it again after a restart.
@@ -147,20 +155,20 @@ service that stopped, restarted or changed fails it (`S0-6 services
 unchanged`). Only a deploy that passes both writes `deploy recorded` to the
 operator's record folder: the version, the artefact and the image id.
 
-The promotion refuses while production's API or auth server runs (owner line
-63), so a person stops them first with `scripts/ops/stop-production.mjs`. It
-asks the operator gate before anything else, then stops the containers
-`ops-astro-api` and `ops-astro-auth` and records the stop. It takes no
-argument, so no caller can point it at another service. Those two names are
-the one part of production's layout this repository holds, because a stop
-with no input has to name its services itself; S0-6's deploy gives the
-containers these names (`S0-1 gated stop`).
+The promotion migrates only with production's worker stopped, so a person
+stops it first with `scripts/ops/stop-production.mjs`. It asks the operator
+gate before anything else, then stops the containers `ops-astro-worker` and
+`ops-astro-forwarder` (the worker unit; the forwarder holds a database
+session) and records the stop. It takes no argument, so no caller can point it
+at another service. Those two names are the one part of production's layout
+this repository holds, because a stop with no input has to name its services
+itself (`S0-1 gated stop`). The web app and sign-in are not on the machine.
 
 ## Alerts
 
 Nothing deploys before the alerts reach the owner (ticket S0-2). The watcher
 (UptimeRobot, off the machine) checks each environment's web page, API health,
-backup, restore and forwarder heartbeats, and the error sink's health; the error sink (GlitchTip)
+backup, restore, forwarder and worker heartbeats, and the error sink's health; the error sink (GlitchTip)
 takes the API's errors and its security alerts. The API on Vercel keeps no
 count and reaches no sink: it appends each signal and error to its own
 database's outbox (`ops.api_events`), and the environment's forwarder
@@ -185,6 +193,7 @@ addresses are private, set in the environment at run time:
 | `ALERT_SCOPE_KEY`                                          | the API (the Vercel function)                | at least 32 bytes as hex (`openssl rand -hex 32`), one per environment, every instance the same; required once `OPS_ENVIRONMENT` is set |
 | `DATABASE_FORWARDER_URL`                                   | `forwarder.mjs`                              | a login that is a member of `ops_astro_forwarder` alone                                                                                 |
 | `OPS_FORWARDER_HEARTBEAT_URL`                              | `forwarder.mjs`                              | the watcher's forwarder heartbeat, pinged after each pass that completed                                                                |
+| `OPS_WORKER_HEARTBEAT_URL`                                 | the worker                                   | the watcher's worker heartbeat, pinged after each pass the API answered                                                                 |
 | `OPS_BACKUP_HEARTBEAT_URL`                                 | `backup.mjs run`                             | the watcher's backup heartbeat, pinged once a backup is recorded                                                                        |
 | `OPS_RESTORE_HEARTBEAT_URL`                                | `backup.mjs expire`                          | the watcher's restore heartbeat, pinged only while a drill is fresh                                                                     |
 

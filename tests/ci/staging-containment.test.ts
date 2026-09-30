@@ -15,6 +15,7 @@ import { createServer, connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { WORKER_UNIT } from './staging-placeholders.fixture.ts';
 
 const CANARY = 'canary-5b19e2d7c4-production-secret';
 const DEFINITION = new URL('../../deploy/staging/compose.json', import.meta.url).pathname;
@@ -423,6 +424,7 @@ live('S0-1 containment and resource limits, live', () => {
       STAGING_SITE_URL: 'http://127.0.0.1',
       STAGING_AUTH_DATABASE_URL: 'postgres://unused',
       STAGING_JWT_SECRET: 'unused',
+      ...WORKER_UNIT,
     };
     writeFileSync(
       override,
@@ -435,6 +437,7 @@ live('S0-1 containment and resource limits, live', () => {
           'ops-astro-staging-pgdata': { name: names('pgdata') },
           'ops-astro-staging-backups-data': { name: names('backups-data') },
           'ops-astro-staging-tls': { name: names('tls') },
+          'ops-astro-staging-app': { name: names('app') },
         },
       }),
     );
@@ -527,7 +530,7 @@ live('S0-1 containment and resource limits, live', () => {
   });
 
   it('every service, as Docker creates it, carries its confinement and limits', () => {
-    const create = compose(['create', 'auth', 'backups']);
+    const create = compose(['create', 'auth', 'backups', 'worker', 'forwarder']);
     expect(create.status, create.out).toBe(0);
     const format =
       '{{json .HostConfig.ReadonlyRootfs}} {{json .HostConfig.CapDrop}} {{.HostConfig.NanoCpus}} ' +

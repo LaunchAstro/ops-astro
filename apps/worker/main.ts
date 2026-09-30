@@ -8,22 +8,40 @@
 // database address, and nothing prints a credential. Without `--once` it polls
 // the API until its one proposal is made, then until a person's approval lets it
 // apply that proposal once (T2c2), then exits; `--once` tries once.
+//
+// After each pass the API answered, it pings `OPS_WORKER_HEARTBEAT_URL`, the
+// watcher's heartbeat (S0-2): a pass with no answer, a fault or a refusal pings
+// nothing, so a stopped or broken worker goes quiet and the watcher mails.
 
+import { ping, UNREACHABLE } from '../../scripts/ops/heartbeat.mjs';
 import { httpTransport } from '../cli/client.ts';
 import { SYNTHETIC_USAGE } from './usage.ts';
 import { createWorker } from './worker.ts';
 
 const EXIT = { ok: 0, refused: 1, usage: 2, fault: 4 } as const;
 const REQUIRED = ['OPS_ASTRO_BUSINESS', 'OPS_ASTRO_TOKEN', 'OPS_ASTRO_DELEGATION'] as const;
+const HEARTBEAT = 'OPS_WORKER_HEARTBEAT_URL';
+
+/** What is wrong with the settings, in words naming each, never a value. */
+function refusal(env: Readonly<Record<string, string | undefined>>): string | undefined {
+  const missing = REQUIRED.filter((name) => (env[name] ?? '') === '');
+  if (missing.length > 0) return `set ${missing.join(', ')}`;
+  const heartbeat = env[HEARTBEAT];
+  const url = URL.parse(heartbeat ?? '');
+  if (heartbeat && (url?.protocol !== 'https:' || UNREACHABLE.test(url.hostname))) {
+    return `${HEARTBEAT} must be a public https address`;
+  }
+  return undefined;
+}
 
 export async function main(
   argv: readonly string[],
   env: Readonly<Record<string, string | undefined>>,
-  _beat: (address: string | undefined) => Promise<string> = () => Promise.resolve('not set'),
+  beat: (address: string | undefined) => Promise<string> = ping,
 ): Promise<number> {
-  const missing = REQUIRED.filter((name) => (env[name] ?? '') === '');
-  if (missing.length > 0) {
-    process.stderr.write(`worker: set ${missing.join(', ')}\n`);
+  const refused = refusal(env);
+  if (refused !== undefined) {
+    process.stderr.write(`worker: ${refused}\n`);
     return EXIT.usage;
   }
   const api = (env['OPS_ASTRO_API_URL'] ?? 'http://127.0.0.1:8790').replace(/\/$/u, '');
@@ -50,6 +68,8 @@ export async function main(
     }
     if (outcome !== undefined) process.stdout.write(`${JSON.stringify(outcome)}\n`);
     if (outcome !== undefined && 'proposed' in outcome) proposedOn = outcome.proposed.taskId;
+    // oxlint-disable-next-line no-await-in-loop -- one ping per pass the API answered
+    if (outcome && !('fault' in outcome || 'refused' in outcome)) await beat(env[HEARTBEAT]);
     const settled = outcome !== undefined && 'applied' in outcome;
     if (argv.includes('--once') || settled) {
       if (outcome === undefined) return EXIT.fault;

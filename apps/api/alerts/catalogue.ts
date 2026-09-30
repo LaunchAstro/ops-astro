@@ -83,6 +83,11 @@ const WORDS = {
     'Errors and security alerts from the app on {place} are not being sent',
     'The owner restarts the forwarder from the runbook; what the app recorded waits for it',
   ],
+  'worker-silent': [
+    "{Place}'s worker did not check in on time",
+    'Background work on {place} is not being picked up',
+    'The owner restarts the worker and its forwarder from the runbook; queued work waits for it',
+  ],
   'signals-dropped': [
     "{Place}'s forwarder dropped errors and security signals it did not handle in time",
     'Some errors were not recorded and some failed sign-ins, refusals or exports were not counted',

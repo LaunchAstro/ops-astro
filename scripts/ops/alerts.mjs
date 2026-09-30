@@ -48,6 +48,7 @@ function monitorsFor(where, base) {
     check('backup', 'heartbeat', undefined, 'backup-silent'),
     check('restore', 'heartbeat', undefined, 'restore-stale'),
     check('forwarder', 'heartbeat', undefined, 'forwarder-silent'),
+    check('worker', 'heartbeat', undefined, 'worker-silent'),
   ];
 }
 
