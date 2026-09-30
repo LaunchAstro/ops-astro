@@ -12,8 +12,9 @@
 //   sign-in whose address is not a made-up `.local` one. Writes through the
 //   application's own role are what people typed on staging, and pass. The
 //   seed's tag is a secret its process makes at start and never stores: the
-//   guard holds only its digest, so no other session, restore or file can
-//   make a tag that passes, and the next seed run replaces it.
+//   guard holds only its digest and admits the tag only on the session the
+//   seed bound by parameter, so no other session, restore or file can make or
+//   replay a tag that passes, and the next seed run replaces it.
 // - The watch: an event trigger that guards a table from its creation and
 //   notes a guard switched off (`pg_restore --disable-triggers` does that).
 //   Guards and watch fire in every replication mode.
@@ -115,20 +116,24 @@ const INSTALL = [
     create or replace function ops_astro_made_up.note(relation text) returns void
       language sql security definer set search_path = pg_catalog, pg_temp
       as $$ insert into ${LEDGER} values (relation) on conflict do nothing $$`,
-  // A write is the seed's when it tags its transaction; it is a person's on
-  // staging when it comes through any role that is neither owner nor superuser.
+  // A write is the seed's when it tags its transaction on the session the seed
+  // bound (`bindSeed`); it is a person's on staging when the role it runs as,
+  // an owner's definer function included, is neither owner nor superuser. The
+  // guard runs as the writer, so current_user is that role.
   `
     create or replace function ops_astro_made_up.guard() returns trigger
-      language plpgsql security definer set search_path = pg_catalog, pg_temp as $$
+      language plpgsql security invoker set search_path = pg_catalog, pg_temp as $$
     begin
       if tg_table_schema = 'auth' then
         if new.email is null or lower(new.email) not like '%.local' then
           perform ops_astro_made_up.note('auth.users');
         end if;
       elsif encode(sha256(convert_to(coalesce(current_setting('ops_astro.writer', true), ''),
-          'UTF8')), 'hex') is distinct from '${digest(SEED_SECRET)}'
-        and ((select rolsuper from pg_roles where rolname = session_user)
-          or pg_has_role(session_user,
+          'UTF8')), 'hex') || encode(sha256(convert_to(coalesce(
+          current_setting('ops_astro.seeder', true), ''), 'UTF8')), 'hex')
+          is distinct from '${digest(SEED_SECRET)}${digest(SEED_SECRET)}'
+        and ((select rolsuper from pg_roles where rolname = current_user)
+          or pg_has_role(current_user,
                (select datdba from pg_database where datname = current_database()), 'member'))
       then
         perform ops_astro_made_up.note(tg_table_schema || '.' || tg_table_name);
@@ -214,3 +219,12 @@ export async function admitMadeUp(admin: OwnerQuery, confirmed: boolean): Promis
  * lets the seed's own write through the owner connection pass.
  */
 export const SEED_TAG: string = `(select set_config('ops_astro.writer', '${SEED_SECRET}', true)) as seed`;
+
+/**
+ * Bind the seed's own session (one backend, `max: 1`): the tag passes only
+ * there. The secret goes as a parameter, which no other session can read in
+ * pg_stat_activity, so a tag read from a statement's text replays nowhere.
+ */
+export async function bindSeed(admin: OwnerQuery): Promise<void> {
+  await admin.execute(`select set_config('ops_astro.seeder', $1, false)`, [SEED_SECRET]);
+}

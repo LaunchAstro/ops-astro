@@ -34,7 +34,7 @@ import { shareRecord } from '../packages/core-records/src/authority/shares.ts';
 import { ensureCredentialKeyFile } from '../packages/core-records/src/authority/credential-keys.ts';
 import { declarationOf } from '../packages/core-wire/src/surface.ts';
 import { readEnvFile } from '../packages/core-records/src/env-file.ts';
-import { admitMadeUp, markMadeUp, SEED_TAG } from './ops/made-up-only.ts';
+import { admitMadeUp, bindSeed, markMadeUp, SEED_TAG } from './ops/made-up-only.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const usersFile = `${root}.local/synthetic-users.json`;
@@ -420,6 +420,7 @@ if (!adminUrl || !appUrl) {
 // from its own mark and guard is refused here, before a row or a file is
 // written; the guard is in place, and judged again, before the first write.
 const admin = connectAsAdmin(adminUrl, { source: 'seed' });
+await bindSeed(admin);
 const confirmed = process.env['LOCAL_SEED_MADE_UP'] === 'confirm';
 const signs = await admitMadeUp(admin, confirmed);
 if (signs.length > 0) {
