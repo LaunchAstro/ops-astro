@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0051 the task state's fourth owner.
+-- 0052 the task state's fourth owner.
 --
 -- `task.set_state` points a task at one of its business's own states by the
 -- state record's id, so the status select reaches Waiting on client, which
