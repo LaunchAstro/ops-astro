@@ -157,6 +157,20 @@ describe("AW-05's answers at the budget stop", () => {
   });
 });
 
+describe("MP-6-2's state revised", () => {
+  it('asks write on run of the named task, and an agent reaches it only under its delegation', () => {
+    // run:write alone (ORCH33): no read, decide, share or manage on run.
+    const row = declarationOf('run.revise_state');
+    expect([row.collection, row.action, row.authorisedOn, row.agent]).toStrictEqual([
+      'run',
+      'write',
+      'record',
+      'delegated',
+    ]);
+    expect(row.targetsExistingRecord).toBe(false);
+  });
+});
+
 describe('the surface as a table', () => {
   // A case asserting that every action is one of the seven a grant can carry
   // was removed: `action` is typed `Action`, so an eighth is a type error and

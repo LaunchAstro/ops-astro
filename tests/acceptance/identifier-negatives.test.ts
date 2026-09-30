@@ -21,6 +21,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { READS } from '../../packages/core-wire/src/surface.ts';
+import { grantTo, type Member } from '../commands/fixture.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { foreignConversation } from './foreign-conversation.ts';
@@ -51,7 +52,9 @@ const NOBODY = 'text nobody should find in an audit row';
 const runOf = (recordId: string, runId: string, op: CommandName): Body =>
   op === 'run.top_up'
     ? { recordId, runId, amountMinor: 100, currency: 'AUD' }
-    : { recordId, runId };
+    : op === 'run.revise_state'
+      ? { recordId, runId, expectedVersion: 0, knowledge: [NOBODY], unknowns: [] }
+      : { recordId, runId };
 
 /** An operand in its foreign and fabricated forms. */
 const pair = (
@@ -74,6 +77,11 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
 
   beforeAll(async () => {
     w = await createIdentWorld('ident_negatives');
+    // MP-6-2's revision asks run:write, which the cast's admin holds on no
+    // run; on the whole business, so a foreign task is judged by the handler.
+    await w.h.world.db.app.withBusiness(w.h.world.alpha, async (tx) => {
+      await grantTo(tx, w.h.world.ada as Member, 'write', undefined, false, 'run');
+    });
     alpha = w.h.world.alpha;
     bravo = w.h.world.bravo;
     ada = { kind: 'person', caller: w.h.world.ada };
@@ -297,7 +305,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         'select run_id from public.reservations where id = $1',
         [f.picked.reservationId],
       );
-      for (const op of ['run.top_up', 'run.end_at_budget_stop'] as const) {
+      for (const op of ['run.top_up', 'run.end_at_budget_stop', 'run.revise_state'] as const) {
         cells.push(
           [op, pair('runId', String(bravoRun?.run_id), (id) => runOf(own.task.id, id, op))],
           [

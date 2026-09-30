@@ -219,6 +219,27 @@ export function createPositiveBody(
       case 'run.end_at_budget_stop':
         // A run the broker stopped at its approved ceiling (`stopped-run.ts`).
         return await answerAtTheStop(context, declaration.name, PROPOSAL);
+      case 'run.revise_state': {
+        // MP-6-2: the planned run a proposal made, its state revised by a
+        // holder of run:write on its task (the harness tops the admin up).
+        const task = await context.freshTask('a run whose state is revised');
+        const proposed = await context.asPerson('task.propose', {
+          recordId: task.id,
+          expectedRevision: task.revision,
+          ...PROPOSAL,
+        });
+        if (proposed.code !== 'ok') return { exception: `propose refused ${proposed.code}` };
+        const detail = proposed.body['detail'] as Record<string, unknown>;
+        return {
+          body: {
+            recordId: task.id,
+            runId: String(detail['runId']),
+            expectedVersion: 0,
+            knowledge: ['the brief is agreed'],
+            unknowns: ['the launch date'],
+          },
+        };
+      }
       case 'task.heartbeat':
         // The person renews their own lease (ledger line 38, "current lease
         // owner"). The agent's renewal is in the agent journey.

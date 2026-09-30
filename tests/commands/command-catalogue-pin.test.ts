@@ -155,6 +155,10 @@ vi.mock('../../packages/core-commands/src/commands/run-answers.ts', async (origi
   topUpOnRun: recorder('topUpOnRun'),
   endOnRun: recorder('endOnRun'),
 }));
+vi.mock('../../packages/core-commands/src/commands/run-state.ts', async (original) => ({
+  ...(await original<object>()),
+  reviseStateOnRun: recorder('reviseStateOnRun'),
+}));
 
 const PINNED_RUNTIME_SHAPED = {
   'task.check': 'leaseId',
@@ -178,6 +182,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'grant.revoke': [],
   'model.call': ['leaseId'],
   'run.end_at_budget_stop': ['recordId', 'runId'],
+  'run.revise_state': ['recordId', 'runId'],
   'run.top_up': ['recordId', 'runId'],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
@@ -212,6 +217,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'person.list',
   'preset.plan',
   'run.end_at_budget_stop',
+  'run.revise_state',
   'run.top_up',
   'session.capabilities',
   'settings.read',
@@ -238,6 +244,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 
 const PINNED_AGENT_SURFACE = [
   'model.call',
+  'run.revise_state',
   'session.capabilities',
   'task.check',
   'task.comment',
@@ -363,6 +370,15 @@ const REQUESTS: readonly CommandRequest[] = [
     currency: 'AUD',
   },
   { command: 'run.end_at_budget_stop', operationId: 'op', recordId: 'r', runId: 'run' },
+  {
+    command: 'run.revise_state',
+    operationId: 'op',
+    recordId: 'r',
+    runId: 'run',
+    expectedVersion: 0,
+    knowledge: [],
+    unknowns: [],
+  },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -418,6 +434,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'model.call': ['refuseModelCallAsPerson', 'request'],
   'run.top_up': ['topUpOnRun', 'request'],
   'run.end_at_budget_stop': ['endOnRun', 'request'],
+  'run.revise_state': ['reviseStateOnRun', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -457,13 +474,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same thirty-seven from an expected revision', () => {
+  it('exempts the same thirty-eight from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same thirteen, two of them before a pickup', () => {
+  it('lets an agent reach the same fourteen, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

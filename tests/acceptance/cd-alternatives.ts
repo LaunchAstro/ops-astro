@@ -76,6 +76,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'conversation.set_scope': ['conversationId', 'conversation'],
   'run.top_up': ['runId and recordId', 'control'],
   'run.end_at_budget_stop': ['runId and recordId', 'control'],
+  'run.revise_state': ['runId and recordId', 'control'],
 };
 
 /**
