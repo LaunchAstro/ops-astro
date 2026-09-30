@@ -126,13 +126,13 @@ browser.
 
 ## Addresses
 
-| Address      | What it draws                                                                                                                                                              |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/sign-in`   | Credentials and the business selector                                                                                                                                      |
-| `/projects/` | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening |
-| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                           |
-| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`                                                                            |
-| `/inbox/`    | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count                              |
+| Address      | What it draws                                                                                                                                                                                                                    |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/sign-in`   | Credentials and the business selector                                                                                                                                                                                            |
+| `/projects/` | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening; its search words live in the address as `?q=` (L-01) |
+| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                                                                                 |
+| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`                                                                                                                                  |
+| `/inbox/`    | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count                                                                                    |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.

@@ -165,7 +165,7 @@ describe('MP-8-4 the search in the address (L-01 q)', () => {
     const api = server([{ body: FOUND }]);
     const view = await mount(projects(api.fetch));
     await tick();
-    expect((view.find(BOX) as HTMLInputElement | null)?.value).toBe('hinge');
+    expect((view.find('input[type="search"]') as HTMLInputElement | null)?.value).toBe('hinge');
     expect(api.asked[0]).toMatchObject({ before: null, query: 'hinge' });
     expect(api.asked).toHaveLength(1);
     window.history.replaceState(null, '', '/');
