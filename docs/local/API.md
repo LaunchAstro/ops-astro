@@ -353,6 +353,7 @@ and the agent's one-task check (`namedTaskId`), and `task.rank` its
 | `task.board`                                                                          | `/task/board`                                          | `board`, required: a board id, or `null` for the unboarded tasks             | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 for a board not live here and for an external party, `FIELD_VALUE_INVALID` 422, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, tasks, changedAt }`, with `withheld` for a collection-wide reader                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `person.list`                                                                         | `/person/list`                                         | `{}`; it takes no fields                                                     | `SCOPE_NOT_GRANTED` 403 without `read` on `person`, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, persons: [{ personId, name }] }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `tag.list`                                                                            | `/tag/list`                                            | `{}`; it takes no fields                                                     | `SCOPE_NOT_GRANTED` 403 without `read` on `task` across the business (a reader held to one client's records included); answers `{ ok: true, tags: [{ id, name }] }`, by name (MP-4-11)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `task.todos`                                                                          | `/task/todos`                                          | `{}`; it takes no fields                                                     | `SCOPE_NOT_GRANTED` 403 without `read` on `task` across the business (a reader held to one client's records included); answers `{ ok: true, todos: [...] }`: the reader's own open tasks on any board, each a task summary with `tags` and `waitingComments` (MP-7-1)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 `task.assign` takes the `assign` action, `task.set_party` and
 `task.set_audience` take `share`, and every other write here takes `write`, all
@@ -999,6 +1000,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.add_tag`                             | `addTagToTask` (`commands/tasks-tags.ts`)                                                 | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.remove_tag`                          | `removeTagFromTask` (`commands/tasks-tags.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `tag.list`                                 | `listTags` (`core-records/src/tasks/tags.ts`)                                             | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `task.todos`                               | `readTodos` (`reads/todos.ts`)                                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
@@ -1505,6 +1507,13 @@ by name. `tag.list` is the business's vocabulary, asked as `task:read` of the
 business, so a reader held to one client's records is refused rather than
 shown the names every client's tasks carry.
 
+`task.todos` is the reader's own to-dos (MP-7-1): the open tasks assigned to
+the reader's person, on any board, soonest due first. Open is the rank's rule
+(not completed, cancelled or archived). It is asked as `task:read` of the
+business, the reader is a filter of the query, and each row carries its `tags`
+and `waitingComments`, the client messages owed a reply by the team, derived
+as `task.read` derives each message's signal. No agent reaches it.
+
 `tag.create` takes `tag:write`, asked of the business: one name per business
 whatever its case (a unique index on the lower-cased name, so two creates of
 one name at once leave one). `task.add_tag` and `task.remove_tag` take
@@ -1517,8 +1526,8 @@ delegation.
 
 ## Reads
 
-`task.read`, `task.board`, `task.queue`, `person.list`, `tag.list`, `preset.plan`,
-`settings.read` and `session.capabilities` are declared in `COMMAND_SURFACE`
+`task.read`, `task.board`, `task.queue`, `person.list`, `tag.list`, `task.todos`,
+`preset.plan`, `settings.read` and `session.capabilities` are declared in `COMMAND_SURFACE`
 with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
@@ -1670,9 +1679,9 @@ lived in the client and the server looked fine. The attempted values go to
 the audit row's `attempted` column and never to the response.
 
 **A read takes only its own identifier.** `task.read` takes `recordId` and
-`task.board` takes `board`; `task.queue`, `person.list`, `tag.list`, `preset.plan`,
-`settings.read` and `session.capabilities` take none. Any other identifier
-field, a `recordId` on those six included, is `COMMAND_BODY_INVALID` 400 naming
+`task.board` takes `board`; `task.queue`, `person.list`, `tag.list`, `task.todos`,
+`preset.plan`, `settings.read` and `session.capabilities` take none. Any other
+identifier field, a `recordId` on those seven included, is `COMMAND_BODY_INVALID` 400 naming
 it, audited, and the same answer for an own, a foreign and a fabricated id
 (the row's `identifiers` in `READ_CATALOGUE`, `reads/catalogue.ts`, checked in
 `serveRead` after the system fields, `reads/dispatch.ts`).

@@ -27,7 +27,7 @@ export const CASE = {
 } as const;
 
 /**
- * The eleven operations that name no identifier, each with a minimal valid body.
+ * The twelve operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -47,6 +47,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   // A name the vocabulary takes once, so each run makes its own (MP-4-11).
   ['tag.create', { name: `tag ${randomUUID().slice(0, 8)}` }],
   ['tag.list', {}],
+  // The reader's own to-dos (MP-7-1).
+  ['task.todos', {}],
 ];
 
 /** The twenty-three identifier-bearing operations outside (c) and (d): operand and executed case. */

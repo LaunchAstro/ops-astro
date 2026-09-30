@@ -127,7 +127,7 @@ describe.skipIf(serverUrl === undefined)(
         { command: 'task.todos', operationId: randomUUID() },
         picked.credential,
       );
-      expect(codeOf(answer)).not.toBe('not-a-refusal');
+      expect(codeOf(answer)).toBe('DELEGATION_EXCLUDES_OPERATION');
       expect(JSON.stringify(answer)).not.toContain(CANARY);
     });
   },

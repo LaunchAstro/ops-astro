@@ -48,6 +48,8 @@
     "tests/commands/task-assign-agent.test.ts",
     "tests/commands/task-estimate.test.ts",
     "tests/commands/task-tags.test.ts",
-    "tests/commands/task-tags-isolation.test.ts"
+    "tests/commands/task-tags-isolation.test.ts",
+    "tests/commands/task-todos.test.ts",
+    "tests/commands/task-todos-isolation.test.ts"
   ]
 }

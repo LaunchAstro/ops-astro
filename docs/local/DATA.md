@@ -435,6 +435,9 @@ Eight reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
   `task.assign` will accept
 - `tag.list {}` → the business's tag vocabulary, by name (MP-4-11), for a
   reader of the business's tasks
+- `task.todos {}` → the reader's own open tasks on any board, with their tags
+  and the client messages owed a reply (MP-7-1), for a reader of the
+  business's tasks
 
 The other four, `task.queue`, `preset.plan`, `settings.read` and
 `session.capabilities`, are listed with their answers under "Reads" in

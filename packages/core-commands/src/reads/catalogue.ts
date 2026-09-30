@@ -34,6 +34,7 @@ import {
   resolveTaskId,
 } from './tasks.ts';
 import { listPeople } from './people.ts';
+import { readTodos } from './todos.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
 import { readSettings } from './settings.ts';
@@ -312,13 +313,19 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     serve: async (tx) => ({ ok: true, tags: await listTags(tx) }),
   },
+  // The reader's own to-dos (MP-7-1), asked at the business (`task:read`) like
+  // the tag vocabulary: a reader held to one client's records is refused, and
+  // the list is filtered by the reader's person inside the query.
   'task.todos': {
     identifiers: [],
     parse: NONE,
-    spine: false,
-    authority: 'holds-any-grant',
+    spine: true,
+    authority: 'declared',
     outsiderNotFound: false,
-    serve: async () => await Promise.resolve({ ok: true, todos: [] }),
+    serve: async (tx, session, _operands, { spine }) => ({
+      ok: true,
+      todos: await readTodos(tx, spine, session.personId),
+    }),
   },
   // No subject record: the queue is about the business's outstanding work
   // rather than about one task, and naming one of the tasks on it in the
