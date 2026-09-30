@@ -9,6 +9,7 @@
 // owed figure is always `inbox.count`'s, never a tally of the rows drawn.
 
 import { useState, type ReactElement } from 'react';
+import { Empty } from '../primitives/Absence.tsx';
 import { TabPanel, TabStrip } from '../primitives/Tabs.tsx';
 import { follow, type OpenHow } from './gesture.ts';
 import {
@@ -179,7 +180,7 @@ function Panes(props: {
         return (
           <TabPanel key={tab.id} name={props.list.name} tab={tab.id} selected={props.selected}>
             <div className="nt__pane">
-              {groups.length === 0 ? <p className="dp__empty">{tab.empty}</p> : null}
+              {groups.length === 0 ? <Empty look="inline" title={tab.empty} /> : null}
               {groups.map((group) => (
                 <Group key={group.ref.key} group={group} heads={heads} list={props.list} />
               ))}
@@ -200,10 +201,10 @@ function NotificationsList(props: NotificationsProps & { readonly name: string }
   }));
   if (panes.every((pane) => pane.groups.length === 0)) {
     return (
-      <p className="dp__empty">
-        Nothing is waiting on you. Assignments, decisions and mentions land here and stay until they
-        are dealt with.
-      </p>
+      <Empty
+        title="Nothing is waiting on you."
+        description="Assignments, decisions and mentions land here and stay until they are dealt with."
+      />
     );
   }
   return (

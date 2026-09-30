@@ -10,11 +10,15 @@
 .nt__sum {
   margin: 0;
   color: var(--text-2);
-  font-size: 0.8rem;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .nt__sum b {
   color: var(--text);
-  font-weight: var(--weight-medium);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
 }
 .nt__tabs {
   border-bottom: 1px solid var(--border);
@@ -37,8 +41,9 @@
   padding-bottom: var(--s-2);
   border-bottom: 1px solid var(--border);
   color: var(--text);
-  font-size: 0.85rem;
-  font-weight: var(--weight-medium);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
 }
 .nt__gname {
   overflow: hidden;
@@ -54,10 +59,9 @@
 .nt__bh {
   margin: var(--s-2) 0 0.15rem;
   color: var(--ink-faint);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
 }
 .nt__row {
   display: block;
@@ -82,8 +86,9 @@
 }
 .nt__text {
   color: var(--text);
-  font-size: 0.8rem;
-  line-height: 1.45;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .nt__meta {
   display: flex;
@@ -91,12 +96,15 @@
   align-items: baseline;
   gap: 0.15rem 0.45rem;
   color: var(--text-muted);
-  font-size: var(--text-overline);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .nt__when {
   color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .nt__closed {
   margin-top: var(--s-2);
@@ -104,8 +112,10 @@
 .nt__summary {
   padding: 0.2rem 0;
   color: var(--text-muted);
-  font-size: var(--text-overline);
   cursor: pointer;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .nt__summary:hover {
   color: var(--text-2);

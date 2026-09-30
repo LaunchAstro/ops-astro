@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* The Team panel (MP-7-10, C71-D, C71-G): the pinned mockup's `tmc__` rules. Buttons
-   are the kit's `btn`, counts its `cbadge`, the empty line `dp__empty`, and the
+   are the kit's `btn`, counts its `cbadge`, the empty line the kit's `Empty`, and the
    thread the task page's `thread`/`msg` dialect, all placed, never restyled.
    Away is a dashed ring and the word Away, never a coloured dot. The group
    list, picker and head (C71-G) are drawn by no mockup surface: spacing only,
@@ -19,7 +19,9 @@
   gap: var(--s-2);
   margin: 0 0 var(--s-3);
   color: var(--text-2);
-  font-size: 0.8rem;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .tmc__why {
   display: flex;
@@ -48,7 +50,6 @@
   padding: 0;
   border: 0;
   background: none;
-  line-height: 0;
 }
 button.tmc__face {
   cursor: pointer;
@@ -62,13 +63,16 @@ button.tmc__face {
   border-radius: 50%;
   background: var(--surface-2);
   color: var(--text-2);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
 }
 .tmc__n {
   color: inherit;
-  font-size: 0.6875rem;
   text-decoration: none;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 a.tmc__n:hover {
   color: var(--accent);
@@ -83,7 +87,9 @@ a.tmc__n:hover {
   right: -3px;
 }
 .tmc__away {
-  font-size: 0.625rem;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
 }
 .tmc__p.is-on .tmc__av {
   border-color: var(--accent);
@@ -91,7 +97,6 @@ a.tmc__n:hover {
 }
 .tmc__p.is-on .tmc__n {
   color: var(--text);
-  font-weight: var(--weight-medium);
 }
 .tmc__p--away .tmc__av {
   border-style: dashed;
@@ -150,13 +155,16 @@ a.tmc__n:hover {
   border: 0;
   background: none;
   color: var(--text-2);
-  font: inherit;
-  font-size: 0.8rem;
   cursor: pointer;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .tmc__g[aria-pressed='true'] {
   color: var(--text);
-  font-weight: var(--weight-medium);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
 }
 .tmc__new,
 .tmc__renaming,
@@ -173,12 +181,16 @@ a.tmc__n:hover {
   margin: 0;
   padding: 0;
   border: 0;
-  font-size: 0.8rem;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .tmc__ghead {
   flex: none;
   padding-top: var(--s-3);
-  font-size: 0.8rem;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .tmc__gname,
 .tmc__with {

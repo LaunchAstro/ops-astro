@@ -22,6 +22,7 @@
 // own availability never wait on either.
 
 import { useState, type ReactElement } from 'react';
+import { Empty } from '../primitives/Absence.tsx';
 import {
   newestAt,
   openingGroup,
@@ -120,7 +121,7 @@ function OpenConversation(props: {
       />
     );
   }
-  if (group === undefined) return <p className="dp__empty">Nobody selected.</p>;
+  if (group === undefined) return <Empty look="inline" title="Nobody selected." />;
   return (
     <>
       <GroupHead group={group} me={me} teammates={props.teammates} onGroup={talk.onGroup} />

@@ -6,6 +6,7 @@
 // returned and reads nothing itself; a row opens its task beside the ledger.
 
 import type { MouseEvent, ReactElement } from 'react';
+import { Empty } from '../primitives/Absence.tsx';
 
 export interface LedgerEvent {
   readonly id: string;
@@ -136,10 +137,10 @@ function Row(props: { readonly event: LedgerEvent; readonly ledger: LedgerProps 
 export function Ledger(props: LedgerProps): ReactElement {
   if (props.days.length === 0) {
     return (
-      <p className="act__none">
-        Nothing has happened here yet. Every change to a task you can see is listed here, newest
-        first.
-      </p>
+      <Empty
+        title="Nothing has happened here yet."
+        description="Every change to a task you can see is listed here, newest first."
+      />
     );
   }
   return (

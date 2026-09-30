@@ -11,11 +11,9 @@
   gap: var(--s-4);
   padding-top: var(--s-3);
   border-top: 1px solid var(--rule);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono);
-  font-weight: 300;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font: var(--type-tag);
+  letter-spacing: var(--type-tag-tracking);
+  text-transform: var(--type-tag-case);
 }
 .sec__right {
   color: var(--text-muted);
@@ -74,7 +72,9 @@
 }
 .layer__count {
   color: var(--text-muted);
-  font-family: var(--font-mono);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .layer__chev {
   margin-left: auto;
@@ -109,7 +109,9 @@
   grid-template-columns: 120px minmax(0, 1fr) auto;
   gap: var(--s-3);
   align-items: center;
-  font-size: 0.875rem;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 .barlist__label {
   overflow: hidden;
@@ -130,10 +132,11 @@
 .barlist__val {
   min-width: 66px;
   color: var(--text-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
   font-variant-numeric: tabular-nums;
   text-align: right;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 
 .pmeter {
@@ -144,13 +147,16 @@
   display: flex;
   justify-content: space-between;
   gap: var(--s-3);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .pmeter__val {
   color: var(--text-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
   font-variant-numeric: tabular-nums;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 
 .legend {
@@ -161,10 +167,9 @@
   padding: 0;
   list-style: none;
   color: var(--text-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
 }
 .legend li {
   display: inline-flex;
@@ -217,8 +222,10 @@
 .opp__chev {
   flex: none;
   color: var(--ink-faint);
-  font-size: 0.8rem;
   transition: transform var(--dur-1);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .opp[open] .opp__chev {
   transform: rotate(90deg);
@@ -236,14 +243,17 @@
 .opp__detail {
   margin: 0;
   color: var(--text-2);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .opp__items {
   margin: var(--s-3) 0 0;
   padding-left: 1.05rem;
   color: var(--ink-faint);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 
 @media (width <= 1279px) {
@@ -270,6 +280,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
   .statrow .stat__num {
-    font-size: 1.75rem;
+    font: var(--type-num-md);
+    letter-spacing: var(--type-num-md-tracking);
+    text-transform: var(--type-num-md-case);
   }
 }

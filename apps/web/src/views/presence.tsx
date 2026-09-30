@@ -16,6 +16,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { AvatarStack } from '@launchastro/ui';
 import type { PresenceView } from '../data/presence.ts';
 
 const NOBODY: readonly PresenceView[] = [];
@@ -40,24 +41,14 @@ export function useShowOnPage(seen: readonly PresenceView[]): void {
   useEffect(() => () => show?.(NOBODY), [show]);
 }
 
-const initials = (name: string): string =>
-  name
-    .split(/\s+/u)
-    .filter((part) => part !== '')
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('');
-
 export function StripPresence(): ReactElement | null {
   const seen = useContext(Seen);
   if (seen.length === 0) return null;
   return (
     <span className="presence-strip" data-presence="page" aria-label="Also on this page">
-      {seen.map((person) => (
-        <span key={person.personId} className="presence-strip__avatar" title={person.name}>
-          {initials(person.name)}
-        </span>
-      ))}
+      {/* The kit's stack (DS-PRIM-16): each face names its person, and the
+          reader is never in it, so no face is marked as here. */}
+      <AvatarStack people={seen.map((person) => ({ name: person.name }))} />
     </span>
   );
 }

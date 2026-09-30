@@ -14,11 +14,9 @@
   border-bottom: 1px solid var(--border-strong);
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  font-weight: 400;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
 }
 .act__row {
   display: grid;
@@ -31,19 +29,20 @@
 }
 .act__t {
   color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .act__kind {
   color: var(--text-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
 }
 .act__who {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
 }
 .act__body {
   display: flex;
@@ -53,13 +52,16 @@
 }
 .act__text {
   color: var(--text);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .act__proj {
   color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
   text-decoration: none;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .act__proj:hover {
   color: var(--accent);
@@ -67,12 +69,6 @@
 }
 .act__more {
   margin-top: var(--s-4);
-}
-.act__none {
-  max-width: 60ch;
-  margin: var(--s-5) 0 0;
-  color: var(--text-2);
-  font-size: var(--text-sm);
 }
 
 @media (width <= 640px) {
