@@ -15,7 +15,7 @@ import { ProjectsBoard } from '../../packages/ui/src/surfaces/ProjectsBoard.tsx'
 import type { ProjectRow } from '../../packages/ui/src/board/projects.ts';
 import { Projects } from '../../apps/web/src/screens/Projects.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import type { TaskPanelHost } from '../../apps/web/src/screen-registry.tsx';
+import { SCREENS, type TaskPanelHost } from '../../apps/web/src/screen-registry.tsx';
 import { mount, settle, type Mounted } from './mount.tsx';
 
 let mounted: Mounted | undefined;
@@ -49,7 +49,7 @@ const task = (id: string, key: string) => ({
 type Opened = readonly [string, string, string | undefined];
 
 /** The Projects screen over two tasks, with a panel host that records what it is asked to open. */
-const screen = async (changes = 0) => {
+const screen = async (changes = 0, route = false) => {
   const reads: string[] = [];
   const opened: Opened[] = [];
   const fetch = ((url: string) => {
@@ -75,9 +75,20 @@ const screen = async (changes = 0) => {
     changes: count,
   });
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
-  const element = (count: number) => (
-    <Projects client={client} grantKey="alpha:ada" taskPanel={host(count)} />
-  );
+  // `route`: as the application draws the board, through its screen registry.
+  const element = (count: number) =>
+    route ? (
+      SCREENS['agency:projects-board']({
+        client,
+        grantKey: 'alpha:ada',
+        params: {},
+        notice: null,
+        storage: null,
+        taskPanel: host(count),
+      })
+    ) : (
+      <Projects client={client} grantKey="alpha:ada" taskPanel={host(count)} />
+    );
   mounted = await mount(element(changes));
   await settle();
   const boardReads = () => reads.filter((url) => url.includes('task/board')).length;
@@ -102,6 +113,17 @@ describe('MP-5-8 open beside, from the Projects screen', () => {
       await press(board.host.querySelector(NAME(A)));
       expect(opened).toStrictEqual([['TSK-1', 'open', undefined]]);
       expect(window.location.href).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the board route hands its rows the application’s panel host, so a click opens beside', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { board, opened } = await screen(0, true);
+      await press(board.host.querySelector(NAME(A)));
+      expect(opened).toStrictEqual([['TSK-1', 'open', undefined]]);
     } finally {
       vi.useRealTimers();
     }
