@@ -12,8 +12,9 @@ import {
 } from '../../../core-records/src/index.ts';
 import { revertCorrection, type RevertOutcome } from '../../../core-connectors/src/index.ts';
 import { observedIn, seen, type Observations } from './live-correction-observations.ts';
+import { captureFenced } from './live-correction-capture.ts';
 import {
-  captureFenced,
+  pageRefused,
   record,
   refused,
   targetOf,
@@ -60,12 +61,14 @@ export async function runLiveRevert(
   const publishedRevision = observedIn(held.lastPublish, 'published_revision');
   if (correction.state !== 'live' || publishedRevision === undefined)
     return refused('GATE_NOT_APPROVED');
+  const unfenced = await pageRefused(correction, ports);
+  if (unfenced !== undefined) return unfenced;
   const outcome = await revertCorrection(
     { publishedRevision, target: targetOf(correction), seam: correction.seam },
     {
       readDeployment: ports.readDeployment,
       revert: ports.revert,
-      capture: async () => await captureFenced(correction.pageUrl, ports),
+      capture: async () => await captureFenced(correction.pageUrl, ports.capture),
       now: ports.now,
     },
   );

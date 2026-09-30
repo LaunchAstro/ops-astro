@@ -6,11 +6,14 @@
 //
 // 1. Read the correction under the worker lease. Only an approved correction
 //    publishes; an accepted one is observed again, never dispatched again; an
-//    unknown one waits for reconciliation.
+//    unknown one waits for reconciliation. A stored page the C18-1 fence
+//    refuses stops the run here, before anything is read or sent
+//    (`live-correction-capture.ts`).
 // 2. Rebuild the exact approved bytes from the pinned source (the store keeps
 //    digests, never text), then run the executable, which checks approval,
 //    envelope, cancellation and drift before its one dispatch. The capture
-//    reads the correction's own catalogued page, never a provider's address.
+//    reads the correction's own catalogued page through the fence, never a
+//    provider's address.
 // 3. Write the observed result with its receipt under the same lease. A lease
 //    lost in between writes nothing and raises a task: the effect may have
 //    happened, and the dispatch token keeps a later attempt the same effect.
@@ -27,7 +30,6 @@ import {
 } from '../../../core-records/src/index.ts';
 import {
   approvedChange,
-  capturePage,
   contentDigest,
   observeLanded,
   publishCorrection,
@@ -44,6 +46,7 @@ import {
   seen,
   type Observations,
 } from './live-correction-observations.ts';
+import { captureFenced, pageNotCatalogued } from './live-correction-capture.ts';
 
 export interface CorrectionRun {
   readonly business: string;
@@ -51,9 +54,6 @@ export interface CorrectionRun {
   readonly leaseId: string;
   readonly fence: number;
 }
-
-export type CaptureAnswer =
-  { readonly ok: true; readonly value: { readonly text: string } } | { readonly ok: false };
 
 /** The provider calls, each a catalogued operation through the guarded call or the fence. */
 export interface RunnerPorts {
@@ -109,12 +109,15 @@ export async function record(
   return { kind: 'unrecorded', outcome: result.outcome, code: written.code };
 }
 
-/** The correction's own page, captured through the fence. */
-export async function captureFenced(url: string, ports: RunnerPorts): Promise<CaptureAnswer> {
-  // Red stand-in: every page is treated as catalogued.
-  const pool = { ...ports.capture.pool, agencyPages: [url] };
-  const page = await capturePage(url, { ...ports.capture, pool });
-  return page.ok ? { ok: true, value: { text: page.value.text } } : { ok: false };
+/** A stored page the fence refuses stops the run before anything is read or sent. */
+export async function pageRefused(
+  correction: LiveCorrection,
+  ports: RunnerPorts,
+): Promise<RunResult | undefined> {
+  const code = pageNotCatalogued(correction.pageUrl, ports.capture);
+  if (code === undefined) return undefined;
+  await ports.raiseTask(code);
+  return { kind: 'refused', code, waitsOn: 'person' };
 }
 
 /** Cancellation is the correction's own state, read fresh: no lease needed to see it. */
@@ -140,7 +143,7 @@ async function observe(
 ): Promise<RunResult> {
   const landed = await observeLanded(accepted, targetOf(correction), {
     readDeployment: ports.readDeployment,
-    capture: async () => await captureFenced(correction.pageUrl, ports),
+    capture: async () => await captureFenced(correction.pageUrl, ports.capture),
   });
   return await record(
     db,
@@ -264,6 +267,8 @@ export async function runLivePublish(
   if (!held.ok) return refused(held.code);
   const { correction } = held;
   if (correction.state === 'unknown') return refused('OUTCOME_UNKNOWN');
+  const unfenced = await pageRefused(correction, ports);
+  if (unfenced !== undefined) return unfenced;
   if (correction.state === 'accepted') {
     const accepted = acceptedFrom(correction, held.lastPublish);
     if (accepted === undefined) return refused('OUTCOME_UNKNOWN');
