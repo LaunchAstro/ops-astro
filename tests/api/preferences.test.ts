@@ -15,10 +15,8 @@
 // (nobody reads or writes another person's keys, and an agent writes none).
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Hono } from 'hono';
+import { describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import {
   insertActor,
   insertBusiness,
@@ -26,99 +24,37 @@ import {
   insertMapping,
   insertPerson,
 } from '../identity/fixture.ts';
-import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
+import { tokenFor } from './fixture.ts';
 import {
-  authorised,
-  BUSINESS_KEY,
-  post,
-  tokenFor,
-  type Answer,
-  type ApiFixture,
-} from './fixture.ts';
-import { createControls, type Controls } from './controls-fixture.ts';
+  ada,
+  adaToken,
+  auditCount,
+  ben,
+  benToken,
+  c,
+  call,
+  CANARY,
+  expectNoCanary,
+  fixture,
+  read,
+  rowsOf,
+  save,
+  usePreferencesWorld,
+} from './preferences-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
-type Preferences = Readonly<Record<string, unknown>>;
-
-/** Stored on Ada's row and looked for in every other caller's answer. */
-const CANARY = `canary-${randomUUID()}`;
-
 describe.skipIf(serverUrl === undefined)('MP-2-11a the one preference store', () => {
-  let c: Controls;
-  let fixture: ApiFixture;
-  let api: Hono;
-  let ada: Member;
-  let adaToken = '';
-  let ben: Member;
-  let benToken = '';
+  usePreferencesWorld('mp211a');
+  ownRowAndWidths();
+  savesAndRefusals();
+  audits();
+  agentAndOutsider();
+  separation();
+});
 
-  const call = async (
-    name: string,
-    body: Readonly<Record<string, unknown>>,
-    token: string,
-    options: { readonly key?: string; readonly agent?: boolean } = {},
-  ): Promise<Answer> =>
-    await post(
-      api,
-      `/api${options.agent === true ? '/a' : ''}/b/${options.key ?? BUSINESS_KEY}${pathOf(name as CommandName)}`,
-      body,
-      authorised(token),
-    );
-  const save = async (key: string, value: unknown, token: string, extra = {}): Promise<Answer> =>
-    await call(
-      'preference.save',
-      { operationId: randomUUID(), preference: key, value, ...extra },
-      token,
-    );
-  const read = async (token: string, key?: string): Promise<Preferences> => {
-    const answer = await call('preference.read', {}, token, key === undefined ? {} : { key });
-    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
-    return answer.body['preferences'] as Preferences;
-  };
-  const rowsOf = async (personId: string): Promise<readonly { key: string; value: unknown }[]> =>
-    (
-      await fixture.db.admin.execute<{ key: string; value: unknown }>(
-        `select key, value from public.person_preferences where person_id = $1 order by key`,
-        [personId],
-      )
-    ).map((row) => ({ key: row.key, value: row.value }));
-  const auditCount = async (actorId: string): Promise<number> => {
-    const [row] = await fixture.db.admin.execute<{ n: string }>(
-      `select count(*)::text as n from public.audit_events
-        where actor_id = $1 and command = 'preference.save'`,
-      [actorId],
-    );
-    return Number(row?.n);
-  };
-
-  beforeAll(async () => {
-    c = await createControls('mp211a');
-    fixture = c.fixture;
-    api = c.api;
-    ada = await enrol(fixture.db.app, fixture.business, 'Ada Pref');
-    ben = await enrol(fixture.db.app, fixture.business, 'Ben Pref');
-    // A live grant each: `preference.read`, like the inbox reads, refuses a
-    // caller holding none. The save asks no grant.
-    await fixture.db.app.withBusiness(fixture.business, async (tx) => {
-      await grantTo(tx, ada, 'read');
-      await grantTo(tx, ben, 'read');
-    });
-    adaToken = await tokenFor(ada.presented.subject);
-    benToken = await tokenFor(ben.presented.subject);
-    const canary = await save('columns.widths', { [CANARY]: 111 }, adaToken);
-    expect(canary.status, JSON.stringify(canary.body)).toBe(200);
-  }, 120_000);
-
-  afterAll(async () => {
-    await c?.drop();
-  });
-
-  /** Nobody's answer but Ada's ever carries her stored canary. */
-  const expectNoCanary = (answer: Answer): void => {
-    expect(JSON.stringify(answer.body)).not.toContain(CANARY);
-  };
-
+function ownRowAndWidths(): void {
   it('MP-2-11 own preference only: a write naming another person is refused and writes nothing', async () => {
     const first = await save('appearance', 'dark', adaToken);
     expect(first.status, JSON.stringify(first.body)).toBe(200);
@@ -162,7 +98,9 @@ describe.skipIf(serverUrl === undefined)('MP-2-11a the one preference store', ()
     );
     expect(tables.map((row) => row.name)).toStrictEqual([]);
   });
+}
 
+function savesAndRefusals(): void {
   it('MP-2-11a two saves of one key at once both apply and leave one row, the later value', async () => {
     const [left, right] = await Promise.all([
       save('dock.sheetHeight', 300, benToken),
@@ -199,7 +137,9 @@ describe.skipIf(serverUrl === undefined)('MP-2-11a the one preference store', ()
     }
     expect(await rowsOf(ada.personId)).toStrictEqual(before);
   });
+}
 
+function audits(): void {
   it('MP-2-11 no audit for preferences: an applied save adds no audit event, a refused one does', async () => {
     const before = await auditCount(ada.actorId);
     expect((await save('dock.width', 500, adaToken)).status).toBe(200);
@@ -209,6 +149,7 @@ describe.skipIf(serverUrl === undefined)('MP-2-11a the one preference store', ()
     expect(await auditCount(ada.actorId)).toBe(before + 1);
   });
 
+  /* oxlint-disable unicorn/consistent-function-scoping -- Sol's criterion-19 proof, kept as written */
   it('Sol proof, criterion 19: reading own preferences adds no audit event', async () => {
     const countReads = async (): Promise<number> => {
       const [row] = await fixture.db.admin.execute<{ n: string }>(
@@ -222,6 +163,7 @@ describe.skipIf(serverUrl === undefined)('MP-2-11a the one preference store', ()
     await read(adaToken);
     expect(await countReads()).toBe(before);
   });
+  /* oxlint-enable unicorn/consistent-function-scoping */
 
   it('MP-2-11a a person holding no grant saves their own key and is refused the read', async () => {
     const bare = await enrol(fixture.db.app, fixture.business, 'Bea Bare');
@@ -240,7 +182,9 @@ describe.skipIf(serverUrl === undefined)('MP-2-11a the one preference store', ()
     expect(await readAudits()).toBe(1);
     expect(await rowsOf(bare.personId)).toStrictEqual([{ key: 'appearance', value: 'dark' }]);
   });
+}
 
+function agentAndOutsider(): void {
   it('MP-2-11a an agent under a live delegation reads and saves nothing, not even for its principal', async () => {
     const task = await c.createTask('work an agent holds while its principal has preferences');
     const reservationId = await c.approve(await c.propose(task.id, task.revision, 'pref_probe'));
@@ -281,7 +225,9 @@ describe.skipIf(serverUrl === undefined)('MP-2-11a the one preference store', ()
     expect(own.body['preferences']).toStrictEqual({});
     expectNoCanary(own);
   });
+}
 
+function separation(): void {
   describe('MP-2-11a separation', () => {
     it('business to business: another business neither reads nor writes these rows', async () => {
       const bravo = await insertBusiness(fixture.db.app, 'bravo');
@@ -324,4 +270,4 @@ describe.skipIf(serverUrl === undefined)('MP-2-11a the one preference store', ()
       expect(await read(tokenB)).toStrictEqual({ 'rail.width': 380 });
     });
   });
-});
+}
