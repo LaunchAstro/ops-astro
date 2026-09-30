@@ -160,7 +160,9 @@ describe.skipIf(serverUrl === undefined)(
             code:
               name === 'task.decide'
                 ? 'DELEGATION_EXCLUDES_DECISION'
-                : 'DELEGATION_EXCLUDES_OPERATION',
+                : name === 'task.triage'
+                  ? 'DELEGATION_EXCLUDES_INTAKE'
+                  : 'DELEGATION_EXCLUDES_OPERATION',
           },
         ]),
       );

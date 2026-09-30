@@ -458,7 +458,8 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // (h) I12, over every declaration, with the expectation derived from the
     // exported `BEFORE_PICKUP` rather than from a list here. Three answers, as
     // minimum contract 8.2 case 9 names them: the queue and a pickup succeed,
-    // `task.decide` is `DELEGATION_EXCLUDES_DECISION`, and every other
+    // `task.decide` is `DELEGATION_EXCLUDES_DECISION`, `task.triage`
+    // `DELEGATION_EXCLUDES_INTAKE` (contract 6.1), and every other
     // operation, the agent's own after a pickup included, is
     // `DELEGATION_EXCLUDES_OPERATION`.
     for (const declaration of COMMAND_SURFACE) {
@@ -471,7 +472,9 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         : refusal(
             declaration.name === 'task.decide'
               ? 'DELEGATION_EXCLUDES_DECISION'
-              : 'DELEGATION_EXCLUDES_OPERATION',
+              : declaration.name === 'task.triage'
+                ? 'DELEGATION_EXCLUDES_INTAKE'
+                : 'DELEGATION_EXCLUDES_OPERATION',
           );
       // A handback's outcome and fence are read by type before the delegation
       // (Sol 6 AUTHORITY-2), so they are sent well formed: the answer is the
@@ -620,7 +623,9 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
             ? 'DELEGATION_NOT_LIVE'
             : AGENT_SURFACE.has(declaration.name)
               ? 'DELEGATION_OUT_OF_PURPOSE'
-              : 'DELEGATION_EXCLUDES_OPERATION',
+              : declaration.name === 'task.triage'
+                ? 'DELEGATION_EXCLUDES_INTAKE'
+                : 'DELEGATION_EXCLUDES_OPERATION',
       );
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(

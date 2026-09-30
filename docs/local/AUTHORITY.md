@@ -221,6 +221,7 @@ code on this head, and where that is shown.
 | `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                                    |
 | `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                                       |
 | `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                                    |
+| `DELEGATION_EXCLUDES_INTAKE`                                                 | 403    | yes: an agent's `task.triage`, the intake operation (minimum contract 6.1)                                             |
 | `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                                         |
 | `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                                    |
 | ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                                                    |

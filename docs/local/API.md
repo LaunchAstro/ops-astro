@@ -1250,7 +1250,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.handback`                    | `handbackOwnLease` (`commands/tasks-handback.ts`)                                         | served under a live delegation (`serve`)                                                        |
 | `task.start`                       | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `task.assign`                      | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
-| `task.triage`                      | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.triage`                      | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_INTAKE` (`runAgentCommand`)                                        |
 | `task.set_stage`                   | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `task.set_party`                   | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `task.set_audience`                | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
@@ -1496,8 +1496,10 @@ An agent login confers nothing on its own. With no `X-Agent-Delegation` header
 it may read `task.queue` and call `task.pickup` (`BEFORE_PICKUP`,
 `commands/agent-envelope.ts`, read off the surface rows whose `agent` is
 `before-pickup`) and nothing else. `task.decide` answers
-`DELEGATION_EXCLUDES_DECISION` 403, and every other operation,
-`session.capabilities` included, answers `DELEGATION_EXCLUDES_OPERATION` 403
+`DELEGATION_EXCLUDES_DECISION` 403, `task.triage`, the intake operation,
+`DELEGATION_EXCLUDES_INTAKE` 403 (minimum contract 6.1: intake is reached only
+inside a decision), and every other operation, `session.capabilities`
+included, answers `DELEGATION_EXCLUDES_OPERATION` 403
 (`authorise`; minimum contract 8.2 case 9). A credential that is presented and
 answers to no live delegation is `DELEGATION_NOT_LIVE` 401. It is deliberately
 one answer for unknown, expired, revoked and settled. Telling them apart tells a
@@ -1505,21 +1507,23 @@ caller holding a stolen credential which of those it is
 (`resolveDelegation`, `authority/delegations.ts`). The one exception is a
 delegation revoked because its person lost the authority it draws on, which
 answers `DELEGATION_NARROWED` (R-B). A name outside `AGENT_SURFACE` is refused
-`DELEGATION_EXCLUDES_OPERATION` before any of this, credential or not
-(`runAgentCommand`). After a pickup every call is intersected with the
+`DELEGATION_EXCLUDES_OPERATION` before any of this, credential or not, and
+`task.triage` `DELEGATION_EXCLUDES_INTAKE` (`runAgentCommand`). After a pickup
+every call is intersected with the
 delegation on the spot: the collection, the action, and a `scope` that must be
 exactly the one task it was minted for.
 
-| Answer                          | Status | When                                                                                                                                                                                                                                                                  |
-| ------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                                      |
-| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed                                                                                                                                                                                                              |
-| `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                             |
-| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry                                                                                                                                                                                                  |
-| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                                      |
-| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always: at the envelope with no credential, and from L4's `decideAsAgent` asking L2 under a delegation                                                                                                                                                 |
-| `DELEGATION_EXCLUDES_OPERATION` | 403    | any name not in `AGENT_SURFACE`, whose nine members are the queue, a pickup, a handback, a heartbeat, `task.read`, `task.comment`, `task.decide`, `session.capabilities` and `model.call`; or, with no credential, any name but the queue, a pickup and `task.decide` |
-| `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                                           |
+| Answer                          | Status | When                                                                                                                                                                                                                                                                                                   |
+| ------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                                                                       |
+| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed                                                                                                                                                                                                                                               |
+| `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                                                              |
+| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry                                                                                                                                                                                                                                   |
+| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                                                                       |
+| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always: at the envelope with no credential, and from L4's `decideAsAgent` asking L2 under a delegation                                                                                                                                                                                  |
+| `DELEGATION_EXCLUDES_OPERATION` | 403    | any name not in `AGENT_SURFACE` but `task.triage`, whose nine members are the queue, a pickup, a handback, a heartbeat, `task.read`, `task.comment`, `task.decide`, `session.capabilities` and `model.call`; or, with no credential, any name but the queue, a pickup, `task.decide` and `task.triage` |
+| `DELEGATION_EXCLUDES_INTAKE`    | 403    | `task.triage`, always, with a credential or without one                                                                                                                                                                                                                                                |
+| `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                                                                            |
 
 A handback or heartbeat names a lease, not a task, so the task it is checked
 against is read from the lease (`namedTaskId`). A handback naming a lease on
