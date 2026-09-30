@@ -48,8 +48,8 @@ import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
 import {
+  admitsSelfWrite,
   declarationOf,
-  EXTERNAL_WRITES,
   type CommandDeclaration,
 } from '../../../core-wire/src/index.ts';
 import type { CommandRequest, UncheckedRequest } from './requests.ts';
@@ -516,7 +516,7 @@ export async function prepareCommand(
   // share, and whatever else a row may say it holds, it writes nothing but a
   // client-audience comment and the seen stamp on its own inbox item (minimum
   // contract 8.1 R4; the audience is `tasks-comment.ts`'s to narrow).
-  if (session.roleKey === null && !EXTERNAL_WRITES.includes(declaration.name)) {
+  if (!admitsSelfWrite(session.roleKey !== null, declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
   // A `self` row asks no grant: its handler reaches the caller's own rows only.

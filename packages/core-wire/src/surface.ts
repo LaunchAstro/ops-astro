@@ -740,6 +740,10 @@ export const SESSION_HEADER = 'x-ops-astro-session';
  */
 export const EXTERNAL_WRITES: readonly CommandName[] = ['task.comment', 'inbox.seen'];
 
+/** Whether a person of this standing may send this write: the envelope and discovery ask it. */
+export const admitsSelfWrite = (member: boolean, command: CommandName): boolean =>
+  member || EXTERNAL_WRITES.includes(command);
+
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(
   (command) => command.kind === 'read',
 ).map((command) => command.name);
