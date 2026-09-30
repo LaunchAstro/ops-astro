@@ -34,14 +34,16 @@ const json = (body: unknown, status = 200): Response =>
 /** Every call the load makes, and a count the test chooses. */
 function served(count: () => Response): { fetch: typeof globalThis.fetch; calls: string[] } {
   const calls: string[] = [];
-  const fetch = (async (url: string | URL) => {
-    const at = String(url);
-    calls.push(at);
+  const answer = (at: string): Response => {
     if (at.endsWith('/session/person')) return json({ ok: true, person: { name: 'Mia Hart' } });
     if (at.endsWith('/inbox/count')) return count();
     if (at.includes('/live')) return new Response(null, { status: 503 });
     if (at.endsWith('/team/list')) return json({ ok: true, team: [] });
     return json({ ok: false, code: 'NOT_FOUND' }, 404);
+  };
+  const fetch = ((url: string | URL) => {
+    calls.push(String(url));
+    return Promise.resolve(answer(String(url)));
   }) as unknown as typeof globalThis.fetch;
   return { fetch, calls };
 }
