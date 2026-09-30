@@ -5,8 +5,7 @@
 // The marker is an indicator, never a control (docs/design-system/research/
 // LIVE-SYNC.md, "What the freshness marker shows"). This decides which of its
 // five states is honest now and the values its words carry; the kit's
-// `FreshnessMarker` (DS-PRIM-25) draws them. `Freshness` restates the kit's
-// type until the kit lands here, and is replaced by it then.
+// `FreshnessMarker` (DS-PRIM-25) draws them, from the kit's `Freshness`.
 //
 // The order is the table's, read as "never green over a failure": a refused
 // re-read claims nothing (the page draws its own denied state), and so does a
@@ -14,17 +13,7 @@
 // comes before a provider's, because data we cannot refresh is not current
 // whatever its source says; and live is left for when nothing else holds.
 
-export type Freshness =
-  | { readonly state: 'live'; readonly age: string }
-  | { readonly state: 'catching-up'; readonly lastRead: string }
-  | { readonly state: 'offline'; readonly lastRead: string }
-  | {
-      readonly state: 'source-behind';
-      readonly source: string;
-      readonly lastGood: string;
-      readonly href: string;
-    }
-  | { readonly state: 'frozen'; readonly at: string };
+import type { Freshness } from '../kit/treatments.tsx';
 
 /** What the page knows about its own liveness. Times are epoch milliseconds. */
 export interface LiveStatus {

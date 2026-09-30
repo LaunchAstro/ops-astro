@@ -3,7 +3,7 @@
 // The task page's history: what the server recorded, oldest first as it sent it.
 
 import type { ReactElement } from 'react';
-import { PaneEmpty } from '@launchastro/ui';
+import { Empty } from '@launchastro/ui';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
 
 export function History(props: { readonly history: Task['history'] }): ReactElement {
@@ -13,7 +13,7 @@ export function History(props: { readonly history: Task['history'] }): ReactElem
         <span className="sb__k">History</span>
       </div>
       {props.history.length === 0 ? (
-        <PaneEmpty say="Nothing has changed on this one yet." />
+        <Empty look="inline" title="Nothing has changed on this one yet." />
       ) : (
         <div className="sbact">
           {props.history.map((entry, index) => (

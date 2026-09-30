@@ -109,7 +109,13 @@ export async function startPostgres(options: {
 }
 
 /** What a member of one of the journey's own process groups runs. */
-const JOURNEY_COMMANDS = ['tests/journey/run.ts', 'apps/api/server.ts', 'apps/cli/main.ts', 'vite'];
+const JOURNEY_COMMANDS = [
+  'tests/journey/run.ts',
+  'tests/ci/self-test/run.ts',
+  'apps/api/server.ts',
+  'apps/cli/main.ts',
+  'vite',
+];
 
 /**
  * Stop the process groups the run created, and nothing else. An entry `-<pgid>`

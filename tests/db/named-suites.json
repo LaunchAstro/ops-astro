@@ -108,7 +108,10 @@
     "C2 (U26) names c2-presence-live as an invariant (C2 through C4's one stream per tab: a stream is handed a seat and each watched task seats it; two teammates each see the other, and who is changing which field, with the leaving at once and nothing held once everyone has gone; the mark route refuses unknown field names, unknown body keys, malformed seats and topics, another person's seat and a seat not on that topic; presence reads, marks and events write no row anywhere; isolation across another business, two clients of the business who are neither seen nor see, and a person under a delegation who is gone once it is revoked).",
     "MP-7-10 (U87) names mp-7-10-availability as an invariant (0043 person_availability: the person sets their own availability with a reason on the person prefix alone, available clears the reason; team.list, staff only, lists teammates with it; each set writes its row and one audit event in one transaction; undeclared fields, a bad state and an over-long or misplaced reason refused with no row and each refusal of a signed-in person audited refused with its code, the agent prefix has no route; isolation across another business, two clients of the business answered NOT_FOUND, and a person under a delegation who sets only their own row).",
     "SL10-13 rebase (CQ-12 ratchet): mp-8-4-ledger-read's malformed-operand cases move, unchanged, to mp-8-4-ledger-operands in the same list, and its world to mp-8-4-ledger-support.ts; the 21 full test names and results are the same before and after.",
-    "SL10-13 names c4-change-record-upgrade as an invariant beside c4-change-record (migration 0042 on main's chain: a database seeded at 0041 upgrades with its rows unchanged and nothing stamped, the two live functions are the fresh chain's, and on the upgraded database a write reaches T2f's topic and stamps the change record once; red on the tree before the renumber, where the record ran inside main's 0036 to 0041)."
+    "SL10-13 names c4-change-record-upgrade as an invariant beside c4-change-record (migration 0042 on main's chain: a database seeded at 0041 upgrades with its rows unchanged and nothing stamped, the two live functions are the fresh chain's, and on the upgraded database a write reaches T2f's topic and stamps the change record once; red on the tree before the renumber, where the record ran inside main's 0036 to 0041).",
+    "MP-2-1 adds mp-2-1-isolation-api (the held-address switch against the real boundary: a business is named only to a person holding a live grant there; two businesses, four people). Its address-layer twin, mp-2-1-isolation.test.tsx, is a jsdom suite with no database and must not be named.",
+    "API-1 adds api-1-isolation (every catalogue command through the app's client, the CLI and the API answers one refusal alike: business to business, and two record-scoped grants in one business); its world, surfaces and delegation crossing are api-1-isolation-world.ts, api-1-isolation-surfaces.ts and api-1-isolation-delegation.ts. api-1-catalogue.test.ts and api-1-catalogue-authority.test.ts are pure unit suites and must not be named.",
+    "T4e REV185B2: role-case-matrix-fixture-clients proves T4-N2's matrix world holds T4a's two clients with one record grant each in both businesses, and role-case-matrix gains the client-to-client case (another client's task, in either business, answers as an id never issued). t2g-decide-parity's crossing now also finds the undecided gate holding its task open (GATE_PENDING on both surfaces) before the grant holder decides; t3f-expired-lease's business crossing settles its own expired lease marked expired."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -165,6 +168,7 @@
     "tests/runtime/decision-abort.test.ts",
     "tests/acceptance/surface-inventory.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
+    "tests/acceptance/role-case-matrix-fixture-clients.test.ts",
     "tests/acceptance/protected-fields.test.ts",
     "tests/acceptance/predicate-rls.test.ts",
     "tests/api/settings-revision-routes.test.ts",
@@ -293,7 +297,6 @@
     "tests/runtime/t3f-lease-edges.test.ts",
     "tests/api/t3f-races.test.ts",
     "tests/fixture/fixture-shape.test.ts",
-    "tests/fixture/snapshot-clone-and-privileges.test.ts",
     "tests/reads/mp-8-4-ledger-read.test.ts",
     "tests/reads/mp-8-4-ledger-operands.test.ts",
     "tests/api/c4-change-record.test.ts",
@@ -303,7 +306,10 @@
     "tests/api/c4-changes-map.test.ts",
     "tests/api/c4-rollup-scope.test.ts",
     "tests/api/c2-presence-live.test.ts",
-    "tests/api/mp-7-10-availability.test.ts"
+    "tests/api/mp-7-10-availability.test.ts",
+    "tests/fixture/snapshot/snapshot-clone-and-privileges.test.ts",
+    "tests/web/mp-2-1-isolation-api.test.tsx",
+    "tests/api/api-1-isolation.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

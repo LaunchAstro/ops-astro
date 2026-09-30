@@ -38,6 +38,12 @@ export interface RecordStateProps<T> {
   readonly children: (value: T) => ReactNode;
   /** Drawn instead of the default empty voice, when a surface has a better one. */
   readonly empty?: ReactNode;
+  /**
+   * Drawn while the read is in flight, in place of the words, when the value
+   * will fill a field: a skeleton the field's shape (DS-PRIM-29, MP-1-3), so
+   * the form does not jump when it arrives. The words stay for a screen reader.
+   */
+  readonly placeholder?: ReactNode;
   /** Offered on the failures a person can do something about. */
   readonly onRetry?: () => void;
   /**
@@ -65,7 +71,14 @@ export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
   if (state.outcome === 'loading') {
     return (
       <div className="readstate" data-outcome="loading" role="status" aria-live="polite">
-        <p className="empty__title">Loading the {props.subject}…</p>
+        {props.placeholder === undefined ? (
+          <p className="empty__title">Loading the {props.subject}…</p>
+        ) : (
+          <>
+            <span className="visually-hidden">Loading the {props.subject}…</span>
+            {props.placeholder}
+          </>
+        )}
       </div>
     );
   }

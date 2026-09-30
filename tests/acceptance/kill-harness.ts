@@ -49,10 +49,13 @@ const sleep = async (ms: number): Promise<void> => {
   });
 };
 
-/** `ps`'s state letter for `pid`, the same column on macOS and Linux. */
-export function processState(pid: number): string {
+/** `ps`'s state letter for `pid` (macOS and Linux), or `''` if `ps` fails or runs past `ms`. */
+export function processState(pid: number, ms?: number): string {
   try {
-    return execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).trim();
+    return execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], {
+      encoding: 'utf8',
+      ...(ms === undefined ? {} : { timeout: Math.max(1, Math.ceil(ms)), killSignal: 'SIGKILL' }),
+    }).trim();
   } catch {
     return '';
   }
@@ -90,6 +93,38 @@ export async function until(probe: () => Promise<boolean> | boolean, ms: number)
 }
 
 /**
+ * Probes `pid` until it reads stopped (`T`) before one monotonic deadline `ms`
+ * away, which the readings spend too: each `ps` gets only the time left. A
+ * reading that ends past the deadline, or gives no state, leaves the stop
+ * unproven at once, never passed. Each reading is kept for the kill record.
+ */
+export async function awaitStopped(
+  pid: number,
+  ms: number,
+  probe: (pid: number, left: number) => string = processState,
+): Promise<{ readonly stopped: boolean; readonly probes: readonly string[] }> {
+  const probes: string[] = [];
+  const deadline = performance.now() + ms;
+  for (;;) {
+    const at = performance.now();
+    const seen = probe(pid, deadline - at);
+    const done = performance.now();
+    probes.push(`${seen || '-'} in ${String(Math.round(done - at))} ms`);
+    if (done > deadline) {
+      probes.push(`unproven: read after the ${String(ms)} ms deadline`);
+      return { stopped: false, probes };
+    }
+    if (seen === '') {
+      probes.push('unproven: ps gave no state');
+      return { stopped: false, probes };
+    }
+    if (seen.startsWith('T')) return { stopped: true, probes };
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(Math.min(10, deadline - performance.now()));
+  }
+}
+
+/**
  * Stop `target` (it may have parked itself already), take checks 1 and 2,
  * kill it hard, then take checks 3 and 4. `relevantApp` names the process
  * whose backend must be idle: the API's.
@@ -101,7 +136,9 @@ export async function hardKill(
   relevantApp: string,
 ): Promise<KillRecord> {
   if (!processState(target.pid).startsWith('T')) process.kill(target.pid, 'SIGSTOP');
-  await until(() => processState(target.pid).startsWith('T'), 2_000);
+  const { stopped, probes } = await awaitStopped(target.pid, 2_000);
+  if (!stopped) evidence({ notStopped: { label, pid: target.pid, probes } });
+  expect(stopped, `${label}: stopped within 2 s: ${probes.join(', ')}`).toBe(true);
   const state = processState(target.pid);
   const children = childCount(target.pid);
   const relevant = await backends(admin, relevantApp);

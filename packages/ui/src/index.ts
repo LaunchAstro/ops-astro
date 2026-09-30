@@ -24,11 +24,13 @@
 // exported component that nothing mounts is an estate to maintain, not a
 // capability. They arrive with the phase that owns them.
 
-// The package's stylesheets, in their load order: tokens, then primitives, then
-// the shell, then the board, then the task surfaces. They enter through this
+// The package's stylesheets, in their load order: the font faces, then tokens,
+// then primitives, then the shell, then the board, then the task surfaces. They enter through this
 // file like everything else in the package, and `apps/web/src/main.tsx` imports
 // the package before its own sheet, so the order holds in the bundle.
+import './styles/0-fonts.css';
 import './styles/1-tokens.css';
+import './styles/2-controls-and-marks.css';
 import './styles/2-primitives.css';
 import './styles/3-shell.css';
 import './styles/4-board.css';
@@ -41,10 +43,18 @@ import './styles/10-team.css';
 
 export * from './state/corpus.ts';
 export * from './state/project.ts';
+export * from './kit/blocks.tsx';
+export * from './kit/charts.tsx';
+export * from './kit/controls.tsx';
+export * from './kit/gallery.tsx';
+export * from './kit/marks.tsx';
+export * from './kit/treatments.tsx';
 export * from './state/inbox.ts';
 export * from './state/freshness.ts';
 export * from './state/team.ts';
 export * from './primitives/Absence.tsx';
+export * from './primitives/BrandMark.tsx';
+export * from './primitives/Icon.tsx';
 export * from './primitives/Status.tsx';
 export * from './primitives/Tabs.tsx';
 export * from './surfaces/Shell.tsx';

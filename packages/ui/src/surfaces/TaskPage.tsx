@@ -14,7 +14,7 @@
 // reads and the class is what a projection filters on.
 
 import type { ReactElement } from 'react';
-import { PaneEmpty } from '../primitives/Absence.tsx';
+import { Empty } from '../primitives/Absence.tsx';
 import { CountBadge, Spill } from '../primitives/Status.tsx';
 import { TabPanel, TabStrip, type TabDescriptor } from '../primitives/Tabs.tsx';
 import type { DrawnState } from '../state/project.ts';
@@ -122,7 +122,7 @@ export function TeamTab(props: TeamTabProps): ReactElement {
           <span className="sb__k">Description</span>
         </div>
         {props.description === null ? (
-          <PaneEmpty say="No description on this one yet." />
+          <Empty look="inline" title="No description on this one yet." />
         ) : (
           <p className="card__body">{props.description}</p>
         )}
@@ -136,7 +136,7 @@ export function TeamTab(props: TeamTabProps): ReactElement {
           </span>
         </div>
         {props.subtasks.length === 0 ? (
-          <PaneEmpty say="No subtasks on this one yet." />
+          <Empty look="inline" title="No subtasks on this one yet." />
         ) : (
           <div className="sbtasks">
             {props.subtasks.map((subtask) => (
@@ -170,7 +170,7 @@ export function TeamTab(props: TeamTabProps): ReactElement {
         </TabPanel>
         <TabPanel name="conversation" tab="activity" selected={props.conversation}>
           {props.history.length === 0 ? (
-            <PaneEmpty say="Nothing logged on this task yet." />
+            <Empty look="inline" title="Nothing logged on this task yet." />
           ) : (
             <div className="sbact">
               {props.history.map((entry) => (
@@ -191,7 +191,7 @@ export function TeamTab(props: TeamTabProps): ReactElement {
           <span className="sb__k">History</span>
         </div>
         {props.history.length === 0 ? (
-          <PaneEmpty say="Nothing has changed on this one yet." />
+          <Empty look="inline" title="Nothing has changed on this one yet." />
         ) : (
           <div className="sbact">
             {props.history.map((entry) => (
@@ -220,7 +220,7 @@ function Thread(props: {
   readonly comments: readonly Comment[];
   readonly empty: string;
 }): ReactElement {
-  if (props.comments.length === 0) return <PaneEmpty say={props.empty} />;
+  if (props.comments.length === 0) return <Empty look="inline" title={props.empty} />;
   return (
     <div className="thread">
       {props.comments.map((comment) => (
