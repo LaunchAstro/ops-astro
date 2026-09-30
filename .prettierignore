@@ -73,3 +73,7 @@ tests/ci/two-url-service-stop-required-ci.test.ts
 
 # Sol's REV258D proof, byte-for-byte as the review patch held it.
 tests/ci/two-url-service-stop-skip-fails-required-job.test.ts
+
+# Sol's REVB1ENDSL02A proofs, byte-for-byte as the review patch held them.
+tests/api/leaked-client-read-isolation-assertion.test.ts
+tests/visual/server-error-is-not-a-page.test.ts
