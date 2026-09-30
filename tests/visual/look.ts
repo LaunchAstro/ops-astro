@@ -23,7 +23,7 @@ import { launchChromium } from '../support/chromium.ts';
 import { load, MOCKUP_ORIGIN, openSide, type Side } from './capture.ts';
 import { madeUpSession, serveApp } from './app-pages.ts';
 import { answerMadeUp } from './made-up-api.ts';
-import { LOOK_SCREENS, type LookProbe, type LookScreen } from './look/index.ts';
+import { LOOK_SCREENS, RULED_PAINT, type LookProbe, type LookScreen } from './look/index.ts';
 import {
   checkAssets,
   checkMockupTree,
@@ -168,7 +168,9 @@ async function checkProbe(
   }
   // A ruling that moved the build off the mockup names the value it holds instead.
   const wanted = (prop: string): string | undefined =>
-    probe.ruled?.find((r) => r.at === `${prop}@${theme}`)?.want ?? want[prop];
+    probe.ruled?.find((r) => r.at === `${prop}@${theme}`)?.want ??
+    RULED_PAINT.find((r) => r.theme === theme && r.mockup === want[prop])?.want ??
+    want[prop];
   const off = probe.props.filter((prop) => got[prop] !== wanted(prop));
   const why = off.map((p) => `${p} mockup ${String(wanted(p))} app ${String(got[p])}`);
   say(off.length === 0 ? `ok ${name}` : `red ${name}: ${why.join('; ')}`, off.length > 0);

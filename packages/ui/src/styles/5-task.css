@@ -6,37 +6,60 @@
    Ported from the pinned mockup's `assets/app.css` at 7066bad, geometry exact.
    ============================================================================ */
 
-/* -- The task page record header (S2) ------------------------------------ */
+/* -- The task page record header (S2; TASK-PAGE S5, DS-TASK-11) --------- */
 .tpr {
   display: grid;
-  gap: var(--s-2);
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
 }
 .tpr__crumb {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--s-2);
   flex-wrap: wrap;
-  font: var(--type-small);
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
   color: var(--text-muted);
 }
+/* TP-01: the door link, DS-TOK-124 (the mockup's 13 snaps to the data style). */
+.tpr__crumb .sb__addr {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  color: var(--text);
+  text-decoration: none;
+}
+.tpr__crumb .sb__addr:hover,
+.tpr__crumb .sb__addr:focus-visible {
+  color: var(--accent);
+}
+/* TP-06: DS-TOK-107 --type-display (the mockup's 600 weight is drift). */
 .tpr__title {
   margin: 0;
-  font: var(--type-title);
-  letter-spacing: var(--type-title-tracking);
-  text-transform: var(--type-title-case);
+  font: var(--type-display);
+  letter-spacing: var(--type-display-tracking);
+  text-transform: var(--type-display-case);
+  overflow-wrap: anywhere;
 }
-.tpr__facts {
-  display: grid;
-  gap: var(--s-3);
+/* Refresh sits outside the read (TaskDetail.tsx says why), at the page's end. */
+.tpr__refresh {
+  display: flex;
+  justify-content: flex-end;
 }
+/* TP-10: the read-only field grid, DS-COMP-26 inline form (5 / 2 / 1). */
 .taskform {
-  border: 1px solid var(--border);
+  display: grid;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5) var(--s-5);
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
 }
 .tf__grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--s-3) var(--s-4);
+  margin: 0;
 }
 @media (width <= 1279px) {
   .tf__grid {
@@ -50,22 +73,31 @@
 }
 .tf__row {
   display: grid;
-  gap: 0.15rem;
-  padding: var(--s-3) var(--s-4);
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  gap: 0.3rem;
+  align-content: start;
+  min-width: 0;
 }
 .tf__k {
   font: var(--type-eyebrow);
   letter-spacing: var(--type-eyebrow-tracking);
   text-transform: var(--type-eyebrow-case);
-  color: var(--ink-faint);
+  color: var(--text-muted);
 }
 .sb__state {
-  font: var(--type-small);
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
-  color: var(--text);
+  margin: 0;
+  padding: 0.45rem 0;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+/* The page's ruled sections (DS-COMP-22): a rule above, the 24 gutter. */
+[data-task] > .sb__sect {
+  gap: var(--s-3);
+  padding: var(--s-5);
+  border-top: 1px solid var(--border);
 }
 
 /* -- The sliding tab set (S3/S4 switch, and the panel's conversations) ---- */
@@ -145,7 +177,7 @@
   text-transform: var(--type-eyebrow-case);
 }
 .sb__k {
-  color: var(--text);
+  color: var(--text-muted);
 }
 .sb__meta {
   color: var(--ink-faint);
@@ -162,18 +194,17 @@
   text-transform: var(--type-data-case);
   color: var(--ink-faint);
 }
+/* The staged-output rows (DS-TASK-6): a lined box of label-over-value rows. */
 .sout__box {
   display: grid;
+  gap: var(--s-3);
+  padding: var(--s-3);
   border: 1px solid var(--border);
 }
 .sout__row {
   display: grid;
-  gap: 0.15rem;
-  padding: var(--s-2) var(--s-3);
-  border-bottom: 1px solid var(--border);
-}
-.sout__row:last-child {
-  border-bottom: 0;
+  gap: 0.3rem;
+  min-width: 0;
 }
 
 /* -- The run hero. Status is a border-left LINE plus a word. -------------- */
@@ -318,6 +349,7 @@
   flex-wrap: wrap;
 }
 .gatebox__note {
+  margin: 0;
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);

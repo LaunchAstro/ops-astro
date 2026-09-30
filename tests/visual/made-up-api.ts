@@ -20,6 +20,7 @@ import type {
   InternalTaskDetail,
   InternalTaskRead,
   PersonListResult,
+  ProposalView,
   QueueResult,
   SettingsReadResult,
   TaskBoardResult,
@@ -75,6 +76,39 @@ export const TASKS: readonly TaskSummary[] = [
   task(33, 'Paid social rebuild', STATE.hold, null),
 ];
 
+// One proposal whose newest version waits at an armed gate, so the task page
+// draws the mockup's gate box (states.json `gate`). The gate's deadline sits
+// after the harness clock, so it reads pending and the controls are offered.
+const DIGEST = 'sha256:7c41e8f9a2d6b3915e0c47a8fd23b6c1e94a7f80d5b2c6e31a94f7d2b8c05e4a2';
+const PROPOSAL: ProposalView = {
+  lineageId: 'l-1',
+  state: 'live',
+  versions: [
+    {
+      versionId: 'v-2',
+      version: 2,
+      purpose: 'contract_review_pack',
+      maximumMinor: 12_000,
+      currency: 'AUD',
+      payloadDigest: DIGEST,
+      payload: { pack: 'Signed scope, two variations and the renewal terms, in one PDF.' },
+      supersededAt: null,
+      runId: null,
+      evidence: null,
+      gate: {
+        id: 'g-2',
+        state: 'pending',
+        round: 1,
+        expiresAt: '2026-10-03T00:00:00.000Z',
+        expired: false,
+        payloadDigest: DIGEST,
+      },
+    },
+  ],
+  decisions: [],
+  reservations: [],
+};
+
 const DETAIL: InternalTaskDetail = {
   ...(TASKS[0] as TaskSummary),
   description:
@@ -95,7 +129,7 @@ const DETAIL: InternalTaskDetail = {
       source: 'app',
     },
   ],
-  proposals: [],
+  proposals: [PROPOSAL],
   capCurrency: 'AUD',
   envelope: null,
   alerts: [],
