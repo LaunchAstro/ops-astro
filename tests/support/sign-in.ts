@@ -60,9 +60,16 @@ export const TEST_KEY_SET: { readonly keys: readonly Readonly<Record<string, unk
   ],
 };
 
-/** An ES256 bearer over `claims`, signed with the run's test key. */
+/**
+ * An ES256 bearer over `claims`, signed with the run's test key. GoTrue stamps
+ * every session's first sign-in in `amr`, which C58's 12-hour limit reads, so a
+ * bearer whose claims do not name `amr` is stamped as signed in now; one
+ * naming it `undefined` carries none.
+ */
 export async function signBearer(claims: Record<string, unknown>): Promise<string> {
-  return await sign(claims, privateJwk, 'ES256');
+  if ('amr' in claims) return await sign(claims, privateJwk, 'ES256');
+  const amr = [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }];
+  return await sign({ ...claims, amr }, privateJwk, 'ES256');
 }
 
 const strangerJwk = keyPair().privateJwk;

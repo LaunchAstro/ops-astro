@@ -82,6 +82,16 @@ const json = (body: unknown, status = 200): Response =>
 // client correctly reports as the API failing rather than refusing, and which
 // would quietly make these cases about the wrong thing.
 /** The refusal the API gives for every bearer it cannot vouch for. */
+/** The frame's reads on every screen: C23's name, and MP-2-11's appearance (none stored). */
+const FRAME: Readonly<Record<string, unknown>> = {
+  '/session/person': { ok: true, person: { name: 'Mia Hart' } },
+  '/preference/read': { ok: true, preferences: {} },
+};
+const frame = (at: string): Promise<Response> | undefined => {
+  const end = Object.keys(FRAME).find((path) => at.endsWith(path));
+  return end === undefined ? undefined : Promise.resolve(json(FRAME[end]));
+};
+
 const unknownLogin = (): Response =>
   json({ refused: true, code: 'AUTH_UNKNOWN_LOGIN', names: [], fixes: [] }, 401);
 
@@ -123,6 +133,8 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
       mutations = 'ok';
       return Promise.resolve(json({ access_token: 'ops-astro-test-only-a-fresh-token' }));
     }
+    const framed = frame(at);
+    if (framed !== undefined) return framed;
     if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: PEOPLE }));
     if (at.endsWith('/task/read') || at.endsWith('/task/board')) {
       if (reads === 'ended') return Promise.resolve(unknownLogin());
@@ -315,6 +327,9 @@ function byBearer(): {
     }
     const stale = cookie === OLD_TOKEN;
 
+    // The frame's reads (C23's name, MP-2-11's appearance) answer on either cookie.
+    const framed = frame(at);
+    if (framed !== undefined) return framed;
     if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: TASK }));
     if (at.endsWith('/person/list')) {
       // The old token's people read never comes back on its own. The test
@@ -422,6 +437,8 @@ function perBusiness(): typeof globalThis.fetch {
 
     const business = /\/b\/([^/]+)\//u.exec(at)?.[1] ?? '?';
     const task = { ...TASK, title: `The ${business} task called TSK-1` };
+    const framed = frame(at);
+    if (framed !== undefined) return framed;
     if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: PEOPLE }));
     if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task }));
     if (at.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [task] }));

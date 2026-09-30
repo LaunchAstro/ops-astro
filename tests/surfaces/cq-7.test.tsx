@@ -67,7 +67,9 @@ function client(detail: ReturnType<typeof task>) {
 describe('CQ-7 untitled placeholder', () => {
   it('draws a task with no title as "Untitled task" on the board', async () => {
     const { operations } = client(task({ title: null }));
-    const view = await mount(<Projects client={operations} grantKey="alpha:ada" />);
+    const view = await mount(
+      <Projects client={operations} grantKey="alpha:ada" navigate={() => {}} />,
+    );
     await settle();
     expect(view.text()).toContain('Untitled task');
     await view.unmount();

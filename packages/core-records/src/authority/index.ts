@@ -32,6 +32,7 @@ export {
   type Subject,
   type SubjectKind,
 } from './grants.ts';
+export { heldScopes } from './held-scopes.ts';
 
 export {
   checkDelegatedAuthority,

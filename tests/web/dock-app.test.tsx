@@ -143,7 +143,8 @@ describe('MP-3-1 open set survives navigation', () => {
     const page = await at('/projects/', storage);
     await press(page, 'settings');
     expect(storage.held.has(dockKey('alpha'))).toBe(true);
-    await page.click('.topbar__who .btn');
+    await page.click('.appbar .who__trigger');
+    await page.click('.who__menu button[role="menuitem"]');
     expect(storage.held.has(dockKey('alpha'))).toBe(false);
   });
 });

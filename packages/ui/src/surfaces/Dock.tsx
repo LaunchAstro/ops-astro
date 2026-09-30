@@ -63,6 +63,8 @@ export interface DockProps extends DockPanelActs {
   readonly panels: readonly DockPanel[];
   readonly onTab: (id: string, shift: boolean) => void;
   readonly onCloseAll: () => void;
+  /** Out of reach while the narrow drawer holds the focus (MP-2-8). */
+  readonly inert?: boolean;
 }
 
 /** How near the window's left edge the rail may sit before its callout opens rightwards. */
@@ -75,17 +77,17 @@ export function Dock(props: DockProps): ReactElement {
   const anyOpen = props.panels.length > 0;
   const width = props.layout?.panelWidth ?? DOCK_PANEL_DEFAULT;
   const height = props.layout?.sheetHeight ?? DOCK_SHEET_DEFAULT;
+  const style = {
+    '--dock-panel-w': `${String(width)}px`,
+    '--dock-sheet-h': `${String(height)}px`,
+  } as CSSProperties;
   return (
     <div
       className={`dock${flip ? ' dock--tipflip' : ''}`}
       data-open={anyOpen ? String(props.panels.length) : '0'}
       data-mode={props.layout?.mode ?? (anyOpen ? 'floating' : 'rest')}
-      style={
-        {
-          '--dock-panel-w': `${String(width)}px`,
-          '--dock-sheet-h': `${String(height)}px`,
-        } as CSSProperties
-      }
+      style={style}
+      inert={props.inert}
       {...(ready ? { 'data-ready': '' } : {})}
       {...(dragging ? { 'data-dragging': '' } : {})}
     >
@@ -204,7 +206,7 @@ function DockTabButton(props: {
       type="button"
       data-panel={tab.id}
       aria-expanded={tab.open}
-      aria-label={`${tab.open ? 'Close' : 'Open'} ${tab.label}${tab.count === null ? '' : `, ${tab.count}`}`}
+      aria-label={`${tab.open ? 'Close' : 'Open'} ${tab.label}${tab.count === null ? '' : `, ${tab.count} unread`}`}
       onClick={(event) => {
         props.onTab(tab.id, event.shiftKey);
       }}
@@ -214,7 +216,7 @@ function DockTabButton(props: {
           the panel. */}
       <Icon name={tab.icon ?? 'apps'} />
       {tab.count === null ? null : (
-        <span className="dock__n" aria-hidden="true">
+        <span className="cbadge dock__n" aria-hidden="true">
           {tab.count}
         </span>
       )}

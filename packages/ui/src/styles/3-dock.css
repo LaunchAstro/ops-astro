@@ -1,0 +1,406 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+   ============================================================================
+   Layer 3 of 4, the shell's third track: the dock (MP-3-1), its sheet tier
+   (MP-3-3) and its phone strip. Split from 3-shell.css, which draws the rail,
+   the chrome and the content column; the shell's grid names this track.
+   ============================================================================ */
+
+/* -- The dock (MP-3-1). The right edge as a place: a 40px rail of permanent
+      tabs floats centred on the right edge, and the open panels sit beside it,
+      the rail riding their left edge. It is fixed, so the grid's third track
+      (--dock-w) only keeps the rail off the content. Which panels are open and
+      how wide they sit is MP-3-2's geometry; this is the frame.
+      Below 900 the rail does not disappear: it ROTATES onto the bottom edge
+      and stays on screen at rest (the mockup's D-1), because a phone holds one
+      thing. The sheet tiers are MP-3-3's. ----------------------------------- */
+.dock {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  pointer-events: none;
+}
+.dock > * {
+  pointer-events: auto;
+}
+.dock__rail {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  width: 40px;
+  padding: var(--s-2) 0;
+  border: 1px solid var(--border);
+  border-right: 0;
+  background: var(--rail-bg);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-50%);
+}
+.dock:not([data-open='0']) .dock__rail {
+  box-shadow: none;
+}
+.dock__tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-faint);
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  cursor: pointer;
+}
+/* The panel's count rides the tab's corner: the kit's `cbadge`, placed. */
+.dock__count {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+}
+.dock__tab:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+/* The count chip (DS-SIDE-4): square, never capped, the same in both themes. */
+.dock__n {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 17px;
+  height: 16px;
+  padding: 0 2.4px;
+  background: var(--accent);
+  color: var(--on-dark);
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  display: grid;
+  place-items: center;
+}
+/* Open is an OUTLINE and a rule, never a fill. */
+.dock__tab[aria-expanded='true'] {
+  color: var(--accent);
+}
+.dock__tab[aria-expanded='true']::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--accent);
+}
+/* The callout: a dark chip to the tab's left, the side the panels open on.
+   Display-gated, so it never widens the page or takes a click. In dark its
+   ground is the page's own, so the edge is what shows where it ends; in light
+   the edge sits on the dark chip and cannot be seen. The padding gives back
+   the edge's pixel so the chip keeps its size. */
+.dock__tablabel {
+  display: none;
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 7px);
+  z-index: 80;
+  max-width: 14rem;
+  padding: calc(0.35rem - 1px) calc(0.6rem - 1px);
+  border: 1px solid var(--border-strong);
+  background: var(--void);
+  color: var(--on-dark);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  white-space: nowrap;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.dock__tab:hover .dock__tablabel,
+.dock__tab:focus-visible .dock__tablabel {
+  display: block;
+}
+/* It opens to the right when the rail sits within 150px of the window's left
+   edge (DK-03). */
+.dock--tipflip .dock__tablabel {
+  right: auto;
+  left: calc(100% + 7px);
+}
+/* Close all (DK-06): last, behind its own hairline, only while something is open. */
+.dock__closeall {
+  margin-top: 0.35rem;
+  border-top: 1px solid var(--border);
+}
+.dock__closeall:hover {
+  color: var(--danger);
+}
+.dock__panels {
+  display: flex;
+  height: 100%;
+  box-shadow: var(--shadow-overlay);
+}
+.dpanel {
+  display: flex;
+  flex-direction: column;
+  width: var(--dock-panel-w, 550px);
+  min-width: 0;
+  border-left: 1px solid var(--border);
+  background: var(--rail-bg);
+}
+.dpanel__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-4) var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.dpanel__name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dpanel__acts {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+.dpanel__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-faint);
+  text-decoration: none;
+  cursor: pointer;
+}
+.dpanel__btn:hover {
+  color: var(--text);
+}
+.dpanel__btn[data-act='door']:hover {
+  color: var(--accent);
+}
+/* Back and forward are disabled, never hidden (DK-11, DK-12). */
+.dpanel__btn[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.dpanel__btn[aria-disabled='true']:hover {
+  color: var(--ink-faint);
+}
+.dpanel__div {
+  flex: none;
+  width: 1px;
+  height: 1.1em;
+  margin: 0 0.25rem;
+  background: var(--border);
+}
+.dpanel__body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5);
+}
+/* Seated, the group is a grid track (the shell's --dock-w) and casts no
+   shadow; floating, it lies over the page. The grip is a 6px strip over each
+   panel's left edge, one width for them all (MP-3-2). */
+.dock[data-mode='seated'] .dock__panels {
+  box-shadow: none;
+}
+.dpanel {
+  position: relative;
+}
+.dpanel__grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  z-index: 2;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.dpanel__grip:hover,
+.dpanel__grip:focus-visible,
+.dock[data-dragging] .dpanel__grip {
+  background: color-mix(in oklch, var(--accent) 35%, transparent);
+  outline: none;
+}
+/* R39: one line saying which panel closed to make room. */
+.dock__stamp {
+  position: absolute;
+  right: 0;
+  bottom: var(--s-4);
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border-strong);
+  background: var(--void);
+  color: var(--on-dark);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+/* Nothing animates on the first layout: the shell and dock mark themselves
+   ready two frames after it. A drag suspends every transition. */
+.shell[data-dock-ready] {
+  transition: grid-template-columns var(--dur-2) var(--ease);
+}
+.dock[data-ready] .dock__rail {
+  transition: right var(--dur-2) var(--ease);
+}
+.dock[data-dragging] *,
+.shell:has(.dock[data-dragging]) {
+  transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell[data-dock-ready],
+  .dock[data-ready] .dock__rail {
+    transition: none;
+  }
+}
+/* -- The sheet tier (MP-3-3), 901 to 1279: the dock is in flow under the
+      content, its tabs on the sheet's top edge; shift stacks panels in one
+      shared height, dragged on the sheet's top edge within [220, window
+      height - 140]. -------------------------------------------------------- */
+.dock[data-mode='sheet'] {
+  position: sticky;
+  inset: auto 0 0;
+  grid-column: 2;
+  grid-row: 2;
+  flex-direction: column;
+  align-items: stretch;
+}
+.dock[data-mode='sheet'] .dock__rail {
+  position: static;
+  order: -1;
+  flex-direction: row;
+  align-self: center;
+  width: auto;
+  padding: var(--s-3) var(--s-3) 0;
+  border-bottom: 0;
+  border-right: 1px solid var(--border);
+  box-shadow: none;
+  transform: none;
+}
+.dock[data-mode='sheet'] .dock__panels {
+  flex-direction: column;
+  height: var(--dock-sheet-h);
+  border-top: 1px solid var(--border);
+  box-shadow: none;
+}
+.dock[data-mode='sheet'] .dpanel,
+.dock[data-mode='phone'] .dpanel {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border-left: 0;
+}
+.dock[data-mode='sheet'] .dpanel + .dpanel {
+  border-top: 1px solid var(--border);
+}
+.dock[data-mode='sheet'] .dpanel__grip,
+.dock[data-mode='phone'] .dpanel__grip {
+  top: -3px;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  width: auto;
+  height: 6px;
+  cursor: row-resize;
+}
+.dock[data-mode='sheet'] .dock__tab[aria-expanded='true']::before {
+  left: 4px;
+  right: 4px;
+  top: auto;
+  bottom: -1px;
+  width: auto;
+  height: 2px;
+}
+
+/* -- The phone strip, 900 and below: the tabs along the bottom edge, on
+      screen at rest (the mockup's D-1), one panel over them, and the page
+      padded so nothing hides under either. Nothing is wider than the
+      window. ---------------------------------------------------------------- */
+@media (width <= 900px) {
+  .dock {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    flex-direction: column;
+    background: var(--rail-bg);
+  }
+  .dock__tablabel {
+    top: auto;
+    right: auto;
+    bottom: calc(100% + 7px);
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .dock__rail {
+    position: static;
+    order: 2;
+    flex-direction: row;
+    justify-content: center;
+    gap: var(--s-4);
+    width: auto;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    border-top: 1px solid var(--border);
+    box-shadow: none;
+    transform: none;
+  }
+  .dock__closeall {
+    margin: 0;
+    border-top: 0;
+  }
+  .dock__panels {
+    height: var(--dock-sheet-h);
+    max-height: calc(100dvh - 40px);
+  }
+  .dpanel {
+    width: 100%;
+  }
+  .main {
+    padding-bottom: 40px;
+  }
+  .shell:has(.dock[data-mode='phone']:not([data-open='0'])) .main {
+    padding-bottom: calc(var(--dock-sheet-h) + 40px);
+  }
+  .dock__tab[aria-expanded='true']::before {
+    left: 4px;
+    right: 4px;
+    top: -1px;
+    bottom: auto;
+    width: auto;
+    height: 2px;
+  }
+}
+
+/* Print leaves the dock out, and the shell unwinds to the page alone. */
+@media print {
+  .dock {
+    display: none;
+  }
+  .shell {
+    display: block;
+  }
+}

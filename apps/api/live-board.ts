@@ -34,6 +34,9 @@ export interface BoardQuestions {
 
 type Heard = BoardSignal | { readonly kind: 'check' };
 
+/** The stream, or the board topic's share of C4's one stream. */
+type BoardStream = Pick<SSEStreamingApi, 'writeSSE' | 'abort' | 'aborted' | 'onAbort'>;
+
 const noop = (): void => {};
 
 /** The person whose inbox the stream hears, and what their inbox showed when last said. */
@@ -48,7 +51,7 @@ interface Bound {
 }
 
 export async function followBoard(
-  stream: SSEStreamingApi,
+  stream: BoardStream,
   topics: LiveTopics,
   on: { readonly businessId: string; readonly personId: string; readonly recheckMs: number },
   ask: BoardQuestions,
@@ -97,7 +100,7 @@ export async function followBoard(
  * time; the answer takes each signal, and `check` asks the join again alone.
  */
 function batch(
-  stream: SSEStreamingApi,
+  stream: BoardStream,
   ask: BoardQuestions,
   bound: Bound,
   bind: (personId: string) => void,
@@ -152,7 +155,7 @@ function batch(
  * topic replaces the previous one's; `same` otherwise.
  */
 async function rejoin(
-  stream: SSEStreamingApi,
+  stream: BoardStream,
   ask: BoardQuestions,
   bound: Bound,
   bind: (personId: string) => void,
@@ -170,7 +173,7 @@ async function rejoin(
 }
 
 /** A resync stands for every inbox change so far: what it shows is taken first. */
-async function resyncs(stream: SSEStreamingApi, ask: BoardQuestions, bound: Bound): Promise<void> {
+async function resyncs(stream: BoardStream, ask: BoardQuestions, bound: Bound): Promise<void> {
   bound.shown = await ask.shown(bound.personId);
   await stream.writeSSE({ event: 'resync', data: '' });
 }
@@ -182,7 +185,7 @@ async function resyncs(stream: SSEStreamingApi, ask: BoardQuestions, bound: Boun
  * same way before the digest is kept or said.
  */
 async function say(
-  stream: SSEStreamingApi,
+  stream: BoardStream,
   ask: BoardQuestions,
   named: readonly string[],
   bound: Bound,

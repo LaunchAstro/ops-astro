@@ -14,7 +14,9 @@
 // 3. **Authority.** Checked inside the serving transaction through T1c's
 //    grants, so a revocation bites on the next call rather than soon.
 // 4. **The audit event.** Written on every attempt: applied, refused,
-//    replayed, and the ones that raised.
+//    replayed, and the ones that raised. The one exception is an applied
+//    attempt on a row the surface declares not audited (a person's own
+//    preference, CS-2.8), and the replay of one; its refusals are audited.
 // 5. **Atomicity of a refusal.** The handler's writes sit inside a savepoint
 //    that is rolled back the moment it refuses, so a command cannot half-apply
 //    and then say no. That is a mechanism rather than a convention: a handler
@@ -39,12 +41,14 @@ import { crashPointAfterCommit } from '../../../core-runtime/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import { storable, writeAuditEvent } from './audit.ts';
+import { firstClientGate } from './first-client-gate.ts';
 import {
   asCallerVisible,
   isCommandRefusal,
   refuseCommand,
   type CommandRefusal,
 } from './refusal.ts';
+import { replayIssue } from './credential-write.ts';
 import {
   isRetryableViolation,
   lookupAttempt,
@@ -53,8 +57,8 @@ import {
   type CommandResult,
   type RegisteredAttempt,
 } from './register-store.ts';
+import { comparablePayload } from './payload.ts';
 import {
-  comparablePayload,
   hasIdentity,
   type CommandRequest,
   type IdentifiedRequest,
@@ -376,6 +380,9 @@ async function replay(
     const { refusal, attempted } = released;
     return await settle(tx, caller, request, digest, refusal, 'registered', attempted);
   }
+  if (!isCommandRefusal(stored) && !declarationOf(request.command).audited) {
+    return released ?? stored;
+  }
   await writeAuditEvent(tx, {
     actorId: caller.actorId,
     command: request.command,
@@ -397,6 +404,9 @@ async function replay(
  * call answered to, and the revision is the one thing the first call itself
  * moved. Nothing is locked and the handler does not run.
  *
+ * An agent credential's issue (API-2) goes out with its secret derived again
+ * while the credential is the caller's and live (`replayIssue`).
+ *
  * A pickup's receipt is its lease, so it is released only while that lease is
  * still the caller's claim, as the agent pickup replay asks (`agent-replay.ts`,
  * step 3).
@@ -408,12 +418,13 @@ async function withheldNow(
   request: UncheckedRequest,
   declaration: CommandDeclaration,
   stored: CommandHandle,
-): Promise<Refused | undefined> {
+): Promise<CommandResult | Refused | undefined> {
   const prepared = await prepareCommand(tx, session, entryPoint, request, {
     ...declaration,
     targetsExistingRecord: false,
   });
   if ('refusal' in prepared) return prepared;
+  if (declaration.name === 'credential.issue') return await replayIssue(tx, session, stored);
   if (declaration.name !== 'task.pickup') return undefined;
   return await unboundPickup(tx, session, stored);
 }
@@ -463,8 +474,9 @@ async function attempt(
       revision: outcome.revision,
       detail: outcome.detail,
     };
-    await register(tx, session, request, digest, handle, outcome.recordId);
+    await register(tx, session, request, digest, withoutSecret(handle), outcome.recordId);
     await tx.query('release savepoint command_attempt');
+    if (!declaration.audited) return handle;
     await writeAuditEvent(tx, {
       actorId: session.actorId,
       command: request.command,
@@ -519,9 +531,9 @@ async function attemptWork(
 }
 
 /**
- * The preparation and then the command, which is all that is inside the
- * savepoint. The preparation hands back the request parsed against its row's
- * operands, and the command is given that and never the body.
+ * The preparation, the first-client gate and then the command, which is all
+ * that is inside the savepoint. The preparation hands back the request parsed
+ * against its row's operands, and the command is given that and never the body.
  */
 async function work(
   tx: TenantQuery,
@@ -532,7 +544,20 @@ async function work(
 ): Promise<Applied | Refused> {
   const prepared = await prepareCommand(tx, session, entryPoint, request, declaration);
   if ('refusal' in prepared) return prepared;
+  // S0-5: after authority, before the handler touches anything.
+  const shut = await firstClientGate(tx, declaration.name);
+  if (shut !== undefined) return refused(shut);
   return await handleCommand(tx, prepared, prepared.request);
+}
+
+/**
+ * The handle as the register keeps it. An agent credential's secret (API-2) is
+ * in the first answer alone: the row keeps it null, and the issuer's replay
+ * derives it again (`replayIssue`).
+ */
+function withoutSecret(handle: CommandHandle): CommandHandle {
+  if (!('credential' in handle.detail)) return handle;
+  return { ...handle, detail: { ...handle.detail, credential: null } };
 }
 
 /** One register row for this request, whatever it came to. */

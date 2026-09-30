@@ -8,8 +8,9 @@
 // first in `apps/web/index.html`'s head (the content policy runs no inline
 // script). It runs while the head is parsed, before any stylesheet or module,
 // so the first frame already carries `data-theme`. The preference is handed to it as
-// `data-theme-preference` on the root element: light, dark or system. No store
-// is read here; MP-2-11 owns the stored preference and hands it over that way.
+// `data-theme-preference` on the root element: light, dark or system. With none
+// handed over, the step replays the tab's copy of the person's stored appearance
+// (MP-2-11, tests/web/mp-2-11-settings-general.test.tsx).
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

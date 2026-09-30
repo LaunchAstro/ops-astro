@@ -136,6 +136,29 @@ export async function effectiveGrants(
 }
 
 /**
+ * Every grant the subjects hold right now, as one opaque value. It changes
+ * whenever one of them is issued, revoked or expires, or loses the parent it
+ * was delegated under, so a cache keyed by it never outlives the authority it
+ * was worked out under (C4 rollup scope).
+ */
+export async function grantFingerprint(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+): Promise<string> {
+  const [row] = await tx.query<{ readonly fingerprint: string }>(
+    `${EFFECTIVE}
+     select encode(sha256(convert_to(coalesce(string_agg(e.id::text, ',' order by e.id), ''),
+                                     'UTF8')), 'hex') as fingerprint
+       from effective e
+      where exists (select 1 from unnest($1::text[], $2::uuid[]) as s (kind, id)
+                     where s.kind = e.subject_kind and s.id = e.subject_id)`,
+    [subjects.map((subject) => subject.kind), subjects.map((subject) => subject.id)],
+  );
+  if (row === undefined) throw new Error('grant fingerprint answered no row');
+  return row.fingerprint;
+}
+
+/**
  * The check a serving operation makes. A denied read says so with a code and a
  * fix; it never comes back as an empty list, because empty and denied are
  * different answers and only one of them is honest here.
@@ -251,10 +274,17 @@ async function exceedsGranter(
  * It answers with the timestamp this call wrote, or null when it wrote none
  * because the grant was already revoked or is not in this business. Callers
  * that only needed the write may ignore it; `grant.revoke` returns it.
+ *
+ * `now()` is when this transaction began. A revocation that waited on the
+ * access lock behind a grant made after it began (C58: ending a person's
+ * access while a grant to them commits) would otherwise be stamped before the
+ * grant existed, which `grants_revoked_after_granted` refuses; it is stamped
+ * no earlier than the grant.
  */
 export async function revokeGrant(tx: TenantQuery, grantId: string): Promise<Date | null> {
   const rows = await tx.query<{ readonly revoked_at: Date }>(
-    'update public.grants set revoked_at = now() where id = $1 and revoked_at is null returning revoked_at',
+    `update public.grants set revoked_at = greatest(now(), granted_at)
+      where id = $1 and revoked_at is null returning revoked_at`,
     [grantId],
   );
   return rows[0]?.revoked_at ?? null;

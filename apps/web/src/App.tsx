@@ -10,24 +10,31 @@
 // — the words and tones a state may print — and not as a source of rows.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Shell } from '@launchastro/ui';
-import { gateOf, matchRoute, pathTo } from './routes.ts';
-import { NO_CLIENT_GRANTS, canonicalOf, pageAt, type ClientAccess } from './manifest.ts';
-import { ClientRefused, NotFound, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
+import { Shell, type StripSteps } from '@launchastro/ui';
+import { FaceProvider } from './face.tsx';
+import { SearchPalette, useSearch, useSearchKey } from './search.tsx';
+import { pathTo } from './routes.ts';
+import { NO_CLIENT_GRANTS, type ClientAccess } from './manifest.ts';
+import { frameAt } from './route-views.tsx';
+import { drawContent } from './app-content.tsx';
+import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
+import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
-import { PANELS, type PanelRegistry } from './panels.ts';
-import { dockProps, shellTracks, useDockShell } from './dock/dock-props.tsx';
-import type { RailPreference } from './shell/use-rail.ts';
+import { shellDock, useDockShell, type DockAppProps } from './dock/dock-props.tsx';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
-import { signOut } from './session/sign-in.ts';
 import { SignIn } from './screens/SignIn.tsx';
-import { drawScreen } from './screen-registry.tsx';
+import { signOut } from './session/sign-in.ts';
+import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
+import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
 
-export interface AppProps {
+export interface AppProps extends DockAppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
   readonly path: string;
-  readonly navigate: (path: string) => void;
+  /** `replace` corrects the address of the page already open, adding no history entry. */
+  readonly navigate: (path: string, options?: { readonly replace?: boolean }) => void;
+  /** The tab's Back and Forward, when the entry owns a history (MP-2-5). */
+  readonly steps?: StripSteps;
   readonly sessions: SessionStore;
   /** Where the identity provider is. Injected so a test never needs a network. */
   readonly gotrueUrl: string;
@@ -38,34 +45,22 @@ export interface AppProps {
   readonly storage: Storage | null;
   /** Which clients the session may open. None until MP-10-1 supplies client records. */
   readonly clientAccess?: ClientAccess;
-  /** The person's rail as they left it, read before the first render so it is drawn before paint. */
-  readonly railPreference?: RailPreference;
-  /** Told when the person folds the rail or lets its grip go: the preference to keep. */
-  readonly saveRailPreference?: (preference: RailPreference) => void;
-  /** The dock's panels. The shipped registry unless a test hands another. */
-  readonly panels?: PanelRegistry;
 }
 
 export function App(props: AppProps): ReactElement {
   const [session, setSession] = useState<Session | null>(props.sessions.session);
-  const registry = props.panels ?? PANELS;
-  const { dock, nav, layout } = useDockShell(session, props.storage, registry, props);
-
-  // The root address is not a screen and it is not a mistake either: it is how
-  // a person arrives. It leads to the board when there is a session and to
-  // sign-in when there is not, and the address bar is corrected to say so, so
-  // a reload lands on the same place a link would.
-  // A legacy address is answered with its canonical one the same way, so the
-  // address bar, the rail and a remembered interruption never hold a legacy one.
-  const here =
-    canonicalOf(props.path) ??
-    (props.path === '/'
-      ? pathTo(session === null ? 'agency:sign-in' : 'agency:projects-board')
-      : props.path);
+  const docked = useDockShell(session, props.storage, props);
   const navigate = props.navigate;
+  const here = useCanonicalAddress(props.path, session !== null, navigate);
+
+  // The narrow drawer (MP-2-8) is open or not here, and any change of address
+  // closes it, a link in it included.
+  const [navOpen, setNavOpen] = useState(false);
   useEffect(() => {
-    if (here !== props.path) navigate(here);
-  }, [here, props.path, navigate]);
+    setNavOpen(false);
+  }, [here]);
+  const offlineSince = useOfflineSince();
+  const search = useSearch();
 
   // Why the board was reached instead of the address that was held. Drawn on
   // the board and nowhere else, and gone when this session is. The offer is the
@@ -74,6 +69,8 @@ export function App(props: AppProps): ReactElement {
     readonly held: Interruption;
     readonly offer: HeldOffer | null;
   } | null>(null);
+  // The person signed out here, so sign-in says their unsaved edit went with it (C58).
+  const [signedOut, setSignedOut] = useState(false);
 
   const onSignedIn = useCallback(
     (next: Session) => {
@@ -83,6 +80,7 @@ export function App(props: AppProps): ReactElement {
       props.sessions.set(next);
       setSession(next);
       setNotice(null);
+      setSignedOut(false);
       if (back === null) {
         props.navigate(pathTo('agency:projects-board'));
         return;
@@ -114,19 +112,6 @@ export function App(props: AppProps): ReactElement {
     },
     [props],
   );
-
-  const onSignOut = useCallback(() => {
-    const sessionId = props.sessions.session?.sessionId;
-    void signOut({
-      apiOrigin: props.apiOrigin,
-      fetch: props.fetch,
-      ...(sessionId === undefined ? {} : { sessionId }),
-    });
-    props.sessions.clear();
-    setSession(null);
-    setNotice(null);
-    props.navigate(pathTo('agency:sign-in'));
-  }, [props]);
 
   // **The session ending is a fact about the application, not about a screen.**
   // The client raises it once, from wherever the refusal arrived, and this is
@@ -177,6 +162,24 @@ export function App(props: AppProps): ReactElement {
     [props.apiOrigin, props.fetch, session],
   );
 
+  // Sign-out (C23). The tab forgets the session first, so a server that never
+  // answers cannot keep it. Then, with the ended session's own client:
+  // `session.end` records it on the audit chain, and the API clears this
+  // sign-in's cookie and no other (S0-6c). Neither answer is waited for.
+  const onSignOut = (): void => {
+    const ended = session;
+    props.sessions.clear();
+    setSession(null);
+    setNotice(null);
+    setSignedOut(true);
+    props.navigate(pathTo('agency:sign-in'));
+    if (ended === null) return;
+    void client.mutate('session.end', {});
+    const named = ended.sessionId === undefined ? {} : { sessionId: ended.sessionId };
+    void signOut({ apiOrigin: props.apiOrigin, fetch: props.fetch, ...named });
+  };
+
+  const personName = usePersonName(client, session, props.storage);
   const onSwitch = (businessKey: string, address: string): void => {
     if (session === null) return;
     const moved = { ...session, businessKey };
@@ -187,15 +190,14 @@ export function App(props: AppProps): ReactElement {
   };
 
   const bare = here.split(/[?#]/u)[0] ?? here;
-  const match = matchRoute(bare);
-  const at = pageAt(bare);
   const grantKey = grantKeyOf(session);
-  const clientAccess = props.clientAccess ?? NO_CLIENT_GRANTS;
-  const refused =
-    at !== null &&
-    at.client !== null &&
-    (session === null || !clientAccess(session.businessKey, at.client));
-  const rail = railFor(at, refused);
+  const { match, at, refused, rail, tabs, identity, face } = frameAt(
+    bare,
+    session?.businessKey ?? null,
+    props.clientAccess ?? NO_CLIENT_GRANTS,
+  );
+  const searchable = session !== null && face === 'agency';
+  useSearchKey(searchable, search.open);
 
   const signIn = (
     <SignIn
@@ -204,97 +206,93 @@ export function App(props: AppProps): ReactElement {
       fetch={props.fetch}
       onSignedIn={onSignedIn}
       ended={props.sessions.interruption}
+      signedOut={signedOut}
     />
   );
 
-  const content = ((): ReactElement => {
-    // A manifest page with no screen yet: sign-in first, then the grant check.
-    if (match === null && at !== null) {
-      if (session === null) return signIn;
-      return refused ? <ClientRefused /> : <PagePlaceholder page={at.page} />;
-    }
-    const gate = gateOf(match, session !== null);
-    switch (gate.kind) {
-      case 'not-found':
-        return <NotFound path={here} />;
-      case 'sign-in':
-        return signIn;
-      case 'signed-in-already':
-        return (
-          <SignedInAlready
-            onGo={() => {
-              props.navigate(pathTo('agency:projects-board'));
-            }}
+  const content = drawContent({
+    here,
+    match,
+    at,
+    signedIn: session !== null,
+    refused,
+    signIn,
+    onGo: () => {
+      props.navigate(pathTo('agency:projects-board'));
+    },
+    screen: {
+      client,
+      grantKey,
+      notice:
+        notice === null || session === null ? null : (
+          <HeldAddressNotice
+            offer={notice.offer}
+            signedInTo={session.businessKey}
+            onSwitch={onSwitch}
           />
-        );
-      case 'screen':
-        return drawScreen(gate.match, {
-          client,
-          grantKey,
-          notice:
-            notice === null || session === null ? null : (
-              <HeldAddressNotice
-                offer={notice.offer}
-                signedInTo={session.businessKey}
-                onSwitch={onSwitch}
+        ),
+      storage: props.storage,
+      navigate: props.navigate,
+    },
+  });
+
+  return (
+    <PageFreshnessProvider>
+      <PagePresenceProvider>
+        <Shell
+          face={face}
+          build={buildStamp()}
+          rail={rail}
+          here={bare}
+          strip={
+            <FrameStrip
+              face={face}
+              identity={identity}
+              clientSlug={at?.client ?? null}
+              steps={props.steps}
+              onSearch={searchable ? search.open : null}
+              searchRef={search.box}
+              session={session}
+              personName={personName}
+              navigate={navigate}
+              onSignOut={onSignOut}
+            />
+          }
+          tabs={tabs}
+          nav={{ open: navOpen, onToggle: setNavOpen }}
+          onNavigate={navigate}
+          meta={
+            <>
+              <StripFreshness
+                fallback={
+                  offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
+                }
               />
-            ),
-          storage: props.storage,
-        });
-    }
-  })();
-
-  // Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a
-  // bundler that did not stamp, and the rail then says the build is unstamped.
-  // Read by name, never by index: an indexed read inlines every VITE_ setting
-  // of the build's environment into the bundle (G3).
-  const build = import.meta.env.VITE_OPS_ASTRO_BUILD ?? '';
-
-  return (
-    <Shell
-      face={at?.page.namespace === 'portal' ? 'client' : 'agency'}
-      build={build === '' ? null : build}
-      rail={rail}
-      here={bare}
-      title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
-      meta={
-        session === null ? null : (
-          <span className="topbar__who">
-            {session.email} · {session.businessKey}
-            <button className="btn" type="button" onClick={onSignOut}>
-              Sign out
-            </button>
-          </span>
-        )
-      }
-      onClick={dock.onDoor}
-      {...shellTracks(nav, layout)}
-      // The client face has no dock (R17), and nobody signed out has one.
-      dock={
-        session === null || at?.page.namespace === 'portal'
-          ? null
-          : dockProps({
-              registry,
-              dock,
-              layout,
-              navigate: props.navigate,
-              screen: { client, grantKey, notice: null, storage: props.storage },
-            })
-      }
-    >
-      {at === null || refused || session === null ? null : <RouteTabs at={at} />}
-      {content}
-    </Shell>
-  );
-}
-
-function SignedInAlready(props: { readonly onGo: () => void }): ReactElement {
-  return (
-    <div className="readstate" data-outcome="ready">
-      <p className="empty__title">You are already signed in.</p>
-      <button className="btn btn--primary" type="button" onClick={props.onGo}>
-        Go to Projects
-      </button>
-    </div>
+              {session === null ? null : <StripPresence />}
+            </>
+          }
+          title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
+          // The client face has no dock (R17), and nobody signed out has one.
+          {...shellDock(
+            docked,
+            session === null || face === 'client'
+              ? null
+              : { client, grantKey, notice: null, storage: props.storage, navigate },
+          )}
+        >
+          <FaceProvider face={face}>{content}</FaceProvider>
+        </Shell>
+        {search.showing && searchable ? (
+          <SearchPalette
+            client={client}
+            onOpen={(address) => {
+              search.dismiss();
+              navigate(address);
+            }}
+            onClose={search.close}
+          />
+        ) : null}
+      </PagePresenceProvider>
+    </PageFreshnessProvider>
   );
 }

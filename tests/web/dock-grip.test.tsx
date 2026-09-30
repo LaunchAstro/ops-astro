@@ -16,7 +16,10 @@ import type { PanelRegistry } from '../../apps/web/src/panels.ts';
 import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
 
-const SHEET = readFileSync('packages/ui/src/styles/3-shell.css', 'utf8');
+// The shell's sheet and the dock's, split from it: one cascade.
+const SHEET = ['3-shell.css', '3-dock.css']
+  .map((sheet) => readFileSync(`packages/ui/src/styles/${sheet}`, 'utf8'))
+  .join('\n');
 
 const live: Mounted[] = [];
 afterEach(async () => {

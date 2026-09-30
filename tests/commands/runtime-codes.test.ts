@@ -24,11 +24,11 @@ import {
 } from '../../packages/core-runtime/src/refusals.ts';
 import {
   CALLER_VISIBLE,
-  UNPRODUCED_CODES,
   registeredRefusal,
   statusOf,
   type RefusalCode,
 } from '../../packages/core-records/src/register.ts';
+import { UNPRODUCED_CODES } from '../../packages/core-records/src/register-unproduced.ts';
 
 const RUNTIME_CODES = Object.keys(SUGGESTED_STATUS) as readonly RuntimeRefusalCode[];
 

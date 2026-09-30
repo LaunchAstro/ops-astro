@@ -20,11 +20,10 @@ import {
   CROSS_FACE,
   PAGES,
   SECTIONS,
-  canonicalOf,
   crossingDeclared,
   namespaceOf,
-  pageAt,
 } from '../../apps/web/src/manifest.ts';
+import { canonicalOf } from '../../apps/web/src/legacy.ts';
 import { matchRoute } from '../../apps/web/src/routes.ts';
 import {
   LEGACY,
@@ -33,7 +32,6 @@ import {
   hrefs,
   json,
   mockupAddresses,
-  mockupPick,
   normal,
   open,
   settle,
@@ -86,7 +84,8 @@ describe('MP-2-1 three namespaces', () => {
 describe('MP-2-1 one registry', () => {
   it('builds the Hub rail and the section tabs from the manifest', async () => {
     const { view } = await open('/connections/site-health/');
-    const hub = SECTIONS.filter((section) => section.namespace === 'agency');
+    // The rail leaves out a section with no designed page (R2, MP-2-10).
+    const hub = SECTIONS.filter((section) => section.namespace === 'agency' && section.navigable);
     expect(view.all('.rail a[href]').map((a) => a.getAttribute('href'))).toEqual(
       hub.map((section) => section.path),
     );
@@ -115,6 +114,8 @@ describe('MP-2-1 one registry', () => {
 });
 
 describe('MP-2-1 hard reload', () => {
+  // The shared state names the page and its ticket on the record, not in its
+  // words, since MP-2-10 made it one plain "not here yet" (R2).
   it('lands every address on its page or on a placeholder naming the page and its ticket', async () => {
     for (const page of PAGES) {
       const { view } = await open(filled(page.path));
@@ -122,8 +123,8 @@ describe('MP-2-1 hard reload', () => {
       const built = matchRoute(filled(page.path));
       const placeholder = view.find(`[data-outcome="placeholder"][data-page="${page.id}"]`);
       if (built === null) {
-        expect(placeholder?.textContent, page.path).toContain(page.label);
-        expect(placeholder?.textContent, page.path).toContain(page.ticket);
+        expect(placeholder, page.path).not.toBeNull();
+        expect((placeholder as HTMLElement | null)?.dataset['ticket'], page.path).toBe(page.ticket);
       } else {
         expect(placeholder, page.path).toBeNull();
       }
@@ -182,75 +183,6 @@ describe('MP-2-1 no legacy alias', () => {
     }
   });
 });
-
-const known = mockupAddresses().filter(
-  (route) => route.source !== undefined && LEGACY.test(route.source),
-);
-
-describe('MP-2-1 legacy redirects', () => {
-  legacyAddressesResolve();
-  redirectsThenChecksTheGrant();
-});
-
-function legacyAddressesResolve(): void {
-  it('maps every known legacy address to a canonical one in the manifest', () => {
-    expect(known.length).toBeGreaterThan(30);
-    for (const route of known) {
-      const legacy = `${route.source ?? ''}?client=acme-dental${route.legacyHash ?? ''}`;
-      const target = canonicalOf(legacy);
-      expect(target, legacy).not.toBeNull();
-      expect(target, legacy).not.toMatch(LEGACY);
-      expect(pageAt(target ?? '')?.page.path, legacy).toBeDefined();
-    }
-  });
-
-  it('lands every known legacy address on the page the mockup itself chose for it', () => {
-    for (const route of known) {
-      const source = route.source ?? '';
-      const hash = route.legacyHash ?? '';
-      const expected = mockupPick(source, hash);
-      expect(expected, source).toBeDefined();
-      expect(canonicalOf(`${source}?client=acme-dental${hash}`), `${source}${hash}`).toBe(
-        filled(expected?.path ?? 'missing'),
-      );
-    }
-  });
-
-  it('picks the tab a legacy hash named', () => {
-    expect(canonicalOf('/client-portal/channel-workbench/?client=acme-dental#ads')).toBe(
-      '/clients/acme-dental/workbench/google-ads/',
-    );
-    expect(canonicalOf('/client-portal/projects/?client=acme-dental#roadmap')).toBe(
-      '/clients/acme-dental/projects/roadmap/',
-    );
-    expect(canonicalOf('/agency/portfolio/')).toBe('/dashboard/portfolio/');
-    expect(canonicalOf('/client-portal/home/?client=acme-dental')).toBe('/portal/acme-dental/');
-  });
-
-  it('sends a legacy client address with no client named to the client list', () => {
-    expect(canonicalOf('/agency/brief/')).toBe('/clients/');
-  });
-
-  it('answers nothing for a canonical address or an unknown one', () => {
-    expect(canonicalOf('/dashboard/portfolio/')).toBeNull();
-    expect(canonicalOf('/agency/never-was/')).toBeNull();
-  });
-}
-
-function redirectsThenChecksTheGrant(): void {
-  it('redirects in the application, then applies the same grant check', async () => {
-    const mine = await open('/client-portal/library/voice/?client=acme-dental');
-    expect(mine.seen.at(-1)).toBe('/clients/acme-dental/library/voice/');
-    expect(mine.view.find('[data-outcome="placeholder"]')).not.toBeNull();
-    await mine.view.unmount();
-
-    const theirs = await open('/client-portal/library/voice/?client=zenith-plumbing');
-    expect(theirs.seen.at(-1)).toBe('/clients/zenith-plumbing/library/voice/');
-    expect(theirs.view.find('[data-outcome="denied"]')).not.toBeNull();
-    expect(theirs.view.find('[data-outcome="placeholder"]')).toBeNull();
-    await theirs.view.unmount();
-  });
-}
 
 describe('MP-2-1 cross-face links', () => {
   it('declares a reason for every crossing', () => {

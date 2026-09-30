@@ -8,11 +8,24 @@
 // emits it beside index.html (vite.config.ts). A preference is handed to it as
 // data-theme-preference on the root element (light, dark or system); anything
 // else follows the system, and keeps following it. Setting the attribute later
-// goes through this same step. The stored preference is not read here.
+// goes through this same step. With none handed over, the tab's copy of the
+// person's stored appearance (MP-2-11, apps/web/src/appearance.ts) is replayed,
+// so a reload opens in the chosen theme.
 
 (function () {
   var root = document.documentElement;
   var system = window.matchMedia('(prefers-color-scheme: dark)');
+  if (root.dataset.themePreference === undefined) {
+    var kept = null;
+    try {
+      kept = window.sessionStorage.getItem('ops-astro.appearance');
+    } catch {
+      // Storage refused: the system decides.
+    }
+    if (kept === 'light' || kept === 'dark' || kept === 'system') {
+      root.dataset.themePreference = kept;
+    }
+  }
   function apply() {
     var chosen = root.dataset.themePreference;
     var dark = chosen === 'dark' || (chosen !== 'light' && system.matches);

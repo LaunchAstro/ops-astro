@@ -25,17 +25,26 @@
 // the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
+import type { BreachNoticeOperands } from './operations.ts';
 import type {
+  AccessReadResult,
+  BreachNoticesResult,
+  ClientListResult,
   CapabilitiesResult,
+  SessionPersonResult,
+  OperationsReadResult,
   InboxCountResult,
   InboxReadResult,
   PersonListResult,
+  TeamListResult,
   PresetPlanResult,
   QueueResult,
   SettingsReadResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
+  TaskSearchResult,
+  TaskLedgerResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { Receipt } from '../../../core-runtime/src/index.ts';
@@ -63,7 +72,22 @@ export interface ReadOperands {
   readonly 'task.read': { readonly recordId: string };
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
   readonly 'task.board': { readonly board: string | null };
+  /**
+   * The activity ledger's page: the newest days with events before `before`
+   * (a `YYYY-MM-DD` in `timeZone`), or the newest days of all when it is
+   * null. The zone is the reader's, and it is what a day means: an event at
+   * 23:30 in Townsville is on a different day than it is in UTC.
+   */
+  readonly 'task.ledger': {
+    readonly before: string | null;
+    readonly timeZone: string;
+    /** Words for C1's search (MP-8-4); null lists every task's events. */
+    readonly query: string | null;
+  };
   readonly 'person.list': NoOperands;
+  /** The words to find among the tasks the caller may read (C1). */
+  readonly 'task.search': { readonly query: string };
+  readonly 'team.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
   /**
@@ -105,6 +129,20 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /** Who is signed in: the caller's own name (C23). It takes no grant either. */
+  readonly 'session.person': NoOperands;
+  /** The caller's own saved preferences (MP-2-11a). */
+  readonly 'preference.read': NoOperands;
+  /** Who may do what here: Team, Clients and Agents with their previews (C32). */
+  readonly 'access.read': NoOperands;
+  readonly 'client.list': NoOperands;
+  /** What needs the operator's eye: privacy incidents first (C55). */
+  readonly 'operations.read': NoOperands;
+  /**
+   * The breach drill's notices from the published runbook (C81), for the
+   * recipients named. It writes nothing and sends nothing, so it is a read.
+   */
+  readonly 'privacy.draft_breach_notices': BreachNoticeOperands;
   /** The caller's own inbox items, each with its access derived now (INB-1d). */
   readonly 'inbox.read': NoOperands;
   /** The caller's owed count: the counted entries of `inbox.read`. */
@@ -130,13 +168,22 @@ export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
   | SharedTaskRead
   | TaskBoardResult
+  | TaskSearchResult
+  | TaskLedgerResult
   | PersonListResult
+  | TeamListResult
   | QueueResult
   | PresetPlanResult
   | SettingsReadResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
+  | SessionPersonResult
+  | { readonly ok: true; readonly preferences: Readonly<Record<string, unknown>> }
+  | AccessReadResult
+  | ClientListResult
+  | OperationsReadResult
+  | BreachNoticesResult
   | InboxReadResult
   | InboxCountResult
   | { readonly ok: true; readonly unattended: readonly UnattendedEntry[] };

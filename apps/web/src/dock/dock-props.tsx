@@ -8,7 +8,7 @@
 import type { MouseEvent } from 'react';
 import type { DockPanel, DockProps, ShellProps } from '@launchastro/ui';
 import { gateOf, matchRoute, pathTo, type Gate } from '../routes.ts';
-import { dockTabs, isPanelId, type PanelId, type PanelRegistry } from '../panels.ts';
+import { PANELS, dockTabs, isPanelId, type PanelId, type PanelRegistry } from '../panels.ts';
 import { drawScreen, type ScreenContext } from '../screen-registry.tsx';
 import { closeAll, close, isOwnAddress, press, ranked, visit } from './open-set.ts';
 import type { Session, StorageLike } from '../session/token.ts';
@@ -17,23 +17,39 @@ import { useDock, type DockModel } from './use-dock.ts';
 import { useDockLayout, type DockLayoutModel } from './use-layout.ts';
 
 /** The person's dock, rail and the layout they make together, for one signed-in tab. */
+interface DockShell {
+  readonly registry: PanelRegistry;
+  readonly dock: DockModel;
+  readonly nav: RailModel;
+  readonly layout: DockLayoutModel;
+}
+
+/** What the application takes for the dock and the rail. */
+export interface DockAppProps {
+  /** The person's rail as they left it, read before the first render so it is drawn before paint. */
+  readonly railPreference?: RailPreference;
+  /** Told when the person folds the rail or lets its grip go: the preference to keep. */
+  readonly saveRailPreference?: (preference: RailPreference) => void;
+  /** The dock's panels. The shipped registry unless a test hands another. */
+  readonly panels?: PanelRegistry;
+}
+
 export function useDockShell(
   session: Session | null,
   storage: StorageLike | null,
-  registry: PanelRegistry,
-  rail: {
-    readonly railPreference?: RailPreference;
-    readonly saveRailPreference?: (preference: RailPreference) => void;
-  },
-): { dock: DockModel; nav: RailModel; layout: DockLayoutModel } {
+  props: DockAppProps,
+): DockShell {
+  const registry = props.panels ?? PANELS;
   const dock = useDock(session, storage, registry);
-  const nav = useRail(rail.railPreference, rail.saveRailPreference);
+  const nav = useRail(props.railPreference, props.saveRailPreference);
   const layout = useDockLayout(dock, registry, nav.drawn);
-  return { dock, nav, layout };
+  return { registry, dock, nav, layout };
 }
 
-type ShellTracks = Pick<
+type ShellDock = Pick<
   ShellProps,
+  | 'onClick'
+  | 'dock'
   | 'railCollapsed'
   | 'railWidth'
   | 'onRailFold'
@@ -43,8 +59,17 @@ type ShellTracks = Pick<
   | 'dockSheetHeight'
 >;
 
-/** The shell's tracks: the rail as the person left it, the seated group's width and the sheet. */
-export const shellTracks = (nav: RailModel, layout: DockLayoutModel): ShellTracks => ({
+/**
+ * What the shell takes of the dock and the rail: the doors' click, the rail as
+ * the person left it, the seated group's width, the sheet, and the dock itself,
+ * or none where `input` is null (signed out, and the client face, R17).
+ */
+export const shellDock = (
+  { registry, dock, nav, layout }: DockShell,
+  screen: DockInput['screen'] | null,
+): ShellDock => ({
+  onClick: dock.onDoor,
+  dock: screen === null ? null : dockProps({ registry, dock, layout, screen }),
   railCollapsed: nav.collapsed,
   railWidth: nav.width,
   onRailFold: nav.fold,
@@ -58,7 +83,6 @@ interface DockInput {
   readonly registry: PanelRegistry;
   readonly dock: DockModel;
   readonly layout: DockLayoutModel;
-  readonly navigate: (path: string) => void;
   readonly screen: Omit<ScreenContext, 'params'>;
 }
 
@@ -144,7 +168,7 @@ function dockPresses(input: DockInput, byId: (id: string) => PanelId | null): Pr
       const panel = byId(id);
       if (panel !== null) dock.history.seal(panel, top);
     },
-    onDoor: input.navigate,
+    onDoor: input.screen.navigate,
     onBodyClick: (id, event) => {
       const panel = byId(id);
       const href = panel === null ? null : walkedLink(event);

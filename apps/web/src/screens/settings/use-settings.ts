@@ -44,10 +44,9 @@ import type {
 } from '../../../../../packages/core-wire/src/index.ts';
 import { sessionMemory, type Confirmed } from './confirmed.ts';
 import {
-  FOUR_EYES,
+  KEY,
   SESSION_CAPABILITIES,
   SETTINGS_READ,
-  SIGN_OFF,
   holdsManage,
   rowsInHand,
   settingOf,
@@ -56,8 +55,8 @@ import {
 export type { StorageLike } from '../../session/token.ts';
 export type { Confirmed } from './confirmed.ts';
 
-/** Which of the two settings a press is about. */
-export type Which = 'four-eyes' | 'sign-off';
+/** Which setting a press is about: the two money and sign-off rows, and MP-2-11's two windows. */
+export type Which = 'four-eyes' | 'sign-off' | 'conversation' | 'retention';
 
 /** What a person can propose. `null` is the band off, and it is a real value. */
 export type Draft = number | boolean | null;
@@ -65,9 +64,9 @@ export type Draft = number | boolean | null;
 const COMMAND = {
   'four-eyes': 'settings.set_four_eyes_threshold',
   'sign-off': 'settings.set_client_sign_off',
+  conversation: 'settings.set_conversation_window',
+  retention: 'settings.set_retention_window',
 } as const;
-
-const KEY = { 'four-eyes': FOUR_EYES, 'sign-off': SIGN_OFF } as const;
 
 /** A write the server would not take because somebody else wrote first. */
 export interface Conflict {
@@ -86,6 +85,8 @@ function remember(which: Which, echo: unknown, value: Draft): Confirmed {
     const fourEyes = isThreshold(echo) ? echo : isThreshold(value) ? value : undefined;
     return fourEyes === undefined ? {} : { fourEyes };
   }
+  // The windows keep no browser memory: only the server's read is drawn for them.
+  if (which !== 'sign-off') return {};
   const signOff = typeof echo === 'boolean' ? echo : typeof value === 'boolean' ? value : undefined;
   return signOff === undefined ? {} : { signOff };
 }
@@ -169,7 +170,13 @@ export function useSettings(
   const busy = command.busy ? pressed : null;
   // A stale write is the conflict, drawn with its draft, not a reason line.
   const failure = command.failure?.kind === 'stale' ? null : command.failure;
-  const because = complaint ?? failure?.because ?? null;
+  // A stale sign-in on a money setting is answered with the fix alone: the
+  // person signs in again, and the code means nothing to them (MP-2-11).
+  const stepUp =
+    failure?.kind === 'failed' && failure.refusal.code === 'STEP_UP_REQUIRED'
+      ? failure.refusal.fixes.join(' ')
+      : null;
+  const because = complaint ?? stepUp ?? failure?.because ?? null;
 
   const read = settings.state;
   const caps = capabilities.state;

@@ -74,6 +74,18 @@ export interface PanelTab {
 }
 
 export const PANELS: PanelRegistry = {
+  notifs: {
+    label: 'Notifications',
+    ariaLabel: 'Notifications: what is waiting on you',
+    route: 'agency:inbox',
+    icon: 'bell',
+  },
+  team: {
+    label: 'Team',
+    ariaLabel: 'Team: who is here and who is away',
+    route: 'agency:team',
+    icon: 'comments',
+  },
   settings: {
     label: 'Settings',
     ariaLabel: 'Business settings',

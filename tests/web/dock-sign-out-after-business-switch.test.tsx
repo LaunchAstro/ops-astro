@@ -73,8 +73,10 @@ describe('MP-3-1 sign-out removes the dock', () => {
     await view.click('[data-switch="held-address"]');
     await settle();
     expect(sessions.session?.businessKey).toBe('bravo');
-    expect(view.find('.topbar__who button')?.textContent).toBe('Sign out');
-    await view.click('.topbar__who button');
+    // Sign-out is in the person menu (C23).
+    await view.click('.appbar .who__trigger');
+    expect(view.find('.who__menu button[role="menuitem"]')?.textContent).toBe('Sign out');
+    await view.click('.who__menu button[role="menuitem"]');
     await settle();
     expect(sessions.session).toBeNull();
 

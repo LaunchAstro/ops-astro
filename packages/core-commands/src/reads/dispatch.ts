@@ -52,6 +52,9 @@ export const READ_BODY_FIXES: readonly string[] = [
  * It is written after the read rather than before it so the outcome is the
  * outcome, and inside the same transaction so an audited read and its answer
  * commit together or neither does.
+ *
+ * The one exception is a successful read on a row the surface declares not
+ * audited: a person's own preferences (CS-2.8). Its refusals are audited.
  */
 export async function runRead(
   tx: TenantQuery,
@@ -67,6 +70,7 @@ export async function runRead(
   }
   const outcome = served.outcome;
   const refusal = isCommandRefusal(outcome) ? outcome : undefined;
+  if (refusal === undefined && !declarationOf(request.read).audited) return outcome;
   await writeAuditEvent(tx, {
     actorId: session.actorId,
     command: request.read,
@@ -154,6 +158,35 @@ async function serveRead<K extends ReadName>(
   session: Session,
   request: ReadOf<K>,
 ): Promise<ServedRead> {
+  const admission = await admit(tx, session, request);
+  if (!('serve' in admission)) return admission;
+  return { outcome: await admission.serve(), subjectRecordId: admission.recordId ?? null };
+}
+
+/**
+ * Whether this session may make the read, asked exactly as `runRead` asks it
+ * and answered without serving it or auditing it.
+ *
+ * It is for a check that returns no content to the person: the live channel's
+ * recheck of a topic (C4 live-sync 6). Writing nothing is the point, since a
+ * read event for every check of an open stream would be a record of who kept
+ * which task open. A caller that shows the person anything calls `runRead`.
+ */
+export async function admitRead(
+  tx: TenantQuery,
+  session: Session,
+  request: ReadRequest,
+): Promise<{ readonly recordId: string | undefined } | CommandRefusal> {
+  const admission = await admit(tx, session, request);
+  return 'serve' in admission ? { recordId: admission.recordId } : admission.outcome;
+}
+
+/** Everything before the read is served: a refusal, with what its audit row names, or the way to serve it. */
+async function admit<K extends ReadName>(
+  tx: TenantQuery,
+  session: Session,
+  request: ReadOf<K>,
+): Promise<Refused | Readied> {
   const declaration = declarationOf(request.read);
   const row: ReadRow<K> = READ_CATALOGUE[request.read];
   const body: Readonly<Record<string, unknown>> = request;
@@ -191,39 +224,47 @@ async function serveRead<K extends ReadName>(
   // HTTP boundary, it is audited like every other refused read (I13).
   const parsed = row.parse(body);
   if (!parsed.ok) return { outcome: parsed.refusal, subjectRecordId: null };
-  const { operands } = parsed;
-  const { recordId, serve } = await ready(tx, session, row, operands);
-
-  const served = (outcome: ReadResult | CommandRefusal): ServedRead => ({
+  const readied = await ready(tx, session, row, parsed.operands);
+  const refused = (outcome: CommandRefusal): Refused => ({
     outcome,
-    subjectRecordId: recordId ?? null,
+    subjectRecordId: readied.recordId ?? null,
   });
 
   if (row.authority !== 'holds-any-grant' && row.authority !== 'self') {
     const authorised = await checkAuthority(tx, subjectsOf(session), {
       // The action is the declaration's, and so is the collection unless the
       // row names the one the request is really about (`preset.plan`).
-      collection: row.authority === 'declared' ? declaration.collection : row.authority(operands),
+      collection:
+        row.authority === 'declared' ? declaration.collection : row.authority(parsed.operands),
       action: declaration.action,
       // A record-scoped grant is checked against the record named, exactly as
       // a targeted command's is. A business-scoped grant covers both, which is
       // what `effectiveGrants` already means by `scope_kind = 'business'`.
       scope:
-        recordId === undefined ? { kind: 'business', id: null } : { kind: 'record', id: recordId },
+        readied.recordId === undefined
+          ? { kind: 'business', id: null }
+          : { kind: 'record', id: readied.recordId },
     });
     if (!authorised.ok) {
       // An external party is a session with no membership (`ReadRow.outsiderNotFound`).
-      if (session.roleKey === null && row.outsiderNotFound) return served(refuseNotFound());
-      return served(authorised.refusal);
+      if (session.roleKey === null && row.outsiderNotFound) return refused(refuseNotFound());
+      return refused(authorised.refusal);
     }
   }
+  if (!(await readied.admits())) return refused(refuseNotFound());
+  return readied;
+}
 
-  return served(await serve());
+/** A read refused before it was served, and what its audit row names. */
+interface Refused extends ServedRead {
+  readonly outcome: CommandRefusal;
 }
 
 /** What a row has found before the grant check, and how it is served after it. */
 interface Readied {
   readonly recordId: string | undefined;
+  /** The row's own gate after the grant (`SpineRow.admits`); no gate admits. */
+  readonly admits: () => Promise<boolean>;
   readonly serve: () => Promise<ReadResult | CommandRefusal>;
 }
 
@@ -239,14 +280,20 @@ async function ready<K extends ReadName>(
 ): Promise<Readied> {
   if (!row.spine) {
     const business = row;
-    return { recordId: undefined, serve: async () => await business.serve(tx, session, operands) };
+    return {
+      recordId: undefined,
+      admits: async () => await Promise.resolve(true),
+      serve: async () => await business.serve(tx, session, operands),
+    };
   }
   const spineRow = row;
   const spine = await readTaskSpine(tx);
   const recordId =
     spineRow.subject === undefined ? undefined : await spineRow.subject(tx, spine, operands);
+  const { admits } = spineRow;
   return {
     recordId,
+    admits: async () => admits === undefined || (await admits(tx, session, { spine, recordId })),
     serve: async () => await spineRow.serve(tx, session, operands, { spine, recordId }),
   };
 }

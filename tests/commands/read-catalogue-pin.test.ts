@@ -25,36 +25,62 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 
 /** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
 const PINNED_SHAPE = {
+  'access.read': { spine: false, subject: false, authority: 'declared' },
+  'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'inbox.count': { spine: false, subject: false, authority: 'self' },
   'inbox.read': { spine: false, subject: false, authority: 'self' },
   'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
+  'operations.read': { spine: false, subject: false, authority: 'declared' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
+  'preference.read': { spine: false, subject: false, authority: 'self' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
+  'privacy.draft_breach_notices': { spine: false, subject: false, authority: 'declared' },
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'session.person': { spine: false, subject: false, authority: 'self' },
   'settings.read': { spine: false, subject: false, authority: 'declared' },
   'task.board': { spine: true, subject: false, authority: 'declared' },
   'task.execution': { spine: true, subject: true, authority: 'declared' },
   'task.queue': { spine: false, subject: false, authority: 'declared' },
   'task.read': { spine: true, subject: true, authority: 'declared' },
   'task.receipt': { spine: true, subject: true, authority: 'declared' },
+  'task.search': { spine: true, subject: false, authority: 'holds-any-grant' },
+  'task.ledger': { spine: true, subject: false, authority: 'declared' },
+  'team.list': { spine: false, subject: false, authority: 'declared' },
 };
 
 const PINNED_IDENTIFIERS = {
+  'access.read': [],
+  'client.list': [],
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
+  'operations.read': [],
   'person.list': [],
+  'preference.read': [],
   'preset.plan': [],
+  'privacy.draft_breach_notices': [],
   'session.capabilities': [],
+  'session.person': [],
   'settings.read': [],
   'task.board': ['board'],
   'task.execution': ['recordId'],
+  'task.ledger': [],
   'task.queue': [],
   'task.read': ['recordId'],
   'task.receipt': ['attemptId'],
+  'task.search': [],
+  'team.list': [],
 };
 
-const PINNED_OUTSIDER_NOT_FOUND = ['task.board', 'task.execution', 'task.read', 'task.receipt'];
+// MP-7-10: `team.list` is staff only; a client is told NOT_FOUND.
+const PINNED_OUTSIDER_NOT_FOUND = [
+  'task.board',
+  'task.execution',
+  'task.ledger',
+  'task.read',
+  'task.receipt',
+  'team.list',
+];
 
 const BODIES: readonly (readonly [string, Readonly<Record<string, unknown>>])[] = [
   ['empty', {}],
@@ -80,15 +106,32 @@ const BOARD = {
   names: ['board'],
   fixes: ['Send board as a board task’s identifier, or null for tasks on no board.'],
 };
+const QUERY = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['query'],
+  fixes: ['Send query as up to 200 characters with a word in them.'],
+};
 const plan = (name: string) => ({
   code: 'FIELD_VALUE_INVALID',
   names: [name],
   fixes: [`Send ${name} as a non-empty string.`],
 });
+const INCIDENT_ID = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['incidentId'],
+  fixes: ['Send incidentId as the id of a privacy incident.'],
+};
 const PLAN_FIELDS = {
   code: 'FIELD_VALUE_INVALID',
   names: ['fields'],
   fixes: ['Send fields as an array of field objects, which may be empty.'],
+};
+
+/** None of the bodies names a zone, so the ledger refuses each for that first. */
+const LEDGER_ZONE = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['timeZone'],
+  fixes: ['Send timeZone as a zone name the server knows, such as Australia/Brisbane.'],
 };
 
 /** For each read, the refusal each body gets, in `BODIES` order; `null` is no refusal. */
@@ -115,6 +158,8 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
     names: ['attemptId'],
     fixes: ['Send attemptId as the observed attempt.'],
   })),
+  'task.ledger': BODIES.map(() => LEDGER_ZONE),
+  'team.list': BODIES.map(() => null),
   'preset.plan': [
     plan('recordTypeKey'),
     plan('recordTypeKey'),
@@ -132,6 +177,13 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'person.list': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
+  'session.person': BODIES.map(() => null),
+  'preference.read': BODIES.map(() => null),
+  'task.search': BODIES.map(() => QUERY),
+  'access.read': BODIES.map(() => null),
+  'operations.read': BODIES.map(() => null),
+  'privacy.draft_breach_notices': BODIES.map(() => INCIDENT_ID),
+  'client.list': BODIES.map(() => null),
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
@@ -146,7 +198,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same ten reads', () => {
+  it('names the same twenty-one reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
@@ -154,7 +206,7 @@ describe('the per-read facts at 06ab232', () => {
     expect({ ...READ_IDENTIFIERS }).toStrictEqual(PINNED_IDENTIFIERS);
   });
 
-  it('tells an outsider NOT_FOUND on the same two', () => {
+  it('tells an outsider NOT_FOUND on the same six', () => {
     expect([...OUTSIDER_NOT_FOUND].toSorted()).toStrictEqual(PINNED_OUTSIDER_NOT_FOUND);
   });
 
