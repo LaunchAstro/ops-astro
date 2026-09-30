@@ -18,3 +18,15 @@ export function follow(event: MouseEvent<HTMLAnchorElement>, open: (how: OpenHow
   event.preventDefault();
   open({ beside: event.shiftKey });
 }
+
+/** The in-app address a click on a link asked for, or null to leave it to the browser. */
+export function inAppAddress(event: MouseEvent<HTMLElement>): string | null {
+  if (event.defaultPrevented || event.button !== 0) return null;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return null;
+  const anchor = (event.target as Element | null)?.closest?.('a[href]') ?? null;
+  if (anchor === null) return null;
+  const target = anchor.getAttribute('target');
+  if ((target !== null && target !== '_self') || anchor.hasAttribute('download')) return null;
+  const href = anchor.getAttribute('href') ?? '';
+  return href.startsWith('/') && !href.startsWith('//') ? href : null;
+}

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The composition root. The only place that reads the environment, opens a
-// connection, chooses an authentication adapter and binds a port.
+// The composition root. With the function entry (`function.ts`), which builds
+// the same `composeApi` on Vercel, the only place that reads the environment,
+// opens a connection, chooses an authentication adapter and binds a port.
 //
 // Everything the boundary needs is handed to it here, which is what makes the
 // claims in `app.ts` checkable: there is exactly one construction of the
@@ -9,7 +10,7 @@
 // one file rather than spread across the modules that use them.
 //
 // The file is two halves. `composeApi` is the wiring and nothing else: given
-// the connections and the secret it builds the served app, fault mapping
+// the connections and the key set's address it builds the served app, fault mapping
 // included, and touches no environment, socket or process. `main` reads the
 // environment, runs restart recovery, calls `composeApi` and listens, and runs
 // only when this file is the process's entry, so a test imports the same
@@ -23,13 +24,16 @@
 // between unavailable and denied to be real at the source, not painted on in
 // the browser.
 //
-// **The business key is resolved on the administrative connection, and only
-// the key.** The tenancy root is behind forced row security keyed on the
-// setting the serving transaction has not set yet, so the mapping from a path
-// segment to a business identifier cannot be read by the application role: it
-// is the one lookup that has to precede tenancy. It reads one column of one
-// row by key and answers nothing else, and every statement after it runs
-// through `withBusiness` like everything else in the slice.
+// **The business key is resolved as the lookup identity, and only the key.**
+// The tenancy root is behind forced row security keyed on the setting the
+// serving transaction has not set yet, so the mapping from a path segment to a
+// business identifier cannot be read by the application role: it is the one
+// lookup that has to precede tenancy. It runs as `ops_astro_lookup` (0046),
+// which reads a business's id and key and nothing else, on the owner's
+// connection locally and on the function's lookup login on Vercel (G2). It
+// reads one column of one row by key and answers nothing else, and every
+// statement after it runs through `withBusiness` like everything else in the
+// slice.
 
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
@@ -47,14 +51,15 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
 import { createApi, type LiveOptions, type ReadAdmitter, type ReadExecutor } from './app.ts';
+import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
   executeAgentCommand,
-  describeFault,
   executeCommand,
   executeRead as readExecutor,
   admitReads,
   settleAccessEndings,
   type LoginProvider,
+  type ProviderAnswer,
 } from '../../packages/core-commands/src/index.ts';
 import {
   CRASH_POINT_VARIABLE,
@@ -66,7 +71,11 @@ import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createGoTrueFactors } from './auth/factors.ts';
 import { createLangfuseHealth } from './health/tracing.ts';
 import { createGoTrueLogins } from './auth/logins.ts';
-import { createSupabaseVerifier } from './auth/supabase.ts';
+import {
+  createSupabaseVerifier,
+  keySetUrlFor,
+  type SupabaseVerifierOptions,
+} from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
 import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
@@ -81,6 +90,9 @@ import {
 } from './recovery-entry.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+/** A well-formed business id that names no business: health's statement reads nothing. */
+const NIL_BUSINESS = '00000000-0000-0000-0000-000000000000';
 
 /**
  * The real environment wins, so a shell can override a local file.
@@ -102,7 +114,7 @@ export function localEnvironment(): Readonly<Record<string, string | undefined>>
     // connection string and it has no business in either of theirs.
     ...readEnvFile(join(ROOT, '.local', 'gate.env')),
     // The delegation credential keyring, in a gitignored file of its own for
-    // the same reason, and never the gate key or the JWT secret.
+    // the same reason, and never the gate key.
     ...(keyFileNamed ? {} : readEnvFile(join(ROOT, '.local', 'delegation.env'))),
     // The deployment's businesses for restart recovery, `RECOVERY_BUSINESS_KEYS`.
     // Deployment configuration rather than a secret, in a file of its own so the
@@ -137,10 +149,14 @@ export function createBusinessResolver(
     const cached = known.get(businessKey);
     if (cached !== undefined) return cached;
 
-    const rows = await admin.execute<{ id: string }>(
-      'select id from public.businesses where key = $1 limit 2',
-      [businessKey],
-    );
+    // As the lookup identity (0046), which reads id and key and nothing else.
+    const rows = await admin.transaction(async (execute) => {
+      await execute('set local role ops_astro_lookup');
+      return await execute<{ id: string }>(
+        'select id from public.businesses where key = $1 limit 2',
+        [businessKey],
+      );
+    });
     if (rows.length !== 1) return undefined;
     const id = rows[0]?.id;
     if (id === undefined || !isBusinessId(id)) return undefined;
@@ -153,14 +169,22 @@ export function createBusinessResolver(
 export interface ApiConfig {
   /** The application role's connection, the one every request runs on. */
   readonly database: Database;
-  /** The owner's connection, used for the business key and `/api/health` only. */
+  /**
+   * The connection the business key (as the lookup identity) and `/api/health`
+   * run on: the owner's locally, the lookup login on Vercel. The identity
+   * route, mounted only by `main`, reads the migration ledger on it too.
+   */
   readonly admin: AdminConnection;
-  /** The HS256 secret the Supabase adapter verifies bearers with. */
-  readonly secret: string;
-  /** The issuer every bearer must name: the GoTrue URL, `GOTRUE_URL`. */
-  readonly issuer: string;
+  /** The issuer and published key set bearers are checked against: public keys only. */
+  readonly signIn: Omit<SupabaseVerifierOptions, 'onRefusal'>;
   /** The signing key and delegation keyring `main` read, never put in `process.env`. */
   readonly keys: RuntimeKeys;
+  /**
+   * The secret the provider's administrative bearers are minted with,
+   * `SUPABASE_JWT_SECRET`, for C58's calls on an ended login only; sign-in
+   * never reads it. Absent, those calls are not sent and stay owed.
+   */
+  readonly providerSecret?: string;
   /** Langfuse's URL, `LANGFUSE_HOST` (C34); absent is tracing switched off. */
   readonly tracingUrl?: string;
   /**
@@ -177,6 +201,8 @@ export interface ApiConfig {
    * mounted. Its check is `admitReads` unless a test hands in its own to count.
    */
   readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
+  /** The error sink and the security detections (ticket S0-2); absent without a sink. */
+  readonly alerts?: Alerts;
 }
 
 export interface ComposedApi {
@@ -199,20 +225,31 @@ export interface ComposedApi {
 export function composeApi(config: ApiConfig): ComposedApi {
   const { database, admin } = config;
   const executeRead = config.executeRead ?? readExecutor;
-  const logins = goTrueLogins(config.secret, config.issuer);
+  const logins = goTrueLogins(config.providerSecret, config.signIn.issuer);
   const resolveBusiness = createBusinessResolver(admin);
   const server = new Hono();
+  // S0-6 no edge caching: the API is served behind Vercel's edge network, so
+  // every answer under /api, a refusal, a fault and a missing route included,
+  // tells every cache on the way not to keep it.
+  server.use('/api/*', async (context, next) => {
+    await next();
+    context.res.headers.set('cache-control', 'private, no-store');
+  });
   // This app's keys, for this request only: no other composition can replace them.
   server.use(async (_context, next) => await withRuntimeKeys(config.keys, next));
 
-  // Measured, not assumed. `reachable` is the result of a statement that ran.
+  // Measured, not assumed. `reachable` is the result of a statement that ran
+  // on the runtime login (G2): the lookup answering proves nothing about it.
+  // The nil id names no business, so the statement reads no row.
   server.get('/api/health', async (context) => {
     let reachable = false;
     let detail = '';
     let notificationQueue: number | null = null;
     try {
-      const [row] = await admin.execute<{ usage: number }>(
-        'select pg_notification_queue_usage() as usage',
+      const [row] = await database.withBusiness(
+        NIL_BUSINESS,
+        async (tx) =>
+          await tx.query<{ usage: number }>('select pg_notification_queue_usage() as usage'),
       );
       notificationQueue = row?.usage ?? null;
       reachable = true;
@@ -233,6 +270,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
     );
   });
 
+  // G3: the page reads its sign-in address here, so one web build serves every
+  // environment. The issuer is public, and nothing is read to answer it.
+  server.get('/api/sign-in', (context) => context.json({ issuer: config.signIn.issuer }));
+
   const { identity } = config;
   if (identity !== undefined) {
     // Loopback only: the answer names the checkout path and the process id.
@@ -252,7 +293,13 @@ export function composeApi(config: ApiConfig): ComposedApi {
     '/',
     createApi({
       database,
-      verify: createSupabaseVerifier({ secret: config.secret, issuer: config.issuer }),
+      verify: createSupabaseVerifier({
+        ...config.signIn,
+        // The reason alone: an answer the provider sent is never repeated.
+        onRefusal: ({ reason }) => {
+          console.error(`api: the sign-in key set answer was refused (${reason})`);
+        },
+      }),
       resolveBusiness,
       executeRead,
       executeCommand,
@@ -261,13 +308,14 @@ export function composeApi(config: ApiConfig): ComposedApi {
         ? {}
         : { live: { ...config.live, admit: config.live.admit ?? admitReads } }),
       // The provider GoTrue is: the one destination its factor calls reach.
-      factors: createGoTrueFactors({ baseUrl: config.issuer }),
+      factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
       logins,
       // C34: tracing where switched on; the watcher and error sink are C29's.
       health:
         config.tracingUrl === undefined
           ? {}
           : { tracing: createLangfuseHealth({ baseUrl: config.tracingUrl }) },
+      ...(config.alerts === undefined ? {} : { observe: config.alerts.observe }),
     }),
   );
 
@@ -278,9 +326,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
   server.onError((cause, context) => {
     const reference = randomUUID();
     console.error(
-      `api: unhandled fault ${describeFault(cause)} (reference ${reference}): the request ` +
+      `api: unhandled fault ${faultCode(cause)} (reference ${reference}): the request ` +
         'could not be completed. Its contents and the fault text are left out of this log.',
     );
+    void config.alerts?.fault(cause);
     if ('getResponse' in cause) return cause.getResponse();
     return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
   });
@@ -291,13 +340,20 @@ export function composeApi(config: ApiConfig): ComposedApi {
 /** How often the server retries the provider steps an access ending owes (C58). */
 export const ACCESS_ENDING_RETRY_SECONDS = 60;
 
+/** A provider call not sent: the step stays owed. */
+const notSent = async (): Promise<ProviderAnswer<void>> =>
+  await Promise.resolve({ ok: false, fault: 'unreachable' });
+
 /**
  * GoTrue's calls for an ended login, with the two bearers they need minted
- * here from the secret every session is already verified with: an
+ * here from `SUPABASE_JWT_SECRET`: an
  * administrative one for the deactivation, and one naming the login's own
  * subject for its global sign-out. Each lives a minute and is never stored.
  */
-function goTrueLogins(secret: string, issuer: string): LoginProvider {
+function goTrueLogins(secret: string | undefined, issuer: string): LoginProvider {
+  // Sign-in no longer holds the secret (S0-6b): without one named, nothing is
+  // sent, and each ending's provider steps stay owed for the retry.
+  if (secret === undefined || secret === '') return { endSessions: notSent, deactivate: notSent };
   const mint = async (claims: Readonly<Record<string, unknown>>): Promise<string> => {
     const now = Math.floor(Date.now() / 1000);
     return await sign(
@@ -362,14 +418,22 @@ async function main(): Promise<void> {
   const port = Number(environment['API_PORT'] ?? 8790);
   const databaseUrl = environment['DATABASE_URL'];
   const adminUrl = environment['DATABASE_ADMIN_URL'];
-  const secret = environment['SUPABASE_JWT_SECRET'];
   const issuer = environment['GOTRUE_URL'];
   const tracingUrl = environment['LANGFUSE_HOST'];
+  const providerSecret = environment['SUPABASE_JWT_SECRET'];
 
+  // A test's stand-in set, for a loopback issuer only: a hosted issuer's
+  // tokens are checked against that provider's own published set, always.
+  const keySetUrl = keySetUrlFor(environment['SUPABASE_KEY_SET_URL'] ?? '', issuer ?? '');
+  if (keySetUrl === undefined) {
+    console.error(
+      'api: SUPABASE_KEY_SET_URL may name a loopback key set only, for a loopback issuer.',
+    );
+    process.exit(1);
+  }
   for (const [name, value] of [
     ['DATABASE_URL', databaseUrl],
     ['DATABASE_ADMIN_URL', adminUrl],
-    ['SUPABASE_JWT_SECRET', secret],
     ['GOTRUE_URL', issuer],
   ] as const) {
     if (value === undefined || value === '') {
@@ -393,6 +457,7 @@ async function main(): Promise<void> {
   // LISTEN needs a direct or session-mode connection: hosted, `DATABASE_LISTEN_URL`.
   const listenUrl = environment['DATABASE_LISTEN_URL'] ?? (databaseUrl as string);
   const topics = await startLiveTopics(connectListener(listenUrl));
+  const alerts = alertsFrom(environment);
 
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
@@ -401,11 +466,12 @@ async function main(): Promise<void> {
     identity: readIdentity(ROOT),
     database,
     admin,
-    secret: secret as string,
-    issuer: issuer as string,
+    signIn: { issuer: issuer as string, keySetUrl },
     keys,
     live: { topics, presence: createLivePresence() },
+    ...(providerSecret === undefined || providerSecret === '' ? {} : { providerSecret }),
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
+    ...(alerts === undefined ? {} : { alerts }),
   });
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
@@ -448,7 +514,7 @@ async function main(): Promise<void> {
   // is done. A failed pass is logged by its kind and tried again next time.
   const retry = setInterval(() => {
     retryAccessEndings(admin, database, logins).catch((cause: unknown) => {
-      console.error(`api: access ending retry failed (${describeFault(cause)}); next pass retries`);
+      console.error(`api: access ending retry failed (${faultCode(cause)}); next pass retries`);
     });
   }, ACCESS_ENDING_RETRY_SECONDS * 1000);
   retry.unref();
@@ -463,6 +529,17 @@ async function main(): Promise<void> {
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
+}
+
+/** The error sink (ticket S0-2): none without a DSN; a bad setting stops the server. */
+function alertsFrom(environment: Readonly<Record<string, string | undefined>>): Alerts | undefined {
+  try {
+    const sink = sinkFrom(environment);
+    return sink && createAlerts({ ...sink, root: ROOT });
+  } catch (error) {
+    console.error(`api: ${(error as Error).message}`);
+    process.exit(1);
+  }
 }
 
 const RETRY =

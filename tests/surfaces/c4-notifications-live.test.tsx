@@ -70,7 +70,7 @@ function server() {
     if (at.endsWith('/inbox/count')) return Promise.resolve(json({ ok: true, owed: state.owed }));
     return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   return {
     client,
     inbox,

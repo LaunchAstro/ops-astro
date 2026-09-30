@@ -83,6 +83,8 @@ const PROPOSAL = writing(
     'planned_steps',
     'proposal_lineages',
     'proposal_versions',
+    // A proposal raises a decision item for each decide holder (INB-1).
+    'inbox_items',
   ),
 );
 const SETTINGS = writing(business('business_settings'));
@@ -129,8 +131,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...business('delegations'),
   ]),
   'task.start': TASK,
-  // An assignment raises the assignee's inbox item (INB-1b).
-  'task.assign': writing(client('inbox_items', 'records', 'record_unique_values')),
+  // An assignment raises the assignee's item (INB-1).
+  'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
   'task.triage': TASK,
   'task.set_stage': TASK,
   'task.set_party': TASK,
@@ -168,6 +170,13 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'operations.read': READ,
   // Drafts the notices and returns them; nothing is sent or stored.
   'privacy.draft_breach_notices': READ,
+  'inbox.read': READ,
+  'inbox.count': READ,
+  'inbox.unattended': READ,
+  // The caller's own seen stamp, on an item that points at a task.
+  'inbox.seen': writing(client('inbox_attention')),
+  // Validated only: in-app is always on, and nothing is stored (INB-1e).
+  'notifications.set_channel': READ,
   'settings.set_four_eyes_threshold': SETTINGS,
   'settings.set_client_sign_off': SETTINGS,
   'settings.set_money_step_up': SETTINGS,
@@ -177,6 +186,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'legal.publish_version': LEGAL,
   'privacy.set_overseas_service': writing(business('overseas_services')),
   'privacy.set_data_class': writing(business('data_classes')),
+  // The installation's own rows: no client's, so no client-scoped write.
+  'operations.record_gate_item': writing(business('ops.gate_items')),
+  'operations.change_installation_mode': writing(business('ops.installation')),
   'credential.issue': CREDENTIAL,
   'credential.revoke': CREDENTIAL,
   'client.create': writing(client('clients')),
@@ -201,12 +213,4 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'budget.top_up': writing(client('task_envelopes')),
   'budget.record_outcome': writing(client('alerts', 'attempts', 'reservations', 'task_envelopes')),
   'budget.write_off': writing(client('attempts', 'reservations', 'task_envelopes')),
-  // The caller's own inbox (INB-1d, INB-1e): three reads; `seen` stamps the
-  // caller's attention row on an item about a task; the channel setting
-  // stores nothing yet.
-  'inbox.read': READ,
-  'inbox.count': READ,
-  'inbox.unattended': READ,
-  'inbox.seen': writing(client('inbox_attention')),
-  'notifications.set_channel': READ,
 };

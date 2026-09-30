@@ -52,7 +52,7 @@ function page(extra: Record<string, unknown>) {
   }) as unknown as typeof globalThis.fetch;
   return (
     <TaskDetailScreen
-      client={new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch })}
+      client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
       grantKey="alpha:member"
       taskKey={TASK_ID}
     />

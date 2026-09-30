@@ -46,8 +46,10 @@ export {
 } from './authority/delegations.ts';
 export {
   checkAuthority,
+  EFFECTIVE as EFFECTIVE_GRANTS,
   effectiveGrants,
   grantFingerprint,
+  OPERATIONS_MANAGE,
   revokeGrant,
   subjectsOf,
   type Action,
@@ -86,6 +88,7 @@ export { recordBodyRefusal } from './identity/authentication-attempts.ts';
 export {
   NO_MEMBERSHIP_FIXES,
   standsOnShares,
+  resolveLogin,
   withSession,
   type SecondFactorRule,
   type Session,
@@ -268,3 +271,4 @@ export {
   type TenantQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
+export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';

@@ -11,6 +11,9 @@
 // It is also the composition root: the real `fetch`, the real `sessionStorage`
 // and the addresses of the API and the identity provider are supplied here and
 // nowhere else, so every module below can be driven by a test without one.
+// Neither address is baked into the build (G3), so one build serves staging and
+// production: the API is this page's own origin, and the identity provider's
+// address is read from it before the first render.
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -19,9 +22,13 @@ import './styles/6-slice.css';
 import { Root } from './root.tsx';
 import { SessionStore, tabStorage } from './session/token.ts';
 
-const GOTRUE_URL =
-  (import.meta.env['VITE_GOTRUE_URL'] as string | undefined) ?? 'http://127.0.0.1:54391';
-const API_ORIGIN = (import.meta.env['VITE_API_ORIGIN'] as string | undefined) ?? '';
+/** The identity provider's address, as the API that checks sign-ins names it. */
+async function signInAddress(): Promise<string> {
+  const answer = await window.fetch('/api/sign-in');
+  const body = (await answer.json()) as { issuer?: unknown };
+  if (!answer.ok || typeof body.issuer !== 'string') throw new Error('no sign-in address');
+  return body.issuer;
+}
 
 // Read once, through the one guarded accessor: blocked site data makes the
 // `sessionStorage` global throw on access, not only on use.
@@ -30,16 +37,22 @@ const sessions = new SessionStore(storage);
 
 const host = document.querySelector('#app');
 if (host !== null) {
-  createRoot(host).render(
-    <StrictMode>
-      <Root
-        window={window}
-        sessions={sessions}
-        gotrueUrl={GOTRUE_URL}
-        apiOrigin={API_ORIGIN}
-        fetch={window.fetch.bind(window)}
-        storage={storage}
-      />
-    </StrictMode>,
-  );
+  const root = createRoot(host);
+  try {
+    const gotrueUrl = await signInAddress();
+    root.render(
+      <StrictMode>
+        <Root
+          window={window}
+          sessions={sessions}
+          gotrueUrl={gotrueUrl}
+          apiOrigin=""
+          fetch={window.fetch.bind(window)}
+          storage={storage}
+        />
+      </StrictMode>,
+    );
+  } catch {
+    root.render(<p>Ops Astro cannot reach its server. Reload the page to try again.</p>);
+  }
 }

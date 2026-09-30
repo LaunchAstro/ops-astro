@@ -25,7 +25,9 @@ export async function heldAddressOffer(options: {
     fetch: options.fetch,
     origin: options.apiOrigin,
     businessKey: held.businessKey,
-    token: next.token,
+    // The new sign-in's cookie is the credential (S0-6c); the probe names it.
+    signedIn: true,
+    ...(next.sessionId === undefined ? {} : { sessionId: next.sessionId }),
   });
   const answer = await probe.read('session.capabilities', {});
   return 'ok' in answer

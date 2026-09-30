@@ -44,7 +44,7 @@ describe('the create form, refused on authority', () => {
     const client = new OperationsClient({
       origin: '',
       businessKey: 'alpha',
-      token: 'tok',
+      signedIn: true,
       fetch: api.fetch,
     });
     const view = await mount(<Projects client={client} grantKey="alpha:mia" navigate={() => {}} />);

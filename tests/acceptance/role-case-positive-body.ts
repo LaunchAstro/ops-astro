@@ -22,10 +22,12 @@ import {
 import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
 import { accessBody, madeClient } from './role-case-access-bodies.ts';
+import { createGateBody } from './role-case-gate-bodies.ts';
 
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration) => Promise<Prepared> {
+  const gateBody = createGateBody(context);
   // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
   return async function positiveBody(declaration: CommandDeclaration): Promise<Prepared> {
     const target = async (): Promise<Record<string, unknown>> => {
@@ -124,22 +126,14 @@ export function createPositiveBody(
         return { body: { board: null } };
       case 'task.ledger':
         return { body: { timeZone: 'UTC' } };
+      // An empty body, and no `expectedRevision`: `business_settings` has no revision column,
+      // and `session.capabilities` reports the caller's own grants. The admin holds what each
+      // asks: `settings:read`, `access:manage` and `operations:read` (C55, INB-1e), and a live
+      // grant of any kind for `session.capabilities`, `client.list` (C32) and the inbox (INB-1d).
+      // The person menu's two (C23) and the caller's own preferences (MP-2-11a) are its own.
       case 'task.queue':
       case 'person.list':
       case 'team.list':
-      // Both take an empty body and neither carries an `expectedRevision`:
-      // `settings.read` because `business_settings` has no revision column to
-      // be stale against, `session.capabilities` because it reports the
-      // caller's own grants and there is nothing of the caller's to be stale.
-      // `settings.read` needs `settings:read`, which the seed grants the
-      // admin; `session.capabilities` needs a live grant of any kind, which
-      // the admin holds, so the admin reaches both here.
-      // The person menu's two (C23) and the caller's own preferences read
-      // (MP-2-11a, any live grant) take an empty body too.
-      // `access.read` needs `access:manage`, which the fixture admin holds on
-      // every collection; `operations.read` needs `operations:read`, which the
-      // fixture admin holds as the owner does (C55); and `client.list` (C32),
-      // any live grant, which the admin holds.
       case 'settings.read':
       case 'session.capabilities':
       case 'session.person':
@@ -199,6 +193,11 @@ export function createPositiveBody(
       case 'credential.issue':
       case 'credential.revoke':
         return await credentialBody(declaration.name, context);
+      // S0-5: the admin holds `operations:manage` in alpha, which operates the
+      // harness's installation.
+      case 'operations.record_gate_item':
+      case 'operations.change_installation_mode':
+        return await gateBody(declaration.name);
       case 'budget.top_up':
         // The admin approved the plan and holds billing, so a top-up under
         // the band is hers alone (T2e).

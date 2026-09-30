@@ -108,7 +108,7 @@ export const opened: string[] = [];
 
 export const projects = (fetch: typeof globalThis.fetch, grantKey = 'alpha:owner') => (
   <Projects
-    client={new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch })}
+    client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
     grantKey={grantKey}
     navigate={(path) => {
       opened.push(path);

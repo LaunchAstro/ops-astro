@@ -43,16 +43,23 @@ const BOOKKEEPING: ReadonlySet<string> = new Set([
 
 let harness: Harness;
 
-/** Each public table's rows as one digest, read past row security on the owner's connection. */
+/**
+ * Each table's rows as one digest, read past row security on the owner's
+ * connection: a public table under its own name, an installation table in
+ * `ops` as `ops.<name>` (the migration ledger aside).
+ */
 async function fingerprint(): Promise<ReadonlyMap<string, string>> {
   const tables = await harness.world.db.admin.execute<{ readonly name: string }>(
-    `select c.relname as name from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'public' and c.relkind in ('r', 'p') order by 1`,
+    `select case n.nspname when 'public' then c.relname else 'ops.' || c.relname end as name
+       from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname in ('public', 'ops') and c.relkind in ('r', 'p')
+        and (n.nspname, c.relname) <> ('ops', 'schema_migrations')
+      order by 1`,
   );
   const union = tables
     .map(
       ({ name }) =>
-        `select '${name}' as name, md5(coalesce(string_agg(t::text, '|' order by t::text), '')) as digest from public.${name} t`,
+        `select '${name}' as name, md5(coalesce(string_agg(t::text, '|' order by t::text), '')) as digest from ${name.includes('.') ? name : `public.${name}`} t`,
     )
     .join(' union all ');
   const rows = await harness.world.db.admin.execute<{ name: string; digest: string }>(union);

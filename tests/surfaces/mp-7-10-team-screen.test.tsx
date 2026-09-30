@@ -70,7 +70,7 @@ const team = async () => {
   const client = new OperationsClient({
     origin: '',
     businessKey: 'b',
-    token: 't',
+    signedIn: true,
     fetch: api.fetch,
   });
   const page = await mount(<TeamScreen client={client} grantKey="b:me" />);

@@ -3,7 +3,11 @@
 import { describe, expect, it } from 'vitest';
 import { prepareCommand } from '../../packages/core-commands/src/commands/prepare.ts';
 import { declarationOf } from '../../packages/core-wire/src/surface.ts';
-import type { TenantQuery, Session } from '../../packages/core-records/src/index.ts';
+import {
+  NO_ASSURANCE,
+  type TenantQuery,
+  type Session,
+} from '../../packages/core-records/src/index.ts';
 
 describe('INB-1 recipient attention', () => {
   it('a shared-task recipient without membership can open their own item', async () => {
@@ -14,7 +18,7 @@ describe('INB-1 recipient attention', () => {
       personId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
       actorId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
       roleKey: null,
-      assurance: { level: 'aal1', signedInAt: 1_900_000_000, factorAt: null },
+      assurance: NO_ASSURANCE,
     };
     const tx: TenantQuery = {
       businessId,

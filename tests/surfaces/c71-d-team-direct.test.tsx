@@ -246,6 +246,7 @@ describe('C71-D the thread draws each message as the words written', () => {
 function shell(threads: readonly DirectThread[]): Parameters<typeof Shell>[0] {
   return {
     face: 'agency',
+    build: null,
     rail: [],
     here: '/',
     title: 'Home',

@@ -52,7 +52,9 @@
 
 import {
   ACCOUNT_AVAILABILITY_PATH,
+  CSRF_HEADER,
   PREFIX,
+  SESSION_HEADER,
   pathOf,
 } from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
@@ -113,8 +115,10 @@ export interface ClientOptions {
   readonly origin: string;
   /** `alpha` or `bravo`. It is a path segment, not a claim in a body. */
   readonly businessKey: string;
-  /** The GoTrue access token. Absent means not signed in, which the API refuses. */
-  readonly token: string | null;
+  /** Signed in: the credential is the session cookie, which no script reads. */
+  readonly signedIn: boolean;
+  /** The id of this tab's sign-in: the API reads that session's cookie only. */
+  readonly sessionId?: string;
   /** Injected so a test can drive the client without a network or a global. */
   readonly fetch: typeof globalThis.fetch;
   /** Injected for the same reason: a test needs a predictable operation id. */
@@ -122,8 +126,8 @@ export interface ClientOptions {
   /**
    * The session this client was given is one the API will not vouch for.
    *
-   * Called only when a token was actually sent: a 401 with no bearer is a call
-   * nobody was signed in for, and ending a session that was never held would
+   * Called only when signed in: a 401 with no session is a call nobody was
+   * signed in for, and ending a session that was never held would
    * be reporting an event that did not happen.
    */
   readonly onSessionEnded?: (refusal: WireRefusal) => void;
@@ -203,12 +207,13 @@ export class OperationsClient {
     return response === null ? null : await response.json().catch(() => null);
   }
 
-  /** The live channel at `path`, with the bearer only: the response if it answered 2xx, else null. */
+  /** The live channel at `path`, credentials as `#post` sends them: 2xx, else null. */
   async #live(path: string, init: RequestInit): Promise<Response | null> {
-    const { origin, businessKey, token } = this.#options;
+    const { origin, businessKey, sessionId } = this.#options;
     const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live${path}`;
     const headers = new Headers(init.headers);
-    if (token !== null) headers.set('authorization', `Bearer ${token}`);
+    headers.set(CSRF_HEADER, '1');
+    if (sessionId !== undefined) headers.set(SESSION_HEADER, sessionId);
     try {
       const response = await this.#options.fetch(url, { ...init, headers });
       return response.ok ? response : null;
@@ -219,11 +224,12 @@ export class OperationsClient {
 
   async #post<T>(path: string, body: Readonly<Record<string, unknown>>): Promise<CallResult<T>> {
     const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${path}`;
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
-    // The only credential this client sends. No actor header, no business
-    // header, no forwarded host: there is nothing here for a tampered request
-    // to reach (checklist N7).
-    if (this.#options.token !== null) headers['authorization'] = `Bearer ${this.#options.token}`;
+    // The browser's cookie (S0-6c) is the only credential; no actor or business header (N7).
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      [CSRF_HEADER]: '1',
+    };
+    if (this.#options.sessionId !== undefined) headers[SESSION_HEADER] = this.#options.sessionId;
 
     let response: Response;
     try {
@@ -241,7 +247,7 @@ export class OperationsClient {
     const parsed: unknown = await response.json().catch(() => {});
 
     if (isWireRefusal(parsed)) {
-      if (this.#options.token !== null && this.#endsSession(response.status, parsed.code)) {
+      if (this.#options.signedIn && this.#endsSession(response.status, parsed.code)) {
         this.#options.onSessionEnded?.(parsed);
       }
       return parsed;

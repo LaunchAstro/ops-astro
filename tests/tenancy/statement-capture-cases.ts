@@ -38,9 +38,9 @@ import {
 import { createApi } from '../../apps/api/app.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import {
   ACCEPTANCE_ISSUER,
-  ACCEPTANCE_SECRET,
   agentPath,
   bearer,
   call,
@@ -75,15 +75,16 @@ export interface Observed {
  * `rebuildApi` is the same composition, but it opens its connection without a
  * log, so this is that function's body with the one option it lacks.
  */
-export function observe(world: World): Observed {
+/** `execute` is the shipped envelope unless a mutation proof hands in its copy's. */
+export function observe(world: World, execute: typeof executeCommand = executeCommand): Observed {
   const log = createStatementLog();
   const database = connect(world.db.appUrl, { source: 'runtime', log, max: 1 });
   const byKey: Readonly<Record<string, string>> = { alpha: world.alpha, bravo: world.bravo };
   const api = createApi({
     database,
-    verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
-    resolveBusiness: async (key: string) => byKey[key],
-    executeCommand,
+    verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
+    resolveBusiness: (key: string) => Promise.resolve(byKey[key]),
+    executeCommand: execute,
     executeRead,
     executeAgentCommand,
   });

@@ -54,7 +54,7 @@ function served(owed: number): { client: OperationsClient; calls: string[] } {
   const client = new OperationsClient({
     origin: 'http://api.test',
     businessKey: 'alpha',
-    token: 'token',
+    signedIn: true,
     fetch: (url) => {
       const path = new URL(String(url)).pathname;
       calls.push(path);

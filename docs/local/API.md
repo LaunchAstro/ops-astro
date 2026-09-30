@@ -18,14 +18,17 @@ bash scripts/local/db-up.sh   # SLICE-DATA: Postgres on 127.0.0.1:54390
 bash scripts/local/auth-up.sh # GoTrue on 127.0.0.1:54391, writes .local/auth.env
 node scripts/db-migrate.mjs   # SLICE-DATA: migrations
 node scripts/local/auth-seed.mjs   # the five synthetic logins
-node scripts/local-seed.mjs        # SLICE-DATA: businesses, persons, logins, grants
+node scripts/local-seed.mjs        # SLICE-DATA grants (new database: LOCAL_SEED_MADE_UP=confirm)
 bash scripts/local/api-up.sh  # the API on 127.0.0.1:8790
 node scripts/local/verify-slice.mjs
 ```
 
 `auth-up.sh` starts Postgres itself if it is not already up, with the same
 container name, pinned digest, port and volume `db-up.sh` uses, so the two
-converge whichever runs first. Neither script touches the Hub's `supabase_*`
+converge whichever runs first. Like `db-up.sh`, it replaces a container on
+another image or volume (one made before the local database moved to
+Postgres 17) and keeps every volume. Whenever it starts Postgres afresh, it
+starts GoTrue afresh too, so GoTrue migrates schema `auth` on the new cluster. Neither script touches the Hub's `supabase_*`
 containers.
 
 `.local/` holds `db.env`, `auth.env`, `synthetic-users.json`,
@@ -216,9 +219,21 @@ the task the check was made on (`namedTaskId` in `commands/agent-authority.ts`).
 
 ## Who is calling
 
-`Authorization: Bearer <GoTrue access token>`. The adapter verifies the HS256
-signature and `exp` with `SUPABASE_JWT_SECRET` and takes `sub` as
-`VerifiedSubject { provider: 'supabase', subject }`.
+`Authorization: Bearer <GoTrue access token>`. The adapter verifies the ES256
+signature and `exp` against GoTrue's published key set
+(`<GOTRUE_URL>/.well-known/jwks.json`, or `SUPABASE_KEY_SET_URL`) and takes
+`sub` as `VerifiedSubject { provider: 'supabase', subject }`. The API holds no
+secret that can make a token.
+
+A browser holds no token (S0-6c). It posts the token once to
+`POST /api/session`, which verifies it, answers `{ ok: true, session }` and
+sets it as an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/b/`,
+one per sign-in, named from `session` (a digest of the token, not a secret).
+A cookie-carried request needs `x-ops-astro-csrf: 1` and no cross-site
+`Sec-Fetch-Site` (else `AUTH_CROSS_SITE` 403), and reads only the cookie of
+the sign-in its `x-ops-astro-session` names; session cookies with none named
+are `AUTH_SESSION_MISMATCH` 403. `/api/session/end` clears only the named
+sign-in's cookie, so a late sign-out ends no other. A bearer is read first.
 
 Nothing else reaches identity. Not a body field, not a host or forwarded
 header, not an `apikey`, not a query parameter. A request carrying `actorId` or
@@ -249,7 +264,7 @@ a UUID (`VerifiedSubject.sessionId`), and kept by every refresh. A session the
 person has ended (signed out of, ended from another session, or ended by a
 factor change) is refused at login resolution from that commit,
 `AUTH_SESSION_EXPIRED` 401, before the second-factor check, whatever the
-token's own `exp` says (`ended_sessions`, 0055). The provider's sign-out, which
+token's own `exp` says (`ended_sessions`, 0057). The provider's sign-out, which
 revokes the refresh tokens, comes after and cannot undo it.
 
 The business is named by the path and verified by login resolution. A business
@@ -306,10 +321,20 @@ passes it with no cast.
 
 `apps/api/server.ts` exports `composeApi(config)`. It builds the served app
 with `/api/health`, the boundary and the fault mapping (`server.onError`), and
-returns it with the app's business resolver. It reads no environment, opens no
+returns it with the app's business resolver. Every answer under `/api`, a
+refusal, a fault and a missing route included, is sent `Cache-Control: private,
+no-store`, since the API is served behind Vercel's edge network (`S0-6 no edge
+caching`, `tests/api/api-answers-never-cached.test.ts`). It reads no environment, opens no
 socket and starts no process. `main()` runs only as the process entry
 (`import.meta.main`). It reads the environment, calls `composeApi`, runs
 restart recovery through that same resolver, and only then binds the port.
+`apps/api/function.ts` is the Vercel function entry: it builds the same
+`composeApi` from the function's settings, with no identity route, live channel,
+recovery or sweeper, which belong to a long-running process, and no admin login: the business key is read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (migration 0046; unset, every key is refused), and the entry refuses to start with `DATABASE_ADMIN_URL` set. It answers only
+requests whose `Host` and URL both name `SERVED_HOST`, the environment's own host; any other,
+a deployment's generated address included, is refused 421 before anything is
+read, so a promotion leaves the previous deployment serving nothing
+(`tests/api/function-entry.test.ts`).
 Tests build the server with `composeApi` (`compose` in `tests/api/fixture.ts`),
 so they run the wiring the server listens with rather than a copy of it. A
 test that hands the boundary its own executor or recorder calls `createApi`
@@ -1889,21 +1914,52 @@ the agent route waits on S0-6's bearer scheme.
 
 ## The first-client gate (S0-5)
 
-An installation is made-up or real (`ops.installation`, migration 0056).
+An installation is made-up or real (`ops.installation`, migration 0058).
 Every command the catalogue classes `client-data` or `invitation` reads
 `public.first_client_readiness()` inside its own transaction, after
 authority and before the handler, on the person and agent routes. On a
 real-data installation with any gate item open it is refused `GATE_SHUT` 409,
 naming the open items, and writes nothing. A made-up-data installation, the
 test harness and staging included, runs them. An installation with no mode
-row refuses them too, naming `installation`.
+row refuses them too, naming `installation`, and one whose readiness function
+is gone fails them. Only a database from before 0058, with neither the
+function nor `ops.installation`, runs them, as 0058 provisions it made-up.
 
 The eight items are `ops.gate_items` rows, each with an `https` evidence link:
 `tested-backups`, `second-factor`, `legal-basics`, `privacy-act-statement`,
-`overseas-register`, `breach-runbook`, `security-pass`, `phone-alerts`. The
-application's role reads both tables and writes neither. The mode moves from made-up to real
-only while every item is done, and never back; the row cannot be deleted.
-Recording an item and changing the mode by command are not built yet.
+`overseas-register`, `breach-runbook`, `security-pass`, `phone-alerts`. Three
+closing lines are rows too (migration 0064), each with the owner's one line
+(`statement`, at most 500 characters, no line breaks) as well as its link, and
+open until recorded like any item: `privacy-opt-in` (the link is the OAIC's
+public Privacy Opt-In Register page, where the entry is listed; a lodged form
+or a receipt is refused; the line says the published policy matches it),
+`cloudflare-rolled` (the link shows the old credential refused; the line
+records the new one in custody) and `training-line` (item 5's dated line that
+model training is off on both model accounts, carrying a real `YYYY-MM-DD`
+date, with its evidence link). The eight items carry no line. The table holds
+the same rules. The mode moves from made-up to real only while every item and
+line is done, and never back; the row cannot be deleted.
+
+Two commands move the gate (migration 0062), each a person's under
+`operations:manage` in the business that operates the installation
+(`ops.installation.operator_business_id`, set at provisioning), never an
+agent's or a delegation's; any other caller, and every caller while no business
+operates it, is refused `SCOPE_NOT_GRANTED` 403 and writes nothing:
+
+- `operations.record_gate_item` takes `{ operationId, item, evidence,
+statement? }`: one of the eight items or three closing lines, one `https`
+  link of at most 2000 characters with no spaces, and the owner's line on a
+  closing line only, each refused `FIELD_VALUE_INVALID` 422 naming the field. An item is
+  recorded once; a second record is refused `GATE_ITEM_ALREADY_RECORDED` 409
+  and the first evidence stays.
+- `operations.change_installation_mode` takes `{ operationId, mode: 'real' }`.
+  While any item is open it is refused `INSTALLATION_NOT_READY` 409 naming
+  them; `mode: 'made-up'` is refused `INSTALLATION_MODE_ONE_WAY` 409; an
+  installation already real answers `ok` and changes nothing.
+
+The application's role reads both tables; it may insert a gate item and update
+the mode alone, and nothing else, and it writes them only through these two
+commands.
 
 ## A task's client is locked once it has content (S0-5)
 

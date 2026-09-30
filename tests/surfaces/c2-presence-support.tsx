@@ -169,7 +169,7 @@ export async function tab(api: ReturnType<typeof server>, token: string, taskKey
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token,
+    signedIn: true,
     fetch: api.fetchAs(token),
   });
   clients.set(token, client);

@@ -377,11 +377,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:677-707`, run at `:837-845`). It gets a login and an acting identity,
-  and no membership and no business grant (`:130-133`, `:282-284`). The seed
+  user (`:668-709`, run at `:843-851`). It gets a login and an acting identity,
+  and no membership and no business grant (`:136-139`, `:289-291`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:718-738`, `:872-882`).
+  (`:711-740`, `:880-890`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -604,11 +604,20 @@ Setting a class of the data-class register (`privacy.set_data_class`) is
 the overseas-services register, and a policy's draft, approval and publication
 read the classes under it, so the order above holds for both registers.
 
+`operations:manage` moves the first-client gate (S0-5): a gate item recorded
+(`operations.record_gate_item`) and the installation's one-way change to real
+data (`operations.change_installation_mode`). Both are a person's, never an
+agent's. The gate is the installation's, so the grant counts only in the
+business that operates it (`ops.installation.operator_business_id`); the same
+key in another business on the installation is refused `SCOPE_NOT_GRANTED`.
+Each takes the installation's row lock before it checks that, so a refusal
+writes nothing.
+
 ## Agent credentials (API-2)
 
 An agent credential is a standing delegation from the person who issues it to
 a fresh agent actor of theirs, with no lease and no run
-(`authority/agent-credentials.ts`, migration 0052). `credential.issue` is
+(`authority/agent-credentials.ts`, migration 0054). `credential.issue` is
 `credential:write` and is always the caller's own. Its scope is the ticked
 `collection:action` keys, each one the caller holds at business scope when it
 is issued, by the grant check's own walk (`CREDENTIAL_SCOPE_WIDENS` otherwise),

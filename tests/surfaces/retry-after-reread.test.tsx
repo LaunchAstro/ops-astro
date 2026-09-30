@@ -114,7 +114,7 @@ function server(options: ServerOptions = {}) {
   const register = new Map<string, { readonly digest: string; readonly result: unknown }>();
   let minted = 0;
 
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     const operation = at.slice(at.lastIndexOf('/', at.lastIndexOf('/') - 1) + 1);
@@ -123,8 +123,8 @@ function server(options: ServerOptions = {}) {
     const said = (what: string): void => {
       (answers[operation] ??= []).push(what);
     };
-    if (operation === 'person/list') return json({ ok: true, persons: [] });
-    if (operation === 'task/read') return json({ ok: true, task });
+    if (operation === 'person/list') return Promise.resolve(json({ ok: true, persons: [] }));
+    if (operation === 'task/read') return Promise.resolve(json({ ok: true, task }));
 
     const id = String(body['operationId']);
     const { operationId: _identity, ...rest } = body;
@@ -133,28 +133,29 @@ function server(options: ServerOptions = {}) {
     if (seen !== undefined) {
       if (seen.digest !== digest) {
         said('OPERATION_ID_REUSED');
-        return refusal('OPERATION_ID_REUSED', 409);
+        return Promise.resolve(refusal('OPERATION_ID_REUSED', 409));
       }
       said('replayed');
-      return json(seen.result);
+      return Promise.resolve(json(seen.result));
     }
 
     if (operation === 'task/update') {
-      if (Number(body['expectedRevision']) !== task.revision) return refusal('VERSION_STALE', 409);
+      if (Number(body['expectedRevision']) !== task.revision)
+        return Promise.resolve(refusal('VERSION_STALE', 409));
       const fields = body['fields'] as { title?: string };
       task.title = fields.title ?? task.title;
       task.revision += 1;
       const result = { recordId: TASK_ID, revision: task.revision };
       register.set(id, { digest, result });
       said('stored');
-      return json(result);
+      return Promise.resolve(json(result));
     }
     if (operation === 'task/propose' || operation === 'task/comment') {
       const reply = answer(operation === 'task/propose' ? options.propose : options.comment, index);
-      if (reply === 'unsent') throw new TypeError('Failed to fetch');
+      if (reply === 'unsent') return Promise.reject(new TypeError('Failed to fetch'));
       if (Number(body['expectedRevision']) !== task.revision) {
         said('VERSION_STALE');
-        return refusal('VERSION_STALE', 409);
+        return Promise.resolve(refusal('VERSION_STALE', 409));
       }
       // `task.comment` and `task.propose` leave the task's revision alone.
       if (operation === 'task/comment') {
@@ -174,16 +175,16 @@ function server(options: ServerOptions = {}) {
       const result = { recordId: TASK_ID, revision: task.revision };
       register.set(id, { digest, result });
       said('stored');
-      if (reply === 'lost') return new Response('bad gateway', { status: 502 });
-      return json(result);
+      if (reply === 'lost') return Promise.resolve(new Response('bad gateway', { status: 502 }));
+      return Promise.resolve(json(result));
     }
-    throw new Error(`unrouted ${at}`);
+    return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
 
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => {
       minted += 1;

@@ -9,6 +9,7 @@
 // `C23 isolation`; here the stand-in is the transport.
 
 import { describe, expect, it, vi } from 'vitest';
+import { SESSION_HEADER } from '../../packages/core-wire/src/index.ts';
 import { json, open, settle } from './mp-2-1-support.tsx';
 import { press } from './frame-support.tsx';
 import type { Mounted } from '../surfaces/mount.tsx';
@@ -25,18 +26,31 @@ interface Asked {
   readonly url: string;
   readonly method: string;
   readonly authorization: string | null;
+  /** The sign-in the call names (S0-6c): the API reads that session's cookie only. */
+  readonly session: string | null;
   readonly body: Readonly<Record<string, unknown>>;
 }
 
+/** Signed in as `sid-alpha`, the id the API gave this tab's sign-in (S0-6c). */
+const SIGNED_IN = {
+  seed: {
+    'ops-astro.session': JSON.stringify({
+      businessKey: 'alpha',
+      email: 'mia@alpha.local',
+      sessionId: 'sid-alpha',
+    }),
+  },
+};
+
 /**
- * A transport answering the person's name, the sign-out and the identity
- * provider's logout, each by `answers`, and holding every other call.
+ * A transport answering the person's name, the sign-out and the API's clearing
+ * of the session cookie, each by `answers`, and holding every other call.
  */
 function transport(
   answers: {
     readonly person?: () => Promise<Response>;
     readonly end?: () => Promise<Response>;
-    readonly logout?: () => Promise<Response>;
+    readonly clear?: () => Promise<Response>;
   } = {},
 ) {
   const asked: Asked[] = [];
@@ -46,17 +60,18 @@ function transport(
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     const answer = url.endsWith('/session/person')
       ? (answers.person ?? (() => Promise.resolve(json({ person: { name: 'Mia Hart' } }))))
-      : url.endsWith('/session/end')
-        ? (answers.end ??
-          (() => Promise.resolve(json({ recordId: null, detail: { ended: 'sign-out' } }))))
-        : url.includes('/logout')
-          ? (answers.logout ?? (() => Promise.resolve(new Response(null, { status: 204 }))))
+      : url === '/api/session/end'
+        ? (answers.clear ?? (() => Promise.resolve(json({ ok: true }))))
+        : url.endsWith('/session/end')
+          ? (answers.end ??
+            (() => Promise.resolve(json({ recordId: null, detail: { ended: 'sign-out' } }))))
           : null;
     if (answer === null) return await never();
     asked.push({
       url,
       method: init?.method ?? 'GET',
       authorization: headers.get('authorization'),
+      session: headers.get(SESSION_HEADER),
       body,
     });
     return await answer();
@@ -111,9 +126,9 @@ describe('C23 CS-2.9: show who is signed in, sign out, and reach the person’s 
     await view.unmount();
   });
 
-  it('Sign out records the sign-out for this session, ends its own identity session only, and lands on sign-in', async () => {
+  it('Sign out records the sign-out for this session, clears its own session cookie only, and lands on sign-in', async () => {
     const { fetch, asked } = transport();
-    const { view, seen, sessions } = await open('/projects/', { fetch });
+    const { view, seen, sessions } = await open('/projects/', { fetch, ...SIGNED_IN });
     await settle();
     await view.click(TRIGGER);
     await view.click('.who__menu button[role="menuitem"]');
@@ -124,17 +139,16 @@ describe('C23 CS-2.9: show who is signed in, sign out, and reach the person’s 
     expect(end).toMatchObject({
       url: '/api/b/alpha/session/end',
       method: 'POST',
-      authorization: 'Bearer tok-alpha',
+      authorization: null,
+      session: 'sid-alpha',
     });
     expect(typeof end?.body['operationId']).toBe('string');
     expect(Object.keys(end?.body ?? {})).toEqual(['operationId']);
-    const logout = asked.find((each) => each.url.includes('/logout'));
-    // `local`: this session only, never the person's other sessions.
-    expect(logout).toMatchObject({
-      url: 'http://identity.invalid/logout?scope=local',
-      method: 'POST',
-      authorization: 'Bearer tok-alpha',
-    });
+    // This sign-in's cookie only, never the person's other sessions; the page
+    // holds no token, so it asks the identity provider for nothing (S0-6c).
+    const cleared = asked.find((each) => each.url === '/api/session/end');
+    expect(cleared).toMatchObject({ method: 'POST', session: 'sid-alpha' });
+    expect(asked.map((each) => each.url).filter((url) => url.includes('/logout'))).toEqual([]);
     expect(trigger(view)).toBeNull();
     await view.unmount();
   });
@@ -193,9 +207,9 @@ describe('C23 it draws no mockup surface: the kit’s avatar and menu, in the st
 
 // eslint-disable-next-line max-lines-per-function -- the three ways a sign-out is answered
 describe('C23 sign-out: check first, then act; it ends only its own session', () => {
-  it('signs out even when the server and the identity provider do not answer', async () => {
-    const { fetch } = transport({ end: never, logout: never });
-    const { view, seen, sessions } = await open('/projects/', { fetch });
+  it('signs out even when neither the audit call nor the cookie route answers', async () => {
+    const { fetch } = transport({ end: never, clear: never });
+    const { view, seen, sessions } = await open('/projects/', { fetch, ...SIGNED_IN });
     await settle();
     await view.click(TRIGGER);
     await view.click('.who__menu button[role="menuitem"]');
@@ -208,9 +222,9 @@ describe('C23 sign-out: check first, then act; it ends only its own session', ()
   it('signs out when either call fails, and draws nothing of the failure', async () => {
     const { fetch } = transport({
       end: () => Promise.reject(new TypeError('offline')),
-      logout: () => Promise.resolve(json({ msg: 'no' }, 500)),
+      clear: () => Promise.resolve(json({ msg: 'no' }, 500)),
     });
-    const { view, sessions } = await open('/projects/', { fetch });
+    const { view, sessions } = await open('/projects/', { fetch, ...SIGNED_IN });
     await settle();
     await view.click(TRIGGER);
     await view.click('.who__menu button[role="menuitem"]');
@@ -228,18 +242,18 @@ describe('C23 sign-out: check first, then act; it ends only its own session', ()
         finish = resolve;
       });
     const { fetch, asked } = transport({ end: late });
-    const { view, sessions } = await open('/projects/', { fetch });
+    const { view, sessions } = await open('/projects/', { fetch, ...SIGNED_IN });
     await settle();
     await view.click(TRIGGER);
     await view.click('.who__menu button[role="menuitem"]');
     await settle();
-    const next = { token: 'tok-second', businessKey: 'alpha', email: 'mia@alpha.local' };
+    const next = { businessKey: 'alpha', email: 'mia@alpha.local', sessionId: 'sid-second' };
     sessions.set(next);
     finish?.(json({ refused: true, code: 'AUTH_SESSION_EXPIRED', names: [], fixes: [] }, 401));
     await settle();
     expect(sessions.session).toEqual(next);
-    // Both calls carried the ended session's bearer, never the next one's.
-    expect(asked.every((each) => each.authorization === 'Bearer tok-alpha')).toBe(true);
+    // Every call named the ended sign-in, never the next one.
+    expect(asked.every((each) => each.session === 'sid-alpha')).toBe(true);
     await view.unmount();
   });
 });

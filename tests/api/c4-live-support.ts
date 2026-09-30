@@ -14,7 +14,8 @@ import type { LiveTopics } from '../../apps/api/live.ts';
 import type { LivePresence } from '../../apps/api/live-presence.ts';
 import type { Schedules } from '../runtime/schedules-harness.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
-import { authorised, ISSUER, SECRET } from './fixture.ts';
+import { authorised, ISSUER } from './fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
 
 export const sleep = (ms: number): Promise<void> =>
@@ -190,8 +191,7 @@ export function liveApi(
   return composeApi({
     database: pool,
     admin: s.db.admin,
-    secret: SECRET,
-    issuer: ISSUER,
+    signIn: testSignIn(ISSUER),
     keys: runtimeKeys({ ...process.env }),
     executeRead: async (...args) => {
       onRead();

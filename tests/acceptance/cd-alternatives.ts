@@ -24,7 +24,7 @@ export const CASE = {
 } as const;
 
 /**
- * The twenty-nine operations that name no identifier, each with a minimal valid body.
+ * The thirty-four operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -115,6 +115,11 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
       purpose: 'A made-up credential issued while bravo is watched',
     },
   ],
+  [
+    'operations.record_gate_item',
+    { item: 'tested-backups', evidence: 'https://evidence.example/tested-backups' },
+  ],
+  ['operations.change_installation_mode', { mode: 'real' }],
   ['inbox.read', {}],
   ['inbox.count', {}],
   ['inbox.unattended', {}],

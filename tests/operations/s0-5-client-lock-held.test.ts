@@ -13,7 +13,7 @@ it.todo(
   "S0-5 content marker and lock order: the runtime's task-content commands (comment, propose, decide, pickup, handback, restore, cancel, restart, heartbeat, dispatch, observe, the budget acts, delegation.revoke) each write a history event on the task and a new revision under the task's row lock (NEXT: the runtime's lock order takes the task first)",
 );
 it.todo(
-  'S0-5 content marker and lock order: a command that reads or writes before taking the task row lock fails the build, proved by a planted write-before-lock racing task.set_party (NEXT: a statement-order detector over the fixture run)',
+  "S0-5 content marker and lock order: the envelope derives the task's client and asks authority only under the task row lock; today it resolves the sign-in, reads the spine and asks authority first, each step named in s0-5-lock-order.test.ts, where a write or unnamed read before the lock already fails (NEXT: the runtime half, a design question)",
 );
 it.todo(
   "S0-5 client change refused once the task has content: the change first, a writer holding client A only is refused and one holding A and B writes under B (LEANS-ON task authority by the task's client: today a task command is authorised against the task or the whole business, never a client grant)",

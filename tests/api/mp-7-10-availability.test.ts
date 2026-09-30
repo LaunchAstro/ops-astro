@@ -13,7 +13,8 @@ import { PREFIX } from '../../packages/core-wire/src/index.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { ISSUER, SECRET, authorised, post, tokenFor, type Answer } from './fixture.ts';
+import { ISSUER, authorised, post, tokenFor, type Answer } from './fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import { delegatedRead } from './c4-live-support.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { createTask, openSchedules, type Schedules } from '../runtime/schedules-harness.ts';
@@ -252,8 +253,7 @@ describe.skipIf(serverUrl === undefined)('MP-7-10 availability and the team list
     api = composeApi({
       database: s.db.app,
       admin: s.db.admin,
-      secret: SECRET,
-      issuer: ISSUER,
+      signIn: testSignIn(ISSUER),
       keys: runtimeKeys({ ...process.env }),
     }).app;
   }, 180_000);

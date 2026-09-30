@@ -539,9 +539,7 @@ export async function prepareCommand(
   if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
-  // `self` is the caller's own account, which every signed-in person may write
-  // and nobody may name: the grant model holds no row for it, and the command
-  // takes no identifier, which `refuseIrrelevantTarget` above has held.
+  // A `self` row asks no grant: its handler reaches the caller's own rows only.
   if (declaration.authorisedOn !== 'self') {
     const authorised = await checkAuthority(tx, subjectsOf(session), {
       // From the declaration, never written in here: see `CommandDeclaration`.

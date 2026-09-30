@@ -12,7 +12,6 @@
 // passing quietly and taking a proof with it.
 
 import { randomUUID } from 'node:crypto';
-import { sign } from 'hono/jwt';
 import type { FreshDatabase } from '../support/fresh-database.ts';
 import {
   insertActor,
@@ -26,6 +25,7 @@ import type { BusinessId, TenantQuery } from '../../packages/core-records/src/te
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import type { Assurance } from '../../packages/core-records/src/identity/verified-subject.ts';
+import { signBearer, TEST_ISSUER } from '../support/sign-in.ts';
 
 /**
  * What a seeded person is, and what a seeded agent is.
@@ -54,11 +54,8 @@ export interface AgentIdentity {
   readonly token: string;
 }
 
-/** The deployment secret for this suite. Local, disposable, never a real one. */
-export const ACCEPTANCE_SECRET = 'l5-acceptance-secret-not-any-running-deployment';
-
 /** The issuer the acceptance tokens carry, as GoTrue stamps its own URL. */
-export const ACCEPTANCE_ISSUER = 'http://127.0.0.1:54391';
+export const ACCEPTANCE_ISSUER: string = TEST_ISSUER;
 
 /**
  * The grants the fixture gives each role. They are not a copy of
@@ -102,7 +99,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'billing',
   'access',
   // C55: the operations view and the privacy incident record, whose install
-  // default is the owner and administrators.
+  // default is the owner and administrators. `inbox.unattended` asks
+  // `operations:read` (INB-1e, C55).
   'operations',
   'privacy',
   // API-2: an agent credential, issued and revoked on the holder's own account.
@@ -116,32 +114,34 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
 
 export async function tokenFor(
   subject: string,
-  options: { readonly expiresIn?: number; readonly secondFactor?: boolean } = {},
+  options: {
+    readonly expiresIn?: number;
+    readonly secondFactor?: boolean;
+    /** When the factors were given; now by default (S0-5's step-up sweep backdates it). */
+    readonly signedInAt?: number;
+  } = {},
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  return await sign(
-    {
-      sub: subject,
-      aud: 'authenticated',
-      iss: ACCEPTANCE_ISSUER,
-      role: 'authenticated',
-      exp: now + (options.expiresIn ?? 3600),
-      // The first sign-in, as GoTrue stamps it: the session's 12-hour limit
-      // is measured from here (C58). With `secondFactor`, the code was given
-      // at the same moment, so a money action is inside C59's step-up window.
-      ...(options.secondFactor === true
-        ? {
-            aal: 'aal2',
-            amr: [
-              { method: 'password', timestamp: now },
-              { method: 'totp', timestamp: now },
-            ],
-          }
-        : { amr: [{ method: 'password', timestamp: now }] }),
-    },
-    ACCEPTANCE_SECRET,
-    'HS256',
-  );
+  const at = options.signedInAt ?? now;
+  return await signBearer({
+    sub: subject,
+    aud: 'authenticated',
+    iss: ACCEPTANCE_ISSUER,
+    role: 'authenticated',
+    exp: now + (options.expiresIn ?? 3600),
+    // The first sign-in, as GoTrue stamps it: the session's 12-hour limit
+    // is measured from here (C58). With `secondFactor`, the code was given
+    // at the same moment, so a money action is inside C59's step-up window.
+    ...(options.secondFactor === true
+      ? {
+          aal: 'aal2',
+          amr: [
+            { method: 'password', timestamp: at },
+            { method: 'totp', timestamp: at },
+          ],
+        }
+      : { amr: [{ method: 'password', timestamp: at }] }),
+  });
 }
 
 /** A sign-in with the second factor, both factors given now (C59's step-up window). */

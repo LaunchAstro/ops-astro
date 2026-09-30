@@ -21,6 +21,8 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { READS } from '../../packages/core-wire/src/surface.ts';
+import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
+import { gateRecordBody } from './role-case-gate-bodies.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
@@ -55,6 +57,15 @@ const pair = (
   operand,
   forms: { foreign: body(foreignId), fabricated: body(randomUUID()) },
 });
+
+/** Every gate item recorded in alpha, the operator, so the mode may move to real (S0-5). */
+async function gateReady(w: IdentWorld, caller: Caller): Promise<void> {
+  for (const item of GATE_ITEMS) {
+    // eslint-disable-next-line no-await-in-loop
+    const answer = await w.person(caller, 'operations.record_gate_item', gateRecordBody(item));
+    expect(['ok', 'GATE_ITEM_ALREADY_RECORDED'], item).toContain(answer.code);
+  }
+}
 
 /**
  * The breach drill's body made real in alpha (C81): a runbook the drill can
@@ -479,6 +490,8 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         /* eslint-disable no-await-in-loop -- one operation at a time */
         // The breach drill's body names an incident, so its positive request
         // needs one of alpha's, and a published runbook to draft from (C81).
+        // The mode moves to real only once every gate item is done (S0-5).
+        if (op === 'operations.change_installation_mode') await gateReady(w, caller);
         const body =
           op === 'privacy.draft_breach_notices' ? await drillReady(w, caller, listed) : listed;
         const before = await domainState(w.h, [bravo]);

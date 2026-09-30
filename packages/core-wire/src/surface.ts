@@ -125,6 +125,10 @@ export type CommandName =
   | 'privacy.set_overseas_service'
   // C81: the data-class register the privacy policy reads.
   | 'privacy.set_data_class'
+  // S0-5: the first-client gate's own acts, `gate item recorded` and
+  // `installation mode changed`.
+  | 'operations.record_gate_item'
+  | 'operations.change_installation_mode'
   // The support controls the contract ledger requires through owning
   // production interfaces: revocation of an existing grant or delegation,
   // cancellation of a run's lineage, an authorised restart as a new lineage,
@@ -486,6 +490,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     deletion: 'any',
     inUse: 'any',
   },
+  'operations.record_gate_item': { item: 'any', evidence: 'any', statement: 'any?' },
+  'operations.change_installation_mode': { mode: 'any' },
   'client.create': { name: 'any' },
   'access.grant': { holderId: 'id', collection: 'any', action: 'any', clientId: 'id?|null' },
   'access.revoke': { grantId: 'id' },
@@ -701,6 +707,19 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // never by an agent; every change is audited by the envelope.
   declare('privacy.set_data_class', 'manage', {
     collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // S0-5: the first-client gate moves only under `operations:manage` in the
+  // business that operates the installation (`gate-write.ts`), never by an
+  // agent; each act is audited by the envelope.
+  declare('operations.record_gate_item', 'manage', {
+    collection: 'operations',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('operations.change_installation_mode', 'manage', {
+    collection: 'operations',
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),
@@ -960,37 +979,17 @@ export function pathOf(name: CommandName): string {
   return `/${name.replace('.', '/')}`;
 }
 
-/**
- * The two mounts the API serves the surface under and the command line sends
- * to, each followed by the business key and then `pathOf(name)`. One copy for
- * both sides. The agent's is its own so that an
- * agent asking and a person asking cannot be mistaken for each other.
- */
-export const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;
-
-/**
- * A person's own availability (MP-7-10), on the person prefix alone: their own
- * account, not a surface command, so no agent route and no grant row.
- */
-export const ACCOUNT_AVAILABILITY_PATH = '/account/availability';
-
-/**
- * C81: where a business's published legal documents are read with no sign-in,
- * as `${PUBLIC_PREFIX}<businessKey>/legal/<document>`. Nothing else is served
- * under it.
- */
-export const PUBLIC_PREFIX = '/api/public/b/';
-
-/**
- * The header an agent presents its delegation credential in.
- *
- * A header rather than a body field for the same reason the bearer token is
- * one: it is a credential, and a credential in a body is a credential that
- * gets logged with the payload, stored in the register row and compared by a
- * digest. The register compares what the request *is*; the authority it was
- * made under is not part of that.
- */
-export const DELEGATION_HEADER = 'x-agent-delegation';
+// Where the surface is served, and the headers it is served with (`paths.ts`).
+export {
+  ACCOUNT_AVAILABILITY_PATH,
+  CSRF_HEADER,
+  DELEGATION_HEADER,
+  PREFIX,
+  PUBLIC_PREFIX,
+  SESSION_COOKIE,
+  SESSION_HEADER,
+  SESSION_PATH,
+} from './paths.ts';
 
 /** The reads, which no caller may reach through the command envelope. */
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(

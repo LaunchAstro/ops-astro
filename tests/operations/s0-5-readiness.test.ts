@@ -2,8 +2,8 @@
 //
 // S0-5: the readiness check, through the real API on a throwaway database.
 //
-// The installation's mode and the eight gate items live in `ops`, which no
-// person or agent can write; the command envelope reads them through one
+// The installation's mode and the eight gate items live in `ops`, written only
+// through the gate's own commands; the command envelope reads them through one
 // function inside the refused command's own transaction. A made-up-data
 // installation (this harness, staging) runs every command. A real-data
 // installation refuses every command the catalogue classes `client-data` or
@@ -23,6 +23,7 @@ import {
   type CommandDeclaration,
 } from '../../packages/core-wire/src/index.ts';
 import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
+import { gateRecordBody } from '../acceptance/role-case-gate-bodies.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { serverUrl } from '../acceptance/world.ts';
 
@@ -45,8 +46,8 @@ let harness: Harness;
 const bodies = new Map<string, Record<string, unknown>>();
 let agentPickup: Record<string, unknown>;
 
-const admin = async <T>(sql: string): Promise<T[]> =>
-  (await harness.world.db.admin.execute<T & Record<string, unknown>>(sql)) as T[];
+const admin = async <T>(sql: string, params: unknown[] = []): Promise<T[]> =>
+  (await harness.world.db.admin.execute<T & Record<string, unknown>>(sql, params)) as T[];
 
 async function readiness(): Promise<{ mode: string; open_items: string[] }> {
   const [row] = await admin<{ mode: string; open_items: string[] }>(
@@ -56,9 +57,15 @@ async function readiness(): Promise<{ mode: string; open_items: string[] }> {
 }
 
 async function tickAll(): Promise<void> {
-  const items = GATE_ITEMS.map((item) => `('${item}', 'https://evidence.example/${item}')`);
-  await admin(`insert into ops.gate_items (item, evidence) values ${items.join(', ')}
-    on conflict (item) do nothing`);
+  for (const item of GATE_ITEMS) {
+    const { evidence, statement } = gateRecordBody(item);
+    // eslint-disable-next-line no-await-in-loop
+    await admin(
+      `insert into ops.gate_items (item, evidence, statement) values ($1, $2, $3)
+        on conflict (item) do nothing`,
+      [item, evidence, statement ?? null],
+    );
+  }
 }
 
 async function forceOpen(item: string): Promise<void> {
@@ -126,7 +133,7 @@ async function bodyFor(declaration: CommandDeclaration): Promise<Record<string, 
   return { ...prepared.body };
 }
 
-/** made-up to real only while every item is done; never back; the app's role reads both tables and writes neither. */
+/** made-up to real only while every item is done; never back; the app's role reads both tables and writes them only through the gate's commands (s0-5-gate-commands). */
 async function modeOneWay(): Promise<void> {
   const toReal = `update ops.installation set mode = 'real'`;
   await expect(admin(toReal)).rejects.toThrow(/INSTALLATION_NOT_READY/u);
@@ -150,13 +157,8 @@ async function modeOneWay(): Promise<void> {
     ['select mode from ops.installation', 'allowed'],
     ['select item from ops.gate_items', 'allowed'],
     ['select mode from public.first_client_readiness()', 'allowed'],
-    [`update ops.installation set mode = 'made-up'`, 'denied'],
     ['delete from ops.installation', 'denied'],
     [`insert into ops.installation (mode) values ('made-up')`, 'denied'],
-    [
-      `insert into ops.gate_items (item, evidence) values ('phone-alerts', 'https://example.test/x')`,
-      'denied',
-    ],
     [`update ops.gate_items set evidence = 'https://example.test/y'`, 'denied'],
     ['delete from ops.gate_items', 'denied'],
   ];
@@ -213,18 +215,32 @@ async function agentRouteShut(open: string): Promise<unknown[]> {
   return [picked.status, picked.code, picked.body['names']];
 }
 
+/** Every gated command that was answered as though it ran. */
+async function gatedRan(): Promise<string[]> {
+  const ran: string[] = [];
+  for (const { name } of GATED) {
+    // eslint-disable-next-line no-await-in-loop
+    const answer = await harness.asPerson(name, bodies.get(name)!);
+    if (answer.status < 400) ran.push(`${name}: ${answer.status} ${answer.code}`);
+  }
+  return ran;
+}
+
+/** One harness, every gated command's body, and an agent pickup, all while made-up. */
+async function prepare(): Promise<void> {
+  harness = await createHarness('s05_gate');
+  for (const declaration of GATED) {
+    // eslint-disable-next-line no-await-in-loop
+    bodies.set(declaration.name, await bodyFor(declaration));
+  }
+  const decided = await harness.reserve(await harness.freshTask('s0-5 agent'), 'draft_the_reply');
+  agentPickup = {
+    reservationId: (decided.body['detail'] as Record<string, unknown>)['reservationId'],
+  };
+}
+
 describe.skipIf(serverUrl === undefined)('S0-5 readiness check', () => {
-  beforeAll(async () => {
-    harness = await createHarness('s05_gate');
-    for (const declaration of GATED) {
-      // eslint-disable-next-line no-await-in-loop
-      bodies.set(declaration.name, await bodyFor(declaration));
-    }
-    const decided = await harness.reserve(await harness.freshTask('s0-5 agent'), 'draft_the_reply');
-    agentPickup = {
-      reservationId: (decided.body['detail'] as Record<string, unknown>)['reservationId'],
-    };
-  }, 300_000);
+  beforeAll(prepare, 300_000);
 
   afterAll(async () => {
     await harness?.close();
@@ -260,5 +276,14 @@ describe.skipIf(serverUrl === undefined)('S0-5 readiness check', () => {
     // Every item done: the same commands run on a real-data installation.
     const task = await harness.freshTask('s0-5 real, gate closed');
     expect(task.revision).toBeGreaterThan(0);
+  }, 600_000);
+
+  // Last, as it drops the function. Only a database from before 0058 (neither
+  // the function nor `ops.installation`) runs, as 0058 provisions it made-up.
+  it('S0-5 fails closed: the readiness function gone while the installation remains, every gated command is refused and writes nothing', async () => {
+    await admin('drop function public.first_client_readiness()');
+    const before = await fingerprint();
+    expect(await gatedRan()).toStrictEqual([]);
+    expect(changed(before, await fingerprint())).toStrictEqual([]);
   }, 600_000);
 });
