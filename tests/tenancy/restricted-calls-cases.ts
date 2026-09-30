@@ -117,15 +117,26 @@ export function columnUpdatesAt(at?: string): readonly string[] {
 }
 
 /**
- * Column grants held by a role other than the application's, each from the
- * migration that made it: the occurrence role reads a task's revision for
- * 0032's trigger when it inserts an occurrence's run (AW-01 J, 0203).
+ * Every other column grant, each from the migration that made it: the
+ * occurrence role reads a task's revision for 0032's trigger when it inserts an
+ * occurrence's run (AW-01 J, 0203); batch 1's lookup identity reads a
+ * business's id and key (0046), and the application inserts the API outbox's
+ * four columns (0047).
  */
 const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
-  'business_id',
-  'id',
-  'revision',
-].map((column) => ({ from: '0203', line: `${OCCURRENCE_ROLE} SELECT public.records.${column}` }));
+  ...['business_id', 'id', 'revision'].map((column) => ({
+    from: '0203',
+    line: `${OCCURRENCE_ROLE} SELECT public.records.${column}`,
+  })),
+  ...['id', 'key'].map((column) => ({
+    from: '0046',
+    line: `ops_astro_lookup SELECT public.businesses.${column}`,
+  })),
+  ...['event', 'kind', 'scope', 'weight'].map((column) => ({
+    from: '0047',
+    line: `ops_astro_app INSERT ops.api_events.${column}`,
+  })),
+];
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {
   return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from)
