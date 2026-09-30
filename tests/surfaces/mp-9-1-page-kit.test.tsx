@@ -195,7 +195,8 @@ describe('MP-9-1 stat rows follow the column rules at 1279, 900 and 640', () => 
     expect(rule(1279)).toMatch(/\.statrow--[456][^{]*\{[^}]*repeat\(3, minmax\(0, 1fr\)\)/u);
     expect(rule(900)).toMatch(/\.statrow[^{]*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/u);
     expect(rule(640)).toMatch(/\.statrow[^{]*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/u);
-    expect(rule(640)).toMatch(/\.stat__num[^{]*\{[^}]*font-size: 1\.75rem/u);
+    // The figure steps down to the declared narrow figure style (MP-1-4's scale).
+    expect(rule(640)).toMatch(/\.stat__num[^{]*\{[^}]*font: var\(--type-num-md\)/u);
   });
 });
 
