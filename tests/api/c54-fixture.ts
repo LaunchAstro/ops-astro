@@ -13,6 +13,7 @@ import type { BusinessId } from '../../packages/core-records/src/tenancy/databas
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { insertActor, insertLogin, insertMapping, insertPerson } from '../identity/fixture.ts';
+import { asBrowser } from '../support/sign-in.ts';
 import {
   approvedReservationId,
   approvedTaskId,
@@ -74,12 +75,12 @@ export const pageClient = (
   new OperationsClient({
     origin: 'http://api.test',
     businessKey: who.businessKey,
-    token: who.token,
-    fetch: async (input, init) => {
+    signedIn: true,
+    fetch: asBrowser(who.token, async (input, init) => {
       const response = await world.api.fetch(new Request(input, init));
       seen(response.status);
       return response;
-    },
+    }),
   });
 
 /** The world's cast member as a signed caller. */

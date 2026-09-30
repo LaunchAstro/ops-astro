@@ -7,7 +7,7 @@
 // has no section.
 
 import type { ReactElement } from 'react';
-import { PaneEmpty } from '../../primitives/Absence.tsx';
+import { Empty } from '../../primitives/Absence.tsx';
 import type { RunPin, RunVersion } from '../../state/run-projection.ts';
 import { shortDigest, words } from './format.ts';
 
@@ -26,7 +26,7 @@ export function Given(props: { readonly head: RunVersion }): ReactElement | null
         <span className="sbact__meta">context snapshot</span>
       </div>
       {pins.length === 0 ? (
-        <PaneEmpty say="Nothing was pinned for this run." />
+        <Empty look="inline" title="Nothing was pinned for this run." />
       ) : (
         <>
           <div className="sout__box">

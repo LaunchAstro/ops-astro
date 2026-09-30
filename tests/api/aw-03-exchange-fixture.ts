@@ -28,7 +28,8 @@ import {
 } from '../../packages/core-connectors/src/index.ts';
 import { startCustody } from '../../packages/core-custody/src/index.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
-import { ISSUER, SECRET, type ApiFixture } from './fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
+import { ISSUER, type ApiFixture } from './fixture.ts';
 
 export interface LocalModel {
   readonly exchange: ConversationExchange;
@@ -100,8 +101,7 @@ export const composedWith = (fixture: ApiFixture, answerConversation: Conversati
     keys: runtimeKeys({ ...fixture.environment }),
     database: fixture.db.app,
     admin: fixture.db.admin,
-    secret: SECRET,
-    issuer: ISSUER,
+    signIn: testSignIn(ISSUER),
     executeRead,
     answerConversation,
   }).app;

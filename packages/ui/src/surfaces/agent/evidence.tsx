@@ -8,7 +8,7 @@
 // checks that passed out of those it recorded, never one count twice.
 
 import type { ReactElement } from 'react';
-import { PaneEmpty } from '../../primitives/Absence.tsx';
+import { Empty } from '../../primitives/Absence.tsx';
 import type { RunStory } from '../../state/agent-run.ts';
 import type { RunVersion } from '../../state/run-projection.ts';
 import { shortDigest, words } from './format.ts';
@@ -63,7 +63,7 @@ export function Evidence(props: {
           <span className="sout__t">{words(head.purpose)}</span>
         </div>
         {checks.length === 0 ? (
-          <PaneEmpty say="No checks recorded yet." />
+          <Empty look="inline" title="No checks recorded yet." />
         ) : (
           <div className="sout__row" data-evidence="checks">
             <span className="tf__k">Checks passed</span>

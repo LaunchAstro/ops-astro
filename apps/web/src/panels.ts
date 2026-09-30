@@ -53,5 +53,6 @@ export const PANELS: readonly PanelRegistration[] = [
     label: 'Agent',
     ariaLabel: 'Agent',
     route: null,
+    icon: 'sparkles',
   },
 ];
