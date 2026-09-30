@@ -89,3 +89,9 @@ tests/api/live-task-admitted-during-close-review.test.ts
 
 # Sol's REVB1ENDFIXAPIC proof, byte-for-byte as the review patch held it.
 tests/api/live-board-revoked-after-final-read-review.test.ts
+
+# Sol's REVB1ENDFIXAPID proofs, byte-for-byte as the review patch held them.
+tests/api/live-board-client-move-prompt-review.test.ts
+tests/api/live-board-task-resync-isolation-review.test.ts
+tests/api/live-task-frame-no-identifier-review.test.ts
+tests/ci/inb1f-rebind-mutation-review.test.ts
