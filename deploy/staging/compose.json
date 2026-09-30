@@ -69,6 +69,7 @@
         "OPS_ASTRO_TOKEN": "${STAGING_WORKER_TOKEN:?set from the staging runbook}",
         "OPS_ASTRO_DELEGATION": "${STAGING_WORKER_DELEGATION:?set from the staging runbook}",
         "OPS_WORKER_HEARTBEAT_URL": "${STAGING_WORKER_HEARTBEAT_URL:?set from the staging runbook}",
+        "OPS_HEARTBEAT_EVERY_MS": "${STAGING_HEARTBEAT_EVERY_MS:?set from the staging runbook}",
         "OPS_EGRESS_HEARTBEAT_HOST": "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}"
       },
       "volumes": ["ops-astro-staging-app:/app:ro"],
@@ -108,6 +109,7 @@
         "OPS_RELEASE": "${STAGING_RELEASE:?set from the staging runbook}",
         "OPS_FORWARDER_HEARTBEAT_URL": "${STAGING_FORWARDER_HEARTBEAT_URL:?set from the staging runbook}",
         "OPS_SINK_HEARTBEAT_URL": "${STAGING_SINK_HEARTBEAT_URL:?set from the staging runbook}",
+        "OPS_HEARTBEAT_EVERY_MS": "${STAGING_HEARTBEAT_EVERY_MS:?set from the staging runbook}",
         "OPS_EGRESS_POOLER_HOST": "${STAGING_EGRESS_POOLER_HOST:?set from the staging runbook}",
         "OPS_EGRESS_POOLER_PORT": "${STAGING_EGRESS_POOLER_PORT:?set from the staging runbook}",
         "OPS_EGRESS_HEARTBEAT_HOST": "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}",
