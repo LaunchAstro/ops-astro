@@ -100,31 +100,33 @@ plain-text 500 when an operand was missing. Each now answers
 `FIELD_VALUE_INVALID` 422, naming the operand, with a fix line
 (`packages/core-commands/src/commands/operands.ts`):
 
-| Operation                                    | Operand                                               | What it has to be                                                          | Checked at                                                                                             |
-| -------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `task.create`                                | `fields`                                              | an object of field keys to values, not an array                            | `refuseCreateOperands`, from `createTask` (`tasks-write.ts`)                                           |
-| `task.update` and the five owning operations | `fields`                                              | an object of field keys to values, not an array                            | `refuseUpdateOperands`, from `updateTask` (`tasks-write.ts`) and `writeOwnedFields` (`tasks-state.ts`) |
-| `task.reparent`                              | `parentId`                                            | a string, or `null` for the top level; absent or any other type is refused | `refuseReparentOperands`, from `reparentTask` (`tasks-place.ts`)                                       |
-| `task.restore`                               | `batchId`                                             | a non-empty string, the one `task.trash` answered                          | `refuseRestoreOperands`, from `restoreTasks` (`tasks-trash.ts`)                                        |
-| `task.purge`                                 | none                                                  | no window operand, see below                                               | `refusePurgeOperands`, from `purgeTasks` (`tasks-trash.ts`)                                            |
-| `task.read`                                  | `recordId`                                            | a string                                                                   | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                              |
-| `task.board`                                 | `board`                                               | a board task's id, or `null` for tasks on no board                         | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                              |
-| `preset.plan`                                | `recordTypeKey`, `presetKey`, `fields[]`              | two non-empty strings, and an array of field objects, which may be empty   | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                              |
-| `task.rank`                                  | `afterId`, `beforeId`                                 | each a string or `null`, or absent                                         | `refuseMistypedIdentifier`, from `prepareCommand` (`commands/prepare.ts`)                              |
-| `task.propose`                               | `lineageId`                                           | a string or `null`, or absent to open a new lineage                        | `refuseMistypedIdentifier`, from `prepareCommand` (`commands/prepare.ts`)                              |
-| `task.create`                                | `parentId`, `board`, `boardSection`, `conversationId` | each a string or `null`, or absent                                         | `refuseMistypedIdentifier`, from `prepareCommand` (`commands/prepare.ts`)                              |
-| `task.decide`                                | `gateId`, `versionId`                                 | each a string; absent is refused                                           | `refuseMistypedIdentifier`, from `prepareCommand` (`commands/prepare.ts`)                              |
-| `task.accept_plan`                           | `gateId`, `versionId`                                 | each a string; absent is refused                                           | `refuseMistypedIdentifier`, from `prepareCommand` (`commands/prepare.ts`)                              |
+| Operation                                    | Operand                                               | What it has to be                                                                           | Checked at                                                       |
+| -------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `task.create`                                | `fields`                                              | an object of field keys to values, not an array                                             | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
+| `task.update` and the five owning operations | `fields`                                              | an object of field keys to values, not an array                                             | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
+| `task.reparent`                              | `parentId`                                            | a string, or `null` for the top level; absent or any other type is refused                  | `refuseReparentOperands`, from `reparentTask` (`tasks-place.ts`) |
+| `task.restore`                               | `batchId`                                             | a non-empty string, the one `task.trash` answered                                           | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
+| `task.purge`                                 | none                                                  | no window operand, see below                                                                | `refusePurgeOperands`, from `purgeTasks` (`tasks-trash.ts`)      |
+| `task.read`                                  | `recordId`                                            | a string                                                                                    | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)        |
+| `task.board`                                 | `board`                                               | a board task's id, or `null` for tasks on no board                                          | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)        |
+| `preset.plan`                                | `recordTypeKey`, `presetKey`, `fields[]`              | two non-empty strings, and an array of field objects, which may be empty                    | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)        |
+| `task.rank`                                  | `afterId`, `beforeId`                                 | each a string or `null`, or absent                                                          | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
+| `task.propose`                               | `lineageId`                                           | a string or `null`, or absent to open a new lineage                                         | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
+| `task.create`                                | `parentId`, `board`, `boardSection`, `conversationId` | each a string or `null`, or absent                                                          | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
+| `task.decide`                                | `gateId`, `versionId`, `recipientPersonId`            | each a string; absent is refused, except `recipientPersonId`, which may be absent or `null` | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
+| `task.accept_plan`                           | `gateId`, `versionId`, `conversationId`               | each a string; absent is refused, except `conversationId`, which may be absent or `null`    | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
 
-The five `refuse…Operands` functions are in `commands/operands.ts`, beside
-`isFieldMap` and `invalid`, which the read catalogue shares. A read's operand
+`parseRequest` and the two `refuse…Operands` functions are in
+`commands/operands.ts`, beside `isFieldMap` and `invalid`, which the read
+catalogue shares. A read's operand
 check is the `parse` column of its `READ_CATALOGUE` row (`reads/catalogue.ts`).
 It answers the read's typed operands (`ReadOperands`) or the refusal, and the
 row's `subject`, `authority` and `serve` see only those operands. `ReadRequest`
 is the unchecked body.
 
-The last four rows are `TYPED_IDENTIFIERS` (`commands/prepare.ts`), checked
-once the caller is authorised and before the target is read. So a `lineageId`
+The `parseRequest` rows are their operations' `WRITE_OPERANDS`
+(`core-wire/src/surface.ts`), checked once the caller is authorised, an
+identifier before the target is read and any other operand after it. So a `lineageId`
 on `task.propose` that is neither a string nor `null` is `FIELD_VALUE_INVALID`
 naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
 (`commands/tasks-propose.ts`) is not reached through a command.
@@ -181,9 +183,9 @@ because `trashSubtree` locks each row it walks and walks again until nothing
 new appears. A restored task whose parent is live outside the batch takes that
 parent's board, and so do the batch's rows below it.
 
-The five command checks run in their handlers, each as the handler's first
-check (`refuseUpdateOperands` in both `updateTask` and `writeOwnedFields`), so
-the refusal is registered and audited like any other command refusal.
+The `task.reparent` and `task.purge` checks run as their handlers' first
+check and the rest in `parseRequest`, so the refusal is registered and audited
+like any other command refusal.
 The read checks run inside the audited read (the row's `parse`, called from
 `serveRead` in `reads/dispatch.ts`), after the system-field and identifier
 checks and before the grant check, so a refused read writes its audit row like
@@ -197,9 +199,8 @@ that is neither a string nor `null` (`tests/api/boundary-read-targets.test.ts`).
 (`tests/commands/placement-operands.test.ts`). A `parentId` string that is not an
 identifier is the envelope's `NOT_FOUND` (`refuseMalformedIdentifier`,
 `commands/prepare.ts`). The five owning operations (`task.assign` and the rest)
-joined next: `writeOwnedFields` (`commands/tasks-state.ts`) calls
-`refuseUpdateOperands` first, so an absent, null, string or array `fields` is
-refused naming `fields` and nothing is written. An empty map stays
+joined next: their rows take `fields` as a map, so `parseRequest` refuses an
+absent, null, string or array `fields` naming `fields` and nothing is written. An empty map stays
 `FIELD_UNKNOWN` (`tests/commands/owning-operation-fields.test.ts`).
 On the agent prefix, `task.read` does not go through `reads/dispatch.ts`. A
 `recordId` that is present and not a string is refused before any authority,

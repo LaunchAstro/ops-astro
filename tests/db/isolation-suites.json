@@ -25,6 +25,8 @@
     "tests/broker/aw-11-child-spend-isolation.test.ts",
     "tests/runtime/aw-11-child-work-isolation.test.ts",
     "tests/runtime/aw-11-child-commands-isolation.test.ts",
-    "tests/broker/aw-11-child-graph-isolation.test.ts"
+    "tests/broker/aw-11-child-graph-isolation.test.ts",
+    "tests/fixture/fixture-shape.test.ts",
+    "tests/fixture/snapshot/snapshot-clone-and-privileges.test.ts"
   ]
 }

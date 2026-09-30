@@ -6,6 +6,7 @@
 
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { declarationOf } from '../../packages/core-wire/src/index.ts';
 
 const read = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
@@ -92,9 +93,8 @@ const CODE: readonly (readonly [string, string, Claim])[] = [
   [`${E}/business-settings.ts`, 'writeBusinessSetting', "['expectedRevision']"],
   [`${C}/tasks-propose.ts`, 'proposeFor', 'deleted_at !== null) return refused(refuseNotFound'],
   [`${R}/propose.ts`, 'refuseBeyondBudget', /currency !== cap\.currency\)\s+\{\s+return refuse\(/u],
-  [`${C}/prepare.ts`, '', "'task.propose': { optional: ['lineageId'] },"],
-  [`${C}/prepare.ts`, 'refuseMistypedIdentifier', "refuseCommand('FIELD_VALUE_INVALID'"],
-  [`${C}/prepare.ts`, 'prepareCommand', /checkAuthority[\s\S]*refuseMistypedIdentifier\(/u],
+  [`${C}/operands.ts`, 'mistyped', "refuseCommand('FIELD_VALUE_INVALID', names"],
+  [`${C}/prepare.ts`, 'prepareCommand', /checkAuthority[\s\S]*parseRequest\(request/u],
   [`${C}/prepare.ts`, 'prepareCommand', /refuseUnstorableOperands\(request\)[\s\S]*lockTask\(/u],
   [`${C}/prepare.ts`, 'refuseOtherTarget', "refuseCommand('COMMAND_BODY_INVALID', other"],
   [`${C}/agent-operations.ts`, 'handbackOperands', "unstorableOperands(request, ['report',"],
@@ -157,7 +157,7 @@ const PROSE: readonly (readonly [string, Claim])[] = [
   ['`LONGEST_COMPUTED_WINDOW_DAYS`', /answered, not refused/u],
   ['`{ batchId, restored, restoredIds }`', /locked `for share`[\s\S]*`PARENT_TRASHED`/u],
   ['last-writer-wins write', /is `FIELD_VALUE_INVALID` 422 naming `expectedRevision`/u],
-  ['`TYPED_IDENTIFIERS`', /`task\.propose`[^.]*`FIELD_VALUE_INVALID` naming `lineageId`/u],
+  ['`WRITE_OPERANDS`', /`task\.propose`[^.]*`FIELD_VALUE_INVALID` naming `lineageId`/u],
   ['**Cancellation**', /`task\.restart` and `task\.propose` on a trashed task/u],
   ['**Cancellation**', /checked again under the runtime locks[^.]*`SCOPE_NOT_GRANTED`/u],
   ['`CAP_BINDING_MISMATCH` 409 is', /second barrier, and no command reaches it/u],
@@ -211,33 +211,23 @@ describe('API.md lines derived from the code', () => {
 
 describe('API.md operands and codes derived from the code', () => {
   it('lists each typed identifier in the operand table, and every free operand', () => {
-    const prepare = read(`${C}/prepare.ts`);
-    const typed = quotedAfter(prepare, 'const TYPED_IDENTIFIERS', '};');
-    expect(typed).toEqual([
+    const typed = [
       'task.rank',
-      'afterId',
-      'beforeId',
       'task.propose',
-      'lineageId',
       'task.create',
-      'parentId',
-      'board',
-      'boardSection',
       'task.decide',
-      'gateId',
-      'versionId',
       'task.accept_plan',
-      'gateId',
-      'versionId',
-    ]);
-    let operation = '';
-    for (const name of typed) {
-      if (name.startsWith('task.')) operation = name;
-      else {
-        const row = rowsOf(operation).find((line) => line.includes('refuseMistypedIdentifier'));
-        expect(row, `${operation} ${name}`).toContain(`\`${name}\``);
-      }
+    ] as const;
+    for (const operation of typed) {
+      const ids = Object.entries(declarationOf(operation).operands ?? {})
+        .filter(([name, operand]) => name !== 'recordId' && operand.startsWith('id'))
+        .map(([name]) => name);
+      expect(ids.length, operation).toBeGreaterThan(0);
+      const row = rowsOf(operation).filter((line) => line.includes('parseRequest'));
+      for (const name of ids)
+        expect(row.join('\n'), `${operation} ${name}`).toContain(`\`${name}\``);
     }
+    const prepare = read(`${C}/prepare.ts`);
     const free = quotedAfter(prepare, 'const FREE_OPERANDS', '];');
     expect(free.length).toBeGreaterThan(0);
     const paragraph = paragraphWith('`FREE_OPERANDS`');

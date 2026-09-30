@@ -18,7 +18,7 @@ import { mintDelegation } from '../../packages/core-records/src/authority/delega
 import { declarationOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { httpTransport } from '../../apps/cli/client.ts';
-import { createWorker } from '../../apps/worker/worker.ts';
+import { createWorker, type WorkerOptions } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import type { World } from '../acceptance/world.ts';
 import { runCli } from '../cli/cli-process-harness.ts';
@@ -137,6 +137,46 @@ export async function approve(person: Person, taskId: string, gateId: string): P
   must(await person('task.decide', decision), 'decide');
 }
 
+/** A task created through `person`, proposed by the shipped worker and approved; it applies next. */
+export async function approvedTask(
+  context: PassContext,
+  person: Person,
+  title: string,
+  options: Partial<WorkerOptions> = {},
+): Promise<{ readonly taskId: string; readonly worker: ReturnType<typeof createWorker> }> {
+  const { world } = context;
+  const created = must(await person('task.create', { fields: { title } }), 'create');
+  const taskId = String(created['recordId']);
+  const worker = createWorker({
+    transport: httpTransport(context.api),
+    businessKey: 'alpha',
+    credential: world.agent.token,
+    delegation: await delegate(world, taskId),
+    reporter: SYNTHETIC_USAGE,
+    ...options,
+  });
+  const proposed = await worker.proposeOnce();
+  if (!('proposed' in proposed)) throw new Error(`propose: ${JSON.stringify(proposed)}`);
+  await approve(person, taskId, proposed.proposed.gateId);
+  return { taskId, worker };
+}
+
+/**
+ * The pickup's delegation stays live after settlement at this head, and an
+ * agent holds one per purpose, so the person ends it, as a person would
+ * before the next task (`delegation.revoke`, on the same surface).
+ */
+export async function revokePickup(world: World, person: Person): Promise<void> {
+  const [held] = await world.db.admin.execute<{ id: string }>(
+    `select id from public.delegations where business_id = $1 and agent_actor_id = $2
+        and purpose = 'synthetic_comment' and revoked_at is null and settled_at is null`,
+    [world.alpha, world.agent.actorId],
+  );
+  if (held !== undefined) {
+    must(await person('delegation.revoke', { delegationId: held.id }), 'revoke');
+  }
+}
+
 /** The whole journey through one surface, and the facts it left. */
 export async function runPass(surface: Surface, context: PassContext): Promise<PassResult> {
   const { world } = context;
@@ -152,18 +192,7 @@ export async function runPass(surface: Surface, context: PassContext): Promise<P
     return answer;
   };
 
-  const created = must(await person('task.create', { fields: { title: context.title } }), 'create');
-  const taskId = String(created['recordId']);
-  const worker = createWorker({
-    transport: httpTransport(context.api),
-    businessKey: 'alpha',
-    credential: world.agent.token,
-    delegation: await delegate(world, taskId),
-    reporter: SYNTHETIC_USAGE,
-  });
-  const proposed = await worker.proposeOnce();
-  if (!('proposed' in proposed)) throw new Error(`propose: ${JSON.stringify(proposed)}`);
-  await approve(person, taskId, proposed.proposed.gateId);
+  const { taskId, worker } = await approvedTask(context, person, context.title);
   const applied = await worker.applyOnce(taskId);
   if (!('applied' in applied)) throw new Error(`apply: ${JSON.stringify(applied)}`);
   const receipt = must(
@@ -171,17 +200,7 @@ export async function runPass(surface: Surface, context: PassContext): Promise<P
     'receipt',
   );
   must(await person('task.execution', { recordId: taskId }), 'execution');
-  // The pickup's delegation stays live after settlement at this head, and an
-  // agent holds one per purpose, so the person ends it, as a person would
-  // before the next task (`delegation.revoke`, on the same surface).
-  const [held] = await world.db.admin.execute<{ id: string }>(
-    `select id from public.delegations where business_id = $1 and agent_actor_id = $2
-        and purpose = 'synthetic_comment' and revoked_at is null and settled_at is null`,
-    [world.alpha, world.agent.actorId],
-  );
-  if (held !== undefined) {
-    must(await person('delegation.revoke', { delegationId: held.id }), 'revoke');
-  }
+  await revokePickup(world, person);
   const facts = await readFacts(world.db.admin, world.alpha, taskId, receipt['receipt']);
   return { surface, taskId, facts, sent, answers };
 }

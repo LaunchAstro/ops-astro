@@ -16,4 +16,4 @@ set -a
 # shellcheck source=/dev/null
 . .local/db.env
 set +a
-exec node tests/fixture/snapshot.ts "$@"
+exec node tests/fixture/snapshot/snapshot.ts "$@"

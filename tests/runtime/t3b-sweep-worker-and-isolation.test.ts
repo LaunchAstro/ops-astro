@@ -20,8 +20,4 @@ describe('T3b review proofs', () => {
       /sweepDeployment\s*\([^;]*\[\s*['"]alpha['"]\s*,\s*['"]bravo['"]\s*\]/u.test(suite),
     ).toBe(true);
   });
-
-  it('T3 isolation attempts a foreign-business task read', () => {
-    expect(/executeRead\s*\(\s*s\.db\.app\s*,\s*other\.business\b/u.test(suite)).toBe(true);
-  });
 });

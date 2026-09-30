@@ -6,6 +6,7 @@
 //
 //   pnpm verify:journey [--pg-port N] [--api-port N] [--web-port N]
 //                       [--evidence DIR] [--only journey] [--remove]
+//   pnpm verify:journey --self-test [--pg-port N] [--remove]
 //
 // It refuses another stack's port, a port in use and a pinned Postgres image
 // not already on this machine before starting anything (it never pulls,
@@ -20,8 +21,9 @@
 // unless `--remove`. What the run started is stopped by the process groups it
 // created, each checked for a journey command first: never by name, never by
 // a plain pid, which may be another process's by then.
+// `--self-test` (T4e) runs instead the mutations showing each check fails on
+// what it claims, and fails naming any that stayed green.
 
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -37,6 +39,7 @@ import {
 } from './journey-stack.ts';
 import { builtCases, protectedVerdicts } from './journey-proofs.ts';
 import { emptyMeasures, takeMeasure } from './journey-measure.ts';
+import { runTestSide } from './journey-process.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 /**
@@ -83,6 +86,7 @@ const ports = {
   proofsApi: next(apiPort),
 };
 const onlyJourney = flag('--only', '') === 'journey';
+const selfTesting = args.includes('--self-test');
 const evidence = resolve(flag('--evidence', join(ROOT, '.local', 'journey', stamp)));
 const container = `ops-astro-journey-${stamp.toLowerCase()}`;
 const password = `journey_${randomUUID().replaceAll('-', '')}`;
@@ -120,48 +124,27 @@ function take(line) {
   else if (kind === 'journey-measure') takeMeasure(carried.measures, value);
 }
 
-/** The journey's own run, one `journey-case` line per case on its stdout. */
+/** A test-side run (`journey-process.ts`); its case lines come back with its exit code. */
+async function runLines(file, own, stderr) {
+  const before = lines.length;
+  const env = { DATABASE_URL: admin, DATABASE_ADMIN_URL: admin, ...own };
+  const side = { root: ROOT, file, env, pidfile, stderr: join(evidence, stderr), password, take };
+  return { code: await runTestSide(side), ran: lines.slice(before) };
+}
+
+/** The journey's own run (`tests/journey/run.ts`). */
 async function journey() {
-  const child = spawn(process.execPath, ['tests/journey/run.ts'], {
-    cwd: ROOT,
-    env: {
-      ...process.env,
-      DATABASE_URL: admin,
-      DATABASE_ADMIN_URL: admin,
+  const { code, ran } = await runLines(
+    'tests/journey/run.ts',
+    {
       JOURNEY_API_PORT: String(ports.api),
       JOURNEY_WEB_PORT: String(ports.web),
       JOURNEY_PG_CONTAINER: container,
       JOURNEY_PIDFILE: pidfile,
     },
-    stdio: ['ignore', 'pipe', 'pipe'],
-    // Its own process group: the API and CLI processes it starts join it, so
-    // the command stops the group and never a pid that may be reused.
-    detached: true,
-  });
-  appendFileSync(pidfile, `-${String(child.pid)} tests/journey/run.ts (process group)\n`);
-  const before = lines.length;
-  let buffer = '';
-  child.stdout.on('data', (chunk) => {
-    buffer += chunk.toString('utf8');
-    const complete = buffer.split('\n');
-    buffer = complete.pop() ?? '';
-    for (const line of complete) take(line);
-  });
-  // Whole lines, so the password cannot be split across two writes and pass the scrub.
-  let errors = '';
-  const scrubbed = (text) => text.replaceAll(password, '<password>');
-  child.stderr.on('data', (chunk) => {
-    errors += chunk.toString('utf8');
-    const cut = errors.lastIndexOf('\n') + 1;
-    appendFileSync(join(evidence, 'run.stderr'), scrubbed(errors.slice(0, cut)));
-    errors = errors.slice(cut);
-  });
-  const code = await new Promise((done) => {
-    child.once('close', done);
-  });
-  appendFileSync(join(evidence, 'run.stderr'), scrubbed(errors));
+    'run.stderr',
+  );
   // Exit 1 is the run's own verdict, already on its case lines; anything else is the run breaking.
-  const ran = lines.slice(before);
   const seen = ran.length;
   // Reached its end: the closing identity line is there and nothing broke on the way.
   const ended = ran.some((line) => line.case === 'identity at the end (T2b)');
@@ -169,6 +152,20 @@ async function journey() {
   if (seen === 0 || (code !== 0 && code !== 1)) {
     const detail = `exit ${String(code)}, ${String(seen)} cases; stderr in ${join(evidence, 'run.stderr')}`;
     record('the journey run itself', 'fail', detail);
+  }
+}
+
+/** T4e, `--self-test`: the mutations on this command's own Postgres, ending `every_invariant_bites`. */
+async function selfTest() {
+  const proofs = {
+    SELF_TEST_PROOFS_PORT: ports.proofsPg,
+    SELF_TEST_PROOFS_API_PORT: ports.proofsApi,
+  };
+  const own = { SELF_TEST_CLUSTER: container, DOCKER, ...proofs };
+  const { code, ran } = await runLines('tests/ci/self-test/run.ts', own, 'self-test.stderr');
+  if (!ran.some((line) => line.case === 'every_invariant_bites') || (code !== 0 && code !== 1)) {
+    const detail = `exit ${String(code)}, ${String(ran.length)} cases; stderr in ${join(evidence, 'self-test.stderr')}`;
+    record('the self-test run itself', 'fail', detail);
   }
 }
 
@@ -275,9 +272,13 @@ try {
     stack.ok ? 'pass' : 'fail',
     stack.detail,
   );
-  if (stack.ok) await journey();
-  afterJourney();
-  bundle();
+  if (selfTesting) {
+    if (stack.ok) await selfTest();
+  } else {
+    if (stack.ok) await journey();
+    afterJourney();
+    bundle();
+  }
 } finally {
   finish();
 }

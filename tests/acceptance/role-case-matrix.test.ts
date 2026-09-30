@@ -45,6 +45,7 @@ import { shareRecord } from '../../packages/core-records/src/authority/shares.ts
 import { bearer, call, enrolExternal, personPath, serverUrl } from './world.ts';
 import { SUCCESS, except, failures, observe, refusal, writeMatrix } from './role-case-ledger.ts';
 import { createHarness, targetKeyOf, type Harness } from './role-case-harness.ts';
+import type { FixtureClient } from './role-case-clients.ts';
 import { alternativeFor } from './cd-alternatives.ts';
 import { PROPOSAL, childProbe } from './role-case-bodies.ts';
 
@@ -164,6 +165,45 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         `operations, ${String(targeted.length)} compared here, ${String(named)} named rows`,
     );
   }, 120_000);
+
+  it('client to client: each of T4a’s clients reads its own task, and another client’s as a fabricated one', async () => {
+    // T4a's two clients in each business, one record grant each: another
+    // client's task, in the reader's business or the other's, answers with the
+    // same status and bytes as an id that was never issued, so no id, title or
+    // count crosses. Its own task is the positive control.
+    const { clients } = harness;
+    expect(clients.map((one) => one.name)).toStrictEqual([
+      'alpha-client-1',
+      'alpha-client-2',
+      'bravo-client-1',
+      'bravo-client-2',
+    ]);
+    const readAs = async (reader: FixtureClient, recordId: string, businessKey?: string) =>
+      await harness.asPerson('task.read', { recordId }, businessKey ?? reader.businessKey, reader);
+    for (const reader of clients) {
+      const read = readAs.bind(undefined, reader);
+      // eslint-disable-next-line no-await-in-loop
+      const own = await read(reader.task);
+      expect(own.status, `${reader.name} reads its own task`).toBe(200);
+      // eslint-disable-next-line no-await-in-loop
+      const fabricated = await read(randomUUID());
+      expect(fabricated.status, reader.name).toBe(404);
+      for (const other of clients.filter((one) => one !== reader)) {
+        // eslint-disable-next-line no-await-in-loop
+        const crossed = await read(other.task);
+        expect(crossed.status, `${reader.name} reads ${other.name}'s task`).toBe(fabricated.status);
+        expect(crossed.body, `${reader.name} reads ${other.name}'s task`).toStrictEqual(
+          fabricated.body,
+        );
+        // eslint-disable-next-line no-await-in-loop
+        const there = await read(other.task, other.businessKey);
+        if (other.businessKey !== reader.businessKey) {
+          expect(there.status, `${reader.name} on ${other.businessKey}'s prefix`).not.toBe(200);
+          expect(JSON.stringify(there.body)).not.toContain(other.task);
+        }
+      }
+    }
+  });
 
   it('(e) refuses every caller who holds nothing, and never answers empty', async () => {
     // Four roles in one sweep because they are one claim: a caller who may not
