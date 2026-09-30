@@ -37,6 +37,7 @@ import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
 import { awaitingApproval } from './awaiting.ts';
 import { readRanks } from './board-rank.ts';
+import { readActualMinutes } from './board-time.ts';
 import { readTaskRank, type RankPool } from './rank.ts';
 import { readBoardCrumb } from './board-crumb.ts';
 import { readTaskSteps } from './steps.ts';
@@ -439,12 +440,17 @@ export async function readBoardStamped(
     rows.map((row) => row.id),
   );
   const ranks = await readRanks(tx, taskTypeId, readable);
+  const actuals = await readActualMinutes(
+    tx,
+    rows.map((row) => row.id),
+  );
   const decides = decidable === null ? null : new Set(decidable);
   const tasks = rows.map((row): BoardTask =>
     Object.assign(summaryOf(row), {
       rank: ranks.get(row.id) ?? UNRANKED,
       stage: row.stage,
       clientSet: row.client_set,
+      actualMinutes: actuals.get(row.id) ?? 0,
       statePosition: row.state_position === null ? null : Number(row.state_position),
       waitReason: gated.has(row.id) ? ('needs_approval' as const) : null,
       awaitingDecision: gated.has(row.id) && (decides === null || decides.has(row.id)),

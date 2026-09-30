@@ -431,6 +431,13 @@ reads each row's rank, stage and client mark back against `task.read` and
 holds the crossings; `mp-5-8-board-rank-steps.test.ts` reads an archived
 step back.
 
+Each row also carries `actualMinutes` (MP-5-8's Actual column): every
+finished minute logged on the task (MP-4-6), summed at read over the rows
+served (`reads/board-time.ts`), the total `task.read`'s `time` answers: one
+number, no names. It is 0 for a task with no time; a running timer adds
+nothing until it stops. `tests/reads/mp-5-8-board-actual.test.ts` reads it
+back and holds the crossings.
+
 Each row also carries `statePosition` (MP-5-11): the `position` of the
 task's state record, read in the same join as the state, so the Projects
 board groups its rows in the workflow's order and a reordered workflow is the

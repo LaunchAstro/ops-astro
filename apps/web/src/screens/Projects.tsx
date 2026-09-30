@@ -11,8 +11,8 @@
 // (MP-5-8). Each row is the read's task mapped onto the board's row: the rank
 // and its calc line, the stage and the due come from stored records. What the
 // product does not store yet draws a dash or nothing and is recorded as such:
-// the client's name (the client model), the estimate (MP-4-8), the actual
-// (MP-4-6's time entries), the comment counts (INB-1) and starring (P-20).
+// the client's name (the client model), the estimate (MP-4-8), the comment
+// counts (INB-1) and starring (P-20). The actual is the time logged (MP-4-6).
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Empty, ProjectsBoard, type BoardRow, type ProjectRow } from '@launchastro/ui';
@@ -252,7 +252,8 @@ function rowOf(task: BoardTask): ProjectRow {
     category: null,
     awaitingDecision: task.awaitingDecision,
     estimate: null,
-    actual: null,
+    // The time logged on the task (MP-4-6); none logged draws a dash.
+    actual: task.actualMinutes > 0 ? { kind: 'time', minutes: task.actualMinutes } : null,
     comments: { client: 0, mentions: 0, latest: null },
   };
 }

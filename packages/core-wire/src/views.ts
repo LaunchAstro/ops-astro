@@ -471,6 +471,11 @@ export interface BoardTask extends TaskSummary {
   /** True when the task is put under a client (`task.set_party`). */
   readonly clientSet: boolean;
   /**
+   * Every finished minute logged on the task (MP-4-6), the total `task.read`'s
+   * time answers: one number, no names. Derived at read; 0 for none.
+   */
+  readonly actualMinutes: number;
+  /**
    * Where the task's state stands in the workflow (MP-5-11): the state
    * record's `position`, read with the state, so the board groups in the
    * workflow's order. Null when the task has no state.
