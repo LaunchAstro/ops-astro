@@ -222,6 +222,50 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     kind: 'agent',
     state: 'ready',
   },
+  // The journey records no check (MP-6-1); the row is written with foreign
+  // keys off, as every reference row is.
+  // The journey revises no run's state (MP-6-2).
+  'public.run_states': {
+    run_id: randomUUID(),
+    task_id: randomUUID(),
+    version: 1,
+    knowledge: [],
+    unknowns: [],
+    revised_by_actor_id: randomUUID(),
+  },
+  'public.run_checks': {
+    task_id: randomUUID(),
+    run_id: randomUUID(),
+    version_id: randomUUID(),
+    lease_id: randomUUID(),
+    attempt_id: randomUUID(),
+    actor_id: randomUUID(),
+    fence: 1,
+    name: 'restricted calls seed',
+    outcome: 'passed',
+  },
+  // The journey holds no conversation (AW-03).
+  'public.conversations': {
+    owner_actor_id: randomUUID(),
+    owner_person_id: randomUUID(),
+    title: 'restricted calls seed',
+  },
+  'public.conversation_messages': {
+    conversation_id: randomUUID(),
+    role: 'person',
+    author_actor_id: randomUUID(),
+    body: 'restricted calls seed',
+  },
+  'public.conversation_wrap_ups': {
+    conversation_id: randomUUID(),
+    version: 1,
+    written_by_operation: 'conversation.wrap_up',
+    code_revision: 'seed',
+    request_quotation: 'restricted calls seed',
+    items: [{}, {}, {}, {}, {}, {}, {}],
+    left_open: [],
+    activity_through: new Date(),
+  },
   // AW-02: nothing writes a pin before AW-04's plan accept.
   'public.run_definition_pins': {
     run_id: randomUUID(),

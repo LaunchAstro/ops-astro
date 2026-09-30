@@ -74,6 +74,7 @@ function lineage(id: string) {
         payload: { step: 'client_renewal_quote' },
         supersededAt: null,
         runId: null,
+        checks: [],
         evidence: null,
         gate: {
           id: `${id}-gate`,

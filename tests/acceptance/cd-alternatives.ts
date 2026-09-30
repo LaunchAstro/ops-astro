@@ -2,7 +2,7 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 16 of the 45. For each of the other 29 this file
+// `recordId`, which reaches 17 of the 53. For each of the other 36 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
@@ -21,10 +21,12 @@ export const CASE = {
   agent: 'refuses the agent alike on foreign, fabricated and in-business operands',
   pickup: 'refuses a pickup alike on a foreign, a fabricated and a claimed reservation',
   targetFree: 'refuses a target a target-free operation has no use for (SC2 reading)',
+  conversation:
+    'refuses a foreign and a fabricated conversation alike, NOT_FOUND byte for byte (AW-03)',
 } as const;
 
 /**
- * The fifteen operations that name no identifier, each with a minimal valid body.
+ * The eighteen operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -37,6 +39,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['settings.set_four_eyes_threshold', { value: 1300 }],
   ['settings.set_client_sign_off', { value: false }],
   ['task.queue', {}],
+  ['gate.pending', {}],
   ['person.list', {}],
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
   ['settings.read', {}],
@@ -54,6 +57,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['automation.registry', {}],
   // A new client record (C41-A) names no row.
   ['record.create', { type: 'client', fields: { name: 'a target-free client' } }],
+  ['conversation.start', { body: 'a conversation started while bravo is watched' }],
+  ['conversation.list', {}],
 ];
 
 /** The identifier-bearing operations outside (c) and (d): operand and executed case. */
@@ -85,14 +90,20 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.dispatch': ['leaseId', 'agent'],
   'task.observe': ['leaseId', 'agent'],
   'task.receipt': ['attemptId', 'control'],
+  'task.check': ['leaseId', 'agent'],
   'task.handback': ['leaseId', 'agent'],
   'model.call': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
   'budget.write_off': ['attemptId', 'control'],
+  'conversation.message': ['conversationId', 'conversation'],
+  'conversation.read': ['conversationId', 'conversation'],
+  'conversation.rename': ['conversationId', 'conversation'],
+  'conversation.set_scope': ['conversationId', 'conversation'],
   'run.top_up': ['runId and recordId', 'control'],
   'run.end_at_budget_stop': ['runId and recordId', 'control'],
+  'run.revise_state': ['runId and recordId', 'control'],
 };
 
 /**

@@ -66,7 +66,11 @@ The order of its checks matters:
    purpose-scoped to one task", and R1's own grant is business-wide. Without
    the stored scope, a call on a sibling task reaches that same grant and passes
    exactly as a call on the picked-up task does. A business- or party-scoped
-   request under a delegation is refused here too.
+   request under a delegation is refused here too. A collection may also carry
+   fewer actions than the delegation lists: `run` carries `write` only (MP-6-2,
+   `CEILING` in `delegations.ts`), so a delegation that reaches `run` answers
+   any other action on it here, and a mint that asks `run` for no `write` is
+   `DELEGATION_WIDENS` naming the ceiling.
 3. `DELEGATION_ALREADY_LIVE`: the agent already holds a live delegation for
    this purpose. `delegations_one_live_per_purpose_idx` (`0008:195`) is unique
    on `(business_id, agent_actor_id, purpose)` where
@@ -373,6 +377,11 @@ fields and client-audience comments only".
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
   (`:712-732`, `:866-876`).
+  user (`:664-694`, run at `:829-837`). It gets a login and an acting identity,
+  and no membership and no business grant (`:124-127`, `:276-278`). The seed
+  makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
+  naming a task, through `shareRecord` under the admin's own `share` grant
+  (`:705-725`, `:859-869`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -576,8 +585,10 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   grant, the caller must hold `manage` on the grant's collection and the
   grant's own (collection, action), both live and both at a scope covering
   the grant's. For a delegation, the same test runs for every (collection,
-  action) the delegation reaches, at its purpose scope. A manager without
-  `share` cannot revoke a `share` grant.
+  action) the delegation reaches, at its purpose scope; a pair on `run` is
+  asked on `task` there, since run reach exists only inside a task delegation
+  on that task and no one holds `run:manage` (MP-6-2, ORCH34). A manager
+  without `share` cannot revoke a `share` grant.
 - `revokeGrant` and `revokeDelegation` write `revoked_at` and now return the
   instant they wrote, or null when they wrote nothing. A second revocation is
   `TRANSITION_NOT_PERMITTED` for a grant and `DELEGATION_NOT_LIVE` for a
@@ -691,6 +702,14 @@ refuses a run that is not on that task with the bytes a made-up run gets, and
 the runtime asks the same pair of the run's own task again under the run's
 locks. No agent holds `decide`, and neither row is in the agent's reach. The
 seed gives both pairs to `admin` only (`scripts/local-seed.mjs`).
+
+MP-6-2's `run.revise_state` asks `write` on `run` of the task named in
+`recordId` (ORCH33: `run:write` is the only key on `run`; its reads stay
+`task:read`). The handler refuses a run on another task with the bytes a
+made-up run gets. An agent reaches it only under a delegation minted with
+`run`, which pickup mints where the delegating person holds `run:write` and
+holds to `write` alone; the agent is the recorded actor. The seed gives
+`run:write` to no role.
 
 ## The restricted worker role
 

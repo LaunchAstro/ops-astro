@@ -30,6 +30,7 @@ import {
 import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
+import { readAwaitingReview } from './awaiting-review.ts';
 import { readSettings } from './settings.ts';
 import { listCustodySecrets } from './custody.ts';
 import { readConnectionFleet } from './connections.ts';
@@ -38,6 +39,7 @@ import { readConnectionGraduation } from './graduation.ts';
 import { readAutomationRegistry } from './automations.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
+import { listConversations, readConversation } from './conversation.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -166,6 +168,34 @@ const NO_GRANT_AT_ALL = refuseCommand(
 );
 
 export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
+  // AW-03. No collection is asked at the door: the owner reads their own
+  // without the read-any grant, so the rule is the read's own
+  // (`reads/conversation.ts`), and a caller holding nothing is refused there.
+  'conversation.read': {
+    identifiers: ['conversationId'],
+    // Any body parses: a caller holding nothing is refused SCOPE_NOT_GRANTED
+    // before the identifier is looked at (the matrix's case (e)), so the
+    // read checks the identifier itself, after that.
+    parse: ({ conversationId }) => parsed({ conversationId }),
+    spine: false,
+    authority: 'holds-any-grant',
+    // The door asks no grant, so this flag has nothing to answer; the read
+    // itself tells a caller with no membership NOT_FOUND.
+    outsiderNotFound: false,
+    serve: async (tx, session, { conversationId }) =>
+      await readConversation(tx, session, conversationId),
+  },
+  // MP-7-11. The caller's own conversations; the rule is the read's own, as
+  // `conversation.read`'s is, because the owner lists without the read-any
+  // grant and the read-any grant lists nothing.
+  'conversation.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await listConversations(tx, session),
+  },
   'task.read': {
     identifiers: ['recordId'],
     parse: ({ recordId }) =>
@@ -289,6 +319,20 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         return refuseNotFound();
       }
       return { ok: true, execution: await readTaskExecution(tx, recordId, operands.cursor) };
+    },
+  },
+  // No subject record, as the queue: the list is about the gates the caller
+  // may decide. The door asks for any grant; the rows are filtered by the
+  // caller's `decide` inside the query, and a caller holding none is refused.
+  'gate.pending': {
+    identifiers: [],
+    parse: NONE,
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    async serve(tx, session, _operands, { spine }) {
+      const awaiting = await readAwaitingReview(tx, session, spine.taskTypeId, 'task');
+      return Array.isArray(awaiting) ? { ok: true, awaiting } : (awaiting as CommandRefusal);
     },
   },
   'preset.plan': {

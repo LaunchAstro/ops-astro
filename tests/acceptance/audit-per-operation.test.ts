@@ -2,15 +2,15 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 66 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 75 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 66. For
-// the six lease operations he names real work in his own business: an
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 75. For
+// the seven lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
-// own refusals of those six are a case of their own below. `model.call`'s
+// own refusals of those seven are a case of their own below. `model.call`'s
 // applied row is the command's; the broker's settlement writes its own
 // `model.call_dispatched` event beside it, a different command.
 //
@@ -61,8 +61,12 @@ const LEASE_WORK: readonly CommandName[] = [
   'task.heartbeat',
   'task.dispatch',
   'task.observe',
+  'task.check',
   'model.call',
 ];
+
+/** A check's own fields, beside the lease it is recorded under (MP-6-1). */
+const CHECK = { name: 'a check for the audit', outcome: 'passed' } as const;
 
 /** One catalogued replay call, carrying only a field bound to the run's own task, which a person entered (S3). */
 const callOn = (taskId: string) => ({
@@ -215,6 +219,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         return await observedCell();
       case 'task.heartbeat':
       case 'task.dispatch':
+      case 'task.check':
       case 'model.call':
       case 'task.handback': {
         const agent = await freshAgent();
@@ -224,9 +229,11 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         const body =
           name === 'task.handback'
             ? { ...lease, ...settle }
-            : name === 'model.call'
-              ? { ...lease, ...callOn(p.taskId) }
-              : lease;
+            : name === 'task.check'
+              ? { ...lease, ...CHECK }
+              : name === 'model.call'
+                ? { ...lease, ...callOn(p.taskId) }
+                : lease;
         return agentCell(agent, name, body, p.credential, null);
       }
       case 'grant.revoke': {
@@ -280,6 +287,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       case 'task.heartbeat':
       case 'task.dispatch':
       case 'task.observe':
+      case 'task.check':
       case 'model.call':
       case 'task.handback': {
         const lease = await adaLease(`ada's lease noah may not ${name}`);
@@ -289,9 +297,11 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
             ? { ...lease, ...settle }
             : name === 'task.observe'
               ? { ...lease, attemptId: lease.attemptId }
-              : name === 'model.call'
-                ? { leaseId: lease.leaseId, fence: lease.fence, ...callOn(randomUUID()) }
-                : { leaseId: lease.leaseId, fence: lease.fence };
+              : name === 'task.check'
+                ? { leaseId: lease.leaseId, fence: lease.fence, ...CHECK }
+                : name === 'model.call'
+                  ? { leaseId: lease.leaseId, fence: lease.fence, ...callOn(randomUUID()) }
+                  : { leaseId: lease.leaseId, fence: lease.fence };
         return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
       }
       default: {
@@ -318,6 +328,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       case 'task.heartbeat':
       case 'task.dispatch':
       case 'task.observe':
+      case 'task.check':
       case 'model.call':
       case 'task.handback': {
         const agent = await freshAgent();
@@ -329,9 +340,11 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
             ? { ...lease, ...settle }
             : name === 'task.observe'
               ? { ...lease, attemptId: p.attemptId }
-              : name === 'model.call'
-                ? { ...lease, ...callOn(p.taskId) }
-                : lease;
+              : name === 'task.check'
+                ? { ...lease, ...CHECK }
+                : name === 'model.call'
+                  ? { ...lease, ...callOn(p.taskId) }
+                  : lease;
         return agentCell(agent, name, body, p.credential, 'LEASE_NOT_OWNED');
       }
       default:
@@ -400,12 +413,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 66 exported operations both ways', () => {
+  it('covered all 75 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(66);
+    expect(names).toHaveLength(75);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 66.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 75.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 
@@ -491,6 +504,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       ['task.read', 'read'],
       ['task.comment', 'comment'],
       ['task.heartbeat', 'write'],
+      ['task.check', 'write'],
       ['task.handback', 'write'],
     ];
 
@@ -513,6 +527,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
             audience: 'internal',
           },
           'task.heartbeat': lease,
+          'task.check': { ...lease, name: 'a narrowed check', outcome: 'passed' },
         };
         const bodyFor = (): Record<string, unknown> =>
           bodies[name] ?? { ...lease, outcome: 'completed', report: { wrote: 'a narrowed draft' } };

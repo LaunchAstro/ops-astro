@@ -49,6 +49,12 @@ export const READ_NAMES = [
   'connection.graduation',
   // The Workflow triggers registry (C33).
   'automation.registry',
+  // The gates waiting on the caller's decision (MP-6-1).
+  'gate.pending',
+  // A conversation at its address (AW-03).
+  'conversation.read',
+  // The caller's own conversations, for the tab row (MP-7-11).
+  'conversation.list',
 ] as const;
 
 /**

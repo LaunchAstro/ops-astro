@@ -30,6 +30,9 @@ import type {
   PersonListResult,
   PresetPlanResult,
   QueueResult,
+  AwaitingReviewResult,
+  ConversationListResult,
+  ConversationReadResult,
   SettingsReadResult,
   SecretListResult,
   ConnectionFleetResult,
@@ -68,6 +71,8 @@ export interface ReadOperands {
   readonly 'person.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
+  /** The pending gates the caller may decide, filtered by their `decide` in the query. */
+  readonly 'gate.pending': NoOperands;
   /**
    * The task's runs and their progress events after `cursor`, a position the
    * caller already holds (0 for the start). See `reads/execution.ts`.
@@ -117,6 +122,13 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /**
+   * A conversation at its address (AW-03): the owner's, or a holder of the
+   * read-any grant's. After the body purges it answers the wrap-up.
+   */
+  readonly 'conversation.read': { readonly conversationId: unknown };
+  /** The caller's own conversations, for the assistant panel's tab row (MP-7-11). */
+  readonly 'conversation.list': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -138,6 +150,7 @@ export type ReadResult =
   | TaskBoardResult
   | PersonListResult
   | QueueResult
+  | AwaitingReviewResult
   | PresetPlanResult
   | SettingsReadResult
   | { readonly ok: true; readonly execution: TaskExecution }
@@ -147,4 +160,6 @@ export type ReadResult =
   | ConnectionSignalResult
   | ConnectionGraduationResult
   | AutomationRegistryResult
-  | CapabilitiesResult;
+  | CapabilitiesResult
+  | ConversationReadResult
+  | ConversationListResult;

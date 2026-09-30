@@ -51,9 +51,12 @@ if (serverUrl === undefined) {
 // `custody:manage`. `record` and `onboarding` are C41-A's: the client
 // record and the onboarding laid out on it. `model` is AW-01's call through
 // the broker, asked of the lease's task. `run` is AW-05's two answers at the
-// budget stop, asked of the run's task.
+// budget stop, asked of the run's task. `gate` is the awaiting-review
+// read's (MP-6-1): the gates waiting on a decision, asked with `decide` on
+// tasks. `conversation` is a person's conversation with the agent (AW-03),
+// its writes and its read at its address.
 const PATH_SHAPE =
-  /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret|connection|connector|mandate|graduation|automation|activation|definition|approval|record|onboarding|model|run)\/[a-z_]+$/u;
+  /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret|connection|connector|mandate|graduation|automation|activation|definition|approval|record|onboarding|gate|conversation|model|run)\/[a-z_]+$/u;
 
 /** Every read the surface declares, sorted. */
 const DECLARED_READS = [
@@ -61,6 +64,9 @@ const DECLARED_READS = [
   'connection.fleet',
   'connection.graduation',
   'connection.signal',
+  'conversation.list',
+  'conversation.read',
+  'gate.pending',
   'person.list',
   'preset.plan',
   'secret.list',
@@ -72,6 +78,7 @@ const DECLARED_READS = [
   'task.read',
   'task.receipt',
 ];
+
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
     expect([...CONTRACT_NINE].toSorted()).toStrictEqual([
@@ -105,7 +112,7 @@ describe('the surface as a table', () => {
 });
 
 describe('the surface as a table', () => {
-  it('declares the fourteen reads as reads, and everything else as a write', () => {
+  it('declares the seventeen reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
@@ -152,6 +159,20 @@ describe("AW-05's answers at the budget stop", () => {
     expect(declarationOf('run.end_at_budget_stop').collection).toBe('gate');
     expect(declarationOf('run.top_up').action).toBe('decide');
     expect(declarationOf('run.end_at_budget_stop').action).toBe('decide');
+  });
+});
+
+describe("MP-6-2's state revised", () => {
+  it('asks write on run of the named task, and an agent reaches it only under its delegation', () => {
+    // run:write alone (ORCH33): no read, decide, share or manage on run.
+    const row = declarationOf('run.revise_state');
+    expect([row.collection, row.action, row.authorisedOn, row.agent]).toStrictEqual([
+      'run',
+      'write',
+      'record',
+      'delegated',
+    ]);
+    expect(row.targetsExistingRecord).toBe(false);
   });
 });
 

@@ -37,6 +37,7 @@ import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
 import { dispatchOwnLease } from './tasks-dispatch.ts';
 import { observeOwnLease } from './tasks-observe.ts';
+import { checkOwnLease } from './tasks-check.ts';
 import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
@@ -44,8 +45,11 @@ import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
+import { messageConversation, startConversation } from './conversations.ts';
+import { renameConversation, setConversationScope } from './conversation-tabs.ts';
 import { refuseModelCallAsPerson } from './model-call-person.ts';
 import { endOnRun, topUpOnRun } from './run-answers.ts';
+import { reviseStateOnRun } from './run-state.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -138,6 +142,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.heartbeat': heartbeatOwnLease,
   'task.dispatch': dispatchOwnLease,
   'task.observe': observeOwnLease,
+  'task.check': checkOwnLease,
   'task.handback': handbackOwnLease,
 
   // T2e. A person's money decision; no agent route reaches it.
@@ -146,12 +151,21 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'budget.record_outcome': recordOutcomeOnTask,
   // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
   'budget.write_off': writeOffOnTask,
+  // AW-03: the conversation's first message mints it; later ones are its owner's.
+  'conversation.start': startConversation,
+  'conversation.message': messageConversation,
+  // MP-7-11: the tab row's title and the page it is about, the owner's alone.
+  'conversation.rename': renameConversation,
+  'conversation.set_scope': setConversationScope,
   // AW-01: the run's worker's, through the broker, on the agent prefix only.
   'model.call': refuseModelCallAsPerson,
 
   // AW-05: a person's answers to a run waiting at its approved ceiling.
   'run.top_up': topUpOnRun,
   'run.end_at_budget_stop': endOnRun,
+  // MP-6-2: a run's state revised, a person's under run:write; the agent's is
+  // served on its own prefix (`agent-operations.ts`).
+  'run.revise_state': reviseStateOnRun,
 };
 
 function writeOwned(

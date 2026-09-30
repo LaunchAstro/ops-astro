@@ -35,10 +35,12 @@ export {
 } from './authority/delegations.ts';
 export {
   checkAuthority,
+  coveredScopes,
   effectiveGrants,
   grantedScopes,
   revokeGrant,
   subjectsOf,
+  EFFECTIVE_GRANTS_CTE,
   type Action,
   type Decision,
   type EffectiveGrant,

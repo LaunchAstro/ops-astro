@@ -61,6 +61,75 @@ import { columnUpdateFindings } from './restricted-calls-columns.ts';
  * world assertions move.
  */
 const UNREACHED: Readonly<Record<string, string>> = {
+  // The journey holds no conversation (AW-03), so one row per business in each
+  // of its three tables: the conversation owned by the business's first person
+  // actor, its message and its wrap-up on that conversation, where the business
+  // has them. Bravo's rows name ids that key nothing, written with foreign keys
+  // off, as every seed here is.
+  'public.conversations': `insert into public.conversations
+       (business_id, id, owner_actor_id, owner_person_id, title)
+     select $1, gen_random_uuid(), coalesce(a.id, gen_random_uuid()),
+            coalesce(a.person_id, gen_random_uuid()), 'restricted calls seed'
+       from (select 1) one
+       left join lateral (
+         select id, person_id from public.actors
+          where business_id = $1 and person_id is not null order by id limit 1) a on true
+     returning 1`,
+  'public.conversation_messages': `insert into public.conversation_messages
+       (business_id, id, conversation_id, role, author_actor_id, body)
+     select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), 'person',
+            coalesce(c.owner_actor_id, gen_random_uuid()), 'restricted calls seed'
+       from (select 1) one
+       left join lateral (
+         select id, owner_actor_id from public.conversations
+          where business_id = $1 order by id limit 1) c on true
+     returning 1`,
+  'public.conversation_wrap_ups': `insert into public.conversation_wrap_ups
+       (business_id, id, conversation_id, version, written_by_operation, code_revision,
+        request_quotation, items, left_open, activity_through)
+     select $1, gen_random_uuid(), coalesce(c.id, gen_random_uuid()), 1, 'conversation.wrap_up',
+            'seed', 'restricted calls seed', '[{},{},{},{},{},{},{}]'::jsonb, '[]'::jsonb, now()
+       from (select 1) one
+       left join lateral (
+         select id from public.conversations where business_id = $1 order by id limit 1) c on true
+     returning 1`,
+  // The journey records no check (MP-6-1), so one is written against the
+  // business's own lease, run, version and attempt where it has one, as
+  // `recordCheck` does; Bravo holds no lease, so its row names ids that key
+  // nothing. Written with foreign keys off, as every seed here is and as the prefixes
+  // suite writes every reference row.
+  // The journey revises no run's state (MP-6-2): one version on the business's
+  // first run, where it has one; otherwise ids that key nothing.
+  'public.run_states': `insert into public.run_states
+       (business_id, id, run_id, task_id, version, knowledge, unknowns, revised_by_actor_id)
+     select $1, gen_random_uuid(), coalesce(r.id, gen_random_uuid()),
+            coalesce(r.task_id, gen_random_uuid()), 1, '["restricted calls seed"]', '[]',
+            coalesce(a.id, gen_random_uuid())
+       from (select 1) one
+       left join lateral (
+         select id, task_id from public.planned_runs where business_id = $1 order by id limit 1) r on true
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
+  'public.run_checks': `insert into public.run_checks
+       (business_id, id, task_id, run_id, version_id, lease_id, attempt_id, actor_id,
+        fence, name, outcome)
+     select $1, gen_random_uuid(), coalesce(w.task_id, gen_random_uuid()),
+            coalesce(w.run_id, gen_random_uuid()), coalesce(w.version_id, gen_random_uuid()),
+            coalesce(w.lease_id, gen_random_uuid()), coalesce(w.attempt_id, gen_random_uuid()),
+            coalesce(w.actor_id, gen_random_uuid()), coalesce(w.fence, 1),
+            'restricted calls seed', 'passed'
+       from (select 1) one
+       left join lateral (
+         select l.task_id, run.id as run_id, run.version_id, l.id as lease_id,
+                att.id as attempt_id, l.holder_actor_id as actor_id, l.fence
+           from public.leases l
+           join public.reservations res on res.business_id = l.business_id and res.lease_id = l.id
+           join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+           join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
+          where l.business_id = $1
+          order by l.id limit 1) w on true
+     returning 1`,
   'public.person_identifiers': `insert into public.person_identifiers
        (business_id, id, person_id, kind, value, observed_value, source_system)
      select business_id, gen_random_uuid(), id, 'email', 'restricted-calls-seed',

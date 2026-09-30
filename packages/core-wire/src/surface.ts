@@ -64,6 +64,8 @@ export type CommandName =
   | 'task.board'
   | 'task.queue'
   | 'task.execution'
+  // The gate engine's pending decisions a person may make (MP-6-1).
+  | 'gate.pending'
   | 'person.list'
   // The preset planner. It reads the model and writes nothing at all, so it is
   // a read by the only definition this table has; what makes it unlike the
@@ -148,6 +150,19 @@ export type CommandName =
   | 'record.create'
   | 'onboarding.start'
   | 'onboarding.step_result'
+  // A check the run performed, recorded under its worker lease (MP-6-1,
+  // CS-16.3): a system write whose authority is the live lease, not a grant.
+  | 'task.check'
+  // A person's conversation with the agent (AW-03): minted at its first
+  // message, its owner's alone, and read at its address after the body purges.
+  | 'conversation.start'
+  | 'conversation.message'
+  | 'conversation.read'
+  // The assistant panel's tab row (MP-7-11): the person's own conversations,
+  // a tab's title, and the page it is about.
+  | 'conversation.list'
+  | 'conversation.rename'
+  | 'conversation.set_scope'
   // One priced model call, made by the lease holder through the credential
   // broker (AW-01). The grant is the run's delegation, one of the six facts
   // the broker verifies from rows; no person grant carries it.
@@ -156,7 +171,11 @@ export type CommandName =
   // a top-up under four eyes above the business's threshold, or one click
   // that ends the work and parks the task. No agent answers either.
   | 'run.top_up'
-  | 'run.end_at_budget_stop';
+  | 'run.end_at_budget_stop'
+  // A run's current knowledge and unknowns, revised as a new version (MP-6-2,
+  // CS-16.4): `run:write` on the run's task, a person's or an agent's inside
+  // its delegation, the agent the recorded actor.
+  | 'run.revise_state';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -321,6 +340,7 @@ const CONNECTION_COLLECTION = 'connection';
 const MANDATE_COLLECTION = 'mandate';
 const AUTOMATION_COLLECTION = 'automation';
 const RECORD_COLLECTION = 'record';
+const CONVERSATION_COLLECTION = 'conversation';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -491,9 +511,30 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  'task.check': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    name: 'any',
+    outcome: 'any',
+    note: 'any',
+  },
+  'conversation.start': { body: 'any', title: 'any', subject: 'any', scope: 'any' },
+  'conversation.message': { conversationId: 'any', body: 'any' },
+  'conversation.rename': { conversationId: 'any', title: 'any' },
+  'conversation.set_scope': { conversationId: 'any', page: 'any' },
   'model.call': { leaseId: 'any', fence: 'any', operation: 'any', fields: 'any' },
   'run.top_up': { recordId: 'any', runId: 'any', amountMinor: 'any', currency: 'any' },
   'run.end_at_budget_stop': { recordId: 'any', runId: 'any' },
+  // The version the caller read (0 before the first); the two lists are
+  // checked item by item by the handler.
+  'run.revise_state': {
+    recordId: 'any',
+    runId: 'any',
+    expectedVersion: 'count',
+    knowledge: 'any',
+    unknowns: 'any',
+  },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -563,6 +604,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   read('task.queue', TASK_COLLECTION, { agent: 'before-pickup' }),
   // One task's runs and their progress events (T2a), after `read` on that task.
   read('task.execution', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // `decide` on tasks (`gate:decide`), asked per row inside the query, so a
+  // record-scoped decider sees its own records' gates (`reads/awaiting-review.ts`).
+  read('gate.pending', TASK_COLLECTION, { action: 'decide' }),
   read('person.list', 'person'),
   // `preset` is what this route is about; the grant it takes is `manage` on
   // the family the request names, which `reads/dispatch.ts` reads off the
@@ -583,6 +627,38 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // delegation's purpose; before a pickup it is refused like every other
   // operation outside the two (minimum contract 8.2 case 9).
   read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated' }),
+
+  // AW-03. `conversation:write` is the owner's key for their own conversation;
+  // the handler refuses a message into anyone else's. The read names its own
+  // rule (`reads/conversation.ts`): the owner, or a holder of the read-any
+  // grant `conversation:read`, which nobody holds on install. No agent entry:
+  // the agent's side of an exchange is written by the product's exchange,
+  // never by an agent calling in.
+  declare('conversation.start', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('conversation.message', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
+  read('conversation.read', CONVERSATION_COLLECTION),
+  // MP-7-11's tab row, under the same rule: the owner's own, no agent entry.
+  // The list is the caller's own conversations and nobody else's, whatever
+  // read-any grant they hold; its rule is the read's own, like the read's.
+  read('conversation.list', CONVERSATION_COLLECTION),
+  declare('conversation.rename', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
+  declare('conversation.set_scope', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was
@@ -766,6 +842,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     runtimeShaped: 'leaseId',
     agent: 'delegated',
   }),
+  // Asked of the lease like heartbeat: the lease holder records the check,
+  // and the row names the holder as the actor that performed it.
+  declare('task.check', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
   // The effect's token is the attempt its dispatch answered; the runtime reads
   // the operation register for the effect under the lease's own locks (T2c2).
   declare('task.observe', 'write', {
@@ -829,6 +914,17 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'runId'],
+  }),
+  // `write` on `run`, asked of the task the body names (ORCH33); the handler
+  // refuses a run on another task. It has a version of its own, not the
+  // task's revision. An agent reaches it only where its delegation was minted
+  // with `run` (ORCH34), and the mint holds `run` to `write`.
+  declare('run.revise_state', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'runId'],
+    agent: 'delegated',
   }),
 ];
 

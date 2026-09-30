@@ -155,8 +155,11 @@ that expires while the decision waits on the chain or the cap does not count
 The runtime's other person checks under the locks are judged the same way. In
 pickup, heartbeat and handback, a person's write on the task, and for an agent
 pickup the delegating person's read, comment and write, are judged at the locked
-instant (`checkAuthorityAt`, `lockedAt`). A grant that expires while the call
-waits on its locks does not count. An agent pickup refused this way answers
+instant (`checkAuthorityAt`, `lockedAt`). An agent's delegation reaches the
+task's collection, and `run` too where the delegating person holds `run:write`
+at that instant, held to `write` alone (MP-6-2, `delegatedCollections`). A
+grant that expires while the call waits on its locks does not count. An agent
+pickup refused this way answers
 `DELEGATION_WIDENS`, in `mintDelegation`'s own words, before anything is minted
 (`pickup`, `pickup.ts`; `heartbeat.ts`; `handback.ts`;
 `tests/runtime/grants-at-locked-instant.test.ts`).
@@ -1366,6 +1369,7 @@ under a dedicated delegation credential key
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
   rewrites it (`local-seed.mjs:792-803`). With neither setting present, the
+  rewrites it (`local-seed.mjs:785-796`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the

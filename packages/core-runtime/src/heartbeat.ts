@@ -37,6 +37,7 @@ import {
   readLease,
   refuseLease,
   type LeaseClaimant,
+  type OwnerFixes,
 } from './lease-ownership.ts';
 import { acquire } from './locks.ts';
 import { only } from './only.ts';
@@ -90,36 +91,55 @@ export async function heartbeat(
   tx: TenantQuery,
   request: HeartbeatRequest | PersonHeartbeatRequest,
 ): Promise<RuntimeResult<Renewed>> {
+  const owned = await lockOwnedLease(tx, request, LEASE_FIXES.heartbeat);
+  if (!owned.ok) return owned;
+  const { taskId, lockedAt } = owned.value;
+  if (request.providerStarting === true) {
+    const started = await startProvider(tx, request.leaseId, lockedAt);
+    if (!started.ok) return started;
+  }
   const delegationId = request.claimant === 'person' ? null : request.delegationId;
-  // Find: a lease this business does not hold is answered as one the caller
-  // does not own, before any lock.
+  const expiresAt = await renew(tx, request, delegationId, lockedAt);
+  return {
+    ok: true,
+    value: { leaseId: request.leaseId, taskId, fence: request.fence, expiresAt },
+  };
+}
+
+/** Who presents a lease, without what they want done under it. */
+export type LeaseCaller =
+  | Omit<HeartbeatRequest, 'renewSeconds' | 'providerStarting'>
+  | Omit<PersonHeartbeatRequest, 'renewSeconds' | 'providerStarting'>;
+
+/**
+ * Find, lock and re-check a lease its caller must hold live: a lease this
+ * business does not hold is answered as one the caller does not own, before
+ * any lock. `now()` is when the transaction began, and a call that waited on
+ * the lease lock past the expiry would still see the lease live, so the clock
+ * is read after the locks, and that one instant judges the expiry, the
+ * delegation's liveness and whatever the caller writes next. Heartbeat and
+ * `recordCheck` share it, each with its own next steps.
+ */
+export async function lockOwnedLease(
+  tx: TenantQuery,
+  request: LeaseCaller,
+  fixes: OwnerFixes,
+): Promise<RuntimeResult<{ readonly taskId: string; readonly lockedAt: string }>> {
+  const delegationId = request.claimant === 'person' ? null : request.delegationId;
   const found = await tx.query<{ readonly delegation_id: string | null }>(
     `select delegation_id from public.leases where business_id = $1 and id = $2`,
     [tx.businessId, request.leaseId],
   );
-  if (found[0] === undefined) return refuseLease('not_owned', LEASE_FIXES.heartbeat.notOwned);
+  if (found[0] === undefined) return refuseLease('not_owned', fixes.notOwned);
 
   await acquire(tx, [
     { lockClass: 'lease', id: request.leaseId },
     ...(delegationId === null ? [] : [{ lockClass: 'delegation' as const, id: delegationId }]),
   ]);
-
-  // `now()` is when this transaction began, and a heartbeat
-  // that waited on the lease lock past the expiry would still see the lease
-  // live. The clock read here, after the locks, is the one instant the expiry,
-  // the delegation's liveness and the renewal below all use.
   const lockedAt = await lockedInstant(tx);
-  const checked = await recheckOwner(tx, request, lockedAt);
+  const checked = await recheckOwner(tx, request, lockedAt, fixes);
   if (!checked.ok) return checked;
-  if (request.providerStarting === true) {
-    const started = await startProvider(tx, request.leaseId, lockedAt);
-    if (!started.ok) return started;
-  }
-  const expiresAt = await renew(tx, request, delegationId, lockedAt);
-  return {
-    ok: true,
-    value: { leaseId: request.leaseId, taskId: checked.value, fence: request.fence, expiresAt },
-  };
+  return { ok: true, value: { taskId: checked.value, lockedAt } };
 }
 
 /**
@@ -129,8 +149,9 @@ export async function heartbeat(
  */
 async function recheckOwner(
   tx: TenantQuery,
-  request: HeartbeatRequest | PersonHeartbeatRequest,
+  request: LeaseCaller,
   lockedAt: string,
+  fixes: OwnerFixes,
 ): Promise<RuntimeResult<string>> {
   const lease = await readLease(tx, request.leaseId, lockedAt);
   const caller: LeaseClaimant =
@@ -138,11 +159,11 @@ async function recheckOwner(
       ? { claimant: 'person', actorId: request.holderActorId }
       : { claimant: 'agent', actorId: request.holderActorId, delegationId: request.delegationId };
   if (lease === undefined || !holdsLease(lease, caller)) {
-    return refuseLease('not_owned', LEASE_FIXES.heartbeat.notOwned);
+    return refuseLease('not_owned', fixes.notOwned);
   }
   const fenced = fenceCause(lease, request.fence);
   if (fenced === 'fence_presented' || fenced === 'fence_superseded') {
-    return refuseLease(fenced, LEASE_FIXES.heartbeat.notOwned);
+    return refuseLease(fenced, fixes.notOwned);
   }
   // A person's lease carries no delegation, so its liveness is the person's
   // own current authority instead, and losing it is the same answer.
@@ -151,10 +172,10 @@ async function recheckOwner(
       ? await personWriteLive(tx, request, lease.task_id, lockedAt)
       : lease.delegation_live;
   if (!authorityLive && request.claimant === 'person' && fenced === null) {
-    return refuseLease('authority_lost', LEASE_FIXES.heartbeat.lost);
+    return refuseLease('authority_lost', fixes.lost);
   }
-  if (fenced !== null) return refuseLease(fenced, LEASE_FIXES.heartbeat.expired);
-  if (!authorityLive) return refuseLease('not_live', LEASE_FIXES.heartbeat.expired);
+  if (fenced !== null) return refuseLease(fenced, fixes.expired);
+  if (!authorityLive) return refuseLease('not_live', fixes.expired);
   return { ok: true, value: lease.task_id };
 }
 

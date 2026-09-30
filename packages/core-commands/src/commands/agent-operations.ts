@@ -31,6 +31,8 @@ import { MAXIMUM_LEASE_SECONDS, pickupReservation, refuseReservationBody } from 
 import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
 import { dispatchLease } from './tasks-dispatch.ts';
 import { observeLease } from './tasks-observe.ts';
+import { checkLease } from './tasks-check.ts';
+import { reviseRunState } from './run-state.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeStepResult } from './onboarding.ts';
@@ -568,6 +570,28 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     }),
   ],
   [
+    'task.check',
+    row({
+      authority: 'record',
+      subjectTask: 'lease',
+      replay: 'reauthorise',
+      operands: NONE,
+      serve: async (tx, { session, request }, _operands, delegation) =>
+        await checkLease(
+          tx,
+          {
+            leaseId: request['leaseId'],
+            fence: request['fence'],
+            name: request['name'],
+            outcome: request['outcome'],
+            note: request['note'],
+          },
+          agentClaimant(session.actorId),
+          delegation.id,
+        ),
+    }),
+  ],
+  [
     'task.read',
     row({
       authority: 'record',
@@ -669,6 +693,31 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
         refused(refuseCommand('DEPENDENCY_NOT_LANDED', ['model.call'], NO_BROKER_FIXES)),
       ),
     ),
+  ],
+  [
+    'run.revise_state',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      // The task checked under the delegation (`run:write`, which the mint
+      // grants only where the person holds it); the agent is the recorded actor.
+      serve: async (tx, { session, request }, _operands, _delegation, taskId) => {
+        const spine = await readTaskSpine(tx);
+        return await reviseRunState(
+          tx,
+          spine.taskTypeId,
+          { taskId: taskId ?? request['recordId'], runId: request['runId'] },
+          {
+            expectedVersion: request['expectedVersion'],
+            knowledge: request['knowledge'],
+            unknowns: request['unknowns'],
+          },
+          session.actorId,
+        );
+      },
+    }),
   ],
   [
     'session.capabilities',
