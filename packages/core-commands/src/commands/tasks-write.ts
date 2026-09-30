@@ -45,6 +45,7 @@ import { isInProductLink } from '../../../core-wire/src/index.ts';
 import { refuseCreateOperands, refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { clientOf } from './tasks-party.ts';
+import { oneKind } from './tasks-agent.ts';
 import { writeOwnedFields } from './tasks-state.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
@@ -369,7 +370,7 @@ export async function assignTaskAsAgent(
 ): Promise<HandlerOutcome> {
   const outside = outsideAgentReach(fields, AGENT_ASSIGN_FIELDS);
   if (outside !== undefined) return refused(outside);
-  return await writeOwnedFields(tx, context, 'task.assign', fields);
+  return await writeOwnedFields(tx, context, 'task.assign', oneKind(context, fields));
 }
 
 function outsideAgentReach(

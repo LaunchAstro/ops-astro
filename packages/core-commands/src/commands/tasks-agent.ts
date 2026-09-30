@@ -20,9 +20,7 @@
 // **Assignment starts nothing.** It records who holds the task; a run still
 // needs its own commands.
 
-import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { writeAuditEvent } from './audit.ts';
 import type { CommandContext } from './context.ts';
 import { refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
@@ -41,13 +39,7 @@ export async function assignTask(
   const agent: unknown = map ? fields['agent'] : undefined;
   const person: unknown = map ? fields['assignee'] : undefined;
   if (typeof agent !== 'string' || !UUID.test(agent)) {
-    const held = typeof context.target?.data['agent'] === 'string';
-    // A person assignee replaces an agent: one kind at a time.
-    const next =
-      typeof person === 'string' && held && !('agent' in fields)
-        ? { ...fields, agent: null }
-        : fields;
-    return await writeOwnedFields(tx, context, 'task.assign', next);
+    return await writeOwnedFields(tx, context, 'task.assign', oneKind(context, fields));
   }
   if (typeof person === 'string') {
     return refused(
@@ -65,6 +57,15 @@ export async function assignTask(
     agent: agent.toLowerCase(),
     assignee: null,
   });
+}
+
+/**
+ * A person write replaces an agent holder, and unassigning (`assignee: null`)
+ * clears either kind: one kind at a time, whoever writes it.
+ */
+export function oneKind(context: Pick<CommandContext, 'target'>, fields: FieldValues): FieldValues {
+  const held = typeof context.target?.data['agent'] === 'string';
+  return held && 'assignee' in fields && !('agent' in fields) ? { ...fields, agent: null } : fields;
 }
 
 async function refuseAgent(
@@ -110,23 +111,4 @@ async function refuseAgent(
     );
   }
   return undefined;
-}
-
-/** One applied `task.assign` event per task a revoke cleared its agent from. */
-export async function recordAgentsCleared(
-  tx: TenantQuery,
-  context: CommandContext,
-  delegationId: string,
-  taskIds: readonly string[],
-): Promise<void> {
-  for (const taskId of taskIds) {
-    // eslint-disable-next-line no-await-in-loop -- the chain takes one event at a time
-    await writeAuditEvent(tx, {
-      actorId: context.session.actorId,
-      command: 'task.assign',
-      outcome: 'applied',
-      subjectRecordId: taskId,
-      payloadDigest: payloadDigest({ recordId: taskId, fields: { agent: null }, delegationId }),
-    });
-  }
 }

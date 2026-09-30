@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The agent assignee as `task.read` sends it (Assign to AI): the delegation
-// holding the task with the person accountable for it, and the reader's own
-// live delegations that reach the task, which is all the Assign to AI control
-// offers. Another person's delegations are never listed, counted or hinted.
+// holding the task, sent only to its own delegating person, and the reader's
+// own live delegations that reach the task, which is all the Assign to AI
+// control offers. Another person's delegations are never listed, counted or
+// hinted, the one holding the task included.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { AgentAssigneeView, AgentOfferView } from '../../../core-wire/src/index.ts';
 
-/** The task's agent, and the reader's own agents for it; neither for an agent reader. */
+/** The task's agent when it is the reader's, and the reader's own agents for it; neither for an agent reader. */
 export async function readTaskAgents(
   tx: TenantQuery,
   recordId: string,
@@ -32,8 +33,8 @@ export async function readTaskAgents(
        from public.records r
        join public.delegations d on d.business_id = r.business_id and d.id::text = r.data ->> 'agent'
        left join public.people p on p.business_id = d.business_id and p.id = d.delegate_person_id
-      where r.business_id = $1 and r.id = $2`,
-    [tx.businessId, recordId],
+      where r.business_id = $1 and r.id = $2 and d.delegate_person_id = $3`,
+    [tx.businessId, recordId, reader],
   );
   const row = held[0];
   const agent =

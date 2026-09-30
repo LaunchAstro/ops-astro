@@ -365,16 +365,19 @@ all of these answer `DELEGATION_EXCLUDES_OPERATION` 403.
 
 **Assign to AI.** `task.assign` sets a task's assignee to a person
 (`assignee`) or to an agent (`agent`, a delegation id, migration 0051), one
-kind at a time: either clears the other. Only the delegation's own person
+kind at a time: either clears the other, and unassigning (`assignee: null`)
+clears both. Only the delegation's own person
 assigns it (another person's, a manager's included, is `NOT_FOUND`, as an
 unknown id is), and only while it is live and minted for this very task. The
 delegation row is read `for share` under the task lock, so a racing revoke
-is seen or waits. `delegation.revoke` clears the delegation from every task
-holding it, one applied `task.assign` audit event per task, in its own
-transaction. Four eyes counts an agent assignee as its delegating person.
-`task.read` answers `agent` (the delegation, its purpose, the accountable
-person and whether it is live) and `myAgents` (the reader's own live
-delegations for this task); an agent reader is sent neither. Assignment starts no run.
+is seen or waits. Any revoke, explicit or by the runtime, clears the
+delegation from every task holding it (tasks only), one applied `task.assign`
+audit event per task, in the revoke's own transaction. Four eyes counts an
+agent assignee as its delegating person. `task.read` answers `agent` (the
+delegation, its purpose, the accountable person and whether it is live) to
+that person only, null to every other reader, and `myAgents` (the reader's own
+live delegations for this task); an agent reader is sent neither. Assignment
+starts no run.
 
 **`task.trash` asks `write` on the task and on every live descendant the walk
 reaches.** A business-scoped grant covers them all. Otherwise each descendant

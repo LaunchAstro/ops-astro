@@ -139,7 +139,8 @@ export interface TaskDetail extends TaskSummary {
   /**
    * The agent assignee (Assign to AI): the delegation holding the task and
    * the person accountable for it, or null. `live` is false once it expired
-   * or settled; a revoke clears it. Null to an agent reader.
+   * or settled; a revoke clears it. Sent only to its delegating person: null
+   * to every other reader, an agent included.
    */
   readonly agent: AgentAssigneeView | null;
   /**

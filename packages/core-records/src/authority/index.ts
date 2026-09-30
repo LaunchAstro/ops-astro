@@ -40,7 +40,6 @@ export {
   mintDelegation,
   resolveDelegation,
   revokeDelegation,
-  revokeDelegationClearing,
   settleDelegation,
   type DelegableAction,
   type Delegation,

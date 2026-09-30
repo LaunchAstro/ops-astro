@@ -28,7 +28,6 @@ export {
   resolveNarrowedDelegation,
   resolveSettledByLease,
   revokeDelegation,
-  revokeDelegationClearing,
   settleDelegation,
   type Delegation,
   type DelegationRefusalCode,

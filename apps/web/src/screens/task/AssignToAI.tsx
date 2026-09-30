@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Assign to AI on the task page and the dock task panel: the task's agent
-// with the person accountable for it, and a select of the reader's own agents
+// when it is the reader's own (the server sends no other), and a select of the reader's own agents
 // that reach the task (`myAgents`, which the server fills with nothing
 // else). Choosing one sends `task.assign` with `agent` at the read revision;
 // a landed write asks for a reread. With none of the reader's own agents, no
