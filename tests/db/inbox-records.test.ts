@@ -25,7 +25,7 @@ import {
   recordDeliveryAttempt,
 } from '../../packages/core-records/src/index.ts';
 import { installTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
-import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
+import { connect, type TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
@@ -498,11 +498,13 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
     await new Promise((resolve) => {
       setTimeout(resolve, 150);
     });
-    const second = inAlpha(async (tx) => {
+    // The second writer comes in on a connection of its own: the app pool is one.
+    const other = connect(db.appUrl);
+    const second = other.withBusiness(alpha, async (tx) => {
       secondBackend = (await tx.query<{ pid: number }>('select pg_backend_pid() as pid'))[0]?.pid;
       return await raiseInboxItem(tx, item);
     });
-    const [one, two] = await Promise.all([first, second]);
+    const [one, two] = await Promise.all([first, second]).finally(async () => await other.close());
     expect(
       firstBackend,
       'the writers need distinct database sessions to contend on the index',
