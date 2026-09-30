@@ -104,6 +104,7 @@ export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult
     permissions: admitted.has(person.personId)
       ? once(held.filter((permission) => permission.personId === person.personId))
       : [],
+    grants: [],
   });
   return {
     team: team.map((person) => withPreview(person)),
