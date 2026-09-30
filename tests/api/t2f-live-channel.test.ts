@@ -160,8 +160,13 @@ describe.skipIf(serverUrl === undefined)(
       key = String(rows[0]?.key);
       // More than one connection, so the pooling proofs are about a pool.
       pool = connect(s.db.appUrl, { max: 4 });
-      listener = connectListener(s.db.appUrl);
-      topics = await startLiveTopics(listener);
+      try {
+        listener = connectListener(s.db.appUrl);
+        topics = await startLiveTopics(listener);
+      } catch (error) {
+        // Without T2f's listener every case below still runs, and fails by its own name.
+        console.warn(`api/t2f-live-channel: no live listener: ${String(error)}`);
+      }
       api = composeApi({
         database: pool,
         admin: s.db.admin,
