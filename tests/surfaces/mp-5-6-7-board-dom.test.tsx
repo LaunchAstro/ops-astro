@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the named cases drawn on one gallery fixture */
 //
 // U13 in a document, on the board machine's gallery fixture: MP-5-6's grips,
 // drag, arrow keys and Reset columns, and MP-5-7's command bar. The owner
@@ -40,8 +41,10 @@ const SHEET = readFileSync(
 
 /** Each drawn column's share, in percent, by key. */
 const shares = (board: Mounted): Readonly<Record<string, number>> => {
-  const heads = board.all('thead th').map((th) => th.getAttribute('data-key') ?? '');
-  const cols = board.all('colgroup col').map((col) => parseFloat((col as HTMLElement).style.width));
+  const heads = board.all('thead th').map((th) => (th as HTMLElement).dataset['key'] ?? '');
+  const cols = board
+    .all('colgroup col')
+    .map((col) => Number((col as HTMLElement).style.width.replace('%', '')));
   return Object.fromEntries(heads.map((key, at) => [key, cols[at] ?? 0]));
 };
 
@@ -56,7 +59,7 @@ const pointer = async (
   type: 'pointerdown' | 'pointermove' | 'pointerup',
   clientX: number,
 ): Promise<void> => {
-  await act(async () => {
+  await act(() => {
     target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX }));
   });
 };
@@ -65,7 +68,7 @@ const drag = async (board: Mounted, key: string, dx: number, steps = 4): Promise
   const handle = grip(board, key);
   await pointer(handle, 'pointerdown', 500);
   // The moves arrive as a pointer sends them, several between two paints.
-  await act(async () => {
+  await act(() => {
     for (let step = 1; step <= steps; step += 1) {
       window.dispatchEvent(
         new MouseEvent('pointermove', { bubbles: true, clientX: 500 + (dx * step) / steps }),
@@ -76,7 +79,7 @@ const drag = async (board: Mounted, key: string, dx: number, steps = 4): Promise
 };
 
 const key = async (target: EventTarget, init: KeyboardEventInit): Promise<void> => {
-  await act(async () => {
+  await act(() => {
     target.dispatchEvent(
       new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }),
     );
@@ -92,6 +95,7 @@ const undoLabel = (board: Mounted): string =>
 
 // Defaults at 1200: name 30%, client 16%, assignee 14%, due 13%, category 13%,
 // client comments 4%, actual 10%.
+// eslint-disable-next-line max-lines-per-function -- one ticket’s named cases on one mounted board
 describe('MP-5-6 on the gallery fixture', () => {
   it('MP-5-6 drag within minimums: a drag widens its column from those to its right only', async () => {
     const board = await open();
@@ -143,7 +147,7 @@ describe('MP-5-6 on the gallery fixture', () => {
     // A press on a grip that moves nothing is no step, and never sorts.
     await pointer(grip(board, 'client'), 'pointerdown', 300);
     await pointer(window, 'pointerup', 300);
-    await act(async () => {
+    await act(() => {
       grip(board, 'client').dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(undoLabel(board)).toBe('Nothing to undo');
@@ -151,7 +155,7 @@ describe('MP-5-6 on the gallery fixture', () => {
     // A drag the browser cancels leaves no width and no step.
     await pointer(grip(board, 'due'), 'pointerdown', 300);
     await pointer(window, 'pointermove', 360);
-    await act(async () => {
+    await act(() => {
       window.dispatchEvent(new MouseEvent('pointercancel', { bubbles: true }));
     });
     expect(shares(board)).toEqual(before);
@@ -179,7 +183,7 @@ describe('MP-5-6 on the gallery fixture', () => {
     expect(handle.getAttribute('aria-orientation')).toBe('vertical');
     expect(handle.getAttribute('aria-label')).toBe('Resize Client');
     expect(handle.tabIndex).toBe(0);
-    await act(async () => {
+    await act(() => {
       handle.focus();
     });
     await key(handle, { key: 'ArrowRight' });
@@ -188,7 +192,7 @@ describe('MP-5-6 on the gallery fixture', () => {
     await key(grip(board, 'client'), { key: 'ArrowLeft', shiftKey: true });
     expect(shares(board)['client']).toBeCloseTo(((192 + 16 - 64) / 1200) * 100, 3);
     // Focus stays on the grip through the redraw, and other keys do nothing.
-    expect(document.activeElement?.getAttribute('data-grip')).toBe('client');
+    expect((document.activeElement as HTMLElement | null)?.dataset['grip']).toBe('client');
     const now = shares(board);
     await key(grip(board, 'client'), { key: 'Enter' });
     await key(grip(board, 'client'), { key: 'a' });
@@ -228,6 +232,7 @@ const funnelLabels = (board: Mounted): readonly string[] =>
 
 const rowCount = (board: Mounted): number => board.all('tbody tr[data-row]').length;
 
+// eslint-disable-next-line max-lines-per-function -- one ticket’s named cases on one mounted board
 describe('MP-5-7 on the gallery fixture', () => {
   it('MP-5-7 funnel badge: counts the filters on that no chip on the bar shows', async () => {
     const board = await open();
@@ -241,7 +246,7 @@ describe('MP-5-7 on the gallery fixture', () => {
     await board.click('[data-funnel]');
     await board.click('#cbd-menu [data-showall]');
     const category = board.find('#cbd-menu [data-add^="category:"]');
-    await act(async () => {
+    await act(() => {
       category?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
     });
     await board.type('[data-board-search]', 'zebra');
@@ -274,7 +279,7 @@ describe('MP-5-7 on the gallery fixture', () => {
     expect(board.find('[data-funnel]')?.getAttribute('aria-expanded')).toBe('true');
     await key(board.find('#cbd-menu-q') as Element, { key: 'Escape' });
     expect(menu()?.hasAttribute('hidden')).toBe(true);
-    expect(document.activeElement?.hasAttribute('data-funnel')).toBe(true);
+    expect('funnel' in ((document.activeElement as HTMLElement | null)?.dataset ?? {})).toBe(true);
     // A click inside the menu keeps it open; one outside closes it.
     await board.click('[data-funnel]');
     await pointer(board.find('#cbd-menu .cbd__menuhd') as Element, 'pointerdown', 10);
@@ -313,11 +318,11 @@ describe('MP-5-7 on the gallery fixture', () => {
     try {
       const board = await open();
       const row = board.find('.cbd__filters') as HTMLElement;
-      expect(row.getAttribute('data-tier')).toBe('56');
+      expect(row.dataset['tier']).toBe('56');
       expect(row.style.getPropertyValue('--catw')).toBe('56px');
       fitsAt = 'never';
       await board.render(<BoardGallery width={1100} viewport={1480} />);
-      expect(row.getAttribute('data-tier')).toBe('icons');
+      expect(row.dataset['tier']).toBe('icons');
       expect(row.style.getPropertyValue('--catw')).toBe('');
       // The icon tier keeps each chip's name for a screen reader.
       expect(board.find('[data-preset="mine"]')?.getAttribute('aria-label')).toBe('Ada Park');
@@ -411,12 +416,12 @@ describe('MP-5-7 on the gallery fixture', () => {
     // Ranked by rows: no filter holds more rows than the one above it.
     const counts = board
       .all('#cbd-menu [data-add]')
-      .map((one) => Number(one.getAttribute('data-count')));
+      .map((one) => Number((one as HTMLElement).dataset['count']));
     // Within each kind's group the order is by count.
     const groups = board.all('#cbd-menu .cbd__menugrp');
     for (const group of groups) {
       const inGroup = [...group.querySelectorAll('[data-add]')].map((one) =>
-        Number(one.getAttribute('data-count')),
+        Number((one as HTMLElement).dataset['count']),
       );
       expect(inGroup).toEqual([...inGroup].toSorted((a, b) => b - a));
     }

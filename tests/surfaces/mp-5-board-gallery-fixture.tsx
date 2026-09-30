@@ -167,7 +167,9 @@ const byField = (
   }));
 
 const distinct = (of: (row: GalleryTask) => string | null): readonly string[] =>
-  [...new Set(GALLERY_TASKS.map(of))].filter((value): value is string => value !== null).toSorted();
+  [...new Set(GALLERY_TASKS.map((row) => of(row)))]
+    .filter((value): value is string => value !== null)
+    .toSorted();
 
 export const GALLERY_FACETS: readonly Facet<GalleryTask>[] = [
   ...byField(

@@ -31,10 +31,11 @@ export function resolveShares<Row>(
   const total = columns.reduce((sum, column) => sum + column.share, 0) || 1;
   let widths = columns.map((column) => (column.share / total) * available);
   for (let pass = 0; pass < 4; pass += 1) {
-    const short = columns.map((column, index) => Math.max(0, column.min - (widths[index] ?? 0)));
+    const current = widths;
+    const short = columns.map((column, index) => Math.max(0, column.min - (current[index] ?? 0)));
     const deficit = short.reduce((sum, value) => sum + value, 0);
     if (deficit < 0.01) break;
-    const slack = columns.map((column, index) => Math.max(0, (widths[index] ?? 0) - column.min));
+    const slack = columns.map((column, index) => Math.max(0, (current[index] ?? 0) - column.min));
     const room = slack.reduce((sum, value) => sum + value, 0);
     if (room < 0.01) {
       widths = columns.map((column) => column.min);

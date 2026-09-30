@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the five tickets’ named cases over one machine and its fixture */
 //
 // U09's board machine, the parts that are pure: the column model (MP-5-1), the
 // sort cycle (MP-5-2), facets, presets, the reading line and Clear all
@@ -117,6 +118,7 @@ const CONTEXT: BoardContext<Row> = {
 const hay = (row: Row): string => `${row.name} ${row.client ?? ''}`;
 const byId = (rows: readonly Row[]): readonly string[] => rows.map((row) => row.id);
 
+// eslint-disable-next-line max-lines-per-function -- one ticket’s named cases over one fixture
 describe('MP-5-1 column model', () => {
   it('MP-5-1 columns declare share, minimum, label width, hide-below, icon-only and alignment', () => {
     const laid = layoutColumns(COLUMNS, { viewport: 1480, available: 1200 });
@@ -223,6 +225,7 @@ describe('MP-5-2 sort cycle', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one ticket’s named cases over one fixture
 describe('MP-5-3 facets, presets, modes, chips, reading line, Clear all', () => {
   it('MP-5-3 click replaces shift stacks', () => {
     expect(pressFacet([], 'category:admin', false)).toEqual(['category:admin']);
@@ -309,6 +312,7 @@ describe('MP-5-3 facets, presets, modes, chips, reading line, Clear all', () => 
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one ticket’s named cases over one fixture
 describe('MP-5-4 undo and redo', () => {
   it('MP-5-4 sixty steps', () => {
     let machine = initialMachine();
@@ -366,6 +370,7 @@ describe('MP-5-4 undo and redo', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one ticket’s named cases over one fixture
 describe('MP-5-5 search and typeahead', () => {
   it('MP-5-5 word starts', () => {
     // `ad` starts Admin and Advocacy's words; it is inside no other word here.

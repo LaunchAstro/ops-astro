@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the named cases drawn on one gallery fixture */
 //
 // U09's board machine in a document, on its gallery fixture: the owner checks
 // of MP-5-1 to MP-5-5 as they run before the Projects board takes the machine
@@ -33,13 +34,13 @@ const names = (board: Mounted): readonly string[] =>
 
 const press = async (target: Element | null, init: MouseEventInit = {}): Promise<void> => {
   if (target === null) throw new Error('nothing to press');
-  await act(async () => {
+  await act(() => {
     target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...init }));
   });
 };
 
 const key = async (target: EventTarget, init: KeyboardEventInit): Promise<void> => {
-  await act(async () => {
+  await act(() => {
     target.dispatchEvent(
       new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }),
     );
@@ -74,15 +75,15 @@ describe('MP-5-1 on the gallery fixture', () => {
     const tight = board.all('th[data-tight]');
     expect(tight.length).toBeGreaterThan(0);
     for (const head of tight) {
-      const columnKey = head.getAttribute('data-key');
-      expect(head.getAttribute('data-align')).toBe('center');
+      const columnKey = (head as HTMLElement).dataset['key'];
+      expect((head as HTMLElement).dataset['align']).toBe('center');
       expect(head.querySelector('[data-icon]')).not.toBeNull();
       expect(
         head.querySelector('button')?.getAttribute('aria-label') ?? head.getAttribute('aria-label'),
       ).toBeTruthy();
       const cells = board.all(`td[data-key="${columnKey ?? ''}"]`);
       expect(cells.length).toBeGreaterThan(0);
-      for (const cell of cells) expect(cell.hasAttribute('data-tight')).toBe(true);
+      for (const cell of cells) expect('tight' in (cell as HTMLElement).dataset).toBe(true);
     }
     expect(SHEET).toMatch(/\[data-tight\][^{]*\.cbd__thl\s*\{[^}]*display:\s*none/u);
   });
@@ -125,6 +126,7 @@ describe('MP-5-2 on the gallery fixture', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one ticket’s named cases on one mounted board
 describe('MP-5-3 on the gallery fixture', () => {
   it('MP-5-3 owner check: pick a filter chip, then Clear all', async () => {
     const board = await open();
@@ -237,6 +239,7 @@ describe('MP-5-4 on the gallery fixture', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one ticket’s named cases on one mounted board
 describe('MP-5-5 on the gallery fixture', () => {
   it('MP-5-5 owner check: a client name is suggested as a filter while typing', async () => {
     const board = await open();
@@ -262,7 +265,7 @@ describe('MP-5-5 on the gallery fixture', () => {
     expect(board.find('[role="listbox"]')).toBeNull();
     await board.type('[data-board-search]', 'bra');
     expect(board.find('[role="listbox"]')).not.toBeNull();
-    await act(async () => {
+    await act(() => {
       document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     });
     expect(board.find('[role="listbox"]')).toBeNull();

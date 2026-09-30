@@ -56,7 +56,7 @@ export function resizeAt(
     const capacity = slack.reduce((sum, value) => sum + value, 0);
     const room = Math.min(d, capacity);
     const exact = slack.map((value) => (capacity > 0 ? (value / capacity) * room : 0));
-    const give = exact.map(Math.floor);
+    const give = exact.map((value) => Math.floor(value));
     let left = room - give.reduce((sum, value) => sum + value, 0);
     const byRemainder = exact
       .map((value, k) => ({ k, rest: value - Math.floor(value) }))

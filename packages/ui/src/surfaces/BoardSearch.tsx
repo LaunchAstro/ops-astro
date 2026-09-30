@@ -12,6 +12,7 @@ import {
   useEffect,
   useId,
   useRef,
+  type RefObject,
   useState,
   type KeyboardEvent,
   type ReactElement,
@@ -36,33 +37,8 @@ export function BoardSearch<Row>(props: BoardSearchProps<Row>): ReactElement {
   const [active, setActive] = useState(0);
   const host = useRef<HTMLDivElement>(null);
   const listId = useId();
-
-  const groups = open
-    ? suggest({
-        q: draft,
-        facets: props.facets,
-        names: props.names,
-        noun: props.noun,
-        have: props.have,
-      })
-    : [];
-  const items = groups.flatMap((group) => group.items);
-  const offsets = groups.map((_, index) =>
-    groups.slice(0, index).reduce((sum, group) => sum + group.items.length, 0),
-  );
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const outside = (event: MouseEvent): void => {
-      if (event.target instanceof Node && host.current?.contains(event.target) !== true)
-        setOpen(false);
-    };
-    document.addEventListener('mousedown', outside);
-    return () => {
-      document.removeEventListener('mousedown', outside);
-    };
-  }, [open]);
-
+  const groups = open ? suggest({ ...props, q: draft }) : [];
+  useOutsideClose(open, host, setOpen);
   const done = (): void => {
     setDraft('');
     setOpen(false);
@@ -72,29 +48,7 @@ export function BoardSearch<Row>(props: BoardSearchProps<Row>): ReactElement {
     props.onTake(item);
     done();
   };
-
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      if (items.length === 0) return;
-      event.preventDefault();
-      const step = event.key === 'ArrowDown' ? 1 : -1;
-      setActive((current) => (current + step + items.length) % items.length);
-    } else if (event.key === 'Enter') {
-      event.preventDefault();
-      const marked = items[active];
-      if (marked !== undefined) {
-        take(marked);
-      } else if (draft.trim() !== '') {
-        props.onCommit(draft);
-        done();
-      }
-    } else if (event.key === 'Escape') {
-      setOpen(false);
-    } else if (event.key === 'Backspace' && draft === '') {
-      props.onDropLast();
-    }
-  };
-
+  const onKeyDown = keysOf({ props, items: groups.flatMap((group) => group.items), active, draft });
   const any = props.have.ids.length > 0 || props.have.text.length > 0;
   return (
     <div className="cbdm__search" ref={host}>
@@ -114,39 +68,118 @@ export function BoardSearch<Row>(props: BoardSearchProps<Row>): ReactElement {
           setOpen(true);
           setActive(0);
         }}
-        onKeyDown={onKeyDown}
+        onKeyDown={(event) => {
+          onKeyDown(event, { take, done, setOpen, setActive });
+        }}
       />
       {groups.length === 0 ? null : (
-        <ul className="cbdta" role="listbox" id={listId}>
-          {groups.map((group, index) => (
-            <Fragment key={group.label}>
-              <li className="cbdta__gh" role="presentation">
-                {group.label}
-              </li>
-              {group.items.map((item, at) => (
-                <li
-                  key={`${item.kind}:${item.label}`}
-                  className="sel__opt cbdta__opt"
-                  role="option"
-                  aria-selected={(offsets[index] ?? 0) + at === active}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    take(item);
-                  }}
-                >
-                  {item.label}
-                  <span className="cbdta__k">{item.kind}</span>
-                </li>
-              ))}
-              {group.more > 0 ? (
-                <li className="cbdta__more" role="presentation">
-                  +{group.more} more — keep typing
-                </li>
-              ) : null}
-            </Fragment>
-          ))}
-        </ul>
+        <Suggestions id={listId} groups={groups} active={active} onTake={take} />
       )}
     </div>
+  );
+}
+
+/** A press outside the search closes its suggestions. */
+function useOutsideClose(
+  open: boolean,
+  host: RefObject<HTMLDivElement | null>,
+  setOpen: (open: boolean) => void,
+): void {
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: MouseEvent): void => {
+      if (event.target instanceof Node && host.current?.contains(event.target) !== true)
+        setOpen(false);
+    };
+    document.addEventListener('mousedown', outside);
+    return () => {
+      document.removeEventListener('mousedown', outside);
+    };
+  }, [open, host, setOpen]);
+}
+
+/**
+ * The field's keys: the arrows move the mark, Enter takes the marked
+ * suggestion or commits the draft, Escape closes, and Backspace on an empty
+ * field drops the last filter.
+ */
+function keysOf<Row>(at: {
+  readonly props: BoardSearchProps<Row>;
+  readonly items: readonly SuggestionItem[];
+  readonly active: number;
+  readonly draft: string;
+}) {
+  const { props, items, active, draft } = at;
+  return (
+    event: KeyboardEvent<HTMLInputElement>,
+    to: {
+      readonly take: (item: SuggestionItem) => void;
+      readonly done: () => void;
+      readonly setOpen: (open: boolean) => void;
+      readonly setActive: (next: (current: number) => number) => void;
+    },
+  ): void => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (items.length === 0) return;
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      to.setActive((current) => (current + step + items.length) % items.length);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const marked = items[active];
+      if (marked !== undefined) {
+        to.take(marked);
+      } else if (draft.trim() !== '') {
+        props.onCommit(draft);
+        to.done();
+      }
+    } else if (event.key === 'Escape') {
+      to.setOpen(false);
+    } else if (event.key === 'Backspace' && draft === '') {
+      props.onDropLast();
+    }
+  };
+}
+
+function Suggestions(props: {
+  readonly id: string;
+  readonly groups: ReturnType<typeof suggest>;
+  readonly active: number;
+  readonly onTake: (item: SuggestionItem) => void;
+}): ReactElement {
+  const { groups } = props;
+  const offsets = groups.map((_, index) =>
+    groups.slice(0, index).reduce((sum, group) => sum + group.items.length, 0),
+  );
+  return (
+    <ul className="cbdta" role="listbox" id={props.id}>
+      {groups.map((group, index) => (
+        <Fragment key={group.label}>
+          <li className="cbdta__gh" role="presentation">
+            {group.label}
+          </li>
+          {group.items.map((item, at) => (
+            <li
+              key={`${item.kind}:${item.label}`}
+              className="sel__opt cbdta__opt"
+              role="option"
+              aria-selected={(offsets[index] ?? 0) + at === props.active}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                props.onTake(item);
+              }}
+            >
+              {item.label}
+              <span className="cbdta__k">{item.kind}</span>
+            </li>
+          ))}
+          {group.more > 0 ? (
+            <li className="cbdta__more" role="presentation">
+              +{group.more} more — keep typing
+            </li>
+          ) : null}
+        </Fragment>
+      ))}
+    </ul>
   );
 }

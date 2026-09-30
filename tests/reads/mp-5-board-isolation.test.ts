@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one world and its three crossings read as one suite */
 //
 // U09's Security lines over HTTP: the board machine sees only what `task.board`
 // hands it, so every separation is proved at that read, and then again through
@@ -75,6 +76,7 @@ const rowsOf = (answer: Answer): readonly Row[] =>
 
 const hay = (row: Row): string => row.title;
 
+// eslint-disable-next-line max-lines-per-function -- one world, built once, and the crossings that share it
 describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three crossings', () => {
   let world: World;
   let ext1: Caller;
@@ -87,9 +89,14 @@ describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three cros
     who: { readonly token: string },
     businessKey = 'alpha',
     name: CommandName = 'task.board',
-    body: Record<string, unknown> = { board: null },
+    body?: Record<string, unknown>,
   ): Promise<Answer> =>
-    await call(world.api, personPath(businessKey, pathOf(name)), body, bearer(who.token));
+    await call(
+      world.api,
+      personPath(businessKey, pathOf(name)),
+      body ?? { board: null },
+      bearer(who.token),
+    );
 
   const create = async (who: Caller, businessKey: string, title: string): Promise<string> => {
     const made = await read(who, businessKey, 'task.create', {
@@ -301,7 +308,7 @@ describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three cros
       const groups = suggest({
         q,
         facets: facets(rows),
-        names: rows.map(hay),
+        names: rows.map((row) => hay(row)),
         noun: 'task',
         have: { ids: [], text: [] },
       });
@@ -312,7 +319,7 @@ describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three cros
       suggest({
         q: 'noah',
         facets: [],
-        names: noah.map(hay),
+        names: noah.map((row) => hay(row)),
         noun: 'task',
         have: { ids: [], text: [] },
       }),
@@ -365,7 +372,7 @@ describe.skipIf(serverUrl === undefined)('MP-5 board reads across the three cros
         const groups = suggest({
           q,
           facets: facets(rows),
-          names: rows.map(hay),
+          names: rows.map((row) => hay(row)),
           noun: 'task',
           have: { ids: [], text: [] },
         });

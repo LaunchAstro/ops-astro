@@ -21,6 +21,18 @@ const asItem = <Row>(facet: Facet<Row>): SuggestionItem => ({
   facetId: facet.id,
 });
 
+/** One group of suggestions, capped, with how many more there are; none when empty. */
+const group = (label: string, items: readonly SuggestionItem[]): SuggestionGroup[] =>
+  items.length === 0
+    ? []
+    : [
+        {
+          label,
+          items: items.slice(0, SUGGESTIONS_PER_GROUP),
+          more: Math.max(0, items.length - SUGGESTIONS_PER_GROUP),
+        },
+      ];
+
 export function suggest<Row>(options: {
   readonly q: string;
   readonly facets: readonly Facet<Row>[];
@@ -48,19 +60,15 @@ export function suggest<Row>(options: {
       !options.have.text.includes(name.toLowerCase()),
   );
   const noun = `${options.noun.charAt(0).toUpperCase()}${options.noun.slice(1)}s`;
-  const group = (label: string, items: readonly SuggestionItem[]): SuggestionGroup[] =>
-    items.length === 0
-      ? []
-      : [
-          {
-            label,
-            items: items.slice(0, SUGGESTIONS_PER_GROUP),
-            more: Math.max(0, items.length - SUGGESTIONS_PER_GROUP),
-          },
-        ];
   return [
-    ...group('Clients', clients.map(asItem)),
-    ...group('Everything else', others.map(asItem)),
+    ...group(
+      'Clients',
+      clients.map((one) => asItem(one)),
+    ),
+    ...group(
+      'Everything else',
+      others.map((one) => asItem(one)),
+    ),
     ...group(
       noun,
       names.map((name) => ({ kind: 'Name', label: name, text: name.toLowerCase() })),

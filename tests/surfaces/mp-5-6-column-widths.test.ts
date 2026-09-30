@@ -51,6 +51,7 @@ const WIDE = { viewport: 1480, available: 1000 };
 const px = (widths: readonly number[]): readonly number[] => widths.map((w) => Math.round(w));
 const sum = (widths: readonly number[]): number => widths.reduce((total, w) => total + w, 0);
 
+// eslint-disable-next-line max-lines-per-function -- one ticket’s named cases over one width model
 describe('MP-5-6 drag within minimums', () => {
   const start = [400, 250, 200, 50, 100];
 
