@@ -152,6 +152,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
     outOfOrderSignalCase();
     inFlightSignalCase();
     missingHeartbeatCase();
+    lateCommitAlertRetryCase();
   },
 );
 
@@ -373,6 +374,54 @@ function missingHeartbeatCase() {
       heartbeat: () => Promise.resolve('not set'),
     });
     await expect(forward.once()).rejects.toThrow('heartbeat');
+  });
+}
+
+function lateCommitAlertRetryCase() {
+  it('reuses an accepted alert id when an earlier signal commits before retry', async () => {
+    await clear();
+    const scope = 'ab'.repeat(32);
+    const gate = latch();
+    const ready = latch();
+    const held = fixture.db.admin.transaction(async (execute) => {
+      await execute(
+        `insert into ops.api_events (kind, scope) values ('cross-scope-refusal', $1)`,
+        [scope],
+      );
+      ready.open();
+      await gate.promise;
+    });
+    await ready.promise;
+    const outbox = connectOutbox(fixture.db.appUrl, { source: 'runtime' });
+    for (let i = 0; i < 10; i += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- ten committed signals follow the held one
+      await outbox.append({ kind: 'cross-scope-refusal', scope, weight: 1 });
+    }
+    await outbox.close();
+    const accepted = new Set<string>();
+    const first = createForwarder({
+      database: forwarderDb,
+      send: async (event) => {
+        accepted.add(event.event_id);
+        gate.open();
+        await held;
+        throw new Error('response lost after alert acceptance');
+      },
+      where: 'staging', root: ROOT,
+    });
+    try {
+      await expect(first.once()).rejects.toThrow('response lost after alert acceptance');
+      const retry = createForwarder({
+        database: forwarderDb,
+        send: (event) => Promise.resolve(void accepted.add(event.event_id)),
+        where: 'staging', root: ROOT,
+      });
+      await retry.once();
+      expect(accepted.size).toBe(1);
+    } finally {
+      gate.open();
+      await held;
+    }
   });
 }
 
