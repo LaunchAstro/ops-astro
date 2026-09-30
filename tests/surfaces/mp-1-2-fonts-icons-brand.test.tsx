@@ -19,6 +19,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { loadConfigFromFile } from 'vite';
 import { afterAll, expect, it } from 'vitest';
 import { GLYPH_NAMES, Icon } from '../../packages/ui/src/primitives/Icon.tsx';
+import { comparePng } from '../visual/compare.ts';
+import { eachGalleryView, WIDTHS } from '../visual/gallery-views.ts';
+import { specimens, type Specimens } from './mp-1-2-specimens.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const ui = `${root}packages/ui/`;
@@ -254,3 +257,43 @@ it('MP-1-2 each bundled asset has its licence recorded', () => {
     expect(existsSync(`${ui}assets/${asset.licenceFile}`), asset.licenceFile).toBe(true);
   }
 });
+
+it('MP-1-2 WEB.md points to the licence records, not to #32', () => {
+  const web = read(`${root}docs/local/WEB.md`);
+  expect(web).not.toMatch(/#32\b/u);
+  expect(web).toContain('packages/ui/assets/licences.json');
+  expect(read(`${ui}src/surfaces/Shell.tsx`)).not.toMatch(/#32\b/u);
+});
+
+// The mockup's three families by role (SHELL-2): headings, text and figures.
+const FAMILIES = { display: 'Funnel Display', text: 'Funnel Sans', mono: 'Chivo Mono' } as const;
+
+it('MP-1-2 visual match: type and icon specimens on the gallery at 1480, 900 and 390, light and dark, drawn in a browser in the mockup families and the licensed glyphs', async () => {
+  const views: { name: string; seen: Specimens; shot: Buffer }[] = [];
+  await eachGalleryView(async ({ width, theme, page, sideways }) => {
+    expect(sideways, `gallery@${width}-${theme} scrolls sideways`).toBe(0);
+    const seen = await page.evaluate(specimens, FAMILIES);
+    const shot = await page.screenshot({ animations: 'disabled', caret: 'hide', scale: 'css' });
+    views.push({ name: `gallery@${width}-${theme}`, seen, shot });
+  });
+  expect(views).toHaveLength(6);
+  for (const { name, seen } of views) {
+    expect(seen.families, name).toEqual(FAMILIES);
+    expect(seen.loaded, name).toEqual(Object.values(FAMILIES));
+    expect(seen.icons, `${name}: icons drawn`).toBeGreaterThan(20);
+    expect(seen.unlicensed, `${name}: an icon not from the licensed set`).toEqual([]);
+    expect(seen.undrawn, `${name}: an icon drawn at no size`).toEqual([]);
+    expect(seen.iconFonts, `${name}: an icon font or emoji`).toEqual([]);
+  }
+  for (const width of WIDTHS) {
+    const [light, dark] = ['light', 'dark'].map((t) =>
+      views.find((v) => v.name === `gallery@${width}-${t}`),
+    );
+    const same = comparePng(
+      `gallery@${width}`,
+      light?.shot ?? Buffer.alloc(0),
+      dark?.shot ?? Buffer.alloc(0),
+    );
+    expect(same.pass, `gallery@${width}: dark draws the same as light`).toBe(false);
+  }
+}, 600_000);

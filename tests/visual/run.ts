@@ -8,6 +8,8 @@
 //
 //   MOCKUP_DIR=<clone of the mockup> node tests/visual/run.ts [--app URL [--session FILE] [--task KEY]]
 //     [--prove-drift] [--out DIR]
+//   node tests/visual/run.ts --app-drift --app URL [--session FILE] [--page ID] [--theme light|dark]
+//     [--out DIR]
 //
 // Every width in the packet is captured in each theme the packet captures:
 // light, and dark from U04 (MP-1-1); while dark is pending it prints as
@@ -24,9 +26,15 @@
 // each theme too (MP-1-1 dark harness bites); --session is a signed-in local
 // fixture session (T4b1) as Playwright storage state, --task the key the task
 // page opens. The report goes to DIR/width-and-theme.txt.
+//
+// --app-drift is the app-only drift mode (app-drift.ts): drift proved on one of
+// the app's own pages, with no mockup, so the public CI runs it on Linux (the
+// `visual drift` job). The page, control, token and theme are the catalogue's
+// `appDrift`; --page and --theme override them.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright';
+import { appDrift } from './app-drift.ts';
 import { comparePng } from './compare.ts';
 import { proveDrift, scrollMetrics } from './drift.ts';
 import {
@@ -91,6 +99,24 @@ const finish = (): void => {
 
 const session = option('--session');
 const task = option('--task');
+
+if (args.includes('--app-drift')) {
+  if (app === undefined) throw new Error('visual: --app-drift needs --app');
+  const page = option('--page') ?? catalogue.appDrift.page;
+  const address = addressOf(page, task === undefined ? {} : { key: task });
+  if (address === undefined) throw new Error(`visual: ${page} is not a page the app registers`);
+  const theme = option('--theme') ?? catalogue.appDrift.theme;
+  if (theme !== 'light' && theme !== 'dark') throw new Error(`visual: no theme ${theme}`);
+  if (needsSession(page) && session === undefined) {
+    say(`red ${page}: needs --session (a signed-in session for the app's origin)`, true);
+  } else {
+    const { control, token } = catalogue.appDrift;
+    const drift = { label: page, address, control, token, theme } as const;
+    await appDrift({ app, session, drift, mask: catalogue.mask, out, say });
+  }
+  finish();
+  process.exit();
+}
 
 const mockupDir = process.env['MOCKUP_DIR'];
 if (mockupDir === undefined)

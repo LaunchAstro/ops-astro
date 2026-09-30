@@ -36,6 +36,8 @@ export type Catalogue = {
   screenshots: string;
   mask: string[];
   drift: { state: string; control: string; token: string };
+  /** The app-only drift mode's page (a route id), control, token and theme. */
+  appDrift: { page: string; control: string; token: string; theme: string; note: string };
   states: State[];
 };
 export type Side = {
