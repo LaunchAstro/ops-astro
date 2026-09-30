@@ -119,7 +119,7 @@ fixture changes. The readiness check reads the class (S0-5, its second
 part): a real-data installation refuses every `client-data` and `invitation`
 command `GATE_SHUT` 409 while any of the eight gate items is open, on the
 person and agent routes, after authority and before the handler. The mode
-and the items live in `ops` (migration 0051); the mode moves one way, from
+and the items live in `ops` (migration 0059); the mode moves one way, from
 made-up to real, only while every item is done. The commands that record an
 item, accept a finding or change the mode are not built yet.
 `task.set_party` refuses `CLIENT_LOCKED` 409 once the task has content (its

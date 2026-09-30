@@ -62,7 +62,7 @@ export async function recordAuthenticationAttempt(
   const resolved = attempt.outcome === 'resolved';
   // The session a person came in on, so they can see it (C58). Only a
   // resolved attempt's: a refused one's session is nobody's here. The column
-  // is named only when there is one, so a database from before 0050, which
+  // is named only when there is one, so a database from before 0058, which
   // has no such column, is still written to by a token that names none.
   const sessionId = resolved ? attempt.presented.sessionId : undefined;
   const session = sessionId === undefined ? ['', ''] : [', session_id', ', $10'];

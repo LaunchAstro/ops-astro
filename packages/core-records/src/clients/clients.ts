@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The client record (C32, CS-2.15; migration 0048). A client is an
+// The client record (C32, CS-2.15; migration 0056). A client is an
 // organisation the business works for: the party a party-scoped grant names
 // and a task's `client` link points at. It is written once by `client.create`
 // and never deleted.
