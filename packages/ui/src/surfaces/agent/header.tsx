@@ -102,15 +102,16 @@ export function Summary(props: { readonly story: RunStory }): ReactElement {
 
 /**
  * MP-6-2: the run's figures, as the mockup's `runHero` derives them: jobs
- * complete out of the run's jobs, the checks recorded, and, once the run is
- * handed back, the time it took. Its tokens cell is left out until the read
- * carries token units, as the mockup leaves a cell out when unknown; a run
- * here meets its gate before it starts, so there is no "to the gate".
+ * complete out of the run's jobs, the checks recorded, once the run is handed
+ * back the time it took, and the token units its model calls recorded. A cell
+ * with nothing to show is left out, as the mockup leaves it out when unknown;
+ * a run here meets its gate before it starts, so there is no "to the gate".
  */
 function HeroStats(props: { readonly story: RunStory }): ReactElement {
   const { jobs, checks } = props.story;
   const done = jobs.filter((job) => job.state === 'done' || job.state === 'approved').length;
   const elapsed = elapsedOf(props.story.head.startedAt, props.story.head.endedAt);
+  const units = props.story.head.tokenUnits;
   return (
     <div className="tph__stats">
       <div className="tph__stat" data-hero="jobs">
@@ -130,6 +131,14 @@ function HeroStats(props: { readonly story: RunStory }): ReactElement {
           <span className="tf__k">elapsed</span>
         </div>
       )}
+      {typeof units === 'number' ? (
+        <div className="tph__stat" data-hero="tokens">
+          <span className="tph__n">
+            {units >= 1000 ? `${String(Math.round(units / 1000))}k` : String(units)}
+          </span>
+          <span className="tf__k">tokens spent</span>
+        </div>
+      ) : null}
     </div>
   );
 }
