@@ -46,12 +46,16 @@ const NUMBER = /^--type-num-/u;
 const RULING = /^type-exception\s+(R\d+|DR-\d+|DS-[A-Z]+-\d+)\s*:\s*\S/u;
 const LIMIT = 20;
 
-/** One declaration's property and value, the value without `!important`; undefined for no colon. */
+/**
+ * One declaration's property and value, the value without `!important`; undefined for no colon.
+ * A custom property keeps its case, as the browser does; every other property is lower-cased.
+ */
 function declOf(text) {
   const at = text.indexOf(':');
   if (at < 0) return;
+  const prop = text.slice(0, at).trim();
   return {
-    prop: text.slice(0, at).trim().toLowerCase(),
+    prop: prop.startsWith('--') ? prop : prop.toLowerCase(),
     value: text
       .slice(at + 1)
       .replace(/!\s*important\s*$/iu, '')
