@@ -392,7 +392,7 @@ const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
  * is asked again, and `closed` the first time the answer is no. Signals that
  * arrive while one is pending merge into it, the strongest kept.
  */
-async function follow(
+export async function follow(
   stream: SSEStreamingApi,
   live: LiveOptions,
   businessId: string,
