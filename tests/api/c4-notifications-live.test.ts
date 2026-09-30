@@ -129,6 +129,12 @@ async function closedAlone(): Promise<void> {
   expect(tab.ended).toBe(false);
   expect(count(tab, 'closed', BOARD)).toBe(0);
   carriesOnly(tab, [topic(lost), BOARD]);
+
+  // Every task topic refused at join: the board alone still opens the stream.
+  const late = await open([topic(lost), BOARD], narrow);
+  expect(late.status, JSON.stringify(late.refusal)).toBe(200);
+  await within(2_000, () => count(late, 'resync', BOARD) === 1, 'the board alone');
+  expect(count(late, 'closed', topic(lost))).toBe(1);
 }
 
 async function isolation(): Promise<void> {

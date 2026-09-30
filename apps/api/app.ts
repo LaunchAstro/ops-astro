@@ -93,7 +93,17 @@ import type {
 import { bearerOf, type Verifier } from './auth/supabase.ts';
 import type { LiveTopics } from './live.ts';
 import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
-import { follow, RECHECK_MS, topicsOf, TOPICS, type Seated, type Watching } from './live-follow.ts';
+import {
+  BOARD,
+  follow,
+  RECHECK_MS,
+  sharesOf,
+  topicsOf,
+  TOPICS,
+  type LiveStream,
+  type Seated,
+  type Watching,
+} from './live-follow.ts';
 import { followBoard } from './live-board.ts';
 
 /**
@@ -378,30 +388,49 @@ export function createApi(options: ApiOptions): Hono {
     // C4: one stream per tab carries every topic its pages follow. Each topic
     // is asked about at join as T2f asks about its one task; one refused is
     // closed alone, all refused is the first refusal (`tests/api/c4-live-stream.test.ts`).
-    // Naming no topic at all is the board's stream (INB-1f).
+    // `board` is the board's stream (INB-1f) as one topic beside them, its every
+    // frame labelled `board`; naming no topic at all is that stream on its own
+    // (`tests/api/c4-notifications-live.test.ts`).
     api.get(`${PREFIX.person}:businessKey/live`, async (context) => {
       const admitted = await admit(options, context, PERSON, false);
       if (admitted instanceof Response) return admitted;
+      const { businessId } = admitted;
       const asked = context.req.queries('topic');
-      if (asked === undefined)
-        return await boardStream(options, live, context, admitted.businessId);
+      if (asked === undefined) return await boardStream(options, live, context, businessId);
       const named = topicsOf(asked);
       if (named === undefined) {
         return refuse(context, refuseCommand('FIELD_VALUE_INVALID', ['topic'], [TOPICS]));
       }
-      const asks = watching(options, live, context, admitted.businessId);
-      const answers = await asks.atDoor(named.map((each) => each.taskId));
-      const watched = named.filter((_, at) => typeof answers[at] === 'string');
+      const asks = watching(options, live, context, businessId);
+      const tasks = named.watches;
+      const answers = tasks.length === 0 ? [] : await asks.atDoor(tasks.map((each) => each.taskId));
+      const board = named.board ? await mayJoinBoard(options, context, businessId) : undefined;
+      const watched = tasks.filter((_, at) => typeof answers[at] === 'string');
+      const joined = board === undefined || isCommandRefusal(board) ? undefined : board;
       const [first] = answers;
-      if (watched.length === 0 && first !== undefined && typeof first !== 'string') {
-        return refuse(context, first);
-      }
+      const refused = first !== undefined && typeof first !== 'string' ? first : board;
+      const none = watched.length === 0 && joined === undefined;
+      if (none && refused !== undefined && isCommandRefusal(refused))
+        return refuse(context, refused);
       return streamSSE(context, async (stream) => {
-        for (const watch of named.filter((each) => !watched.includes(each))) {
+        for (const watch of tasks.filter((each) => !watched.includes(each))) {
           // eslint-disable-next-line no-await-in-loop -- written in the order named.
           await stream.writeSSE({ event: 'closed', data: watch.label });
         }
-        await follow(stream, live, watched, asks, await seatOf(options, live, context, asks));
+        if (named.board && joined === undefined) {
+          await stream.writeSSE({ event: 'closed', data: BOARD });
+        }
+        const shares = sharesOf(stream, [
+          ...(watched.length > 0 ? [undefined] : []),
+          ...(joined === undefined ? [] : [BOARD]),
+        ]);
+        const forTasks = watched.length > 0 ? shares.shift() : undefined;
+        const forBoard = shares.shift();
+        const seated = forTasks && (await seatOf(options, live, context, asks));
+        await Promise.all([
+          forTasks && follow(forTasks, live, watched, asks, seated),
+          joined && forBoard && followBoardOn(forBoard, options, live, context, businessId, joined),
+        ]);
       });
     });
 
@@ -559,25 +588,36 @@ async function boardStream(
   context: Context,
   businessId: string,
 ): Promise<Response> {
-  const join = async () => await mayJoinBoard(options, context, businessId);
-  const joined = await join();
+  const joined = await mayJoinBoard(options, context, businessId);
   if (isCommandRefusal(joined)) return refuse(context, joined);
-  const asks = watching(options, live, context, businessId);
   return streamSSE(context, async (stream) => {
-    await followBoard(
-      stream,
-      live.topics,
-      { businessId, personId: joined.personId, recheckMs: live.recheckMs ?? RECHECK_MS },
-      {
-        joinedAs: async () => {
-          const again = await join();
-          return isCommandRefusal(again) ? undefined : again.personId;
-        },
-        reads: async (taskId) => typeof (await asks.again(taskId)) === 'string',
-        shown: async (personId) => await mayShowInbox(options, context, businessId, personId),
-      },
-    );
+    await followBoardOn(stream, options, live, context, businessId, joined);
   });
+}
+
+/** The board's questions on `stream` (the whole stream, or its `board` share), for the person the join resolved. */
+async function followBoardOn(
+  stream: LiveStream,
+  options: ApiOptions,
+  live: LiveOptions,
+  context: Context,
+  businessId: string,
+  joined: { readonly personId: string },
+): Promise<void> {
+  const asks = watching(options, live, context, businessId);
+  await followBoard(
+    stream,
+    live.topics,
+    { businessId, personId: joined.personId, recheckMs: live.recheckMs ?? RECHECK_MS },
+    {
+      joinedAs: async () => {
+        const again = await mayJoinBoard(options, context, businessId);
+        return isCommandRefusal(again) ? undefined : again.personId;
+      },
+      reads: async (taskId) => typeof (await asks.again(taskId)) === 'string',
+      shown: async (personId) => await mayShowInbox(options, context, businessId, personId),
+    },
+  );
 }
 
 /** Whether this caller may hold the board's stream (INB-1f), with the bearer verified again. */

@@ -32,14 +32,61 @@ export interface Seated {
 }
 
 const MOST_TOPICS = 32;
-export const TOPICS: string = `Name each topic once, as task:<id>, from one to ${String(MOST_TOPICS)}.`;
+export const TOPICS: string = `Name each topic once, as task:<id> or board, from one to ${String(MOST_TOPICS)}.`;
+
+/** The board's stream (INB-1f) as one topic on the tab's stream: every frame it sends is labelled so. */
+export const BOARD = 'board';
+
+/** What a stream writes through and ends: the SSE stream, or one topic group's share of it. */
+export type LiveStream = Pick<SSEStreamingApi, 'writeSSE' | 'abort' | 'aborted' | 'onAbort'>;
 
 /** The topics a tab named, or undefined when any is malformed, repeated or too many. */
-export function topicsOf(named: readonly string[]): readonly Watch[] | undefined {
+export function topicsOf(
+  named: readonly string[],
+): { readonly watches: readonly Watch[]; readonly board: boolean } | undefined {
   if (named.length === 0 || named.length > MOST_TOPICS) return undefined;
   if (new Set(named).size !== named.length) return undefined;
-  const watches = named.map((label) => ({ label, taskId: TOPIC.exec(label)?.[1] }));
-  return watches.every((watch): watch is Watch => watch.taskId !== undefined) ? watches : undefined;
+  const tasks = named.filter((label) => label !== BOARD);
+  const watches = tasks.map((label) => ({ label, taskId: TOPIC.exec(label)?.[1] }));
+  if (!watches.every((watch): watch is Watch => watch.taskId !== undefined)) return undefined;
+  return { watches, board: tasks.length < named.length };
+}
+
+/**
+ * The stream split between topic groups (the tasks and the board): each share
+ * writes through it and ends alone, and the stream ends with its last share.
+ * `label` names every frame a share writes, when one is given.
+ */
+export function sharesOf(
+  stream: SSEStreamingApi,
+  labels: readonly (string | undefined)[],
+): LiveStream[] {
+  let open = labels.length;
+  return labels.map((label) => {
+    const listeners: (() => void | Promise<void>)[] = [];
+    let ended = false;
+    const share: LiveStream = {
+      get aborted() {
+        return ended || stream.aborted;
+      },
+      writeSSE: async (message) => {
+        if (share.aborted) return;
+        await stream.writeSSE(label === undefined ? message : { ...message, data: label });
+      },
+      onAbort: (listener) => {
+        listeners.push(listener);
+      },
+      abort: () => {
+        if (ended) return;
+        ended = true;
+        for (const listener of listeners) void listener();
+        open -= 1;
+        if (open === 0) stream.abort();
+      },
+    };
+    stream.onAbort(() => share.abort());
+    return share;
+  });
 }
 
 export const RECHECK_MS = 30_000;
@@ -53,7 +100,7 @@ const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
  * every task on the next check, and the stream ends with its last task.
  */
 export async function follow(
-  stream: SSEStreamingApi,
+  stream: LiveStream,
   live: { readonly topics: LiveTopics; readonly recheckMs?: number },
   watches: readonly Watch[],
   asks: Watching,
@@ -99,11 +146,11 @@ class Follower {
   readonly #stops = new Map<Watch, () => void>();
   readonly #pending = new Map<Watch, LiveSignal | 'check'>();
   readonly #presence = new Set<Watch>();
-  readonly #stream: SSEStreamingApi;
+  readonly #stream: LiveStream;
   readonly #asks: Watching;
   #chain = Promise.resolve();
 
-  constructor(stream: SSEStreamingApi, asks: Watching) {
+  constructor(stream: LiveStream, asks: Watching) {
     this.#stream = stream;
     this.#asks = asks;
   }
