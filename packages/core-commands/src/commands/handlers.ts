@@ -37,6 +37,7 @@ import { messageConversation, startConversation } from './conversations.ts';
 import { renameConversation, setConversationScope } from './conversation-tabs.ts';
 import { refuseModelCallAsPerson } from './model-call-person.ts';
 import { endOnRun, topUpOnRun } from './run-answers.ts';
+import { reviseStateOnRun } from './run-state.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -132,6 +133,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // AW-05: a person's answers to a run waiting at its approved ceiling.
   'run.top_up': topUpOnRun,
   'run.end_at_budget_stop': endOnRun,
+  // MP-6-2: a run's state revised, a person's under run:write; the agent's is
+  // served on its own prefix (`agent-operations.ts`).
+  'run.revise_state': reviseStateOnRun,
 };
 
 function writeOwned(

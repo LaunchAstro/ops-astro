@@ -696,6 +696,14 @@ the runtime asks the same pair of the run's own task again under the run's
 locks. No agent holds `decide`, and neither row is in the agent's reach. The
 seed gives both pairs to `admin` only (`scripts/local-seed.mjs`).
 
+MP-6-2's `run.revise_state` asks `write` on `run` of the task named in
+`recordId` (ORCH33: `run:write` is the only key on `run`; its reads stay
+`task:read`). The handler refuses a run on another task with the bytes a
+made-up run gets. An agent reaches it only under a delegation minted with
+`run`, which pickup mints where the delegating person holds `run:write` and
+holds to `write` alone; the agent is the recorded actor. The seed gives
+`run:write` to no role.
+
 ## The restricted worker role
 
 `ops_astro_worker` (0008) exists at the database level with no privilege

@@ -132,7 +132,11 @@ export type CommandName =
   // a top-up under four eyes above the business's threshold, or one click
   // that ends the work and parks the task. No agent answers either.
   | 'run.top_up'
-  | 'run.end_at_budget_stop';
+  | 'run.end_at_budget_stop'
+  // A run's current knowledge and unknowns, revised as a new version (MP-6-2,
+  // CS-16.4): `run:write` on the run's task, a person's or an agent's inside
+  // its delegation, the agent the recorded actor.
+  | 'run.revise_state';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -425,6 +429,15 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'model.call': { leaseId: 'any', fence: 'any', operation: 'any', fields: 'any' },
   'run.top_up': { recordId: 'any', runId: 'any', amountMinor: 'any', currency: 'any' },
   'run.end_at_budget_stop': { recordId: 'any', runId: 'any' },
+  // The version the caller read (0 before the first); the two lists are
+  // checked item by item by the handler.
+  'run.revise_state': {
+    recordId: 'any',
+    runId: 'any',
+    expectedVersion: 'count',
+    knowledge: 'any',
+    unknowns: 'any',
+  },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -685,6 +698,17 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'runId'],
+  }),
+  // `write` on `run`, asked of the task the body names (ORCH33); the handler
+  // refuses a run on another task. It has a version of its own, not the
+  // task's revision. An agent reaches it only where its delegation was minted
+  // with `run` (ORCH34), and the mint holds `run` to `write`.
+  declare('run.revise_state', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'runId'],
+    agent: 'delegated',
   }),
 ];
 

@@ -1028,6 +1028,21 @@ writes the task record, so neither takes an `expectedRevision`.
 | `run.top_up`             | `/api/b/:key/run/top_up`             | `operationId`, `recordId`, `runId`, `amountMinor`, `currency` | `decide` on `billing`, asked of the task named in `recordId`; the runtime asks it again of the run's task under the run's locks |
 | `run.end_at_budget_stop` | `/api/b/:key/run/end_at_budget_stop` | `operationId`, `recordId`, `runId`                            | `decide` on `gate`, asked the same way                                                                                          |
 
+A run's state revised (MP-6-2) is the agent page's one write. It names the
+task and the run on it too, and carries the version it read (0 before the
+first) instead of an `expectedRevision`. It is also on the agent prefix, under
+a delegation minted with `run` (the agent is the recorded actor).
+
+| Operation          | Route                          | Body                                                                           | Authority                                                                                              |
+| ------------------ | ------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `run.revise_state` | `/api/b/:key/run/revise_state` | `operationId`, `recordId`, `runId`, `expectedVersion`, `knowledge`, `unknowns` | `write` on `run`, asked of the task named in `recordId`; an agent's, of its delegation on its own task |
+
+It answers `detail: { runId, version }`. `knowledge` and `unknowns` are lists of
+up to 50 non-empty texts of at most 2,000 characters; anything else is
+`COMMAND_BODY_INVALID` naming the field. A version other than the newest is
+`VERSION_STALE`, and a run not on the named task answers as a made-up one
+(`reviseStateOnRun`, `commands/run-state.ts`).
+
 The handlers are `topUpOnRun` and `endOnRun` (`commands/run-answers.ts`), over
 `topUpAtBudgetStop` and `endAtBudgetStop` (`core-runtime/src/budget-answer.ts`).
 

@@ -39,6 +39,8 @@ interface Run {
 
 interface Picked extends Run {
   readonly credential: string;
+  readonly leaseId: string;
+  readonly fence: number;
 }
 
 interface Version {
@@ -108,15 +110,30 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised on Postgres', () 
       recordId: String(detail['taskId']),
       runId: String(runs[0]?.run_id),
       credential: String(detail['credential']),
+      leaseId: String(detail['leaseId']),
+      fence: Number(detail['fence']),
     };
   }
 
-  async function versionsOf(runId: string): Promise<readonly Version[]> {
-    return await world.db.admin.execute<Version>(
-      `select version, knowledge, unknowns, revised_by_actor_id
-         from public.run_states where run_id = $1 order by version`,
-      [runId],
+  /** The agent settles the work, so its delegation for the purpose is spent. */
+  async function handBack(work: Picked): Promise<void> {
+    const settled = await asAgent(
+      world,
+      'task.handback',
+      { leaseId: work.leaseId, fence: work.fence, outcome: 'completed', report: { wrote: 'done' } },
+      work.credential,
     );
+    if (settled.code !== 'ok') throw new Error(`mp-6-2: handback refused ${settled.code}`);
+  }
+
+  async function versionsOf(runId: string): Promise<readonly Version[]> {
+    return await world.db.admin
+      .execute<Version>(
+        `select version, knowledge, unknowns, revised_by_actor_id
+         from public.run_states where run_id = $1 order by version`,
+        [runId],
+      )
+      .then((rows) => [...rows]);
   }
 
   const revise = async (
@@ -167,6 +184,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised on Postgres', () 
     expect(JSON.stringify(agentAnswer.body)).toContain('run');
     expect(await versionsOf(one.runId)).toStrictEqual([]);
     expect(await versionsOf(work.runId)).toStrictEqual([]);
+    await handBack(work);
   });
 
   it('MP-6-2 revisions: each revision is a version kept with its actor, a stale one is refused, and a malformed body keeps nothing', async () => {
@@ -238,7 +256,8 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised on Postgres', () 
     const fabricated = await revise(bravo, { recordId: randomUUID(), runId: randomUUID() }, 3);
     expect(foreign.status).toBe(404);
     expect(foreign.body).toStrictEqual(fabricated.body);
-    // Another client in the same business: shared task two, run:write on it, names task one.
+    // Another client in the same business: shared task two, run:write on it,
+    // names task one. A read share writes nothing at all (R4), so both are 403.
     const client = await externalClient(world, ada, two.recordId);
     await world.db.app.withBusiness(world.alpha, async (tx) => {
       await grantTo(tx, client, 'write', { kind: 'record', id: two.recordId }, false, 'run');
@@ -246,7 +265,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised on Postgres', () 
     const theirs = await revise(client, one, 3);
     expect(theirs.status).toBe(403);
     const crossed = await revise(client, { recordId: two.recordId, runId: one.runId }, 3);
-    expect(crossed.status).toBe(404);
+    expect(crossed.status).toBe(403);
     // Another person under a live delegation: an agent on ada's other work names one.
     await world.db.app.withBusiness(world.alpha, async (tx) => {
       await grantTo(tx, ada, 'write', undefined, false, 'run');
@@ -255,6 +274,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised on Postgres', () 
     const delegated = await reviseAsAgent(work, one, 3);
     expect(delegated.status).toBe(403);
     expect(delegated.code).toBe('DELEGATION_OUT_OF_PURPOSE');
+    await handBack(work);
     for (const answer of [foreign, fabricated, theirs, crossed, delegated]) {
       expect(JSON.stringify(answer.body)).not.toContain(secret);
       expect(JSON.stringify(answer.body)).not.toContain(one.runId);
@@ -273,5 +293,6 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised on Postgres', () 
     const sibling = await reviseAsAgent(work, two, 0);
     expect(sibling.code).toBe('DELEGATION_OUT_OF_PURPOSE');
     expect(await versionsOf(two.runId)).toStrictEqual([]);
+    await handBack(work);
   });
 });
