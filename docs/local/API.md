@@ -228,10 +228,14 @@ A browser holds no token (S0-6c). It posts the token once to
 `POST /api/session`, which verifies it, answers `{ ok: true, session }` and
 sets it as an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/b/`,
 one per sign-in, named from `session` (a digest of the token, not a secret).
-A cookie-carried request needs `x-ops-astro-csrf: 1` and no cross-site
-`Sec-Fetch-Site` (else `AUTH_CROSS_SITE` 403), and reads only the cookie of
-the sign-in its `x-ops-astro-session` names; session cookies with none named
-are `AUTH_SESSION_MISMATCH` 403. `/api/session/end` clears only the named
+Its `Max-Age` is what is left of the session's 12-hour absolute limit from the
+first sign-in (below), never more than the 12 (`cookieMaxAge`, C58); a token
+past the limit gets no cookie, and a cookie whose token is past it is
+`AUTH_SESSION_EXPIRED` 401. A cookie-carried request needs
+`x-ops-astro-csrf: 1` and no cross-site `Sec-Fetch-Site` (else
+`AUTH_CROSS_SITE` 403), and reads only the cookie of the sign-in its
+`x-ops-astro-session` names; session cookies with none named are
+`AUTH_SESSION_MISMATCH` 403. `/api/session/end` clears only the named
 sign-in's cookie, so a late sign-out ends no other. When that cookie's token
 verifies and names a provider session, it first ends that session for every
 business (below) and asks the provider to sign it out (`scope=local`); a

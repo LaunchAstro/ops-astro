@@ -91,6 +91,7 @@ import { followBoard } from './live-board.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
 import {
   bearerOf,
+  cookieMaxAge,
   cookieNameFor,
   CROSS_SITE_FIXES,
   crossSiteSession,
@@ -296,11 +297,12 @@ export function createApi(options: ApiOptions): Hono {
     if (token === undefined || presented === undefined) {
       return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
     }
-    // No `Max-Age`: the cookie ends with the browser session and the token's
-    // own `exp` ends it sooner. Its lifetime under the 12-hour limit is C58's.
-    // Each sign-in its own cookie; the tab names it in `SESSION_HEADER`.
+    // The cookie lives what is left of the 12-hour limit (C58); the verifier
+    // has refused a token past it. Each sign-in its own cookie, named by the tab.
     const session = sessionIdOf(token);
-    setCookie(context, cookieNameFor(session), token, SESSION_COOKIE_OPTIONS);
+    const signedInAt = presented.assurance?.signedInAt ?? null;
+    const maxAge = cookieMaxAge(signedInAt, Math.floor(Date.now() / 1000));
+    setCookie(context, cookieNameFor(session), token, { ...SESSION_COOKIE_OPTIONS, maxAge });
     return context.json({ ok: true, session }, 200);
   });
   api.post(`${SESSION_PATH}/end`, (context) => {
