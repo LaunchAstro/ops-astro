@@ -118,6 +118,7 @@
     "MP-6-2 (SL12, session 13) names mp-6-2-run-times (task.read's version carries its run's first claim as startedAt and a hand-back with no claim after it as endedAt, from this run's own events; a version with no run reads neither; another business 404 as made-up, another client and the agent on another task read no time) as conformance, listed in isolation-suites.json too.",
     "MP-6-2 (SL12, session 13) names mp-6-2-run-tokens (task.read's version carries the token units its run's model calls recorded, summed on this run in this business, none before a call; another business 404 as made-up, an external party and the agent on another task read none) as conformance, listed in isolation-suites.json too.",
     "MP-6-2 (SL12, session 14) names mp-6-2-pinned-versions (task.read's version carries its run's pin as stored, kind, path, digest, size and read at, and its read ledger in order, written through pinBootstrapFile after a person's admitted activation and readPinned under the agent's lease; none before a pin; another business 404 as made-up, an external party and the agent on another task read no pin) as conformance, listed in isolation-suites.json too.",
+    "MP-6-2 (SL12, session 15) names mp-6-2-no-memory (CS-16.4, RA-10: a run's revised knowledge and unknowns reach no other run; a second run on the same task and a run on another task, each pinned, read and calling the model, start with no revision; the lists are in no pin, read ledger, model-call row or provider body, and in no table but run_states; run.revise_state is the only writer in the source) as conformance.",
     "C54 (SL12, session 10) names c54-isolation (the three money acts on an unknown effect and the top-up, across another business, another client in the same business and the agent under a live delegation, statuses checked, no foreign task, attempt, hold or envelope id in any body, the hold unmoved) as an invariant, and c54-money (refusal billing:decide, audit readback of each act on an intact chain, and the top-up approver with two approvers at once) as conformance",
     "SL11-16 leaves aw-13-local-target.test.ts unnamed: it opens a database only against a running local trace target (TRACE_TARGET_ENV_FILE from scripts/local/trace-target.ts up), which the required checks never start; aw-13-switch.test.ts is named as an invariant.",
     "T4e REV185B2: role-case-matrix-fixture-clients proves T4-N2's matrix world holds T4a's two clients with one record grant each in both businesses, and role-case-matrix gains the client-to-client case (another client's task, in either business, answers as an id never issued). t2g-decide-parity's crossing now also finds the undecided gate holding its task open (GATE_PENDING on both surfaces) before the grant holder decides; t3f-expired-lease's business crossing settles its own expired lease marked expired."
@@ -446,6 +447,7 @@
     "tests/api/mp-7-11-hostile-provider.test.ts",
     "tests/api/mp-6-2-run-times.test.ts",
     "tests/api/mp-6-2-run-tokens.test.ts",
-    "tests/api/mp-6-2-pinned-versions.test.ts"
+    "tests/api/mp-6-2-pinned-versions.test.ts",
+    "tests/api/mp-6-2-no-memory.test.ts"
   ]
 }
