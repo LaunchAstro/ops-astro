@@ -98,6 +98,19 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // `recordCheck` does; Bravo holds no lease, so its row names ids that key
   // nothing. Written with foreign keys off, as every seed here is and as the prefixes
   // suite writes every reference row.
+  // The journey revises no run's state (MP-6-2): one version on the business's
+  // first run, where it has one; otherwise ids that key nothing.
+  'public.run_states': `insert into public.run_states
+       (business_id, id, run_id, task_id, version, knowledge, unknowns, revised_by_actor_id)
+     select $1, gen_random_uuid(), coalesce(r.id, gen_random_uuid()),
+            coalesce(r.task_id, gen_random_uuid()), 1, '["restricted calls seed"]', '[]',
+            coalesce(a.id, gen_random_uuid())
+       from (select 1) one
+       left join lateral (
+         select id, task_id from public.planned_runs where business_id = $1 order by id limit 1) r on true
+       left join lateral (
+         select id from public.actors where business_id = $1 order by id limit 1) a on true
+     returning 1`,
   'public.run_checks': `insert into public.run_checks
        (business_id, id, task_id, run_id, version_id, lease_id, attempt_id, actor_id,
         fence, name, outcome)

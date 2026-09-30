@@ -108,6 +108,15 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   // The journey records no check (MP-6-1); the row is written with foreign
   // keys off, as every reference row is.
+  // The journey revises no run's state (MP-6-2).
+  'public.run_states': {
+    run_id: randomUUID(),
+    task_id: randomUUID(),
+    version: 1,
+    knowledge: [],
+    unknowns: [],
+    revised_by_actor_id: randomUUID(),
+  },
   'public.run_checks': {
     task_id: randomUUID(),
     run_id: randomUUID(),
