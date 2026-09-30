@@ -33,7 +33,7 @@ import {
   readPacket,
   type Theme,
 } from './packet.ts';
-import { addressOf } from './report.ts';
+import { addressOf, needsSession } from './report.ts';
 
 type Measured = Readonly<Record<string, string>>;
 interface Pinned {
@@ -156,7 +156,9 @@ async function checkProbe(
     say(`red ${name}: no mockup value pinned (run --measure)`, true);
     return;
   }
-  const side = await openSide(browser, packet, width, { app, session, colorScheme: theme });
+  // A public page (sign-in) is measured signed out, as the harness draws it.
+  const signedIn = needsSession(probe.app.page) ? { session } : {};
+  const side = await openSide(browser, packet, width, { app, ...signedIn, colorScheme: theme });
   await answerMadeUp(side.context);
   const address = addressOf(probe.app.page, { key: 'T-1' }) ?? '/';
   const got = await measureOn(side, new URL(address, app).href, probe, 'app');
