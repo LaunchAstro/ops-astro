@@ -33,6 +33,7 @@ const verify: Verifier = (request) => {
   return Promise.resolve(subject === undefined ? undefined : { provider: 'test', subject });
 };
 
+// eslint-disable-next-line max-lines-per-function -- one world, built in one place
 function world() {
   let databaseUses = 0;
   const database = new Proxy({} as Database, {

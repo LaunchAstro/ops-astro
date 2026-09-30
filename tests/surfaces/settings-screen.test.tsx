@@ -46,6 +46,7 @@ const json = (body: unknown, status = 200): Response =>
  * it did before this lane. That is the shape the fallback cases want, and it is
  * a real answer from a real server rather than a case invented for the test.
  */
+// eslint-disable-next-line max-lines-per-function -- one stand-in server, read top to bottom
 function server(options: { readonly refuse?: boolean; readonly reads?: boolean } = {}) {
   const sent: { readonly at: string; readonly body: Record<string, unknown> }[] = [];
   const fetch = ((url: string | URL, init?: RequestInit) => {

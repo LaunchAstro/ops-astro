@@ -50,6 +50,7 @@ const say = (line) => console.log(`upgrade-drill: ${line}`);
  * password is random base64url, whose alphabet holds no quote, and the names
  * are generated here, so nothing a caller supplies reaches the SQL.
  */
+// eslint-disable-next-line max-lines-per-function -- one throwaway database, made and dropped in one place
 async function throwawayDatabase(clusterUrl) {
   const name = `t1_drill_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const login = `${name}_app`;

@@ -143,6 +143,7 @@ function identityScopeCases2() {
   });
 }
 
+/* eslint-disable max-lines-per-function -- one test, its body kept byte for byte */
 function identityScopeCases3() {
   it('is refused every write, schema change and function call, and changes no row', async () => {
     const before = await contents();
@@ -208,6 +209,7 @@ function identityScopeCases3() {
     expect(await contents()).toBe(before);
   });
 }
+/* eslint-enable max-lines-per-function */
 
 // Sol's REV158S3 criterion 4 proof. Its table, the restore challenge's, is
 // gone with the challenge (ORCH-DECISION 22:06Z), so its two writes are aimed

@@ -72,6 +72,7 @@ function drillReceiptCases1() {
   });
 }
 
+/* eslint-disable max-lines-per-function -- one test, its body kept byte for byte */
 function drillReceiptCases2() {
   it('only the restore identity records a drill, and a receipt is never changed or removed', async () => {
     for (const [login, role] of [
@@ -134,6 +135,7 @@ function drillReceiptCases2() {
     }
   });
 }
+/* eslint-enable max-lines-per-function */
 
 function drillReceiptCases3() {
   it('a passed drill answers its own date as the last tested restore; a failed one answers the last passed', async () => {

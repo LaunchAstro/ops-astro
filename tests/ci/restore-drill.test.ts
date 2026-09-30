@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the restore drill suite: one fixture dump and the drill cases that share it */
 //
 // S0-3c: the restore drill (ticket S0-3, lines C2, C3 and C8).
 //
@@ -128,6 +129,7 @@ const barrier = (table: string): string => `
  * forced business barrier on every table. `unbarred` is the same data dumped
  * after the barrier was taken off.
  */
+// eslint-disable-next-line max-lines-per-function -- one fixture database, built in one place
 async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
   const name = `ops-astro-test-fixture-${randomBytes(4).toString('hex')}`;
   const password = randomBytes(12).toString('hex');
@@ -309,6 +311,7 @@ describe.skipIf(!hasDocker)('the restore drill', () => {
   carriedRestoreCases();
 });
 
+// eslint-disable-next-line max-lines-per-function -- one test, its body kept byte for byte
 function theRestoreDrillCases1() {
   describe('S0-3 backup encryption', () => {
     it('seals the dump so the stored bytes carry none of it, and only the private key opens it', async () => {

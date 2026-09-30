@@ -54,6 +54,7 @@ function identityScopeCases4() {
   });
 }
 
+/* eslint-disable max-lines-per-function -- one test, its body kept byte for byte */
 function identityScopeCases5() {
   it('a same-business ungranted client and person fail the drill', async () => {
     const business = randomUUID();
@@ -123,7 +124,9 @@ function identityScopeCases5() {
     }
   });
 }
+/* eslint-enable max-lines-per-function */
 
+/* eslint-disable max-lines-per-function -- one test, its body kept byte for byte */
 function identityScopeCases6() {
   it('a grant for another action or collection cannot authorise the client read', async () => {
     const business = randomUUID();
@@ -203,3 +206,4 @@ function identityScopeCases6() {
     expect(record).toMatchObject({ outcome: 'failed', stage: 'check' });
   });
 }
+/* eslint-enable max-lines-per-function */

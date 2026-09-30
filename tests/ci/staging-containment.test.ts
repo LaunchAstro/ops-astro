@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one staging and production pair, and the containment and limit cases run on it */
 // S0-1b: staging's containment and its resource limits.
 //
 // Two halves. The table half reads deploy/staging/compose.json: one row per
@@ -409,6 +410,7 @@ live('S0-1 containment and resource limits, live', () => {
     expect(await postgresAnswers(prodPort)).toBe(true);
   };
 
+  // eslint-disable-next-line max-lines-per-function -- one setup: staging and production brought up together
   beforeAll(async () => {
     prodPort = await freePort();
     env = {
@@ -544,6 +546,7 @@ live('S0-1 containment and resource limits, live', () => {
     expect(internal.out).toBe('true isolated false');
   });
 
+  // eslint-disable-next-line max-lines-per-function -- one test, its body kept byte for byte
   it('S0-1 containment: from inside staging, each target is refused', async () => {
     // A service of the machine itself, listening on every address it has.
     const listener = createServer((socket) => socket.end()).listen(0, '::');
@@ -636,6 +639,7 @@ live('S0-1 containment and resource limits, live', () => {
     listener.close();
   }, 120_000);
 
+  // eslint-disable-next-line max-lines-per-function -- one test, its body kept byte for byte
   it('S0-1 resource limits: saturating each inside staging leaves production green', async () => {
     const db = load().services['db']!;
     const cgroup = (file: string) => inStaging(`cat /sys/fs/cgroup/${file}`).out;

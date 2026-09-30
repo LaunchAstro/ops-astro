@@ -280,6 +280,7 @@ describe('a session the API will not vouch for any more', () => {
 // already signed in again. A stand-in that answered "the session has ended"
 // globally could not tell the two sessions apart and so could not show the
 // defect at all.
+// eslint-disable-next-line max-lines-per-function -- one stand-in, read top to bottom
 function byBearer(): {
   readonly fetch: typeof globalThis.fetch;
   /** Answer the old-token read that is still in flight. */

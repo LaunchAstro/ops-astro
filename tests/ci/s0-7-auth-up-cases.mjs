@@ -108,6 +108,7 @@ test('no container: 17 starts on the 17 volume', () => {
 // GoTrue, and the same cluster keeps the one it has. This harness runs the
 // script to its end: GoTrue's issuer and key are always right here, so only
 // the database decides whether it is replaced.
+// eslint-disable-next-line max-lines-per-function -- one run, read top to bottom
 function runToEnd(pg) {
   const scratch = mkdtempSync(join(tmpdir(), 's0-7-auth-up-gotrue-'));
   try {

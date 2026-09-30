@@ -53,7 +53,7 @@ describe('S0-1 version stamp', () => {
     const view = await mount(shell(STAMP));
     const stamps = view.all(BUILD_SELECTOR);
     expect(stamps).toHaveLength(1);
-    expect(stamps[0]?.getAttribute('data-build')).toBe(STAMP);
+    expect((stamps[0] as HTMLElement | undefined)?.dataset['build']).toBe(STAMP);
     expect(stamps[0]?.textContent).toContain(STAMP);
     expect(stamps[0]?.closest('nav.rail')).not.toBeNull();
     await view.unmount();
@@ -63,7 +63,7 @@ describe('S0-1 version stamp', () => {
     const view = await mount(shell(null));
     const stamps = view.all(BUILD_SELECTOR);
     expect(stamps).toHaveLength(1);
-    expect(stamps[0]?.getAttribute('data-build')).toBe('');
+    expect((stamps[0] as HTMLElement | undefined)?.dataset['build']).toBe('');
     expect(stamps[0]?.textContent).toBe('Build not stamped');
     await view.unmount();
   });
@@ -79,12 +79,14 @@ describe('S0-1 version stamp', () => {
         sessions={new SessionStore(emptyStorage())}
         gotrueUrl="http://identity.invalid"
         apiOrigin=""
-        fetch={(async () => new Response('{}', { status: 503 })) as unknown as typeof fetch}
+        fetch={
+          (() => Promise.resolve(new Response('{}', { status: 503 }))) as unknown as typeof fetch
+        }
         storage={tabStorage()}
       />,
     );
     await settle();
-    expect(view.find(BUILD_SELECTOR)?.getAttribute('data-build')).toBe(STAMP);
+    expect((view.all(BUILD_SELECTOR)[0] as HTMLElement | undefined)?.dataset['build']).toBe(STAMP);
     await view.unmount();
   });
 });

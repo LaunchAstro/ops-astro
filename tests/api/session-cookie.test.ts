@@ -139,10 +139,10 @@ function sessionCookieCases2() {
   it('a signed-in page holds no readable token: not in the session, not in tab storage', async () => {
     const token = await bearerFor();
     const sent: { url: string; headers: Record<string, string> }[] = [];
-    const fetch = (async (url: string, init?: RequestInit) => {
+    const fetch = ((url: string, init?: RequestInit) => {
       sent.push({ url, headers: (init?.headers ?? {}) as Record<string, string> });
       const body = url.includes('/token?') ? { access_token: token } : { ok: true };
-      return new Response(JSON.stringify(body), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
     }) as unknown as typeof globalThis.fetch;
 
     const result = await openSession({
@@ -216,9 +216,9 @@ function sessionCookieCases3() {
 function sessionCookieCases4() {
   it('signing out asks the API to clear the cookie', async () => {
     const urls: string[] = [];
-    const fetch = (async (url: string) => {
+    const fetch = ((url: string) => {
       urls.push(url);
-      return new Response('{"ok":true}', { status: 200 });
+      return Promise.resolve(new Response('{"ok":true}', { status: 200 }));
     }) as unknown as typeof globalThis.fetch;
     await signOut({ apiOrigin: '', fetch });
     expect(urls).toEqual([`${SESSION_PATH}/end`]);
@@ -273,9 +273,9 @@ function csrfCases1() {
 function csrfCases2() {
   it('the browser client sends the header on every call and never a bearer', async () => {
     const headers: Record<string, string>[] = [];
-    const fetch = (async (_url: string, init?: RequestInit) => {
+    const fetch = ((_url: string, init?: RequestInit) => {
       headers.push((init?.headers ?? {}) as Record<string, string>);
-      return new Response('{"ok":true}', { status: 200 });
+      return Promise.resolve(new Response('{"ok":true}', { status: 200 }));
     }) as unknown as typeof globalThis.fetch;
     const client = new OperationsClient({
       origin: '',

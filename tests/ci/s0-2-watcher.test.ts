@@ -168,6 +168,7 @@ function testAlertReachesCases1() {
   });
 }
 
+/* eslint-disable max-lines-per-function -- one test, its body kept byte for byte */
 function testAlertReachesCases2() {
   it('a test alert goes to the error sink in plain words, and the DSN is not printed', async () => {
     const received: { url: string; auth: string; body: Record<string, unknown> }[] = [];
@@ -223,6 +224,7 @@ function testAlertReachesCases2() {
     }
   });
 }
+/* eslint-enable max-lines-per-function */
 
 function testAlertReachesCases3() {
   it('without a sink or an environment the test alert is refused by name', () => {

@@ -14,6 +14,7 @@ import { executeCommand, isCommandRefusal } from '../../packages/core-commands/s
 export class Failure extends Error {}
 
 /** A business and one person who may sign in and work its tasks, written as the application. */
+// eslint-disable-next-line max-lines-per-function -- one business, enrolled in one place
 async function enrolBusiness(app, key) {
   const [business, person, actor, login] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
   const subject = `${key}-${randomUUID()}`;

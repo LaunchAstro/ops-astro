@@ -48,6 +48,7 @@ export async function readNew(client: Client): Promise<Binding> {
  * newest archive through the appointed operator's login, each receipt with
  * every field and no other, and no key, credential, path or record data.
  */
+// eslint-disable-next-line max-lines-per-function -- one case, read top to bottom
 export async function operatorReceiptCase(): Promise<void> {
   const path = '../../scripts/ops/restore-drill.mjs';
   const drillModule = (await import(/* @vite-ignore */ path)) as {
