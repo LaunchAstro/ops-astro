@@ -43,6 +43,7 @@ import {
   subjects,
   CALLERS,
 } from './service-stop.fixture.ts';
+import { outputDigest } from '../../scripts/ops/build-output.ts';
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -189,6 +190,10 @@ function gatedStopCases2() {
     const build = join(artefacts, definition['x-ops-astro'].artefact.replace('{version}', STAGED));
     mkdirSync(build);
     writeFileSync(join(build, 'build.json'), JSON.stringify({ build: STAGED }));
+    writeFileSync(
+      join(build, 'build.json'),
+      JSON.stringify({ build: STAGED, digest: outputDigest(build) }),
+    );
     const current = join(scratch, 'current');
     const result = spawn(
       PROMOTE,

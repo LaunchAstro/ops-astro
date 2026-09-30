@@ -18,6 +18,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll } from 'vitest';
+import { outputDigest } from '../../scripts/ops/build-output.ts';
 
 export const CANARY = 'canary-7c2f41-operator-secret';
 
@@ -65,6 +66,10 @@ export const store = (): string => {
   const build = join(root, definition['x-ops-astro'].artefact.replace('{version}', STAGED));
   mkdirSync(build);
   writeFileSync(join(build, 'build.json'), JSON.stringify({ build: STAGED }));
+  writeFileSync(
+    join(build, 'build.json'),
+    JSON.stringify({ build: STAGED, digest: outputDigest(build) }),
+  );
   return root;
 };
 

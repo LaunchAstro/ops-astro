@@ -6,7 +6,9 @@
 // artefact is found in the store by the name the staging definition gives it
 // (`x-ops-astro.artefact` in deploy/staging/compose.json), and its own stamp,
 // the `build.json` every build writes into itself (S0-1c), must name the same
-// version. A build from a dirty tree names no commit, so it is not promoted.
+// version, and its bytes must be the ones the digest in that file records (the
+// release step's build output). A build from a dirty tree names no commit, so it
+// is not promoted.
 //
 // Before it migrates, the step asks the service manager whether the API and
 // the auth server are stopped, and refuses while either runs. Open connections
@@ -23,6 +25,7 @@
 
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { outputDigest } from './build-output.ts';
 
 /** A service as the service manager names it. */
 export interface ServiceRef {
@@ -97,15 +100,13 @@ export function parseService(text: string): ServiceRef {
 
 const label = (service: ServiceRef): string => `${service.manager}:${service.name}`;
 
-/** The stamp an artefact carries, or undefined when it has none. */
-function stampOf(directory: string): string | undefined {
+/** The stamp and digest an artefact records, each undefined when it has none. */
+function stampOf(directory: string): { build?: unknown; digest?: unknown } {
   try {
-    const build = (
-      JSON.parse(readFileSync(join(directory, STAMP_FILE), 'utf8')) as { build?: unknown }
-    ).build;
-    return typeof build === 'string' ? build : undefined;
+    // `null` is valid JSON and names nothing.
+    return (JSON.parse(readFileSync(join(directory, STAMP_FILE), 'utf8')) as object | null) ?? {};
   } catch {
-    return undefined;
+    return {};
   }
 }
 
@@ -142,10 +143,13 @@ export function storedArtefact(
     // Not there is refused below, the same as not a directory.
   }
   if (!isDirectory) return `no artefact ${name} in ${store}; the step never builds one`;
-  const carried = stampOf(path);
-  if (carried !== version) {
-    return `${name} carries ${carried ?? 'no stamp'}, not ${version}; production gets the build staging ran, never another`;
+  const { build, digest } = stampOf(path);
+  if (build !== version) {
+    const carried = typeof build === 'string' ? build : 'no stamp';
+    return `${name} carries ${carried}, not ${version}; production gets the build staging ran, never another`;
   }
+  if (typeof digest !== 'string') return `${name} records no digest; it is not a release output`;
+  if (digest !== outputDigest(path)) return `${name} does not hold the bytes its digest records`;
   return { path, name };
 }
 

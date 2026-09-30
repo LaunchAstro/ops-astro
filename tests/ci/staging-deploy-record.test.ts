@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { deploy } from '../../scripts/ops/deploy.ts';
 import { definition, STAGED, BUILT, CANARY, scratch, effects } from './staging-deploy.fixture.ts';
+import { outputDigest } from '../../scripts/ops/build-output.ts';
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -20,6 +21,10 @@ const store = (version = STAGED, stamp = version): string => {
   const build = join(root, definition['x-ops-astro'].artefact.replace('{version}', version));
   mkdirSync(build, { recursive: true });
   writeFileSync(join(build, 'build.json'), JSON.stringify({ build: stamp }));
+  writeFileSync(
+    join(build, 'build.json'),
+    JSON.stringify({ build: stamp, digest: outputDigest(build) }),
+  );
   return root;
 };
 
