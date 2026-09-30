@@ -43,6 +43,7 @@ const GATED = COMMAND_SURFACE.filter(
 
 let harness: Harness;
 const bodies = new Map<string, Record<string, unknown>>();
+let agentPickup: Record<string, unknown>;
 
 const admin = async <T>(sql: string): Promise<T[]> =>
   (await harness.world.db.admin.execute<T & Record<string, unknown>>(sql)) as T[];
@@ -200,6 +201,10 @@ describe.skipIf(serverUrl === undefined)('S0-5 readiness check', () => {
       // eslint-disable-next-line no-await-in-loop
       bodies.set(declaration.name, await bodyFor(declaration));
     }
+    const decided = await harness.reserve(await harness.freshTask('s0-5 agent'), 'draft_the_reply');
+    agentPickup = {
+      reservationId: (decided.body['detail'] as Record<string, unknown>)['reservationId'],
+    };
   }, 300_000);
 
   afterAll(async () => {
@@ -228,6 +233,17 @@ describe.skipIf(serverUrl === undefined)('S0-5 readiness check', () => {
 
   it('S0-5 gate coverage (gate forced open): every client-data and invitation command in the catalogue is refused and writes nothing', async () => {
     expect(await eachCommandShut('phone-alerts')).toStrictEqual([]);
+    // The agent route reads the same check.
+    await forceOpen('second-factor');
+    const before = await fingerprint();
+    const picked = await harness.asAgent('task.pickup', agentPickup);
+    expect([picked.status, picked.code, picked.body['names']]).toStrictEqual([
+      409,
+      'GATE_SHUT',
+      ['second-factor'],
+    ]);
+    expect(changed(before, await fingerprint())).toStrictEqual([]);
+    await tickAll();
     // Every item done: the same commands run on a real-data installation.
     const task = await harness.freshTask('s0-5 real, gate closed');
     expect(task.revision).toBeGreaterThan(0);

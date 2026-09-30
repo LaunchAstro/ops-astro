@@ -67,6 +67,7 @@ import { asCallerVisible, isCommandRefusal, refuseCommand } from './refusal.ts';
 import { crashPointAfterCommit } from '../../../core-runtime/src/index.ts';
 import { registerAttempt, type CommandHandle, type CommandResult } from './register-store.ts';
 import { enter, retryOnce, settle } from './envelope.ts';
+import { firstClientGate } from './first-client-gate.ts';
 import { isRefused } from './outcome.ts';
 import { authorise } from './agent-authority.ts';
 import { releaseReplay } from './agent-replay.ts';
@@ -239,6 +240,9 @@ async function runRow<O extends object>(
   if (undescribed !== undefined) return await settle(tx, session, request, digest, undescribed);
   const parsed = parseRequest(request, call.declaration);
   if ('refusal' in parsed) return await settle(tx, session, request, digest, parsed.refusal);
+  // S0-5, as on the person prefix: after authority, before any command code.
+  const shut = await firstClientGate(tx, call.declaration.name);
+  if (shut !== undefined) return await settle(tx, session, request, digest, shut);
 
   await tx.query('savepoint agent_work');
   const outcome = await authorised.run(operands);

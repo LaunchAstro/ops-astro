@@ -1772,3 +1772,21 @@ and never an agent's (an agent is refused `DELEGATION_EXCLUDES_OPERATION`):
 A bad field is `FIELD_VALUE_INVALID` 422 naming the field alone; no refusal,
 detail or audit event carries the purpose or the secret. Using a credential on
 the agent route waits on S0-6's bearer scheme.
+
+## The first-client gate (S0-5)
+
+An installation is made-up or real (`ops.installation`, migration 0051).
+Every command the catalogue classes `client-data` or `invitation` reads
+`public.first_client_readiness()` inside its own transaction, after
+authority and before the handler, on the person and agent routes. On a
+real-data installation with any gate item open it is refused `GATE_SHUT` 409,
+naming the open items, and writes nothing. A made-up-data installation, the
+test harness and staging included, runs them. An installation with no mode
+row refuses them too, naming `installation`.
+
+The eight items are `ops.gate_items` rows, each with an `https` evidence link:
+`tested-backups`, `second-factor`, `legal-basics`, `privacy-act-statement`,
+`overseas-register`, `breach-runbook`, `security-pass`, `phone-alerts`. The
+application's role reads neither table. The mode moves from made-up to real
+only while every item is done, and never back; the row cannot be deleted.
+Recording an item and changing the mode by command are not built yet.
