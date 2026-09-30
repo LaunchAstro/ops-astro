@@ -65,6 +65,7 @@ export {
   readInboxItems,
   countOwedItems,
   INBOX_HISTORY_PAGE,
+  INBOX_HISTORY_SCAN,
   stampSeen,
   recordDeliveryAttempt,
   type DeliveryChannel,

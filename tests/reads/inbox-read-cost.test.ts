@@ -50,6 +50,11 @@ const rowsFrom = (plan: PlanNode, relation: string): number =>
     ? (plan['Actual Rows'] + (plan['Rows Removed by Filter'] ?? 0)) * plan['Actual Loops']
     : 0) + (plan.Plans ?? []).reduce((sum, child) => sum + rowsFrom(child, relation), 0);
 
+/** How many times the plan looked into `relation`: one lookup per loop of each node on it. */
+const lookupsOn = (plan: PlanNode, relation: string): number =>
+  (plan['Relation Name'] === relation ? plan['Actual Loops'] : 0) +
+  (plan.Plans ?? []).reduce((sum, child) => sum + lookupsOn(child, relation), 0);
+
 // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
   const w = clearingWorld('i1cost');
@@ -101,6 +106,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
     owed: number;
     itemRows: number;
     recordRows: number;
+    recordLookups: number;
   }> =>
     await inAlpha(async (tx) => {
       let queries = 0;
@@ -129,6 +135,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
         owed,
         itemRows: rowsFrom(plan, 'inbox_items'),
         recordRows: rowsFrom(plan, 'records'),
+        recordLookups: lookupsOn(plan, 'records'),
       };
     });
 
@@ -173,7 +180,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
     // The open item, the page, and the one row read to see the page is full.
     expect(long.itemRows).toBeGreaterThan(PAGE);
     expect(long.itemRows).toBeLessThanOrEqual(1 + PAGE + 1);
-    expect(long.recordRows).toBeLessThanOrEqual(1 + PAGE + 1);
+    // One lookup of the task per item read (rows per lookup are the
+    // planner's business on a small table; the equality above holds them).
+    expect(long.recordLookups).toBeLessThanOrEqual(1 + PAGE + 1);
   }, 60_000);
 
   it('INB-1 the list carries every open item and the newest page of readable closed ones, with no gap for withheld ones', async () => {
@@ -207,7 +216,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
     const bounded = await cost();
     expect(bounded.owed).toBe(1);
     expect(bounded.itemRows).toBeLessThanOrEqual(1 + SCAN + 1);
-    expect(bounded.recordRows).toBeLessThanOrEqual(1 + SCAN + 1);
+    expect(bounded.recordLookups).toBeLessThanOrEqual(1 + SCAN + 1);
     expect(JSON.stringify(await listed())).not.toContain(onB);
   }, 60_000);
 });

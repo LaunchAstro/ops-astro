@@ -1253,9 +1253,13 @@ open item, and the newest 50 closed ones (`INBOX_HISTORY_PAGE`) about a task
 the caller reads now, oldest raised first. `inbox.count` answers
 `{ ok: true, owed }`, the list's counted entries, counted in one query under
 the same rule (`reads/inbox.ts`). Access is derived for every item inside the
-read's own query, so neither read grows with a person's closed history. An
-item about a task the caller cannot read is not listed, and a closed one takes
-no place in the page. A readable entry about a planned run carries `alert`,
+read's own query, so neither read grows with a person's closed history: the
+closed history is read newest first on its own index (migration 0044) and the
+scan stops at the page's last item, or after 200 closed items
+(`INBOX_HISTORY_SCAN`), whichever comes first. An item about a task the caller
+cannot read is not listed (the records read returns it as withheld), and a
+closed one takes no place in the page; only when more than 150 of the newest
+200 closed items are withheld is the page shorter than 50. A readable entry about a planned run carries `alert`,
 T2h's latest alert on that run (the same record, `id`, `kind`,
 `waitingReason` and `raisedAt`, that the task page and the queue read show);
 no other read carries it. A readable entry carries its pointers, its task's `key` and `title`,
@@ -1271,9 +1275,14 @@ join is `joinLiveBoard` (`reads/live-join.ts`): a person inside the business,
 never an external reader or an agent, holding a live grant. It sends `resync`
 on connect and after the listener reconnects, `invalidate` whose data is a
 task's identifier only when the caller may read that task now (asked per event
-as T2f asks `task.execution`), `inbox` with no data when the caller's own items
-change, and `closed` the first time the join is refused again (at every
-recheck, 30 seconds by default, and before each batch). The inbox topic is
+as T2f asks `task.execution`), `inbox` with no data when what `inbox.read`
+shows the caller changed (the topic names no item, so the stream compares a
+digest of that read, `shownInbox`, and a change to an item the caller is not
+shown says nothing), and `closed` the first time the join is refused again (at
+every recheck, 30 seconds by default, and before each batch). The stream hears
+the inbox of the person the bearer resolves to at each batch: if that is now
+another person, the previous person's topic is dropped unsaid, the new one's is
+heard, and the stream sends `resync`. The inbox topic is
 `business:inbox:person`, sent at commit by migration 0043's trigger on
 `inbox_items`, and the fan-out (`apps/api/live.ts`) hands it only to that
 person's streams in that business. The page re-reads the board on
