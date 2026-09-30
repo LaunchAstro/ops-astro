@@ -222,7 +222,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 escalate and the inbox', () => {
     );
     expect(codeOf(await as(assignee, decideBody(v3, 'approve')))).toBe('FOUR_EYES_REQUIRED');
     expect(itemOf(await onGate(v3['gateId']), assignee.personId, taskId)).toBeUndefined();
-    expect(await owed(assignee.personId)).toBe(0);
+    expect(await owed(assignee.personId)).toBe(1); // their assignment item alone
   });
 
   const assign = async (taskId: string, assignee: Member): Promise<void> => {
@@ -245,7 +245,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 escalate and the inbox', () => {
     const v1 = await propose(s, taskId);
     expect(codeOf(await as(approver, decideBody(v1, 'approve')))).toBe('FOUR_EYES_REQUIRED');
     expect(itemOf(await onGate(v1['gateId']), approver.personId, taskId)).toBeUndefined();
-    expect(await owed(approver.personId)).toBe(0);
+    expect(await owed(approver.personId)).toBe(1); // their assignment item alone
   });
 
   it('INB-1 four eyes: assigning a decider withdraws their open decision item on the task', async () => {
@@ -253,7 +253,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 escalate and the inbox', () => {
     expect(itemOf(await onGate(v3['gateId']), approver.personId, taskId)?.state).toBe('open');
     await assign(taskId, approver);
     expect(itemOf(await onGate(v3['gateId']), approver.personId, taskId)?.state).toBe('withdrawn');
-    expect(await owed(approver.personId)).toBe(0);
+    expect(await owed(approver.personId)).toBe(1); // their assignment item alone
   });
 
   it('INB-1 a refused escalate moves no item', async () => {
