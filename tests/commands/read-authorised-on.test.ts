@@ -25,12 +25,13 @@ describe("a read's declared authority scope", () => {
     expect(declared).toStrictEqual(checked);
   });
 
-  it('is record scope for task.read, task.execution, task.receipt and the three map reads alone', () => {
+  it('is record scope for task.read, task.context, task.execution, task.receipt and the three map reads alone', () => {
     const record = reads.filter((row) => row.authorisedOn === 'record').map((row) => row.name);
     expect(record.toSorted()).toStrictEqual([
       'map.frontier',
       'map.status',
       'map.view',
+      'task.context',
       'task.execution',
       'task.read',
       'task.receipt',

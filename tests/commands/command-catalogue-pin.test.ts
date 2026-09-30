@@ -215,6 +215,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'map.frontier',
   'map.status',
   'map.view',
+  'task.context',
 ].toSorted();
 
 const PINNED_AGENT_SURFACE = [
@@ -424,7 +425,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-seven from an expected revision', () => {
+  it('exempts the same twenty-eight from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

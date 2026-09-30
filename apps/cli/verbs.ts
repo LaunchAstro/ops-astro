@@ -142,6 +142,12 @@ export const VERB_TABLE: readonly VerbRow[] = [
     }),
   },
   {
+    verb: 'task context',
+    command: 'task.context',
+    usage: '<id> [--detail brief|standard|full] [--fields a,b] [--json] (work this ticket)',
+    body: (id, flags) => ({ recordId: target(id), detail: detail(flags) }),
+  },
+  {
     verb: 'map view',
     command: 'map.view',
     usage: '<id> [--fields a,b] [--json]',

@@ -122,6 +122,7 @@ export function createPositiveBody(
         return { body: { ...(await ownLease(context)), outcome: 'completed' } };
       case 'task.read':
       case 'task.execution':
+      case 'task.context':
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
         return { body: { board: null } };

@@ -88,7 +88,7 @@ describe('the surface as a table', () => {
 });
 
 describe('the surface as a table', () => {
-  it('declares the twelve reads as reads, and everything else as a write', () => {
+  it('declares the thirteen reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
       'map.frontier',
       'map.status',
@@ -98,6 +98,7 @@ describe('the surface as a table', () => {
       'session.capabilities',
       'settings.read',
       'task.board',
+      'task.context',
       'task.execution',
       'task.queue',
       'task.read',

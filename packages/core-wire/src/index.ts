@@ -56,6 +56,8 @@ export type {
   MapFrontierResult,
   MapStatus,
   MapStatusResult,
+  TicketContext,
+  TicketContextResult,
   SessionCapabilities,
   SettingView,
   SharedTaskRead,

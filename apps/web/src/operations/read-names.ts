@@ -44,6 +44,7 @@ export const READ_NAMES = [
   'map.view',
   'map.frontier',
   'map.status',
+  'task.context',
 ] as const;
 
 /**

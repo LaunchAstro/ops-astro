@@ -36,6 +36,7 @@ import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readMapFrontier, readMapStatus, readMapView } from './maps.ts';
 import { blockersFor, isRefusal, pageOf, parsePaging, taskAt } from './detail.ts';
+import { contextFor, readTicketContext } from './ticket-context.ts';
 
 export type ReadName = ReadRequest['read'];
 
@@ -281,6 +282,34 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       const detail = operands.detail ?? 'full';
       const status = await readMapStatus(tx, spine.taskTypeId, recordId, detail);
       return status === undefined ? await notAMap(tx, recordId) : { ok: true, detail, status };
+    },
+  },
+  'task.context': {
+    identifiers: ['recordId'],
+    parse: (body) => {
+      if (typeof body['recordId'] !== 'string') {
+        return rejected('recordId', 'Send recordId as the ticket’s identifier or its key.');
+      }
+      if (body['limit'] !== undefined || body['page'] !== undefined) {
+        return rejected('detail', 'Work this ticket is one answer; send only recordId and detail.');
+      }
+      const paging = parsePaging(body);
+      if (isRefusal(paging)) return { ok: false, refusal: paging };
+      return parsed({ recordId: body['recordId'], ...paging });
+    },
+    spine: true,
+    subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
+    authority: 'declared',
+    outsiderNotFound: true,
+    // Internal readers only: the bundle carries the map and the internal
+    // thread, and a map never reaches a client surface (WF-1).
+    async serve(tx, session, operands, { spine, recordId }) {
+      if (recordId === undefined || !isInternalReader(session.roleKey)) return refuseNotFound();
+      const row = await readTicketContext(tx, spine, recordId);
+      if (row === undefined) return refuseNotFound();
+      const detail = operands.detail ?? 'full';
+      const context = await contextFor(tx, subjectsOf(session), row, detail);
+      return { ok: true, detail, context };
     },
   },
   'task.board': {
