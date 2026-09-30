@@ -21,7 +21,7 @@ import {
   CONTENT,
   kindsUnreached,
   lockFaults,
-  markerFaults,
+  allMarkerFaults,
   newClient,
   revisionOf,
   setPartyBody,
@@ -115,6 +115,21 @@ async function emptyTaskMovesTwice(client: string): Promise<void> {
   expect((await harness.asPerson('task.set_party', again)).code).toBe('ok');
 }
 
+/** A task that has gained a subtask: its client change, refused or not. */
+async function parentWithSubtaskMoves(): Promise<[number, string]> {
+  const parent = await harness.freshTask('s0-5 a parent');
+  const child = await harness.freshTask('s0-5 its subtask');
+  const placed = await harness.asPerson('task.reparent', {
+    recordId: child.id,
+    expectedRevision: child.revision,
+    parentId: parent.id,
+  });
+  expect(placed.code).toBe('ok');
+  const client = await newClient();
+  const moved = await harness.asPerson('task.set_party', await setPartyBody(parent.id, client));
+  return [moved.status, moved.code];
+}
+
 describe.skipIf(serverUrl === undefined)('S0-5 the task client lock', () => {
   beforeAll(async () => {
     harness = await createHarness('s05_lock');
@@ -127,12 +142,7 @@ describe.skipIf(serverUrl === undefined)('S0-5 the task client lock', () => {
 
   it('S0-5 content marker and lock order: every task-content command leaves a history event and a new revision on its task, or a row naming it where the marker is held', async () => {
     expect(CONTENT.length).toBeGreaterThan(0);
-    const found: string[] = [];
-    for (const declaration of CONTENT) {
-      // eslint-disable-next-line no-await-in-loop
-      found.push(...(await markerFaults(declaration)));
-    }
-    expect(found).toStrictEqual([]);
+    expect(await allMarkerFaults()).toStrictEqual([]);
   }, 300_000);
 
   it('S0-5 client change refused once the task has content', async () => {
@@ -146,6 +156,10 @@ describe.skipIf(serverUrl === undefined)('S0-5 the task client lock', () => {
     expect(found).toStrictEqual([]);
     expect(kindsUnreached()).toStrictEqual([]);
   }, 300_000);
+
+  it('S0-5 client change refused once the task has content: a subtask is content of its parent', async () => {
+    expect(await parentWithSubtaskMoves()).toStrictEqual([409, 'CLIENT_LOCKED']);
+  });
 
   it('S0-5 client change refused once the task has content: a content write and a client change interleaved, in both orders', async () => {
     const [clientA, clientB] = [await newClient(), await newClient()];

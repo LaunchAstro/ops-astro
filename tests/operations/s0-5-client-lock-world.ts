@@ -149,7 +149,6 @@ const MARKER_HELD: ReadonlySet<string> = new Set([
 /** Per task, a digest of every row that names it, in the tables the lock reads. */
 async function rowsNaming(): Promise<ReadonlyMap<string, string>> {
   const sources = [
-    ['record_links', 'to_record_id'],
     ['proposal_lineages', 'task_id'],
     ['planned_runs', 'task_id'],
     ['task_envelopes', 'task_id'],
@@ -160,6 +159,10 @@ async function rowsNaming(): Promise<ReadonlyMap<string, string>> {
       ([table, column]) =>
         `select ${column}::text as task, md5(string_agg(t::text, '|' order by t::text)) as digest
            from public.${table} t group by ${column}`,
+    )
+    .concat(
+      `select uuid_4::text, md5(string_agg(id::text, '|' order by id)) from public.records
+        where uuid_4 is not null group by uuid_4`,
     )
     .join(' union all ');
   const rows = await admin<{ task: string; digest: string }>(
@@ -205,6 +208,16 @@ export async function markerFaults(declaration: CommandDeclaration): Promise<str
   if (bumped.length === 0) return [`${name}: no history event with a new revision on any task`];
   touched.set(name, bumped[0]!.subject);
   return [];
+}
+
+/** Every content command's fixture, one at a time; each marker fault. */
+export async function allMarkerFaults(): Promise<string[]> {
+  const found: string[] = [];
+  for (const declaration of CONTENT) {
+    // eslint-disable-next-line no-await-in-loop
+    found.push(...(await markerFaults(declaration)));
+  }
+  return found;
 }
 
 /** The client change on a task holding content: refused alike through the CLI and the API, nothing written. */

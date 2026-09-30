@@ -4,7 +4,7 @@
 //
 // `task.set_party` changes the client only while the task is empty: its history
 // holds nothing beyond its creation and earlier client changes, and no row
-// names it (a comment or subtask link, a proposal, a planned run, an envelope,
+// names it (a subtask naming it as parent, a proposal, a planned run, an envelope,
 // a lease, an alert). The check runs under the task's row lock, which the
 // preparation took (`lockTask`, `for update`), so a content write that holds
 // the same lock is either wholly before it or wholly after it.
@@ -32,7 +32,8 @@ async function hasContent(tx: TenantQuery, taskId: string): Promise<boolean> {
   const [row] = await tx.query<{ readonly content: boolean }>(
     `select exists (select 1 from audit_events where business_id = $1 and subject_record_id = $2
                       and outcome = 'applied' and command = any($3::text[]))
-         or exists (select 1 from record_links where business_id = $1 and to_record_id = $2)
+         or exists (select 1 from records r where r.business_id = $1 and r.uuid_4 = $2
+                      and r.record_type_id = (select record_type_id from records where id = $2))
          or exists (select 1 from proposal_lineages where business_id = $1 and task_id = $2)
          or exists (select 1 from planned_runs where business_id = $1 and task_id = $2)
          or exists (select 1 from task_envelopes where business_id = $1 and task_id = $2)
