@@ -16,6 +16,8 @@
 // - The ceiling approval's recent sign-in: C59's step-up (S0-5's sweep).
 // - The run's lease and checks (SL12 U31, MP-6-1) came with the SL12 stack;
 //   the lines that ride on the run are still to build on it.
+// - `ticket resolved (answer, gist)` inside the delegation and
+//   `WF-7 refusal task:write` are `wf-7-resolve.test.ts`.
 // - The skill pinned by digest: the digest is settled (the `skills` CLI's
 //   folder hash, `skill-digest.ts`; the research skill matches its pin), but
 //   the line is the run pinning it, so it waits on the run (U37, U100).
@@ -28,7 +30,6 @@ describe('WF-7 held (to build on the run; LEANS-ON the research ceiling, SL04 U9
   it.todo('WF-7 hostile provider');
   it.todo('WF-7 recent sign-in');
   it.todo('WF-7 refusal billing:decide');
-  it.todo('WF-7 refusal task:write');
   it.todo('WF-7 reserve before a priced call');
   it.todo('WF-7 no ceiling stops and asks');
   it.todo('WF-7 holds no credential');
