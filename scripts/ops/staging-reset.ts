@@ -147,6 +147,7 @@ export function refusalBeforeConnecting(
     }
     setting(environment, 'SUPABASE_SERVICE_KEY');
     setting(environment, 'OPS_SEED_DIR');
+    setting(environment, 'OPS_ASTRO_DEPLOYMENTS');
     return undefined;
   } catch (error) {
     if (error instanceof Refusal) return error.message;

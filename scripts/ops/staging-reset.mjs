@@ -23,11 +23,12 @@
 
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { migrate } from '../../packages/core-records/src/tenancy/migrate.ts';
 import { resettable } from './made-up-only.ts';
+import { RECORD_FILE } from './operator.ts';
 import {
   OPERATING_BUSINESS,
   Refusal,
@@ -120,6 +121,7 @@ if (existsSync(folder))
   );
 
 let step = 'the check';
+let migrations = 0;
 const admin = connectAsAdmin(env.DATABASE_ADMIN_URL, { source: 'reset' });
 try {
   if (!(await resettable(admin)))
@@ -135,6 +137,7 @@ try {
   step = 'migrating';
   const { applied } = await migrate(admin, MIGRATIONS);
   console.log(`staging-reset: ${applied.length} migrations applied`);
+  migrations = applied.length;
 } catch (error) {
   await admin.close();
   console.error(`staging-reset: stopped while ${step} (${named(error)}); run it again.`);
@@ -187,6 +190,15 @@ try {
     await installation.close();
   }
   const operator = STAGING_CAST.find((member) => member.grants?.length === 1);
+  // Each run is recorded where the other operator acts are, and names no setting's value.
+  step = 'recording the run';
+  const record = { action: 'staging reset', migrations, signIns: users.length };
+  mkdirSync(env.OPS_ASTRO_DEPLOYMENTS, { recursive: true, mode: 0o700 });
+  appendFileSync(
+    join(env.OPS_ASTRO_DEPLOYMENTS, RECORD_FILE),
+    `${JSON.stringify({ ...record, at: new Date().toISOString() })}\n`,
+    { mode: 0o600 },
+  );
   console.log(
     `staging-reset: the operating business is ${OPERATING_BUSINESS}; ` +
       `its made-up operator is ${operator?.email}`,

@@ -110,6 +110,9 @@ live(
       'STAGING_PROJECT_REF',
     );
     await refusedBeforeConnecting(settings({ SUPABASE_SERVICE_KEY: '' }), 'SUPABASE_SERVICE_KEY');
+    // Staging's migration login and a folder for the run's record are required too.
+    await refusedBeforeConnecting(settings({ DATABASE_ADMIN_URL: '' }), 'DATABASE_ADMIN_URL');
+    await refusedBeforeConnecting(settings({ OPS_ASTRO_DEPLOYMENTS: '' }), 'OPS_ASTRO_DEPLOYMENTS');
   },
 );
 
@@ -143,6 +146,17 @@ live(
     expect(result.status, result.out).toBe(0);
     quiet(result);
     expect(await canaryHolds()).toBe(false);
+    // Each run is recorded (ORCH40's reset-gate ruling): one line, no setting's value in it.
+    const lines = readFileSync(
+      join(env['OPS_ASTRO_DEPLOYMENTS'] ?? '', 'deployments.jsonl'),
+      'utf8',
+    )
+      .trim()
+      .split('\n');
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0] ?? '{}')).toMatchObject({ action: 'staging reset' });
+    for (const [name, value] of Object.entries(env))
+      if (name !== 'OPS_ASTRO_DEPLOYMENTS') expect(lines[0], name).not.toContain(value);
 
     const migrations = readdirSync(MIGRATIONS).filter((file) => file.endsWith('.sql')).length;
     const seen = await onDatabase(async (admin) => ({

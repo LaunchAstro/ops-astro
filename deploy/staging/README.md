@@ -68,7 +68,10 @@ staging's, or is production's, and takes no file: a backup is never its input.
 It makes the made-up sign-ins through the admin API, confirmed so no mail is
 sent, seeds the made-up operator staging's own gate checks, and writes the
 operating business once. The passwords and keys go to a new owner-only folder,
-`OPS_SEED_DIR`, for the password manager.
+`OPS_SEED_DIR`, for the password manager. It runs outside the operator gate,
+because the first reset makes the operator, and only with staging's migration
+login and service key; each run appends a record, naming no setting's value, to
+`OPS_ASTRO_DEPLOYMENTS`.
 
 Backups are never restored into staging: the restore drill takes no target and
 restores only into a throwaway container of its own.
@@ -76,8 +79,7 @@ restores only into a throwaway container of its own.
 The backup store is a database server of its own, `backups`
 (`ops-astro-staging-backups`), on staging's internal network with no port on
 the machine. Its data is on `ops-astro-staging-backups-data`, the one
-persistent volume staging has, so backups and drill receipts outlive a restart
-while staging's own database, memory-backed, does not. S0-1's disk row names
+persistent volume staging has, so backups and drill receipts outlive a restart. S0-1's disk row names
 that volume as its only exception; the store bounds it itself (`S0-3 store
 bounded`).
 

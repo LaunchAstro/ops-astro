@@ -135,6 +135,7 @@ export function settings(overrides: Record<string, string> = {}): Record<string,
     GOTRUE_URL: authUrl,
     SUPABASE_SERVICE_KEY: KEY,
     OPS_SEED_DIR: join(scratch, `seed-${seedDirs}`),
+    OPS_ASTRO_DEPLOYMENTS: join(scratch, `records-${seedDirs}`),
     ...overrides,
   };
 }
@@ -232,5 +233,6 @@ export const refusedBeforeConnecting = async (
   quiet(result);
   expect(calls.length).toBe(before);
   expect(existsSync(env['OPS_SEED_DIR'] ?? '')).toBe(false);
+  expect(existsSync(env['OPS_ASTRO_DEPLOYMENTS'] ?? ''), 'a refusal records nothing').toBe(false);
   expect(await canaryHolds()).toBe(true);
 };
