@@ -89,11 +89,38 @@ export function Summary(props: { readonly story: RunStory }): ReactElement {
         </span>
       </div>
       <p className="trs__say">{story.sentence}</p>
+      <HeroStats story={story} />
       <div className="trs__grid">
         {summaryCell('Progress', story.progress, 'progress')}
         {summaryCell('Current job', story.currentJob, 'current-job')}
         {summaryCell('Blocked by', story.blockedBy, 'blocked-by')}
         {summaryCell('Next action', story.nextAction, 'next-action')}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * MP-6-2: the run's figures, as the mockup's `runHero` derives them: jobs
+ * complete out of the run's jobs, and the checks recorded. Its time (to the
+ * gate, or elapsed) and tokens cells are left out until the read carries run
+ * times and token units, as the mockup leaves them out when unknown.
+ */
+function HeroStats(props: { readonly story: RunStory }): ReactElement {
+  const { jobs, checks } = props.story;
+  const done = jobs.filter((job) => job.state === 'done' || job.state === 'approved').length;
+  return (
+    <div className="tph__stats">
+      <div className="tph__stat" data-hero="jobs">
+        <span className="tph__n">
+          {done}
+          <span className="tph__of"> / {jobs.length}</span>
+        </span>
+        <span className="tf__k">jobs complete</span>
+      </div>
+      <div className="tph__stat" data-hero="checks">
+        <span className="tph__n">{checks.length}</span>
+        <span className="tf__k">checks recorded</span>
       </div>
     </div>
   );

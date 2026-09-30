@@ -196,6 +196,25 @@
   font-weight: var(--weight-semibold);
   color: var(--text);
 }
+/* MP-6-2: the run's figures (the mockup's `.tph__stats`, taskrun.js runHero). */
+.tph__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-2) var(--s-4);
+}
+.tph__stat {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.tph__n {
+  font-family: var(--font-mono);
+  font-size: var(--text-h2);
+  color: var(--text);
+}
+.tph__of {
+  color: var(--text-muted);
+}
 .trs__grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
