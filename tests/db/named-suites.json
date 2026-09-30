@@ -123,6 +123,7 @@
     "SL01 (REVB1SL01S34B) adds Sol's proof staging-reset-refuses-invalid-service-key-before-emptying: a service key the admin API refuses leaves the database unemptied and no record written.",
     "SL01 (REVB1SL01S34C) adds Sol's proof staging-reset-refuses-unwritable-record-before-emptying: a run record that cannot be opened for appending leaves the database unemptied.",
     "SL01 (REVB1SL01S34D) adds Sol's proof staging-reset-refuses-discarded-record-before-emptying: a record target that discards writes (a link to /dev/null) leaves the database unemptied. s0-1-staging-reset-record adds the family: a link to a file, a pipe, a device or a linked folder is refused the same way.",
+    "STAGING-DEPLOY (STAGING-PREP B3) adds s0-1-staging-logins-live (S0-1 staging logins: before the reset the runtime login in the app group, after it one noinherit login per lookup, backup and forwarder group, each address written owner-only in the pooler's form; an existing folder is refused and an address already given out keeps working).",
     "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database."
   ],
   "invariant": [
@@ -445,6 +446,7 @@
     "tests/ci/staging-reset-refuses-invalid-service-key-before-emptying.test.ts",
     "tests/ci/staging-reset-refuses-unwritable-record-before-emptying.test.ts",
     "tests/ci/staging-reset-refuses-discarded-record-before-emptying.test.ts",
-    "tests/ci/s0-1-staging-reset-record.test.ts"
+    "tests/ci/s0-1-staging-reset-record.test.ts",
+    "tests/ci/s0-1-staging-logins-live.test.ts"
   ]
 }
