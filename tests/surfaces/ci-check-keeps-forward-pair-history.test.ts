@@ -39,10 +39,11 @@ it('MP-1-2 the required check keeps the history the forward-pair proof reads', (
     expect(clone.status, clone.stderr).toBe(0);
     const history = spawnSync(
       'git',
-      ['-C', join(scratch, 'repo'), 'rev-list', '--reverse', `${anchor}..HEAD`],
+      ['-C', join(scratch, 'repo'), 'rev-list', '--ancestry-path', `${anchor}..HEAD`],
       { encoding: 'utf8' },
     );
     expect(history.status, history.stderr).toBe(0);
+    expect(history.stdout.trim(), 'the anchor is an ancestor below HEAD').not.toBe('');
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
