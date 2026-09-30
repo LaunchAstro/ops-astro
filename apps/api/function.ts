@@ -18,8 +18,9 @@
 // **Recovery has one owner here: the function.** The worker holds no database,
 // so with `RECOVERY_BUSINESS_KEYS` set the function runs the reconciliation
 // pass (`passDeployment`: sweep, replay, the register's answers) over those
-// businesses, awaited before the first request each `SWEEP_INTERVAL_MS`, since
-// an instance may be frozen once it answers. Instances that pass at once meet
+// businesses, awaited by every request while it runs, again each
+// `SWEEP_INTERVAL_MS` after one succeeds, since an instance may be frozen once
+// it answers. Instances that pass at once meet
 // on the pass's own row locks. `server.ts` runs the same pass only where there
 // is no function.
 //
@@ -125,8 +126,9 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
 
 /**
  * The reconciliation pass the function owns, over `RECOVERY_BUSINESS_KEYS`:
- * at most once each `SWEEP_INTERVAL_MS`, awaited by the request that finds it
- * due. Unset or `none`, it does nothing; a malformed value throws at start.
+ * at most once each `SWEEP_INTERVAL_MS` after one succeeds, awaited by every
+ * request while it runs. Unset or `none`, it does nothing; a malformed value
+ * throws at start.
  */
 function recoveryPass(
   settings: Settings,
@@ -141,17 +143,28 @@ function recoveryPass(
   if (scope?.ok === false) throw new Error(scope.problem);
 
   let due = 0;
-  return async (): Promise<void> => {
-    if (scope === undefined || scope.keys.length === 0 || Date.now() < due) return;
-    due = Date.now() + SWEEP_INTERVAL_MS;
+  let running: Promise<void> | undefined;
+  const run = async (scopeKeys: readonly string[]): Promise<void> => {
     const outcome = await withRuntimeKeys(
       keys,
-      async () => await passDeployment(database, resolveBusiness, scope.keys, registerEffectLookup),
+      async () => await passDeployment(database, resolveBusiness, scopeKeys, registerEffectLookup),
     ).catch((cause: unknown) => ({
       ok: false as const,
       problem: cause instanceof Error ? cause.message : 'unknown',
     }));
-    if (!outcome.ok) console.error(`api: reconciliation pass: ${outcome.problem}`);
+    // Only a pass that finished marks the interval done; a failed one runs again.
+    if (outcome.ok) due = Date.now() + SWEEP_INTERVAL_MS;
+    else console.error(`api: reconciliation pass: ${outcome.problem}`);
+  };
+  // Every request waits on the pass in flight, so none is served beside it.
+  return async (): Promise<void> => {
+    if (scope === undefined || scope.keys.length === 0) return;
+    if (running === undefined && Date.now() >= due) {
+      running = run(scope.keys).finally(() => {
+        running = undefined;
+      });
+    }
+    await running;
   };
 }
 
