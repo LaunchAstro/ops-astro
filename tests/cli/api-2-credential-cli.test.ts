@@ -10,8 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { createCli, type CliAnswer } from '../../apps/cli/client.ts';
-import { agentPath, bearer, call, personPath, serverUrl } from '../acceptance/world.ts';
+import { bearer, call, personPath, serverUrl } from '../acceptance/world.ts';
 import {
   credentialCount,
   DAY_MS,
@@ -21,6 +20,15 @@ import {
   issueBody,
   openWorld,
 } from '../api/api-2-agent-credential-world.ts';
+import {
+  both as bothOn,
+  cliAs as cliOn,
+  refusedAlike,
+  refusedSame,
+  sameRecord as sameOn,
+  type Pair,
+  type Route,
+} from './cli-parity.ts';
 
 if (serverUrl === undefined) {
   console.warn('cli/api-2-credential-cli: DATABASE_URL is unset, so nothing below ran.');
@@ -30,63 +38,15 @@ openWorld();
 
 type Verb = 'credential.issue' | 'credential.revoke';
 
-interface Pair {
-  readonly cli: CliAnswer;
-  readonly api: { readonly status: number; readonly body: Record<string, unknown> };
-}
-
-/** The CLI client, posting into the served app in process. */
 const cliAs = (token: string, businessKey: string, entry: 'person' | 'agent') =>
-  createCli({
-    businessKey,
-    credential: token,
-    entry,
-    transport: async (path, sent, credential) =>
-      await harness.world.api.fetch(
-        new Request(`http://api.test${path}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', ...bearer(credential) },
-          body: sent,
-        }),
-      ),
-  });
+  cliOn(harness.world.api, token, businessKey, entry);
 
-/** The same body sent once through the CLI and once to the API, each under its own operation. */
-async function both(
+const both = async (
   verb: Verb,
   body: Readonly<Record<string, unknown>>,
   token: string,
-  options: { readonly businessKey?: string; readonly entry?: 'person' | 'agent' } = {},
-): Promise<Pair> {
-  const businessKey = options.businessKey ?? 'alpha';
-  const entry = options.entry ?? 'person';
-  const heard = await cliAs(token, businessKey, entry).run(verb, {
-    ...body,
-    operationId: `api2-cli-${randomUUID()}`,
-  });
-  const path = `/${verb.replace('.', '/')}`;
-  const api = await call(
-    harness.world.api,
-    entry === 'agent' ? agentPath(businessKey, path) : personPath(businessKey, path),
-    { ...body, operationId: `api2-api-${randomUUID()}` },
-    bearer(token),
-  );
-  return { cli: heard, api: { status: api.status, body: api.body } };
-}
-
-/** A refusal is the same answer word for word on both. */
-function refusedAlike(pair: Pair, status: number, code: string): void {
-  expect(pair.cli.status).toBe(status);
-  expect(pair.api.status).toBe(status);
-  expect((pair.cli.body as Record<string, unknown>)['code']).toBe(code);
-  expect(pair.cli.body).toStrictEqual(pair.api.body);
-}
-
-/** Refused on both, with one answer; the code is whichever the API gives. */
-function refusedSame(pair: Pair): void {
-  expect(pair.cli.status).toBeGreaterThanOrEqual(400);
-  expect(pair.cli.body).toStrictEqual(pair.api.body);
-}
+  route?: Route,
+): Promise<Pair> => await bothOn(harness.world.api, verb, body, token, route);
 
 const secretOf = (answer: unknown): unknown =>
   ((answer as { detail?: Record<string, unknown> }).detail ?? {})['credential'];
@@ -105,15 +65,7 @@ const live = async (businessId: string, id: unknown): Promise<boolean> =>
 
 /** A success is the same record on both, bar the values minted per call. */
 const MINTED = new Set(['recordId', 'credentialId', 'credential', 'agentActorId', 'operationId']);
-function sameRecord(pair: Pair): void {
-  expect(pair.cli.status).toBe(200);
-  expect(pair.api.status).toBe(200);
-  const shape = (body: unknown): unknown =>
-    JSON.parse(
-      JSON.stringify(body, (key, value: unknown) => (MINTED.has(key) ? typeof value : value)),
-    );
-  expect(shape(pair.cli.body)).toStrictEqual(shape(pair.api.body));
-}
+const sameRecord = (pair: Pair): void => sameOn(pair, MINTED);
 
 describe.skipIf(serverUrl === undefined)('API-2 on the command line', () => {
   it('API-2 CLI credential.issue: the command line gives the same result and the same refusals as the API', async () => {
