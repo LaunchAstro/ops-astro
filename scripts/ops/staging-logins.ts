@@ -164,7 +164,8 @@ export function statementsFor(step: Step, addresses: readonly LoginAddress[]): s
       `do $$ begin if not exists (select 1 from pg_roles where rolname = '${login.role}') ` +
         `then create role ${login.role} login nosuperuser nocreatedb nocreaterole nobypassrls ` +
         `noreplication ${inherit}; end if; end $$`,
-      `alter role ${login.role} with login ${inherit} password '${scramVerifier(password)}'`,
+      `alter role ${login.role} with login nosuperuser nocreatedb nocreaterole nobypassrls ` +
+        `noreplication ${inherit} password '${scramVerifier(password)}'`,
       `grant ${login.group} to ${login.role}`,
     );
   }
