@@ -3,20 +3,25 @@
 // C33: the occurrence rates, against a real database (U36, #483 point 4). The
 // rates reuse AW-01's durable limit: each count is read back from the
 // occurrence records under the business's lock, so a restarted scheduler meets
-// the same count. The run ceiling, the event intake bound and fairness across
-// businesses are held in `c33-held.test.ts`.
+// the same count, and each lock names its business, so one business at its
+// rate never delays another. The run ceiling and the event intake bound are
+// held in `c33-held.test.ts`.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  adoptVersion,
   claimOccurrence,
   connect,
   FIRING_LIMITS,
+  insertActivation,
+  insertDefinition,
+  releaseVersion,
   type OccurrenceOutcome,
 } from '../../packages/core-records/src/index.ts';
 import { awaitWaiters, barrier } from '../runtime/gate-negatives-cases.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { firingOf, occurrenceOf, type Firing } from './firing.ts';
-import { createAutomationWorld, type AutomationWorld } from './world.ts';
+import { createAutomationWorld, DIGEST, type AutomationWorld } from './world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -47,6 +52,56 @@ describe.skipIf(serverUrl === undefined)('C33 limits on firing', () => {
     }
     return [...outcomes];
   };
+
+  /** Fills the first business's hour: its own activations, each at its own rate. */
+  const fillBusinessHour = async (): Promise<void> => {
+    const busy = FIRING_LIMITS.businessPerHour / FIRING_LIMITS.activationPerHour;
+    for (let i = 0; i < busy; i += 1) {
+      // oxlint-disable-next-line no-await-in-loop
+      const { activation } = await f.approved();
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await claimMany(activation.id, FIRING_LIMITS.activationPerHour)).toEqual(['approved']);
+    }
+  };
+
+  /** Bravo's own automation, released, activated and approved by bravo's admin. */
+  const bravoActivation = async (): Promise<string> =>
+    await w.db.app.withBusiness(w.bravo, async (tx) => {
+      const actorId = w.bravoAdmin.actorId;
+      const definitionId = await insertDefinition(tx, {
+        kind: 'automation',
+        name: 'Bravo digest',
+        actorId,
+      });
+      const version = await releaseVersion(tx, {
+        definitionId,
+        contentDigest: DIGEST,
+        contentSize: 1234,
+        inputs: [],
+        operations: ['report.send'],
+        modes: ['scheduled'],
+        actorId,
+      });
+      if (version === null || version === 'raced') throw new Error(`bravo released ${version}`);
+      const activation = await insertActivation(tx, {
+        versionId: version.id,
+        mode: 'scheduled',
+        everyMinutes: 60,
+        eventKind: null,
+        enabled: true,
+        actorId,
+      });
+      if (activation === null) throw new Error('bravo activation not written');
+      const adopted = await adoptVersion(tx, {
+        activationId: activation.id,
+        versionId: version.id,
+        expectedRevision: activation.revision,
+        act: 'adopted',
+        actorId,
+      });
+      if (adopted.kind !== 'adopted') throw new Error(`bravo adoption ${adopted.kind}`);
+      return activation.id;
+    });
 
   /** The rolling hour moves on past every occurrence recorded so far. */
   const hourPasses = async (): Promise<void> => {
@@ -112,13 +167,7 @@ describe.skipIf(serverUrl === undefined)('C33 limits on firing', () => {
 
   it('C33 occurrence rate refused: 600 per business, the 601st refused on an activation with room of its own, and the next window fires', async () => {
     await hourPasses();
-    const busy = FIRING_LIMITS.businessPerHour / FIRING_LIMITS.activationPerHour;
-    for (let i = 0; i < busy; i += 1) {
-      // oxlint-disable-next-line no-await-in-loop
-      const { activation } = await f.approved();
-      // oxlint-disable-next-line no-await-in-loop
-      expect(await claimMany(activation.id, FIRING_LIMITS.activationPerHour)).toEqual(['approved']);
-    }
+    await fillBusinessHour();
     const { activation: quiet } = await f.approved();
     const over = occurrenceOf(await w.claim(quiet.id, { dueAt: f.nextDue() }));
     expect(over).toMatchObject({ outcome: 'over_business_rate', runId: null });
@@ -126,5 +175,48 @@ describe.skipIf(serverUrl === undefined)('C33 limits on firing', () => {
 
     await hourPasses();
     expect(await claimNext(quiet.id)).toBe('approved');
+  }, 300_000);
+
+  it('C33 limits fair across businesses: one business at its hourly rate, with a claimer holding its lock, never delays another business, whose occurrence is approved', async () => {
+    await hourPasses();
+    await fillBusinessHour();
+    const bravo = await bravoActivation();
+    const { activation: quiet } = await f.approved();
+    const { activation: another } = await f.approved();
+    const held = barrier();
+    const firstIn = barrier();
+    const alphaAgain = connect(w.db.appUrl, { source: 'runtime' });
+    const bravoScheduler = connect(w.db.appUrl, { source: 'runtime' });
+    const claimIn = (business: string, pool: typeof alphaAgain, activationId: string) =>
+      pool.withBusiness(
+        business,
+        async (tx) =>
+          occurrenceOf(await claimOccurrence(tx, activationId, { dueAt: f.nextDue() })).outcome,
+      );
+    try {
+      // An alpha claimer, over alpha's business rate, holds alpha's lock open.
+      const first = w.inAlpha(async (tx) => {
+        const claim = await claimOccurrence(tx, quiet.id, { dueAt: f.nextDue() });
+        firstIn.release();
+        await held.held;
+        return occurrenceOf(claim).outcome;
+      });
+      await firstIn.held;
+      // The lock is real: another alpha activation waits on it.
+      const second = claimIn(w.alpha, alphaAgain, another.id);
+      await awaitWaiters(w.db, 1);
+      // Bravo answers while alpha's lock is still held, and alpha's hour is not its count.
+      const parked = new Promise<'parked'>((resolve) => {
+        setTimeout(() => resolve('parked'), 10_000).unref();
+      });
+      const bravoClaim = claimIn(w.bravo, bravoScheduler, bravo);
+      expect(await Promise.race([bravoClaim, parked])).toBe('approved');
+      held.release();
+      expect([await first, await second]).toEqual(['over_business_rate', 'over_business_rate']);
+    } finally {
+      held.release();
+      await alphaAgain.close();
+      await bravoScheduler.close();
+    }
   }, 300_000);
 });

@@ -21,6 +21,6 @@ describe('C33 held on AW-01 and AW-02', () => {
     'C33 event intake bounded: the 1,000th event is queued, the 1,001st refused at intake and recorded, and intake resumes once the queue drains (AW-01)',
   );
   it.todo(
-    'C33 limits fair across businesses: one business at its ceiling and intake bound never delays another business (AW-01)',
+    'C33 run ceiling and intake fair across businesses: one business at its run ceiling and intake bound never delays another business (AW-01); the hourly rates are in c33-limits.test.ts',
   );
 });
