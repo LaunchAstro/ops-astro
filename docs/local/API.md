@@ -1777,11 +1777,18 @@ business-wide `access:manage` of a person who can sign in is
 
 From the commit the person's next call is `AUTH_NO_MEMBERSHIP` 403, whatever
 the sign-in provider has done. Each ending owes the provider two steps, never
-taken inside a transaction: end every session of the login (GoTrue's
-`/logout?scope=global`, which revokes their refresh tokens), then deactivate the
-login (a 100-year ban through GoTrue's admin API). Both bearers are minted by
-the server from the secret it verifies sessions with and live a minute
-(`apps/api/server.ts`, `goTrueLogins`). Every answer is shaped as C59's are
+taken inside a transaction: end every session of the login, then deactivate
+the login. Both are a 100-year ban through GoTrue's admin API
+(`PUT /admin/users/<id>`), each done once the ban holds: GoTrue has no admin
+call that ends a user's sessions, and it refuses a banned user's every refresh
+and sign-in, so the ban is the session end (ORCH46). What access token is left
+runs out within the hour and is refused here from the commit. An unban never
+restores those sessions: restoring access is a new login. The calls carry the
+admin key, `SUPABASE_SERVICE_KEY` (hosted, the project's service key; with none
+set on a local stack, a five-minute `service_role` bearer signed with the local
+auth key, minted per call); with neither, nothing is sent and both steps stay
+owed. Sign-in never reads the key (`apps/api/server.ts`, `providerAdminKey`,
+`goTrueLogins`). Every answer is shaped as C59's are
 (`apps/api/auth/logins.ts`): one destination, no redirect, a time limit the
 answer cannot stretch, a size limit, a shape per call; anything else is a fault
 by its kind and the step stays owed. The route tries the act's own endings as

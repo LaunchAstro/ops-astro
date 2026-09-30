@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The sign-in provider's calls for a login whose access has ended (C58): end
-// every session the login has, which revokes their refresh tokens, and
-// deactivate the login so it cannot sign in again.
+// every session the login has, and deactivate the login so it cannot sign in
+// again.
 //
-// - **Sessions**: GoTrue's `POST /logout?scope=global`, with a short-lived
-//   bearer naming the login's own subject and no session, which GoTrue answers
-//   by ending every session of that user. Done is a `204` with no body.
-// - **Login**: GoTrue's `PUT /admin/users/<id>` with a ban of 100 years, under
-//   a short-lived administrative bearer. Done is the user named back with a
-//   ban ending at least a year from now.
+// Both are GoTrue's `PUT /admin/users/<id>` with a ban of 100 years, under the
+// admin API's key (`SUPABASE_SERVICE_KEY`, sent as the bearer and as
+// `apikey`). Done is the user named back with a ban ending at least a year from
+// now. GoTrue has no admin call that ends a user's sessions: its sign-out
+// needs a bearer naming the user. A banned user's every refresh and sign-in is
+// refused, so the ban is the session end (ORCH46); what access token is left
+// runs out within the hour, and the API refuses it from the ending's commit.
+// An unban never restores those sessions: restoring access is a new login.
 //
-// Both bearers are minted by the composition root from the secret the API
-// already verifies every session with, so this adds no credential the server
-// did not hold. Every answer is distrusted as C59's are (TR-SEC4R-5): one
+// Every answer is distrusted as C59's are (TR-SEC4R-5): one
 // fixed destination, no redirect followed, a time limit the provider cannot
 // stretch, a size limit read off the stream, a shape per call. Anything else
 // is a fault by its kind, never a partial success, and never the provider's
@@ -29,12 +29,8 @@ import { isTimeout, readBounded } from './factors.ts';
 export interface GoTrueLoginOptions {
   /** GoTrue's own URL, `GOTRUE_URL`. The only destination this adapter calls. */
   readonly baseUrl: string;
-  /** A short-lived administrative bearer for the deactivation. */
-  readonly adminToken?: () => Promise<string>;
-  /** The admin API's key (red step: declared, not yet used). */
-  readonly adminKey?: () => Promise<string>;
-  /** A short-lived bearer naming the subject, for its global sign-out. */
-  readonly subjectToken?: (subject: string) => Promise<string>;
+  /** The admin API's key, asked for each call (a local one is minted per call). */
+  readonly adminKey: () => Promise<string>;
   /** Milliseconds before a call is abandoned as slow. */
   readonly timeoutMs?: number;
   /** Bytes of answer read before it is abandoned as oversized. */
@@ -65,35 +61,23 @@ export function createGoTrueLogins(options: GoTrueLoginOptions): LoginProvider {
     maxBytes: options.maxBytes ?? DEFAULT_MAX_BYTES,
     send: options.fetch ?? fetch,
   };
-  return {
-    async endSessions(subject) {
-      if (!isUserId(subject)) return { ok: false, fault: 'refused' };
-      const bearer = await options.subjectToken!(subject);
-      const sent = await call(to, 'POST', '/logout?scope=global', bearer);
-      if ('fault' in sent) return { ok: false, fault: sent.fault };
-      return sent.status === 204 && sent.text === ''
-        ? { ok: true, value: undefined }
-        : { ok: false, fault: 'malformed' };
-    },
-
-    async deactivate(subject) {
-      if (!isUserId(subject)) return { ok: false, fault: 'refused' };
-      const bearer = await options.adminToken!();
-      const sent = await call(to, 'PUT', `/admin/users/${subject}`, bearer, {
-        ban_duration: BAN_DURATION,
-      });
-      if ('fault' in sent) return { ok: false, fault: sent.fault };
-      return bannedAnswer(sent.text, subject);
-    },
+  // The ban is both steps: each is done once the ban holds, and asking twice is safe.
+  const ban = async (subject: string): Promise<ProviderAnswer<void>> => {
+    if (!isUserId(subject)) return { ok: false, fault: 'refused' };
+    const sent = await call(to, `/admin/users/${subject}`, await options.adminKey(), {
+      ban_duration: BAN_DURATION,
+    });
+    if ('fault' in sent) return { ok: false, fault: sent.fault };
+    return bannedAnswer(sent.text, subject);
   };
+  return { endSessions: ban, deactivate: ban };
 }
 
 async function call(
   to: Destination,
-  method: 'POST' | 'PUT',
   path: string,
-  bearer: string,
-  body?: Readonly<Record<string, unknown>>,
+  key: string,
+  body: Readonly<Record<string, unknown>>,
 ): Promise<Sent> {
   // The path is built here from fixed segments and a subject already shaped;
   // the origin is the configured one, and the base's own path (`/auth/v1` on
@@ -103,15 +87,16 @@ async function call(
   let response: Response;
   try {
     const sent = to.send(url, {
-      method,
+      method: 'PUT',
       redirect: 'error',
       signal: AbortSignal.timeout(to.timeoutMs),
       headers: {
-        authorization: `Bearer ${bearer}`,
+        authorization: `Bearer ${key}`,
+        apikey: key,
         'content-type': 'application/json',
         accept: 'application/json',
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      body: JSON.stringify(body),
     });
     // Raced as well as signalled: an answer that ignores the signal still runs
     // out of time here.

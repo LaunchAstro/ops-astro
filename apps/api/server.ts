@@ -36,6 +36,7 @@
 // slice.
 
 import { randomUUID } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
@@ -183,12 +184,10 @@ export interface ApiConfig {
   /** The signing key and delegation keyring `main` read, never put in `process.env`. */
   readonly keys: RuntimeKeys;
   /**
-   * The secret the provider's administrative bearers are minted with,
-   * `SUPABASE_JWT_SECRET`, for C58's calls on an ended login only; sign-in
-   * never reads it. Absent, those calls are not sent and stay owed.
+   * The provider admin API's key (`providerAdminKey`), for C58's calls on an
+   * ended login only; sign-in never reads it. Absent, those calls are not sent
+   * and stay owed.
    */
-  readonly providerSecret?: string;
-  /** C58's admin key (red step: declared, not yet used). */
   readonly providerAdminKey?: () => Promise<string>;
   /** Where the browser's sign-out ends a provider session for every business (C58, 0065). */
   readonly sessionEnds?: SessionEnds;
@@ -229,7 +228,7 @@ export interface ComposedApi {
 export function composeApi(config: ApiConfig): ComposedApi {
   const { database, admin } = config;
   const executeRead = config.executeRead ?? readExecutor;
-  const logins = goTrueLogins(config.providerSecret, config.signIn.issuer);
+  const logins = goTrueLogins(config.providerAdminKey, config.signIn.issuer);
   const resolveBusiness = createBusinessResolver(admin);
   const server = new Hono();
   // S0-6 no edge caching: the API is served behind Vercel's edge network, so
@@ -340,12 +339,30 @@ export function composeApi(config: ApiConfig): ComposedApi {
   return { app: server, logins, resolveBusiness };
 }
 
-/** C58's admin key (red step: declared, not yet chosen). */
+/** A local GoTrue: the only issuer a key minted from the checkout's own may reach. */
+const LOOPBACK_ISSUER = /^http:\/\/127\.0\.0\.1:\d+(?:\/|$)/u;
+
+/**
+ * C58's admin key (ORCH44 21:13Z): `SUPABASE_SERVICE_KEY`, batch 1's admin
+ * credential (hosted, the project's service key). On a local stack with none
+ * set, a five-minute `service_role` bearer signed with the local auth key in
+ * `localDirectory`, minted per call, as the seed tools make it. Otherwise none.
+ */
 export function providerAdminKey(
-  _environment: Readonly<Record<string, string | undefined>>,
-  _localDirectory: string,
+  environment: Readonly<Record<string, string | undefined>>,
+  localDirectory: string,
 ): (() => Promise<string>) | undefined {
-  return undefined;
+  const key = environment['SUPABASE_SERVICE_KEY'] ?? '';
+  if (key !== '') return async () => await Promise.resolve(key);
+  const file = join(localDirectory, 'auth-signing-key.json');
+  if (!LOOPBACK_ISSUER.test(environment['GOTRUE_URL'] ?? '') || !existsSync(file)) return undefined;
+  return async () => {
+    const [jwk, ...others] = JSON.parse(readFileSync(file, 'utf8')) as JsonWebKey[];
+    if (jwk === undefined || others.length > 0) throw new Error('the local key is not one key');
+    const now = Math.floor(Date.now() / 1000);
+    const claims = { role: 'service_role', aud: 'authenticated', iat: now, exp: now + 300 };
+    return await sign({ ...claims, iss: 'ops-astro-local-api' }, jwk, 'ES256');
+  };
 }
 
 /** How often the server retries the provider steps an access ending owes (C58). */
@@ -355,29 +372,13 @@ export const ACCESS_ENDING_RETRY_SECONDS = 60;
 const notSent = async (): Promise<ProviderAnswer<void>> =>
   await Promise.resolve({ ok: false, fault: 'unreachable' });
 
-/**
- * GoTrue's calls for an ended login, with the two bearers they need minted
- * here from `SUPABASE_JWT_SECRET`: an
- * administrative one for the deactivation, and one naming the login's own
- * subject for its global sign-out. Each lives a minute and is never stored.
- */
-function goTrueLogins(secret: string | undefined, issuer: string): LoginProvider {
-  // Sign-in no longer holds the secret (S0-6b): without one named, nothing is
-  // sent, and each ending's provider steps stay owed for the retry.
-  if (secret === undefined || secret === '') return { endSessions: notSent, deactivate: notSent };
-  const mint = async (claims: Readonly<Record<string, unknown>>): Promise<string> => {
-    const now = Math.floor(Date.now() / 1000);
-    return await sign(
-      { ...claims, aud: 'authenticated', iss: issuer, iat: now, exp: now + 60 },
-      secret,
-      'HS256',
-    );
-  };
-  return createGoTrueLogins({
-    baseUrl: issuer,
-    adminToken: async () => await mint({ role: 'service_role' }),
-    subjectToken: async (subject) => await mint({ sub: subject, role: 'authenticated' }),
-  });
+/** GoTrue's calls for an ended login, under the admin key; with none, nothing is sent. */
+function goTrueLogins(
+  adminKey: (() => Promise<string>) | undefined,
+  issuer: string,
+): LoginProvider {
+  if (adminKey === undefined) return { endSessions: notSent, deactivate: notSent };
+  return createGoTrueLogins({ baseUrl: issuer, adminKey });
 }
 
 /**
@@ -431,7 +432,7 @@ async function main(): Promise<void> {
   const adminUrl = environment['DATABASE_ADMIN_URL'];
   const issuer = environment['GOTRUE_URL'];
   const tracingUrl = environment['LANGFUSE_HOST'];
-  const providerSecret = environment['SUPABASE_JWT_SECRET'];
+  const adminKey = providerAdminKey(environment, join(ROOT, '.local'));
 
   // A test's stand-in set, for a loopback issuer only: a hosted issuer's
   // tokens are checked against that provider's own published set, always.
@@ -481,7 +482,7 @@ async function main(): Promise<void> {
     keys,
     live: { topics },
     sessionEnds: connectSessionEnds(databaseUrl as string, { source: 'runtime' }),
-    ...(providerSecret === undefined || providerSecret === '' ? {} : { providerSecret }),
+    ...(adminKey === undefined ? {} : { providerAdminKey: adminKey }),
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     ...(alerts === undefined ? {} : { alerts }),
   });
