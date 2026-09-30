@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 // With a database, the database-bound suites run, and every one migrates a
 // fresh database from empty in one transaction. Migration 0008 comments on a
@@ -41,5 +41,15 @@ export default defineConfig({
       'packages/**/*.test.ts',
       'apps/**/*.test.ts',
     ],
+    // Sol's leaked-client proof, kept byte for byte, opens its world with no skip; without a
+    // database it is left out here, and the manifests run it where there is one.
+    ...(database
+      ? {}
+      : {
+          exclude: [
+            ...configDefaults.exclude,
+            'tests/api/leaked-client-read-isolation-assertion.test.ts',
+          ],
+        }),
   },
 });
