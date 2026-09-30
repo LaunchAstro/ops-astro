@@ -118,7 +118,7 @@ export async function writeAuditEvent(
   // column the insert never mentioned could not have been shown to be
   // overwritten.
   //
-  // The origin conversation (0044) is named only when there is one: without
+  // The origin conversation (0050) is named only when there is one: without
   // it the insert is the one every earlier schema takes, and the column's
   // null is its default.
   const origin = event.originConversationId ?? null;

@@ -889,7 +889,7 @@ MP-7-11 adds the assistant panel's tab row, under the same rule
 second page replaces the first, and `null` clears it. The address is a page of
 this product: one leading slash, never two and never a slash then a
 backslash, printable ASCII with no backslash, at most 300 characters; what it
-shows is 1 to 200 characters with no control character. Migration 0045
+shows is 1 to 200 characters with no control character. Migration 0051
 refuses the same rows as the backstop. Neither write moves the last activity,
 which measures the exchange. Both answer the conversation's id and address
 only, so the title and the page are stored on the conversation and nowhere
@@ -937,10 +937,10 @@ activity, so a retried pass asks for the same purge. Nothing schedules the
 pass yet, and raising a failure as an inbox item is INB-1's.
 
 Which conversation created a task is a fact of the task's creation audit
-event: `audit_events.origin_conversation_id` (0044), a same-business
+event: `audit_events.origin_conversation_id` (0050), a same-business
 reference to `conversations`, in the chain's one hash formula
 (`audit_event_hash`, thirteen arguments). A null adds nothing to the hashed
-text, so events without one hash as they did before 0044. The command that
+text, so events without one hash as they did before 0050. The command that
 creates a task from a conversation sets it; until that command exists, the
 wrap-up's "tasks created" item says no task records the conversation.
 
@@ -1169,7 +1169,7 @@ whole of what `decide` compares.
 Each version carries `checks`: the checks its run recorded through
 `task.check` under the run's lease, oldest first, each with its `outcome` and
 the lease holder as `performedByActorId` (MP-6-1, CS-16.3; `run_checks`,
-migration 0042). They are read in the same snapshot as the rest.
+migration 0048). They are read in the same snapshot as the rest.
 
 Each lineage carries `scopes`: what each lease its runs took was allowed to
 touch, oldest first (MP-6-4, CS-6.1). A scope is the lease's own delegation,

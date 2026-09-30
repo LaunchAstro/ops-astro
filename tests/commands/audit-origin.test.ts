@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// AW-03's task origin on the audit chain (0044, ORCH25-SL12-ORIGIN2): which
+// AW-03's task origin on the audit chain (0050, ORCH25-SL12-ORIGIN2): which
 // conversation created a task is a fact of its creation audit event, in a
 // nullable `origin_conversation_id` the chain's one hash formula reads.
 //
-// Three things are proved on real databases. A chain written before 0044
+// Three things are proved on real databases. A chain written before 0050
 // verifies unchanged after it, every stored hash the same, because a null
 // origin adds nothing to the hashed text. An origin, when present, is in the
 // hash, so the event cannot be read with it and hash without it. And an
@@ -40,7 +40,7 @@ if (serverUrl === undefined) {
   console.warn('audit origin: DATABASE_URL is unset, so nothing below ran and nothing is proved.');
 }
 
-const THROUGH_0043 = (version: string): boolean => version.slice(0, 4) <= '0043';
+const THROUGH_0049 = (version: string): boolean => version.slice(0, 4) <= '0049';
 
 interface Member {
   readonly business: string;
@@ -88,8 +88,8 @@ const write = async (
   );
 
 /**
- * An event as the writer wrote one before 0044: the same insert, without the
- * column 0044 adds. The trigger writes the position, the link and the hash.
+ * An event as the writer wrote one before 0050: the same insert, without the
+ * column 0050 adds. The trigger writes the position, the link and the hash.
  */
 async function writeAsBefore(
   database: Database,
@@ -124,7 +124,7 @@ async function writeAsBefore(
 }
 
 // eslint-disable-next-line max-lines-per-function -- one upgraded database, one journey
-describe.skipIf(serverUrl === undefined)('audit origin: a chain written before 0044', () => {
+describe.skipIf(serverUrl === undefined)('audit origin: a chain written before 0050', () => {
   let db: EmptyDatabase;
 
   beforeAll(async () => {
@@ -132,7 +132,7 @@ describe.skipIf(serverUrl === undefined)('audit origin: a chain written before 0
     const onDisk = readMigrations('migrations');
     await applyMigrations(
       db.admin,
-      onDisk.filter((m) => THROUGH_0043(m.version)),
+      onDisk.filter((m) => THROUGH_0049(m.version)),
     );
   }, 120_000);
 
@@ -140,7 +140,7 @@ describe.skipIf(serverUrl === undefined)('audit origin: a chain written before 0
     await db?.drop();
   });
 
-  it('audit origin: verifies unchanged after 0044, every stored hash the same, and the chain carries on', async () => {
+  it('audit origin: verifies unchanged after 0050, every stored hash the same, and the chain carries on', async () => {
     const who = await member(db.app, 'origin-before');
     await writeAsBefore(db.app, who, { command: 'task.create', operationId: randomUUID() });
     await writeAsBefore(db.app, who, {
@@ -241,7 +241,7 @@ describe.skipIf(serverUrl === undefined)('audit origin: on a database migrated f
     });
   });
 
-  it('audit origin: an event without an origin hashes exactly as before 0044', async () => {
+  it('audit origin: an event without an origin hashes exactly as before 0050', async () => {
     const written = await write(db.app, mine);
     const rows = await db.admin.execute<{ readonly hash: string; readonly recomputed: string }>(
       `select a.hash,

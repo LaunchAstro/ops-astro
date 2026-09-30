@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0045 the page a conversation is about (MP-7-11, CS-7.31).
+-- 0051 the page a conversation is about (MP-7-11, CS-7.31).
 --
 -- "Add page to context" makes the current page the conversation's scope: its
 -- address and what it shows, as the person saw it. One slot: a second pointer
@@ -15,7 +15,7 @@
 -- What it shows is the page's own label: 1 to 200 characters, no control
 -- characters.
 --
--- The conversation's table grants already cover the columns (0043: select,
+-- The conversation's table grants already cover the columns (0049: select,
 -- insert, update to the application), and the purge keeps them, as it keeps
 -- the title and the subject: the page is what the conversation was about,
 -- not what was said.

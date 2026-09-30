@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0042 the checks a run performs (MP-6-1, CS-16.3).
+-- 0048 the checks a run performs (MP-6-1, CS-16.3).
 --
 -- A check is a system write made under the run's worker lease: the row names
 -- the lease it was written under, the holder of that lease as the actor that
