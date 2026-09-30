@@ -147,6 +147,15 @@ export function parseCredentials(
   return { ok: true, credentials };
 }
 
+/** The header value a stored credential is sent as. */
+export function presented(
+  credential: Pick<StoredCredential, 'header' | 'scheme' | 'value'>,
+): string {
+  const { header, scheme, value } = credential;
+  if (header === 'x-api-key') return value;
+  return scheme === 'basic' ? `Basic ${Buffer.from(value).toString('base64')}` : `Bearer ${value}`;
+}
+
 export interface CarryContext {
   /** No person is present in their own session for this call. */
   readonly unattended: boolean;

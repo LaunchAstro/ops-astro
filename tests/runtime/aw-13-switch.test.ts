@@ -49,6 +49,36 @@ function staged(origin = 'http://127.0.0.1:9'): Record<string, string> {
   };
 }
 
+/** Staged configurations that are each malformed in one way, the canary in the bad value. */
+function malformed(canary: string): Record<string, string>[] {
+  return [
+    { ...staged(), TRACE_EXPORT: 'yes' },
+    { ...staged(), TRACE_EXPORT: 'on', TRACE_EXPORT_ORIGIN: '' },
+    { ...staged(), TRACE_EXPORT: 'on', TRACE_EXPORT_CREDENTIALS_FILE: '' },
+    { ...staged(), TRACE_EXPORT: 'on', TRACE_EXPORT_KEY_FILE: '' },
+    { ...staged(`http://127.0.0.1:9/${canary}`), TRACE_EXPORT: 'on' },
+    { ...staged(`http://${canary}@127.0.0.1:9`), TRACE_EXPORT: 'on' },
+    { ...staged(`file:///${canary}`), TRACE_EXPORT: 'on' },
+    { ...staged(), TRACE_EXPORT: 'on', TRACE_EXPORT_KEY_FILE: keyFile('open', KEY_HEX, 0o644) },
+    {
+      ...staged(),
+      TRACE_EXPORT: 'on',
+      TRACE_EXPORT_KEY_FILE: keyFile('short', 'ab'.repeat(31)),
+    },
+    {
+      ...staged(),
+      TRACE_EXPORT: 'on',
+      TRACE_EXPORT_KEY_FILE: keyFile('text', `${canary}`.repeat(4)),
+    },
+    { ...staged(), TRACE_EXPORT: 'on', TRACE_EXPORT_KEY_FILE: join(folder, canary) },
+    {
+      ...staged(),
+      TRACE_EXPORT: 'on',
+      TRACE_EXPORT_KEY_FILE: linkTo(keyFile('shared', KEY_HEX, 0o644)),
+    },
+  ];
+}
+
 describe('AW-13 off until one change', () => {
   vitestIt('with no setting, or everything staged but the switch, export is off', () => {
     expect(traceExportSettings({})).toEqual({ kind: 'off' });
@@ -69,32 +99,7 @@ describe('AW-13 off until one change', () => {
     'a malformed staged configuration is refused, naming the setting and never its value',
     () => {
       const canary = `canary${randomUUID().replaceAll('-', '')}`;
-      const cases: Record<string, string>[] = [
-        { ...staged(), TRACE_EXPORT: 'yes' },
-        { ...staged(), TRACE_EXPORT: 'on', TRACE_EXPORT_ORIGIN: '' },
-        { ...staged(), TRACE_EXPORT: 'on', TRACE_EXPORT_CREDENTIALS_FILE: '' },
-        { ...staged(), TRACE_EXPORT: 'on', TRACE_EXPORT_KEY_FILE: '' },
-        { ...staged(`http://127.0.0.1:9/${canary}`), TRACE_EXPORT: 'on' },
-        { ...staged(`http://${canary}@127.0.0.1:9`), TRACE_EXPORT: 'on' },
-        { ...staged(`file:///${canary}`), TRACE_EXPORT: 'on' },
-        { ...staged(), TRACE_EXPORT: 'on', TRACE_EXPORT_KEY_FILE: keyFile('open', KEY_HEX, 0o644) },
-        {
-          ...staged(),
-          TRACE_EXPORT: 'on',
-          TRACE_EXPORT_KEY_FILE: keyFile('short', 'ab'.repeat(31)),
-        },
-        {
-          ...staged(),
-          TRACE_EXPORT: 'on',
-          TRACE_EXPORT_KEY_FILE: keyFile('text', `${canary}`.repeat(4)),
-        },
-        { ...staged(), TRACE_EXPORT: 'on', TRACE_EXPORT_KEY_FILE: join(folder, canary) },
-        {
-          ...staged(),
-          TRACE_EXPORT: 'on',
-          TRACE_EXPORT_KEY_FILE: linkTo(keyFile('shared', KEY_HEX, 0o644)),
-        },
-      ];
+      const cases = malformed(canary);
       for (const environment of cases) {
         const settings = traceExportSettings(environment);
         expect(settings.kind, JSON.stringify(Object.keys(environment))).toBe('invalid');
@@ -108,12 +113,8 @@ describe('AW-13 off until one change', () => {
   );
 });
 
-const it = noDatabase ? vitestIt.skip : vitestIt;
-
-useAw13World('aw13_switch');
-
-it('AW-13 composed exporter: once on, a run event reaches the target on its trace path through custody as HTTP Basic, under the configured key', async () => {
-  const s = t.alpha;
+/** Custody's credential file holding the target's key pair, as HTTP Basic. */
+function pairFile(pair: string): string {
   const credentialsFile = join(folder, 'composed-credentials.json');
   writeFileSync(
     credentialsFile,
@@ -125,11 +126,21 @@ it('AW-13 composed exporter: once on, a run event reaches the target on its trac
         destination: 'trace_target',
         header: 'authorization',
         scheme: 'basic',
-        value: `${PUBLIC_KEY}:${t.target.canary}`,
+        value: pair,
       },
     ]),
     { mode: 0o600 },
   );
+  return credentialsFile;
+}
+
+const it = noDatabase ? vitestIt.skip : vitestIt;
+
+useAw13World('aw13_switch');
+
+it('AW-13 composed exporter: once on, a run event reaches the target on its trace path through custody as HTTP Basic, under the configured key', async () => {
+  const s = t.alpha;
+  const credentialsFile = pairFile(`${PUBLIC_KEY}:${t.target.canary}`);
   const settings = traceExportSettings({
     TRACE_EXPORT: 'on',
     TRACE_EXPORT_ORIGIN: t.target.origin,
@@ -149,7 +160,12 @@ it('AW-13 composed exporter: once on, a run event reaches the target on its trac
     16,
   );
   const from = t.target.received.length;
-  const exporter = await startTraceExporter(settings, t.alpha.db.app, async () => [s.business], 50);
+  const exporter = await startTraceExporter(
+    settings,
+    t.alpha.db.app,
+    () => Promise.resolve([s.business]),
+    50,
+  );
   try {
     const deadline = Date.now() + 20_000;
     while (!spanIds(t.target.received.slice(from)).includes(expected)) {
