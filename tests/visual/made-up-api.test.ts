@@ -6,8 +6,16 @@ import { MADE_UP_READS, madeUpAnswer, TASKS } from './made-up-api.ts';
 
 // Reads no batch/1 screen draws at the harness's addresses: a receipt needs a
 // finished run, the preset plan is the command line's, and the unattended list
-// is the operations view's. Each is drawn "could not be read" if asked.
-const NOT_DRAWN = new Set(['task.receipt', 'preset.plan', 'inbox.unattended']);
+// is the operations view's. The client list and the breach drill's notices have
+// no screen asking them yet (Access reads its clients inside access.read). Each
+// is drawn "could not be read" if asked.
+const NOT_DRAWN = new Set([
+  'task.receipt',
+  'preset.plan',
+  'inbox.unattended',
+  'client.list',
+  'privacy.draft_breach_notices',
+]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
   it('answers a read at the path the app asks it on, with the made-up rows', () => {
