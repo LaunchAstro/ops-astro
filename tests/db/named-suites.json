@@ -360,6 +360,7 @@
     "tests/commands/c23-session-end.test.ts",
     "tests/api/api-1-isolation.test.ts",
     "tests/api/preferences.test.ts",
+    "tests/api/mp-2-11-tips.test.ts",
     "tests/cli/api-2-credential-cli.test.ts",
     "tests/operations/s0-5-effect-metadata.test.ts"
   ],
