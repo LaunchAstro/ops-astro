@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0034 the backup identity (ticket S0-3, line C1; TR-SEC-8, TR-SECPIR4-3).
+-- 0045 the backup identity (ticket S0-3, line C1; TR-SEC-8, TR-SECPIR4-3).
 --
 -- The scheduled backup reads the product's schemas and the auth server's,
 -- once, as one consistent snapshot, and does nothing else here. pg_dump reads

@@ -212,7 +212,7 @@ function identityScopeCases3() {
 // Sol's REV158S3 criterion 4 proof. Its table, the restore challenge's, is
 // gone with the challenge (ORCH-DECISION 22:06Z), so its two writes are aimed
 // at the source's other one-row table, the installation's operating business
-// (migration 0034); its title and its assertion are Sol's.
+// (migration 0045); its title and its assertion are Sol's.
 function identityScopeCases4() {
   it('the source backup identity refuses every insert and update', async () => {
     const client = await asRole(login.url, BACKUP);

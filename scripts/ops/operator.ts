@@ -95,7 +95,7 @@ const NOT_OPERATING = "this act belongs to the installation's operating business
 /**
  * Inside the check's own transaction, on the database the permission is
  * checked in: why `businessId` is not the installation's operating business
- * (migration 0034, `ops.operating_business`), or undefined when it is. Read
+ * (migration 0045, `ops.operating_business`), or undefined when it is. Read
  * where the grant is read, so no second database address can stand in for it.
  */
 async function notOperating(tx: TenantQuery, businessId: string): Promise<string | undefined> {

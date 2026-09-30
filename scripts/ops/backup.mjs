@@ -5,7 +5,7 @@
 // identity:
 //
 //   node --env-file=<backup env> scripts/ops/backup.mjs run
-//     BACKUP_SOURCE_URL  a login holding ops_astro_backup (migration 0034),
+//     BACKUP_SOURCE_URL  a login holding ops_astro_backup (migration 0045),
 //                        its host as staging's network names the database
 //     BACKUP_STORE_URL   a login holding ops_astro_backup on the backup store,
 //                        its host as staging's network names the store (backups)

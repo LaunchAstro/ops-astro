@@ -16,13 +16,13 @@ import { type AdminConnection } from '../../packages/core-records/src/tenancy/da
 export const WORKER_ROLE = 'ops_astro_worker';
 
 /**
- * The contract: what 0001-0034 grant the application group, table by table,
+ * The contract: what 0001-0045 grant the application group, table by table,
  * as `s` select, `i` insert, `u` update, `d` delete. Read from the `grant`
  * lines of the migrations, not from the catalogue this suite then checks.
  */
 const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
-  // 0034: the installation's operating business; the application reads it only.
+  // 0045: the installation's operating business; the application reads it only.
   ['s', 'ops.operating_business'],
   ['s', 'ops.slots'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],

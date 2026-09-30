@@ -47,7 +47,7 @@
 // Every mode is the installation's appointed operator's act only
 // (REV158K criterion 4): `operations:manage` over the whole of the
 // installation's operating business, the one row written at installation
-// (migration 0034), which no value the caller sets replaces. The archive is
+// (migration 0045), which no value the caller sets replaces. The archive is
 // the whole database, so another business's manager is refused before
 // anything is read, and learns nothing. A passed drill is that operator's own
 // attestation: the store takes a pass only through the store login the

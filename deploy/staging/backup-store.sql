@@ -10,7 +10,7 @@
 -- The store is a server apart from staging's database, so it makes
 -- `ops_astro_backup` itself when the server has none (no login, no bypass of
 -- row security: here it only adds). Where one server holds both, as the test
--- clusters do, the role migration 0034 made is left as it is.
+-- clusters do, the role migration 0045 made is left as it is.
 --
 -- Three identities, held apart by the server rather than by the job.
 -- `ops_astro_backup` adds a dump's sealed bytes through `backups.add_part` and

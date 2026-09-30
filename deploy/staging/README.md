@@ -81,7 +81,7 @@ operator that the restore drill is out of date.
 A drill can also run on a host with no route to the store (the runbook's
 clean-host leg), under the same gate. Every drill mode is the installation's
 operating business's act alone: the one row the installation wrote into
-`ops.operating_business` (migration 0034), read in the same transaction and
+`ops.operating_business` (migration 0045), read in the same transaction and
 on the same database as the grant is checked, so no value or database
 address the caller sets replaces it. The store checks the same appointment
 again before it hands out a byte (`backups.read_latest(person, business)`). The backup is the whole database, so another business's manager is

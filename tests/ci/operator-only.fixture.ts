@@ -169,7 +169,7 @@ export function operatorOnlyHooks(share: (state: OperatorOnlyState) => void): vo
     alphaBusiness = alpha;
     const beta = await insertBusiness(db.app, 'beta');
     // Installation: alpha is the operating business, written once by the owner
-    // (migration 0034); the restore drill's modes are its operator's alone.
+    // (migration 0045); the restore drill's modes are its operator's alone.
     await db.admin.execute('insert into ops.operating_business (operating_business) values ($1)', [
       alpha,
     ]);

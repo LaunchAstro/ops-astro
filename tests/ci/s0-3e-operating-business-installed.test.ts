@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // S0-3e: the installation's operating business is installation state
-// (migration 0034, `ops.operating_business`), written once by the owner. With
+// (migration 0045, `ops.operating_business`), written once by the owner. With
 // none written, every drill mode is refused; the tenancy role reads it and
 // never writes it; nothing changes or removes it once written. Each case runs
 // the real gate against the real database operator-only.fixture.ts makes.
