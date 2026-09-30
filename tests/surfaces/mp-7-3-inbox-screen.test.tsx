@@ -49,7 +49,10 @@ const reply = (body: unknown): Response =>
   });
 
 /** A client whose server answers the two inbox reads, recording every call. */
-function served(owed: number): { client: OperationsClient; calls: string[] } {
+function served(
+  owed: number,
+  inbox: readonly unknown[] = INBOX,
+): { client: OperationsClient; calls: string[] } {
   const calls: string[] = [];
   const client = new OperationsClient({
     origin: 'http://api.test',
@@ -58,7 +61,7 @@ function served(owed: number): { client: OperationsClient; calls: string[] } {
     fetch: (url) => {
       const path = new URL(String(url)).pathname;
       calls.push(path);
-      if (path.endsWith('/inbox/read')) return Promise.resolve(reply({ ok: true, inbox: INBOX }));
+      if (path.endsWith('/inbox/read')) return Promise.resolve(reply({ ok: true, inbox }));
       if (path.endsWith('/inbox/count')) return Promise.resolve(reply({ ok: true, owed }));
       return Promise.resolve(new Response('{}', { status: 404 }));
     },
@@ -116,5 +119,41 @@ describe('MP-7-3 inbox one list', () => {
     const tab = dockTabs('/inbox/').find((each) => each.id === 'notifications');
     expect(tab).toMatchObject({ label: 'Notifications', icon: 'bell', open: true });
     expect(dockTabs('/team').find((each) => each.id === 'notifications')?.open).toBe(false);
+  });
+});
+
+describe('MP-7-3 client group order', () => {
+  it("/inbox/ groups rows under the client inbox.read names, most owed first, then the reader's own work", async () => {
+    const harbour = { clientId: 'c-harbour', name: 'Harbour Physio' };
+    const summit = { clientId: 'c-summit', name: 'Summit Allied' };
+    const { client } = served(3, [
+      entry('1', 'T-1', { client: harbour }),
+      entry('2', 'T-2', { client: summit }),
+      entry('3', 'T-3', { client: summit }),
+      entry('4', 'T-4'),
+    ]);
+    view = await mount(
+      (drawInbox() as Draw)({
+        client,
+        grantKey: 'alpha:ada',
+        params: {},
+        notice: null,
+        storage: null,
+        navigate: () => {},
+      }),
+    );
+    await settle();
+    await settle();
+    const heads = view.all('.nt__grp').map((group) => ({
+      name: group.querySelector('.nt__gname')?.textContent,
+      rows: [...group.querySelectorAll('a.nt__row')].map((row) => row.getAttribute('href')),
+    }));
+    expect(heads).toEqual([
+      { name: 'Summit Allied', rows: ['/task/T-3', '/task/T-2'] },
+      { name: 'Harbour Physio', rows: ['/task/T-1'] },
+      { name: 'Your work', rows: ['/task/T-4'] },
+    ]);
+    // The Clients panel is not built, so a client head is a name, not a link.
+    expect(view.all('a.nt__gname')).toHaveLength(0);
   });
 });
