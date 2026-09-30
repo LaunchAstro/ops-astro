@@ -154,6 +154,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
     inFlightSignalCase();
     missingHeartbeatCase();
     lateCommitAlertRetryCase();
+    alertLogCase();
   },
 );
 
@@ -574,5 +575,30 @@ function lockCases() {
     await Promise.all([forwarder(first).once(), b.once()]).finally(() => other.close());
     expect([...first.alerts(), ...second.alerts()]).toEqual(['cross-scope-burst']);
     expect(await count()).toBe(0);
+  });
+}
+
+function alertLogCase() {
+  it('C55 security alerts listed: logs a raised alert in its pass; a failed pass logs nothing, a sent one stays', async () => {
+    await clear();
+    const logged = async () =>
+      await fixture.db.admin.execute<{ kind: string; at: Date }>(
+        'select kind, at from ops.security_alert_log order by seq',
+      );
+    const before = (await logged()).length;
+    const outbox = connectOutbox(fixture.db.appUrl, { source: 'runtime' });
+    const alerts = createOutboxAlerts({ outbox, key: KEY, where: 'staging', root: ROOT });
+    await alerts.fault(new TypeError(CANARY));
+    alerts.observe({ kind: 'secret-scan-failed' });
+    await alerts.settled();
+    await outbox.close();
+    // The error's send fails inside the pass: the alert it raised is rolled back, log and all.
+    await expect(forwarder(sink(true)).once()).rejects.toThrow();
+    expect((await logged()).length).toBe(before);
+    await forwarder(sink()).once();
+    await forwarder(sink()).once();
+    const rows = (await logged()).slice(before);
+    expect(rows.map((row) => row.kind)).toEqual(['secret-scan-failed']);
+    expect(await fixture.db.admin.execute('select 1 from ops.api_alerts')).toHaveLength(0);
   });
 }
