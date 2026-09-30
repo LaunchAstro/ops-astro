@@ -16,12 +16,14 @@
 // Team otherwise.
 //
 // **A field with nothing in it reads "not set"**, and Page link "nothing
-// yet". Estimate, Category and Page link have no value on the record yet (the
-// time slice, a named board section and the page link arrive later), so they
-// read that way for every task until then; Client says only whether one is
-// set until the client model names it.
+// yet". The page link (MP-4-12) reads as words here, like every mark in the
+// band; the panel draws it as a door. The estimate reads as the panel's words
+// (`estimateWords`). Category has no value on the record yet (a named board
+// section arrives later), so it reads that way for every task until then;
+// Client says only whether one is set until the client model names it.
 
 import type { ReactElement } from 'react';
+import { estimateWords } from './estimates.ts';
 import type { InternalTaskDetail } from '../../../../../packages/core-wire/src/index.ts';
 
 type Move = 'Review' | 'Agent' | 'Team';
@@ -109,18 +111,23 @@ function Strip(props: { readonly task: InternalTaskDetail }): ReactElement {
   );
 }
 
+function estimateOf(task: InternalTaskDetail): string | undefined {
+  const minutes = task.estimateMinutes ?? null;
+  return minutes === null ? undefined : estimateWords(minutes);
+}
+
 export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactElement {
   const { task } = props;
   const band: readonly (readonly [string, string, ReactElement | string])[] = [
     ['assignee', 'Assignee', orNotSet(task.assignee?.name)],
     ['client', 'Client', task.clientSet ? 'On file' : NOT_SET],
     ['due', 'Due date', orNotSet(task.due?.slice(0, 10))],
-    ['estimate', 'Estimate', NOT_SET],
+    ['estimate', 'Estimate', orNotSet(estimateOf(task))],
     ['project', 'Project', projectOf(task)],
     ['category', 'Category', NOT_SET],
     ['stage', 'Stage', orNotSet(task.stage)],
     ['status', 'Status', orNotSet(task.state?.label)],
-    ['page-link', 'Page link', 'nothing yet'],
+    ['page-link', 'Page link', task.pageLink ?? 'nothing yet'],
     ['handling', 'Handling', <Handling key="handling" task={task} />],
   ];
   return (

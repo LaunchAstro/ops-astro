@@ -41,9 +41,11 @@ import {
 import type { TenantQuery, TaskStateRow } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
+import { isInProductLink } from '../../../core-wire/src/index.ts';
 import { refuseCreateOperands, refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { clientOf } from './tasks-party.ts';
+import { writeOwnedFields } from './tasks-state.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
 
@@ -127,7 +129,7 @@ export async function createTask(
     return refused(classified, attemptedFrom(request.fields, classified.names));
   }
 
-  const mistyped = refuseWrongValueType(definitions, request.fields);
+  const mistyped = refuseValues(definitions, request.fields);
   if (mistyped !== undefined) return refused(mistyped);
 
   const placedInFields = PLACED_BY_OPERAND.filter((key) => key in request.fields);
@@ -243,7 +245,7 @@ export async function updateTask(
     return refused(classified, attemptedFrom(request.fields, classified.names));
   }
 
-  const mistyped = refuseWrongValueType(definitions, request.fields);
+  const mistyped = refuseValues(definitions, request.fields);
   if (mistyped !== undefined) return refused(mistyped);
 
   const placed = refusePlacement(request.fields, target.data);
@@ -274,31 +276,113 @@ export async function updateTask(
   });
 }
 
-/** The two task texts an agent writes through `task.update` (MP-4-7). */
-export const AGENT_TEXT_FIELDS: readonly string[] = ['agent_brief', 'description'];
+/** A value of the wrong type for its field, then a page link out of the product. */
+function refuseValues(
+  definitions: Parameters<typeof refuseWrongValueType>[0],
+  fields: FieldValues,
+): CommandRefusal | undefined {
+  return (
+    refuseWrongValueType(definitions, fields) ??
+    refuseLinkOutside(fields) ??
+    refuseEstimateOutside(fields)
+  );
+}
+
+/** The most an estimate holds, in minutes: about two years of working days. */
+const ESTIMATE_LIMIT = 1_000_000;
 
 /**
- * `task.update` as an agent makes it: the description and the brief on its
- * own delegated task, and nothing else. A body naming any other field is
- * refused whole, naming those fields, before anything is written: the agent's
- * reach is the two texts, not the fields a person may edit.
+ * An estimate (MP-4-8) kept as whole minutes from 0 to `ESTIMATE_LIMIT`, on
+ * create and on update: the burn bar divides by it. Null clears it.
  */
-export async function updateTaskText(
+function refuseEstimateOutside(fields: FieldValues): CommandRefusal | undefined {
+  const minutes = fields['estimated_minutes'];
+  if (minutes === undefined || minutes === null) return undefined;
+  if (
+    Number.isInteger(minutes) &&
+    (minutes as number) >= 0 &&
+    (minutes as number) <= ESTIMATE_LIMIT
+  ) {
+    return undefined;
+  }
+  return refuseCommand(
+    'FIELD_VALUE_INVALID',
+    ['estimated_minutes'],
+    [`An estimate is whole minutes from 0 to ${ESTIMATE_LIMIT}, or null to clear it.`],
+  );
+}
+
+/**
+ * A page link (MP-4-12) kept only as an address inside the product, on create
+ * and on update: the panel draws it as a door, so a scheme or another host is
+ * refused before anything is stored. Null clears the link.
+ */
+function refuseLinkOutside(fields: FieldValues): CommandRefusal | undefined {
+  const link = fields['page_link'];
+  if (link === undefined || link === null || isInProductLink(link)) return undefined;
+  return refuseCommand(
+    'FIELD_VALUE_INVALID',
+    ['page_link'],
+    ['A page link is an address inside the product: its path and hash, starting with one /.'],
+  );
+}
+
+/**
+ * The fields an agent writes through `task.update`: the two texts (MP-4-7),
+ * and the name, the due date, the estimate and the page link, which MP-4-8's
+ * and MP-4-12's Permissions tables give it "inside its delegation". Each is
+ * still held to the delegation's `task:write` and to the task's own field
+ * rules.
+ */
+export const AGENT_UPDATE_FIELDS: readonly string[] = [
+  'agent_brief',
+  'description',
+  'due',
+  'estimated_minutes',
+  'page_link',
+  'title',
+];
+
+/** What an agent's `task.assign` sets: the assignee (MP-4-8), not the delegate. */
+export const AGENT_ASSIGN_FIELDS: readonly string[] = ['assignee'];
+
+/**
+ * `task.update` as an agent makes it, on its own delegated task: the fields
+ * above and nothing else. A body naming any other field is refused whole,
+ * naming those fields, before anything is written.
+ */
+export async function updateTaskAsAgent(
   tx: TenantQuery,
   context: Pick<CommandContext, 'spine' | 'target'>,
   fields: FieldValues,
 ): Promise<HandlerOutcome> {
-  const outside = Object.keys(fields)
-    .filter((key) => !AGENT_TEXT_FIELDS.includes(key))
-    .toSorted();
-  if (outside.length > 0) {
-    return refused(
-      refuseCommand('SCOPE_NOT_GRANTED', outside, [
-        'An agent writes only the description and the agent brief through task.update.',
-      ]),
-    );
-  }
+  const outside = outsideAgentReach(fields, AGENT_UPDATE_FIELDS);
+  if (outside !== undefined) return refused(outside);
   return await updateTask(tx, context, { fields });
+}
+
+/** `task.assign` as an agent makes it: the assignee of its own delegated task. */
+export async function assignTaskAsAgent(
+  tx: TenantQuery,
+  context: Pick<CommandContext, 'spine' | 'target'>,
+  fields: FieldValues,
+): Promise<HandlerOutcome> {
+  const outside = outsideAgentReach(fields, AGENT_ASSIGN_FIELDS);
+  if (outside !== undefined) return refused(outside);
+  return await writeOwnedFields(tx, context, 'task.assign', fields);
+}
+
+function outsideAgentReach(
+  fields: FieldValues,
+  reach: readonly string[],
+): CommandRefusal | undefined {
+  const outside = Object.keys(fields)
+    .filter((key) => !reach.includes(key))
+    .toSorted();
+  if (outside.length === 0) return undefined;
+  return refuseCommand('SCOPE_NOT_GRANTED', outside, [
+    `An agent writes only ${reach.join(', ')} through this command.`,
+  ]);
 }
 
 /**

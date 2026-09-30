@@ -9,6 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
+import { mintDelegation } from '../../packages/core-records/src/index.ts';
 import type { Harness } from './role-case-harness.ts';
 
 /** What of the agent's pickup these bodies read. */
@@ -33,8 +34,21 @@ async function ownCommentChange(
   return { recordId: held.taskId, commentId: detail?.['commentId'], ...words };
 }
 
-/** The body for one of the agent's own writes, without its operation id; undefined for any other. */
+/**
+ * The body for one of the agent's own writes, without its operation id, and
+ * the credential it travels with; undefined for any other.
+ */
 export async function ownWriteBody(
+  harness: Harness,
+  name: CommandName,
+  held: Held,
+): Promise<{ body: Record<string, unknown>; credential: string } | undefined> {
+  if (name === 'task.assign') return await ownAssign(harness, held);
+  const body = await ownFieldBody(harness, name, held);
+  return body === undefined ? undefined : { body, credential: held.credential };
+}
+
+async function ownFieldBody(
   harness: Harness,
   name: CommandName,
   held: Held,
@@ -58,4 +72,45 @@ export async function ownWriteBody(
         ? { ad_hoc: true }
         : { agent_brief: 'the agent’s brief' };
   return { recordId: held.taskId, expectedRevision, fields };
+}
+
+/** One delegation holding assign per picked-up task: a pickup mints read, comment and write only. */
+const assigning = new Map<string, string>();
+
+/**
+ * The agent's `task.assign` on its own task (MP-4-8), under a delegation from
+ * the person who approved the work that also holds assign; the pickup's own
+ * credential is refused `DELEGATION_OUT_OF_PURPOSE` for it.
+ */
+async function ownAssign(
+  harness: Harness,
+  held: Held,
+): Promise<{ body: Record<string, unknown>; credential: string }> {
+  const { world } = harness;
+  let credential = assigning.get(held.taskId);
+  if (credential === undefined) {
+    credential = await world.db.app.withBusiness(world.alpha, async (tx) => {
+      const minted = await mintDelegation(tx, {
+        agentActorId: world.agent.actorId,
+        delegatePersonId: world.ada.personId as string,
+        mintedByActorId: world.ada.actorId as string,
+        purpose: `assign_${randomUUID().slice(0, 8)}`,
+        collections: ['task'],
+        actions: ['read', 'write', 'assign'],
+        purposeScope: { kind: 'record', id: held.taskId },
+        expiresAt: new Date(Date.now() + 3_600_000),
+      });
+      if (!minted.ok)
+        throw new Error(`d06-agent: the assign mint was refused ${minted.refusal.code}`);
+      return minted.value.credential;
+    });
+    assigning.set(held.taskId, credential);
+  }
+  const rows = await world.db.admin.execute<{ readonly revision: string }>(
+    `select revision::text as revision from public.records where id = $1`,
+    [held.taskId],
+  );
+  const expectedRevision = Number(rows[0]?.revision ?? '0');
+  const fields = { assignee: world.ada.personId as string };
+  return { body: { recordId: held.taskId, expectedRevision, fields }, credential };
 }

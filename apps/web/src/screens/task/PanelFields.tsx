@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The dock task panel's field edits (MP-4-8): the name, the assignee and the
-// due date.
+// The dock task panel's field edits (MP-4-8): the name, the assignee, the due
+// date and the estimate.
 //
 // **Each field through its own command, at the revision the panel read.** The
-// name and the due date go out through `task.update` (`task:write`), the
+// name, the due date and the estimate go out through `task.update`
+// (`task:write`), the
 // assignee through `task.assign` (`task:assign`). A change that lands asks the
 // host to count it (`onChanged`), so the panel and the page read the task
 // again and draw what the server holds; a refusal is quoted in the server's
 // words and nothing is drawn as changed.
 //
-// **Only the fields with an owner on the record.** Estimate, category, stage,
-// board, state, Assign to AI and the client wait on theirs (SL08 handback,
+// **Only the fields with an owner on the record.** Category, stage, board,
+// state, Assign to AI and the client wait on theirs (SL08 handback,
 // LEANS-ON).
 //
 // **A control's Escape is the control's.** The name edit's Escape ends the
@@ -29,6 +30,7 @@ import { submitEdit } from '../../records/submit.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { DatePicker } from './DatePicker.tsx';
 import { todayOn } from './due-dates.ts';
+import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
 
 export interface PanelFieldsProps {
   readonly client: OperationsClient;
@@ -117,6 +119,7 @@ export function PanelFields(props: PanelFieldsProps): ReactElement {
     <div className="dtp__fields">
       <AssigneeField {...props} {...field} />
       <DueField {...props} {...field} />
+      <EstimateField {...props} {...field} />
       <Refusal because={field.because} />
     </div>
   );
@@ -192,6 +195,40 @@ function DueField(props: FieldProps): ReactElement {
           onClose={() => setPicking(false)}
         />
       ) : null}
+    </>
+  );
+}
+
+/** The estimate, from the vocabulary; one stored off it stays among the choices as itself. */
+function EstimateField(props: FieldProps): ReactElement {
+  const minutes = props.task.estimateMinutes ?? null;
+  const choices =
+    minutes === null || ESTIMATE_CHOICES.includes(minutes)
+      ? ESTIMATE_CHOICES
+      : [...ESTIMATE_CHOICES, minutes].toSorted((a, b) => a - b);
+  return (
+    <>
+      <label className="tf__k" htmlFor="panel-field-estimate">
+        Estimate
+      </label>
+      <select
+        id="panel-field-estimate"
+        className="input"
+        disabled={props.busy}
+        value={minutes === null ? '' : String(minutes)}
+        onChange={(event) =>
+          props.write('task.update', {
+            estimated_minutes: event.target.value === '' ? null : Number(event.target.value),
+          })
+        }
+      >
+        <option value="">Not set</option>
+        {choices.map((choice) => (
+          <option key={choice} value={String(choice)}>
+            {estimateWords(choice)}
+          </option>
+        ))}
+      </select>
     </>
   );
 }

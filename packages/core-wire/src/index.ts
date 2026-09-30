@@ -21,6 +21,8 @@ export {
   type OperandKind,
   type OperandSpec,
 } from './surface.ts';
+// What a task's page link may hold, for the server's check and the web's door.
+export { PAGE_LINK_LIMIT, isInProductLink } from './page-link.ts';
 // The one refusal shape, for the clients that parse it off the wire. Type-only,
 // so no records code reaches a bundle.
 export type { CommandRefusal } from '../../core-records/src/index.ts';

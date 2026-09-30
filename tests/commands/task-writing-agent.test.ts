@@ -2,7 +2,9 @@
 //
 // MP-4-7 under a live delegation: an agent writes the description and its
 // brief on its own delegated task through `task.update`, reads the brief back
-// (it boots on it), and reaches no other task and no other field.
+// (it boots on it), and reaches no other task. Its other fields are the name,
+// the due date and the page link (MP-4-8, MP-4-12); any field outside that
+// list is refused to it by name.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -92,16 +94,24 @@ describe.skipIf(serverUrl === undefined)('MP-4-7 isolation under a live delegati
     expect((await held(otherId)).agent_brief).toBe(CANARY);
   });
 
-  it('an agent writes nothing else through task.update, and a refusal writes nothing', async () => {
+  it('an agent writes no field outside its list through task.update, and a refusal writes nothing', async () => {
+    // Its list is the two texts, the name, the due date and the page link
+    // (MP-4-7, MP-4-8, MP-4-12). A field outside it is refused by name, and a
+    // body mixing the two is refused whole.
     const { picked } = await scene('decider-2');
     const before = await held(picked.taskId);
-    const bodies = [{ title: 'renamed' }, { due: '2030-01-01' }, { agent_brief: 'x', title: 'y' }];
-    const codes: string[] = [];
+    const bodies = [{ priority: 3 }, { lane: 'fast' }, { title: 'y', priority: 1 }];
+    const answers: unknown[] = [];
     for (const fields of bodies) {
       // eslint-disable-next-line no-await-in-loop -- each write reads the revision the last left
-      codes.push(codeOf(await agentWrite(picked.taskId, fields, picked.credential)));
+      const answer = await agentWrite(picked.taskId, fields, picked.credential);
+      answers.push(isCommandRefusal(answer) ? [answer.code, answer.names] : 'applied');
     }
-    expect(codes).toStrictEqual(['SCOPE_NOT_GRANTED', 'SCOPE_NOT_GRANTED', 'SCOPE_NOT_GRANTED']);
+    expect(answers).toStrictEqual([
+      ['SCOPE_NOT_GRANTED', ['priority']],
+      ['SCOPE_NOT_GRANTED', ['lane']],
+      ['SCOPE_NOT_GRANTED', ['priority']],
+    ]);
     expect(await held(picked.taskId)).toStrictEqual(before);
   });
 });

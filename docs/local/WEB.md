@@ -129,9 +129,9 @@ under a live lease, Team otherwise; the rank as `#N` or "not ranked"; the Ad
 hoc and Client access marks), the calc line, and the ten-field band
 (Assignee, Client, Due date, Estimate, Project, Category, Stage, Status, Page
 link, Handling) in a frame of 5, 2 and 1 columns. An empty value reads "not
-set" and an empty Page link "nothing yet"; Estimate, Category and Page link
-have no value on the record yet, and Client says "On file" until the client
-model names it. Every mark here is inert: no tab stop, role or handler, and
+set" and an empty Page link "nothing yet"; the page link reads as words;
+Estimate and Category have no value on the record yet, and Client says "On
+file" until the client model names it. Every mark here is inert: no tab stop, role or handler, and
 the default cursor. The ticks that change them are the dock panel's:
 `HandlingTicks` (`screens/task/Ticks.tsx`, MP-4-10), which the dock task
 panel (MP-4-8) mounts. Each is a checkbox a person can tab to, turned by a
@@ -190,7 +190,12 @@ the panel counts a change, and the page and the panel each read the task
 again on the new count, so the page shows it without a reload. Escape closes
 the panel unless it began in a field, select or text box, or in the date
 picker, which closes itself; Close returns focus to the door that opened it.
-Its ids carry a `panel-` prefix, so none repeats the page's. Estimate,
+Its ids carry a `panel-` prefix, so none repeats the page's. The page link
+(`screens/task/PageLink.tsx`, MP-4-12) reads the task's `pageLink`: Link here
+(Relink once linked) sends the address being read, path and hash, through
+`task.update`; a link inside the product is drawn as a door, with the head's
+go-to beside Open its page, and any other stored value as words with no
+go-to. The pin waits on the preference model. Estimate,
 category, stage, board, state, Assign to AI, the client and "Duplicate without
 contents" wait on their owners on the record or on other slices.
 
