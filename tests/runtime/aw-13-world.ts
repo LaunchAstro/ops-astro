@@ -27,8 +27,11 @@ export type TargetMode =
 
 export interface TraceTarget {
   mode: TargetMode;
-  /** Every body the target received, in order. */
+  /** Every body the target received, in order, with its path and authorization. */
   readonly received: string[];
+  readonly paths: string[];
+  readonly authorizations: (string | undefined)[];
+  readonly origin: string;
   readonly custody: Custody;
   readonly canary: string;
   readonly deliver: Deliver;
@@ -68,6 +71,8 @@ async function listen(
     request.on('data', (chunk: Buffer) => parts.push(chunk));
     request.on('end', () => {
       received.push(Buffer.concat(parts).toString('utf8'));
+      target.paths.push(request.url ?? '');
+      target.authorizations.push(request.headers.authorization);
       if (target.mode === 'slow') {
         void sleep(2_000).then(() => answer(target, response));
         return;
@@ -128,10 +133,13 @@ export async function openTraceTarget(): Promise<TraceTarget> {
   const folder = mkdtempSync(join(tmpdir(), 'aw13-target-'));
   const canary = `canary-${randomBytes(18).toString('hex')}`;
   const received: string[] = [];
-  const target = { mode: 'ok', received } as TraceTarget;
+  const paths: string[] = [];
+  const authorizations: (string | undefined)[] = [];
+  const target = { mode: 'ok', received, paths, authorizations } as TraceTarget;
   const { server, port } = await listen(target, received);
   const custody = await custodyFor(folder, port, canary);
   return Object.assign(target, {
+    origin: `http://127.0.0.1:${String(port)}`,
     custody,
     canary,
     deliver: deliverThrough(custody),
