@@ -8,6 +8,7 @@
     "tests/tenancy/pooled-interleaved.test.ts",
     "tests/api/s0-6-isolation.test.ts",
     "tests/db/business-lookup.test.ts",
+    "tests/db/api-events.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
     "tests/ci/operator-only.test.ts",
