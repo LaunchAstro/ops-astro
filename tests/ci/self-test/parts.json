@@ -7,6 +7,8 @@
     "its proof harness (without it nothing runs), so its revert is its fix commit, the hard SIGKILL",
     "stops, keeping only the proof file and its runner. T4a to T4d are test tooling: no revert, each",
     "proven by its own planted-mutation cases, `planted`, run unmutated (a T4-P line).",
+    "`crossings` names each T2 and T3 part's data-separation cases and what each crosses: one",
+    "green under the part's revert fails its line by name, whatever the title says.",
     "See tests/ci/self-test/mutations.ts and verdict.ts."
   ],
   "parts": [
@@ -20,6 +22,20 @@
         "17de38cb95916e61063316e297b4a93fc150418b",
         "bea704f9faf5bd29bdee7abcc228cd9fe61f3ddc",
         "a62191f342c5a1207f835c0c25925a32adc77b70"
+      ],
+      "crossings": [
+        {
+          "case": "run_progress_read: a pickup and a hand-back appear as ordered events through task.execution, and a caller without the grant gets denied, never an empty graph",
+          "crosses": ["person"]
+        },
+        {
+          "case": "T2 isolation (T2a): another business, each client and a person without the grant each get denied, never []",
+          "crosses": ["business", "client", "person"]
+        },
+        {
+          "case": "T2 isolation crosses two clients with one grant each in both businesses",
+          "crosses": ["business", "client"]
+        }
       ]
     },
     {
@@ -34,6 +50,28 @@
         "905a39f49be099e89b1ecc6f59ca54ce79608e7c",
         "37fe82894606c2405f1fd7c932e3960853adabaf",
         "59493958cfb6a6f4f499808a165f7dc0003bd23d"
+      ],
+      "crossings": [
+        {
+          "case": "a foreign delegation is refused",
+          "crosses": ["person"]
+        },
+        {
+          "case": "another business key is refused before any task is looked at",
+          "crosses": ["business"]
+        },
+        {
+          "case": "T2 isolation: business to business",
+          "crosses": ["business"]
+        },
+        {
+          "case": "T2 isolation: client to client",
+          "crosses": ["client"]
+        },
+        {
+          "case": "T2 isolation: person to person",
+          "crosses": ["person"]
+        }
       ]
     },
     {
@@ -48,6 +86,16 @@
         "556e716ebd239ce2b1b706f45644058e78297732",
         "4a40bfad9eaa2b83db7fb1903753f46be20e8276",
         "5e00a4d0a8e58f94462b924e8f799ebf999ac7f9"
+      ],
+      "crossings": [
+        {
+          "case": "T2 isolation: another business’s lease is not owned and nothing there moves",
+          "crosses": ["business"]
+        },
+        {
+          "case": "T2 isolation: a dispatch never waits on another business’s step",
+          "crosses": ["business"]
+        }
       ]
     },
     {
@@ -66,6 +114,16 @@
         "3af47238efd2dd19674e0d229db5e86afed6eaa8",
         "cb7f9c24fc6e0b7c7eaadf2fd5a3a8acc1ae966e",
         "476ee40eec58cff8c292afed7a07280a6fae9693"
+      ],
+      "crossings": [
+        {
+          "case": "T2 isolation: another business’s receipt reads as a made-up one, and a person outside the task’s client is refused",
+          "crosses": ["business", "client", "person"]
+        },
+        {
+          "case": "observe refuses a made-up lease on the agent and the person route alike, and the receipt read refuses another business",
+          "crosses": ["business"]
+        }
       ]
     },
     {
@@ -102,6 +160,16 @@
         "d82fbcac4e3536a438a94305b7eda0ae1b002728",
         "6cbbcdc11cb5a1f79af5c2644dbf09ce6152ca49",
         "e29404563cf825b0128e3f7e19e04ad22901d26a"
+      ],
+      "crossings": [
+        {
+          "case": "person to person: a first approval whose holder lost the grant pairs with no one",
+          "crosses": ["person"]
+        },
+        {
+          "case": "business to business: a top-up moves only its own business's envelope",
+          "crosses": ["business"]
+        }
       ]
     },
     {
@@ -115,6 +183,16 @@
         "bd0954bd9dee004aab41fe864a92f76f0b5e3b04",
         "648c507a2eba27336497c7bca2609079beaaa132",
         "02033e6df8a7691b3ee507d24dbf1994407ea567"
+      ],
+      "crossings": [
+        {
+          "case": "event_visible_under_2s: a worker event reaches an already-open task page within two seconds, and a viewer without the grant is refused at join",
+          "crosses": ["person"]
+        },
+        {
+          "case": "T2 isolation (T2f): interleaved writes on a pooled connection reach only their own business, and join refuses another business, another client and a person without the grant",
+          "crosses": ["business", "client", "person"]
+        }
       ]
     },
     {
@@ -135,6 +213,12 @@
         "5b8f37504e170f470a8fa5de934df1c84f25bc95",
         "054d051de3ca2bf8119173214159090de3869ff6",
         "c3168cb6735ec03b0a802050fe4a9fcec1400075"
+      ],
+      "crossings": [
+        {
+          "case": "refuses the same things on both surfaces: another business, a person without the grant",
+          "crosses": ["business", "person"]
+        }
       ]
     },
     {
@@ -146,6 +230,12 @@
         "42c2eb49fe84b32d86df3ea5ba33f31479cfedca",
         "51095a3a7b5e7243d990afa8267c3c5332f774b7",
         "c17d8f74adb8428568bed2145257f66cbec6ea72"
+      ],
+      "crossings": [
+        {
+          "case": "T2 isolation: another business, a client of another task, the task’s own client and a member with no grant see none of it",
+          "crosses": ["business", "client", "person"]
+        }
       ]
     },
     {
@@ -185,6 +275,20 @@
         "4535f49b9323ca0e177d878a46a25bdf91972c8c",
         "0d6975219e7afcdb510ccc809fce85ed2b6389e1",
         "d467efefba2fe04e3fa9200cf99053f0e9501ee6"
+      ],
+      "crossings": [
+        {
+          "case": "business to business: a sweep in one business leaves another untouched and raises only at home",
+          "crosses": ["business"]
+        },
+        {
+          "case": "T3 isolation attempts a foreign-business task read: the swept unknown amount stays at home",
+          "crosses": ["business"]
+        },
+        {
+          "case": "client to client and person to person: the unknown amount reaches only a reader holding the task grant",
+          "crosses": ["client", "person"]
+        }
       ]
     },
     {
@@ -195,6 +299,12 @@
       "commits": [
         "966cb6c76831d4defe119ad90a2385e93172e93a",
         "c24f948d8ce53190f49959a2b7a343cf7da249b8"
+      ],
+      "crossings": [
+        {
+          "case": "person to person: a first approval whose holder lost the grant pairs with no one",
+          "crosses": ["person"]
+        }
       ]
     },
     {
@@ -209,6 +319,12 @@
         "abaf75306f0fdd55a4bf75425dcea263d0687c84",
         "cdc7de0c03f1567375b552aa881024fa4c8d5fd1",
         "e4cde70890945ff319b5d7dc45d8ca2662d3def6"
+      ],
+      "crossings": [
+        {
+          "case": "T3 isolation and authority: an agent, a person without the grant, another client and another business record nothing",
+          "crosses": ["business", "client", "person"]
+        }
       ]
     },
     {
@@ -231,6 +347,12 @@
         "2e4a9b5a950d54d10a60f6b24bab0785cff75b22",
         "844c26931a8f6267cf013a5d0a036c70816107b9",
         "cab1e153b7dacc59252f1cfd651161e291b710c2"
+      ],
+      "crossings": [
+        {
+          "case": "business to business: a drop here never moves the other business, and its attribution names only this one",
+          "crosses": ["business"]
+        }
       ]
     },
     {
@@ -253,6 +375,16 @@
         "897dffb34efe0072e965af10c5a33058ceaaa2d2",
         "1517e2c7ddf810374f2178910aa8f282d828c3b6",
         "068eaac2a22a65f5db23f33b4fe2bd4244d8bc9e"
+      ],
+      "crossings": [
+        {
+          "case": "business to business: one cause in two businesses gives each its own report, and neither sees the other",
+          "crosses": ["business"]
+        },
+        {
+          "case": "client to client and person to person: two clients and two people with one task grant each see no outage",
+          "crosses": ["client", "person"]
+        }
       ]
     },
     {
@@ -267,6 +399,16 @@
         "e35e994aa002595f461b544fc8c09ef994a1949c",
         "c21e866784139bd2be24e2937dc1748d2f4b3f7b",
         "14b9d24f740bf1173cb70b077526f5ed4425aa68"
+      ],
+      "crossings": [
+        {
+          "case": "client to client: two clients' tasks in one business, each granted; a wrong-client observation is refused and moves neither's money",
+          "crosses": ["client"]
+        },
+        {
+          "case": "business to business: an expired lease settles only its own business's money; another business's lease is not its own",
+          "crosses": ["business"]
+        }
       ]
     },
     {

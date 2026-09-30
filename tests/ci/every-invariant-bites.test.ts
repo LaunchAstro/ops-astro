@@ -18,12 +18,18 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  CONTROL_LINES,
+  MUTATION_LINES,
   PARTS,
+  TITLED_CROSSING,
   changePinnedMockup,
   classify,
+  control,
+  controlOf,
   deleteOneMigration,
   everyInvariantBites,
   keeps,
+  lineOf,
   onOwnCluster,
   openScratch,
   type CaseLine,
@@ -89,6 +95,26 @@ describe('every_invariant_bites: the catalogue', () => {
     }
   });
 
+  it('declares each T2 and T3 part’s crossings: each a case in its files, none titled as one left out', () => {
+    const titled = /\b(?:it|test)(?:\.\w+)?\(\s*(['"])((?:(?!\1).)+)\1/gu;
+    for (const part of PARTS.filter((one) => one.planted === undefined)) {
+      const texts = part.files.map((file) => readFileSync(resolve(ROOT, file), 'utf8'));
+      const titles = texts.flatMap((text) => [...text.matchAll(titled)].map((one) => one[2]));
+      const declared = (part.crossings ?? []).map((one) => one.case);
+      for (const one of part.crossings ?? []) {
+        expect(titles, `${part.id} declares a case its files lack`).toContain(one.case);
+        expect(one.crosses.length, `${part.id} ${one.case}`).toBeGreaterThan(0);
+      }
+      for (const title of titles.filter((one) => TITLED_CROSSING.test(String(one)))) {
+        expect(declared, `${part.id} leaves a crossing undeclared`).toContain(title);
+      }
+    }
+    expect(crossingOf('T3b', 'client')).toBe(crossingOf('T3b', 'person'));
+    expect(PARTS.filter((one) => one.planted !== undefined && one.crossings !== undefined)).toEqual(
+      [],
+    );
+  });
+
   it('has every part landed: each commit is on this line and changes what a revert removes', () => {
     for (const part of PARTS) {
       expect(part.commits.length, part.id).toBeGreaterThan(0);
@@ -128,17 +154,24 @@ const caught = (id: string, passed = true): Ran => {
 /** The split's T4e row: T4-N4 reverts every T2 and T3 part; T4a to T4d are test tooling. */
 const TOOLING = new Set(['T4a', 'T4b1', 'T4b2', 'T4c', 'T4d']);
 
-/** One passing line for every mutation the whole run must hold. */
+/** One passing line for every control and every mutation the whole run must hold. */
 const everyLine = (): CaseLine[] => [
-  classify('T4-N1', ran({})),
-  classify('T4-N2', ran({})),
-  ...['a', 'b', 'c'].map((one) => classify(`T4-N3 ${one}`, ran({}))),
+  ...[...CONTROL_LINES, ...PARTS.map(controlOf)].map((name) => control(name, ran({ red: false }))),
+  ...MUTATION_LINES.map((name) => classify(name, ran({}))),
   ...PARTS.map((part) =>
     TOOLING.has(part.id)
-      ? classify(`T4-P ${part.id} planted`, caught(part.id))
-      : classify(`T4-N4 ${part.id} reverted`, bites(part.id)),
+      ? classify(`${lineOf(part)} planted`, caught(part.id))
+      : classify(`${lineOf(part)} reverted`, bites(part.id)),
   ),
 ];
+
+/** A T2 or T3 part's first declared crossing of `kind`. */
+const crossingOf = (id: string, kind: string): string => {
+  const part = PARTS.find((one) => one.id === id);
+  const found = part?.crossings?.find((one) => one.crosses.includes(kind as never));
+  if (found === undefined) throw new Error(`${id} declares no ${kind} crossing`);
+  return found.case;
+};
 
 describe('every_invariant_bites: the verdict', () => {
   it('passes a part whose named invariant fails under its revert, saying so', () => {
@@ -160,6 +193,32 @@ describe('every_invariant_bites: the verdict', () => {
     );
     expect(half.status).toBe('fail');
     expect(half.detail).toContain('did not fail: crash_between_apply_and_settle');
+  });
+
+  it('fails a revert whose declared crossing stayed green, naming it and what it crosses, whatever its title', () => {
+    const client = crossingOf('T3f', 'client');
+    const green = classify(
+      'T4-N4 T3f reverted',
+      ran({
+        cases: [
+          { name: 'expired_lease_money_only: the case', passed: false },
+          { name: `T3f ${client}`, passed: true },
+        ],
+      }),
+    );
+    expect(green.status).toBe('fail');
+    expect(green.detail).toContain(`a declared crossing stayed green: T3f ${client} (client)`);
+    const red = classify(
+      'T4-N4 T3f reverted',
+      ran({
+        cases: [
+          { name: 'expired_lease_money_only: the case', passed: false },
+          { name: `T3f ${client}`, passed: false },
+          { name: 'T3f an isolation-free structural check', passed: true },
+        ],
+      }),
+    );
+    expect(red.status, red.detail).toBe('pass');
   });
 
   it('fails an invariant that stays green under its mutation, by name', () => {
@@ -195,6 +254,23 @@ describe('every_invariant_bites: the whole run', () => {
     expect(short.status).toBe('fail');
     expect(short.detail).toContain('missing: T4-P T4d');
     expect(everyInvariantBites([]).status).toBe('fail');
+  });
+
+  it('holds each mutation and each unmutated control by its own name: a copy stands in for none', () => {
+    const first = MUTATION_LINES.find((name) => name.startsWith('T4-N3'));
+    const copies = everyLine().map((line) =>
+      line.case.startsWith('T4-N3') ? classify(String(first), ran({})) : line,
+    );
+    const copied = everyInvariantBites(copies);
+    expect(copied.status).toBe('fail');
+    expect(copied.detail).toContain('T4-N3 a duplicate route id fails the typecheck');
+    expect(copied.detail).toContain('T4-N3 a changed pinned-mockup byte fails the mockup pin');
+    const proofs = 'control: T3d2 apply_after_api_stops, crash_between_apply_and_settle';
+    for (const name of ['control: the typecheck', proofs]) {
+      const without = everyInvariantBites(everyLine().filter((line) => line.case !== name));
+      expect(without.status, name).toBe('fail');
+      expect(without.detail).toContain(`missing: ${name}`);
+    }
   });
 
   it('holds T4-N4 for every T2 and T3 part and T4-P for every T4 part, and no other way round', () => {
