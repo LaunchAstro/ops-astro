@@ -21,6 +21,23 @@ export const BEFORE =
 export const AFTER =
   '---\ntitle: About\n---\n\nWe are a welcoming studio.\n\nA friendly decoy line.\n';
 
+/** The one-word request on the about page, at a party and under a task. */
+export const requestBody = (
+  partyId: string,
+  taskId: string,
+): Readonly<Record<string, unknown>> => ({
+  command: 'live_correction.request',
+  partyId,
+  taskId,
+  path: ABOUT,
+  word: 'friendly',
+  replacement: 'welcoming',
+  pageUrl: PAGE,
+  baseRevision: 'rev-1',
+  before: BEFORE,
+  after: AFTER,
+});
+
 /** The grants a correction touches, on one scope. */
 async function correctionGrants(world: AgentWorld, member: Member, scope: Scope): Promise<void> {
   await world.db.app.withBusiness(world.business, async (tx) => {
@@ -141,19 +158,7 @@ function commands(
     (await world.db.admin.execute<{ readonly v: string }>(sql, parameters))[0]?.v;
   return {
     request: async (member, overrides = {}) =>
-      await as(member, {
-        command: 'live_correction.request',
-        partyId: at.partyA,
-        taskId: at.taskA,
-        path: ABOUT,
-        word: 'friendly',
-        replacement: 'welcoming',
-        pageUrl: PAGE,
-        baseRevision: 'rev-1',
-        before: BEFORE,
-        after: AFTER,
-        ...overrides,
-      }),
+      await as(member, { ...requestBody(at.partyA, at.taskA), ...overrides }),
     approve: async (member, correctionId, versionId) =>
       await as(member, {
         command: 'live_correction.decide',

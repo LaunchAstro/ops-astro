@@ -37,9 +37,11 @@ import {
   lastAudit,
   probeValue,
   type Durable,
+  type Pickup,
 } from './d06-cases.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { revisedState } from './d06-run-state.ts';
+import { c80AgentBody } from './c80-bodies.ts';
 import type { Answer } from './world.ts';
 import { serverUrl } from './world.ts';
 
@@ -55,6 +57,7 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.comment',
   'task.propose',
   'run.revise_state',
+  'live_correction.request',
   'task.heartbeat',
   'task.dispatch',
   'task.observe',
@@ -72,28 +75,12 @@ const toneOn = (taskId: string) =>
 /** In `AGENT_SURFACE` and still not the agent's: a person decides (case (j) of the matrix). */
 const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide']);
 
-/**
- * In `AGENT_SURFACE`, reached only under a delegation carrying `run:write`,
- * which no pickup mints yet: the journey's delegation is refused it. C80's
- * positive agent case is `tests/site/c80-agent-request.test.ts`.
- */
-const AGENT_BEYOND_A_PICKUP: ReadonlySet<CommandName> = new Set(['live_correction.request']);
-
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
   TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),
 );
 const excluded = COMMAND_SURFACE.map((one) => one.name)
   .filter((name) => !AGENT_OPERATIONS.includes(name))
   .flatMap((operation) => SYSTEM_OWNED_FIELDS.map((key) => ({ operation, key })));
-
-interface Pickup {
-  readonly credential: string;
-  readonly delegationId: string;
-  readonly leaseId: string;
-  readonly fence: number;
-  readonly taskId: string;
-  readonly attemptId: string;
-}
 
 // eslint-disable-next-line max-lines-per-function -- one fixture, and the cells that share it
 describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
@@ -165,6 +152,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     if (name === 'model.call') await release();
     const held = await ensureLive();
     const credential = held.credential;
+    if (name === 'live_correction.request') return c80AgentBody(operationId, held);
     if (name === 'session.capabilities') return { body: { operationId }, credential };
     if (name === 'task.read') return { body: { operationId, recordId: held.taskId }, credential };
     if (name === 'task.comment') {
@@ -288,9 +276,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       const after = await durable();
       const reason = AGENT_EXCLUDED_BY_DESIGN.has(cell.operation)
         ? `a person decides; answered ${String(answer.body['code'])}`
-        : AGENT_BEYOND_A_PICKUP.has(cell.operation)
-          ? `needs a run:write delegation; answered ${String(answer.body['code'])}`
-          : `not in AGENT_SURFACE; answered ${String(answer.body['code'])}`;
+        : `not in AGENT_SURFACE; answered ${String(answer.body['code'])}`;
       tally.count(cell.operation, 'agent', answer.body['refused'] === true, reason);
       expect(answer.body['refused']).toBe(true);
       if (typeof value === 'string') expect(JSON.stringify(answer.body)).not.toContain(value);
@@ -302,9 +288,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       });
       // The request was authenticated, so the door log saw it.
       expect(after.doorLog - before.doorLog).toBeGreaterThan(0);
-      expect(AGENT_SURFACE.has(cell.operation)).toBe(
-        AGENT_EXCLUDED_BY_DESIGN.has(cell.operation) || AGENT_BEYOND_A_PICKUP.has(cell.operation),
-      );
+      expect(AGENT_SURFACE.has(cell.operation)).toBe(AGENT_EXCLUDED_BY_DESIGN.has(cell.operation));
     },
     60_000,
   );

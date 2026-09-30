@@ -76,3 +76,12 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
   if (named.code !== 'ok') throw new Error(`matrix: approver refused ${named.code}`);
   return { body: { ...correction, decision: 'approve' } };
 }
+
+/** D06's positive agent body for C80's request: the picked-up task, a party of its own. */
+export const c80AgentBody = (
+  operationId: string,
+  held: { readonly taskId: string; readonly credential: string },
+): { body: Record<string, unknown>; credential: string } => ({
+  body: { operationId, ...C80_REQUEST, partyId: randomUUID(), taskId: held.taskId },
+  credential: held.credential,
+});

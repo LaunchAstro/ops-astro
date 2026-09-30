@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { AFTER, BEFORE, c80World, type C80World } from './c80-world.ts';
+import { AFTER, BEFORE, c80World, requestBody, type C80World } from './c80-world.ts';
 import { listCoveredCorrections } from '../../packages/core-records/src/site/live-corrections.ts';
 import { subjectsOf } from '../../packages/core-records/src/authority/grants.ts';
 import type { Member } from '../commands/fixture.ts';
@@ -101,7 +101,14 @@ describe.skipIf(serverUrl === undefined)(
   'C80 isolation, another person under a live delegation',
   () => {
     it('an agent working another person’s task under a live delegation reaches no correction', async () => {
+      // Cal holds run:write, so the pickup carries run (MP-6-2): the reach is
+      // real, and still stops at cal's own task.
       const picked = await w.world.pickUp(w.cal, 'someone else’s work');
+      const onAva = await w.world.asAgent(
+        { ...requestBody(w.partyA, w.taskA), operationId: randomUUID() },
+        picked.credential,
+      );
+      expect(codeOf(onAva)).toBe('DELEGATION_OUT_OF_PURPOSE');
       const asked = await w.world.asAgent(
         {
           command: 'live_correction.decide',
