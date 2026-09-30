@@ -195,6 +195,17 @@ const OUTSIDE_FIXES: readonly string[] = [
   'Every other operation belongs to a person.',
 ];
 
+/**
+ * The intake operation (minimum contract 6.1): acceptance is reached only
+ * inside a decision, so an agent that could call it could accept its own
+ * work. Named for what it is, with a credential or without one.
+ */
+const INTAKE: CommandName = 'task.triage';
+
+const INTAKE_FIXES: readonly string[] = [
+  'Intake is accepted by a person, or inside the decision that approves the work.',
+];
+
 async function runAgentCommand(
   tx: TenantQuery,
   presented: {
@@ -206,11 +217,10 @@ async function runAgentCommand(
 ): Promise<CommandResult> {
   const { session, credential, request } = presented;
   if (operation === undefined) {
-    const outside = refuseCommand(
-      'DELEGATION_EXCLUDES_OPERATION',
-      [request.command],
-      OUTSIDE_FIXES,
-    );
+    const outside =
+      request.command === INTAKE
+        ? refuseCommand('DELEGATION_EXCLUDES_INTAKE', [request.command], INTAKE_FIXES)
+        : refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], OUTSIDE_FIXES);
     return await enter(tx, session, request, { outside });
   }
   const declaration = declarationOf(request.command);

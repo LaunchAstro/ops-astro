@@ -196,6 +196,36 @@ const UNREACHED: Readonly<Record<string, string>> = {
             coalesce((select id from public.actors where business_id = $1 order by id limit 1),
                      gen_random_uuid())
      returning 1`,
+  // AW-04: nothing binds a plan before a plan accept. The row rides on a
+  // decision the journey made; a business with none gets made-up ids, which
+  // the owner's seed writes with foreign keys off.
+  'public.plan_records': `insert into public.plan_records
+       (business_id, id, gate_id, decision_id, run_id, plan_text, text_digest, record,
+        record_digest, bound_by_actor_id)
+     select $1, gen_random_uuid(),
+            coalesce(d.gate_id, gen_random_uuid()), coalesce(d.id, gen_random_uuid()),
+            coalesce(g.run_id, gen_random_uuid()), 'seed', encode(sha256('seed'::bytea), 'hex'),
+            '{"steps": []}'::jsonb, encode(sha256('seed'::bytea), 'hex'),
+            coalesce((select id from public.actors where business_id = $1 order by id limit 1),
+                     gen_random_uuid())
+       from (select 1) one
+       left join public.gate_decisions d on d.business_id = $1
+             and d.id = (select id from public.gate_decisions where business_id = $1
+                          order by id limit 1)
+       left join public.gates g on g.business_id = d.business_id and g.id = d.gate_id
+     returning 1`,
+  // AW-04 (U10): no planning reply is priced before a cap is set. The row
+  // rides on the business's first cap and person; a business with none gets
+  // made-up ids, which the owner's seed writes with foreign keys off.
+  'public.planning_envelopes': `insert into public.planning_envelopes
+       (business_id, id, cap_id, conversation_id, owner_person_id)
+     select $1, gen_random_uuid(),
+            coalesce((select id from public.budget_caps where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            gen_random_uuid(),
+            coalesce((select id from public.people where business_id = $1 order by id limit 1),
+                     gen_random_uuid())
+     returning 1`,
   'public.bootstrap_reads': `insert into public.bootstrap_reads
        (business_id, id, run_id, sequence, path, content_digest, content_size, is_entry)
      select p.business_id, gen_random_uuid(), p.run_id, 1, p.path, p.content_digest,
@@ -252,6 +282,9 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.trace_export_gaps': `insert into public.trace_export_gaps
        (business_id, id, code, events)
      values ($1, gen_random_uuid(), 'target_unreachable', 1) returning 1`,
+  'public.trace_expiry_batches': `insert into public.trace_expiry_batches
+       (business_id, id, window_days, runs, expired_run_ids)
+     values ($1, gen_random_uuid(), 30, 1, array[gen_random_uuid()]) returning 1`,
   'public.bootstrap_bytes': `insert into public.bootstrap_bytes
        (business_id, content_digest, content_size, bytes)
      values ($1, encode(sha256('seed'::bytea), 'hex'), 4, 'seed'::bytea) returning 1`,

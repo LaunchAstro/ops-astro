@@ -16,7 +16,14 @@
 import { createHmac } from 'node:crypto';
 
 /** The run events a trace may describe; the kinds `run-events.ts` writes. */
-export const TRACE_STAGES = ['claimed', 'handed_back', 'dropped', 'reactivated'] as const;
+export const TRACE_STAGES = [
+  'claimed',
+  'handed_back',
+  'dropped',
+  'reactivated',
+  'delegated',
+  'child_handed_back',
+] as const;
 export type TraceStage = (typeof TRACE_STAGES)[number];
 
 /** The bounded error codes a span may carry: a drop's cause, never its words. */

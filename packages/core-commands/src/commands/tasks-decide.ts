@@ -13,7 +13,7 @@ import { decide, type DecisionKind } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-import { gateSigningKey } from '../../../core-runtime/src/index.ts';
+import { gateSigningKey, type SigningKey } from '../../../core-runtime/src/index.ts';
 import { decisionCapId } from '../reads/task-cap.ts';
 
 export interface DecideFields {
@@ -33,11 +33,56 @@ function isDecisionKind(decision: string): decision is DecisionKind {
 }
 
 /** `task.decide`'s answer for a gate not visible here. Constant, so nothing presented rides out. */
-const GATE_NOT_VISIBLE: CommandRefusal = refuseCommand(
+export const GATE_NOT_VISIBLE: CommandRefusal = refuseCommand(
   'NOT_FOUND',
   [],
   ['No gate by that identity in this business.', 'Name a gate on a task you can see.'],
 );
+
+/**
+ * What an approval on `gateId` signs with and draws on, or the refusal when
+ * this deployment or business has neither. Shared by `task.decide` and the
+ * plan accept (AW-04), which is that approval.
+ */
+export async function decisionKeys(
+  tx: TenantQuery,
+  gateId: string,
+): Promise<{ readonly signingKey: SigningKey; readonly capId: string } | HandlerOutcome> {
+  const signingKey = gateSigningKey();
+  if (signingKey === undefined) {
+    // Not a refusal about the caller. The chain is signed or it is not written,
+    // and a deployment with no key configured has not built the part this
+    // command rests on, which is what this code has always meant.
+    return refused(
+      refuseCommand(
+        'DEPENDENCY_NOT_LANDED',
+        ['task.decide', 'GATE_SIGNING_KEY_ID and GATE_SIGNING_SECRET'],
+        [
+          'This deployment has no decision signing key configured.',
+          'It is not a permission problem and retrying will not change it.',
+        ],
+      ),
+    );
+  }
+
+  // The task's open envelope's cap, or the business's before there is one
+  // (`reads/task-cap.ts`), which is also the cap whose currency `task.read`
+  // offers. The runtime still refuses a cap that is not the envelope's.
+  const capId = await decisionCapId(tx, gateId);
+  if (capId === undefined) {
+    return refused(
+      refuseCommand(
+        'BUDGET_UNAVAILABLE',
+        ['budget_caps.local'],
+        [
+          'This business has no budget cap, so there is nothing an approval could draw on.',
+          'An administrator installs the cap; a decision does not create one.',
+        ],
+      ),
+    );
+  }
+  return { signingKey, capId };
+}
 
 export async function decideOnGate(
   tx: TenantQuery,
@@ -75,39 +120,9 @@ export async function decideOnGate(
     );
   }
 
-  const signingKey = gateSigningKey();
-  if (signingKey === undefined) {
-    // Not a refusal about the caller. The chain is signed or it is not written,
-    // and a deployment with no key configured has not built the part this
-    // command rests on, which is what this code has always meant.
-    return refused(
-      refuseCommand(
-        'DEPENDENCY_NOT_LANDED',
-        ['task.decide', 'GATE_SIGNING_KEY_ID and GATE_SIGNING_SECRET'],
-        [
-          'This deployment has no decision signing key configured.',
-          'It is not a permission problem and retrying will not change it.',
-        ],
-      ),
-    );
-  }
-
-  // The task's open envelope's cap, or the business's before there is one
-  // (`reads/task-cap.ts`), which is also the cap whose currency `task.read`
-  // offers. The runtime still refuses a cap that is not the envelope's.
-  const capId = await decisionCapId(tx, fields.gateId);
-  if (capId === undefined) {
-    return refused(
-      refuseCommand(
-        'BUDGET_UNAVAILABLE',
-        ['budget_caps.local'],
-        [
-          'This business has no budget cap, so there is nothing an approval could draw on.',
-          'An administrator installs the cap; a decision does not create one.',
-        ],
-      ),
-    );
-  }
+  const keys = await decisionKeys(tx, fields.gateId);
+  if (!('signingKey' in keys)) return keys;
+  const { signingKey, capId } = keys;
 
   const result = await decide(tx, {
     gateId: fields.gateId,

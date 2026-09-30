@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 62 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 67 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 62. For
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 67. For
 // the seven lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
 // own refusals of those seven are a case of their own below. `model.call`'s
@@ -29,7 +29,7 @@ import {
 } from '../../packages/core-wire/src/surface.ts';
 import { subjectDigest } from '../../packages/core-records/src/identity/authentication-attempts.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
-import { PROPOSAL } from './role-case-bodies.ts';
+import { PROPOSAL, childProbe } from './role-case-bodies.ts';
 import {
   agentPath,
   bearer,
@@ -257,6 +257,29 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     }
   }
 
+  /**
+   * AW-11 on a fresh agent's own lease: the hand-over, or the handback on the
+   * child credential a hand-over just gave it (its own helper).
+   */
+  async function childCell(name: 'run.delegate_child' | 'run.child_handback'): Promise<Cell> {
+    const agent = await freshAgent();
+    const p = await pickUpBy(w.h.world.ada, agent, `work for ${name}`);
+    const handOver = { leaseId: p.leaseId, fence: p.fence, ...childProbe(agent.actorId) };
+    if (name === 'run.delegate_child') return agentCell(agent, name, handOver, p.credential, null);
+    const handed = await w.agent(agent, 'run.delegate_child', handOver, p.credential);
+    const detail = handed.body['detail'] as Record<string, unknown> | undefined;
+    if (handed.code !== 'ok' || detail === undefined) {
+      throw new Error(`audit: hand-over refused ${handed.code}`);
+    }
+    return agentCell(agent, name, { outcome: 'completed' }, String(detail['credential']), null);
+  }
+
+  /** AW-11's two on an agent's own lease; every other operation as `applied` builds it. */
+  const appliedAny = async (declaration: CommandDeclaration): Promise<Cell> =>
+    declaration.name === 'run.delegate_child' || declaration.name === 'run.child_handback'
+      ? await childCell(declaration.name)
+      : await applied(declaration);
+
   /** A live lease ada holds as herself (EX-01), on work she proposed and approved. */
   async function adaLease(
     title: string,
@@ -398,7 +421,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   }
 
   for (const [way, cellOf, title] of [
-    ['applied', applied, 'audits one applied call of every operation, own tenant, digest only'],
+    ['applied', appliedAny, 'audits one applied call of every operation, own tenant, digest only'],
     ['refused', refused, 'audits one refused call of every operation with no domain effect'],
   ] as const) {
     it(
@@ -421,12 +444,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 62 exported operations both ways', () => {
+  it('covered all 67 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(62);
+    expect(names).toHaveLength(67);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 59.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 67.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 

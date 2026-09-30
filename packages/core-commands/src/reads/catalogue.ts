@@ -31,10 +31,12 @@ import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
 import { readAwaitingReview } from './awaiting-review.ts';
+import { readPlanningCap } from '../../../core-custody/src/index.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
+import { DIGEST, readAttribution } from './attribution.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
@@ -320,6 +322,25 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return { ok: true, execution: await readTaskExecution(tx, recordId, operands.cursor) };
     },
   },
+  // AW-04: the runs that read one file, by its digest, and what they reached.
+  // Pre-review, the team's only, each run filtered by the caller's task `read`
+  // inside the query (`reads/attribution.ts`). No subject record: a digest is
+  // not one, and naming one run's task would make the audit row false for the
+  // others. The door asks for any grant; the read refuses the rest itself.
+  'definition.attribution': {
+    identifiers: [],
+    parse: ({ digest }) =>
+      typeof digest === 'string' && DIGEST.test(digest)
+        ? parsed({ digest })
+        : rejected('digest', 'Send digest as the file’s sha-256, 64 lowercase hex characters.'),
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    async serve(tx, session, { digest }, { spine }) {
+      const attribution = await readAttribution(tx, session, spine.taskTypeId, digest);
+      return 'refused' in attribution ? attribution : { ok: true, attribution };
+    },
+  },
   // No subject record, as the queue: the list is about the gates the caller
   // may decide. The door asks for any grant; the rows are filtered by the
   // caller's `decide` inside the query, and a caller holding none is refused.
@@ -392,7 +413,14 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     spine: false,
     authority: 'declared',
     outsiderNotFound: false,
-    serve: async (tx) => ({ ok: true, settings: await readSettings(tx) }),
+    // The planning cap beside the settings (AW-04): the business's own
+    // configuration too, and every settings reader may see it; only
+    // `billing:decide` moves it (`budget.set_planning_cap`).
+    serve: async (tx) => ({
+      ok: true,
+      settings: await readSettings(tx),
+      planningCap: await readPlanningCap(tx),
+    }),
   },
   // `session.capabilities` has no collection of its own to hold a grant on:
   // it reports the caller's grants, so it is answered only to a caller who

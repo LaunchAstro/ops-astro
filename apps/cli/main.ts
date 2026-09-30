@@ -11,7 +11,8 @@
 //
 // Credentials stay off the command line and off stdout. The bearer comes from
 // `OPS_ASTRO_TOKEN` or the file `login` writes; the delegation credential from
-// `OPS_ASTRO_DELEGATION` or the file a successful agent `task.pickup` writes.
+// `OPS_ASTRO_DELEGATION` or the file a successful agent `task.pickup` writes
+// (a `run.delegate_child` saves the helper's beside it).
 // A pickup's answer is printed with the credential replaced by where it was
 // saved, so a terminal log or a shell history never holds it.
 
@@ -188,6 +189,22 @@ function pickedUpCredential(answer: CliAnswer): string | undefined {
   return typeof detail?.credential === 'string' ? detail.credential : undefined;
 }
 
+/**
+ * A hand-over's helper credential (AW-11) and the child delegation that names
+ * its file. A child id that is not a uuid is not a file name, and the
+ * credential is still never printed.
+ */
+function helperCredential(
+  answer: CliAnswer,
+): { readonly credential: string; readonly child: string } | undefined {
+  const credential = pickedUpCredential(answer);
+  if (credential === undefined) return undefined;
+  const child = (answer.body as { detail: { childDelegationId?: unknown } }).detail
+    .childDelegationId;
+  const named = typeof child === 'string' && /^[0-9a-f-]{36}$/u.test(child) ? child : 'unnamed';
+  return { credential, child: named };
+}
+
 function redact(answer: CliAnswer, where: string): unknown {
   const shown = answer.body as { detail: Record<string, unknown> };
   return { ...shown, detail: { ...shown.detail, credential: `(saved to ${where})` } };
@@ -279,7 +296,9 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     const delegation = agent
       ? (env['OPS_ASTRO_DELEGATION'] ?? readOptional(delegationFile))
       : undefined;
-    if (agent && verb === 'task.pickup') assertWritable(delegationFile, "a pickup's credential");
+    if (agent && (verb === 'task.pickup' || verb === 'run.delegate_child')) {
+      assertWritable(delegationFile, `${verb}'s credential`);
+    }
     const api = (text(parsed.flags, 'api') ?? env['OPS_ASTRO_API_URL'] ?? DEFAULTS.api).replace(
       /\/$/u,
       '',
@@ -334,6 +353,24 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
         return EXIT.fault;
       }
       io.out(JSON.stringify(redact(answer, delegationFile)));
+      return EXIT.ok;
+    }
+    // AW-11: the helper's credential, saved beside the parent's and never printed.
+    const handed =
+      agent && verb === 'run.delegate_child' && ok ? helperCredential(answer) : undefined;
+    if (handed !== undefined) {
+      const file = `${delegationFile}.child-${handed.child}`;
+      try {
+        writeSecret(file, handed.credential);
+      } catch (cause) {
+        io.err(
+          `cli: hand-over applied but its helper's credential could not be saved to ${file}: ` +
+            (cause as Error).message,
+        );
+        io.err(`cli: operationId ${String(request['operationId'])}; ${REPLAY}`);
+        return EXIT.fault;
+      }
+      io.out(JSON.stringify(redact(answer, file)));
       return EXIT.ok;
     }
     // Only the credential this handback was sent with is over: an older one

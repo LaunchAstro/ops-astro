@@ -24,7 +24,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
-import { PROPOSAL } from './role-case-bodies.ts';
+import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
 import { foreignConversation } from './foreign-conversation.ts';
@@ -44,6 +44,8 @@ interface Cell {
   readonly code: string;
   readonly foreign: () => Body;
   readonly fabricated: () => Body;
+  /** Where the operand is the credential itself (AW-11's handback): one per arm. */
+  readonly credentials?: { readonly foreign: string; readonly fabricated: () => string };
 }
 
 /** Pairs sent and thrown away first: connection pools, plans and JIT settle. */
@@ -161,11 +163,24 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
   }
 
   /** One timed request, its code checked against the cell's before it counts. */
-  async function timed(cell: Cell, shape: Body, delay: number): Promise<number> {
+  async function timed(
+    cell: Cell,
+    shape: Body,
+    delay: number,
+    arm: 'foreign' | 'fabricated',
+  ): Promise<number> {
     const body = { operationId: randomUUID(), ...shape };
+    const presented =
+      cell.credentials === undefined || cell.by.kind === 'person'
+        ? cell.by
+        : {
+            ...cell.by,
+            credential:
+              arm === 'foreign' ? cell.credentials.foreign : cell.credentials.fabricated(),
+          };
     const start = performance.now();
     if (delay > 0) await pause(delay);
-    const answer = await send(cell.by, cell.op, body);
+    const answer = await send(presented, cell.op, body);
     const took = performance.now() - start;
     expect(answer.code, `${cell.op} ${cell.operand}: ${answer.text}`).toBe(cell.code);
     return took;
@@ -182,11 +197,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     for (let pair = 0; pair < WARM_UP_PAIRS + PAIRS; pair += 1) {
       const keep = pair >= WARM_UP_PAIRS;
       const runForeign = async (): Promise<void> => {
-        const took = await timed(cell, cell.foreign(), 0);
+        const took = await timed(cell, cell.foreign(), 0, 'foreign');
         if (keep) foreign.push(took);
       };
       const runFabricated = async (): Promise<void> => {
-        const took = await timed(cell, cell.fabricated(), fabricatedDelay);
+        const took = await timed(cell, cell.fabricated(), fabricatedDelay, 'fabricated');
         if (keep) fabricated.push(took);
       };
       if (pair % 2 === 0) {
@@ -282,6 +297,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       code: 'NOT_FOUND',
       foreign: () => ({ ...request, taskId: f.task.id }),
       fabricated: () => ({ ...request, taskId: randomUUID() }),
+    });
+    const accept = { ...ACCEPTED_PLAN, note: NOBODY };
+    out.push({
+      op: 'task.accept_plan',
+      operand: 'gateId',
+      by: ada,
+      code: 'NOT_FOUND',
+      foreign: () => ({ gateId: f.proposal.gateId, versionId: f.proposal.versionId, ...accept }),
+      fabricated: () => ({ gateId: randomUUID(), versionId: randomUUID(), ...accept }),
     });
     byAda('task.board', 'board', f.task.id, (board) => ({ board }));
     const conversation = await foreignConversation(w.h.world.db.admin, w.h.world.bravo);
@@ -390,7 +414,18 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
           fields: [{ name: 'tone', source: 'business_internal', value: NOBODY }],
         },
       ],
+      ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
     ];
+    // The helper's handback: another business's real credential, and a made-up one.
+    out.push({
+      op: 'run.child_handback',
+      operand: 'credential',
+      by: { kind: 'agent', identity: w.h.world.agent },
+      code: 'DELEGATION_NOT_LIVE',
+      foreign: () => ({ outcome: 'completed' }),
+      fabricated: () => ({ outcome: 'completed' }),
+      credentials: { foreign: f.picked.credential, fabricated: () => randomUUID() },
+    });
     for (const [op, extra] of byLease) {
       out.push({
         op,

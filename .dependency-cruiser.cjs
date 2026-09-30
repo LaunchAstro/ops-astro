@@ -126,6 +126,19 @@ module.exports = {
       },
     },
     {
+      name: 'pre-review-attribution-stays-in-its-read',
+      severity: 'error',
+      comment:
+        'AW-04: attribution by digest is pre-review. It may floor a declaration of reach and ' +
+        'nothing else, so no evaluation set, promotion input or conformance claim takes it: ' +
+        'only its catalogue row loads the read.',
+      from: {
+        path: '^(apps|packages)/',
+        pathNot: '^packages/core-commands/src/reads/(attribution|catalogue)\\.ts$',
+      },
+      to: { path: '^packages/core-commands/src/reads/attribution\\.ts$' },
+    },
+    {
       name: 'shippable-never-reaches-tests',
       severity: 'error',
       comment:

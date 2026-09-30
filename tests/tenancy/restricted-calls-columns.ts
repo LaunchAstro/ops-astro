@@ -37,7 +37,7 @@ export async function columnUpdateFindings(
   const wanted = [
     ...pairs.map((pair) => `${APPLICATION_ROLE} UPDATE ${pair}`),
     ...roleColumnGrantsAt(at),
-  ];
+  ].toSorted();
   const wrong = held.join(', ') === wanted.join(', ') ? [] : [`column grants: ${held.join(', ')}`];
   for (const pair of pairs) {
     // One table at a time: the callers share their connections.

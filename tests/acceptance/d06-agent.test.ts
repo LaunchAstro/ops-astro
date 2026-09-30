@@ -63,6 +63,8 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.observe',
   'task.check',
   'model.call',
+  'run.delegate_child',
+  'run.child_handback',
   'task.pickup',
   'task.handback',
 ];
@@ -169,6 +171,28 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
         credential,
       );
       return { body: { operationId, ...lease, attemptId: held.attemptId }, credential };
+    }
+    // AW-11: the hand-over on the held lease, a purpose of its own each time;
+    // the handback on a child credential handed over just before it. The
+    // world has one agent login, so it is its own helper.
+    const child = () => ({
+      leaseId: held.leaseId,
+      fence: held.fence,
+      helperActorId: harness.world.agent.actorId,
+      purpose: `d06_${randomUUID().replaceAll('-', '').slice(0, 12)}`,
+      collections: ['task'],
+      actions: ['read'],
+      expiresInSeconds: 600,
+    });
+    if (name === 'run.delegate_child') return { body: { operationId, ...child() }, credential };
+    if (name === 'run.child_handback') {
+      const handed = await harness.asAgent('run.delegate_child', child(), credential);
+      expect(handed.code, 'the hand-over a handback needs').toBe('ok');
+      const detail = handed.body['detail'] as Record<string, unknown>;
+      return {
+        body: { operationId, outcome: 'completed' },
+        credential: String(detail['credential']),
+      };
     }
     const own =
       name === 'task.check'

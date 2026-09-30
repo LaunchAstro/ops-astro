@@ -21,6 +21,7 @@ export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
   digestOf,
+  mintChildDelegation,
   mintDelegation,
   resolveDelegation,
   resolveHistoricalDelegation,
@@ -29,9 +30,11 @@ export {
   resolveSettledByLease,
   revokeDelegation,
   settleDelegation,
+  type ChildMintRequest,
   type Delegation,
   type DelegationRefusalCode,
   type MintedDelegation,
+  type PurposeScope,
 } from './authority/delegations.ts';
 export {
   checkAuthority,
@@ -178,6 +181,7 @@ export {
   type Database,
   type Listener,
   type TenantQuery,
+  type TransactionQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
 export { hasRoom, type DurableLimit } from './tenancy/limit.ts';
