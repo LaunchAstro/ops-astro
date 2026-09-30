@@ -7,6 +7,8 @@
     "tests/tenancy/pooled-crossover.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
+    "tests/fixture/fixture-shape.test.ts",
+    "tests/fixture/snapshot/snapshot-clone-and-privileges.test.ts",
     "tests/web/mp-2-1-isolation-api.test.tsx",
     "tests/api/api-1-isolation.test.ts"
   ]

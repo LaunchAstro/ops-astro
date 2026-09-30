@@ -78,7 +78,7 @@ describe('no_fallback_in_bundle', () => {
   it('the search is not blind: it finds the selectors in the test-only fixture sources themselves', () => {
     const copy = join(scratch, 'sources');
     cpSync(join(ROOT, 'tests/support/declining-reporter.ts'), join(copy, 'declining-reporter.ts'));
-    cpSync(join(ROOT, 'tests/fixture/snapshot.ts'), join(copy, 'snapshot.ts'));
+    cpSync(join(ROOT, 'tests/fixture/snapshot/snapshot.ts'), join(copy, 'snapshot.ts'));
     expect(scanBundle(copy).length).toBeGreaterThan(0);
   });
 });
