@@ -121,7 +121,7 @@ export function imagePinProblems(def: StagingDefinition, record: string): string
 }
 
 /** The preflight on the database `DATABASE_ADMIN_URL` names: its signs, or why it could not judge. */
-async function stagingSigns(): Promise<string[]> {
+export async function stagingSigns(): Promise<string[]> {
   const url = process.env['DATABASE_ADMIN_URL'] ?? '';
   if (url === '') return ['DATABASE_ADMIN_URL is not set, so the preflight could not run'];
   const admin = connectAsAdmin(url, { source: 'preflight' });
