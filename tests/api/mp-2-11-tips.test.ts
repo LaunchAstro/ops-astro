@@ -11,10 +11,17 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { dismissedTipCount, tipKey, tipShown } from '../../packages/core-wire/src/tips.ts';
+import {
+  dismissedTipCount,
+  tipKey,
+  tipShown,
+  TIPS_HELD_MAX,
+} from '../../packages/core-wire/src/tips.ts';
+import { dismissTip } from '../../packages/core-records/src/index.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
-import { tokenFor, type Answer } from './fixture.ts';
+import { tokenFor } from './fixture.ts';
 import {
   ada,
   adaToken,
@@ -23,6 +30,9 @@ import {
   benToken,
   c,
   call,
+  dismiss,
+  dismissals,
+  dismissedOf,
   expectNoCanary,
   fixture,
   read,
@@ -35,29 +45,28 @@ const serverUrl = databaseUrlFromEnvironment();
 
 const BOARD = { page: 'agency:projects-board', tip: 'board-rank' } as const;
 
-const dismiss = async (
-  tip: Readonly<Record<string, unknown>>,
-  token: string,
-  options: { readonly key?: string } = {},
-): Promise<Answer> =>
-  await call('preference.dismiss_tip', { operationId: randomUUID(), ...tip }, token, options);
+const raceEntry = (tip: string): string => tipKey('agency:race', tip);
 
-const dismissals = async (actorId: string): Promise<number> => {
-  const [row] = await fixture.db.admin.execute<{ n: string }>(
-    `select count(*)::text as n from public.audit_events
-      where actor_id = $1 and command = 'preference.dismiss_tip'`,
-    [actorId],
-  );
-  return Number(row?.n);
+const pause = async (ms: number): Promise<void> => {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 };
 
-const dismissedOf = async (token: string): Promise<unknown> =>
-  (await read(token))['tips.dismissed'];
+/** A promise the test resolves itself, to hold a transaction open. */
+const gate = (): { readonly open: Promise<void>; readonly release: () => void } => {
+  let resolveOpen: (() => void) | undefined;
+  const open = new Promise<void>((resolve) => {
+    resolveOpen = resolve;
+  });
+  return { open, release: () => resolveOpen?.() };
+};
 
 describe.skipIf(serverUrl === undefined)('MP-2-11 tips in the one preference store', () => {
   usePreferencesWorld('mp211tips');
   tipStore();
   twoAtOnce();
+  twoTransactions();
   tipsOffAndReset();
   perPerson();
   refusals();
@@ -85,7 +94,7 @@ function tipStore(): void {
 }
 
 function twoAtOnce(): void {
-  it('MP-2-11 tip store: dismissals made at once on two devices all hold', async () => {
+  it('MP-2-11 tip store: dismissals from two devices all hold, and one tip dismissed twice is one entry', async () => {
     const phone = await tokenFor(ben.presented.subject);
     const tips = Array.from({ length: 8 }, (_, index) => `tip-${String(index)}`);
     const answers = await Promise.all(
@@ -100,7 +109,7 @@ function twoAtOnce(): void {
       tips.map((tip) => tipKey('agency:inbox', tip)).toSorted(),
     );
 
-    // The same tip dismissed twice at once is one entry.
+    // The same tip dismissed twice is one entry, at the later version.
     const twice = await Promise.all([
       dismiss({ page: 'agency:inbox', tip: 'tip-0', version: 2 }, benToken),
       dismiss({ page: 'agency:inbox', tip: 'tip-0', version: 2 }, phone),
@@ -109,6 +118,34 @@ function twoAtOnce(): void {
     const after = (await dismissedOf(benToken)) as Record<string, unknown>;
     expect(Object.keys(after)).toHaveLength(8);
     expect(after[tipKey('agency:inbox', 'tip-0')]).toBe(2);
+  });
+}
+
+function twoTransactions(): void {
+  it('MP-2-11 tip store: two dismissals in two transactions at once, on two connections, both hold', async () => {
+    // The world's pool has one connection, so calls through it queue; this
+    // opens a second, and the first transaction stays open while the second
+    // writes, so a read-modify-write would keep only one of the two.
+    const second = connect(fixture.db.appUrl, { source: 'runtime' });
+    try {
+      const { open, release } = gate();
+      const first = fixture.db.app.withBusiness(fixture.business, async (tx) => {
+        await dismissTip(tx, ben.personId, raceEntry('first'), 1, TIPS_HELD_MAX);
+        await open;
+      });
+      await pause(100);
+      const other = second.withBusiness(
+        fixture.business,
+        async (tx) => await dismissTip(tx, ben.personId, raceEntry('second'), 1, TIPS_HELD_MAX),
+      );
+      await pause(200);
+      release();
+      expect(await Promise.all([first, other])).toStrictEqual([undefined, true]);
+      const held = (await dismissedOf(benToken)) as Record<string, unknown>;
+      expect([held[raceEntry('first')], held[raceEntry('second')]]).toStrictEqual([1, 1]);
+    } finally {
+      await second.close();
+    }
   });
 }
 

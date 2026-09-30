@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The request shapes of the caller's own account (C23) and preferences
-// (MP-2-11a), split from `requests.ts` to keep it under the line limit, as
+// (MP-2-11a, MP-2-11), split from `requests.ts` to keep it under the line limit, as
 // `requests-privacy.ts` is. `E` is that file's envelope, passed in.
 
 export type SelfRequest<E> =
@@ -12,4 +12,11 @@ export type SelfRequest<E> =
       readonly command: 'preference.save';
       readonly preference: string;
       readonly value: unknown;
+    } & E)
+  // One guided tip dismissed, merged into the caller's own row (MP-2-11).
+  | ({
+      readonly command: 'preference.dismiss_tip';
+      readonly page: string;
+      readonly tip: string;
+      readonly version: number;
     } & E);

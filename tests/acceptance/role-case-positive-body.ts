@@ -146,9 +146,8 @@ export function createPositiveBody(
       // `settings.read` needs `settings:read`, which the seed grants the
       // admin; `session.capabilities` needs a live grant of any kind, which
       // the admin holds, so the admin reaches both here.
-      // The person menu's two (C23) take an empty body too: the caller's own
-      // name, and their own sign-out, which leaves the bearer working. The
-      // caller's own preferences (MP-2-11a) ask a live grant of any kind.
+      // The person menu's two (C23) and the caller's own preferences read
+      // (MP-2-11a, any live grant) take an empty body too.
       // `access.read` needs `access:manage`, which the fixture admin holds on
       // every collection; `operations.read` needs `operations:read`, which the
       // fixture admin holds as the owner does (C55); and `client.list` (C32),
@@ -164,6 +163,8 @@ export function createPositiveBody(
         return { body: {} };
       case 'preference.save':
         return { body: { preference: 'appearance', value: 'dark' } };
+      case 'preference.dismiss_tip':
+        return { body: { page: 'agency:inbox', tip: 'triage', version: 1 } };
       case 'task.search':
         // A word no audit row carries, so digest-only is checked on it.
         return { body: { query: 'brochure' } };

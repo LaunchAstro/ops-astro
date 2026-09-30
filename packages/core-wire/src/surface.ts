@@ -158,7 +158,8 @@ export type CommandName =
   | 'session.end'
   // The one preference store (MP-2-11a): the caller's own keys.
   | 'preference.read'
-  | 'preference.save';
+  | 'preference.save'
+  | 'preference.dismiss_tip';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -498,6 +499,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   },
   'session.end': {},
   'preference.save': { preference: 'text', value: 'any' },
+  'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -824,6 +826,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // asked. No agent reaches either row yet.
   read('preference.read', PREFERENCE_COLLECTION, { authorisedOn: 'self', audited: false }),
   declare('preference.save', 'write', {
+    collection: PREFERENCE_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: [],
+    audited: false,
+  }),
+  // One guided tip dismissed (MP-2-11, CS-9.1), merged into the caller's own
+  // `tips.dismissed`; the reset is `preference.save` of that key as `{}`.
+  declare('preference.dismiss_tip', 'write', {
     collection: PREFERENCE_COLLECTION,
     targetsExistingRecord: false,
     authorisedOn: 'self',

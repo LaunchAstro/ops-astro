@@ -83,6 +83,28 @@ export const auditCount = async (actorId: string): Promise<number> => {
   return Number(row?.n);
 };
 
+/** One tip dismissed through the command, as `token`'s caller. */
+export const dismiss = async (
+  tip: Readonly<Record<string, unknown>>,
+  token: string,
+  options: { readonly key?: string } = {},
+): Promise<Answer> =>
+  await call('preference.dismiss_tip', { operationId: randomUUID(), ...tip }, token, options);
+
+/** Audit events of `preference.dismiss_tip` under `actorId`. */
+export const dismissals = async (actorId: string): Promise<number> => {
+  const [row] = await fixture.db.admin.execute<{ n: string }>(
+    `select count(*)::text as n from public.audit_events
+      where actor_id = $1 and command = 'preference.dismiss_tip'`,
+    [actorId],
+  );
+  return Number(row?.n);
+};
+
+/** The caller's `tips.dismissed`, read back. */
+export const dismissedOf = async (token: string): Promise<unknown> =>
+  (await read(token))['tips.dismissed'];
+
 /** Nobody's answer but Ada's ever carries her stored canary. */
 export const expectNoCanary = (answer: Answer): void => {
   expect(JSON.stringify(answer.body)).not.toContain(CANARY);

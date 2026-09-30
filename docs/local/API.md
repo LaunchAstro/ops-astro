@@ -1460,7 +1460,7 @@ candidates** (ticket C1). The body is `{ query }`: up to 200 characters with at
 least one word of letters or digits in them, else `FIELD_VALUE_INVALID` 422
 naming `query`. The first eight words reach the index, each as a prefix, all of
 them required; nothing else of the query reaches `to_tsquery`. `heldScopes`
-(`authority/grants.ts`) asks the grant model's own live expression which
+(`authority/held-scopes.ts`) asks the grant model's own live expression which
 `task:read` scopes the caller holds. The statement is handed the whole business
 or the named records, and never reads a task outside them into the process.
 The answer is `{ ok: true, hits: [{ id, key, title }] }`, at most 20, with no
@@ -1471,10 +1471,22 @@ has no search until a client search is designed. `searchTasks`
 (`reads/search.ts`) is the one function every caller of the index uses.
 `tests/reads/search.test.ts` holds it.
 
-One pair is the exception: a person's own preferences are saved and read
-without an audit event (CS-2.8, MP-2-11a). A successful `preference.save` or
-`preference.read` writes none, and a refused one is audited like any other.
-The surface row's `audited: false` says so; nothing else skips the chain.
+One set is the exception: a person's own preferences are saved, read and
+dismissed without an audit event (CS-2.8, MP-2-11a, MP-2-11). A successful
+`preference.save`, `preference.read` or `preference.dismiss_tip` writes none,
+and a refused one is audited like any other. The surface row's `audited: false`
+says so; nothing else skips the chain.
+
+**Guided tips are two keys of the one store** (MP-2-11). `tips.enabled` takes
+`true` or `false` through `preference.save`. `tips.dismissed` holds one entry
+per dismissed tip, `"<page>#<tip>": <version>`; a save of it takes only `{}`,
+which is the reset. `preference.dismiss_tip` takes `{ page, tip, version }` (a
+route id, a tip id of lower-case words and `-`, each up to 64 characters, and a
+whole number from 1) and merges that one entry into the caller's own row in a
+single upsert, so a dismissal made at the same moment on another device is
+kept. A tip not already held is refused `FIELD_VALUE_INVALID` past 500. A tip
+shows unless tips are off or its entry holds its current text version
+(`tipShown`, `packages/core-wire/src/tips.ts`), so a rewritten tip comes back.
 
 ## Open items
 

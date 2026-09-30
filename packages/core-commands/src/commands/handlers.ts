@@ -44,7 +44,7 @@ import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
 import { endOwnSession } from './session-end.ts';
-import { saveOwnPreference } from './preference-save.ts';
+import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -145,6 +145,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
 
   'preference.save': (tx, context, request) =>
     saveOwnPreference(tx, context, request.preference, request.value),
+  'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
 };
 
 function writeOwned(
