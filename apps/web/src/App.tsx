@@ -264,9 +264,9 @@ export function App(props: AppProps): ReactElement {
       onDockTab={(id) => {
         const panel = PANELS.find((entry) => entry.id === id);
         if (panel === undefined) return;
-        if (panel.route === null) setAgentOpen((open) => !open);
-        else if (here === pathTo(panel.route)) props.navigate(pathTo('agency:projects-board'));
-        else props.navigate(pathTo(panel.route));
+        const target = panel.route === null ? null : pathTo(panel.route);
+        if (target === null) setAgentOpen((open) => !open);
+        else props.navigate(here === target ? pathTo('agency:projects-board') : target);
       }}
       seated={false}
       panel={
