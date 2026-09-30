@@ -79,3 +79,6 @@ tests/ci/two-url-service-stop-skip-fails-required-job.test.ts
 tests/surfaces/receipt-read-refusal-does-not-claim-no-effect.test.tsx
 tests/surfaces/run-progress-malformed-answer.test.tsx
 tests/visual/coloured-browser-summary-recognises-named-capture.test.ts
+
+# The condense pass's interim review proof (Opus, standing in for Sol), byte-for-byte.
+tests/visual/coloured-summary-rejects-skipped-wrapper.test.ts
