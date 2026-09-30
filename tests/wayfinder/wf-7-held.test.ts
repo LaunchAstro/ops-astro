@@ -29,7 +29,6 @@ describe('WF-7 held (to build on the run; LEANS-ON the research ceiling, SL04 U9
   it.todo('WF-7 recent sign-in');
   it.todo('WF-7 refusal billing:decide');
   it.todo('WF-7 refusal task:write');
-  it.todo('WF-7 claim first');
   it.todo('WF-7 reserve before a priced call');
   it.todo('WF-7 no ceiling stops and asks');
   it.todo('WF-7 holds no credential');
