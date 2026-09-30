@@ -69,14 +69,57 @@ async function bearer(subject: string): Promise<string> {
 const made = (code: string) => new postgres.PostgresError({ code, message: 'm' } as never);
 
 describe('S0-2 canary', () => {
+  canaryCasesSolNarrow();
   canaryCases1();
   canaryCases2();
   canaryCases3();
   canaryCases4();
 });
 
+function canaryCasesSolNarrow() {
+  it('Sol narrow proof: subclass and proxy codes stay within the fixed list', () => {
+    class Forged extends postgres.PostgresError {}
+    for (const code of ['K7QXZ', 'P0001', '22p02', '22P02 ', '💥💥💥💥💥']) {
+      const fault = new Forged({ code, message: 'private text' } as never);
+      expect(faultCode(fault), code).not.toBe(code);
+      expect(faultCode(new Proxy(fault, {})), code).not.toBe(code);
+    }
+    expect(faultCode(new Forged({ code: '23505', message: 'private text' } as never))).toBe(
+      '23505',
+    );
+  });
+
+  it('Sol narrow proof: a proxy fault cannot make the API error path throw its planted message', async () => {
+    const plant = 'SOL_PROXY_PLANT';
+    const hostile = new Proxy(
+      new postgres.PostgresError({ code: 'K7QXZ', message: plant } as never),
+      { getPrototypeOf: () => { throw new Error(plant); } },
+    );
+    const logged: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((...parts: unknown[]) => {
+      logged.push(parts.join(' '));
+    });
+    const { app, alerts, events } = served(() => Promise.reject(hostile));
+    const response = await app.fetch(
+      new Request(`http://api.test${PREFIX.person}alpha${READ_PATH}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${await bearer('person-one')}`,
+        },
+        body: '{}',
+      }),
+    );
+    await alerts.settled();
+    expect(response.status).toBe(503);
+    expect(logged).toHaveLength(1);
+    expect(events).toHaveLength(1);
+    expect(`${logged.join('\n')}\n${JSON.stringify(events)}\n${await response.text()}`).not.toContain(plant);
+  });
+}
+
 function canaryCases1() {
-  it('a manufactured database error cannot log a planted code', async () => {
+  it('Sol proof, criterion 4: a manufactured database error cannot log a planted code', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
       (...parts: unknown[]) => void logged.push(parts.join(' ')),

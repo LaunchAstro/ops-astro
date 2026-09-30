@@ -35,6 +35,11 @@ tests/ci/shared-stem-hostile-sign-in-values-caught.test.ts
 tests/ci/shared-stem-assembled-sign-in-values-caught.test.ts
 # Sol's REVB1SL01S06 proofs, byte-for-byte as the review patch held them.
 tests/review/sl01-s06-proof.test.ts
+# Sol's REV106D, REV140D and REVB1SL01EARLY proofs, byte-for-byte in the files
+# that carry them (REVB1SL01EARLY criterion 1).
+tests/ci/staging-no-production-data.test.ts
+tests/ci/staging-no-production-data-guard.test.ts
+tests/ci/s0-2-canary.test.ts
 
 # Sol's proof tests in plain .mjs, kept byte-for-byte as applied: a review
 # attests a proof by its bytes. (Proofs in .ts pass through lint-staged.)

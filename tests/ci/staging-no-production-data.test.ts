@@ -49,15 +49,13 @@ it('business-to-business and person-to-person rows are not read by yes-or-no pre
   expect(crossBoundaryReads).toEqual([]);
 });
 
-it('marked preflight preserves business-to-business, client-to-client and person-to-person separation', async () => {
+it('Sol proof, criterion 4: marked preflight preserves business-to-business, client-to-client and person-to-person separation', async () => {
   const statements: string[] = [];
   const owner: OwnerQuery = {
     execute<Row>(statement: string): Promise<readonly Row[]> {
       statements.push(statement);
       if (statement.includes('shobj_description'))
-        return Promise.resolve([
-          { mark: 'ops-astro made-up data; businesses: ; people: ' },
-        ] as Row[]);
+        return Promise.resolve([{ mark: 'ops-astro made-up data; businesses: ; people: ' }] as Row[]);
       return Promise.resolve([{ yes: statement.includes('to_regclass') }] as Row[]);
     },
   };

@@ -64,6 +64,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
   noProductionDataCases5();
   noProductionDataCases6();
   noProductionDataCases7();
+  noProductionDataCasesSolNarrow();
   noProductionDataCases8();
 });
 
@@ -195,6 +196,28 @@ function noProductionDataCases7() {
   });
 }
 
+function noProductionDataCasesSolNarrow() {
+  it('Sol narrow proof: a restored task row cannot claim the seed tag as provenance', async () => {
+    await reset();
+    const businessId = await business('alpha');
+    await markMadeUp(db.admin, [businessId]);
+    const typeId = randomUUID();
+    await db.admin.execute(
+      `insert into public.record_types (business_id, id, key, name)
+       select $1, $2, 'task', 'Task'
+       from (select set_config('ops_astro.writer', 'seed', true)) as forged`,
+      [businessId, typeId],
+    );
+    await db.admin.execute(
+      `insert into public.records (business_id, id, record_type_id, data)
+       select $1, $2, $3, $4
+       from (select set_config('ops_astro.writer', 'seed', true)) as forged`,
+      [businessId, randomUUID(), typeId, { title: 'Restored private customer canary' }],
+    );
+    expect(await admitMadeUp(db.admin, true)).not.toEqual([]);
+  });
+}
+
 function noProductionDataCases8() {
   it('confirmation cannot override a mismatched made-up mark', async () => {
     await reset();
@@ -224,7 +247,7 @@ function noProductionDataCases8() {
     expect(await productionSigns(db.admin, MADE_UP)).not.toEqual([]);
   });
 
-  it('a marked task type rejects restored private record content', async () => {
+  it('Sol proof, criterion 9: a marked task type rejects restored private record content', async () => {
     await reset();
     const businessId = await business('alpha');
     await markMadeUp(db.admin, [businessId]);
