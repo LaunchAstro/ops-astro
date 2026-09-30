@@ -75,3 +75,4 @@ tests/ci/two-url-service-stop-required-ci.test.ts
 tests/ci/two-url-service-stop-skip-fails-required-job.test.ts
 tests/api/hosted-recovery-waits-for-pass.test.ts
 tests/ci/staging-archive-restores-guards.test.ts
+tests/ci/restore-drill-keeps-staging-guards.test.ts
