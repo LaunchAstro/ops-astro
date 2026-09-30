@@ -11,6 +11,8 @@
     "tests/connections/mp-14-7a-fleet.test.ts",
     "tests/connections/mp-14-8-signal.test.ts",
     "tests/connections/mp-14-10a-mandates.test.ts",
+    "tests/costs/mp-14-9-skill-costs.test.ts",
+    "tests/costs/mp-14-6-agent-costs.test.ts",
     "tests/automations/c33-occurrences.test.ts",
     "tests/automations/c33-authority.test.ts",
     "tests/automations/c52a-pins.test.ts",

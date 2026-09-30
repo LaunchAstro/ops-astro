@@ -132,6 +132,10 @@ export type CommandName =
   | 'mandate.revoke'
   | 'graduation.promote'
   | 'graduation.demote'
+  // What agent runs cost (U39): skill costing (MP-14-9) and the agents' cost
+  // log (MP-14-6), each one read by `finance:read`, a person's only.
+  | 'finance.skill_costs'
+  | 'finance.agent_costs'
   // Settings ▸ Workflow triggers (C33): the registry is one read by
   // `settings:read`; changing an activation is `settings:manage` and releasing
   // a definition version `automation:manage`, neither an agent's.

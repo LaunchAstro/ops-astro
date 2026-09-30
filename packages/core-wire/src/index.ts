@@ -100,3 +100,13 @@ export type {
   TaskStateView,
   TaskSummary,
 } from './views.ts';
+export type {
+  AgentCostRowView,
+  AgentCostsResult,
+  AttributionSplitView,
+  CostAttachment,
+  SkillCostsResult,
+  SkillCostView,
+  SkillFigure,
+  Unavailable,
+} from './cost-views.ts';
