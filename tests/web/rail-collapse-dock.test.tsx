@@ -2,14 +2,24 @@
 // @vitest-environment jsdom
 //
 // MP-2-3, the rail beside the dock: the dock's geometry measures the rail as
-// drawn, at 900 and below the rail is the drawer, and the preference store's
-// legs wait on MP-2-11 (named it.todo below).
+// drawn, at 900 and below the rail is the drawer, and the rail is kept as
+// `rail.width` and `rail.collapsed` in MP-2-11's one preference store.
 
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
 import { at, grip, key, railWidth, shell, unmountAll } from './rail-app.tsx';
 import type { Mounted } from '../surfaces/mount.tsx';
+import {
+  drag,
+  expectNoPersonNamed,
+  layoutAt,
+  noaSignsIn,
+  savesIn,
+  tab,
+  unmountLayouts,
+  type Heard,
+} from './layout-store-app.tsx';
 
 // The shell's sheet and the dock's, split from it: one cascade.
 const SHEET = ['3-shell.css', '3-dock.css']
@@ -65,15 +75,65 @@ describe('MP-2-3 at 900 and below the rail is the drawer', () => {
   });
 });
 
+const railGrip = (page: Mounted): HTMLElement => {
+  const found = page.find('.railgrip') as HTMLElement;
+  found.setPointerCapture = () => {};
+  return found;
+};
+
+// The store's server legs (another person, another business, an agent under a
+// live delegation; no audit) run against a fresh Postgres in
+// layout-preferences-api.test.tsx.
+describe('MP-2-3 kept in the one preference store', () => {
+  afterEach(unmountLayouts);
+
+  it('MP-2-3 width in one store: rail.width and rail.collapsed are keys of the one preference store', async () => {
+    const heard: Heard[] = [];
+    const stored = { 'rail.width': 300, 'rail.collapsed': true };
+    const page = await layoutAt({ width: 1480, storage: tab(), heard, stored });
+    expect(shell(page).dataset['rail']).toBe('collapsed');
+    expect(railWidth(page)).toBe('56px');
+    await page.click('.railfold');
+    expect(railWidth(page)).toBe('300px');
+    // Dragged 20 then 40 wider: live, and one save on release.
+    await drag(railGrip(page), 'x', 300, [320, 340]);
+    expect(railWidth(page)).toBe('340px');
+    expect(savesIn(heard)).toEqual([
+      ['rail.collapsed', false],
+      ['rail.width', 340],
+    ]);
+  });
+
+  it('MP-2-3 own preference only: the save names no person, and another person in the tab never draws this rail', async () => {
+    const heard: Heard[] = [];
+    const storage = tab();
+    const page = await layoutAt({ width: 1480, storage, heard });
+    await drag(railGrip(page), 'x', 224, [391]);
+    await page.click('.railfold');
+    expectNoPersonNamed(heard, 2);
+    await unmountLayouts();
+    noaSignsIn(storage);
+    const noa = await layoutAt({ width: 1480, storage, heard: [] });
+    expect(shell(noa).dataset['rail']).toBe('expanded');
+    expect(railWidth(noa)).toBe('224px');
+  });
+
+  it('MP-2-3 reload keeps it: fold, drag wider, reload, as left', async () => {
+    const storage = tab();
+    const page = await layoutAt({ width: 1480, storage, heard: [] });
+    await drag(railGrip(page), 'x', 224, [300, 320]);
+    await page.click('.railfold');
+    await unmountLayouts();
+    // The reload's read is not answered yet: the first render already has it.
+    const again = await layoutAt({ width: 1480, storage, heard: [] });
+    expect(shell(again).dataset['rail']).toBe('collapsed');
+    expect(railWidth(again)).toBe('56px');
+    await again.click('.railfold');
+    expect(railWidth(again)).toBe('320px');
+  });
+});
+
 describe('MP-2-3 the preference store', () => {
-  it.todo(
-    'MP-2-3 width in one store: rail.width and rail.collapsed are keys of the one preference store (waits on MP-2-11)',
-  );
-  it.todo(
-    'MP-2-3 own preference only: preference saved writes only the signed-in person row; a write to another person row is refused (waits on MP-2-11)',
-  );
-  it.todo('MP-2-3 no audit: a rail preference save and read add no audit event (waits on MP-2-11)');
-  it.todo('MP-2-3 reload keeps it: fold, drag wider, reload, as left (waits on MP-2-11)');
   it.todo(
     'MP-2-3 visual match: /dashboard/ rail collapsed at 1480, 900 and 390, light and dark (waits on MP-1-7)',
   );

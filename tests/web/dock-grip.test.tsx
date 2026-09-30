@@ -15,6 +15,19 @@ import { App } from '../../apps/web/src/App.tsx';
 import type { PanelRegistry } from '../../apps/web/src/panels.ts';
 import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
+import {
+  dockGrip,
+  drag,
+  gripValue,
+  expectNoPersonNamed,
+  layoutAt,
+  noaSignsIn,
+  openTab,
+  savesIn,
+  tab,
+  unmountLayouts,
+  type Heard,
+} from './layout-store-app.tsx';
 
 // The shell's sheet and the dock's, split from it: one cascade.
 const SHEET = ['3-shell.css', '3-dock.css']
@@ -220,11 +233,53 @@ describe('MP-3-2 layout from geometry', () => {
   });
 });
 
+// The store's server legs (another person, another business, an agent under a
+// live delegation; no audit) run against a fresh Postgres in
+// layout-preferences-api.test.tsx.
 describe('MP-3-2 width in one store', () => {
-  it.todo('the width round-trips as dock.width in the one preference store (waits on MP-2-11)');
-  it.todo(
-    'MP-3-2 own preference only: a write to another person row is refused (waits on MP-2-11)',
-  );
-  it.todo('MP-3-2 no audit: a preference save and read add no audit event (waits on MP-2-11)');
-  it.todo('MP-3-2 drag keeps width: a drag and a reload keep the width (waits on MP-2-11)');
+  afterEach(unmountLayouts);
+
+  it('the width round-trips as dock.width in the one preference store: drawn from it, saved to it once on release', async () => {
+    const heard: Heard[] = [];
+    const page = await layoutAt({
+      width: 1480,
+      storage: tab(),
+      heard,
+      stored: { 'dock.width': 480 },
+    });
+    expect(heard.filter((each) => each.at.endsWith('/preference/read'))).toHaveLength(1);
+    await openTab(page, 'todos');
+    expect(gripValue(dockGrip(page))).toBe(480);
+    // Pulled 40 then 60 to the left: wider, live, and one save on release.
+    await drag(dockGrip(page), 'x', 900, [880, 860, 840]);
+    expect(gripValue(dockGrip(page))).toBe(540);
+    expect(savesIn(heard)).toEqual([['dock.width', 540]]);
+  });
+
+  it('MP-3-2 own preference only: the save names no person, and another person in the tab never draws this width', async () => {
+    const heard: Heard[] = [];
+    const storage = tab();
+    const page = await layoutAt({ width: 1480, storage, heard });
+    await openTab(page, 'todos');
+    await drag(dockGrip(page), 'x', 900, [823]);
+    expectNoPersonNamed(heard, 1);
+    await unmountLayouts();
+    noaSignsIn(storage);
+    const noa = await layoutAt({ width: 1480, storage, heard: [] });
+    await openTab(noa, 'todos');
+    expect(gripValue(dockGrip(noa))).toBe(550);
+  });
+
+  it('MP-3-2 drag keeps width: a drag and a reload keep the width', async () => {
+    const storage = tab();
+    const page = await layoutAt({ width: 1480, storage, heard: [] });
+    await openTab(page, 'todos');
+    await drag(dockGrip(page), 'x', 900, [950, 1000]);
+    expect(gripValue(dockGrip(page))).toBe(450);
+    await unmountLayouts();
+    // The reload's read is not answered yet: the first render already has it.
+    const again = await layoutAt({ width: 1480, storage, heard: [] });
+    await openTab(again, 'todos');
+    expect(gripValue(dockGrip(again))).toBe(450);
+  });
 });
