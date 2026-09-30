@@ -38,7 +38,7 @@ async function seenOn(origin: string): Promise<Seen> {
       });
       new MutationObserver((_records, observer) => {
         if (document.body === null) return;
-        seen.themeAtBody = document.documentElement.getAttribute('data-theme');
+        seen.themeAtBody = document.documentElement.dataset['theme'] ?? null;
         observer.disconnect();
       }).observe(document, { childList: true, subtree: true });
     });

@@ -14,9 +14,9 @@
   var root = document.documentElement;
   var system = window.matchMedia('(prefers-color-scheme: dark)');
   function apply() {
-    var chosen = root.getAttribute('data-theme-preference');
+    var chosen = root.dataset.themePreference;
     var dark = chosen === 'dark' || (chosen !== 'light' && system.matches);
-    root.setAttribute('data-theme', dark ? 'dark' : 'light');
+    root.dataset.theme = dark ? 'dark' : 'light';
   }
   apply();
   system.addEventListener('change', apply);
