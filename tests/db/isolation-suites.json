@@ -16,6 +16,7 @@
     "tests/automations/c33-occurrences.test.ts",
     "tests/automations/c33-authority.test.ts",
     "tests/automations/c52a-pins.test.ts",
+    "tests/automations/c52a-run-start.test.ts",
     "tests/automations/c52a-authority.test.ts",
     "tests/onboarding/c41-a-onboarding.test.ts",
     "tests/api/mp-6-1-isolation.test.ts",

@@ -1954,6 +1954,15 @@ activation's `approval: { id, versionId, act, decidedBy, revoked }`, or null.
 | `activation.turn_off`  | `/activation/turn_off`  | `{ activationId, expectedRevision }`            | `{ activationId, enabled: false }`; `FIELD_VALUE_INVALID` 422; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already off; `VERSION_STALE` 409                                                          |
 | `approval.revoke`      | `/approval/revoke`      | `{ approvalId }`                                | `{ approvalId, revoked: true }`; `NOT_FOUND` 404; `TRANSITION_NOT_PERMITTED` 409 when already revoked                                                                                                         |
 
+An approved occurrence reaches no route: the worker dispatches it with
+`dispatchOccurrence(tx, id, occurrenceRunStarter(workerActorId))`. Under the
+activation's lock dispatch rechecks that it is on and that the approval the
+occurrence recorded still stands unrevoked, then AW-01 J writes the run
+(RUNTIME.md, "An automation occurrence's run") from the facts
+`readOccurrenceFacts` reads from these rows, and refuses again an approval
+revoked, ended or superseded since. A start J refuses writes nothing and
+records no dispatch (`{ kind: 'refused', code }`), so the worker may try again.
+
 ## What agent runs cost (U39)
 
 Skill costing on Connections & signal (MP-14-9) and what our agents cost us
