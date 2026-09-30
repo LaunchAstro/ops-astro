@@ -41,6 +41,12 @@ export {
   type InstructionSource,
 } from './definitions.ts';
 export {
+  acceptPlan,
+  type PlanAccepted,
+  type PlanAcceptRequest,
+  type PlanAcceptResult,
+} from './plan-accept.ts';
+export {
   readPinned,
   type PinnedRead,
   type ReadAuditNote,

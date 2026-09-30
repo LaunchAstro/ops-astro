@@ -1535,6 +1535,21 @@ writes its ledger row, the audit copy and its one audit event before it returns
 the bytes, so a read that cannot be recorded fails the transaction and returns
 nothing. `setDigest` is the path-sorted set digest over a run's reads.
 
+The accept itself is `acceptPlan` (`core-runtime/src/plan-accept.ts`, AW-04):
+one person's approval of the plan's gate, in the caller's one transaction. It
+admits the activation as that person's manual act, captures the manifest (the
+entry file first, then every other file the run may read) before any row is
+written, so an unreadable file or an odd path is `DEFINITION_UNAVAILABLE` and
+nothing is decided; then `decide` approves (its own `gate:decide` check, locks,
+signed decision and reservation, and its refusal is the accept's); then the pin
+goes on the gate's run with the manifest beside it. A pin that cannot be
+written fails the transaction, so an approval never commits without its pin,
+and a gate is approved once, so a second accept is refused and leaves one pin.
+The accept authorises no effect: the plan decision is not an effect gate
+(AW-08's launch). Not here yet: the command that carries it on the app, API
+and command line, the task created in the same transaction, the plan's exact
+text and structured record bound to the decision, and the origin conversation.
+
 ## The budget wait
 
 The approved ceiling is the stop (AW-05; `0044_budget_wait`, numbered after

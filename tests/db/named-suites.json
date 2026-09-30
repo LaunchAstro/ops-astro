@@ -324,6 +324,8 @@
     "tests/runtime/aw-02-pins.test.ts",
     "tests/runtime/aw-02-isolation.test.ts",
     "tests/runtime/aw-02-lease-race.test.ts",
+    "tests/runtime/aw-04-plan-accept.test.ts",
+    "tests/runtime/aw-04-isolation.test.ts",
     "tests/broker/aw-01-model-call.test.ts",
     "tests/broker/aw-05-budget-wait-isolation.test.ts",
     "tests/broker/aw-05-budget-wait.test.ts",
