@@ -530,6 +530,367 @@
 .spill[data-tone='bad'] {
   color: var(--danger);
 }
+/* -- Marks (DS-PRIM-11 to DS-PRIM-18, DS-PRIM-25 to DS-PRIM-27, MP-1-3). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5.5px;
+  padding: 3.3px 8.25px;
+  border: 1px solid var(--text-2);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--surface-2) 50%, var(--bg));
+  color: var(--text-2);
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
+  white-space: nowrap;
+}
+.chip--soft {
+  border-color: var(--border);
+  color: var(--text);
+}
+.chip.is-ok,
+.smark.is-ok {
+  border-color: var(--success);
+  color: var(--success);
+}
+.chip.is-warn,
+.smark.is-warn {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+.chip.is-bad,
+.smark.is-bad {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.chip.is-info,
+.smark.is-info {
+  border-color: var(--info);
+  color: var(--info);
+}
+.chip.is-idle,
+.smark.is-idle {
+  border-color: var(--text-muted);
+  color: var(--text-muted);
+}
+.chip--filter {
+  border-color: var(--accent);
+  color: var(--text);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+.chip__key {
+  color: var(--text-muted);
+}
+.chip__x {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.chip__x:hover {
+  color: var(--text);
+}
+.chip--suggestion {
+  border-color: var(--border);
+  color: var(--text-2);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.chip--suggestion:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.smark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.sline {
+  display: inline-block;
+  width: 2px;
+  height: 11px;
+  background: currentColor;
+}
+.snode {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border: 1px solid currentColor;
+}
+.sline.is-ok,
+.snode.is-ok {
+  color: var(--success);
+}
+.sline.is-warn,
+.snode.is-warn {
+  color: var(--warning);
+}
+.sline.is-bad,
+.snode.is-bad {
+  color: var(--danger);
+}
+.sline.is-info,
+.snode.is-info {
+  color: var(--info);
+}
+.sline.is-idle,
+.snode.is-idle {
+  color: var(--text-muted);
+}
+.av {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+}
+.av--person {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--text) 12%, transparent);
+  color: var(--text);
+}
+.av--person-large {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text);
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
+}
+.av--person-large.is-on {
+  border-color: var(--accent);
+}
+.av--person-large.is-away {
+  border-style: dashed;
+}
+.av--client {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text-2);
+}
+.avstack {
+  display: inline-flex;
+}
+.avstack .av + .av {
+  margin-left: -0.18rem;
+}
+.avstack .av {
+  box-shadow: 0 0 0 1px var(--bg);
+}
+.avstack .av.is-here {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.door {
+  display: inline-flex;
+  margin-left: 0.25em;
+  opacity: 0.62;
+}
+.door .icon {
+  width: var(--icon-door);
+  height: var(--icon-door);
+}
+/* The explained word and its bubble. Shown on hover and on keyboard focus. */
+.term {
+  position: relative;
+  border-bottom: 1px dotted var(--text-muted);
+  cursor: help;
+}
+.term__tip {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 7px);
+  left: 0;
+  display: none;
+  width: max-content;
+  max-width: 260px;
+  padding: 0.5rem 0.7rem;
+  background: var(--void);
+  color: var(--on-dark);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+.term:hover .term__tip,
+.term:focus-visible .term__tip {
+  display: block;
+}
+.term--end .term__tip {
+  right: 0;
+  left: auto;
+}
+.marker {
+  font: var(--type-tag);
+  letter-spacing: var(--type-tag-tracking);
+  text-transform: var(--type-tag-case);
+}
+.u-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--text);
+}
+.u-tag::before {
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  content: '';
+}
+.keytag {
+  color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+.kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 7.2px;
+  color: var(--accent);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+.kind__glyph {
+  width: 6px;
+  height: 6px;
+  border: 1px solid currentColor;
+  transform: rotate(45deg);
+}
+.index {
+  color: var(--text-muted);
+  font: var(--type-mono);
+  letter-spacing: var(--type-mono-tracking);
+  text-transform: var(--type-mono-case);
+}
+.index__k {
+  color: var(--text);
+}
+.ttl {
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.ttl.is-soon,
+.ttl.is-expired {
+  color: var(--warning);
+}
+.chlink {
+  border-bottom: 1px dotted var(--text-muted);
+  color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  text-decoration: none;
+}
+.chlink:hover,
+.chlink:focus-visible {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+.plink {
+  color: inherit;
+  text-decoration-color: var(--accent);
+}
+.plink:hover,
+.plink:focus-visible {
+  color: var(--accent);
+}
+.doorlink {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--text-muted);
+}
+.doorlink:hover,
+.doorlink:focus-visible {
+  color: var(--accent);
+}
+.rule {
+  width: 100%;
+  height: 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.rule--section {
+  border-top-color: var(--rule);
+}
+.vdiv {
+  display: inline-block;
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+}
+.u-mono {
+  font: var(--type-tag);
+  letter-spacing: var(--type-tag-tracking);
+  text-transform: var(--type-tag-case);
+}
+/* The count badge is absence-honest at its call site: zero renders nothing at
+   all rather than a zero, because a badge saying 0 is a badge saying look. */
+.cbadge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.15rem;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+}
+.cbadge--plain {
+  background: none;
+  color: inherit;
+}
+.cbadge--corner {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+}
+:hover > .cbadge--corner,
+:focus-visible > .cbadge--corner {
+  background: var(--text);
+  color: var(--bg);
+}
+.cbadge--numeral {
+  width: 17px;
+  height: 17px;
+  background: var(--text);
+  color: var(--bg);
+}
+.cbadge--inline {
+  background: none;
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
 /* -- Voice one: no rows. ------------------------------------------------- */
 /* -- Voice two: this input is wrong. Red is legitimate status here, because
       the field IS in an error state. ------------------------------------- */
