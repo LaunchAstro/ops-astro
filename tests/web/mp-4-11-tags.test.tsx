@@ -26,12 +26,20 @@ const VOCABULARY = [
 ];
 const ON_TASK = { tags: [{ id: 'g-urgent', name: 'Urgent' }] };
 
+/** The tag field's input; querying by a named selector keeps it from reading as a callback. */
+const inputOf = (view: { readonly host: HTMLElement }): HTMLInputElement => {
+  const input = view.host.querySelector<HTMLInputElement>(INPUT);
+  if (input === null) throw new Error('no tag input');
+  return input;
+};
+
 async function opened(over: Readonly<Record<string, unknown>> = ON_TASK) {
   const server = serving(over, VOCABULARY);
-  const view = await panel(server.client);
-  (view.find(INPUT) as HTMLInputElement).focus();
+  const changes = { count: 0 };
+  const view = await panel(server.client, { changed: () => (changes.count += 1) });
+  inputOf(view).focus();
   await tick();
-  return { ...server, view };
+  return { ...server, view, changes };
 }
 
 const rowsOf = (view: Awaited<ReturnType<typeof opened>>['view']) =>
@@ -50,7 +58,7 @@ describe('MP-4-11 CS-4.19 type to find a tag', () => {
     const server = serving(ON_TASK, VOCABULARY);
     const view = await panel(server.client);
     expect(view.find('#panel-tag-menu')).toBeNull();
-    (view.find(INPUT) as HTMLInputElement).focus();
+    inputOf(view).focus();
     await tick();
     expect(rowsOf(view)).toStrictEqual(['Launch', 'Legal']);
     await view.unmount();
@@ -67,13 +75,14 @@ describe('MP-4-11 CS-4.19 type to find a tag', () => {
 });
 
 describe('MP-4-11 CS-4.20 add an existing tag, or create a new one', () => {
-  it('choosing an existing tag adds it through task.add_tag', async () => {
-    const { view, sent } = await opened();
+  it('choosing an existing tag adds it through task.add_tag, and the panel reads again', async () => {
+    const { view, sent, changes } = await opened();
     await view.click('#panel-tag-menu [data-tag-row="g-legal"]');
     await tick();
     expect(sent.map((one) => [one.to, one.body['recordId'], one.body['tagId']])).toStrictEqual([
       ['/task/add_tag', TASK_ID, 'g-legal'],
     ]);
+    expect(changes.count).toBe(1);
     await view.unmount();
   });
 
@@ -139,7 +148,7 @@ describe('MP-4-11 arrow keys, Enter and Escape', () => {
     let closed = 0;
     const server = serving(ON_TASK, VOCABULARY);
     const view = await panel(server.client, { close: () => (closed += 1) });
-    (view.find(INPUT) as HTMLInputElement).focus();
+    inputOf(view).focus();
     await tick();
     await press(view, INPUT, 'Escape');
     expect(view.find('#panel-tag-menu')).toBeNull();
@@ -153,11 +162,11 @@ describe('MP-4-11 typed text is never a tag until chosen', () => {
   it('typing, then leaving the field, sends nothing and draws no chip', async () => {
     const { view, sent } = await opened();
     await typeInto(view, INPUT, 'Half typed');
-    (view.find(INPUT) as HTMLInputElement).blur();
+    inputOf(view).blur();
     await tick();
     expect(sent).toStrictEqual([]);
     expect(
-      view.all('[data-tag-chip]').map((chip) => chip.getAttribute('data-tag-chip')),
+      view.all('[data-tag-chip]').map((chip) => (chip as HTMLElement).dataset['tagChip']),
     ).toStrictEqual(['g-urgent']);
     await view.unmount();
   });
@@ -178,7 +187,7 @@ describe('MP-4-11 CS-4.21 remove the tag from this task', () => {
 describe('MP-4-11 panel subtasks', () => {
   it('the dock task panel shows MP-4-4’s subtask list beside the tag field', async () => {
     const { view } = await opened({ ...ON_TASK });
-    expect(view.find(INPUT)).not.toBeNull();
+    expect(view.host.querySelector(INPUT)).not.toBeNull();
     expect(view.find('[data-step-list]')).not.toBeNull();
     await view.unmount();
   });

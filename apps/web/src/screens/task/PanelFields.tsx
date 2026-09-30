@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The dock task panel's field edits (MP-4-8): the name, the assignee, the due
-// date and the estimate.
+// date and the estimate; the tags are `TagField.tsx` (MP-4-11).
 //
 // **Each field through its own command, at the revision the panel read.** The
 // name, the due date and the estimate go out through `task.update`
@@ -31,6 +31,7 @@ import { RecordState } from '../../views/record-state.tsx';
 import { DatePicker } from './DatePicker.tsx';
 import { todayOn } from './due-dates.ts';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
+import { TagField } from './TagField.tsx';
 
 export interface PanelFieldsProps {
   readonly client: OperationsClient;
@@ -120,6 +121,7 @@ export function PanelFields(props: PanelFieldsProps): ReactElement {
       <AssigneeField {...props} {...field} />
       <DueField {...props} {...field} />
       <EstimateField {...props} {...field} />
+      <TagField client={props.client} task={props.task} onChanged={props.onChanged} />
       <Refusal because={field.because} />
     </div>
   );
