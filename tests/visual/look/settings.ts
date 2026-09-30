@@ -44,7 +44,14 @@ export const SETTINGS: LookScreen = {
     ]),
     // The card is capped at a readable measure (46rem), not run to the grid.
     probe('card-measure', '.set__card', '.set__card', ['box.width'], { widths: [1480] }),
-    probe('title', '.set__card > .card__title', '.set__card .card__title', TYPE),
+    // The canonical card title (DS-TOK-119) is 15/1.1; the mockup draws 15/1.2.
+    {
+      ...probe('title', '.set__card > .card__title', '.set__card .card__title', TYPE),
+      ruled: [
+        { at: 'line-height@light', want: '16.5px', why: 'DS-TOK-119 15/1.1' },
+        { at: 'line-height@dark', want: '16.5px', why: 'DS-TOK-119 15/1.1' },
+      ],
+    },
     probe('intro', '.set__card > .card__sub', '.set__card .card__sub', TYPE),
     probe('row', '.setrow + .setrow', '.setrow + .setrow', [
       'padding-top',
