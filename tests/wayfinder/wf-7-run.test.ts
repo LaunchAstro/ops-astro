@@ -11,7 +11,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { grantTo } from '../commands/fixture.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { enrol, grantTo } from '../commands/fixture.ts';
 import {
   appliedDetail,
   approve,
@@ -115,3 +116,19 @@ it('WF-7 refusal run:write: an agent whose delegation does not reach run cannot 
   expect(codeOf(answer)).toBe('DELEGATION_OUT_OF_PURPOSE');
   expect(await runsOn(task)).toBe(before);
 }, 120_000);
+
+it('WF-7 refusal run:write: a caller who may not write the ticket is refused as on any task, never told its type', async () => {
+  const outsider = await enrol(s.db.app, s.business, 'wf7-outsider');
+  const asOutsider = async (task: string) =>
+    await executeCommand(
+      s.db.app,
+      s.business,
+      outsider.presented,
+      'api',
+      proposeBody(task, await revisionOf(s, task), { purpose: freshPurpose() }) as never,
+    );
+  const research = await asOutsider(await researchTicket('wf7 outsider research'));
+  const plain = await asOutsider(await createTask(s, 'wf7 outsider plain'));
+  expect(codeOf(research)).toBe('SCOPE_NOT_GRANTED');
+  expect(research).toStrictEqual(plain);
+}, 60_000);
