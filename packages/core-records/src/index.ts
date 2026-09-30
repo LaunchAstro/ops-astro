@@ -37,7 +37,6 @@ export {
   checkAuthority,
   coveredScopes,
   effectiveGrants,
-  grantedScopes,
   revokeGrant,
   subjectsOf,
   EFFECTIVE_GRANTS_CTE,
@@ -49,6 +48,7 @@ export {
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { grantedScopes } from './authority/scopes.ts';
 export {
   EXPIRED_FIXES,
   NO_AGENT_FIXES,

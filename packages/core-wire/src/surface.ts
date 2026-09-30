@@ -31,6 +31,7 @@
 // because the web client imports this table and must not import the database.
 
 import type { Action } from '../../core-records/src/index.ts';
+import { SETUP_OPERANDS } from './surface-setup.ts';
 
 export type CommandName =
   // The contract's nine.
@@ -433,58 +434,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.purge': { olderThanDays: 'any' },
   'settings.set_four_eyes_threshold': { value: 'any', expectedRevision: 'any' },
   'settings.set_client_sign_off': { value: 'any', expectedRevision: 'any' },
-  // `value` is `any` so a wrong kind is the command's own FIELD_VALUE_INVALID,
-  // which names the field and never echoes what was sent.
-  'secret.set': { name: 'text', value: 'any', clientId: 'id?|null', expectedRevision: 'any' },
-  'secret.clear': { secretId: 'id', expectedRevision: 'any' },
-  'connector.repair': { connectionId: 'id', expectedRevision: 'any' },
-  // A mandate's classes, ceiling and expiry are checked by value in the
-  // command, which names the field it refuses.
-  'mandate.file': {
-    clientId: 'id',
-    classes: 'any',
-    refuses: 'any',
-    ceiling: 'any',
-    expiresAt: 'any',
-    label: 'any',
-  },
-  'mandate.revoke': { mandateId: 'id', expectedRevision: 'any' },
-  'graduation.promote': {
-    classId: 'id',
-    ceiling: 'any',
-    expiresAt: 'any',
-    expectedRevision: 'any',
-  },
-  'graduation.demote': { classId: 'id', expectedRevision: 'any' },
-  // Every value but the identifiers is checked in the command, which names the
-  // field it refuses; a version's modes against the activation's in the database.
-  'activation.change': {
-    activationId: 'id?',
-    versionId: 'id',
-    mode: 'any',
-    everyMinutes: 'any',
-    eventKind: 'any',
-    enabled: 'any',
-    expectedRevision: 'any',
-  },
-  'definition.release': {
-    definitionId: 'id?',
-    name: 'any',
-    kind: 'any',
-    contentDigest: 'any',
-    contentSize: 'any',
-    inputs: 'any',
-    operations: 'any',
-    modes: 'any',
-  },
-  'activation.adopt': { activationId: 'id', versionId: 'id', expectedRevision: 'any' },
-  'activation.roll_back': { activationId: 'id', expectedRevision: 'any' },
-  'activation.turn_off': { activationId: 'id', expectedRevision: 'any' },
-  'approval.revoke': { approvalId: 'id' },
-  // The record type and the step outcome are checked by value in the command.
-  'record.create': { type: 'any', fields: 'map' },
-  'onboarding.start': { clientId: 'id', templateKey: 'any' },
-  'onboarding.step_result': { recordId: 'any', outcome: 'any', result: 'any' },
+  // Setup's commands (C31, MP-14-7a, MP-14-10a, C33, C52-A, C41-A).
+  ...SETUP_OPERANDS,
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },

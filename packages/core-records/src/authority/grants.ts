@@ -171,36 +171,6 @@ export async function effectiveGrants(
 }
 
 /**
- * The scopes at which these subjects hold `collection:action` right now: the
- * business, or the parties and records they were granted. A list read filters
- * its rows by these inside its own statement, in the serving transaction, so
- * a party-scoped holder sees that party's rows and nobody else's.
- */
-export async function grantedScopes(
-  tx: TenantQuery,
-  subjects: readonly Subject[],
-  collection: string,
-  action: Action,
-): Promise<readonly Scope[]> {
-  const rows = await tx.query<{ readonly scope_kind: ScopeKind; readonly scope_id: string | null }>(
-    `${EFFECTIVE}
-     select distinct e.scope_kind, e.scope_id
-       from effective e
-      where e.collection = $1
-        and e.action = $2
-        and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
-                     where s.kind = e.subject_kind and s.id = e.subject_id)`,
-    [
-      collection,
-      action,
-      subjects.map((subject) => subject.kind),
-      subjects.map((subject) => subject.id),
-    ],
-  );
-  return rows.map((row) => ({ kind: row.scope_kind, id: row.scope_id }));
-}
-
-/**
  * The check a serving operation makes. A denied read says so with a code and a
  * fix; it never comes back as an empty list, because empty and denied are
  * different answers and only one of them is honest here.

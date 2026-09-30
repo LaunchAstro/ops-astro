@@ -20,9 +20,7 @@ import {
   ownAppliedEffect,
   ownUnknownAttempt,
 } from './role-case-bodies.ts';
-import { automationsBody } from './role-case-automations.ts';
-import { connectionsBody } from './role-case-connections.ts';
-import { onboardingBody } from './role-case-onboarding.ts';
+import { setupBody } from './role-case-setup.ts';
 import { ownConversation } from './foreign-conversation.ts';
 import { answerAtTheStop } from './stopped-run.ts';
 
@@ -31,12 +29,8 @@ export function createPositiveBody(
 ): (declaration: CommandDeclaration) => Promise<Prepared> {
   // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
   return async function positiveBody(declaration: CommandDeclaration): Promise<Prepared> {
-    const connections = await connectionsBody(declaration.name, context);
-    if (connections !== undefined) return connections;
-    const automations = await automationsBody(declaration.name, context);
-    if (automations !== undefined) return automations;
-    const onboarding = await onboardingBody(declaration.name, context);
-    if (onboarding !== undefined) return onboarding;
+    const setup = await setupBody(declaration.name, context);
+    if (setup !== undefined) return setup;
     const target = async (): Promise<Record<string, unknown>> => {
       const task = await context.freshTask(`a task for ${declaration.name}`);
       return { recordId: task.id, expectedRevision: task.revision };
@@ -179,20 +173,6 @@ export function createPositiveBody(
             reason: 'The matrix writes its own unknown hold off.',
           },
         };
-      // Custody (C31): the admin lists, sets a key and clears one it set.
-      case 'secret.list':
-        return { body: {} };
-      case 'secret.set':
-        return { body: { name: 'matrix.key', value: `matrix-${randomUUID()}` } };
-      case 'secret.clear': {
-        const set = await context.asPerson('secret.set', {
-          name: `matrix.clear-${randomUUID().slice(0, 8)}`,
-          value: `matrix-${randomUUID()}`,
-        });
-        return {
-          body: { secretId: String((set.body['detail'] as Record<string, unknown>)['secretId']) },
-        };
-      }
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');
