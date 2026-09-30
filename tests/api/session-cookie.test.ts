@@ -149,7 +149,7 @@ function sessionCookieCases2() {
       gotrueUrl: ISSUER,
       apiOrigin: '',
       email: 'mia@example.test',
-      password: 'pw',
+      password: 'ops-astro-test-only-pw',
       fetch,
     });
     expect(result).toEqual({ ok: true });
@@ -171,7 +171,7 @@ function sessionCookieCases3() {
     let cookie: string | null = 'a';
     const written: (string | null)[] = [];
     const held: (() => void)[] = [];
-    const tokens = ['b', 'c'];
+    const tokens = ['ops-astro-test-only-b', 'ops-astro-test-only-c'];
     const fetch = (async (url: string, init?: RequestInit) => {
       const headers = (init?.headers ?? {}) as Record<string, string>;
       if (url.includes('/token?')) {
@@ -196,20 +196,20 @@ function sessionCookieCases3() {
     }) as unknown as typeof globalThis.fetch;
     const route = { apiOrigin: '', fetch };
     const signInAs = (email: string) =>
-      openSession({ ...route, gotrueUrl: ISSUER, email, password: 'pw' });
+      openSession({ ...route, gotrueUrl: ISSUER, email, password: 'ops-astro-test-only-pw' });
 
     void signOut(route);
     await signInAs('b@example.test');
     await signOut(route);
     await signInAs('c@example.test');
-    expect(cookie).toBe('c');
+    expect(cookie).toBe('ops-astro-test-only-c');
     written.length = 0;
     held[0]?.();
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(cookie).toBe('c');
+    expect(cookie).toBe('ops-astro-test-only-c');
     // Only C's sign-in wrote again: B, who signed out, never came back.
-    expect(written).toEqual(['c']);
+    expect(written).toEqual(['ops-astro-test-only-c']);
   });
 }
 

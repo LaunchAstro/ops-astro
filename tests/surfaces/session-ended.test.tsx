@@ -118,7 +118,7 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
       // A new hour. Everything the old token could not do, the new one can.
       reads = 'ok';
       mutations = 'ok';
-      return Promise.resolve(json({ access_token: 'a-fresh-token' }));
+      return Promise.resolve(json({ access_token: 'ops-astro-test-only-a-fresh-token' }));
     }
     if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: PEOPLE }));
     if (at.endsWith('/task/read') || at.endsWith('/task/board')) {

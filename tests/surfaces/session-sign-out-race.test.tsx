@@ -49,7 +49,7 @@ describe('S0-6 session cookie', () => {
         });
       }
       if (url.startsWith('http://identity.invalid/token')) {
-        return answer({ access_token: 'second-person-token' });
+        return answer({ access_token: 'ops-astro-test-only-second-person-token' });
       }
       if (url === SESSION_PATH) {
         const headers = new Headers(init?.headers);
@@ -71,11 +71,11 @@ describe('S0-6 session cookie', () => {
     await page.click('form.signin__form button[type="submit"]');
     await settle();
     expect(sessions.session?.email).toBe('second@example.test');
-    expect(cookie).toBe('second-person-token');
+    expect(cookie).toBe('ops-astro-test-only-second-person-token');
 
     finishOldSignOut?.();
     await settle();
-    expect(cookie).toBe('second-person-token');
+    expect(cookie).toBe('ops-astro-test-only-second-person-token');
     await page.unmount();
   });
 });
