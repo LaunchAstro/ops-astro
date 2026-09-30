@@ -386,6 +386,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     board: 'id?|null',
     boardSection: 'id?|null',
     stateKey: 'any',
+    // The caller's own conversation the task is created from (AW-03's origin).
+    conversationId: 'id?|null',
   },
   'task.update': FIELDS,
   'task.complete': TARGET,
@@ -491,7 +493,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.create', 'write', {
     targetsExistingRecord: false,
-    untargetedIdentifiers: ['parentId', 'board', 'boardSection'],
+    untargetedIdentifiers: ['parentId', 'board', 'boardSection', 'conversationId'],
   }),
   declare('task.update', 'write'),
   declare('task.complete', 'write'),
