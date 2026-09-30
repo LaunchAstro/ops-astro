@@ -312,6 +312,7 @@
     "tests/automations/c33-commands.test.ts",
     "tests/automations/c33-authority.test.ts",
     "tests/automations/c33-limits.test.ts",
+    "tests/automations/c33-intake.test.ts",
     "tests/automations/c52a-firing.test.ts",
     "tests/automations/c52a-run-start.test.ts",
     "tests/automations/c52a-pins.test.ts",

@@ -212,6 +212,7 @@ export {
   type OccurrenceClaim,
   type OccurrenceOutcome,
   type OccurrenceRow,
+  waitingOccurrences,
 } from './automations/occurrences.ts';
 export {
   adoptVersion,

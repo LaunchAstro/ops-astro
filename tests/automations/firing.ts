@@ -10,7 +10,10 @@ import { occurrenceRunStarter } from '../../packages/core-commands/src/index.ts'
 import {
   adoptVersion,
   dispatchOccurrence,
+  insertActivation,
+  insertDefinition,
   readActivation,
+  releaseVersion,
   revokeApproval,
   turnOffActivation,
   type ActivationRow,
@@ -23,7 +26,7 @@ import {
   type RunStarter,
   type StandingApprovalRow,
 } from '../../packages/core-records/src/index.ts';
-import type { AutomationWorld } from './world.ts';
+import { DIGEST, type AutomationWorld } from './world.ts';
 
 export interface Approved {
   readonly version: DefinitionVersionRow;
@@ -73,6 +76,49 @@ export async function runFootprint(w: AutomationWorld): Promise<RunFootprint> {
       `select count(*) as n from public.audit_events where command = 'occurrence.run_start'`,
     ),
   };
+}
+
+/** Bravo's own automation in `mode`, released, activated and approved by bravo's admin. */
+export async function bravoApproved(
+  w: AutomationWorld,
+  mode: 'scheduled' | 'event',
+): Promise<string> {
+  return await w.db.app.withBusiness(w.bravo, async (tx) => {
+    const actorId = w.bravoAdmin.actorId;
+    const definitionId = await insertDefinition(tx, {
+      kind: 'automation',
+      name: 'Bravo digest',
+      actorId,
+    });
+    const version = await releaseVersion(tx, {
+      definitionId,
+      contentDigest: DIGEST,
+      contentSize: 1234,
+      inputs: [],
+      operations: ['report.send'],
+      modes: [mode],
+      actorId,
+    });
+    if (version === null || version === 'raced') throw new Error(`bravo released ${version}`);
+    const activation = await insertActivation(tx, {
+      versionId: version.id,
+      mode,
+      everyMinutes: mode === 'scheduled' ? 60 : null,
+      eventKind: mode === 'event' ? 'invoice.paid' : null,
+      enabled: true,
+      actorId,
+    });
+    if (activation === null) throw new Error('bravo activation not written');
+    const adopted = await adoptVersion(tx, {
+      activationId: activation.id,
+      versionId: version.id,
+      expectedRevision: activation.revision,
+      act: 'adopted',
+      actorId,
+    });
+    if (adopted.kind !== 'adopted') throw new Error(`bravo adoption ${adopted.kind}`);
+    return activation.id;
+  });
 }
 
 export function occurrenceOf(claim: OccurrenceClaim): OccurrenceRow {

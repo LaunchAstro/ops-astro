@@ -5,23 +5,19 @@
 // occurrence records under the business's lock, so a restarted scheduler meets
 // the same count, and each lock names its business, so one business at its
 // rate never delays another. The run ceiling and the event intake bound are
-// held in `c33-held.test.ts`.
+// in `c33-intake.test.ts`.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  adoptVersion,
   claimOccurrence,
   connect,
   FIRING_LIMITS,
-  insertActivation,
-  insertDefinition,
-  releaseVersion,
   type OccurrenceOutcome,
 } from '../../packages/core-records/src/index.ts';
 import { awaitWaiters, barrier } from '../runtime/gate-negatives-cases.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { firingOf, occurrenceOf, type Firing } from './firing.ts';
-import { createAutomationWorld, DIGEST, type AutomationWorld } from './world.ts';
+import { bravoApproved, firingOf, occurrenceOf, type Firing } from './firing.ts';
+import { createAutomationWorld, type AutomationWorld } from './world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -63,45 +59,6 @@ describe.skipIf(serverUrl === undefined)('C33 limits on firing', () => {
       expect(await claimMany(activation.id, FIRING_LIMITS.activationPerHour)).toEqual(['approved']);
     }
   };
-
-  /** Bravo's own automation, released, activated and approved by bravo's admin. */
-  const bravoActivation = async (): Promise<string> =>
-    await w.db.app.withBusiness(w.bravo, async (tx) => {
-      const actorId = w.bravoAdmin.actorId;
-      const definitionId = await insertDefinition(tx, {
-        kind: 'automation',
-        name: 'Bravo digest',
-        actorId,
-      });
-      const version = await releaseVersion(tx, {
-        definitionId,
-        contentDigest: DIGEST,
-        contentSize: 1234,
-        inputs: [],
-        operations: ['report.send'],
-        modes: ['scheduled'],
-        actorId,
-      });
-      if (version === null || version === 'raced') throw new Error(`bravo released ${version}`);
-      const activation = await insertActivation(tx, {
-        versionId: version.id,
-        mode: 'scheduled',
-        everyMinutes: 60,
-        eventKind: null,
-        enabled: true,
-        actorId,
-      });
-      if (activation === null) throw new Error('bravo activation not written');
-      const adopted = await adoptVersion(tx, {
-        activationId: activation.id,
-        versionId: version.id,
-        expectedRevision: activation.revision,
-        act: 'adopted',
-        actorId,
-      });
-      if (adopted.kind !== 'adopted') throw new Error(`bravo adoption ${adopted.kind}`);
-      return activation.id;
-    });
 
   /** The rolling hour moves on past every occurrence recorded so far. */
   const hourPasses = async (): Promise<void> => {
@@ -180,7 +137,7 @@ describe.skipIf(serverUrl === undefined)('C33 limits on firing', () => {
   it('C33 limits fair across businesses: one business at its hourly rate, with a claimer holding its lock, never delays another business, whose occurrence is approved', async () => {
     await hourPasses();
     await fillBusinessHour();
-    const bravo = await bravoActivation();
+    const bravo = await bravoApproved(w, 'scheduled');
     const { activation: quiet } = await f.approved();
     const { activation: another } = await f.approved();
     const held = barrier();

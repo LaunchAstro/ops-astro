@@ -15,6 +15,7 @@
     "tests/costs/mp-14-6-agent-costs.test.ts",
     "tests/automations/c33-occurrences.test.ts",
     "tests/automations/c33-authority.test.ts",
+    "tests/automations/c33-intake.test.ts",
     "tests/automations/c52a-pins.test.ts",
     "tests/automations/c52a-run-start.test.ts",
     "tests/automations/c52a-authority.test.ts",
