@@ -46,7 +46,10 @@ const held = (role: string): readonly string[] =>
  * asks its own rule too (`conversation:write`, the caller's own only).
  */
 const NOT_SEEDED = new Set(['session.capabilities', 'conversation.read', 'conversation.list']);
-const asked = COMMAND_SURFACE.filter((each) => !NOT_SEEDED.has(each.name))
+// A `self` row (the inbox) asks no grant either: it answers about the caller's own rows.
+const asked = COMMAND_SURFACE.filter(
+  (each) => !NOT_SEEDED.has(each.name) && each.authorisedOn !== 'self',
+)
   .map((each) =>
     each.name === 'preset.plan' ? 'task:manage' : `${each.collection}:${each.action}`,
   )

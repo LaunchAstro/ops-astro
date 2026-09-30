@@ -28,6 +28,7 @@ import {
   type Answer,
   type World,
 } from '../acceptance/world.ts';
+import { asBrowser } from '../support/sign-in.ts';
 
 /** Someone who can sign in to one business, with the token they present. */
 export interface Signed extends Member {
@@ -74,12 +75,12 @@ export const pageClient = (
   new OperationsClient({
     origin: 'http://api.test',
     businessKey: who.businessKey,
-    token: who.token,
-    fetch: async (input, init) => {
+    signedIn: true,
+    fetch: asBrowser(who.token, async (input, init) => {
       const response = await world.api.fetch(new Request(input, init));
       seen(response.status);
       return response;
-    },
+    }),
   });
 
 /** The world's cast member as a signed caller. */

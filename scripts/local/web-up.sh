@@ -17,10 +17,9 @@ cd "$here"
 
 export WEB_PORT="${WEB_PORT:-5190}"
 export API_ORIGIN="${API_ORIGIN:-http://127.0.0.1:8790}"
-export VITE_GOTRUE_URL="${GOTRUE_URL:-http://127.0.0.1:54391}"
 
 echo "web      http://127.0.0.1:${WEB_PORT}"
 echo "api      ${API_ORIGIN} (proxied at /api)"
-echo "identity ${VITE_GOTRUE_URL}"
+echo "identity the API's GOTRUE_URL, read by the page from /api/sign-in"
 
 exec pnpm --filter @launchastro/web exec vite --host 127.0.0.1 --port "${WEB_PORT}"

@@ -46,6 +46,18 @@ export type Decision<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly refusal: CommandRefusal<RefusalCode> };
 
+/**
+ * `operations:manage`, from the permission key catalogue: the key every
+ * operator act on the installation's machine asks, staging preparation and the
+ * promotion step first (ticket S0-1). A person's key: it is asked on a person's
+ * own session, over the whole business, and a call carrying an agent's sign-in
+ * or a delegation is refused before it is asked (`scripts/ops/operator.ts`).
+ */
+export const OPERATIONS_MANAGE: { readonly collection: 'operations'; readonly action: 'manage' } = {
+  collection: 'operations',
+  action: 'manage',
+};
+
 export interface EffectiveGrant {
   readonly id: string;
   readonly scope_kind: ScopeKind;
@@ -71,7 +83,7 @@ export function subjectsOf(session: Session): readonly Subject[] {
 // The depth guard is not decoration. `parent_grant_id` sits under the same
 // UPDATE privilege that writes `revoked_at`, so a cycle is reachable, and an
 // unbounded recursive term that meets a cycle does not return.
-const EFFECTIVE = `
+export const EFFECTIVE = `
   with recursive effective as (
     select g.*, 1 as depth
       from public.grants g

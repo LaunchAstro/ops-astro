@@ -327,6 +327,14 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
                   : { leaseId: lease.leaseId, fence: lease.fence };
         return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
       }
+      case 'inbox.seen':
+        // Self-scoped: noah holds `preference:write` like every signed-in
+        // person, so the refusal is the item's. One not his is NOT_FOUND.
+        return personCell(noah, name, { itemId: randomUUID() }, 'NOT_FOUND');
+      case 'notifications.set_channel':
+        // Self-scoped too (INB-1e): the refusal is the setting's. In-app is
+        // always on, so switching it off is refused.
+        return personCell(noah, name, { channel: 'in_app', mode: 'off' }, 'FIELD_VALUE_INVALID');
       default: {
         // `session.capabilities` included: contract 8.2 case 3 names every
         // endpoint, and the root's routing (ROOT-REVIEW-74d583c-ROUTING) says

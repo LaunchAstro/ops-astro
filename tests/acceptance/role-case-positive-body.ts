@@ -144,7 +144,24 @@ export function createPositiveBody(
       // the admin holds, so the admin reaches both here.
       case 'settings.read':
       case 'session.capabilities':
+      case 'inbox.read':
+      case 'inbox.count':
+      case 'inbox.unattended':
+        // The caller's own inbox (INB-1d) needs a live grant of any kind, as
+        // above; `inbox.unattended` needs `operations:read`, which the seed
+        // grants the admin (INB-1e, C55).
         return { body: {} };
+      case 'notifications.set_channel':
+        // Self-scoped (INB-1e): in-app is always on, the one mode it takes.
+        return { body: { channel: 'in_app', mode: 'on' } };
+      case 'inbox.seen': {
+        // The caller's own item: a proposal raises a decision item for every
+        // decide holder, the admin among them, read back from their inbox.
+        await lineageOn(context, await context.freshTask('a task whose item is opened'));
+        const listed = await context.asPerson('inbox.read', {});
+        const items = listed.body['inbox'] as readonly Record<string, unknown>[];
+        return { body: { itemId: String(items.at(-1)?.['id']) } };
+      }
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
       case 'definition.attribution':

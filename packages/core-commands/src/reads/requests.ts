@@ -28,6 +28,8 @@ import type { PresetField } from '../../../core-records/src/index.ts';
 import type {
   AttributionResult,
   CapabilitiesResult,
+  InboxCountResult,
+  InboxReadResult,
   PersonListResult,
   PresetPlanResult,
   QueueResult,
@@ -41,6 +43,7 @@ import type {
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { Receipt } from '../../../core-runtime/src/index.ts';
+import type { UnattendedEntry } from './inbox.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -117,6 +120,12 @@ export interface ReadOperands {
   readonly 'conversation.list': NoOperands;
   /** The runs that read one file, by its digest: pre-review (AW-04). */
   readonly 'definition.attribution': { readonly digest: string };
+  /** The caller's own inbox items, each with its access derived now (INB-1d). */
+  readonly 'inbox.read': NoOperands;
+  /** The caller's owed count: the counted entries of `inbox.read`. */
+  readonly 'inbox.count': NoOperands;
+  /** The business's items no path reaches, for `operations:read` (INB-1e). */
+  readonly 'inbox.unattended': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -146,4 +155,7 @@ export type ReadResult =
   | CapabilitiesResult
   | ConversationReadResult
   | ConversationListResult
-  | AttributionResult;
+  | AttributionResult
+  | InboxReadResult
+  | InboxCountResult
+  | { readonly ok: true; readonly unattended: readonly UnattendedEntry[] };

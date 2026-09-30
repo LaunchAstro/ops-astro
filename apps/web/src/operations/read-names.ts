@@ -48,6 +48,13 @@ export const READ_NAMES = [
   'conversation.list',
   // Which runs read an instruction file, by digest: pre-review (AW-04).
   'definition.attribution',
+  // The caller's own inbox and owed count (INB-1d), the same read the API and
+  // the command line serve; the working minimum draws them in INB-1g.
+  'inbox.read',
+  'inbox.count',
+  // Items no path reaches (INB-1e), for `operations:read`; the operations view
+  // (C55) draws them.
+  'inbox.unattended',
 ] as const;
 
 /**

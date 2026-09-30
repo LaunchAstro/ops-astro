@@ -50,6 +50,10 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['definition.attribution', { digest: 'a'.repeat(64) }],
   // AW-04 (U10): the business's own planning cap, set once from unset.
   ['budget.set_planning_cap', { limitMinor: 2_000, currency: 'AUD', fromLimitMinor: null }],
+  ['inbox.read', {}],
+  ['inbox.count', {}],
+  ['inbox.unattended', {}],
+  ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
 ];
 
 /** The identifier-bearing operations outside (c) and (d): operand and executed case. */
@@ -83,6 +87,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'run.top_up': ['runId and recordId', 'control'],
   'run.end_at_budget_stop': ['runId and recordId', 'control'],
   'run.revise_state': ['runId and recordId', 'control'],
+  'inbox.seen': ['itemId', 'control'],
 };
 
 /**

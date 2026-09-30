@@ -8,17 +8,20 @@ deployment, and nothing here is the Hub's `supabase_*` database or the draft's.
 
 ## Owned resources
 
-| Thing     | Identity                                                                                              |
-| --------- | ----------------------------------------------------------------------------------------------------- |
-| Container | `ops-astro-local-pg`                                                                                  |
-| Image     | `postgres@sha256:77f5851…a1873`, the digest pinned in [supply-chain-pins.md](../supply-chain-pins.md) |
-| Address   | `127.0.0.1:54390`                                                                                     |
-| Volume    | `ops-astro-local-pgdata`, mounted at `/var/lib/postgresql`                                            |
-| Database  | `ops_astro_local`                                                                                     |
+| Thing     | Identity                                                                                                          |
+| --------- | ----------------------------------------------------------------------------------------------------------------- |
+| Container | `ops-astro-local-pg`                                                                                              |
+| Image     | `postgres@sha256:b0f9560…2b24`, Postgres 17, the digest pinned in [supply-chain-pins.md](../supply-chain-pins.md) |
+| Address   | `127.0.0.1:54390`                                                                                                 |
+| Volume    | `ops-astro-local-pgdata-17`, mounted at `/var/lib/postgresql/data`                                                |
+| Database  | `ops_astro_local`                                                                                                 |
 
-Postgres 18 keeps its cluster in a subdirectory of `/var/lib/postgresql`. Mount
-the volume at `/var/lib/postgresql/data` instead and the server finds a cluster
-in a directory it does not use, and refuses to start.
+The local database runs the hosted database's major, 17 (S0-7). Its volume is
+named for the major because a cluster one major wrote, the other refuses to
+open. A tree from before S0-7 ran 18 on `ops-astro-local-pgdata`, mounted at
+`/var/lib/postgresql`; `db-up.sh` replaces that container, starts an empty 17
+cluster on the new volume and leaves the old volume as it was. Migrate and
+seed again after the switch.
 
 ## Roles, and the two URLs
 
@@ -43,7 +46,7 @@ state; the major is pinned in `.nvmrc`.
 ```sh
 bash scripts/local/db-up.sh      # start it; idempotent; writes .local/db.env
 node scripts/db-migrate.mjs      # apply every migration in migrations/, in order, once each
-node scripts/local-seed.mjs      # businesses, people, logins, memberships, grants
+node scripts/local-seed.mjs      # people and grants (new database: LOCAL_SEED_MADE_UP=confirm)
 bash scripts/local/db-down.sh    # stop the container; the volume is untouched
 
 set -a; . ./.local/db.env; set +a
@@ -51,7 +54,7 @@ pnpm exec vitest run             # the whole suite, against this server
 ```
 
 `db-down.sh` never removes the volume. To delete the data, run
-`docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata`.
+`docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata-17`.
 
 ## Upgrade
 
@@ -293,8 +296,8 @@ At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist
 (the header of `restricted-calls-prefixes.test.ts`, and its
 `answers every caller as the contract says after <version>`). At the full
-schema, the suite seeds `person_identifiers`, `person_merges` and `record_links`
-itself. The suite counts the own-tenant insert positive control (TC:108) per
+schema, the suite seeds `person_identifiers`, `person_merges`, `record_links` and
+the three `inbox_` tables itself. The suite counts the own-tenant insert positive control (TC:108) per
 table: one insert through the production wrapper on each tenant table the
 application may insert into, each `rows 1`, and each rolled back
 (`restricted-calls.test.ts`,

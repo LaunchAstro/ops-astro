@@ -38,6 +38,7 @@ import {
   TEST_SIGNING_KEY,
   type RuntimeFixture,
 } from './fixture.ts';
+import { sharedKeySetUrl } from '../support/sign-in.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const serverUrl = databaseUrlFromEnvironment();
@@ -204,7 +205,7 @@ async function startServer(
       API_PORT: String(port),
       DATABASE_URL: db.appUrl,
       DATABASE_ADMIN_URL: admin.toString(),
-      SUPABASE_JWT_SECRET: 'recovery-entry-secret-recovery-entry-secret',
+      SUPABASE_KEY_SET_URL: await sharedKeySetUrl(),
       GOTRUE_URL: 'http://127.0.0.1:54391',
       GATE_SIGNING_KEY_ID: '',
       GATE_SIGNING_SECRET: '',

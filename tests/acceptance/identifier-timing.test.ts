@@ -355,6 +355,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       knowledge: [NOBODY],
       unknowns: [],
     }));
+    // Bravo's proposal raised its holders an inbox item (INB-1b); stamping it
+    // from alpha is the same NOT_FOUND as stamping an item that never existed.
+    const [bravoItem] = await w.h.world.db.admin.execute<{ id: string }>(
+      'select id from public.inbox_items where fact_id = $1 order by id limit 1',
+      [f.proposal.gateId],
+    );
+    if (bravoItem === undefined) throw new Error('bravo raised no inbox item to aim at');
+    byAda('inbox.seen', 'itemId', bravoItem.id, (itemId) => ({ itemId }));
     out.push({
       op: 'task.pickup',
       operand: 'reservationId',

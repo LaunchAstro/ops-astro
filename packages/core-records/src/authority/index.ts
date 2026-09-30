@@ -20,6 +20,7 @@ export {
   coveredScopes,
   effectiveGrants,
   issueGrant,
+  OPERATIONS_MANAGE,
   revokeGrant,
   subjectsOf,
   type Action,

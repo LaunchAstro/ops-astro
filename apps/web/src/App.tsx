@@ -10,11 +10,15 @@
 // — the words and tones a state may print — and not as a source of rows.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Shell, type RailEntry } from '@launchastro/ui';
-import { ROUTES, gateOf, matchRoute, pathTo } from './routes.ts';
+import { Shell } from '@launchastro/ui';
+import { gateOf, matchRoute, pathTo } from './routes.ts';
+import { NO_CLIENT_GRANTS, canonicalOf, pageAt, type ClientAccess } from './manifest.ts';
+import { ClientRefused, NotFound, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
+import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { PANELS } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
-import { grantKeyOf, type Session, type SessionStore } from './session/token.ts';
+import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
+import { signOut } from './session/sign-in.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { drawScreen } from './screen-registry.tsx';
 import { AssistantView } from './views/assistant.tsx';
@@ -31,6 +35,8 @@ export interface AppProps {
   readonly fetch: typeof globalThis.fetch;
   /** This tab's storage, read once by the entry, or null where it is blocked. */
   readonly storage: Storage | null;
+  /** Which clients the session may open. None until MP-10-1 supplies client records. */
+  readonly clientAccess?: ClientAccess;
 }
 
 export function App(props: AppProps): ReactElement {
@@ -40,18 +46,25 @@ export function App(props: AppProps): ReactElement {
   // a person arrives. It leads to the board when there is a session and to
   // sign-in when there is not, and the address bar is corrected to say so, so
   // a reload lands on the same place a link would.
+  // A legacy address is answered with its canonical one the same way, so the
+  // address bar, the rail and a remembered interruption never hold a legacy one.
   const here =
-    props.path === '/'
+    canonicalOf(props.path) ??
+    (props.path === '/'
       ? pathTo(session === null ? 'agency:sign-in' : 'agency:projects-board')
-      : props.path;
+      : props.path);
   const navigate = props.navigate;
   useEffect(() => {
     if (here !== props.path) navigate(here);
   }, [here, props.path, navigate]);
 
   // Why the board was reached instead of the address that was held. Drawn on
-  // the board and nowhere else, and gone when this session is.
-  const [notice, setNotice] = useState<string | null>(null);
+  // the board and nowhere else, and gone when this session is. The offer is the
+  // server's answer on whether to name the business the address belongs to.
+  const [notice, setNotice] = useState<{
+    readonly held: Interruption;
+    readonly offer: HeldOffer | null;
+  } | null>(null);
   // The Agent drawer (MP-7-11): open over the page, never an address.
   const [agentOpen, setAgentOpen] = useState(false);
 
@@ -78,17 +91,30 @@ export function App(props: AppProps): ReactElement {
         props.navigate(back.address);
         return;
       }
-      setNotice(
-        `You signed in to ${next.businessKey}, and ${back.address} is an address in ` +
-          `${back.businessKey}. This is the ${next.businessKey} board. Sign in to ` +
-          `${back.businessKey} to go back to where you were.`,
-      );
+      setNotice({ held: back, offer: null });
       props.navigate(pathTo('agency:projects-board'));
+      void heldAddressOffer({
+        held: back,
+        next,
+        apiOrigin: props.apiOrigin,
+        fetch: props.fetch,
+      }).then((offer) => {
+        // Only onto the notice it was asked for: a sign-out or a switch since
+        // has replaced or cleared it.
+        setNotice((current) => (current?.held === back ? { held: back, offer } : current));
+        return offer;
+      });
     },
     [props],
   );
 
   const onSignOut = useCallback(() => {
+    const sessionId = props.sessions.session?.sessionId;
+    void signOut({
+      apiOrigin: props.apiOrigin,
+      fetch: props.fetch,
+      ...(sessionId === undefined ? {} : { sessionId }),
+    });
     props.sessions.clear();
     setSession(null);
     setNotice(null);
@@ -111,7 +137,7 @@ export function App(props: AppProps): ReactElement {
   // whole action, not only the storage clear, is gated on it still being the
   // one in hand. Identity is the test: `setSession` is the only way a session
   // gets here, and every sign-in mints a new object.
-  const endedRef = useRef<(from: Session, refusal: WireRefusal) => void>(() => undefined);
+  const endedRef = useRef<(from: Session, refusal: WireRefusal) => void>(() => {});
   const hereRef = useRef(here);
   hereRef.current = here;
   const sessionRef = useRef(session);
@@ -132,7 +158,8 @@ export function App(props: AppProps): ReactElement {
       new OperationsClient({
         origin: props.apiOrigin,
         businessKey: session?.businessKey ?? 'alpha',
-        token: session?.token ?? null,
+        signedIn: session !== null,
+        ...(session?.sessionId === undefined ? {} : { sessionId: session.sessionId }),
         fetch: props.fetch,
         onSessionEnded: (refusal) => {
           // `session` here is this client's own generation, captured when it
@@ -143,31 +170,48 @@ export function App(props: AppProps): ReactElement {
     [props.apiOrigin, props.fetch, session],
   );
 
-  const match = matchRoute(here);
-  const grantKey = grantKeyOf(session);
+  const onSwitch = (businessKey: string, address: string): void => {
+    if (session === null) return;
+    const moved = { ...session, businessKey };
+    props.sessions.set(moved);
+    setSession(moved);
+    setNotice(null);
+    props.navigate(address);
+  };
 
-  const rail: readonly RailEntry[] = Object.entries(ROUTES)
-    .filter(([, entry]) => entry.rail)
-    .map(([id, entry]) => ({
-      id,
-      label: entry.title,
-      href: entry.path,
-    }));
+  const bare = here.split(/[?#]/u)[0] ?? here;
+  const match = matchRoute(bare);
+  const at = pageAt(bare);
+  const grantKey = grantKeyOf(session);
+  const clientAccess = props.clientAccess ?? NO_CLIENT_GRANTS;
+  const refused =
+    at !== null &&
+    at.client !== null &&
+    (session === null || !clientAccess(session.businessKey, at.client));
+  const rail = railFor(at, refused);
+
+  const signIn = (
+    <SignIn
+      gotrueUrl={props.gotrueUrl}
+      apiOrigin={props.apiOrigin}
+      fetch={props.fetch}
+      onSignedIn={onSignedIn}
+      ended={props.sessions.interruption}
+    />
+  );
 
   const content = ((): ReactElement => {
+    // A manifest page with no screen yet: sign-in first, then the grant check.
+    if (match === null && at !== null) {
+      if (session === null) return signIn;
+      return refused ? <ClientRefused /> : <PagePlaceholder page={at.page} />;
+    }
     const gate = gateOf(match, session !== null);
     switch (gate.kind) {
       case 'not-found':
         return <NotFound path={here} />;
       case 'sign-in':
-        return (
-          <SignIn
-            gotrueUrl={props.gotrueUrl}
-            fetch={props.fetch}
-            onSignedIn={onSignedIn}
-            ended={props.sessions.interruption}
-          />
-        );
+        return signIn;
       case 'signed-in-already':
         return (
           <SignedInAlready
@@ -177,16 +221,35 @@ export function App(props: AppProps): ReactElement {
           />
         );
       case 'screen':
-        return drawScreen(gate.match, { client, grantKey, notice, storage: props.storage });
+        return drawScreen(gate.match, {
+          client,
+          grantKey,
+          notice:
+            notice === null || session === null ? null : (
+              <HeldAddressNotice
+                offer={notice.offer}
+                signedInTo={session.businessKey}
+                onSwitch={onSwitch}
+              />
+            ),
+          storage: props.storage,
+        });
     }
   })();
 
+  // Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a
+  // bundler that did not stamp, and the rail then says the build is unstamped.
+  // Read by name, never by index: an indexed read inlines every VITE_ setting
+  // of the build's environment into the bundle (G3).
+  const build = import.meta.env.VITE_OPS_ASTRO_BUILD ?? '';
+
   return (
     <Shell
-      face="agency"
+      face={at?.page.namespace === 'portal' ? 'client' : 'agency'}
+      build={build === '' ? null : build}
       rail={rail}
-      here={here}
-      title={match?.route.title ?? 'Not found'}
+      here={bare}
+      title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
       meta={
         session === null ? null : (
           <span className="topbar__who">
@@ -203,12 +266,14 @@ export function App(props: AppProps): ReactElement {
       // address a person can quote is worth more than a panel they cannot.
       // An open tab is announced as "Close", so pressing it leaves the address
       // for the board rather than pushing the same address again.
+      // The client face has no dock (R17).
       dock={
-        session === null
+        session === null || at?.page.namespace === 'portal'
           ? []
           : PANELS.map((panel) => ({
               id: panel.id,
               label: panel.label,
+              icon: panel.icon,
               open: panel.route === null ? agentOpen : here === pathTo(panel.route),
             }))
       }
@@ -237,25 +302,9 @@ export function App(props: AppProps): ReactElement {
         ) : undefined
       }
     >
+      {at === null || refused || session === null ? null : <RouteTabs at={at} />}
       {content}
     </Shell>
-  );
-}
-
-function NotFound(props: { readonly path: string }): ReactElement {
-  return (
-    <div className="readstate" data-outcome="not-found">
-      <p className="empty__title">No screen is registered at {props.path}.</p>
-      <p className="empty__desc">
-        The route registry is the list the application resolves through. An address that is not in
-        it does not resolve, which is a truer answer than a blank page.
-      </p>
-      <p className="empty__hint">
-        <a className="sb__addr" href={pathTo('agency:projects-board')}>
-          Go to Projects
-        </a>
-      </p>
-    </div>
   );
 }
 

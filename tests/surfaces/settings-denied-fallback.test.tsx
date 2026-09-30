@@ -36,7 +36,7 @@ const tick = async (): Promise<void> => {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-const ADA: Session = { token: 'tok-ada', businessKey: 'alpha', email: 'ada@alpha.local' };
+const ADA: Session = { businessKey: 'alpha', email: 'ada@alpha.local' };
 
 type ReadAnswer = 'rows' | 'denied' | 'unavailable';
 
@@ -48,41 +48,48 @@ interface Server {
 
 function api(): Server {
   const held: { answer: ReadAnswer } = { answer: 'unavailable' };
-  const fetch = (async (url: string | URL) => {
+  const fetch = ((url: string | URL) => {
     const at = String(url);
     if (at.endsWith('/session/capabilities')) {
-      return json({
-        ok: true,
-        personId: 'p',
-        businessKey: 'alpha',
-        grants: [{ collection: 'settings', action: 'manage' }],
-      });
+      return Promise.resolve(
+        json({
+          ok: true,
+          personId: 'p',
+          businessKey: 'alpha',
+          grants: [{ collection: 'settings', action: 'manage' }],
+        }),
+      );
     }
     if (at.endsWith('/settings/read')) {
       if (held.answer === 'denied') {
-        return json(
-          { refused: true, code: 'SCOPE_NOT_GRANTED', names: ['settings:read'], fixes: [] },
-          403,
+        return Promise.resolve(
+          json(
+            { refused: true, code: 'SCOPE_NOT_GRANTED', names: ['settings:read'], fixes: [] },
+            403,
+          ),
         );
       }
-      if (held.answer === 'unavailable') return json({ error: 'unavailable' }, 503);
-      return json({
-        ok: true,
-        settings: [
-          {
-            key: 'four_eyes_threshold',
-            value: 500,
-            valueType: 'number',
-            updatedAt: '2026-09-23T02:15:00.000Z',
-            updatedByActorId: 'actor-ada',
-          },
-        ],
-      });
+      if (held.answer === 'unavailable')
+        return Promise.resolve(json({ error: 'unavailable' }, 503));
+      return Promise.resolve(
+        json({
+          ok: true,
+          settings: [
+            {
+              key: 'four_eyes_threshold',
+              value: 500,
+              valueType: 'number',
+              updatedAt: '2026-09-23T02:15:00.000Z',
+              updatedByActorId: 'actor-ada',
+            },
+          ],
+        }),
+      );
     }
     if (at.endsWith('/settings/set_four_eyes_threshold')) {
-      return json({ recordId: 'row', revision: null, detail: { value: 7777 } });
+      return Promise.resolve(json({ recordId: 'row', revision: null, detail: { value: 7777 } }));
     }
-    throw new Error(`unrouted ${at}`);
+    return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
   return Object.assign(held, { fetch });
 }
@@ -135,7 +142,7 @@ const open = async (
         new OperationsClient({
           origin: '',
           businessKey: ADA.businessKey,
-          token: ADA.token,
+          signedIn: true,
           fetch: server.fetch,
         })
       }

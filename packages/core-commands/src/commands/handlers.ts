@@ -19,7 +19,7 @@ import { setState, writeOwnedFields } from './tasks-state.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
-import { setBusinessSetting } from './settings-write.ts';
+import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { acceptPlanOnGate } from './plan-accept.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
@@ -41,6 +41,7 @@ import { refuseChildWorkAsPerson } from './child-work-person.ts';
 import { refuseModelCallAsPerson } from './model-call-person.ts';
 import { endOnRun, topUpOnRun } from './run-answers.ts';
 import { reviseStateOnRun } from './run-state.ts';
+import { stampOwnSeen } from './inbox-seen.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -87,6 +88,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
       request.body,
       request.audience,
       request.commentType,
+      request.mentions,
     ),
 
   // The revision travels with the rest of the envelope rather than as a
@@ -146,6 +148,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // AW-11: the parent's and the helper's, on the agent prefix only.
   'run.delegate_child': refuseChildWorkAsPerson,
   'run.child_handback': refuseChildWorkAsPerson,
+  'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
+  'notifications.set_channel': setNotificationChannel,
 };
 
 function writeOwned(

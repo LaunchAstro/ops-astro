@@ -45,6 +45,9 @@ const DECLARED_READS = [
   'conversation.read',
   'definition.attribution',
   'gate.pending',
+  'inbox.count',
+  'inbox.read',
+  'inbox.unattended',
   'person.list',
   'preset.plan',
   'session.capabilities',
@@ -99,7 +102,7 @@ describe('the surface as a table', () => {
     // AW-05's budget stop answers; `definition`, AW-04's attribution by digest.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate|conversation|model|run|definition)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate|conversation|model|run|definition|inbox|notifications)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -107,8 +110,9 @@ describe('the surface as a table', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one table, read top to bottom
 describe('the surface as a table', () => {
-  it('declares the thirteen reads as reads, and everything else as a write', () => {
+  it('declares the sixteen reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

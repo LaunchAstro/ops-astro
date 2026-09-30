@@ -16,6 +16,9 @@ function server() {
   const creates: string[] = [];
   const fetch = ((url: string | URL) => {
     const at = String(url);
+    // The inbox the board screen mounts (INB-1g), answered empty.
+    if (at.endsWith('/inbox/read')) return Response.json({ ok: true, inbox: [] });
+    if (at.endsWith('/inbox/count')) return Response.json({ ok: true, owed: 0 });
     if (at.endsWith('/task/create')) {
       creates.push(at);
       return Promise.resolve(
@@ -41,7 +44,7 @@ describe('the create form, refused on authority', () => {
     const client = new OperationsClient({
       origin: '',
       businessKey: 'alpha',
-      token: 'tok',
+      signedIn: true,
       fetch: api.fetch,
     });
     const view = await mount(<Projects client={client} grantKey="alpha:mia" />);

@@ -35,7 +35,8 @@ import {
   type Schedules,
   type Work,
 } from '../runtime/schedules-harness.ts';
-import { ISSUER, SECRET, tokenFor } from '../api/fixture.ts';
+import { ISSUER, tokenFor } from '../api/fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -72,7 +73,7 @@ let unconfigured: Hono;
 const boundary = (withBroker: boolean): Hono =>
   createApi({
     database: s.db.app,
-    verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
+    verify: createSupabaseVerifier(testSignIn(ISSUER)),
     resolveBusiness: createBusinessResolver(s.db.admin),
     executeRead,
     executeCommand,

@@ -19,12 +19,18 @@ export const BROKER_ROLE = 'ops_astro_broker';
 export const OCCURRENCE_ROLE = 'ops_astro_occurrence';
 
 /**
- * The contract: what 0001-0020 grant the application group, table by table,
+ * The contract: what 0001-0048 grant the application group, table by table,
  * as `s` select, `i` insert, `u` update, `d` delete. Read from the `grant`
  * lines of the migrations, not from the catalogue this suite then checks.
  */
 const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
+  // 0045: the installation's operating business; the application reads it only.
+  ['s', 'ops.operating_business'],
+  // 0047: the API's outbox; the application inserts its four columns, and reads nothing.
+  ['i', 'ops.api_events'],
+  // 0048: the forwarder's kept alerts; the application holds nothing on them.
+  ['', 'ops.api_alerts'],
   ['s', 'ops.slots'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
@@ -57,6 +63,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'trace_export_gaps'],
   // AW-13: a retention batch is a fact, never rewritten.
   ['si', 'trace_expiry_batches'],
+  // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
+  ['si', 'inbox_attention inbox_delivery_attempts'],
+  ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
   // AW-02: a historical run is never rewritten; the application moves its
