@@ -24,7 +24,7 @@ it('I10 R4 and N6 stamp the page they exercise', () => {
   for (const [label, path, name] of [
     ['I10', 'tests/browser/i10-open-page.mjs', 'casesI10OpenPage'],
     ['R4', 'tests/browser/r4-shared-page.mjs', 'casesR4SharedPage'],
-    ['N6', 'tests/browser/cases-n6-n7.mjs', 'casesN6'],
+    ['N6', 'tests/browser/n6-fenced-revocation.mjs', 'casesN6'],
   ] as const) {
     expect(rowPassesItsPageToIdentity(path, name), `${label} must check its own page`).toBe(true);
   }

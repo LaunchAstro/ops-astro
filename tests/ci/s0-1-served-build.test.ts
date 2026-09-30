@@ -101,7 +101,7 @@ function servedBuildCases2() {
     for (const [row, path, group] of [
       ['I10', 'tests/browser/i10-open-page.mjs', 'casesI10OpenPage'],
       ['R4', 'tests/browser/r4-shared-page.mjs', 'casesR4SharedPage'],
-      ['N6', 'tests/browser/cases-n6-n7.mjs', 'casesN6'],
+      ['N6', 'tests/browser/n6-fenced-revocation.mjs', 'casesN6'],
     ] as const) {
       const file = source(path);
       const at = file.indexOf(`export async function ${group}(`);
