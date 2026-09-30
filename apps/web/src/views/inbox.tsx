@@ -20,6 +20,7 @@ import type {
   InboxReadResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
+import type { ReadState } from '../data/authorised-read.ts';
 import { useRead } from '../data/use-read.ts';
 import type { FollowInbox } from '../data/board-live.ts';
 import { RecordState } from './record-state.tsx';
@@ -132,12 +133,33 @@ function Owed(props: {
       <h2 id="inbox-heading" className="card__title">
         Inbox <CountBadge count={owed ?? 0} title="Waiting for you" />
       </h2>
-      {owed === null ? null : (
-        <p className="card__sub" data-inbox-count={owed}>
-          {owed === 1 ? '1 waiting for you' : `${String(owed)} waiting for you`}
-        </p>
-      )}
+      <OwedLine state={count.state} onRetry={count.reload} />
     </>
+  );
+}
+
+/**
+ * The count in words once read. A count that could not be read says so, as
+ * any read does: a missing count beside a waiting item would read as nothing owed.
+ */
+function OwedLine(props: {
+  readonly state: ReadState<InboxCountResult>;
+  readonly onRetry: () => void;
+}): ReactElement | null {
+  const state = props.state;
+  if (state.outcome === 'loading') return null;
+  if (state.outcome === 'ready') {
+    const owed = state.value.owed;
+    return (
+      <p className="card__sub" data-inbox-count={owed}>
+        {owed === 1 ? '1 waiting for you' : `${String(owed)} waiting for you`}
+      </p>
+    );
+  }
+  return (
+    <RecordState state={state} subject="owed count" onRetry={props.onRetry}>
+      {() => null}
+    </RecordState>
   );
 }
 
