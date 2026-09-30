@@ -190,24 +190,19 @@ function pickedUpCredential(answer: CliAnswer): string | undefined {
 }
 
 /**
- * Where a credential an answer issues is kept: a pickup's in the delegation
- * file, and a hand-over's (AW-11, the helper's) beside it, named by the child
- * delegation, so the parent's own stays. A child id that is not a uuid is not
- * a file name, and its credential is still never printed.
+ * A hand-over's helper credential (AW-11) and the child delegation that names
+ * its file. A child id that is not a uuid is not a file name, and the
+ * credential is still never printed.
  */
-function issuedCredential(
-  verb: string,
+function helperCredential(
   answer: CliAnswer,
-  delegationFile: string,
-): { readonly file: string; readonly credential: string } | undefined {
+): { readonly credential: string; readonly child: string } | undefined {
   const credential = pickedUpCredential(answer);
   if (credential === undefined) return undefined;
-  if (verb === 'task.pickup') return { file: delegationFile, credential };
-  if (verb !== 'run.delegate_child') return undefined;
   const child = (answer.body as { detail: { childDelegationId?: unknown } }).detail
     .childDelegationId;
   const named = typeof child === 'string' && /^[0-9a-f-]{36}$/u.test(child) ? child : 'unnamed';
-  return { file: `${delegationFile}.child-${named}`, credential };
+  return { credential, child: named };
 }
 
 function redact(answer: CliAnswer, where: string): unknown {
@@ -343,21 +338,39 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
       return EXIT.transport;
     }
     const ok = answer.status >= 200 && answer.status < 300 && answer.body !== undefined;
-    const issued = agent && ok ? issuedCredential(verb, answer, delegationFile) : undefined;
-    if (issued !== undefined) {
+    const picked = agent && verb === 'task.pickup' && ok ? pickedUpCredential(answer) : undefined;
+    if (picked !== undefined) {
       try {
-        writeSecret(issued.file, issued.credential);
+        writeSecret(delegationFile, picked);
       } catch (cause) {
-        // The call committed and only this machine failed, so this is not a
+        // The claim committed and only this machine failed, so this is not a
         // refusal. The credential is never printed; a replay returns it.
         io.err(
-          `cli: ${verb} applied but its credential could not be saved to ${issued.file}: ` +
+          `cli: pickup applied but its credential could not be saved to ${delegationFile}: ` +
             (cause as Error).message,
         );
         io.err(`cli: operationId ${String(request['operationId'])}; ${REPLAY}`);
         return EXIT.fault;
       }
-      io.out(JSON.stringify(redact(answer, issued.file)));
+      io.out(JSON.stringify(redact(answer, delegationFile)));
+      return EXIT.ok;
+    }
+    // AW-11: the helper's credential, saved beside the parent's and never printed.
+    const handed =
+      agent && verb === 'run.delegate_child' && ok ? helperCredential(answer) : undefined;
+    if (handed !== undefined) {
+      const file = `${delegationFile}.child-${handed.child}`;
+      try {
+        writeSecret(file, handed.credential);
+      } catch (cause) {
+        io.err(
+          `cli: hand-over applied but its helper's credential could not be saved to ${file}: ` +
+            (cause as Error).message,
+        );
+        io.err(`cli: operationId ${String(request['operationId'])}; ${REPLAY}`);
+        return EXIT.fault;
+      }
+      io.out(JSON.stringify(redact(answer, file)));
       return EXIT.ok;
     }
     // Only the credential this handback was sent with is over: an older one
