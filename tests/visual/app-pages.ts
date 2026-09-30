@@ -59,6 +59,10 @@ export async function captureBuiltPages(options: {
   widths: readonly number[];
   themes: readonly Theme[];
   out: string;
+  /** Only these pages (a ticket's own captures); every built page when not given. */
+  pages?: readonly string[];
+  /** Made-up answers to the app's reads, by the read's address (`operations/read`). */
+  answers?: Readonly<Record<string, unknown>>;
 }): Promise<PageShot[]> {
   const { browser, packet, app, session } = options;
   const { mask } = JSON.parse(
@@ -71,6 +75,7 @@ export async function captureBuiltPages(options: {
       // A public page (sign-in) is drawn signed out, a working page signed in.
       const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
       const signedIn = await openSide(browser, packet, width, { app, session, colorScheme: theme });
+      await answer(signedIn, options.answers ?? {});
       try {
         const sides = { signedOut, signedIn };
         shots.push(...(await capturePages(sides, { ...options, mask, width, theme })));
@@ -80,6 +85,18 @@ export async function captureBuiltPages(options: {
     }
   }
   return shots;
+}
+
+/** Each read named answers its made-up body; a route added last is asked first. */
+export async function answer(
+  side: Side,
+  answers: Readonly<Record<string, unknown>>,
+): Promise<void> {
+  for (const [read, body] of Object.entries(answers)) {
+    await side.context.route(`**/api/b/*/${read}`, (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) }),
+    );
+  }
 }
 
 /** Which screen the app drew: its sign-in form, a gate, or the page itself. */
@@ -94,11 +111,19 @@ export function screenOf(): string {
 /** Every built page at one width in one theme, each on the side its route asks for. */
 async function capturePages(
   sides: { signedOut: Side; signedIn: Side },
-  at: { packet: Packet; app: URL; width: number; theme: Theme; mask: string[]; out: string },
+  at: {
+    packet: Packet;
+    app: URL;
+    width: number;
+    theme: Theme;
+    mask: string[];
+    out: string;
+    pages?: readonly string[] | undefined;
+  },
 ): Promise<PageShot[]> {
   const { packet, app, width, theme, mask, out } = at;
   const shots: PageShot[] = [];
-  for (const id of builtPages()) {
+  for (const id of at.pages ?? builtPages()) {
     const name = `${id}@${width}-${theme}`;
     const address = addressOf(id, { key: 'T-1' }) ?? '/';
     const side = needsSession(id) ? sides.signedIn : sides.signedOut;
