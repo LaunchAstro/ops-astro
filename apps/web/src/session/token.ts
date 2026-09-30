@@ -111,7 +111,7 @@ const KEY = 'ops-astro.session';
 export const settingsCacheKey = (businessKey: string): string =>
   `ops-astro.settings.${businessKey}`;
 
-/** Where the dock keeps its open set, per business. Sign-out removes it. */
+/** Where the dock keeps its open set, per business. A switch or sign-out removes it. */
 export const dockKey = (businessKey: string): string => `ops-astro.dock.${businessKey}`;
 
 /**
@@ -214,6 +214,12 @@ export class SessionStore {
   set(session: Session): void {
     // Held in memory first, so a storage that refuses cannot take the sign-in
     // with it; the reload will ask again.
+    const leaving = this.#session?.businessKey;
+    // A switch keeps the sign-in: the dock of the business it leaves goes now,
+    // or sign-out, which clears only the business it ends in, would miss it.
+    if (leaving !== undefined && leaving !== session.businessKey) {
+      jsonSlot(this.#storage, dockKey(leaving), isRecord).remove();
+    }
     this.#session = session;
     this.#kept.write(session);
   }
