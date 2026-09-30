@@ -511,6 +511,22 @@ export interface BoardTask extends TaskSummary {
   readonly awaitingDecision: boolean;
 }
 
+/**
+ * One of the reader's own to-dos (MP-7-1, CS-7.23): an open task assigned to
+ * the reader, in their business, with its tags and the count of top-level
+ * client messages owed by the team (DT-19 `owed`), which filters the list.
+ */
+export interface TodoView extends TaskSummary {
+  readonly tags: readonly TagView[];
+  readonly waitingComments: number;
+}
+
+/** `task.todos`: the reader's own open tasks, whatever board they sit on. */
+export interface TaskTodosResult {
+  readonly ok: true;
+  readonly todos: readonly TodoView[];
+}
+
 export interface TaskBoardResult {
   readonly ok: true;
   /** The board's tasks the caller's grants reach. */

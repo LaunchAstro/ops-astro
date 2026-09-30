@@ -129,7 +129,9 @@ export type CommandName =
   | 'tag.create'
   | 'task.add_tag'
   | 'task.remove_tag'
-  | 'tag.list';
+  | 'tag.list'
+  // The reader's own to-dos (MP-7-1): open tasks assigned to the reader.
+  | 'task.todos';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -683,6 +685,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     }),
   ),
   read('tag.list', TASK_COLLECTION),
+  read('task.todos', TASK_COLLECTION),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));

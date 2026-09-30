@@ -65,6 +65,8 @@ export type {
   BoardTask,
   StepView,
   TaskBoardResult,
+  TaskTodosResult,
+  TodoView,
   TaskDetail,
   TaskEnvelope,
   TaskExecution,
