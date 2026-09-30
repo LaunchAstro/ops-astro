@@ -1,0 +1,96 @@
+{
+  "about": "Mockup values for tests/visual/look/inbox.ts, from look.ts --measure.",
+  "mockup": "7066bad7402c97b8a039447ad87f387cd719208c",
+  "probes": {
+    "inbox.summary": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "12.8px",
+        "font-weight": "400",
+        "line-height": "19.84px",
+        "color": "rgba(107,99,93,255)"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "12.8px",
+        "font-weight": "400",
+        "line-height": "19.84px",
+        "color": "rgba(248,248,248,184)"
+      }
+    },
+    "inbox.group-name": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "13.6px",
+        "font-weight": "500",
+        "line-height": "15.64px",
+        "color": "rgba(0,0,0,255)",
+        "letter-spacing": "normal",
+        "text-transform": "none"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "13.6px",
+        "font-weight": "500",
+        "line-height": "15.64px",
+        "color": "rgba(248,248,248,255)",
+        "letter-spacing": "normal",
+        "text-transform": "none"
+      }
+    },
+    "inbox.row": {
+      "1480-light": {
+        "padding-top": "4px",
+        "padding-bottom": "4px",
+        "padding-left": "12px",
+        "border-left-width": "2px"
+      },
+      "1480-dark": {
+        "padding-top": "4px",
+        "padding-bottom": "4px",
+        "padding-left": "12px",
+        "border-left-width": "2px"
+      }
+    },
+    "inbox.band": {
+      "1480-light": {
+        "row-gap": "8px"
+      },
+      "1480-dark": {
+        "row-gap": "8px"
+      }
+    },
+    "inbox.row-text": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "12.8px",
+        "font-weight": "400",
+        "line-height": "18.56px",
+        "color": "rgba(0,0,0,255)"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "12.8px",
+        "font-weight": "400",
+        "line-height": "18.56px",
+        "color": "rgba(248,248,248,255)"
+      }
+    },
+    "inbox.row-meta": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "11px",
+        "font-weight": "400",
+        "line-height": "17.05px",
+        "color": "rgba(140,133,127,255)"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "11px",
+        "font-weight": "400",
+        "line-height": "17.05px",
+        "color": "rgba(248,248,248,140)"
+      }
+    }
+  }
+}
