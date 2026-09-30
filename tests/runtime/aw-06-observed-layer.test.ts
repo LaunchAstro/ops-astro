@@ -200,6 +200,3 @@ it('AW-06 no authority: a reader with read alone and a reader with every grant g
     expect(key, key).not.toMatch(/can|allow|permit|grant|authori|action|decide/iu);
   }
 });
-
-it.todo('unplanned_is_shown (LEANS-ON SL12 AW-04: the bound structured plan record)');
-it.todo('projection_refuses_unbound_record (LEANS-ON SL12 AW-04: the plan decision binds it)');
