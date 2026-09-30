@@ -77,6 +77,8 @@ export const TASKS: readonly TaskSummary[] = [
 
 const DETAIL: InternalTaskDetail = {
   ...(TASKS[0] as TaskSummary),
+  // The token ledger (MP-6-5) draws nothing before an approval.
+  ledger: null,
   description:
     'Pull the signed scope, the two variations and the renewal terms into one pack for review.',
   history: [
@@ -138,7 +140,14 @@ const READS = {
   } satisfies CapabilitiesResult,
   'task.queue': { ok: true, queue: [], alerts: [], outages: [] } satisfies QueueResult,
   'task.execution': {
-    execution: { outcome: 'no-run', runs: [], events: [], complete: true, next: null },
+    execution: {
+      outcome: 'no-run',
+      runs: [],
+      events: [],
+      complete: true,
+      next: null,
+      graph: { plan: 'unbound', sourceRevision: 0, complete: true, nodes: [] },
+    },
   } satisfies TaskExecutionResult,
   'inbox.read': {
     ok: true,
