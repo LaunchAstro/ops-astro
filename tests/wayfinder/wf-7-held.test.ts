@@ -17,7 +17,8 @@
 // - The run's lease and checks (SL12 U31, MP-6-1) came with the SL12 stack;
 //   the lines that ride on the run are still to build on it.
 // - `ticket resolved (answer, gist)` inside the delegation and
-//   `WF-7 refusal task:write` are `wf-7-resolve.test.ts`.
+//   `WF-7 refusal task:write` are `wf-7-resolve.test.ts`; `WF-7 isolation`
+//   is `wf-7-isolation.test.ts`.
 // - The skill pinned by digest: the digest is settled (the `skills` CLI's
 //   folder hash, `skill-digest.ts`; the research skill matches its pin), but
 //   the line is the run pinning it, so it waits on the run (U37, U100).
@@ -25,7 +26,6 @@
 import { describe, it } from 'vitest';
 
 describe('WF-7 held (to build on the run; LEANS-ON the research ceiling, SL04 U99, C59)', () => {
-  it.todo('WF-7 isolation');
   it.todo('WF-7 canary');
   it.todo('WF-7 hostile provider');
   it.todo('WF-7 recent sign-in');

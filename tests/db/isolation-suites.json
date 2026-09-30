@@ -16,6 +16,7 @@
     "tests/web/wf-4-isolation.test.tsx",
     "tests/web/wf-5-isolation.test.tsx",
     "tests/wayfinder/wf-6-isolation.test.ts",
+    "tests/wayfinder/wf-7-isolation.test.ts",
     "tests/cli/api-5-isolation.test.ts",
     "tests/api/mp-6-1-isolation.test.ts",
     "tests/api/mp-6-4-isolation.test.ts",
