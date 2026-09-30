@@ -115,7 +115,8 @@
     "MP-6-2 (SL12, session 12) names mp-6-2-states-read (the state revision lists on the task read's ledger: each kept version of the task's runs, newest first, with its actor and time; a task reads only its own runs' states, and another business, another client and another person's agent read none) as conformance",
     "AW-03 (SL12, session 12) names aw-03-origin (the origin setter: a task created from the owner's conversation names it on its creation audit event, one created without names none; another person's, another business's or a made-up conversation NOT_FOUND alike and no task made; a client and an agent refused; the wrap-up's tasks created counts and points at them) as conformance",
     "C54 (SL12, session 10) names c54-isolation (the three money acts on an unknown effect and the top-up, across another business, another client in the same business and the agent under a live delegation, statuses checked, no foreign task, attempt, hold or envelope id in any body, the hold unmoved) as an invariant, and c54-money (refusal billing:decide, audit readback of each act on an intact chain, and the top-up approver with two approvers at once) as conformance",
-    "SL11-16 leaves aw-13-local-target.test.ts unnamed: it opens a database only against a running local trace target (TRACE_TARGET_ENV_FILE from scripts/local/trace-target.ts up), which the required checks never start; aw-13-switch.test.ts is named as an invariant."
+    "SL11-16 leaves aw-13-local-target.test.ts unnamed: it opens a database only against a running local trace target (TRACE_TARGET_ENV_FILE from scripts/local/trace-target.ts up), which the required checks never start; aw-13-switch.test.ts is named as an invariant.",
+    "T4e REV185B2: role-case-matrix-fixture-clients proves T4-N2's matrix world holds T4a's two clients with one record grant each in both businesses, and role-case-matrix gains the client-to-client case (another client's task, in either business, answers as an id never issued). t2g-decide-parity's crossing now also finds the undecided gate holding its task open (GATE_PENDING on both surfaces) before the grant holder decides; t3f-expired-lease's business crossing settles its own expired lease marked expired."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -172,6 +173,7 @@
     "tests/runtime/decision-abort.test.ts",
     "tests/acceptance/surface-inventory.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
+    "tests/acceptance/role-case-matrix-fixture-clients.test.ts",
     "tests/acceptance/protected-fields.test.ts",
     "tests/acceptance/predicate-rls.test.ts",
     "tests/api/settings-revision-routes.test.ts",
@@ -300,7 +302,7 @@
     "tests/runtime/t3f-lease-edges.test.ts",
     "tests/api/t3f-races.test.ts",
     "tests/fixture/fixture-shape.test.ts",
-    "tests/fixture/snapshot-clone-and-privileges.test.ts",
+    "tests/fixture/snapshot/snapshot-clone-and-privileges.test.ts",
     "tests/custody/c31-credentials.test.ts",
     "tests/connections/mp-14-7a-fleet.test.ts",
     "tests/costs/mp-14-9-skill-costs.test.ts",

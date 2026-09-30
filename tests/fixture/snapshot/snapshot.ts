@@ -10,10 +10,10 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
-import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
-import { createFreshDatabase, databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { seedFixture } from './generate.ts';
-import { FIXTURE_SHAPE } from './shape.ts';
+import { connectAsAdmin } from '../../../packages/core-records/src/tenancy/database.ts';
+import { createFreshDatabase, databaseUrlFromEnvironment } from '../../support/fresh-database.ts';
+import { seedFixture } from '../generate.ts';
+import { FIXTURE_SHAPE } from '../shape.ts';
 
 const sources = [
   ...readdirSync('migrations')
@@ -31,8 +31,10 @@ const serverUrl = databaseUrlFromEnvironment() ?? '';
 
 /**
  * A template copy, or, while anything is connected to the template (55006),
- * a dump and restore inside the local server's container (RN-09). Names go
- * in as positional arguments, never into the shell text.
+ * a dump and restore inside the local server's container (RN-09). That
+ * container is `FIXTURE_PG_CONTAINER`, and the copy refuses one that is not
+ * DATABASE_URL's own server. Names go in as positional arguments, never into
+ * the shell text.
  */
 async function copy(target: string): Promise<string> {
   const via = await copyData(target);
@@ -71,13 +73,61 @@ async function copyData(target: string): Promise<string> {
   }
   const user = decodeURIComponent(new URL(serverUrl).username);
   const container = process.env['FIXTURE_PG_CONTAINER'] ?? 'ops-astro-local-pg';
-  const script =
-    'createdb -U "$1" -T template0 "$3" && pg_dump -U "$1" -Fc "$2" | pg_restore -U "$1" -d "$3"';
-  const args = ['exec', container, 'sh', '-c', script, 'copy', user, template, target];
-  const run = spawnSync('docker', args, { stdio: ['ignore', 'ignore', 'inherit'] });
-  if (run.status !== 0) throw new Error(`fixture: dump and restore failed (${String(run.status)})`);
+  // A container's name or id, never a word docker would read as its own option.
+  if (!/^[A-Za-z0-9][\w.-]*$/u.test(container)) {
+    throw new Error(
+      `fixture: FIXTURE_PG_CONTAINER ${JSON.stringify(container)} is not a container name or id`,
+    );
+  }
+  // DATABASE_URL names the server under test; the admin URL, read first
+  // for the connection, may name another.
+  const databaseUrl = process.env['DATABASE_URL'] ?? '';
+  const identity = await identityOf(databaseUrl === '' ? serverUrl : databaseUrl);
+  if (identity === '') throw new Error('fixture: the DATABASE_URL server gave no identity');
+  const adminIdentity = await identityOf(serverUrl);
+  // Before it creates anything, the container proves it runs DATABASE_URL's
+  // server, asking over the socket the copy then uses, and the admin server
+  // the template lives on must be that server too.
+  const script = [
+    '[ -n "$4" ] && [ "$(psql -U "$1" -d postgres -XAtc "$5")" = "$4" ] || {',
+    '  printf "fixture: container %s is not the DATABASE_URL server;' +
+      ' set FIXTURE_PG_CONTAINER to its container. Nothing was created." "$6" >&2; exit 1; }',
+    '[ "$7" = "$4" ] || {',
+    '  printf "fixture: DATABASE_ADMIN_URL is not the DATABASE_URL server. Nothing was created." >&2; exit 1; }',
+    'createdb -U "$1" -T template0 "$3" && pg_dump -U "$1" -Fc "$2" | pg_restore -U "$1" -d "$3"',
+  ].join('\n');
+  const positional = [user, template, target, identity, IDENTITY, container, adminIdentity];
+  const args = ['exec', container, 'sh', '-c', script, 'copy', ...positional];
+  const run = spawnSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'] });
+  if (run.status !== 0) {
+    // A docker that never started has no stderr to read.
+    const why = (run.stderr as string | null)?.trim() ?? '';
+    throw new Error(`fixture: dump and restore failed (${String(run.status)})${why && `: ${why}`}`);
+  }
   return 'dump-restore';
 }
+
+/** The identity of the server at `url`, read over a connection of its own. */
+async function identityOf(url: string): Promise<string> {
+  if (url === serverUrl) {
+    const [row] = await server.execute<{ identity: string | null }>(IDENTITY);
+    return row?.identity ?? '';
+  }
+  const other = connectAsAdmin(url, { source: 'harness' });
+  try {
+    const [row] = await other.execute<{ identity: string | null }>(IDENTITY);
+    return row?.identity ?? '';
+  } finally {
+    await other.close();
+  }
+}
+
+/**
+ * A server's identity: its cluster's system identifier and the start of its
+ * postmaster. A copy of the cluster shares the first; its start tells them apart.
+ */
+const IDENTITY = `select system_identifier::text || '|' ||
+  extract(epoch from pg_postmaster_start_time())::text as identity from pg_control_system()`;
 const server = connectAsAdmin(serverUrl, { source: 'harness' });
 const [verb, target] = process.argv.slice(2);
 try {
