@@ -1,7 +1,0 @@
-{
-  "comment": [
-    "Seconds each named suite took in a hosted `database conformance` shard, read from the runner's 'moved the database counter by N in Ss' lines.",
-    "Only the balance of the shards reads this (scripts/db-shards.mjs); a suite missing here still runs, weighted at the median. Refresh it from a recent run when the shards drift apart."
-  ],
-  "seconds": {}
-}

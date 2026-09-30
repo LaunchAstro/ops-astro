@@ -3,11 +3,20 @@
 // each with its own Postgres. Splitting a gate is how a suite gets dropped
 // quietly, so this proves the split runs every suite once: the shards' lists
 // put together are the manifest's list, no suite is in two shards, a suite
-// named later lands in a shard without anyone editing the timings, and the
-// aggregate keeps the required check's name and fails unless every shard passed.
+// named later lands in a shard without anyone editing the timings, a suite
+// split into parts runs each case in exactly one part, and the aggregate keeps
+// the required check's name and fails unless every shard passed.
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
-import { assignShards, parseShard, readTimings } from '../../scripts/db-shards.mjs';
+import {
+  assignShards,
+  inPart,
+  itemOf,
+  parseShard,
+  planItems,
+  readPlan,
+  suitePart,
+} from '../../scripts/db-shards.mjs';
 
 const read = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
@@ -17,7 +26,9 @@ const manifest = JSON.parse(read('tests/db/named-suites.json')) as {
   conformance: string[];
 };
 const named = [...manifest.invariant, ...manifest.conformance];
-const timings = readTimings(new URL('../../tests/db/suite-timings.json', import.meta.url));
+const plan = readPlan(new URL('../../tests/db/shard-plan.json', import.meta.url));
+const items = planItems(named, plan.parts);
+const timings = plan.seconds;
 const ci = read('.github/workflows/ci.yml');
 
 /** One job's block of ci.yml, from its key to the next job's key. */
@@ -47,11 +58,21 @@ it('the matrix numbers its shards 1 to n, and the runner is told which of n it i
   expect(shardJob).toContain('FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}');
 });
 
-it('every named suite runs in exactly one shard, and the shards together are the manifest', () => {
-  const shards = assignShards(named, timings, shardCount);
+it('every run item runs in exactly one shard, and the shards together are the manifest', () => {
+  const shards = assignShards(items, timings, shardCount);
   expect(shards).toHaveLength(shardCount);
   for (const shard of shards) expect(shard.length).toBeGreaterThan(0);
-  expect(sorted(shards.flat())).toEqual(sorted(named));
+  expect(sorted(shards.flat())).toEqual(sorted(items));
+  // Every named suite is an item, or all k of its parts are.
+  expect(sorted([...new Set(items.map((item) => itemOf(item).suite))])).toEqual(
+    sorted([...new Set(named)]),
+  );
+  for (const [suite, count] of Object.entries(plan.parts)) {
+    expect(named, `${suite} is split but not named`).toContain(suite);
+    expect(items.filter((item) => itemOf(item).suite === suite).map((i) => itemOf(i).part)).toEqual(
+      Array.from({ length: count }, (_, i) => `${String(i + 1)}/${String(count)}`),
+    );
+  }
   const seen = new Map<string, number>();
   shards.forEach((shard, i) => {
     for (const suite of shard) {
@@ -66,9 +87,9 @@ it('every named suite runs in exactly one shard, and the shards together are the
 
 it('a suite named later is assigned to one shard without a timing of its own', () => {
   const added = 'tests/db/named-later.test.ts';
-  const shards = assignShards([...named, added], timings, shardCount);
+  const shards = assignShards([...items, added], timings, shardCount);
   expect(shards.filter((shard) => shard.includes(added))).toHaveLength(1);
-  expect(sorted(shards.flat())).toEqual(sorted([...named, added]));
+  expect(sorted(shards.flat())).toEqual(sorted([...items, added]));
 });
 
 it('the split is balanced by measured time, not by count', () => {
@@ -76,6 +97,33 @@ it('the split is balanced by measured time, not by count', () => {
   expect(shards).toEqual([['a'], ['b', 'c', 'd']]);
   // Each shard keeps the manifest's order.
   expect(assignShards(['z', 'y', 'x'], {}, 1)).toEqual([['z', 'y', 'x']]);
+});
+
+it('a split suite runs each case in exactly one part, and the whole suite when unset', () => {
+  for (const count of [...Object.values(plan.parts), 2, 7]) {
+    for (const cases of [1, 7, 63, 2835]) {
+      const owners = Array.from({ length: cases }, (_, i) =>
+        Array.from({ length: count }, (__, p) => p + 1).filter((index) =>
+          inPart(i, { index, count }),
+        ),
+      );
+      expect(owners.filter((o) => o.length !== 1)).toEqual([]);
+    }
+  }
+  expect(suitePart(process.env['SUITE_PART_UNSET_HERE'])).toEqual({ index: 1, count: 1 });
+  expect(suitePart('')).toEqual({ index: 1, count: 1 });
+  expect(suitePart('2/6')).toEqual({ index: 2, count: 6 });
+  expect(() => suitePart('7/6')).toThrow();
+  expect(() => planItems(['a'], { a: 1 })).toThrow();
+  // The split suite takes its part from SUITE_PART and runs only its cells.
+  const d06 = read('tests/acceptance/d06-generated.test.ts');
+  expect(Object.keys(plan.parts)).toEqual(['tests/acceptance/d06-generated.test.ts']);
+  expect(d06).toContain("const PART = suitePart(process.env['SUITE_PART']);");
+  expect(d06).toContain('TOP_LEVEL_CELLS.filter((_, i) => inPart(i, PART))');
+  expect(d06).toContain('PAYLOAD_CELLS.filter((_, i) => inPart(i, PART))');
+  expect(d06).toContain('it.each(TOP_CELLS)(');
+  expect(d06).toContain('it.each(FIELD_CELLS)(');
+  expect(d06).toContain('expect(tally.total()).toBe(TOP_CELLS.length + FIELD_CELLS.length);');
 });
 
 it('a shard argument that is not i of n is refused', () => {
