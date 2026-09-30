@@ -10,11 +10,14 @@
 // — the words and tones a state may print — and not as a source of rows.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Shell, type RailEntry } from '@launchastro/ui';
-import { ROUTES, gateOf, matchRoute, pathTo } from './routes.ts';
+import { Shell } from '@launchastro/ui';
+import { gateOf, matchRoute, pathTo } from './routes.ts';
+import { NO_CLIENT_GRANTS, canonicalOf, pageAt, type ClientAccess } from './manifest.ts';
+import { ClientRefused, NotFound, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
+import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { PANELS } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
-import { grantKeyOf, type Session, type SessionStore } from './session/token.ts';
+import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { drawScreen } from './screen-registry.tsx';
 
@@ -30,6 +33,8 @@ export interface AppProps {
   readonly fetch: typeof globalThis.fetch;
   /** This tab's storage, read once by the entry, or null where it is blocked. */
   readonly storage: Storage | null;
+  /** Which clients the session may open. None until MP-10-1 supplies client records. */
+  readonly clientAccess?: ClientAccess;
 }
 
 export function App(props: AppProps): ReactElement {
@@ -39,18 +44,25 @@ export function App(props: AppProps): ReactElement {
   // a person arrives. It leads to the board when there is a session and to
   // sign-in when there is not, and the address bar is corrected to say so, so
   // a reload lands on the same place a link would.
+  // A legacy address is answered with its canonical one the same way, so the
+  // address bar, the rail and a remembered interruption never hold a legacy one.
   const here =
-    props.path === '/'
+    canonicalOf(props.path) ??
+    (props.path === '/'
       ? pathTo(session === null ? 'agency:sign-in' : 'agency:projects-board')
-      : props.path;
+      : props.path);
   const navigate = props.navigate;
   useEffect(() => {
     if (here !== props.path) navigate(here);
   }, [here, props.path, navigate]);
 
   // Why the board was reached instead of the address that was held. Drawn on
-  // the board and nowhere else, and gone when this session is.
-  const [notice, setNotice] = useState<string | null>(null);
+  // the board and nowhere else, and gone when this session is. The offer is the
+  // server's answer on whether to name the business the address belongs to.
+  const [notice, setNotice] = useState<{
+    readonly held: Interruption;
+    readonly offer: HeldOffer | null;
+  } | null>(null);
 
   const onSignedIn = useCallback(
     (next: Session) => {
@@ -75,12 +87,19 @@ export function App(props: AppProps): ReactElement {
         props.navigate(back.address);
         return;
       }
-      setNotice(
-        `You signed in to ${next.businessKey}, and ${back.address} is an address in ` +
-          `${back.businessKey}. This is the ${next.businessKey} board. Sign in to ` +
-          `${back.businessKey} to go back to where you were.`,
-      );
+      setNotice({ held: back, offer: null });
       props.navigate(pathTo('agency:projects-board'));
+      void heldAddressOffer({
+        held: back,
+        next,
+        apiOrigin: props.apiOrigin,
+        fetch: props.fetch,
+      }).then((offer) => {
+        // Only onto the notice it was asked for: a sign-out or a switch since
+        // has replaced or cleared it.
+        setNotice((current) => (current?.held === back ? { held: back, offer } : current));
+        return offer;
+      });
     },
     [props],
   );
@@ -140,31 +159,47 @@ export function App(props: AppProps): ReactElement {
     [props.apiOrigin, props.fetch, session],
   );
 
-  const match = matchRoute(here);
-  const grantKey = grantKeyOf(session);
+  const onSwitch = (businessKey: string, address: string): void => {
+    if (session === null) return;
+    const moved = { ...session, businessKey };
+    props.sessions.set(moved);
+    setSession(moved);
+    setNotice(null);
+    props.navigate(address);
+  };
 
-  const rail: readonly RailEntry[] = Object.entries(ROUTES)
-    .filter(([, entry]) => entry.rail)
-    .map(([id, entry]) => ({
-      id,
-      label: entry.title,
-      href: entry.path,
-    }));
+  const bare = here.split(/[?#]/u)[0] ?? here;
+  const match = matchRoute(bare);
+  const at = pageAt(bare);
+  const grantKey = grantKeyOf(session);
+  const clientAccess = props.clientAccess ?? NO_CLIENT_GRANTS;
+  const refused =
+    at !== null &&
+    at.client !== null &&
+    (session === null || !clientAccess(session.businessKey, at.client));
+  const rail = railFor(at, refused);
+
+  const signIn = (
+    <SignIn
+      gotrueUrl={props.gotrueUrl}
+      fetch={props.fetch}
+      onSignedIn={onSignedIn}
+      ended={props.sessions.interruption}
+    />
+  );
 
   const content = ((): ReactElement => {
+    // A manifest page with no screen yet: sign-in first, then the grant check.
+    if (match === null && at !== null) {
+      if (session === null) return signIn;
+      return refused ? <ClientRefused /> : <PagePlaceholder page={at.page} />;
+    }
     const gate = gateOf(match, session !== null);
     switch (gate.kind) {
       case 'not-found':
         return <NotFound path={here} />;
       case 'sign-in':
-        return (
-          <SignIn
-            gotrueUrl={props.gotrueUrl}
-            fetch={props.fetch}
-            onSignedIn={onSignedIn}
-            ended={props.sessions.interruption}
-          />
-        );
+        return signIn;
       case 'signed-in-already':
         return (
           <SignedInAlready
@@ -174,16 +209,28 @@ export function App(props: AppProps): ReactElement {
           />
         );
       case 'screen':
-        return drawScreen(gate.match, { client, grantKey, notice, storage: props.storage });
+        return drawScreen(gate.match, {
+          client,
+          grantKey,
+          notice:
+            notice === null || session === null ? null : (
+              <HeldAddressNotice
+                offer={notice.offer}
+                signedInTo={session.businessKey}
+                onSwitch={onSwitch}
+              />
+            ),
+          storage: props.storage,
+        });
     }
   })();
 
   return (
     <Shell
-      face="agency"
+      face={at?.page.namespace === 'portal' ? 'client' : 'agency'}
       rail={rail}
-      here={here}
-      title={match?.route.title ?? 'Not found'}
+      here={bare}
+      title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
       meta={
         session === null ? null : (
           <span className="topbar__who">
@@ -200,8 +247,9 @@ export function App(props: AppProps): ReactElement {
       // address a person can quote is worth more than a panel they cannot.
       // An open tab is announced as "Close", so pressing it leaves the address
       // for the board rather than pushing the same address again.
+      // The client face has no dock (R17).
       dock={
-        session === null
+        session === null || at?.page.namespace === 'portal'
           ? []
           : PANELS.map((panel) => ({
               id: panel.id,
@@ -217,25 +265,9 @@ export function App(props: AppProps): ReactElement {
       }}
       seated={false}
     >
+      {at === null || refused || session === null ? null : <RouteTabs at={at} />}
       {content}
     </Shell>
-  );
-}
-
-function NotFound(props: { readonly path: string }): ReactElement {
-  return (
-    <div className="readstate" data-outcome="not-found">
-      <p className="empty__title">No screen is registered at {props.path}.</p>
-      <p className="empty__desc">
-        The route registry is the list the application resolves through. An address that is not in
-        it does not resolve, which is a truer answer than a blank page.
-      </p>
-      <p className="empty__hint">
-        <a className="sb__addr" href={pathTo('agency:projects-board')}>
-          Go to Projects
-        </a>
-      </p>
-    </div>
   );
 }
 

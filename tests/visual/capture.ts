@@ -16,7 +16,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import type { Browser, BrowserContext, Page, Route } from 'playwright';
+import type { Browser, BrowserContext, BrowserContextOptions, Page, Route } from 'playwright';
 import { fontCache, readAssets, type Packet } from './packet.ts';
 
 export type State = {
@@ -35,6 +35,8 @@ export type Catalogue = {
   screenshots: string;
   mask: string[];
   drift: { state: string; control: string; token: string };
+  /** The app-only drift mode's page (a route id), control, token and theme. */
+  appDrift: { page: string; control: string; token: string; theme: string; note: string };
   states: State[];
 };
 export type Side = { context: BrowserContext; external: Set<string>; unresolved: Set<string> };
@@ -92,25 +94,39 @@ function serveMockup(
   return route.fulfill({ body: bytes, contentType: typeOf(path) });
 }
 
-/** One side of the comparison: the mockup, or the app at a local address. */
-export async function openSide(
-  browser: Browser,
-  packet: Packet,
-  width: number,
-  source: { mockupDir: string; tree: string } | { app: URL },
-): Promise<Side> {
-  const context = await browser.newContext({
-    viewport: { width, height: packet.height },
-    deviceScaleFactor: 1,
-    colorScheme: 'light',
-    reducedMotion: 'reduce',
-    locale: 'en-AU',
-    timezoneId: 'Australia/Brisbane',
-    serviceWorkers: 'block',
-  });
-  const side: Side = { context, external: new Set(), unresolved: new Set() };
+/**
+ * A signed-in local fixture session (T4b1), given as a Playwright storage-state
+ * file. The app keeps its session in `sessionStorage`, which storage state does
+ * not carry, so the file's storage entries for the app's own origin are the
+ * session store's contents: they are set in `sessionStorage` before the app's
+ * first script runs, and never in `localStorage`. Its cookies are kept.
+ */
+function sessionOf(
+  file: string,
+  origin: string,
+): { cookies: StorageState['cookies']; entries: [string, string][] } {
+  const state = JSON.parse(readFileSync(file, 'utf8')) as StorageState;
+  const entries = state.origins
+    .filter((one) => one.origin === origin)
+    .flatMap((one) => one.localStorage.map((item): [string, string] => [item.name, item.value]));
+  if (entries.length === 0) {
+    throw new Error(`visual: the session file holds no session for ${origin}`);
+  }
+  return { cookies: state.cookies, entries };
+}
+type StorageState = {
+  cookies: Exclude<BrowserContextOptions['storageState'], string | undefined>['cookies'];
+  origins: { origin: string; localStorage: { name: string; value: string }[] }[];
+};
+
+type SideSource =
+  | { mockupDir: string; tree: string }
+  | { app: URL; session?: string | undefined; colorScheme?: 'light' | 'dark' };
+
+/** Each request a side makes: bundled fonts, pinned sheets, its own origin, or refused. */
+function routeOf(packet: Packet, source: SideSource, side: Side): (route: Route) => Promise<void> {
   const blobs = new Map<string, Buffer>();
-  await context.route('**/*', (route: Route) => {
+  return (route: Route) => {
     const url = new URL(route.request().url());
     const known = packet.external[url.href];
     if (url.origin === ASSET_ORIGIN) {
@@ -128,7 +144,41 @@ export async function openSide(
     }
     side.unresolved.add(url.href);
     return route.abort('blockedbyclient');
+  };
+}
+
+/** One side of the comparison: the mockup, or the app at a local address. */
+export async function openSide(
+  browser: Browser,
+  packet: Packet,
+  width: number,
+  source: SideSource,
+): Promise<Side> {
+  const session =
+    'app' in source && source.session !== undefined
+      ? sessionOf(source.session, source.app.origin)
+      : undefined;
+  const context = await browser.newContext({
+    ...(session === undefined ? {} : { storageState: { cookies: session.cookies, origins: [] } }),
+    viewport: { width, height: packet.height },
+    deviceScaleFactor: 1,
+    colorScheme: 'app' in source ? (source.colorScheme ?? 'light') : 'light',
+    reducedMotion: 'reduce',
+    locale: 'en-AU',
+    timezoneId: 'Australia/Brisbane',
+    serviceWorkers: 'block',
   });
+  const side: Side = { context, external: new Set(), unresolved: new Set() };
+  await context.route('**/*', routeOf(packet, source, side));
+  if (session !== undefined && 'app' in source) {
+    await context.addInitScript(
+      ({ origin, entries }: { origin: string; entries: [string, string][] }) => {
+        if (location.origin !== origin) return;
+        for (const [key, value] of entries) sessionStorage.setItem(key, value);
+      },
+      { origin: source.app.origin, entries: session.entries },
+    );
+  }
   if ('mockupDir' in source) {
     await context.addInitScript(
       (key: string) => localStorage.setItem(key, 'light'),

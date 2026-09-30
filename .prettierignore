@@ -15,3 +15,7 @@ skills-lock.json
 # Sol's review proofs, committed byte-for-byte as the review patch held them
 # so a reader can compare them with the patch. See issue #174.
 tests/runtime/t2d-proof-body-byte-identity.test.ts
+
+# The public edition of the design system is a checked copy, kept byte for byte as it
+# crossed (ticket C82); docs/design-system/COPY-RECORD.md holds each digest.
+docs/design-system
