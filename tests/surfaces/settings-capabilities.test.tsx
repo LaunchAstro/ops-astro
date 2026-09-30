@@ -71,37 +71,42 @@ function server(
   } = {},
 ): Stub {
   const sent: { at: string; body: Record<string, unknown> }[] = [];
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     sent.push({ at, body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown> });
     if (at.endsWith('/session/capabilities')) {
-      return (
-        options.capabilities ??
-        (() =>
-          json({
-            ok: true,
-            personId: 'p-ada',
-            businessKey: 'alpha',
-            grants: [{ collection: 'settings', action: 'manage' }],
-          }))
-      )();
+      return Promise.resolve(
+        (
+          options.capabilities ??
+          (() =>
+            json({
+              ok: true,
+              personId: 'p-ada',
+              businessKey: 'alpha',
+              grants: [{ collection: 'settings', action: 'manage' }],
+            }))
+        )(),
+      );
     }
     if (at.endsWith('/settings/read')) {
-      return json({ ok: true, settings: [row('four_eyes_threshold', 500)] });
+      return Promise.resolve(json({ ok: true, settings: [row('four_eyes_threshold', 500)] }));
     }
     if (at.includes('/settings/set_')) {
-      return (
-        options.write ?? (() => json({ recordId: 'row', revision: null, detail: { value: 1200 } }))
-      )();
+      return Promise.resolve(
+        (
+          options.write ??
+          (() => json({ recordId: 'row', revision: null, detail: { value: 1200 } }))
+        )(),
+      );
     }
-    throw new Error(`unrouted ${at}`);
+    return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
   return { fetch, sent };
 }
 
 const screen = (fetch: typeof globalThis.fetch) => (
   <SettingsScreen
-    client={new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch })}
+    client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
     grantKey="alpha:ada"
     storage={window.sessionStorage}
   />
@@ -118,6 +123,12 @@ describe('the settings controls follow the session capabilities', () => {
     window.sessionStorage.clear();
   });
 
+  theSettingsControlsCases1();
+  theSettingsControlsCases2();
+  theSettingsControlsCases3();
+});
+
+function theSettingsControlsCases1() {
   it('asks session.capabilities on open, with an empty body', async () => {
     const api = server();
     const page = await mount(screen(api.fetch));
@@ -139,7 +150,9 @@ describe('the settings controls follow the session capabilities', () => {
     expect(saveDisabled(page)).toBe(false);
     await page.unmount();
   });
+}
 
+function theSettingsControlsCases2() {
   it('keeps them closed for a member, and asks nothing on their behalf', async () => {
     const api = server({
       capabilities: () =>
@@ -179,7 +192,9 @@ describe('the settings controls follow the session capabilities', () => {
     expect(saveDisabled(page)).toBe(true);
     await page.unmount();
   });
+}
 
+function theSettingsControlsCases3() {
   it('falls back to asking once when the API carries no capability read', async () => {
     const api = server({ capabilities: () => json({ error: 'not found' }, 404) });
     const page = await mount(screen(api.fetch));
@@ -216,4 +231,4 @@ describe('the settings controls follow the session capabilities', () => {
     expect(writes(api)).toBe(1);
     await page.unmount();
   });
-});
+}

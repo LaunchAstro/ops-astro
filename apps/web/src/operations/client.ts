@@ -42,7 +42,12 @@
 // matching `commands/requests.ts`, though the slice contract's prose writes
 // `operation_id`. There is one spelling on the wire and this is it.
 
-import { PREFIX, pathOf } from '../../../../packages/core-wire/src/index.ts';
+import {
+  CSRF_HEADER,
+  PREFIX,
+  SESSION_HEADER,
+  pathOf,
+} from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
 import type { NotARead, ReadName } from './read-names.ts';
 
@@ -101,8 +106,10 @@ export interface ClientOptions {
   readonly origin: string;
   /** `alpha` or `bravo`. It is a path segment, not a claim in a body. */
   readonly businessKey: string;
-  /** The GoTrue access token. Absent means not signed in, which the API refuses. */
-  readonly token: string | null;
+  /** Signed in: the credential is the session cookie, which no script reads. */
+  readonly signedIn: boolean;
+  /** The id of this tab's sign-in: the API reads that session's cookie only. */
+  readonly sessionId?: string;
   /** Injected so a test can drive the client without a network or a global. */
   readonly fetch: typeof globalThis.fetch;
   /** Injected for the same reason: a test needs a predictable operation id. */
@@ -110,8 +117,8 @@ export interface ClientOptions {
   /**
    * The session this client was given is one the API will not vouch for.
    *
-   * Called only when a token was actually sent: a 401 with no bearer is a call
-   * nobody was signed in for, and ending a session that was never held would
+   * Called only when signed in: a 401 with no session is a call nobody was
+   * signed in for, and ending a session that was never held would
    * be reporting an event that did not happen.
    */
   readonly onSessionEnded?: (refusal: WireRefusal) => void;
@@ -183,10 +190,12 @@ export class OperationsClient {
   }
 
   async #openStream(path: string, signal: AbortSignal): Promise<ReadableStream<Uint8Array> | null> {
-    const { origin, businessKey, token } = this.#options;
+    const { origin, businessKey, sessionId } = this.#options;
     const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}${path}`;
-    const headers: Record<string, string> =
-      token === null ? {} : { authorization: `Bearer ${token}` };
+    // The cookie is the credential, as on every call (S0-6c): the door's own-page
+    // check, and the sign-in this tab names.
+    const headers: Record<string, string> = { [CSRF_HEADER]: '1' };
+    if (sessionId !== undefined) headers[SESSION_HEADER] = sessionId;
     try {
       const response = await this.#options.fetch(url, { headers, signal });
       return response.ok ? response.body : null;
@@ -200,11 +209,13 @@ export class OperationsClient {
     body: Readonly<Record<string, unknown>>,
   ): Promise<CallResult<T>> {
     const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${pathOf(name)}`;
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
-    // The only credential this client sends. No actor header, no business
-    // header, no forwarded host: there is nothing here for a tampered request
-    // to reach (checklist N7).
-    if (this.#options.token !== null) headers['authorization'] = `Bearer ${this.#options.token}`;
+    // The browser adds the cookie, the only credential. No actor, business or
+    // forwarded header for a tampered request to reach (checklist N7).
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      [CSRF_HEADER]: '1',
+    };
+    if (this.#options.sessionId !== undefined) headers[SESSION_HEADER] = this.#options.sessionId;
 
     let response: Response;
     try {
@@ -222,11 +233,7 @@ export class OperationsClient {
     const parsed: unknown = await response.json().catch(() => undefined);
 
     if (isWireRefusal(parsed)) {
-      if (
-        response.status === 401 &&
-        SESSION_ENDED.has(parsed.code) &&
-        this.#options.token !== null
-      ) {
+      if (response.status === 401 && SESSION_ENDED.has(parsed.code) && this.#options.signedIn) {
         this.#options.onSessionEnded?.(parsed);
       }
       return parsed;

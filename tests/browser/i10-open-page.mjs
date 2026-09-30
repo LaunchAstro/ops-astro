@@ -34,6 +34,7 @@ import {
   fromEnvFile,
   record,
   root,
+  servedBuild,
   shot,
   signIn,
   standaloneStatus,
@@ -134,6 +135,8 @@ export async function casesI10OpenPage(run) {
     await page.goto(`${WEB}/task/${recordId}`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-task]', { timeout: 20_000 });
     await page.waitForSelector('[data-refresh="task"]', { timeout: 20_000 });
+    // Which build served this page (S0-1, line C8).
+    await servedBuild(page, 'I10');
     const titleShown = (await page.locator('body').innerText()).includes(title);
     const openShot = await shot(page, 'I10-open-authorised');
 

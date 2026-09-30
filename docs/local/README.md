@@ -188,11 +188,15 @@ and none should be pasted into one.
 | `orphan@alpha.local` | alpha    |
 | `bea@bravo.local`    | bravo    |
 
+The staging reset (`scripts/ops/staging-reset.ts`) adds a sixth on staging
+only, its made-up operator `olive@alpha.local` (alpha), who holds
+`operations:manage` there.
+
 These are addresses, not contact details. RFC 6762 reserves `.local` for
 multicast DNS and it cannot be delegated, so none of them reaches a mailbox.
-The public content check allows exactly these five by name
-(`scripts/public-content-check.mjs`, `publishedAddresses`). It reports a sixth
-invented login until that login is added to this table and to that list.
+The public content check allows exactly these six by name
+(`scripts/public-content-check.mjs`, `publishedAddresses`). It reports a seventh
+invented login until that login is added here and to that list.
 
 There are two businesses, keys `alpha` and `bravo`. The business selector on
 the sign-in page chooses the `/api/b/<key>` route prefix. That only picks a

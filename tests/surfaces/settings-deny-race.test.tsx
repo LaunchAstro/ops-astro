@@ -23,7 +23,7 @@ import { SessionStore, grantKeyOf, type Session } from '../../apps/web/src/sessi
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
 
-const ADA: Session = { token: 'tok-ada', businessKey: 'alpha', email: 'ada@alpha.local' };
+const ADA: Session = { businessKey: 'alpha', email: 'ada@alpha.local' };
 
 const wait = (ms: number): Promise<void> =>
   new Promise((resolve) => {
