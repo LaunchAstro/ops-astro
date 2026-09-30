@@ -15,6 +15,7 @@ import { Projects } from './screens/Projects.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
 import { TaskUnnamed } from './screens/task/Absent.tsx';
+import { TodosScreen } from './screens/todos/Todos.tsx';
 import type { ConversationTab, PanelDoor } from './screens/task/Perspectives.tsx';
 
 /** The dock task panel as a screen reaches it (MP-4-8): open it, and read its change count. */
@@ -73,6 +74,13 @@ export const SCREENS: {
     />
   ),
   'agency:task-unnamed': () => <TaskUnnamed />,
+  'agency:todos': (context) => (
+    <TodosScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
+    />
+  ),
 };
 
 /** The screen a matched address draws, handed that route's own parameters. */

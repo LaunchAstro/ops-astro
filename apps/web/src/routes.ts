@@ -104,6 +104,15 @@ export const ROUTES = {
     rail: true,
     authenticated: true,
   },
+  // The reader's own to-dos (MP-7-1): the Projects dock panel's address.
+  'agency:todos': {
+    namespace: 'agency',
+    path: '/todos',
+    title: 'My to-dos',
+    surface: 'none',
+    rail: false,
+    authenticated: true,
+  },
 } as const satisfies Readonly<Record<`${Namespace}:${string}`, RouteDescriptor>>;
 
 export type RouteId = keyof typeof ROUTES;
