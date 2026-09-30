@@ -24,6 +24,7 @@ import {
   type ApiFixture,
 } from '../api/fixture.ts';
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('INB-1 mention refusal names', () => {
   let fixture: ApiFixture;
   let api: Hono;
