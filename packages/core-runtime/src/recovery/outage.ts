@@ -12,6 +12,10 @@
 // update. Written in the drop's own transaction, under its locks, so a report
 // never names a drop that rolled back. Nothing is sent: the team reads the
 // reports on `task.queue` and the task page (C12-6).
+//
+// AW-04 adds one cause that is not a drop: a pinned read's audit copy the
+// store could not keep (`raiseMissingCopy`). Its row is one per business and
+// digest (0062), names the digest and lists no runs.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -26,6 +30,14 @@ export const DROP_FAULT: Readonly<Record<DropCause, 'provider' | 'network' | 'ou
   provider_unavailable: 'provider',
   connection_lost: 'network',
   worker_lost: 'ours',
+};
+
+/** A report's cause: a drop's, or an audit copy the store could not keep. */
+export type OutageCause = DropCause | 'audit_copy_missing';
+
+const OUTAGE_FAULT: Readonly<Record<OutageCause, 'provider' | 'network' | 'ours'>> = {
+  ...DROP_FAULT,
+  audit_copy_missing: 'ours',
 };
 
 /** Join the open report for `cause`, or open one; the run is listed once. */
@@ -47,7 +59,7 @@ export async function joinOutage(
   );
   const [report] = await tx.query<{ readonly id: string }>(
     `insert into public.outage_reports (business_id, id, cause) values ($1, $2, $3)
-     on conflict (business_id, cause) where closed_at is null
+     on conflict (business_id, cause) where closed_at is null and content_digest is null
        do update set last_drop_at = greatest(public.outage_reports.last_drop_at, now())
      returning id`,
     [tx.businessId, randomUUID(), drop.cause],
@@ -76,15 +88,31 @@ export async function markCameBack(tx: TenantQuery, attemptId: string): Promise<
   );
 }
 
+/**
+ * AW-04: an audit copy the store could not keep, raised to the team as its
+ * business's one row for the digest; a later miss of the digest joins it.
+ */
+export async function raiseMissingCopy(tx: TenantQuery, digest: string): Promise<void> {
+  await tx.query(
+    `insert into public.outage_reports (business_id, id, cause, content_digest)
+     values ($1, $2, 'audit_copy_missing', $3)
+     on conflict (business_id, content_digest) where content_digest is not null
+       do update set last_drop_at = greatest(public.outage_reports.last_drop_at, now())`,
+    [tx.businessId, randomUUID(), digest],
+  );
+}
+
 export interface OutageReport {
   readonly id: string;
-  readonly cause: DropCause;
+  readonly cause: OutageCause;
   /** Whose fault the cause names: the provider's, the network's, or ours. */
   readonly fault: 'provider' | 'network' | 'ours';
   readonly openedAt: string;
   readonly lastDropAt: string;
   /** Null while drops of its cause may still join it. */
   readonly closedAt: string | null;
+  /** The file an `audit_copy_missing` row is about; null for a drop's report. */
+  readonly contentDigest: string | null;
   readonly runs: readonly {
     readonly taskId: string;
     readonly runId: string;
@@ -93,17 +121,19 @@ export interface OutageReport {
   }[];
 }
 
-/** This business's outage reports, newest first, each with the runs it dropped. */
+/** This business's outage reports, newest first, each with the runs it dropped (none for a copy's). */
 export async function readOutages(tx: TenantQuery, limit = 20): Promise<readonly OutageReport[]> {
   const rows = await tx.query<{
     readonly id: string;
-    readonly cause: DropCause;
+    readonly cause: OutageCause;
     readonly opened_at: string;
     readonly last_drop_at: string;
     readonly closed_at: string | null;
+    readonly content_digest: string | null;
     readonly runs: OutageReport['runs'] | null;
   }>(
     `select r.id, r.cause, r.opened_at::text, r.last_drop_at::text, r.closed_at::text,
+            r.content_digest,
             (select json_agg(json_build_object('taskId', o.task_id, 'runId', o.run_id,
                                                'attemptId', o.attempt_id,
                                                'reactivated', o.reactivated)
@@ -119,10 +149,11 @@ export async function readOutages(tx: TenantQuery, limit = 20): Promise<readonly
   return rows.map((row) => ({
     id: row.id,
     cause: row.cause,
-    fault: DROP_FAULT[row.cause],
+    fault: OUTAGE_FAULT[row.cause],
     openedAt: row.opened_at,
     lastDropAt: row.last_drop_at,
     closedAt: row.closed_at,
+    contentDigest: row.content_digest,
     runs: row.runs ?? [],
   }));
 }

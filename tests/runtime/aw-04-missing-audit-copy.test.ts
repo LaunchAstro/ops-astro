@@ -138,7 +138,7 @@ async function anotherBusiness(alphaId: string): Promise<void> {
         alphaId,
       ]),
   );
-  expect(bravoSees).toStrictEqual([]);
+  expect(bravoSees).toHaveLength(0);
   await refuseCopies(w.alpha, [w.alpha.business, w.bravo.business]);
   await w.bravo.db.admin.execute(
     'delete from public.bootstrap_bytes where business_id = $1 and content_digest = $2',
@@ -163,14 +163,15 @@ it('AW-04 missing audit copy isolation: another business, another client, anothe
   // 1. Another business.
   await anotherBusiness(alphaId);
 
-  // 2. Another client of alpha's, shared one task: the report is the team's.
+  // 2. Another client of alpha's, shared one task: the queue and its report
+  // are the team's, so the client is refused, naming nothing of alpha's row.
   await w.alpha.db.app.withBusiness(w.alpha.business, async (tx) => {
     await grantTo(tx, w.alpha.decider, 'share');
   });
   const task = await createTask(w.alpha, 'aw04miss client task');
   const client = await cq8World(w.alpha).client(w.alpha.business, w.alpha.decider, 'aw04c', task);
   const clientSees = await queueAs(w.alpha, client);
-  expect(clientSees).toMatchObject({ ok: true, outages: [] });
+  expect(clientSees).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
   expect(JSON.stringify(clientSees)).not.toMatch(foreign);
 
   // 3. Another person's agent under its own live delegation: an agent's queue
@@ -183,7 +184,7 @@ it('AW-04 missing audit copy isolation: another business, another client, anothe
     undefined,
     { command: 'task.queue', operationId: randomUUID() } as never,
   );
-  expect(agentSees).toMatchObject({ ok: true });
+  expect(agentSees).toMatchObject({ command: 'task.queue', detail: { queue: [] } });
   expect(JSON.stringify(agentSees)).not.toMatch(foreign);
   expect(JSON.stringify(agentSees)).not.toContain('outage');
 }, 180_000);

@@ -126,6 +126,7 @@ export {
   type Database,
   type Listener,
   type TenantQuery,
+  type TransactionQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
 export { hasRoom, type DurableLimit } from './tenancy/limit.ts';

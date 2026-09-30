@@ -34,7 +34,7 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import {
   connect,
   type Database,
-  type TenantQuery,
+  type TransactionQuery,
 } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   ACCEPTANCE_ISSUER,
@@ -77,8 +77,9 @@ interface Holder {
  */
 function holding(inner: Database): Database & Holder {
   let armed: { reached: (pid: number) => void; released: Promise<void> } | undefined;
-  const wrap = (tx: TenantQuery): TenantQuery => ({
+  const wrap = (tx: TransactionQuery): TransactionQuery => ({
     businessId: tx.businessId,
+    savepoint: tx.savepoint,
     async query<Row>(text: string, parameters?: readonly unknown[]): Promise<readonly Row[]> {
       const rows = await tx.query<Row>(text, parameters);
       const stop = armed;

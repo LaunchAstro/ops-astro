@@ -521,6 +521,8 @@ export interface OutageView {
   readonly lastDropAt: string;
   /** Null while drops of its cause may still join it. */
   readonly closedAt: string | null;
+  /** The file an `audit_copy_missing` report is about (AW-04); null for a drop's. */
+  readonly contentDigest: string | null;
   readonly runs: readonly {
     readonly taskId: string;
     readonly runId: string;

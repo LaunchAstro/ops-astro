@@ -1537,9 +1537,13 @@ run, which it takes `for update` (lock class `lease`, its only lock) and then
 judges on the database clock, so a lease released or expired while the read
 waited is refused and nothing is recorded. With no pin it resolves nothing by name or path (`DEFINITION_UNAVAILABLE`),
 and bytes that are not the manifest's are `DEFINITION_DIGEST_MISMATCH`. It
-writes its ledger row, the audit copy and its one audit event before it returns
-the bytes, so a read that cannot be recorded fails the transaction and returns
-nothing. `setDigest` is the path-sorted set digest over a run's reads.
+writes its ledger row and its one audit event before it returns the bytes, so
+a read that cannot be recorded fails the transaction and returns nothing. The
+audit copy is kept in a savepoint (`TransactionQuery.savepoint`, the driver's
+own nested scope): a copy the store refuses keeps the read, its ledger row and
+its event, and raises the business's one `audit_copy_missing` row for that
+digest on the outage report (`raiseMissingCopy`, 0062, AW-04 missing audit
+copy); a later miss of the digest joins it. `setDigest` is the path-sorted set digest over a run's reads.
 
 The accept itself is `acceptPlan` (`core-runtime/src/plan-accept.ts`, AW-04):
 one person's approval of the plan's gate, in the caller's one transaction. It

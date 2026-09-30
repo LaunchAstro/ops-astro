@@ -125,6 +125,7 @@ describe.skipIf(serverUrl === undefined)('CQ-8 on a real database', () => {
           seen.push(statements);
           return await run({
             businessId: tx.businessId,
+            savepoint: tx.savepoint,
             query: async (text, parameters = []) => {
               statements.push({ text: text.replaceAll(/\s+/gu, ' ').trim(), parameters });
               return await tx.query(text, parameters);

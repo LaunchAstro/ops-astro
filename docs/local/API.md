@@ -598,9 +598,14 @@ distinct count (`setDigest`). The command line prints the same answer
 (`tests/cli/aw-04-pin-ledger-cli.test.ts`).
 A drop raises no alert (T3e2): `task.queue` carries the team's `outages`
 beside the alerts, newest first, each
-`{ id, cause, fault, openedAt, lastDropAt, closedAt, runs: [{ taskId, runId, attemptId, reactivated }] }`,
+`{ id, cause, fault, openedAt, lastDropAt, closedAt, contentDigest, runs: [{ taskId, runId, attemptId, reactivated }] }`,
 one report per outage per business; a reader outside the team gets none, and
 the task page draws the report naming its task (`tests/runtime/t3e2-outage.test.ts`).
+One cause is not a drop (AW-04): `audit_copy_missing`, fault `ours`, is a
+pinned read's audit copy the store could not keep. The read went through; the
+row is one per business and `contentDigest` (null on a drop's report), lists no
+runs and stays open, a later miss moving `lastDropAt`
+(`tests/runtime/aw-04-missing-audit-copy.test.ts`).
 
 `task.propose` answers `FIELD_VALUE_INVALID` 422 for the two shapes its columns
 constrain, before the write rather than at it: a `purpose` outside
