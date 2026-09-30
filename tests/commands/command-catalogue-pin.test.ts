@@ -212,15 +212,15 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
-  'budget.record_outcome',
-  'budget.top_up',
-  'budget.write_off',
   'activation.adopt',
   'activation.change',
   'activation.roll_back',
   'activation.turn_off',
   'approval.revoke',
   'automation.registry',
+  'budget.record_outcome',
+  'budget.top_up',
+  'budget.write_off',
   'connection.fleet',
   'connection.graduation',
   'connection.signal',
@@ -484,7 +484,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same forty-seven from an expected revision', () => {
+  it('exempts the same forty-eight from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
