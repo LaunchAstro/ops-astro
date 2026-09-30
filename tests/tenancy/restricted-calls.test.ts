@@ -80,7 +80,7 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // T3e2: the journey drops nothing, so one report and one of its runs.
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
-  // 0032: a map's body rows. Any record stands in for the map; the read-model
+  // 0042: a map's body rows. Any record stands in for the map; the read-model
   // triggers find it is not one and write nothing.
   'public.map_components': `insert into public.map_components
        (business_id, id, map_id, kind, body, position, created_version)
@@ -373,7 +373,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
 
     it('is the handback trigger and the map read models, each with its search path pinned', () => {
-      // 0032 added the map read models' writers: security definer so the
+      // 0042 added the map read models' writers: security definer so the
       // summary and frontier tables have one writer and the application only
       // reads them. None is executable by an application caller (the call
       // loop above holds that), and each pins its search path.
