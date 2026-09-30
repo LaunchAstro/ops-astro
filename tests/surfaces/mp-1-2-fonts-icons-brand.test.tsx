@@ -1,0 +1,299 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// MP-1-2: fonts, the icon set and the brand marks.
+//
+// One test per supporting checklist line. The fonts and the icon set arrive as
+// pinned packages, so no font or icon binary sits in the tree; the brand marks
+// are the rights holder's own SVGs. Every bundled asset is named, with its
+// licence, in `packages/ui/assets/licences.json`, and these tests hold that
+// record against what is actually installed and committed, both ways. The
+// visual match draws the gallery in a real browser on MP-1-7's width-and-theme
+// harness (tests/visual/gallery-views.ts, specimens in mp-1-2-specimens.ts).
+
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { loadConfigFromFile } from 'vite';
+import { afterAll, expect, it } from 'vitest';
+import { GLYPH_NAMES, Icon } from '../../packages/ui/src/primitives/Icon.tsx';
+import { comparePng } from '../visual/compare.ts';
+import { eachGalleryView, WIDTHS } from '../visual/gallery-views.ts';
+import { specimens, type Specimens } from './mp-1-2-specimens.ts';
+
+const root = fileURLToPath(new URL('../..', import.meta.url));
+const ui = `${root}packages/ui/`;
+const read = (path: string): string => readFileSync(path, 'utf8');
+const json = <T,>(path: string): T => JSON.parse(read(path)) as T;
+
+interface AssetRecord {
+  readonly id: string;
+  readonly kind: 'font' | 'icon-set' | 'brand-mark';
+  readonly licence: string;
+  readonly licenceFile: string;
+  readonly package?: string;
+  readonly version?: string;
+  readonly path?: string;
+  readonly source: string;
+}
+const record = (): readonly AssetRecord[] =>
+  json<{ assets: readonly AssetRecord[] }>(`${ui}assets/licences.json`).assets;
+const uiDependencies = (): Readonly<Record<string, string>> =>
+  json<{ dependencies?: Record<string, string> }>(`${ui}package.json`).dependencies ?? {};
+
+/** The three families and the weights TOKENS.md DS-TOK-28 to DS-TOK-30 name. */
+interface Font {
+  readonly pkg: string;
+  readonly family: string;
+  readonly token: string;
+  readonly weights: readonly number[];
+  /** The variable face's file and weight axis, where the package ships the family as one face. */
+  readonly variable?: { readonly file: string; readonly axis: string };
+}
+const FONTS: readonly Font[] = [
+  {
+    pkg: '@fontsource/funnel-display',
+    family: 'Funnel Display',
+    token: '--font-display',
+    weights: [400, 500, 600, 700],
+  },
+  {
+    pkg: '@fontsource-variable/funnel-sans',
+    family: 'Funnel Sans',
+    token: '--font-sans',
+    weights: [400, 500, 600],
+    variable: { file: 'funnel-sans-latin-wght-normal.woff2', axis: '300 800' },
+  },
+  {
+    pkg: '@fontsource-variable/chivo-mono',
+    family: 'Chivo Mono',
+    token: '--font-mono',
+    weights: [300, 400, 500],
+    variable: { file: 'chivo-mono-latin-wght-normal.woff2', axis: '100 900' },
+  },
+] as const;
+const fontsCss = `${ui}src/styles/0-fonts.css`;
+
+const scratch = mkdtempSync(join(tmpdir(), 'mp-1-2-'));
+afterAll(() => {
+  rmSync(scratch, { recursive: true, force: true });
+});
+
+/** Run the real licence checker over a report, as CI runs it over pnpm's. */
+const licences = (report: unknown): { status: number | null; out: string } => {
+  const file = join(scratch, `report-${String(Math.random()).slice(2)}.json`);
+  writeFileSync(file, JSON.stringify(report));
+  const run = spawnSync(process.execPath, [`${root}scripts/licences/check.mjs`, '--report', file], {
+    encoding: 'utf8',
+  });
+  return { status: run.status, out: `${run.stdout}${run.stderr}` };
+};
+const ofl = (name: string, licence = 'OFL-1.1'): unknown => ({
+  MIT: [{ name: 'left-pad', version: '1.0.0' }],
+  [licence]: [{ name, version: '5.3.0' }],
+});
+
+it('MP-1-2 fonts load from the three OFL fonts', () => {
+  const deps = uiDependencies();
+  const tokens = read(`${ui}src/styles/1-tokens.css`);
+  const index = read(`${ui}src/index.ts`);
+  expect(existsSync(fontsCss), 'packages/ui/src/styles/0-fonts.css').toBe(true);
+  const sheet = read(fontsCss);
+  const imports = [...sheet.matchAll(/@import\s+'([^']+)'/gu)].map((m) => m[1]);
+  const statics = FONTS.filter((f) => f.variable === undefined);
+  const wanted = statics.flatMap((f) => f.weights.map((w) => `${f.pkg}/latin-${w}.css`));
+  // Exactly the weights the tokens use: no italics, no whole-family index.
+  expect(imports).toEqual(wanted);
+  for (const font of FONTS) {
+    expect(deps[font.pkg], `${font.pkg} is a pinned dependency`).toMatch(/^\d+\.\d+\.\d+$/u);
+    // The token's first family is the face the package declares.
+    expect(tokens).toMatch(new RegExp(`${font.token}:\\s*'${font.family}',`, 'u'));
+    if (font.variable !== undefined) {
+      // The variable face the mockup draws: one Latin face over the weight
+      // axis, declared under the token's family, from the package's own file.
+      const face = sheet.split('@font-face').find((f) => f.includes(`'${font.family}';`)) ?? '';
+      expect(face).toContain(`font-family: '${font.family}'`);
+      expect(face).toContain(`url('${font.pkg}/files/${font.variable.file}')`);
+      expect(face).toContain(`font-weight: ${font.variable.axis}`);
+      expect(face).not.toContain('italic');
+      expect(existsSync(`${ui}node_modules/${font.pkg}/files/${font.variable.file}`)).toBe(true);
+      continue;
+    }
+    for (const weight of font.weights) {
+      const face = read(`${ui}node_modules/${font.pkg}/latin-${weight}.css`);
+      expect(face).toContain(`font-family: '${font.family}'`);
+      expect(face).toContain(`font-weight: ${weight}`);
+    }
+  }
+  // The fonts sheet loads first, so the tokens name faces that exist.
+  expect(index.indexOf("'./styles/0-fonts.css'")).toBeGreaterThan(-1);
+  expect(index.indexOf("'./styles/0-fonts.css'")).toBeLessThan(
+    index.indexOf("'./styles/1-tokens.css'"),
+  );
+});
+
+it('MP-1-2 each font ships with its licence file', async () => {
+  const fonts = record().filter((a) => a.kind === 'font');
+  expect(fonts.map((a) => a.package).toSorted()).toEqual(FONTS.map((f) => f.pkg).toSorted());
+  for (const font of fonts) {
+    const shipped = read(`${ui}assets/${font.licenceFile}`);
+    expect(shipped).toContain('SIL Open Font License, Version 1.1');
+    // The committed text is the installed package's own, byte for byte.
+    expect(shipped).toBe(read(`${ui}node_modules/${String(font.package)}/LICENSE`));
+  }
+  // The web build copies the record and the licence texts into its output:
+  // the web app's config, resolved by vite itself.
+  const web = await loadConfigFromFile(
+    { command: 'build', mode: 'production' },
+    fileURLToPath(new URL('../../apps/web/vite.config.ts', import.meta.url)),
+  );
+  expect(web?.config.publicDir).toBe(
+    fileURLToPath(new URL('../../packages/ui/assets', import.meta.url)),
+  );
+});
+
+it('MP-1-2 icons from an open-licence set drawn to match', () => {
+  const mockup = json<{ glyphs: readonly string[] }>(
+    `${root}tests/surfaces/fixtures/mp-1-2-mockup-glyphs.json`,
+  );
+  expect(mockup.glyphs.length).toBeGreaterThan(60);
+  // Every glyph the mockup draws has a replacement, and no other name exists.
+  expect([...GLYPH_NAMES].toSorted()).toEqual([...mockup.glyphs].toSorted());
+  for (const name of GLYPH_NAMES) {
+    const html = renderToStaticMarkup(<Icon name={name} />);
+    expect(html, name).toMatch(/^<svg[^>]*\bclass="[^"]*\bicon icon--md"/u);
+    expect(html, name).toContain('stroke-linecap="round"');
+    expect(html, name).toContain('aria-hidden="true"');
+  }
+  const named = renderToStaticMarkup(<Icon name="bell" label="Notifications" size="lg" />);
+  expect(named).toContain('role="img"');
+  expect(named).toContain('aria-label="Notifications"');
+  expect(named).not.toContain('aria-hidden');
+  expect(named).toContain('icon--lg');
+  const icons = record().filter((a) => a.kind === 'icon-set');
+  expect(icons).toHaveLength(1);
+  expect(['MIT', 'ISC', 'Apache-2.0']).toContain(icons[0]?.licence);
+});
+
+it('MP-1-2 no icon font or emoji glyph remains in the interface', () => {
+  const offenders: string[] = [];
+  const scan = (path: string): void => {
+    const text = read(path);
+    if (/\bfi-rr-|\bfi fi-|uicons/iu.test(text)) offenders.push(`${path}: icon font`);
+    if (/\p{Extended_Pictographic}/u.test(text)) offenders.push(`${path}: emoji`);
+  };
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (/\.(tsx?|css|html|svg)$/u.test(entry.name)) scan(path);
+    }
+  };
+  walk(`${ui}src`);
+  walk(`${root}apps/web/src`);
+  scan(`${root}apps/web/index.html`);
+  expect(offenders).toEqual([]);
+});
+
+it('MP-1-2 an asset with no compatible licence is refused and reported', () => {
+  // The three named font packages pass under the font licence.
+  for (const font of FONTS) expect(licences(ofl(font.pkg)).status, font.pkg).toBe(0);
+  // Anything else under it is refused, and the report names the package.
+  const hostile = [
+    'some-widget',
+    '@fontsource/funnel-sans',
+    '@fontsource/chivo-mono',
+    '@fontsource-variable/funnel-sans-extra',
+    '@fontsource-variable/chivo-mono-extra',
+    '@FONTSOURCE-VARIABLE/FUNNEL-SANS',
+    ' @fontsource-variable/funnel-sans',
+    '@fontsource-variable/funnel-sans ',
+    '@evil/@fontsource-variable/funnel-sans',
+  ];
+  for (const name of hostile) {
+    const run = licences(ofl(name));
+    expect(run.status, JSON.stringify(name)).toBe(1);
+    expect(run.out, JSON.stringify(name)).toContain('OFL-1.1');
+  }
+  // A vendor icon font's licence (as Flaticon's) is refused and named.
+  const vendor = licences({ 'SEE LICENSE IN LICENSE': [{ name: 'uicons', version: '3.0.0' }] });
+  expect(vendor.status).toBe(1);
+  expect(vendor.out).toContain('uicons');
+  // A font licence joined to a refused one, or carrying an exception, is not a font licence.
+  expect(licences(ofl('@fontsource-variable/funnel-sans', 'OFL-1.1 OR SSPL-1.0')).status).toBe(1);
+  expect(
+    licences(ofl('@fontsource-variable/funnel-sans', 'OFL-1.1 WITH Font-exception-2.0')).status,
+  ).toBe(1);
+  // Other spellings of the font licence are not the one decided.
+  expect(licences(ofl('@fontsource-variable/funnel-sans', 'OFL-1.0')).status).toBe(1);
+  expect(licences(ofl('@fontsource-variable/funnel-sans', 'ofl-1.1')).status).toBe(1);
+});
+
+it('MP-1-2 each bundled asset has its licence recorded', () => {
+  const assets = record();
+  const ids = assets.map((a) => a.id);
+  expect(new Set(ids).size).toBe(ids.length);
+  // Every runtime dependency of the interface package is a bundled asset with a record.
+  const deps = uiDependencies();
+  const packaged = assets.filter((a) => a.package !== undefined);
+  expect(packaged.map((a) => a.package).toSorted()).toEqual(Object.keys(deps).toSorted());
+  for (const asset of packaged) {
+    const name = String(asset.package);
+    const installed = json<{ version: string; license: string }>(
+      `${ui}node_modules/${name}/package.json`,
+    );
+    expect(asset.version, name).toBe(deps[name]);
+    expect(installed.version, name).toBe(deps[name]);
+    expect(installed.license, name).toBe(asset.licence);
+  }
+  // Every file in the brand folder has a record, and every record's file exists.
+  const brandFiles = readdirSync(`${ui}src/brand`).map((f) => `src/brand/${f}`);
+  const brand = assets.filter((a) => a.kind === 'brand-mark');
+  expect(brand.map((a) => a.path).toSorted()).toEqual(brandFiles.toSorted());
+  for (const asset of assets) {
+    expect(asset.source, asset.id).not.toBe('');
+    expect(existsSync(`${ui}assets/${asset.licenceFile}`), asset.licenceFile).toBe(true);
+  }
+});
+
+it('MP-1-2 WEB.md points to the licence records, not to #32', () => {
+  const web = read(`${root}docs/local/WEB.md`);
+  expect(web).not.toMatch(/#32\b/u);
+  expect(web).toContain('packages/ui/assets/licences.json');
+  expect(read(`${ui}src/surfaces/Shell.tsx`)).not.toMatch(/#32\b/u);
+});
+
+// The mockup's three families by role (SHELL-2): headings, text and figures.
+const FAMILIES = { display: 'Funnel Display', text: 'Funnel Sans', mono: 'Chivo Mono' } as const;
+
+it('MP-1-2 visual match: type and icon specimens on the gallery at 1480, 900 and 390, light and dark, drawn in a browser in the mockup families and the licensed glyphs', async () => {
+  const views: { name: string; seen: Specimens; shot: Buffer }[] = [];
+  await eachGalleryView(async ({ width, theme, page, sideways }) => {
+    expect(sideways, `gallery@${width}-${theme} scrolls sideways`).toBe(0);
+    const seen = await page.evaluate(specimens, FAMILIES);
+    const shot = await page.screenshot({ animations: 'disabled', caret: 'hide', scale: 'css' });
+    views.push({ name: `gallery@${width}-${theme}`, seen, shot });
+  });
+  expect(views).toHaveLength(6);
+  for (const { name, seen } of views) {
+    expect(seen.families, name).toEqual(FAMILIES);
+    expect(seen.loaded, name).toEqual(Object.values(FAMILIES));
+    expect(seen.icons, `${name}: icons drawn`).toBeGreaterThan(20);
+    expect(seen.unlicensed, `${name}: an icon not from the licensed set`).toEqual([]);
+    expect(seen.undrawn, `${name}: an icon drawn at no size`).toEqual([]);
+    expect(seen.iconFonts, `${name}: an icon font or emoji`).toEqual([]);
+  }
+  for (const width of WIDTHS) {
+    const [light, dark] = ['light', 'dark'].map((t) =>
+      views.find((v) => v.name === `gallery@${width}-${t}`),
+    );
+    const same = comparePng(
+      `gallery@${width}`,
+      light?.shot ?? Buffer.alloc(0),
+      dark?.shot ?? Buffer.alloc(0),
+    );
+    expect(same.pass, `gallery@${width}: dark draws the same as light`).toBe(false);
+  }
+}, 600_000);

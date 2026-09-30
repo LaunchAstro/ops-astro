@@ -4,17 +4,22 @@
 //
 // The token sets are read through `scripts/token-diff.mjs`, the same resolver
 // the diff runs, so the tests and the script cannot disagree about what a token
-// resolves to. The visual legs (the width-and-theme captures and the dark
-// planted-drift test) need MP-1-7's harness and are `todo` until it lands.
+// resolves to. The harness captures run here in a real browser, on MP-1-7's
+// width-and-theme harness; the other visual legs are in mp-1-1-harness.test.tsx.
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
+import { captureBuiltPages, madeUpSession, serveApp } from '../visual/app-pages.ts';
+import { comparePng } from '../visual/compare.ts';
+import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
+import { builtPages, report } from '../visual/report.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const script = `${root}scripts/token-diff.mjs`;
@@ -45,9 +50,9 @@ afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
 });
 
-/** Every token the product declares that is not colour, spacing, radius, shadow or motion. */
+/** Every token the product declares that is not colour, spacing, radius, shadow or motion (icon sizes from MP-1-2, the type scale from MP-1-4). */
 const OTHER_GROUPS =
-  /^--(font-|text-(h\d|body|sm|label|overline)$|fs-|leading-|lh-|tracking-|weight-|rail-w$|dock-w$|aip-dock$|content-floor$|scheme$)/u;
+  /^--(font-|icon-|text-(h\d|body|body-lg|sm|label|overline|display|micro|num-(lg|md|sm))$|type-|fs-|leading-|lh-|tracking-|weight-|rail-w$|dock-w$|aip-dock$|content-floor$|scheme$)/u;
 /** Kept legacy names the canonical set maps onto another token (buttons, radius, brand). */
 const ALIASES = new Set([
   '--brand',
@@ -66,9 +71,12 @@ const ALIASES = new Set([
 const STATUS_ALIASES = /^--(info|success|warning|danger)-(light|soft)$/u;
 
 // Held on purpose in both themes: the one accent, ink on a dark or accent
-// ground, the dark ground itself, and the fills that do not flip.
+// ground, the dark ground itself, and the fills that do not flip. The two
+// lilacs are chart paint (the mockup's PAINT): its sheets never flip them.
 const CONSTANT = new Set([
   '--accent',
+  '--lilac',
+  '--lilac-deep',
   '--accent-ink',
   '--brand',
   '--btn-hover',
@@ -89,14 +97,14 @@ const CONSTANT = new Set([
 const COLOUR_PROPERTY =
   /^(color|background(-color|-image)?|border(-(top|right|bottom|left|block|inline)(-start|-end)?)?(-color)?|outline(-color)?|box-shadow|fill|stroke|caret-color|accent-color|text-decoration(-color)?|column-rule(-color)?)$/u;
 const SHEETS = [
+  `${styles}2-controls-and-marks.css`,
   `${styles}2-primitives.css`,
   `${styles}3-shell.css`,
   `${styles}4-board.css`,
   `${styles}5-task.css`,
   `${root}apps/web/src/styles/6-slice.css`,
 ];
-/** What in `css` would draw the same in both themes, or name a token nobody declares. */
-const lightOnly = (sets: ReturnType<typeof resolved>, name: string, css: string): string[] => {
+const lightOnly = (sets: Sets, name: string, css: string): string[] => {
   const problems: string[] = [];
   const bare = css.replaceAll(/\/\*[\s\S]*?\*\//gu, '');
   for (const match of bare.matchAll(/([a-z-]+)\s*:\s*([^;{}]+);/gu)) {
@@ -155,7 +163,7 @@ describe('MP-1-1 tokens', () => {
   });
 });
 
-describe('MP-1-1 tokens, against the baseline and the sheets', () => {
+describe('MP-1-1 tokens', () => {
   it('MP-1-1 token diff', () => {
     const clean = run();
     expect(clean.stderr).toBe('');
@@ -173,8 +181,23 @@ describe('MP-1-1 tokens, against the baseline and the sheets', () => {
     expect(bitten.status).toBe(1);
     expect(bitten.stderr).toContain('dark --surface-2');
     expect(bitten.stderr.trim().split('\n')).toHaveLength(1);
-  });
 
+    // Lookalikes ahead of the real blocks are not read: a commented-out block,
+    // and rules whose selectors only start with or contain the real one.
+    const lookalikes = [
+      "/* [data-theme='dark'] { --surface-2: oklch(0.1 0 0); } :root { --bg: #000; } */",
+      ":root:not([data-theme='light']) .x { --bg: oklch(0.1 0 0); }",
+      "[data-theme='dark'] .card { --surface-2: oklch(0.2 0 0); }",
+      '',
+    ].join('\n');
+    const tricked = join(scratch, 'lookalikes.css');
+    writeFileSync(tricked, lookalikes + read(tokensCss));
+    expect(run('--css', tricked)).toMatchObject({ status: 0, stderr: '' });
+    expect(JSON.parse(run('--print', '--css', tricked).stdout)).toEqual(resolved());
+  });
+});
+
+describe('MP-1-1 tokens', () => {
   it('MP-1-1 light unchanged', () => {
     // Token level. The 1480, 900 and 390 captures are MP-1-7's harness.
     const sets = resolved();
@@ -182,7 +205,9 @@ describe('MP-1-1 tokens, against the baseline and the sheets', () => {
       expect(sets.light[name], name).toBe(value);
     }
   });
+});
 
+describe('MP-1-1 tokens', () => {
   it('MP-1-1 no light-only element', () => {
     const sets = resolved();
     // It bites: a literal, a token that never flips and an undeclared one.
@@ -199,7 +224,7 @@ describe('MP-1-1 tokens, against the baseline and the sheets', () => {
   });
 });
 
-describe('MP-1-1 tokens, the dock callout and the captures', () => {
+describe('MP-1-1 tokens', () => {
   it('MP-1-1 dock callout edge', () => {
     const sets = resolved();
     const shell = read(`${styles}3-shell.css`).replaceAll(/\/\*[\s\S]*?\*\//gu, '');
@@ -233,9 +258,41 @@ describe('MP-1-1 tokens, the dock callout and the captures', () => {
     expect(html).toContain('<span class="dock__tablabel" aria-hidden="true">Assistant</span>');
     expect(html).toContain('<span class="dock__tablabel" aria-hidden="true">Clients</span>');
   });
+});
 
-  it.todo('MP-1-1 harness captures: /dashboard/ at 1480, 900 and 390, light and dark (MP-1-7)');
-  it.todo(
-    'MP-1-1 dark harness bites: a two-pixel shift or one dark colour fails the capture (MP-1-7)',
-  );
+describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
+  it('MP-1-1 harness captures: every built page in light and dark at 1480, 900 and 390', async () => {
+    const packet = readPacket();
+    // Dark is captured from here, where the dark theme lands; no longer pending.
+    expect(packet.themes.dark).toBe('captured');
+    const widths = [1480, 900, 390];
+    await fetchAssets(readAssets(), packet);
+    // No browser, no capture: the launch fails the test, never skips it.
+    const browser = await chromium.launch(MODE);
+    const { app, close } = await serveApp();
+    try {
+      const out = join(scratch, 'captures');
+      const session = madeUpSession(app, out);
+      const themes = themesOf(packet);
+      const shots = await captureBuiltPages({ browser, packet, app, session, widths, themes, out });
+      // The report reads each picture file the browser wrote: a PNG as wide as its width.
+      const all = report({ ...packet, widths }, builtPages(), shots);
+      expect(all.failed).toBe(0);
+      // Each dark picture is drawn in dark: it differs from its light one.
+      const file = (page: string, width: number, theme: string): Buffer =>
+        readFileSync(join(out, `${page}@${width}-${theme}.page.png`));
+      for (const page of builtPages())
+        for (const width of widths) {
+          expect(all.lines).toContain(
+            `ok ${page}@${width}-dark: ${page}@${width}-dark.page.png; no sideways scroll`,
+          );
+          const name = `${page}@${width}`;
+          const same = comparePng(name, file(page, width, 'light'), file(page, width, 'dark'));
+          expect(same.pass, `${name} dark draws the same as light`).toBe(false);
+        }
+    } finally {
+      await browser.close();
+      await close();
+    }
+  }, 600_000);
 });

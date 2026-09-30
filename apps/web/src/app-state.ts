@@ -37,17 +37,19 @@ export function useCanonicalAddress(
 }
 
 /**
- * Whether the browser says it is connected, for the header's freshness marker
- * (CS-1.1). Live sync (C4) supplies the other states when it lands; until
- * then the marker shows only a dropped connection and claims nothing live.
+ * When the browser last said the connection dropped, as a clock time, or null
+ * while it is connected: the header's freshness marker (MP-1-6, CS-1.1) says
+ * "Offline · showing data from" that time, since nothing on the page was read
+ * after it. Live sync (C4) supplies the other states when it lands; until then
+ * the marker shows only a dropped connection and claims nothing live.
  */
-export function useOnline(): boolean {
-  const [online, setOnline] = useState(() =>
-    typeof navigator === 'undefined' ? true : navigator.onLine,
+export function useOfflineSince(): string | null {
+  const [since, setSince] = useState<string | null>(() =>
+    typeof navigator === 'undefined' || navigator.onLine ? null : clockNow(),
   );
   useEffect(() => {
     const update = (): void => {
-      setOnline(navigator.onLine);
+      setSince(navigator.onLine ? null : clockNow());
     };
     window.addEventListener('online', update);
     window.addEventListener('offline', update);
@@ -56,8 +58,11 @@ export function useOnline(): boolean {
       window.removeEventListener('offline', update);
     };
   }, []);
-  return online;
+  return since;
 }
+
+const clockNow = (): string =>
+  new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
 /**
  * Who is signed in, for the person menu (C23): the server's name for this

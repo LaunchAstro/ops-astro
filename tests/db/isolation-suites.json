@@ -12,6 +12,7 @@
     "tests/web/mp-2-1-isolation-api.test.tsx",
     "tests/reads/search.test.ts",
     "tests/reads/c1-isolation.test.ts",
-    "tests/reads/c23-isolation.test.ts"
+    "tests/reads/c23-isolation.test.ts",
+    "tests/api/api-1-isolation.test.ts"
   ]
 }

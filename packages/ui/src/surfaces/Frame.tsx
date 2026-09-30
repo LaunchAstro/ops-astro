@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The parts of the app frame the shell places: the app strip (MP-2-5, MP-2-9)
-// and the freshness marker in the page header (MP-2-7, CS-1.1); the tab row is
-// in TabRow.tsx. Visual controls and their own motion only; which client and
+// The parts of the app frame the shell places: the app strip (MP-2-5, MP-2-9);
+// the tab row is in TabRow.tsx, and the header's freshness marker is the
+// kit's (MP-1-6). Visual controls and their own motion only; which client and
 // which state are the application's.
 
 import type { ReactElement, ReactNode, Ref } from 'react';
@@ -153,46 +153,5 @@ function FaceSwitch(props: {
         </button>
       ))}
     </div>
-  );
-}
-
-/** The five things the header can say about how current the page is (CS-1.1). */
-export const FRESHNESS_STATES = [
-  'live',
-  'catching-up',
-  'offline',
-  'source-behind',
-  'frozen',
-] as const;
-export type FreshnessState = (typeof FRESHNESS_STATES)[number];
-
-const saying = (state: FreshnessState, at: string | undefined): string => {
-  switch (state) {
-    case 'live':
-      return at === undefined ? 'Live' : `Live · ${at}`;
-    case 'catching-up':
-      return 'Catching up';
-    case 'offline':
-      return 'Offline';
-    case 'source-behind':
-      return at === undefined ? 'Source behind' : `Source behind · data to ${at}`;
-    case 'frozen':
-      return at === undefined ? 'Frozen' : `Frozen ${at}`;
-  }
-};
-
-/**
- * The freshness marker: an indicator, never a control. There is no sync
- * button; the page keeps itself current and the browser's reload remains.
- */
-export function Freshness(props: {
-  readonly state: FreshnessState;
-  /** The data's age or its "data to" time, already in words. */
-  readonly at?: string;
-}): ReactElement {
-  return (
-    <span className="marker fresh" role="status" data-freshness={props.state}>
-      {saying(props.state, props.at)}
-    </span>
   );
 }

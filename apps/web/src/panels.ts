@@ -25,6 +25,7 @@
 // only name a route `routes.ts` serves at an address with no parameters, and
 // the tab has somewhere to arrive.
 
+import type { GlyphName } from '@launchastro/ui';
 import { pathTo, type StaticRouteId } from './routes.ts';
 
 export interface PanelRegistration {
@@ -35,6 +36,8 @@ export interface PanelRegistration {
   readonly ariaLabel: string;
   /** The route that draws the same surface at an address of its own, if any. */
   readonly route: StaticRouteId | null;
+  /** The dock tab's glyph, the one the mockup registers for this panel. */
+  readonly icon: GlyphName;
 }
 
 export const PANELS: readonly PanelRegistration[] = [
@@ -43,6 +46,7 @@ export const PANELS: readonly PanelRegistration[] = [
     label: 'Settings',
     ariaLabel: 'Business settings',
     route: 'agency:settings',
+    icon: 'settings-sliders',
   },
 ];
 
@@ -53,9 +57,12 @@ export const PANELS: readonly PanelRegistration[] = [
  * address a person can quote is worth more than a panel they cannot. The
  * client face has no dock (R17).
  */
-export const dockTabs = (here: string): { id: string; label: string; open: boolean }[] =>
+export const dockTabs = (
+  here: string,
+): { id: string; label: string; icon: GlyphName; open: boolean }[] =>
   PANELS.map((panel) => ({
     id: panel.id,
     label: panel.label,
+    icon: panel.icon,
     open: panel.route !== null && here === pathTo(panel.route),
   }));

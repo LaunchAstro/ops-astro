@@ -104,7 +104,9 @@
     "C1 names c1-isolation as an invariant (ticket C1, SL05): task.search shows no foreign title, id or count across the three crossings, another business and another client in the same business on the read, and an agent under a live delegation over the real HTTP route; red when the statement's scope is widened.",
     "C23 names c23-isolation as an invariant (ticket C23, SL05): session.person and session.end cross nothing over the real HTTP route: another business is refused naming nobody and ends nobody, one client's person is answered as themselves and cannot end the other client's person, and an agent under a live delegation is refused both while the person stays signed in.",
     "C23 also names c23-session-end (ticket C23, SL05): session.end and session.person through the envelope on a real database, the sign-out appended to the audit chain in the same transaction, applied and refused events read back, and account:write on the caller's own account only.",
-    "C23 names c23-session-surfaces in conformance (ticket C23, SL05, parity on main's command-line harness): session.person and session.end on the command line as its own process, the person and agent HTTP routes and the in-process entries. Each surface answers the caller's own name and records one applied sign-out; a sign-out naming another person, and the agent with and without its delegation, are refused alike on each, with nothing recorded for anyone named."
+    "C23 names c23-session-surfaces in conformance (ticket C23, SL05, parity on main's command-line harness): session.person and session.end on the command line as its own process, the person and agent HTTP routes and the in-process entries. Each surface answers the caller's own name and records one applied sign-out; a sign-out naming another person, and the agent with and without its delegation, are refused alike on each, with nothing recorded for anyone named.",
+    "API-1 adds api-1-isolation (every catalogue command through the app's client, the CLI and the API answers one refusal alike: business to business, and two record-scoped grants in one business); its world, surfaces and delegation crossing are api-1-isolation-world.ts, api-1-isolation-surfaces.ts and api-1-isolation-delegation.ts. api-1-catalogue.test.ts and api-1-catalogue-authority.test.ts are pure unit suites and must not be named.",
+    "T4e REV185B2: role-case-matrix-fixture-clients proves T4-N2's matrix world holds T4a's two clients with one record grant each in both businesses, and role-case-matrix gains the client-to-client case (another client's task, in either business, answers as an id never issued). t2g-decide-parity's crossing now also finds the undecided gate holding its task open (GATE_PENDING on both surfaces) before the grant holder decides; t3f-expired-lease's business crossing settles its own expired lease marked expired."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -161,6 +163,7 @@
     "tests/runtime/decision-abort.test.ts",
     "tests/acceptance/surface-inventory.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
+    "tests/acceptance/role-case-matrix-fixture-clients.test.ts",
     "tests/acceptance/protected-fields.test.ts",
     "tests/acceptance/predicate-rls.test.ts",
     "tests/api/settings-revision-routes.test.ts",
@@ -294,7 +297,8 @@
     "tests/reads/search.test.ts",
     "tests/reads/c1-isolation.test.ts",
     "tests/reads/c23-isolation.test.ts",
-    "tests/commands/c23-session-end.test.ts"
+    "tests/commands/c23-session-end.test.ts",
+    "tests/api/api-1-isolation.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

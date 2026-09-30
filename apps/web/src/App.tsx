@@ -17,7 +17,7 @@ import { pathTo } from './routes.ts';
 import { NO_CLIENT_GRANTS, type ClientAccess } from './manifest.ts';
 import { frameAt } from './route-views.tsx';
 import { drawContent } from './app-content.tsx';
-import { useCanonicalAddress, usePersonName, useOnline } from './app-state.ts';
+import { useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { PANELS, dockTabs } from './panels.ts';
@@ -56,7 +56,7 @@ export function App(props: AppProps): ReactElement {
   useEffect(() => {
     setNavOpen(false);
   }, [here]);
-  const online = useOnline();
+  const offlineSince = useOfflineSince();
   const search = useSearch();
 
   // Why the board was reached instead of the address that was held. Drawn on
@@ -249,7 +249,7 @@ export function App(props: AppProps): ReactElement {
           />
         }
         tabs={tabs}
-        freshness={online ? null : 'offline'}
+        freshness={offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }}
         nav={{ open: navOpen, onToggle: setNavOpen }}
         onNavigate={navigate}
         title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}

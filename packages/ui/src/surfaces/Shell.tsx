@@ -26,9 +26,11 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { BrandMark } from '../primitives/BrandMark.tsx';
+import { Icon, type GlyphName } from '../primitives/Icon.tsx';
 import { useDrawerFocus } from './drawer.ts';
 import { useMark } from './mark.ts';
-import { Freshness, type FreshnessState } from './Frame.tsx';
+import { FreshnessMarker, type Freshness } from '../kit/treatments.tsx';
 import { Chevron, TabRow, type TabEntry } from './TabRow.tsx';
 
 export interface RailEntry {
@@ -48,6 +50,8 @@ export interface DockTab {
   readonly id: string;
   readonly label: string;
   readonly open: boolean;
+  /** The panel's glyph, as the mockup registers each panel with one; the grid glyph when none is named. */
+  readonly icon?: GlyphName;
 }
 
 export interface ShellProps {
@@ -66,7 +70,7 @@ export interface ShellProps {
     readonly entries: readonly TabEntry[];
   } | null;
   /** The header's freshness marker (CS-1.1), or null to draw none. */
-  readonly freshness?: FreshnessState | null;
+  readonly freshness?: Freshness | null;
   /** The narrow drawer (MP-2-8): open or not is the application's state. */
   readonly nav?: { readonly open: boolean; readonly onToggle: (open: boolean) => void };
   /**
@@ -145,9 +149,7 @@ export function Shell(props: ShellProps): ReactElement {
         {...(open ? { 'aria-modal': true, role: 'dialog' } : {})}
       >
         <div className="rail__brand">
-          {/* The wordmark is a mask over an SVG in the pinned estate. No asset
-              ships here until the icon-and-font rights question is resolved
-              (#32), so the brand is its own words. */}
+          <BrandMark variant="wordmark" />
           <span className="rail__hub">Ops Astro</span>
           {open && onToggle !== undefined ? (
             <button
@@ -239,7 +241,7 @@ export function Shell(props: ShellProps): ReactElement {
               <h1 className="t-title">{props.title}</h1>
             </div>
             <div className="topbar__meta">
-              {props.freshness ? <Freshness state={props.freshness} /> : null}
+              {props.freshness ? <FreshnessMarker freshness={props.freshness} /> : null}
               {props.meta}
             </div>
           </header>
@@ -262,10 +264,10 @@ export function Shell(props: ShellProps): ReactElement {
               props.onDockTab(tab.id);
             }}
           >
-            {/* The icon slot. It carries the panel's initial until an icon set
-                with redistribution rights is resolved, rather than an emoji,
-                which the design system forbids outright. */}
-            <span aria-hidden="true">{tab.label.slice(0, 1)}</span>
+            {/* The icon slot: the panel's glyph from the licensed set (MP-1-2),
+                never an initial or an emoji. Decoration: the button's label
+                names the panel. */}
+            <Icon name={tab.icon ?? 'apps'} />
             {/* The callout names the tab on hover and focus. The button's
                 label already says it, so the callout is hidden from it. */}
             <span className="dock__tablabel" aria-hidden="true">
