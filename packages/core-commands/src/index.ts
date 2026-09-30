@@ -16,6 +16,6 @@ export { type CommandRequest } from './commands/requests.ts';
 // T3d1: the pass asks the register whether an unknown step's effect happened.
 export { lookupEffect } from './commands/register-store.ts';
 export { executeRead } from './reads/execute.ts';
-export { joinLiveBoard } from './reads/live-join.ts';
+export { joinLiveBoard, shownInbox } from './reads/live-join.ts';
 export { isReadName } from './reads/catalogue.ts';
 export { type ReadRequest } from './reads/requests.ts';

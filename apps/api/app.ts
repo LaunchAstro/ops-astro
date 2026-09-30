@@ -46,6 +46,7 @@ import {
   isCommandRefusal,
   isReadName,
   joinLiveBoard,
+  shownInbox,
   refuseCommand,
 } from '../../packages/core-commands/src/index.ts';
 import {
@@ -299,7 +300,7 @@ export function createApi(options: ApiOptions): Hono {
     });
     // INB-1f: the board's one stream per tab, through the same door. Each task
     // it names is asked as the task's own stream asks it; the inbox topic is
-    // the caller's own person, which the join resolves.
+    // the caller's own person, which the join resolves, asked again each batch.
     api.get(`${PREFIX.person}:businessKey/live`, async (context) => {
       const admitted = await admit(options, context, PERSON, false);
       if (admitted instanceof Response) return admitted;
@@ -316,9 +317,14 @@ export function createApi(options: ApiOptions): Hono {
             recheckMs: live.recheckMs ?? RECHECK_MS,
           },
           {
-            stillJoined: async () => !isCommandRefusal(await join()),
+            joinedAs: async () => {
+              const again = await join();
+              return isCommandRefusal(again) ? undefined : again.personId;
+            },
             reads: async (taskId) =>
               typeof (await mayWatch(options, context, admitted.businessId, taskId)) === 'string',
+            shown: async (personId) =>
+              await mayShowInbox(options, context, admitted.businessId, personId),
           },
         );
       });
@@ -364,6 +370,18 @@ async function mayJoinBoard(
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
   }
   return await joinLiveBoard(options.database, businessId, presented);
+}
+
+/** What `inbox.read` shows the stream's own person now, asked with the bearer verified again. */
+async function mayShowInbox(
+  options: ApiOptions,
+  context: Context,
+  businessId: string,
+  personId: string,
+): Promise<string | undefined> {
+  const presented = await options.verify(context.req);
+  if (presented === undefined || presented === 'expired') return undefined;
+  return await shownInbox(options.database, businessId, presented, personId);
 }
 
 const RECHECK_MS = 30_000;
