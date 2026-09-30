@@ -19,6 +19,10 @@
       "rules": { "max-lines-per-function": "off" }
     },
     {
+      "files": ["tests/ci/t2f-unwire-keeps-live-board-running.test.mjs"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
       "files": ["tests/ci/staging-no-production-data-guard.test.ts"],
       "rules": {
         "no-await-in-loop": "off",
