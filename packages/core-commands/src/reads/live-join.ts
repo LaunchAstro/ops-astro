@@ -13,7 +13,7 @@
 // read moves nothing they are shown, and says nothing.
 
 import { createHash } from 'node:crypto';
-import { withSession } from '../../../core-records/src/index.ts';
+import { taskAccess, withSession } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, VerifiedSubject } from '../../../core-records/src/index.ts';
 import {
   asCallerVisible,
@@ -57,4 +57,26 @@ export async function shownInbox(
     return createHash('sha256').update(JSON.stringify(entries)).digest('hex');
   });
   return typeof outcome === 'string' ? outcome : undefined;
+}
+
+/**
+ * Whether the board may tell its reader that one task moved (INB-1 35), by the
+ * grants `inbox.read` asks: the business, the task, or a party grant on the
+ * task's own client, so a reader of client A hears client A and never client B.
+ */
+export async function boardHears(
+  database: Database,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+  taskId: string,
+): Promise<boolean> {
+  const outcome = await withSession(
+    database,
+    businessId,
+    presented,
+    async (tx, session) =>
+      isInternalReader(session.roleKey) &&
+      (await taskAccess(tx, session.personId, taskId)) === 'readable',
+  );
+  return outcome === true;
 }

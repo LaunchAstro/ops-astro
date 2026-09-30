@@ -46,6 +46,7 @@ import {
   agentAnswer,
   isCommandRefusal,
   isReadName,
+  boardHears,
   joinLiveBoard,
   shownInbox,
   refuseCommand,
@@ -404,8 +405,7 @@ export function createApi(options: ApiOptions): Hono {
               const again = await join();
               return isCommandRefusal(again) ? undefined : again.personId;
             },
-            reads: async (taskId) =>
-              typeof (await mayWatch(options, context, admitted.businessId, taskId)) === 'string',
+            reads: async (taskId) => await mayHear(options, context, admitted.businessId, taskId),
             shown: async (personId) =>
               await mayShowInbox(options, context, admitted.businessId, personId),
           },
@@ -427,7 +427,6 @@ async function mayWatch(
   options: ApiOptions,
   context: Context,
   businessId: string,
-  recordId: string | undefined = context.req.param('recordId'),
 ): Promise<string | CommandRefusal> {
   const presented = await options.verify(context.req);
   if (typeof presented !== 'object') {
@@ -435,7 +434,7 @@ async function mayWatch(
   }
   const read = await options.executeRead(options.database, businessId, presented, {
     read: 'task.execution',
-    recordId,
+    recordId: context.req.param('recordId'),
   });
   if (isCommandRefusal(read)) return read;
   if ('execution' in read) return read.execution.taskId;
@@ -453,6 +452,18 @@ async function mayJoinBoard(
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
   }
   return await joinLiveBoard(options.database, businessId, presented);
+}
+
+/** Whether the board's reader may hear this task move, with the bearer verified again. */
+async function mayHear(
+  options: ApiOptions,
+  context: Context,
+  businessId: string,
+  taskId: string,
+): Promise<boolean> {
+  const presented = await options.verify(context.req);
+  if (typeof presented !== 'object') return false;
+  return await boardHears(options.database, businessId, presented, taskId);
 }
 
 /** What `inbox.read` shows the stream's own person now, asked with the bearer verified again. */
