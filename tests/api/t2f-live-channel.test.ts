@@ -260,28 +260,13 @@ describe.skipIf(serverUrl === undefined)(
       unsubscribe();
     });
 
-    it('T2 isolation (T2f): interleaved writes on a pooled connection reach only their own business, and join refuses another business, another client and a person without the grant', async () => {
-      const world = cq8World(s);
-      const other = await world.party(`t2f-other-${randomUUID().slice(0, 8)}`);
+    it('T2 isolation (T2f): interleaved writes on a pooled connection reach only their own business, and join refuses another business under either key', async () => {
+      const other = await cq8World(s).party(`t2f-other-${randomUUID().slice(0, 8)}`);
       const [otherTask] = other.tasks;
       if (otherTask === undefined) throw new Error('party: two tasks');
       const mine = await createTask(s, `t2f-isolation-${randomUUID()}`);
 
-      // Joins first (they run with no live listener). Two clients, one task shared with each.
-      const sibling = await createTask(s, `t2f-sibling-${randomUUID()}`);
-      await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
-      await world.client(s.business, s.decider, 't2f-client-1', mine);
-      await world.client(s.business, s.decider, 't2f-client-2', sibling);
-      const outsider = await enrol(s.db.app, s.business, `t2f-no-grant-${randomUUID()}`);
-      expect((await open(mine, outsider)).status).not.toBe(200);
-      // Client to client (external readers have their own case): a member granted on one task.
-      const scoped = await enrol(s.db.app, s.business, `t2f-scoped-${randomUUID()}`);
-      await s.db.app.withBusiness(s.business, async (tx) => {
-        await grantTo(tx, scoped, 'read', { kind: 'record', id: mine });
-      });
-      expect((await open(mine, scoped)).status).toBe(200);
-      expect((await open(sibling, scoped)).status).toBe(403);
-      // Another business's member, under either key: refused, each with its own status.
+      // Joins first (they run with no live listener), each refused with its own status.
       const foreignToken = await tokenFor(other.member.presented.subject);
       expect((await join(api, key, mine, foreignToken)).status).toBe(403);
       const [otherRow] = await s.db.admin.execute<{ key: string }>(
@@ -308,6 +293,25 @@ describe.skipIf(serverUrl === undefined)(
       expect(heard.forged).toBe(0);
       expect(heard.forgedBack).toBe(0);
       for (const unsubscribe of off) unsubscribe();
+    });
+
+    it('T2 isolation (T2f): join refuses another client and a person without the grant', async () => {
+      const world = cq8World(s);
+      const mine = await createTask(s, `t2f-isolation-${randomUUID()}`);
+      // Two clients, one task shared with each.
+      const sibling = await createTask(s, `t2f-sibling-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
+      await world.client(s.business, s.decider, 't2f-client-1', mine);
+      await world.client(s.business, s.decider, 't2f-client-2', sibling);
+      const outsider = await enrol(s.db.app, s.business, `t2f-no-grant-${randomUUID()}`);
+      expect((await open(mine, outsider)).status).not.toBe(200);
+      // Client to client (external readers have their own case): a member granted on one task.
+      const scoped = await enrol(s.db.app, s.business, `t2f-scoped-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await grantTo(tx, scoped, 'read', { kind: 'record', id: mine });
+      });
+      expect((await open(mine, scoped)).status).toBe(200);
+      expect((await open(sibling, scoped)).status).toBe(403);
     });
 
     it('an external shared reader cannot join the internal activity channel', async () => {
