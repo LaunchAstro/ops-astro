@@ -138,7 +138,6 @@ const names = (suffix: string) => `${project}-${suffix}`;
 // The hops' own pinned image, the worker's.
 const node = String((load().services['worker'] as Record<string, unknown>)['image']);
 const override = resolve(ROOT, `.tmp-${project}.json`);
-// The shared placeholders name the same four places as LIST.
 const env = {
   ...process.env,
   STAGING_BACKUPS_ADMIN_USER: 'probe',
@@ -247,6 +246,7 @@ function bringUp(): void {
 function tearDown(): void {
   for (const [who] of stand) docker(['rm', '-f', names(`stand-${who}`)]);
   compose(['down', '-v', '--timeout', '1']);
+  docker(['volume', 'rm', '-f', names('app')]);
   rmSync(override, { force: true });
 }
 
