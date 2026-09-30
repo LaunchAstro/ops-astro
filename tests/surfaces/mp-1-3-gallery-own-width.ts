@@ -57,7 +57,7 @@ function read(chosen: readonly { unit: string; state: string }[]): Measured[] {
   });
 }
 
-export async function widthReport(): Promise<WidthView[]> {
+async function widthReport(): Promise<WidthView[]> {
   const views: WidthView[] = [];
   await eachGalleryView(async ({ width, theme, page }) => {
     views.push({

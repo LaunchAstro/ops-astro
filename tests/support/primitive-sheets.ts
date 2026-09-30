@@ -11,7 +11,7 @@ import { join } from 'node:path';
 
 const ui = join(import.meta.dirname, '../../packages/ui/src/');
 
-export const PRIMITIVE_SHEETS: readonly string[] = [
+const PRIMITIVE_SHEETS: readonly string[] = [
   ...readFileSync(`${ui}index.ts`, 'utf8').matchAll(/^import '\.\/(styles\/2-[\w-]+\.css)';$/gmu),
 ].map((match) => `${ui}${match[1] ?? ''}`);
 

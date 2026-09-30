@@ -60,7 +60,7 @@ export const pageAt = (path: string): string | undefined =>
   Object.keys(ROUTES).find((page) => ROUTES[page]?.path === path);
 
 /** Why a picture file does not count for its width, or undefined when it does. */
-export function pictureFault(picture: string, width: number): string | undefined {
+function pictureFault(picture: string, width: number): string | undefined {
   let bytes: Buffer;
   try {
     bytes = readFileSync(picture);

@@ -19,7 +19,7 @@ import { WIDTHS } from '../visual/gallery-views.ts';
 import { themesOf } from '../visual/packet.ts';
 import { overflowOf } from '../visual/report.ts';
 
-export type PageCensus = {
+type PageCensus = {
   /** `<page>@<width>-<theme>`. */
   name: string;
   /** Which screen was drawn: the page itself, or sign-in for the public page. */
@@ -40,7 +40,7 @@ type Look = string[];
 type Drawn = { what: string; look: Look; select: boolean; exception: string | undefined };
 
 /** Runs in the page: each named type style as the page resolves it, on a probe. */
-export function looksOfStyles(names: string[]): Look[] {
+function looksOfStyles(names: string[]): Look[] {
   // A transition still running (a size settling as the sheets arrive) is
   // finished first: the census reads the page as it rests.
   for (const animation of document.getAnimations()) animation.finish();
@@ -66,7 +66,7 @@ export function looksOfStyles(names: string[]): Look[] {
 }
 
 /** Runs in the page: every drawn element that draws text, with its computed look. */
-export function drawnText(exceptions: string[]): Drawn[] {
+function drawnText(exceptions: string[]): Drawn[] {
   const inputs = new Set(['text', 'email', 'search', 'password', 'number', 'url', 'tel', 'date']);
   const drawn: Drawn[] = [];
   for (const element of document.body.querySelectorAll('*')) {
@@ -105,7 +105,7 @@ const keyOf = (look: Look, select: boolean): string =>
   (select ? look.with(3, 'normal') : look).join(' | ');
 
 /** Each drawn element matched to the styles it draws in, an exception, or a stray. */
-export function matchStyles(
+function matchStyles(
   names: string[],
   looks: Look[],
   drawn: Drawn[],

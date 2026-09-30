@@ -15,10 +15,10 @@ import type { Page } from 'playwright';
 import { comparePng } from '../visual/compare.ts';
 import { eachGalleryView, entryPicture, WIDTHS } from '../visual/gallery-views.ts';
 
-export type EntryBox = { id: string; left: number; right: number; width: number; height: number };
+type EntryBox = { id: string; left: number; right: number; width: number; height: number };
 
 /** Every gallery entry's box, by catalogue id, in page pixels. */
-export function entryBoxes(page: Page): Promise<EntryBox[]> {
+function entryBoxes(page: Page): Promise<EntryBox[]> {
   return page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>('[data-catalogue-id]')].map((entry) => {
       const box = entry.getBoundingClientRect();
@@ -29,10 +29,7 @@ export function entryBoxes(page: Page): Promise<EntryBox[]> {
 }
 
 /** Every entry's picture, by catalogue id. */
-export async function entryPictures(
-  page: Page,
-  ids: readonly string[],
-): Promise<Map<string, Buffer>> {
+async function entryPictures(page: Page, ids: readonly string[]): Promise<Map<string, Buffer>> {
   const pictures = new Map<string, Buffer>();
   for (const id of ids) pictures.set(id, await entryPicture(page, id));
   return pictures;
@@ -44,14 +41,14 @@ const shotOf = (page: Page, selector: string): Promise<Buffer> =>
     .first()
     .screenshot({ animations: 'disabled', caret: 'hide', scale: 'css' });
 
-export type Interactions = {
+type Interactions = {
   hover: { before: Buffer; after: Buffer };
   focus: { before: Buffer; after: Buffer; ring: string };
   select: { closedMenus: number; openMenus: number };
 };
 
 /** Hover, keyboard focus and the open select, each captured before and after. */
-export async function interact(page: Page): Promise<Interactions> {
+async function interact(page: Page): Promise<Interactions> {
   const option = '[data-catalogue-id="DS-PRIM-10"] .segmented__opt:not([aria-pressed="true"])';
   const hoverBefore = await shotOf(page, option);
   await page.locator(option).first().hover();
@@ -81,7 +78,7 @@ export async function interact(page: Page): Promise<Interactions> {
   return { hover, focus, select };
 }
 
-export type ViewReport = {
+type ViewReport = {
   name: string;
   sideways: number;
   boxes: EntryBox[];
@@ -93,7 +90,7 @@ export type ViewReport = {
 export type GalleryReport = { views: ViewReport[]; sameInDark: string[] };
 
 /** The gallery at each width in each theme, measured; entries drawn the same in dark named. */
-export async function galleryReport(): Promise<GalleryReport> {
+async function galleryReport(): Promise<GalleryReport> {
   const views: ViewReport[] = [];
   const pictures = new Map<string, Map<string, Buffer>>();
   await eachGalleryView(async ({ width, theme, page, sideways }) => {

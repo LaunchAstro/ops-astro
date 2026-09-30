@@ -63,7 +63,7 @@ const typeOf = (path: string): string =>
   TYPES[path.split('.').pop() ?? ''] ?? 'application/octet-stream';
 
 /** The @font-face rules for every bundled font; no local() source, so no system face. */
-export function fontCss(): string {
+function fontCss(): string {
   return readAssets()
     .assets.filter((a) => a.kind === 'font' && a.file !== undefined)
     .map(

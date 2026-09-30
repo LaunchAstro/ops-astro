@@ -53,7 +53,7 @@ async function read(): Promise<Omit<PaintView, 'name'>> {
   };
 }
 
-export async function paintReport(): Promise<PaintView[]> {
+async function paintReport(): Promise<PaintView[]> {
   const views: PaintView[] = [];
   await eachGalleryView(async ({ width, theme, page }) => {
     views.push({ name: `gallery@${String(width)}-${theme}`, ...(await page.evaluate(read)) });

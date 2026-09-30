@@ -1,6 +1,5 @@
 {
   "rules": {
-    "eslint(eqeqeq)": 1,
     "eslint(max-classes-per-file)": 1,
     "eslint(max-lines-per-function)": 624,
     "eslint(max-lines)": 149,
