@@ -12,16 +12,6 @@
 // grant read that admits the board: a task the reader cannot see never moves
 // a number on it (`MP-5-8 isolation`). Each crossing plants a canary title on
 // the task the reader may not see and reads every body for it.
-//
-// On this branch the marks (`task.set_scores`) and the rank on `task.read`
-// are SL08's U15 (MP-4-9, MP-4-2), not yet on main, so these cases are held
-// until it lands (LEANS-ON; comments, not todo, since the isolation manifest
-// refuses a skip):
-// - every row carries the rank, stage and client mark its task read answers
-// - draws the rank's number, score and calc line where marks are stored
-// - is never stored: a mark changed is the next board read’s number
-// - another business: its higher score never moves an Alpha number
-// - another client in the same business: a reader of client A’s two tasks ranks them #1 and #2
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -46,6 +36,7 @@ if (serverUrl === undefined) {
 }
 
 type Body = Readonly<Record<string, unknown>>;
+type Marks = readonly [number | null, number | null, number | null];
 
 interface BoardRow {
   readonly id: string;
@@ -105,10 +96,16 @@ const make = async (
   by: Member,
   name: string,
   title: string,
+  marks: Marks,
   extra: { readonly client?: string; readonly stage?: string } = {},
 ) => {
   const made = await command(business, by, { command: 'task.create', fields: { title } });
   const recordId = made.recordId ?? '';
+  const [impact, confidence, ease] = marks;
+  await change(business, by, recordId, {
+    command: 'task.set_scores',
+    fields: { impact, confidence, ease },
+  });
   if (extra.client !== undefined) {
     await change(business, by, recordId, {
       command: 'task.set_party',
@@ -134,6 +131,9 @@ const rowsOf = async (business: BusinessId, member: Member): Promise<readonly Bo
   }
   return answer.tasks as unknown as readonly BoardRow[];
 };
+
+const numbers = (rows: readonly BoardRow[]) =>
+  Object.fromEntries(rows.map((row) => [row.id, row.rank.number]));
 
 async function open(): Promise<World> {
   const db = await createFreshDatabase({ part: 'b8' });
@@ -172,12 +172,12 @@ async function plant(): Promise<void> {
   const clientA = randomUUID();
   const clientB = randomUUID();
   // Alpha: 504 and 630 for client A, 900 for client B (the canary), one unscored.
-  await make(alpha, owner, 'a504', 'client A work', { client: clientA, stage: 'Build' });
-  await make(alpha, owner, 'b900', CANARY, { client: clientB, stage: CANARY });
-  await make(alpha, owner, 'a630', 'second', { client: clientA });
-  await make(alpha, owner, 'unscored', 'no ease yet');
+  await make(alpha, owner, 'a504', 'client A work', [7, 9, 8], { client: clientA, stage: 'Build' });
+  await make(alpha, owner, 'b900', CANARY, [10, 10, 9], { client: clientB, stage: CANARY });
+  await make(alpha, owner, 'a630', 'second', [7, 9, 10], { client: clientA });
+  await make(alpha, owner, 'unscored', 'no ease yet', [5, 7, null]);
   // Bravo: a task that outscores everything in Alpha.
-  await make(bravo, bravoOwner, 'bravo', CANARY);
+  await make(bravo, bravoOwner, 'bravo', CANARY, [10, 10, 10]);
   await w.db.app.withBusiness(alpha, async (tx) => {
     await grantTo(tx, pairViewer, 'read', { kind: 'record', id: idOf('a504') });
     await grantTo(tx, pairViewer, 'read', { kind: 'record', id: idOf('a630') });
@@ -195,37 +195,86 @@ afterAll(async () => {
 });
 
 describe.skipIf(serverUrl === undefined)('MP-5-8 column read-back', () => {
+  it('every row carries the rank, stage and client mark its task read answers', async () => {
+    const rows = await rowsOf(w.alpha, w.owner);
+    expect(rows).toHaveLength(4);
+    for (const row of rows) {
+      // eslint-disable-next-line no-await-in-loop -- one read per row, compared in turn
+      const read = await executeRead(w.db.app, w.alpha, w.owner.presented, {
+        read: 'task.read',
+        recordId: row.id,
+      });
+      if (isCommandRefusal(read) || !('task' in read)) throw new Error('task.read refused');
+      const task = read.task as unknown as BoardRow;
+      expect([row.rank, row.stage, row.clientSet, row.due]).toStrictEqual([
+        task.rank,
+        task.stage,
+        task.clientSet,
+        task.due,
+      ]);
+    }
+  });
+
   it('draws a real value where one is stored and null only where none is', async () => {
     const byId = new Map((await rowsOf(w.alpha, w.owner)).map((row) => [row.id, row]));
     const a504 = byId.get(idOf('a504'));
-    expect([a504?.stage, a504?.clientSet]).toStrictEqual(['Build', true]);
+    expect([a504?.rank.number, a504?.rank.score, a504?.stage, a504?.clientSet]).toStrictEqual([
+      3,
+      504,
+      'Build',
+      true,
+    ]);
+    expect(a504?.rank.calc).toBe(
+      'impact 7 × confidence 9 × ease 8 × priority 1 × age 1 = 504 · derived',
+    );
     const unscored = byId.get(idOf('unscored'));
-    expect([unscored?.stage, unscored?.clientSet]).toStrictEqual([null, false]);
+    expect([
+      unscored?.rank.number,
+      unscored?.rank.calc,
+      unscored?.stage,
+      unscored?.clientSet,
+    ]).toStrictEqual([null, 'not ranked: missing ease', null, false]);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('MP-5-8 column read-back, derived at read', () => {
+  it('is never stored: a mark changed is the next board read’s number', async () => {
+    const recordId = idOf('a504');
+    await change(w.alpha, w.owner, recordId, {
+      command: 'task.set_scores',
+      fields: { impact: 10, confidence: 10, ease: 10 },
+    });
+    expect(numbers(await rowsOf(w.alpha, w.owner))[recordId]).toBe(1);
+    await change(w.alpha, w.owner, recordId, {
+      command: 'task.set_scores',
+      fields: { impact: 7, confidence: 9, ease: 8 },
+    });
+    expect(numbers(await rowsOf(w.alpha, w.owner))[recordId]).toBe(3);
   });
 });
 
 describe.skipIf(serverUrl === undefined)('MP-5-8 isolation', () => {
-  it('another business: never reaches the board', async () => {
+  it('another business: its higher score never moves an Alpha number, and never reaches the board', async () => {
     const answer = await board(w.alpha, w.owner);
+    expect(numbers(await rowsOf(w.alpha, w.owner))[idOf('b900')]).toBe(1);
     expect(JSON.stringify(answer)).not.toContain(idOf('bravo'));
     const own = await rowsOf(w.bravo, w.bravoOwner);
-    expect(own.map((row) => row.id)).toStrictEqual([idOf('bravo')]);
+    expect(own.map((row) => [row.id, row.rank.number])).toStrictEqual([[idOf('bravo'), 1]]);
     const crossing = await board(w.alpha, w.bravoOwner);
     expect(isCommandRefusal(crossing) ? crossing.code : 'answered').not.toBe('answered');
     expect(JSON.stringify(crossing)).not.toContain(CANARY);
   });
 
-  it('another client in the same business: a reader of client A’s two tasks is served those two', async () => {
+  it('another client in the same business: a reader of client A’s two tasks ranks them #1 and #2', async () => {
     const answer = await board(w.alpha, w.pairViewer);
     expect(isCommandRefusal(answer)).toBe(false);
     const rows = await rowsOf(w.alpha, w.pairViewer);
-    expect(rows.map((row) => row.id).toSorted()).toStrictEqual(
-      [idOf('a504'), idOf('a630')].toSorted(),
-    );
+    expect(numbers(rows)).toStrictEqual({ [idOf('a630')]: 1, [idOf('a504')]: 2 });
     const text = JSON.stringify(answer);
     expect(text).not.toContain(CANARY);
     expect(text).not.toContain(idOf('b900'));
     expect(text).not.toContain(idOf('unscored'));
+    for (const row of rows) expect(row.rank.calc).not.toContain('900');
   });
 
   it('a member with no grant is refused and shown no rank or stage', async () => {
