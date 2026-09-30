@@ -326,7 +326,7 @@ describe('FU-93 one workflow owns review evidence', () => {
     expect(read(REVIEW)).not.toContain('pull_request_target');
   });
 
-  it('Sol owed: the check reads the labels as they stand when it judges, not the event copy', () => {
+  it('owed mark: the check reads the labels as they stand when it judges, not the event copy', () => {
     const block = job(read(REVIEW), CHECK);
     expect(block).not.toContain('github.event.pull_request.labels');
     expect(step(block, FETCH)).toContain(

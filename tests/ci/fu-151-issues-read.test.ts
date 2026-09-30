@@ -164,16 +164,16 @@ describe('FU-151 the review-evidence job reads open issues', () => {
   });
 });
 
-describe('Sol owed: the review-evidence job reads the labels', () => {
+describe('owed mark: the review-evidence job reads the labels', () => {
   // Owner, 1 October 2026: the `needs-sol` label and a `Sol-owed:` line stand in for the record.
   const owed = body(5).replace(/Reviewer:[\s\S]*$/u, 'Sol-owed: stage1/SOL-OWED.md MAIN-GATE-1');
-  it('Sol owed: the job reads the needs-sol label GitHub shows and accepts the mark', () => {
+  it('owed mark: the job reads the label GitHub shows and accepts the mark', () => {
     const { fetched, checked } = runJob(5, 'mock,needs-sol', owed);
     expect(fetched.status).toBe(0);
     expect(checked.status).toBe(0);
   });
 
-  it('Sol owed: without the label on the pull request the job refuses the mark', () => {
+  it('owed mark: without the label on the pull request the job refuses the mark', () => {
     const { checked } = runJob(5, 'mock', owed);
     expect(checked.status).toBe(1);
     expect(checked.stderr).toContain('not the `needs-sol` label');
