@@ -25,6 +25,7 @@ import {
 import { largeArchive, overTheCap } from './staging-backup-reach-large.fixture.ts';
 import { WORKER_UNIT } from './staging-placeholders.fixture.ts';
 
+const STAGING_NETS = ['staging', 'egress-link', 'egress'];
 const DEFINITION = new URL('../../deploy/staging/compose.json', import.meta.url).pathname;
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 const image =
@@ -89,7 +90,7 @@ live('S0-3 store reach, live', () => {
       override,
       JSON.stringify({
         services: { backups: { container_name: names('backups') } },
-        networks: { staging: { name: names('staging') } },
+        networks: Object.fromEntries(STAGING_NETS.map((n) => [n, { name: names(n) }])),
         volumes: {
           'ops-astro-staging-backups-data': { name: names('backups-data') },
           'ops-astro-staging-tls': { name: names('tls') },

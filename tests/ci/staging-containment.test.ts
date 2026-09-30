@@ -28,7 +28,7 @@ type Service = {
   ports?: string[];
   volumes?: string[];
   tmpfs?: string[];
-  networks?: string[];
+  networks?: string[] | Record<string, { aliases?: string[] }>;
   read_only?: boolean;
   cap_drop?: string[];
   security_opt?: string[];
@@ -117,6 +117,8 @@ const each = (def: Definition, names: string[], test: (s: Service, n: string) =>
     return problem === null ? [] : [`${name}: ${problem}`];
   });
 const all = (def: Definition) => Object.keys(def.services);
+const netsOf = (s: Service): string[] =>
+  Array.isArray(s.networks) ? s.networks : Object.keys(s.networks ?? {});
 
 // ---- S0-1 containment: the refusals ------------------------------------------
 
@@ -129,11 +131,14 @@ const REFUSALS: Row[] = [
   {
     name: "the host's bridge address: no gateway on the staging network",
     check: (def) =>
-      Object.entries(def.networks).flatMap(([name, network]) =>
-        network.driver_opts?.['com.docker.network.bridge.gateway_mode_ipv4'] === 'isolated'
-          ? []
-          : [`${name}: gateway mode not isolated`],
-      ),
+      // The one way out, egress, is a routed network by design (staging-egress.test.ts).
+      Object.entries(def.networks)
+        .filter(([name]) => name !== 'egress')
+        .flatMap(([name, network]) =>
+          network.driver_opts?.['com.docker.network.bridge.gateway_mode_ipv4'] === 'isolated'
+            ? []
+            : [`${name}: gateway mode not isolated`],
+        ),
     remove: (def) => delete def.networks['staging']!.driver_opts,
   },
   {
@@ -147,15 +152,19 @@ const REFUSALS: Row[] = [
   {
     name: 'every service on internal networks alone: no bridge route out',
     check: (def) =>
-      each(def, all(def), (s) => {
-        const out = (s.networks ?? []).filter((n) => def.networks[n]?.internal !== true);
-        return (s.networks ?? []).length > 0 && out.length === 0
-          ? null
-          : `networks ${String(s.networks)}`;
-      }),
+      // egress-out alone has a route out: its own rows are staging-egress.test.ts.
+      each(
+        def,
+        all(def).filter((n) => n !== 'egress-out'),
+        (s) => {
+          const nets = netsOf(s);
+          const out = nets.filter((n) => def.networks[n]?.internal !== true);
+          return nets.length > 0 && out.length === 0 ? null : `networks ${String(s.networks)}`;
+        },
+      ),
     remove: (def) => {
       def.networks['outside'] = { name: 'ops-astro-staging-outside' };
-      def.services['worker']!.networks!.push('outside');
+      (def.services['worker']!.networks as string[]).push('outside');
     },
   },
   {
@@ -426,7 +435,11 @@ live('S0-1 containment and resource limits, live', () => {
         services: Object.fromEntries(
           Object.keys(load().services).map((s) => [s, { container_name: names(s) }]),
         ),
-        networks: { staging: { name: names('staging') } },
+        networks: {
+          staging: { name: names('staging') },
+          'egress-link': { name: names('egress-link') },
+          egress: { name: names('egress') },
+        },
         volumes: {
           'ops-astro-staging-backups-data': { name: names('backups-data') },
           'ops-astro-staging-tls': { name: names('tls') },
@@ -523,7 +536,7 @@ live('S0-1 containment and resource limits, live', () => {
   });
 
   it('every service, as Docker creates it, carries its confinement and limits', () => {
-    const create = compose(['create', 'backups', 'worker', 'forwarder']);
+    const create = compose(['create', 'backups', 'worker', 'forwarder', 'egress', 'egress-out']);
     expect(create.status, create.out).toBe(0);
     const format =
       '{{json .HostConfig.ReadonlyRootfs}} {{json .HostConfig.CapDrop}} {{.HostConfig.NanoCpus}} ' +
@@ -533,7 +546,10 @@ live('S0-1 containment and resource limits, live', () => {
       const memory = bytes(s.mem_limit!);
       expect(docker(['inspect', names(name), '--format', format]).out, name).toBe(
         `true ["ALL"] ${Number(s.cpus) * 1e9} ${memory} ${memory} ${s.pids_limit} ` +
-          `["no-new-privileges:true"] ${names('staging')}`,
+          `["no-new-privileges:true"] ${netsOf(s)
+            .toSorted()
+            .map((n) => names(n))
+            .join('')}`,
       );
     }
     const format2 =
