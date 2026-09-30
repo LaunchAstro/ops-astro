@@ -151,4 +151,81 @@ describe('INB-1 live identity rebind', () => {
       await running;
     }
   });
+
+  // eslint-disable-next-line max-lines-per-function -- one controlled inbox read and identity change
+  it('an in-flight old-person inbox digest cannot signal a remapped bearer', async () => {
+    const first = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const second = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const frames: { event: string; data: string }[] = [];
+    let aborted = false;
+    let onAbort = noop;
+    const stream = {
+      get aborted() {
+        return aborted;
+      },
+      onAbort(callback: () => void) {
+        onAbort = callback;
+      },
+      writeSSE(frame: { event: string; data: string }) {
+        frames.push(frame);
+        return Promise.resolve();
+      },
+      abort() {
+        aborted = true;
+        onAbort();
+      },
+    } as unknown as SSEStreamingApi;
+    let hear: (signal: BoardSignal) => void = ignoreSignal;
+    const topics: LiveTopics = {
+      subscribe: () => () => {},
+      subscribeBoard: (_business, _person, send) => {
+        hear = send;
+        return () => {};
+      },
+      listening: true,
+      close: () => Promise.resolve(),
+    };
+    let current = first;
+    let reads = 0;
+    let enterShown = noop;
+    const showing = new Promise<void>((resolve) => {
+      enterShown = resolve;
+    });
+    let finishShown: (digest: string) => void = noop;
+    const pendingDigest = new Promise<string>((resolve) => {
+      finishShown = resolve;
+    });
+    const ask: BoardQuestions = {
+      joinedAs: () => Promise.resolve(current),
+      reads: () => Promise.resolve(true),
+      shown: () => {
+        reads += 1;
+        if (reads === 1) return Promise.resolve('before');
+        enterShown();
+        return pendingDigest;
+      },
+    };
+    const running = followBoard(
+      stream,
+      topics,
+      {
+        businessId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        personId: first,
+        recheckMs: 60_000,
+      },
+      ask,
+    );
+    try {
+      await vi.waitFor(() => expect(frames).toHaveLength(1));
+      hear({ kind: 'inbox' });
+      await showing;
+      current = second;
+      finishShown('after');
+      await setImmediate();
+      expect(frames.filter((frame) => frame.event === 'inbox')).toHaveLength(0);
+    } finally {
+      stream.abort();
+      await running;
+    }
+  });
 });
