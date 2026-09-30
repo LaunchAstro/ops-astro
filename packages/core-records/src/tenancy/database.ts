@@ -40,7 +40,7 @@ export interface TenantQuery {
  * placement and sibling locks) come before anything `acquire` takes. Nothing
  * else in `packages/` or `apps/` spells the SQL (`tests/runtime/cq-8.test.ts`).
  */
-export async function advisoryLock(tx: Pick<TenantQuery, 'query'>, key: string): Promise<void> {
+export async function advisoryLock(tx: TenantQuery, key: string): Promise<void> {
   await tx.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [key]);
 }
 
@@ -89,10 +89,7 @@ export interface DatabaseOptions {
   readonly max?: number;
 }
 
-export function open(
-  url: string,
-  options: DatabaseOptions,
-): { sql: postgres.Sql; log: StatementLog } {
+function open(url: string, options: DatabaseOptions): { sql: postgres.Sql; log: StatementLog } {
   const log = options.log ?? createStatementLog();
   const source = options.source ?? 'runtime';
   const sql = postgres(url, {

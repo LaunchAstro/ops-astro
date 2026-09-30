@@ -24,10 +24,6 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
   // 0045: the installation's operating business; the application reads it only.
   ['s', 'ops.operating_business'],
-  // 0047: the API's outbox; the application inserts its four columns, and reads nothing.
-  ['i', 'ops.api_events'],
-  // 0048: the forwarder's kept alerts; the application holds nothing on them.
-  ['', 'ops.api_alerts'],
   ['s', 'ops.slots'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],

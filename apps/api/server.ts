@@ -140,7 +140,9 @@ export function createBusinessResolver(
     const cached = known.get(businessKey);
     if (cached !== undefined) return cached;
 
+    // As the lookup identity (0046), which reads id and key and nothing else.
     const rows = await admin.transaction(async (execute) => {
+      await execute('set local role ops_astro_lookup');
       return await execute<{ id: string }>(
         'select id from public.businesses where key = $1 limit 2',
         [businessKey],
@@ -203,6 +205,13 @@ export function composeApi(config: ApiConfig): ComposedApi {
   const executeRead = config.executeRead ?? readExecutor;
   const resolveBusiness = createBusinessResolver(admin);
   const server = new Hono();
+  // S0-6 no edge caching: the API is served behind Vercel's edge network, so
+  // every answer under /api, a refusal, a fault and a missing route included,
+  // tells every cache on the way not to keep it.
+  server.use('/api/*', async (context, next) => {
+    await next();
+    context.res.headers.set('cache-control', 'private, no-store');
+  });
   // This app's keys, for this request only: no other composition can replace them.
   server.use(async (_context, next) => await withRuntimeKeys(config.keys, next));
 
