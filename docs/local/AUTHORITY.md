@@ -369,8 +369,8 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:659-689`, run at `:819-827`). It gets a login and an acting identity,
-  and no membership and no business grant (`:114-117`, `:266-268`). The seed
+  user (`:664-694`, run at `:824-832`). It gets a login and an acting identity,
+  and no membership and no business grant (`:119-122`, `:271-273`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
   (`:700-720`, `:854-864`).
@@ -526,9 +526,10 @@ body naming `olderThanDays` is refused `COMMAND_BODY_INVALID`
 and no accepted source names one for the work window (C122-1's seven-day floor
 is the conversation window's). `conversation_window_days` and
 `client_sign_off_required` still have no consumer among the first slice's
-operations. `four_eyes_threshold` has one: above it, `budget.top_up` needs a
+operations. `four_eyes_threshold` has two: above it, `budget.top_up` needs a
 second approver, a different person holding `billing:decide` on the task
-(T2e, `core-runtime/src/budget.ts`).
+(T2e, `core-runtime/src/budget.ts`), and so does AW-05's top-up at the budget
+stop, `run.top_up`, which reads it under its locks ([RUNTIME.md](RUNTIME.md)).
 
 **Every setting has a revision** (0020), for the reason a record has one: two
 administrators editing one row from two browser tabs both wrote, and the second
@@ -683,6 +684,14 @@ foreign and a fabricated id get the same answer (`SCOPE_OF.claim`,
 `commands/prepare.ts`). A restart of a live, completed or already restarted
 lineage is `TRANSITION_NOT_PERMITTED` 409, the same code a second
 grant revocation answers.
+
+AW-05's two answers at the budget stop are authorised the same way as
+`task.cancel`: on the task named in `recordId`, `decide` on `billing` for
+`run.top_up` and `decide` on `gate` for `run.end_at_budget_stop`. The handler
+refuses a run that is not on that task with the bytes a made-up run gets, and
+the runtime asks the same pair of the run's own task again under the run's
+locks. No agent holds `decide`, and neither row is in the agent's reach. The
+seed gives both pairs to `admin` only (`scripts/local-seed.mjs`).
 
 ## The restricted worker role
 

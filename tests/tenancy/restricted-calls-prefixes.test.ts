@@ -29,7 +29,7 @@
 // not exist it is not called, and the tally says which.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readdirSync } from 'node:fs';
 import {
   createEmptyDatabase,
@@ -40,7 +40,11 @@ import { describePrefix, proveEachPrefix } from '../support/prefix-harness.ts';
 import { readMigrations } from '../../packages/core-records/src/tenancy/migrate.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { createWorld } from '../acceptance/world.ts';
-import { walkTheJourney, walkTheOtherLineages } from '../acceptance/restart-harness.ts';
+import {
+  callModelOnTheJourney,
+  walkTheJourney,
+  walkTheOtherLineages,
+} from '../acceptance/restart-harness.ts';
 import {
   APPLICATION_EXECUTES,
   WORKER_ROLE,
@@ -65,9 +69,13 @@ import {
   type CallerName,
   type Callers,
 } from './restricted-calls-callers.ts';
+import { columnUpdateFindings } from './restricted-calls-columns.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
+
+/** SHA-256 of the four bytes `seed`, so the audit copy's own check holds. */
+const SEED_DIGEST = createHash('sha256').update('seed').digest('hex');
 
 /** Rows for the tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
@@ -98,7 +106,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
-  // 0042's map tables: the journey charts no map, so each gets one row here.
+  // 0048's map tables: the journey charts no map, so each gets one row here.
   'public.map_components': {
     map_id: randomUUID(),
     kind: 'fog',
@@ -121,6 +129,61 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     out_of_scope: 0,
   },
   'public.map_frontier': { map_id: randomUUID(), ticket_id: randomUUID(), position: 1 },
+  // AW-02: nothing writes a pin before AW-04's plan accept.
+  'public.run_definition_pins': {
+    run_id: randomUUID(),
+    ref_kind: 'bootstrap_file',
+    path: 'skills/seed.md',
+    content_digest: SEED_DIGEST,
+    content_size: 4,
+    read_at: '2026-09-30T00:00:00Z',
+    manifest: [],
+    manifest_digest: SEED_DIGEST,
+    pinned_by_actor_id: randomUUID(),
+  },
+  'public.bootstrap_reads': {
+    run_id: randomUUID(),
+    sequence: 1,
+    path: 'skills/seed.md',
+    content_digest: SEED_DIGEST,
+    content_size: 4,
+    is_entry: true,
+  },
+  // AW-05: nothing raises an ask before a run reaches its ceiling.
+  'public.budget_asks': {
+    run_id: randomUUID(),
+    reservation_id: randomUUID(),
+    lease_id: randomUUID(),
+    decision_id: randomUUID(),
+    ask_number: 1,
+    kind: 'stop',
+    ceiling_minor: 400,
+    spent_minor: 0,
+    currency: 'AUD',
+  },
+  // AW-05: nothing answers a stop that was never raised.
+  'public.budget_approvals': {
+    ask_id: randomUUID(),
+    run_id: randomUUID(),
+    person_id: randomUUID(),
+    actor_id: randomUUID(),
+    amount_minor: 300,
+    currency: 'AUD',
+  },
+  'public.budget_answers': {
+    ask_id: randomUUID(),
+    run_id: randomUUID(),
+    kind: 'end',
+    first_person_id: randomUUID(),
+  },
+  // AW-13: nothing starts the exporter on the journey.
+  'public.trace_export_cursors': {},
+  'public.trace_export_gaps': { code: 'target_unreachable', events: 1 },
+  'public.bootstrap_bytes': {
+    content_digest: SEED_DIGEST,
+    content_size: 4,
+    bytes: '\\x73656564',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;
@@ -134,7 +197,7 @@ async function referenceRows(): Promise<Reference> {
   const world = await createWorld('rcpw');
   try {
     await walkTheOtherLineages(world);
-    await walkTheJourney(world);
+    await callModelOnTheJourney(world, await walkTheJourney(world));
     const rows = new Map(Object.entries(UNREACHED).map(([name, row]) => [name, [row]]));
     for (const table of await catalogueTables(world.db.admin)) {
       if (!table.tenant || table.qualified === 'public.businesses') continue;
@@ -338,6 +401,10 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
           if (before !== after) wrong.push(`${line}, the table changed`);
         }
       }
+
+      wrong.push(
+        ...(await columnUpdateFindings(db.admin, callers, activeCallers, alpha, migration.version)),
+      );
 
       for (const fn of functions) {
         for (const caller of [...activeCallers, 'owner'] as const) {

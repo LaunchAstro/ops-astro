@@ -444,6 +444,43 @@ export interface TaskExecution {
   readonly complete: boolean;
   /** The cursor for the rest, or null when nothing was left out. */
   readonly next: number | null;
+  /** Planned and observed per run (AW-06); every reader who may see the task gets the same one. */
+  readonly graph: ExecutionGraph;
+}
+
+/**
+ * One run's node (AW-06). `planned` stays null until AW-04's bound plan record
+ * is read, and `plan` says `unbound` meanwhile, so no node is called unplanned
+ * against a plan nobody read. The observed layer is the run's own record.
+ */
+export interface ExecutionGraph {
+  readonly plan: 'unbound';
+  readonly sourceRevision: number;
+  readonly complete: boolean;
+  readonly nodes: readonly ExecutionNode[];
+}
+
+export interface ExecutionNode {
+  readonly nodeId: string;
+  readonly condition: 'not_started' | 'in_progress' | 'settled' | 'superseded' | 'unrecognised';
+  readonly planned: null;
+  readonly observed: {
+    readonly condition: ExecutionNode['condition'];
+    readonly runState: string;
+    readonly attemptId: string | null;
+    readonly whoseMove: {
+      readonly kind: 'agent' | 'person';
+      readonly actorId: string | null;
+    } | null;
+    readonly outcome: string | null;
+    readonly fault: string | null;
+    readonly lease: { readonly state: string; readonly expiresAt: string } | null;
+    readonly effectObserved: boolean;
+    /** Null when nothing is held or spent: absent money is never 0. */
+    readonly heldMinor: number | null;
+    readonly spentMinor: number | null;
+    readonly currency: string;
+  };
 }
 
 /** `task.receipt`: what an observed effect came from, and what it cost (T2c2, T2d). */

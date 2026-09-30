@@ -175,8 +175,12 @@ identity, grant, record and command-envelope spine ported from
 `ops-astro-t1-draft@60f2009`. Two companion files describe the later ones.
 [AUTHORITY.md](AUTHORITY.md) covers the agent-authority, settings and
 delegation migrations, and [RUNTIME.md](RUNTIME.md) covers the proposal, gate,
-decision, budget, lease and attempt migrations. Read `ls migrations/` for the
-current set.
+decision, budget, lease and attempt migrations, and the model-call ledger and
+copy register (`0042_model_calls`), and the pinned instruction files
+(`0043_bootstrap_pins`), the budget wait (`0044_budget_wait`), its answers
+(`0045_budget_answers`) and the diagnostic trace export (`0046_trace_export`, and `0047_trace_export_horizon`,
+which stamps each run event with its writing transaction's id).
+Read `ls migrations/` for the current set.
 
 There is no `tasks` table. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field
@@ -217,7 +221,7 @@ operand and defaults to `task`. `map_owner` (the creator), `map_version` and
 fields existed gets them from `installTaskSpine`, which adds any unslotted
 spine field an installed task type is missing and touches nothing else.
 
-Migration `0042_wayfinder_maps.sql` holds what a map has that a task does not:
+Migration `0048_wayfinder_maps.sql` holds what a map has that a task does not:
 
 | Table            | What it holds                                                                                    | Application role       |
 | ---------------- | ------------------------------------------------------------------------------------------------ | ---------------------- |
@@ -229,7 +233,7 @@ Migration `0042_wayfinder_maps.sql` holds what a map has that a task does not:
 Decisions so far is not stored: `map.view` renders it from the map's completed
 tickets in closing order, so a decision lives once, on its ticket.
 
-Charting's pre-answers (WF-6, migration `0043_wayfinder_pre_answers.sql`) are
+Charting's pre-answers (WF-6, migration `0049_wayfinder_pre_answers.sql`) are
 `map_components` rows of kind `pre_answer`: the question, the answer (the
 body), `veto_open` for an obvious call ("decided, veto open"), and exactly one
 source, `source_record_id` (a closed ticket) or `source_reference` (one line).
@@ -237,9 +241,9 @@ source, `source_record_id` (a closed ticket) or `source_reference` (one line).
 not read answers NOT_FOUND like one that does not exist. `map.view` shows a
 cited record only to a reader who may read it; anyone else sees the source as
 withheld. A pre-answer resolves nothing, so it never joins Decisions so far.
-Renumber 0042 and 0043 at the batch integration if another slice took the numbers.
+Renumber 0048 and 0049 at the batch integration if another slice took the numbers.
 
-`map_summaries` has one writer, the security definer trigger functions in 0042. A write to a task recounts the map it is, and the map its parent was
+`map_summaries` has one writer, the security definer trigger functions in 0048. A write to a task recounts the map it is, and the map its parent was
 before and after; a write to a component or a version recounts its map. So the
 counts move in the transaction that changed them, whichever command did it.
 
@@ -313,7 +317,20 @@ foreign insert into `delegations` is refused with `check_violation`
 (migration 0018), but no application role reaches it: the group holds only
 `select` and `insert` on `handback_reports`, so the privilege check refuses
 `update` and `delete` before the trigger runs. Its only live caller is the owner,
-whom it refuses.
+whom it refuses. `model_route_room` (migration 0042, AW-01's fair share) is
+the second, and the one read across businesses: a route's ceiling is the
+installation's, which a tenant transaction cannot count under row security.
+It answers one whole number, 1 when the transaction's own business may hold
+one more call on the route and 0 when it may not, with no id and no count;
+the business is `app_business_id()`, never an argument, and none is 0. It
+runs with `row_security = off`, so an owner that does not bypass row security
+is refused rather than answered from one business's rows. PUBLIC and the
+application group may not execute it. Only `ops_astro_broker` may, a
+`nologin` role that holds nothing else; the group may take it (`SET`) but does
+not inherit it, so the broker takes it for the one statement with
+`set_config('role', ..., true)` and gives it back. The suites sort that role
+into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
+proves the separation and the grants.
 
 At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist

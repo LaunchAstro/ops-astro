@@ -5,7 +5,7 @@
 // has checked the row's grant (at the ticket's or its map's scope), taken the
 // `wayfinder.map` lock where the row names it, and locked and revision-checked
 // the target. The frontier and summary read models move with them through the
-// triggers in migration 0042, in the same transaction.
+// triggers in migration 0048, in the same transaction.
 
 import { isTaskType } from '../../../core-records/src/index.ts';
 import type { TenantQuery, TaskType } from '../../../core-records/src/index.ts';

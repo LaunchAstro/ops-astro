@@ -65,15 +65,16 @@ import { COMMAND_SURFACE, declarationOf } from '../../../core-wire/src/index.ts'
 import type { CommandDeclaration, CommandName } from '../../../core-wire/src/index.ts';
 import { asCallerVisible, isCommandRefusal, refuseCommand } from './refusal.ts';
 import { crashPointAfterCommit } from '../../../core-runtime/src/index.ts';
-import { registerAttempt, type CommandHandle, type CommandResult } from './register-store.ts';
+import type { CommandHandle, CommandResult } from './register-store.ts';
 import { enter, retryOnce, settle } from './envelope.ts';
 import { isRefused } from './outcome.ts';
 import { authorise } from './agent-authority.ts';
 import { releaseReplay } from './agent-replay.ts';
-import { writeAuditEvent } from './audit.ts';
+import { inSavepoint, recordApplied } from './agent-applied.ts';
 import {
   AGENT_OPERATIONS,
   isOperandRefusal,
+  type AgentOperation,
   parseOperands,
   type TypedOperation,
 } from './agent-operations.ts';
@@ -112,6 +113,30 @@ export async function executeAgentCommand(
   credential: string | undefined,
   request: AgentRequest,
 ): Promise<CommandResult> {
+  const operation = AGENT_OPERATIONS.get(request.command);
+  return await executeAgentOperation(
+    database,
+    businessId,
+    presented,
+    credential,
+    request,
+    operation,
+  );
+}
+
+/**
+ * The agent entry with the row its caller supplies. `model.call`'s broker
+ * executor (`model-call.ts`) passes its own row, whose serve holds the money;
+ * everything else about the call is this entry's, unchanged.
+ */
+export async function executeAgentOperation(
+  database: Database,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+  credential: string | undefined,
+  request: AgentRequest,
+  operation: AgentOperation | undefined,
+): Promise<CommandResult> {
   // One bounded retry, `retryOnce` in `envelope.ts`, which the person entry
   // takes too, on its shared predicate (`isRetryableViolation`). It admits a lost
   // identity claim: a same-operationId retry in flight behind its original
@@ -134,7 +159,7 @@ export async function executeAgentCommand(
         if ('refused' in session) return asCallerVisible(session);
         const overQuota = await admitAgentQuota(tx, presented, session);
         if (overQuota !== undefined) return overQuota;
-        return await runAgentCommand(tx, { session, credential, request });
+        return await runAgentCommand(tx, { session, credential, request }, operation);
       }),
   );
   // Committed: the lost-response gap before the worker reads this (T2c1).
@@ -179,9 +204,9 @@ async function runAgentCommand(
     readonly credential: string | undefined;
     readonly request: AgentRequest;
   },
+  operation: AgentOperation | undefined,
 ): Promise<CommandResult> {
   const { session, credential, request } = presented;
-  const operation = AGENT_OPERATIONS.get(request.command);
   if (operation === undefined) {
     const outside = refuseCommand(
       'DELEGATION_EXCLUDES_OPERATION',
@@ -242,59 +267,11 @@ async function runRow<O extends object>(
   const parsed = parseRequest(request, call.declaration);
   if ('refusal' in parsed) return await settle(tx, session, request, digest, parsed.refusal);
 
-  await tx.query('savepoint agent_work');
-  const outcome = await authorised.run(operands);
-  // A refusal rolls back whatever reached the database on the way to it, for
-  // the same reason and by the same mechanism as the person envelope's.
-  await tx.query(
-    // A refusal rolls back, except the one that kept something on purpose:
-    // `Refused.retains` is set by a handler that wrote a row the contract
-    // retains alongside the refusal, and rolling back would discard it.
-    isRefused(outcome) && outcome.retains !== true
-      ? 'rollback to savepoint agent_work'
-      : 'release savepoint agent_work',
-  );
+  const outcome = await inSavepoint(tx, async () => await authorised.run(operands));
   if (isRefused(outcome)) {
     const { refusal, attempted } = outcome;
     return await settle(tx, session, request, digest, refusal, 'register', attempted);
   }
 
-  const handle: CommandHandle = {
-    command: request.command,
-    recordId: outcome.recordId,
-    revision: outcome.revision,
-    detail: outcome.detail,
-  };
-  await registerAttempt(tx, {
-    operationId: request.operationId,
-    command: request.command,
-    actorId: session.actorId,
-    digest,
-    result: storable(handle),
-    recordId: outcome.recordId,
-  });
-  await writeAuditEvent(tx, {
-    actorId: session.actorId,
-    command: request.command,
-    operationId: request.operationId,
-    payloadDigest: digest,
-    outcome: 'applied',
-    subjectRecordId: outcome.recordId,
-  });
-  return handle;
-}
-
-/**
- * The handle as the register keeps it: without the delegation credential.
- *
- * The credential is "stored by hash" (TRANSACTION-CONTRACT) and
- * `delegations.credential_hash` is that store. A register row holding it in
- * the clear would be a second, readable copy, and a replay would hand it to
- * whoever repeated the operation id. So the row keeps every handle and a null
- * credential; `replayPickup` derives the credential again rather than reading
- * it from anywhere.
- */
-function storable(handle: CommandHandle): CommandHandle {
-  if (!('credential' in handle.detail)) return handle;
-  return { ...handle, detail: { ...handle.detail, credential: null } };
+  return await recordApplied(tx, session, request, digest, outcome);
 }

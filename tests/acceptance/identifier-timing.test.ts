@@ -193,7 +193,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 45 cells: the 33 record-targeted operations, then the 10 with their own operand. */
+  /** The 48 cells: the record-targeted operations, then those with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -285,6 +285,22 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       amountMinor: 0,
       reason: 'identifier timing',
     }));
+    // AW-05's answers name the task and the run on it: bravo's run, the one
+    // its pickup claimed, beside alpha's own task.
+    const [bravoRun] = await w.h.world.db.admin.execute<{ readonly run_id: string }>(
+      'select run_id from public.reservations where id = $1',
+      [f.picked.reservationId],
+    );
+    byAda('run.top_up', 'runId', String(bravoRun?.run_id), (runId) => ({
+      recordId: own.task.id,
+      runId,
+      amountMinor: 100,
+      currency: 'AUD',
+    }));
+    byAda('run.end_at_budget_stop', 'runId', String(bravoRun?.run_id), (runId) => ({
+      recordId: own.task.id,
+      runId,
+    }));
     out.push({
       op: 'task.pickup',
       operand: 'reservationId',
@@ -304,6 +320,13 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       ['task.dispatch', {}],
       ['task.observe', { attemptId: randomUUID() }],
       ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
+      [
+        'model.call',
+        {
+          operation: 'model.replay_compose',
+          fields: [{ name: 'tone', source: 'business_internal', value: NOBODY }],
+        },
+      ],
     ];
     for (const [op, extra] of byLease) {
       out.push({
@@ -318,11 +341,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 45 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 48 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(45);
-    expect(names).toHaveLength(45);
+    expect(new Set(names).size, 'distinct operations').toBe(48);
+    expect(names).toHaveLength(48);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

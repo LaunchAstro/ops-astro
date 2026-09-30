@@ -91,6 +91,11 @@ const GRANTS_BY_ROLE = {
     // SCOPE_NOT_GRANTED for every synthetic user and the runtime journey could
     // not be walked over HTTP: the same shape as the `settings:manage` gap.
     ['task', 'decide'],
+    // AW-05's answers at the budget stop (`core-wire/src/surface.ts`): a
+    // top-up is `decide` on `billing` (T2e's pair, below) and the one-click
+    // end `decide` on `gate`, each a person's act. The same gap as the two
+    // above: without it no synthetic user could end a run waiting at its ceiling.
+    ['gate', 'decide'],
     // Settings are business facts, and a reader is not a writer. The write
     // stays `manage` above; this is the half that lets a screen show the
     // four-eyes band instead of guessing at it.

@@ -37,6 +37,8 @@ import { reviseMap } from './wayfinder-revision.ts';
 import { chartMap } from './wayfinder-chart.ts';
 import { claimTicket, graduateFog, setBlocking } from './wayfinder-blocking.ts';
 import { closeOutOfScope, resolveTicket } from './wayfinder-resolve.ts';
+import { refuseModelCallAsPerson } from './model-call-person.ts';
+import { endOnRun, topUpOnRun } from './run-answers.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -129,6 +131,12 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'map.graduate': graduateFog,
   'task.resolve': resolveTicket,
   'task.close_out_of_scope': closeOutOfScope,
+  // AW-01: the run's worker's, through the broker, on the agent prefix only.
+  'model.call': refuseModelCallAsPerson,
+
+  // AW-05: a person's answers to a run waiting at its approved ceiling.
+  'run.top_up': topUpOnRun,
+  'run.end_at_budget_stop': endOnRun,
 };
 
 function writeOwned(

@@ -76,10 +76,12 @@ describe('the surface as a table', () => {
     // `delegation` are the revocation controls': the path names the row a
     // revocation writes, and the authority it asks is still on tasks. `map`
     // is wayfinder's (WF-1, WF-2): a map is a task, and its path says which
-    // view of the task the operation is about.
+    // view of the task the operation is about. `model` is AW-01's call through
+    // the broker, asked of the lease's task. `run` is AW-05's two answers at
+    // the budget stop, asked of the run's task.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|map)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|map|model|run)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -142,6 +144,16 @@ describe('the surface as a table', () => {
     for (const command of COMMAND_SURFACE) {
       expect(command.collection, command.name).toMatch(/^[a-z][a-z_]*$/u);
     }
+  });
+});
+
+describe("AW-05's answers at the budget stop", () => {
+  it('asks decide on billing for a top-up and on gate for the end', () => {
+    // A top-up is money, the end is a gate, and both decide.
+    expect(declarationOf('run.top_up').collection).toBe('billing');
+    expect(declarationOf('run.end_at_budget_stop').collection).toBe('gate');
+    expect(declarationOf('run.top_up').action).toBe('decide');
+    expect(declarationOf('run.end_at_budget_stop').action).toBe('decide');
   });
 });
 

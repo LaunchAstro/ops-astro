@@ -206,9 +206,12 @@ const HELD_BY_DELEGATION = 'select res.id as reservation_id, res.envelope_id #22
 // The replay's statement text changed only in a SQL comment: CQ-9 dropped a
 // finding label from `-- F4. A revocation that committed ...` in classifier.ts.
 // T3b (#132) then added one filter: a reservation whose attempt is held
-// `liability_unknown` waits for a person and is not rediscovered. Still one
-// read, taken twice; no lock moved.
-const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #39592da5';
+// `liability_unknown` waits for a person and is not rediscovered. AW-05 added
+// another: a run waiting for budget is not classified on its ended lease or
+// retired delegation (classifier.ts, `discoverEligible`;
+// tests/broker/aw-05-budget-wait.test.ts). Still one read, taken twice; no
+// lock moved.
+const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #323ac513';
 const DEPENDENTS = 'with recursive revoked as ( select g.id, g.subje #c53e3eae';
 
 /**
