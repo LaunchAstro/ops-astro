@@ -126,7 +126,7 @@ async function bodyFor(declaration: CommandDeclaration): Promise<Record<string, 
   return { ...prepared.body };
 }
 
-/** made-up to real only while every item is done; never back; the app's role reads both tables and writes neither. */
+/** made-up to real only while every item is done; never back; the app's role reads both tables and writes them only through the gate's commands (s0-5-gate-commands). */
 async function modeOneWay(): Promise<void> {
   const toReal = `update ops.installation set mode = 'real'`;
   await expect(admin(toReal)).rejects.toThrow(/INSTALLATION_NOT_READY/u);
@@ -150,13 +150,8 @@ async function modeOneWay(): Promise<void> {
     ['select mode from ops.installation', 'allowed'],
     ['select item from ops.gate_items', 'allowed'],
     ['select mode from public.first_client_readiness()', 'allowed'],
-    [`update ops.installation set mode = 'made-up'`, 'denied'],
     ['delete from ops.installation', 'denied'],
     [`insert into ops.installation (mode) values ('made-up')`, 'denied'],
-    [
-      `insert into ops.gate_items (item, evidence) values ('phone-alerts', 'https://example.test/x')`,
-      'denied',
-    ],
     [`update ops.gate_items set evidence = 'https://example.test/y'`, 'denied'],
     ['delete from ops.gate_items', 'denied'],
   ];

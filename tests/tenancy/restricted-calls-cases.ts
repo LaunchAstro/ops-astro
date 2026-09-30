@@ -24,8 +24,13 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
   ['s', 'ops.slots'],
   // 0056 (S0-5): the installation's mode and the gate items are read by the
-  // application through first_client_readiness(); only the owner writes them.
-  ['s', 'ops.installation ops.gate_items'],
+  // application through first_client_readiness().
+  // 0060 (S0-5, ORCH38): the gate's own commands write through the app, so it
+  // may insert a gate item, and update `mode` alone on the installation. A
+  // column grant is not a table letter: this suite's update sets the first
+  // column, which stays refused; s0-5-gate-commands proves the column.
+  ['s', 'ops.installation'],
+  ['si', 'ops.gate_items'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
@@ -77,14 +82,26 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
 };
 
 /**
+ * Grants a later migration added, so a prefix before it does not hold them yet.
+ * 0060 grants the gate's own insert (S0-5, ORCH38).
+ */
+const ADDED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
+  'ops.gate_items': { from: '0060', letters: 'i' },
+};
+
+/**
  * What the application group holds on a table after the migration `at` (its
  * version, `0001_tenancy` and so on), or at the full schema when `at` is absent.
  */
 export function applicationGrantsAt(qualified: string, at?: string): string | undefined {
   const granted = APPLICATION_GRANTS[qualified];
+  if (granted === undefined || at === undefined) return granted;
+  const version = at.slice(0, 4);
   const revoked = REVOKED[qualified];
-  if (granted === undefined || revoked === undefined || at === undefined) return granted;
-  return at.slice(0, 4) < revoked.from ? granted + revoked.letters : granted;
+  const added = ADDED[qualified];
+  if (revoked !== undefined && version < revoked.from) return granted + revoked.letters;
+  if (added !== undefined && version < added.from) return granted.replace(added.letters, '');
+  return granted;
 }
 
 /** The functions the application group may execute. Every other one is refused to it. */
