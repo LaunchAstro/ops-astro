@@ -7,11 +7,10 @@
 // One event stream per tab carries every topic (browsers allow about six
 // HTTP/1.1 connections per origin): `GET <person prefix><business>/live`.
 // It is T2f's content-free channel, joined through the same door: `resync` on
-// connect, then `invalidate` naming a task (its identifier, never its
-// content) when a task the caller may read is added, moved or completed, or
-// its agent work moves, and `inbox` when the caller's own inbox changes. A
-// task the caller cannot read, another business's, and another person's inbox
-// never produce an event on it. The inbox signal is sent on commit, so the
+// connect, and again (no task named, ever) when a task the caller may read is
+// added, moved or completed, or its agent work moves, and `inbox` when the
+// caller's own inbox changes. A task the caller cannot read, another
+// business's, and another person's inbox never produce an event on it. The inbox signal is sent on commit, so the
 // count drops with the deciding transaction and never before it.
 
 import { randomUUID } from 'node:crypto';
@@ -129,8 +128,7 @@ async function openTab(api: Hono, path: string, headers: Record<string, string>)
   return tab;
 }
 
-const named = (tab: Tab, taskId: string): number =>
-  tab.heard.filter((one) => one.event === 'invalidate' && one.data === taskId).length;
+const moves = (tab: Tab): number => tab.heard.filter((one) => one.event === 'resync').length;
 const inboxSignals = (tab: Tab): number => tab.heard.filter((one) => one.event === 'inbox').length;
 
 describe.skipIf(serverUrl === undefined)(
@@ -161,13 +159,22 @@ describe.skipIf(serverUrl === undefined)(
       await within(2_000, () => tab.heard.some((one) => one.event === 'resync'), 'resync');
     };
 
+    /** Until `tab` hears nothing new for two rechecks: every earlier change has been said. */
+    const still = async (tab: Tab): Promise<number> => {
+      for (let heard = moves(tab); ; heard = moves(tab)) {
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(450);
+        if (moves(tab) === heard) return heard;
+      }
+    };
+
     /** A committed write on `barrier` that `tab` hears: everything before it has arrived. */
     const settled = async (tab: Tab, barrier: string): Promise<void> => {
-      const before = named(tab, barrier);
+      const before = moves(tab);
       await pool.withBusiness(s.business, async (tx) => {
         await tx.query('update public.records set data = data where id = $1', [barrier]);
       });
-      await within(2_000, () => named(tab, barrier) > before, 'the barrier');
+      await within(2_000, () => moves(tab) > before, 'the barrier');
       await sleep(200);
     };
 
@@ -201,11 +208,12 @@ describe.skipIf(serverUrl === undefined)(
       const tab = await tabOf(s.decider);
       await joined(tab);
 
+      let seen = await still(tab);
       const taskId = await createTask(s, `inb1f-added-${randomUUID()}`);
-      await within(2_000, () => named(tab, taskId) > 0, 'the added task');
+      await within(2_000, () => moves(tab) > seen, 'the added task');
 
       const board = await createTask(s, `inb1f-board-${randomUUID()}`);
-      let seen = named(tab, taskId);
+      seen = await still(tab);
       appliedDetail(
         await asPerson(s, {
           command: 'task.move',
@@ -217,9 +225,9 @@ describe.skipIf(serverUrl === undefined)(
         }),
         'task.move',
       );
-      await within(2_000, () => named(tab, taskId) > seen, 'the moved task');
+      await within(2_000, () => moves(tab) > seen, 'the moved task');
 
-      seen = named(tab, taskId);
+      seen = await still(tab);
       appliedDetail(
         await asPerson(s, {
           command: 'task.complete',
@@ -229,7 +237,7 @@ describe.skipIf(serverUrl === undefined)(
         }),
         'task.complete',
       );
-      await within(2_000, () => named(tab, taskId) > seen, 'the completed task');
+      await within(2_000, () => moves(tab) > seen, 'the completed task');
 
       // Agent activity: the worker's pickup writes the run's `claimed` event.
       const worked = await createTask(s, `inb1f-agent-${randomUUID()}`);
@@ -237,9 +245,9 @@ describe.skipIf(serverUrl === undefined)(
         s,
         await propose(s, worked, { maximumMinor: 1_000, purpose: freshPurpose() }),
       );
-      seen = named(tab, worked);
+      seen = await still(tab);
       await pickup(s, decision['reservationId']);
-      await within(2_000, () => named(tab, worked) > seen, 'the agent’s pickup');
+      await within(2_000, () => moves(tab) > seen, 'the agent’s pickup');
     });
 
     // eslint-disable-next-line max-lines-per-function -- one database world and its open tabs, and the cases that share them
@@ -255,6 +263,7 @@ describe.skipIf(serverUrl === undefined)(
       });
       const narrowTab = await tabOf(narrow);
       await joined(narrowTab);
+      const narrowJoined = await still(narrowTab);
 
       // Another business, writing its own task while both tabs are open.
       const other = await world.party(`inb1f-other-${randomUUID().slice(0, 8)}`);
@@ -266,6 +275,7 @@ describe.skipIf(serverUrl === undefined)(
       );
       const otherTab = await tabOf(other.member, undefined, String(otherRow?.key));
       await joined(otherTab);
+      const otherJoined = await still(otherTab);
 
       const wholeTab = await tabOf(s.decider);
       await joined(wholeTab);
@@ -283,16 +293,25 @@ describe.skipIf(serverUrl === undefined)(
         }),
       );
       await settled(wholeTab, mine);
-      await within(2_000, () => named(narrowTab, mine) > 0, 'the narrow tab hears its task');
-      await within(
-        2_000,
-        () => named(otherTab, otherTask.id) > 0,
-        'the other business hears its own',
-      );
+      await within(2_000, () => moves(narrowTab) > narrowJoined, 'the narrow tab hears its task');
+      await within(2_000, () => moves(otherTab) > otherJoined, 'the other business hears its own');
 
-      // Not a count, not an identifier: nothing of the hidden task or the
-      // other business reaches a tab that cannot read it.
-      expect(named(narrowTab, hidden)).toBe(0);
+      // Not a frame, not an identifier: a write only on the hidden task, or only
+      // in the other business, reaches no tab that cannot read it while the
+      // owner's barrier resync arrives.
+      const narrowNow = await still(narrowTab);
+      const otherNow = await still(otherTab);
+      await settled(wholeTab, hidden);
+      expect(moves(narrowTab)).toBe(narrowNow);
+      expect(moves(otherTab)).toBe(otherNow);
+      const wholeNow = await still(wholeTab);
+      await pool.withBusiness(other.id, async (tx) => {
+        await tx.query('update public.records set data = data where id = $1', [otherTask.id]);
+      });
+      await within(2_000, () => moves(otherTab) > otherNow, 'the other business’s barrier');
+      await sleep(200);
+      expect(moves(wholeTab)).toBe(wholeNow);
+      expect(moves(narrowTab)).toBe(narrowNow);
       expect(JSON.stringify(narrowTab.heard)).not.toContain(hidden);
       expect(JSON.stringify(narrowTab.heard)).not.toContain(otherTask.id);
       expect(JSON.stringify(wholeTab.heard)).not.toContain(otherTask.id);
@@ -373,13 +392,16 @@ describe.skipIf(serverUrl === undefined)(
       });
       const tab = await tabOf(reader);
       await joined(tab);
+      const owner = await tabOf(s.decider);
+      await joined(owner);
+      const seen = await still(tab);
       await pool.withBusiness(s.business, async (tx) => {
-        await tx.query('update public.records set data = data where id = any($1::uuid[])', [
-          [taskA, taskB],
-        ]);
+        await tx.query('update public.records set data = data where id = $1', [taskA]);
       });
-      await within(2_000, () => named(tab, taskA) > 0, 'the reader hears client A');
-      expect(named(tab, taskB)).toBe(0);
+      await within(2_000, () => moves(tab) > seen, 'the reader hears client A');
+      const heard = await still(tab);
+      await settled(owner, taskB);
+      expect(moves(tab)).toBe(heard);
     });
 
     it('INB-1 the owed count moves live: the same tab hears its own inbox on the deciding commit, never another person’s', async () => {
@@ -399,12 +421,13 @@ describe.skipIf(serverUrl === undefined)(
       const quiet = await tabOf(bystander);
       await joined(tab);
       await joined(quiet);
+      const joinedAt = await still(tab);
 
       // Raised: the proposal gives the reviewer a decision item.
       const proposal = await propose(s, taskId, { maximumMinor: 1_000, purpose: freshPurpose() });
       await within(2_000, () => inboxSignals(tab) > 0, 'the raised item');
       // One stream carries both topics: the task's own change arrived too.
-      expect(named(tab, taskId)).toBeGreaterThan(0);
+      await within(2_000, () => moves(tab) > joinedAt, 'the task’s own change');
 
       // A deciding transaction that rolls back sends nothing; the commit does.
       const raised = inboxSignals(tab);
@@ -500,6 +523,7 @@ describe.skipIf(serverUrl === undefined)(
         });
       });
       await settled(tab, secondTask);
+      await still(tab);
       expect(inboxSignals(tab)).toBe(before);
     });
   },

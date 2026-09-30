@@ -10,8 +10,9 @@
 // when what `inbox.read` shows the caller changed (their topic names no item,
 // so a change to an item about a task they cannot read says nothing); `closed`
 // the first time the caller may no longer hold the stream. Signals that arrive
-// while one batch is being asked merge into the next, and a resync stands for
-// every inbox change before it.
+// while one batch is being asked merge into the next. A resync on connect or
+// from the recheck stands for every inbox change before it; one for a task
+// move leaves the inbox its own signal.
 //
 // The stream hears one person's inbox topic, the person the bearer resolves
 // to. Each batch asks the join again, and so does a changed inbox digest
@@ -181,9 +182,14 @@ async function rejoin(
   return 'rebound';
 }
 
-/** A resync stands for every inbox change so far: what it shows is taken first. */
-async function resyncs(stream: SSEStreamingApi, ask: BoardQuestions, bound: Bound): Promise<void> {
-  bound.shown = await ask.shown(bound.personId);
+/** A resync; with `inbox`, it stands for every inbox change so far, taken first. */
+async function resyncs(
+  stream: SSEStreamingApi,
+  ask: BoardQuestions,
+  bound: Bound,
+  inbox = true,
+): Promise<void> {
+  if (inbox) bound.shown = await ask.shown(bound.personId);
   bound.reach = await ask.reach?.();
   await send(stream, 'resync');
 }
@@ -201,8 +207,8 @@ async function say(
   bound: Bound,
   bind: (personId: string) => void,
 ): Promise<'closed' | 'rebound' | 'same'> {
-  let moved = heard.resync;
-  for (const taskId of moved ? [] : heard.named) {
+  let moved = false;
+  for (const taskId of heard.resync ? [] : heard.named) {
     // eslint-disable-next-line no-await-in-loop -- in the order they were heard.
     if (!(await ask.reads(taskId, bound.personId))) continue;
     // eslint-disable-next-line no-await-in-loop
@@ -212,7 +218,7 @@ async function say(
     moved = await ask.reads(taskId, bound.personId);
     if (moved) break;
   }
-  if (moved) await resyncs(stream, ask, bound);
+  if (heard.resync || moved) await resyncs(stream, ask, bound, heard.resync);
   if (!heard.inbox) return 'same';
   const now = await ask.shown(bound.personId);
   if (now === undefined || now === bound.shown) return 'same';
