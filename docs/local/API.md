@@ -1183,7 +1183,9 @@ task whose `parent` is this one, read with the parent in one query
 the reader's own grants reach it, so a record-scoped reader of the parent is
 not told a step they may not read exists. A step carries its `id`, `key`,
 `title`, `state`, `done` (the completed category), `archived` (when and why it
-left the count without being done, or null), `assignee` and `revision`. An
+left the count without being done, or null), `awaitingApproval` (a gate on
+its live version is pending and not expired, asked only of the steps sent,
+`awaitingApproval` in `reads/awaiting.ts`), `assignee` and `revision`. An
 agent reads under its one task and is sent no steps. The shared view carries
 none.
 

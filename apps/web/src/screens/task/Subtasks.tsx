@@ -8,6 +8,11 @@
 // success asks the page to read the task again, so the list, the count and
 // the percentage are always the steps the server sent.
 //
+// **A gate step has no tick.** A step whose gate waits for a decision
+// (`awaitingApproval` on the read) is decided at its gate, never ticked here:
+// its row carries an eye and a note in place of the tick, and it stays open in
+// the count until the gate is decided.
+//
 // **The box stays ready.** Enter adds and clears the box, and focus stays in
 // it for the next one. The box sits at the top and a new step joins the end,
 // in the order the server lists them.
@@ -46,6 +51,19 @@ const archivedOn = (at: string): string =>
     timeZone: 'Australia/Brisbane',
   });
 
+/** A step waiting at its gate: decided there, so no tick here (DT-04). */
+function GateStepRow({ step }: { readonly step: StepView }): ReactElement {
+  return (
+    <li className="sb__step" data-step={step.id} data-done={step.done} data-gate>
+      <span aria-hidden="true">◉</span>
+      <span className="sb__step-title">{step.title ?? step.key}</span>
+      <span className="sb__gate-note" data-step-gate>
+        Waiting on a gate
+      </span>
+    </li>
+  );
+}
+
 function StepRow(props: {
   readonly step: StepView;
   readonly busy: boolean;
@@ -61,6 +79,7 @@ function StepRow(props: {
     press();
   };
   const title = step.title ?? step.key;
+  if (step.archived === null && step.awaitingApproval) return <GateStepRow step={step} />;
   return (
     <li className="sb__step" data-step={step.id} data-done={step.done}>
       {step.archived === null ? (

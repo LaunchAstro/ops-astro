@@ -147,8 +147,12 @@ never unmounted, so a draft survives a switch, and the side showing is held
 above the read so a write's reread keeps it. `perspectiveCounts` is the one
 counting rule for the page and the dock task panel: Team counts unfinished live
 subtasks, Agent counts open gates (the live version's pending gate), else one
-for unshipped staged output; zero draws no badge. Subtasks and staged output
-are not on the read yet, so Team counts nothing until MP-4-4. The doors ("Open
+for unshipped staged output; zero draws no badge. Staged output is not on the
+read yet. The subtask list (`screens/task/Subtasks.tsx`, MP-4-4) is the read's
+`steps`: Enter adds one, a tick completes or reopens it, and finished and
+archived steps fold under "Show finished". A step whose gate waits
+(`awaitingApproval`) has no tick: an eye and the note "Waiting on a gate",
+which drops to its own line at 640px and below. The doors ("Open
 this task in the panel", "Add the first one in the task panel", "Log time in
 the task panel", "Start the timer in the task panel", and the conversation's
 "Reply in the task panel") call the screen's `onOpenPanel`, the reply door with
@@ -766,7 +770,7 @@ places this build does not yet reach it.
   projection", served by `packages/core-commands/src/reads/proposals.ts`). So this
   is the web not drawing them yet and not the database failing to hold them, and
   the panel registry stays empty until there is a screen for a tab to open.
-- Subtasks are not built. Comments are, in the tabbed Internal / Client / All
+- Comments are built, in the tabbed Internal / Client / All
   activity conversation; replies, edits, deletes and the Answered, Seen and
   Not acknowledged signals are not built yet, and history stays its own
   section below.

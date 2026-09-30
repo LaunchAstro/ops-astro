@@ -9,10 +9,13 @@
 // read is not sent, and neither is its title, its id or its place in the
 // count. An agent reads under its one task, which reaches no other record, so
 // it is sent no steps; a step it should work on is delegated to it as a task.
+// Whether a step waits at a gate is asked only of the steps sent (MP-5-11's
+// `awaitingApproval`), so a gate on a step the reader cannot read is never read.
 
 import { readableRecordIds, readTaskFamily } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { StepView } from '../../../core-wire/src/index.ts';
+import { awaitingApproval } from './awaiting.ts';
 import type { RankPool } from './rank.ts';
 
 export async function readTaskSteps(
@@ -31,17 +34,20 @@ export async function readTaskSteps(
       recordTypeId: taskTypeId,
     }),
   );
-  return family.children
-    .filter((child) => readable.has(child.id))
-    .map((child) => ({
-      id: child.id,
-      key: child.key,
-      title: child.title,
-      state: child.state,
-      done: child.state?.machineCategory === 'completed',
-      archived: child.archived,
-      awaitingApproval: false,
-      assignee: child.assignee,
-      revision: child.revision,
-    }));
+  const sent = family.children.filter((child) => readable.has(child.id));
+  const gated = await awaitingApproval(
+    tx,
+    sent.map((child) => child.id),
+  );
+  return sent.map((child) => ({
+    id: child.id,
+    key: child.key,
+    title: child.title,
+    state: child.state,
+    done: child.state?.machineCategory === 'completed',
+    archived: child.archived,
+    awaitingApproval: gated.has(child.id),
+    assignee: child.assignee,
+    revision: child.revision,
+  }));
 }

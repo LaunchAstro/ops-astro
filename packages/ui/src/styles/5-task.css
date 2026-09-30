@@ -438,6 +438,29 @@
   background: var(--danger);
 }
 
+/* A gate step (MP-4-4, DT-04): no tick; the note sits right of the title on
+   one line, and at 640 and below drops to a line of its own (D-17). */
+.sb__step[data-gate] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+.sb__gate-note {
+  margin-inline-start: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+@media (width <= 640px) {
+  .sb__gate-note {
+    flex-basis: 100%;
+    margin-inline-start: 0;
+    white-space: normal;
+  }
+}
+
 /* -- The description and the agent brief (MP-4-7, DP-34, DP-35, TT-01, TA-10).
    One font rule (R60): the description is sans on every surface, and so is
    the rendered brief; mono is kept for the brief's markdown field alone. --- */
