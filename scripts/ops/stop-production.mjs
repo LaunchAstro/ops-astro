@@ -9,11 +9,11 @@
 // person stops it first, and this is the only way the runbook stops it. The
 // worker and its outbox forwarder are one unit on the machine (the forwarder
 // holds a database session), so both stop together. The web app and sign-in
-// are not on the machine: they are taken down by the maintenance deployment.
+// are not on the machine; the maintenance deployment takes them down.
 // It asks the operator gate first (`operator.ts`): a person's own sign-in
 // holding `operations:manage`, or it refuses and does nothing. Then it asks
-// Docker to stop exactly the two containers below with a fixed argument list:
-// it takes no argument, so no caller can name another service. A container is
+// Docker to stop exactly the two containers below with a fixed argument list.
+// It takes no argument, so no caller can name another service. A container is
 // stopped, never removed, so it can be started again. Last, it writes the
 // deployment record. Exit 0 when both are stopped, 1 when refused or failed,
 // 2 when given any argument.

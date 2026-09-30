@@ -183,8 +183,8 @@ describe('only a verified token says who is calling', () => {
     // missing, forged, unsigned and subject-less all answer
     // `AUTH_UNKNOWN_LOGIN`, because telling them apart tells an
     // unauthenticated caller which guess was closer. An expired token is not a
-    // guess — its signature verifies against a key the provider published, so
-    // whoever sent it held a credential this server issued — and the caller
+    // guess. Its signature verifies against a key the provider published, so
+    // whoever sent it held a credential this server issued, and the caller
     // learns nothing from being told it ran out that they could not already
     // prove. What they gain is a door they can open: `AUTH_SESSION_EXPIRED` is
     // the re-login path and the browser already draws it as one.

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Shared by the S0-6 web deploy and maintenance page cases: a stored build
-// output, the settings a person's deploy runs with (canaries included), and a
+// output, the settings a person's deploy runs with (canaries included), a
 // `vercel` on PATH that logs its arguments, working folder and environment and
-// answers as told, and the sign-in server's `/health` as a loopback stand-in:
-// no real deploy, no network.
+// answers as told, and the sign-in server's `/health` as a loopback stand-in.
+// No real deploy, no network.
 
 import { randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

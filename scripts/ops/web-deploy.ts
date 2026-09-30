@@ -17,6 +17,7 @@
 // `regions` must be `syd1` alone (`S0-6 functions in Sydney`). The CLI gets only
 // PATH, HOME, TMPDIR and the two project ids, so no sign-in value or database
 // login reaches it. The folder, `.vercel` and all, is removed whatever happens.
+//
 // Before Vercel is asked, the sign-in server reports its version (`/health`
 // under GOTRUE_URL, staging's own sign-in address, with the publishable key
 // when set); no answer, no deploy. Only a deploy read back in Sydney returns
@@ -192,7 +193,7 @@ function deployCopy(
   if (!Array.isArray(regions) || regions.length !== 1 || regions[0] !== 'syd1') {
     return {
       kind: 'failed',
-      reason: `Vercel did not report ${deployment} in syd1 alone; it is not recorded: remove it from the dashboard and look`,
+      reason: `Vercel did not report ${deployment} in syd1 alone, so it is not recorded. Remove it from the dashboard and find out why.`,
     };
   }
   const record = { action: 'deploy recorded', version, artefact: selected.name, digest } as const;

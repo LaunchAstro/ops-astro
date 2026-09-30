@@ -3,8 +3,9 @@
 // Test-only, loaded with `--import` into a process a test spawns (and passed on
 // to the processes it starts with its own flags). Supabase's pooler in Sydney
 // resolves to the test's own database on loopback, and any other Supabase host
-// fails to resolve, so nothing hosted is reached. The process still judges its addresses as it does on staging
-// (`scripts/ops/staging-reset.ts`): only the name lookup is moved.
+// fails to resolve, so nothing hosted is reached. The process still judges its
+// addresses as it does on staging (`scripts/ops/staging-reset.ts`); only the
+// name lookup is moved.
 
 import dns from 'node:dns';
 

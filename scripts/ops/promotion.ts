@@ -2,10 +2,10 @@
 //
 // The promotion step (ticket S0-1, lines C3 and C10).
 //
-// Production gets the exact artefact staging ran, never a fresh build. The
-// artefact is found in the store by the name the staging definition gives it
-// (`x-ops-astro.artefact` in deploy/staging/compose.json), and its own stamp,
-// the `build.json` every build writes into itself (S0-1c), must name the same
+// Production gets the exact artefact staging ran, never a fresh build. The step
+// finds the artefact in the store by the name the staging definition gives it
+// (`x-ops-astro.artefact` in deploy/staging/compose.json). Its own stamp, the
+// `build.json` every build writes into itself (S0-1c), must name the same
 // version, and its bytes must be the ones the digest in that file records (the
 // release step's build output). A build from a dirty tree names no commit, so it
 // is not promoted.

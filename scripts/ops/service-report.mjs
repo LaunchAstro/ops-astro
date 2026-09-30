@@ -3,8 +3,8 @@
 // The before-and-after report of the machine's services (ticket S0-1).
 //
 // Staging is prepared on the installation's own production machine, and the
-// one promise that makes that acceptable is that no live service is stopped,
-// restarted or reconfigured by it. This is the check the owner runs either
+// one promise that makes that acceptable is that preparing it stops, restarts
+// or reconfigures no live service. This is the check the owner runs either
 // side of the preparation: a snapshot before, a snapshot after, and a compare
 // that goes red on any live service that stopped, restarted, vanished, moved
 // port, changed image or was reconfigured. Staging's own services, named by

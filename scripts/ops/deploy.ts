@@ -5,7 +5,10 @@
 // A person's act under `operations:manage`: `deploy.mjs` asks the operator gate
 // before it reads anything else. It deploys the artefact the store holds for
 // the version asked, found and checked as the promotion step finds it
-// (`storedArtefact`), and never builds the product itself.
+// (`storedArtefact`), and never builds the product itself. Before anything is
+// started, staging's database must pass the made-up-only preflight
+// (`productionSigns`): a sign, or no `DATABASE_ADMIN_URL` to judge it by,
+// refuses the deploy.
 //
 // The app runs from one image built on the pinned base with that artefact
 // copied in (deploy/staging/Dockerfile), no path from the machine mounted.
@@ -25,10 +28,6 @@
 //
 // Every act on the machine goes through `DeployEffects`, so the decisions are
 // tested with the effects watched and the command stays thin.
-//
-// Before anything is started, staging's database must pass the made-up-only
-// preflight (`productionSigns`, the owner's option A, NATHAN-GUARD-A): a sign,
-// or no `DATABASE_ADMIN_URL` to judge it by, refuses the deploy.
 
 import { readFileSync } from 'node:fs';
 import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
@@ -189,7 +188,7 @@ export async function deploy(
   if (problems.length > 0) {
     return {
       kind: 'failed',
-      reason: `${problems.join('; ')}. Staging is up but this deploy is not recorded: stop it with docker compose down and look.`,
+      reason: `${problems.join('; ')}. Staging is up but this deploy is not recorded. Stop it with docker compose down, then find out why.`,
     };
   }
   return {

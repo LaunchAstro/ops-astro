@@ -171,8 +171,8 @@ make every one of them unfalsifiable.
 The suite signs the bearers with its own test key; GoTrue does not mint them.
 `createSupabaseVerifier` verifies an ES256 token against a published key set,
 here a static one holding that key's public half. Such a token is the same
-token to every line of product code, and the subject it carries is a real row in `logins`. The cast
-is `scripts/local-seed.mjs`'s cast by name and by role: `ada` admin, `mia`
+token to every line of product code, and the subject it carries is a real row
+in `logins`. The cast is `scripts/local-seed.mjs`'s cast by name and by role: `ada` admin, `mia`
 member, `noah` member with no grant, `orphan` a verified login with no
 membership, and `bea` a member of the other business. The suite writes the
 agent actor the way the seed writes one. It does not use the seed's external
