@@ -134,7 +134,7 @@ it('AW-11 child pickup never outlives the parent’s lease', async () => {
     [w.s.business, work.picked['leaseId']],
   );
   expect(handed.value.actorScope.expiresAt.getTime()).toBeLessThanOrEqual(
-    new Date(String(lease?.expires_at)).getTime(),
+    new Date(lease?.expires_at ?? 0).getTime(),
   );
 });
 
@@ -257,7 +257,7 @@ it('AW-11 handback is the child’s own: the parent’s credential, another agen
   expect(merged).toHaveLength(1);
 });
 
-it('AW-11 two handbacks at once: one lands, the other waits on the child’s row and settles nothing', async () => {
+it('AW-11 two handbacks at once: one lands, the other waits on its locks and settles nothing', async () => {
   const { work, credential } = await delegated(w.s, w.helper);
   const first = racer(w.s);
   const [landed, gate] = [barrier(), barrier()];
@@ -276,7 +276,7 @@ it('AW-11 two handbacks at once: one lands, the other waits on the child’s row
     outcome: 'partial',
     refusal: 'BUDGET_UNAVAILABLE',
   });
-  await awaitParked(w.s, 'delegations', 1);
+  await awaitParked(w.s, 'records', 1);
   gate.release();
   expect(codeOf(await landing)).toBe('ok');
   await first.close();

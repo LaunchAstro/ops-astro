@@ -335,8 +335,27 @@ covers both. An exhausted envelope stops the child as it stops the parent
 second delegation; a parent that runs out ends the child's calls with
 `DELEGATION_EXPIRED` and its settled calls stay on the ledger.
 
-Not built yet: the merged result, the graph rows, and a command surface for
-the mint.
+The hand-over and the merged result are `core-runtime/src/child-work.ts`.
+`delegateChild` hands part of the work over on the parent's own lease, at its
+own fence: the task, lease and parent delegation are locked, the heartbeat's
+owner check (`recheckOwner`) binds the parent to that lease, the child is
+minted as above and never past the lease's expiry, and a `delegated` run event
+is written (`0057`). The helper's one answer carries the business, the
+resource (task, run, lease, fence, reservation), the approved version and task
+revision, its own `collection:action` set, the parent's envelope, its actor
+scope and expiry, the run's pinned bootstrap file or `null`, and what it cannot
+do. `handBackChild` takes the helper's own credential (agent and digest
+together): completed work, or partial work naming a registered refusal, lands
+on the parent's run as `child_handed_back` and settles the child; a revoked or
+run-out child may still hand back, since a handback grants nothing, and the
+parent's lease is untouched. `childResults` is the parent's view: working,
+handed back with its outcome, or dropped with the fault named
+(`DELEGATION_EXPIRED`, `DELEGATION_REVOKED`, `DELEGATION_NARROWED`); nothing
+re-delegates on a guess.
+
+Not built yet: the graph rows (with AW-06's planned layer), and the command
+surface for the hand-over and the handback (the runtime functions take the
+parent as resolved from the caller's own credential).
 
 ## The expired session
 

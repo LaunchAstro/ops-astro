@@ -1642,7 +1642,8 @@ and codes, never a sentence, to a trace target an operator reads.
 
 - `core-runtime/src/trace-span.ts`: the span is a typed allowlist
   (`traceSpan`): a derived trace id (32 hex) and span id (16 hex), the event
-  kind from a closed list, the transform version, start and duration in whole
+  kind from a closed list (the run event kinds, AW-11's `delegated` and
+  `child_handed_back` from 0057 among them), the transform version, start and duration in whole
   milliseconds, the event's place in its task's order, and a drop's cause
   from a closed list. Any other field, or a value outside a list, throws
   `TraceRefused`, which names the field and never the value. `otlp` writes

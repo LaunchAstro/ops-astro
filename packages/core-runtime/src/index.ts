@@ -47,15 +47,17 @@ export {
   type PlanAcceptResult,
 } from './plan-accept.ts';
 export {
-  childResults,
   delegateChild,
-  handBackChild,
-  type ChildHandback,
   type ChildPickup,
-  type ChildResult,
   type ChildWorkResult,
   type DelegateChildRequest,
 } from './child-work.ts';
+export {
+  childResults,
+  handBackChild,
+  type ChildHandback,
+  type ChildResult,
+} from './child-handback.ts';
 export {
   readPinned,
   type PinnedRead,
