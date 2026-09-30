@@ -51,6 +51,11 @@ if (serverUrl === undefined) {
 
 type Name = Parameters<typeof pathOf>[0];
 
+const TITLE = {
+  worker: 'the task the worker proposes on',
+  sibling: 'a sibling task outside every delegation',
+} as const;
+
 describe.skipIf(serverUrl === undefined)(
   'T2b: the worker and task.propose on the agent route',
   () => {
@@ -125,10 +130,10 @@ describe.skipIf(serverUrl === undefined)(
       api = fixture.compose(undefined, readIdentity(ROOT));
       personToken = await tokenFor(fixture.member.presented.subject);
       agentToken = await tokenFor(fixture.agent.subject);
-      task.worker = await createTask('the task the worker proposes on');
+      task.worker = await createTask(TITLE.worker);
       task.route = await createTask('the task the route cases propose on');
       task.noWrite = await createTask('a task whose delegation carries no write');
-      task.sibling = await createTask('a sibling task outside every delegation');
+      task.sibling = await createTask(TITLE.sibling);
       credential.worker = await mint(task.worker.id, ['read', 'comment', 'write'], 'worker');
       credential.route = await mint(task.route.id, ['read', 'comment', 'write'], 'route');
       credential.noWrite = await mint(task.noWrite.id, ['read', 'comment'], 'no_write');
@@ -325,6 +330,7 @@ describe.skipIf(serverUrl === undefined)(
           proposal(String(theirs?.id), 1),
           credential.worker,
         );
+        expect(named.status).toBe(403);
         expect(named.body).toMatchObject({ refused: true, code: 'DELEGATION_OUT_OF_PURPOSE' });
         const there = await asAgent(
           'task.propose',
@@ -332,8 +338,10 @@ describe.skipIf(serverUrl === undefined)(
           credential.worker,
           't2bother',
         );
+        expect(there.status).toBe(401);
         expect(there.body).toMatchObject({ refused: true, code: 'AUTH_NO_AGENT_IDENTITY' });
         const theirMember = await read(other.member, task.worker.id);
+        expect(theirMember.status).toBe(403);
         expect(theirMember.body['refused']).toBe(true);
         // The worker's own task is the control: the query does find a lineage.
         const ids = [task.worker.id, ...other.tasks.map((one) => one.id)];
@@ -347,19 +355,24 @@ describe.skipIf(serverUrl === undefined)(
       it('T2 isolation: client to client', async () => {
         // The canary the crossings must not show: the worker's proposal on the first client's task.
         expect(await proposalsOn(task.worker.id)).toHaveLength(1);
-        expect((await read(first, task.worker.id)).status).toBe(200);
-        for (const [who, recordId] of [
-          [first, task.sibling.id],
-          [second, task.worker.id],
-          [other.tasks[0]?.client as Member, task.worker.id],
+        // Each task's title is the canary: its own client sees it, no other client does.
+        const own = await read(first, task.worker.id);
+        expect(own.status).toBe(200);
+        expect(JSON.stringify(own.body)).toContain(TITLE.worker);
+        for (const [who, recordId, title, status] of [
+          [first, task.sibling.id, TITLE.sibling, 404],
+          [second, task.worker.id, TITLE.worker, 404],
+          [other.tasks[0]?.client as Member, task.worker.id, TITLE.worker, 403],
         ] as const) {
           // oxlint-disable-next-line no-await-in-loop
           const crossed = await read(who, recordId);
+          expect(crossed.status, recordId).toBe(status);
           expect(crossed.body['refused'], recordId).toBe(true);
-          expect(JSON.stringify(crossed.body)).not.toContain('synthetic_comment');
+          expect(JSON.stringify(crossed.body)).not.toContain(title);
         }
         const token = await tokenFor(first.presented.subject);
         const proposed = await asPerson('task.propose', proposal(task.worker.id, 1), token);
+        expect(proposed.status).toBe(403);
         expect(proposed.body['refused']).toBe(true);
       });
 
@@ -396,9 +409,11 @@ describe.skipIf(serverUrl === undefined)(
         expect(live.status, 'the delegation is live on its own task').toBe(200);
         const before = await proposalsOn(task.route.id);
         const borrowed = await asAgent('task.propose', proposal(task.route.id, 2), held);
+        expect(borrowed.status).toBe(403);
         expect(borrowed.body).toMatchObject({ refused: true, code: 'DELEGATION_OUT_OF_PURPOSE' });
         const token = await tokenFor(narrow.presented.subject);
         const direct = await asPerson('task.propose', proposal(task.route.id, 2), token);
+        expect(direct.status).toBe(403);
         expect(direct.body).toMatchObject({ refused: true, code: 'SCOPE_NOT_GRANTED' });
         expect(await proposalsOn(task.route.id)).toStrictEqual(before);
       });
