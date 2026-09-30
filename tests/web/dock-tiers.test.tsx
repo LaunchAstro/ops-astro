@@ -194,7 +194,7 @@ describe('MP-3-3 no horizontal overflow at 390', () => {
     expect(phone).toMatch(/\.dpanel \{[^}]*width: 100%/u);
     expect(phone).not.toMatch(/100vw/u);
   });
-  it.todo('measured at 390 on every page with the width-and-theme harness (waits on MP-1-7)');
+  // Measured at 390 on every page in a real browser: dock-visual.test.ts.
 });
 
 describe('MP-3-3 print hides the dock', () => {
@@ -212,6 +212,6 @@ describe('MP-3-3 height in one store', () => {
   );
   it.todo('MP-3-3 no audit: a preference save and read add no audit event (waits on MP-2-11)');
   it.todo(
-    'MP-3-3 visual match: stack2 at 1480, 1100, 950, 900 and 390, light and dark (waits on MP-1-7)',
+    'MP-3-3 visual match: stack2 at 1480, 1100, 950, 900 and 390, light and dark (waits on a catalogued dock state and a second registered panel)',
   );
 });
