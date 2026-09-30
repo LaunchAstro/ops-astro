@@ -1614,6 +1614,10 @@ empty body counts as done; a 200, any body, a refusal, a redirect (never
 followed), an oversized or slow answer is `signedOutAtProvider: false`, the
 local end stands, and asking again is safe. The provider's words go nowhere.
 
+In the web app, Settings ▸ General's "Your sessions" panel calls the first two,
+ending the others only once confirmed, then listing again; it draws no session
+id (`apps/web/src/screens/settings/sessions.tsx`).
+
 ## The operations view and privacy incidents (C55)
 
 `operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, serviceHealth }`
