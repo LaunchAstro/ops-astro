@@ -43,6 +43,7 @@ if (serverUrl === undefined) {
 const DECLARED_READS = [
   'conversation.list',
   'conversation.read',
+  'definition.attribution',
   'gate.pending',
   'inbox.count',
   'inbox.read',
@@ -98,10 +99,10 @@ describe('the surface as a table', () => {
     // asked with `decide` on tasks. `conversation` is a person's conversation
     // with the agent (AW-03), its writes and its read at its address. `model`
     // is AW-01's call through the broker, asked of the lease's task. `run` is
-    // AW-05's two answers at the budget stop, asked of the run's task.
+    // AW-05's budget stop answers; `definition`, AW-04's attribution by digest.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate|conversation|model|run|inbox|notifications)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate|conversation|model|run|definition|inbox|notifications)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -111,7 +112,7 @@ describe('the surface as a table', () => {
 
 // eslint-disable-next-line max-lines-per-function -- one table, read top to bottom
 describe('the surface as a table', () => {
-  it('declares the twelve reads as reads, and everything else as a write', () => {
+  it('declares the sixteen reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

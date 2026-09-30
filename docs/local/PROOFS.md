@@ -387,7 +387,7 @@ foreign and a fabricated operand by status and raw bytes, audited at home.
 | `task.restore`                    | `batchId`                  | refuses foreign and fabricated control identifiers alike                           |
 | `grant.revoke`                    | `grantId`                  | refuses foreign and fabricated control identifiers alike                           |
 | `delegation.revoke`               | `delegationId`             | refuses foreign and fabricated control identifiers alike                           |
-| `task.decide`                     | `gateId`                   | refuses a foreign and a fabricated gate NOT_FOUND, as contract 8.2 case 1 names it |
+| `task.decide`, `task.accept_plan` | `gateId`                   | refuses a foreign and a fabricated gate NOT_FOUND, as contract 8.2 case 1 names it |
 | `task.board`                      | `board`                    | refuses a board read on a foreign or fabricated board, never an empty success      |
 | `task.heartbeat`, `task.handback` | `leaseId`                  | refuses the agent alike on foreign, fabricated and in-business operands            |
 | `task.pickup`                     | `reservationId`            | refuses a pickup alike on a foreign, a fabricated and a claimed reservation        |

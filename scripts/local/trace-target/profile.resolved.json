@@ -188,11 +188,15 @@
       "restart": "no"
     },
     "minio": {
-      "command": "-c 'mkdir -p /data/langfuse && minio server --address \":9000\" --console-address \":9001\" /data'",
+      "command": [
+        "-c",
+        "mkdir -p /data/langfuse && { minio server --address \":9000\" --console-address \":9001\" /data & } && until mc ready local; do sleep 1; done && mc ilm rule add --expire-days 14 --prefix events/ local/langfuse && wait"
+      ],
       "entrypoint": "sh",
       "environment": [
         "MINIO_ROOT_PASSWORD=${TRACE_TARGET_MINIO_PASSWORD:?}",
-        "MINIO_ROOT_USER=${MINIO_ROOT_USER:-minio}"
+        "MINIO_ROOT_USER=${MINIO_ROOT_USER:-minio}",
+        "MC_HOST_local=http://${MINIO_ROOT_USER:-minio}:${TRACE_TARGET_MINIO_PASSWORD:?}@localhost:9000"
       ],
       "healthcheck": {
         "interval": "1s",

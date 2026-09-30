@@ -5,6 +5,7 @@
 // contract's lock order, and the room already committed out of a reservation.
 
 import { isUuid, slotOf, TASK_SPINE, type TenantQuery } from '../../core-records/src/index.ts';
+import { holdsWork } from './broker-holds.ts';
 import { LEAVES_ROW_DATA, type TaskSource } from './broker-sources.ts';
 import type { BrokerRefusal, ModelCaller, ModelCallRequest } from './broker-types.ts';
 
@@ -15,6 +16,8 @@ export interface Facts {
   readonly versionId: string;
   readonly reservationId: string;
   readonly delegationId: string | null;
+  /** The caller's own delegation: the lease's for its holder, a child's for a helper (AW-11). */
+  readonly callerDelegationId: string | null;
   readonly workForPersonId: string | null;
   readonly heldMinor: number;
   /** The run's task's client link, or null for a task no client is on (C60). */
@@ -122,9 +125,8 @@ async function lockLease(
   );
   if (
     lease === undefined ||
-    lease.holder_actor_id !== caller.actorId ||
-    lease.delegation_id !== caller.delegationId ||
-    lease.fence !== String(request.fence)
+    lease.fence !== String(request.fence) ||
+    !(await holdsWork(tx, caller, lease))
   ) {
     return { ok: false, code: 'LEASE_NOT_OWNED' };
   }
@@ -225,6 +227,7 @@ export async function lockFacts(
       versionId: held.versionId,
       reservationId: lease.reservation_id,
       delegationId: lease.delegation_id,
+      callerDelegationId: caller.delegationId,
       workForPersonId: delegation.personId,
       heldMinor: held.heldMinor,
       clientId: task.clientId,
@@ -276,9 +279,8 @@ export async function lockCall(
   );
   if (
     lease === undefined ||
-    lease.holder_actor_id !== caller.actorId ||
-    lease.delegation_id !== caller.delegationId ||
-    lease.fence !== String(fence)
+    lease.fence !== String(fence) ||
+    !(await holdsWork(tx, caller, lease))
   ) {
     return 'LEASE_NOT_OWNED';
   }

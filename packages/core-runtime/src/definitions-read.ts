@@ -3,11 +3,12 @@
 // AW-02: the pinned read, the half of `definitions.ts` a run uses while it
 // works. It runs under the caller's live lease on the run, held locked while
 // it records, resolves nothing by name or path when the pin is missing, and
-// hands the bytes back only after their ledger row, the audit copy and the
-// read's one audit event are written.
+// hands the bytes back only after their ledger row and the read's one audit
+// event are written. The audit copy is kept in a savepoint: a copy the store
+// cannot keep is raised to the team (AW-04) and the read goes through.
 
 import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../../core-records/src/index.ts';
+import type { TenantQuery, TransactionQuery } from '../../core-records/src/index.ts';
 import {
   identityOf,
   isInstructionPath,
@@ -18,6 +19,7 @@ import {
 } from './definitions.ts';
 import { leaseReason } from './lease-ownership.ts';
 import { acquire } from './locks.ts';
+import { raiseMissingCopy } from './recovery/outage.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
 /** The pinned read's one audit event, written by the caller's audit writer. */
@@ -56,11 +58,11 @@ interface PinRow {
 /**
  * The pinned read, under the caller's live lease on the run. Nothing is
  * resolved by name or path when the pin is missing. The ledger row, the audit
- * copy and the audit event are written in the caller's transaction before the
- * bytes are handed back.
+ * copy (or the team's row saying it is missing) and the audit event are
+ * written in the caller's transaction before the bytes are handed back.
  */
 export async function readPinned(
-  tx: TenantQuery,
+  tx: TransactionQuery,
   request: ReadRequest,
   source: InstructionSource,
   audit: (tx: TenantQuery, note: ReadAuditNote) => Promise<void>,
@@ -87,10 +89,13 @@ export async function readPinned(
   const identity = identityOf(request.path, bytes);
   if (identity.digest !== expected.digest || identity.size !== expected.size) return mismatch();
   const isEntry = request.path === pin.path && !(await entryRead(tx, request.runId));
-  // The record first, the bytes last: if the ledger row, the audit copy or
-  // the audit event cannot be written, the statement's error fails the
-  // caller's transaction and no bytes are returned.
-  const sequence = await recordRead(tx, request, identity, isEntry, bytes);
+  // The record first, the bytes last: if the ledger row or the audit event
+  // cannot be written, the statement's error fails the caller's transaction
+  // and no bytes are returned. A missing copy does not affect the run.
+  const sequence = await recordRead(tx, request, identity, isEntry);
+  if (!(await tx.savepoint(async (inner) => await keepCopy(inner, identity, bytes)))) {
+    await raiseMissingCopy(tx, identity.digest);
+  }
   await audit(tx, { runId: request.runId, sequence, ...identity });
   return { ok: true, value: { bytes, identity, sequence, isEntry } };
 }
@@ -122,18 +127,15 @@ async function entryRead(tx: TenantQuery, runId: string): Promise<boolean> {
 }
 
 /**
- * The ledger row and the audit copy. The next sequence is read and written in
- * one statement; two reads racing for it meet the unique index, and the loser's
- * transaction fails rather than recording a read twice. The copy is kept once
- * per business and digest; the conflict names no target, so keeping it needs no
- * right to read it.
+ * The ledger row. The next sequence is read and written in one statement; two
+ * reads racing for it meet the unique index, and the loser's transaction fails
+ * rather than recording a read twice.
  */
 async function recordRead(
   tx: TenantQuery,
   request: ReadRequest,
   identity: FileIdentity,
   isEntry: boolean,
-  bytes: Uint8Array,
 ): Promise<number> {
   const written = await tx.query<{ sequence: number }>(
     `insert into public.bootstrap_reads
@@ -154,15 +156,22 @@ async function recordRead(
       isEntry,
     ],
   );
+  const sequence = written[0]?.sequence;
+  if (sequence === undefined) throw new Error('the ledger row was not written');
+  return sequence;
+}
+
+/**
+ * The audit copy, kept once per business and digest; the conflict names no
+ * target, so keeping it needs no right to read it.
+ */
+async function keepCopy(tx: TenantQuery, identity: FileIdentity, bytes: Uint8Array): Promise<void> {
   await tx.query(
     `insert into public.bootstrap_bytes (business_id, content_digest, content_size, bytes)
      values ($1, $2, $3, $4)
      on conflict do nothing`,
     [tx.businessId, identity.digest, identity.size, Buffer.from(bytes)],
   );
-  const sequence = written[0]?.sequence;
-  if (sequence === undefined) throw new Error('the ledger row was not written');
-  return sequence;
 }
 
 /** Another business's lease, a made-up one and an ended one read alike. */

@@ -71,7 +71,12 @@ if (serverUrl === undefined) {
 }
 
 const onDisk = readMigrations('migrations');
-const THROUGH_0029 = onDisk.filter((m) => m.version.slice(0, 4) <= '0029');
+// And AW-06's 0210 plan step key: the runtime that seeds below proposes with
+// it, and it reads nothing the migrations under test add, so it is applied
+// with the seed and the runner applies whatever is pending after it.
+const THROUGH_0029 = onDisk.filter(
+  (m) => m.version.slice(0, 4) <= '0029' || m.version.startsWith('0210'),
+);
 const UPGRADE = onDisk.find((m) => m.version.startsWith('0030'));
 
 const VERSION_FIXED = { code: '23514', constraint_name: 'gates_version_fixed_once_decided' };
@@ -353,7 +358,7 @@ async function asTheRunnerApplies(admin: AdminConnection, migration: Migration):
 
 async function lastApplied(db: EmptyDatabase): Promise<string | undefined> {
   const [row] = await db.admin.execute<{ readonly last: string }>(
-    `select max(version) as last from ops.schema_migrations`,
+    `select max(version) as last from ops.schema_migrations where version not like '0210%'`,
   );
   return row?.last.slice(0, 4);
 }

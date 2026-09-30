@@ -48,10 +48,12 @@ const onDisk = readMigrations('migrations');
 // Through T2a's 0032 run_events, which the runtime that seeds below writes to.
 const THROUGH_0032 = (version: string): boolean => version.slice(0, 4) <= '0032';
 // And T2h's 0036 alerts: that runtime raises an alert when it hands back.
-// 0036 reads nothing 0033 to 0035 add, and the runner applies whatever is
+// And AW-11's 0205 delegation parent: that runtime's pickup mints with it.
+// And AW-06's 0210 plan step key: that runtime's proposal writes its step with it.
+// None reads anything 0033 to 0035 add, and the runner applies whatever is
 // pending, so the upgrade below still applies 0033 onto these rows.
 const SEEDED = (version: string): boolean =>
-  THROUGH_0032(version) || version.slice(0, 4) === '0036';
+  THROUGH_0032(version) || ['0036', '0205', '0210'].includes(version.slice(0, 4));
 
 /** Proposes work on the task and approves it, answering the reservation the approval made. */
 async function approvedReservation(
