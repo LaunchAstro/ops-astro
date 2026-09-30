@@ -1790,3 +1790,15 @@ The eight items are `ops.gate_items` rows, each with an `https` evidence link:
 application's role reads neither table. The mode moves from made-up to real
 only while every item is done, and never back; the row cannot be deleted.
 Recording an item and changing the mode by command are not built yet.
+
+## A task's client is locked once it has content (S0-5)
+
+`task.set_party` changes a task's client only while the task is empty: its
+history (applied audit events about it) holds nothing beyond its creation and
+earlier client changes, and no row names it (a subtask naming it as its parent, a
+proposal, a planned run, an envelope, a lease, an alert). Otherwise it is
+refused `CLIENT_LOCKED` 409 and writes nothing, on the API and the command
+line alike. The check runs under the task's row lock, so a content write
+holding that lock lands wholly before it (the change is refused) or wholly
+after it (the write is stale against the change's revision and retried). A
+trashed task still answers `NOT_FOUND`.

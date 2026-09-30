@@ -16,6 +16,7 @@ import type { CommandRequest } from './requests.ts';
 import type { HandlerOutcome } from './outcome.ts';
 import { createTask, updateTask } from './tasks-write.ts';
 import { setState, writeOwnedFields } from './tasks-state.ts';
+import { setPartyWhileEmpty } from './task-client-lock.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
@@ -68,7 +69,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.assign': writeOwned,
   'task.triage': writeOwned,
   'task.set_stage': writeOwned,
-  'task.set_party': writeOwned,
+  'task.set_party': (tx, context, request) => setPartyWhileEmpty(tx, context, request.fields),
   'task.set_audience': writeOwned,
 
   'task.reparent': (tx, context, request) => reparentTask(tx, context, request.parentId),
@@ -144,9 +145,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
 function writeOwned(
   tx: TenantQuery,
   context: CommandContext,
-  request: RequestOf<
-    'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_party' | 'task.set_audience'
-  >,
+  request: RequestOf<'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_audience'>,
 ): Promise<HandlerOutcome> {
   return writeOwnedFields(tx, context, request.command, request.fields);
 }
