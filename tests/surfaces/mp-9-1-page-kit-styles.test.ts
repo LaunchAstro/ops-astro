@@ -4,13 +4,13 @@
 // restyles them (lane FINAL-FOLD). The page kit's stylesheet is read as it
 // ships, and the check is given hostile stylesheets of its own.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 // The component kit's classes the page kit places (MP-1-3): every class the
 // kit's two stylesheets define, and the ones its table, banner, meter, stat,
-// term tip, facet and hint parts draw.
+// term tip and facet parts draw.
 const KIT_PLACED = [
   'banner',
   'banner__body',
@@ -19,9 +19,6 @@ const KIT_PLACED = [
   'facet',
   'facet__num',
   'facets',
-  'hint',
-  'hint__act',
-  'hint__text',
   'marker',
   'meter',
   'meter__fill',
@@ -117,9 +114,17 @@ describe('MP-9-1 primitives placed not restyled', () => {
       '@media (width <= 640px) {\n  .page { x: 1 }\n  .TABLE, .table { x: 1 }\n}',
       '.barlist,\n\t.banner--info { x: 1 }',
       ':is(.term) .x { x: 1 }',
-      'div.hint > .y { x: 1 }',
+      'aside.banner--hint > .y { x: 1 }',
     ];
     for (const css of planted) expect(restyled(css, kit), css).not.toEqual([]);
     expect(restyled('.statrow > .stat { x: 1 } .statrow .stat__num { x: 1 }', kit)).toEqual([]);
+  });
+});
+
+describe('MP-9-1 the page kit ships no stand-in for a kit primitive', () => {
+  it('the hint stand-in sheet is gone and nothing imports it', () => {
+    const dir = join(process.cwd(), 'packages/ui/src');
+    expect(existsSync(join(dir, 'styles/6-kit-standin.css'))).toBe(false);
+    expect(readFileSync(join(dir, 'index.ts'), 'utf8')).not.toMatch(/kit-standin/u);
   });
 });

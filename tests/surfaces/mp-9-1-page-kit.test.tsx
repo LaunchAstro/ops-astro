@@ -205,19 +205,31 @@ describe('MP-9-1 stat rows follow the column rules at 1279, 900 and 640', () => 
 });
 
 describe('MP-9-1 no hint button ships without an action', () => {
-  it('a hint with an action draws a button that runs it', async () => {
+  it('a hint with an action draws the kit ghost button that runs it', async () => {
     let ran = 0;
     mounted = await mount(
       <Hint text="Two tasks wait on you." action={{ label: 'Open them', run: () => (ran += 1) }} />,
     );
-    await mounted.click('.hint button');
+    expect(mounted.all('.banner--hint button.btn--ghost')).toHaveLength(1);
+    await mounted.click('.banner--hint button');
     expect(ran).toBe(1);
   });
 
   it('a hint with no action draws no button at all', async () => {
     mounted = await mount(<Hint text="Two tasks wait on you." />);
-    expect(mounted.find('.hint')?.textContent).toBe('Two tasks wait on you.');
-    expect(mounted.all('.hint button')).toHaveLength(0);
+    expect(mounted.find('.banner__body')?.textContent).toBe('Two tasks wait on you.');
+    expect(mounted.all('.banner--hint button')).toHaveLength(0);
+  });
+});
+
+describe('MP-9-1 the hint is the kit banner hint, never a look of its own', () => {
+  it('draws the kit Banner in its hint tone: an aside marked AI, with no status role', async () => {
+    mounted = await mount(<Hint text="Two tasks wait on you." />);
+    const aside = mounted.find('aside.banner.banner--hint');
+    expect(aside).not.toBeNull();
+    expect(aside?.getAttribute('role')).toBeNull();
+    expect(mounted.find('.banner--hint .banner__mark')?.textContent).toBe('AI');
+    expect(mounted.all('.hint, .hint__text, .hint__act')).toHaveLength(0);
   });
 });
 
