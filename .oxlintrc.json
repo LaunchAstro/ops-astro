@@ -27,6 +27,34 @@
       "rules": { "no-inline-comments": "off" }
     },
     {
+      "files": [
+        "tests/api/live-board-closed-recheck-review.test.ts",
+        "tests/api/live-board-scoped-revocation-review.test.ts",
+        "tests/api/live-board-client-move-review.test.ts",
+        "tests/api/live-board-revoked-during-rejoin-review.test.ts",
+        "tests/api/live-task-admitted-during-close-review.test.ts",
+        "tests/api/live-board-revoked-after-final-read-review.test.ts",
+        "tests/api/live-board-client-move-prompt-review.test.ts",
+        "tests/api/live-board-task-resync-isolation-review.test.ts",
+        "tests/api/live-task-frame-no-identifier-review.test.ts",
+        "tests/ci/inb1f-rebind-mutation-review.test.ts"
+      ],
+      "rules": {
+        "no-inline-comments": "off",
+        "no-await-in-loop": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "max-lines-per-function": "off"
+      }
+    },
+    {
+      "files": ["tests/api/live-board-lost-access.test.ts"],
+      "rules": {
+        "no-await-in-loop": "off",
+        "unicorn/no-immediate-mutation": "off",
+        "max-lines-per-function": "off"
+      }
+    },
+    {
       "files": ["tests/ci/staging-special-objects.test.ts"],
       "rules": { "max-lines-per-function": "off" }
     },

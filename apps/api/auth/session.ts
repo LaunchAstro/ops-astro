@@ -67,6 +67,11 @@ export function sessionCookieOf(request: Context['req']): string | undefined {
   return token !== undefined && sessionIdOf(token) === id ? token : undefined;
 }
 
+/** Any `Authorization` header or session cookie, good or not: a sign-in attempt. */
+export function presentsCredential(request: Context['req']): boolean {
+  return request.header('authorization') !== undefined || sessionCookies(request).length > 0;
+}
+
 /** `CSRF_HEADER` present, and no `Sec-Fetch-Site` naming another site. */
 export function fromOwnPages(request: Context['req']): boolean {
   const site = request.header('sec-fetch-site');

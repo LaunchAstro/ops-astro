@@ -89,3 +89,25 @@ tests/visual/server-error-is-not-a-page.test.ts
 # Sol's REVB1ENDFIXCMDC proof, and a proof whose principal took its standing (ORCH46), byte for byte otherwise.
 tests/commands/record-member-notification-discovery.test.ts
 tests/commands/no-grant-inbox-discovery.test.ts
+
+# The Opus batch-1 blind review's proofs, byte-for-byte as the review patches held them.
+tests/api/session-cookie-expired-cleared.test.ts
+tests/browser/built-page-refuses-planted-scripts.test.ts
+
+# Sol's REVB1ENDFIXAPIA proofs, byte-for-byte as the review patch held them.
+tests/api/live-board-closed-recheck-review.test.ts
+tests/api/live-board-scoped-revocation-review.test.ts
+
+# Sol's REVB1ENDFIXAPIB proofs, byte-for-byte as the review patch held them.
+tests/api/live-board-client-move-review.test.ts
+tests/api/live-board-revoked-during-rejoin-review.test.ts
+tests/api/live-task-admitted-during-close-review.test.ts
+
+# Sol's REVB1ENDFIXAPIC proof, byte-for-byte as the review patch held it.
+tests/api/live-board-revoked-after-final-read-review.test.ts
+
+# Sol's REVB1ENDFIXAPID proofs, byte-for-byte as the review patch held them.
+tests/api/live-board-client-move-prompt-review.test.ts
+tests/api/live-board-task-resync-isolation-review.test.ts
+tests/api/live-task-frame-no-identifier-review.test.ts
+tests/ci/inb1f-rebind-mutation-review.test.ts

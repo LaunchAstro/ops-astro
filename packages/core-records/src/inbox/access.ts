@@ -9,6 +9,7 @@ import {
   type Scope,
   type Subject,
 } from '../authority/grants.ts';
+import { grantedScopes } from '../authority/grant-reach.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /**
@@ -74,6 +75,32 @@ export async function holdsOnTask(
     if (grants.length > 0) return true;
   }
   return false;
+}
+
+/**
+ * Where a person reads tasks now, for a query that filters inside itself
+ * (INB-1e): the whole business, these tasks, or these clients' tasks. The
+ * same grants `taskAccess` asks, listed once instead of asked per task.
+ */
+export async function readScopes(
+  tx: TenantQuery,
+  personId: string,
+): Promise<{
+  readonly business: boolean;
+  readonly records: readonly string[];
+  readonly parties: readonly string[];
+}> {
+  const scopes = await grantedScopes(tx, await recipientSubjects(tx, personId), {
+    collection: 'task',
+    action: 'read',
+  });
+  const ids = (kind: Scope['kind']): string[] =>
+    scopes.flatMap((scope) => (scope.kind === kind && scope.id !== null ? [scope.id] : []));
+  return {
+    business: scopes.some((scope) => scope.kind === 'business'),
+    records: ids('record'),
+    parties: ids('party'),
+  };
 }
 
 /**

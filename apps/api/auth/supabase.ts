@@ -30,7 +30,7 @@
 import type { Context } from 'hono';
 import type { VerifiedSubject } from '../../../packages/core-records/src/index.ts';
 import { createKeySetVerifier, type KeySetFetch, type KeySetRefusal } from './jwks.ts';
-import { bearerOf, sessionCookieOf } from './session.ts';
+import { bearerOf, presentsCredential, sessionCookieOf } from './session.ts';
 
 /** The provider string the `logins` rows carry for tokens verified here. */
 export const SUPABASE_PROVIDER = 'supabase';
@@ -50,7 +50,9 @@ export interface SupabaseVerifierOptions {
 
 /**
  * What the boundary learns about a caller: a verified subject, the one word
- * `'expired'`, or nothing.
+ * `'expired'`, `'absent'` when the request carries no credential at all, or
+ * nothing. `'absent'` is answered as nothing is; it only keeps a request that
+ * tried no sign-in out of the failed sign-in count (security line 9).
  *
  * **Why `expired` is told apart and the rest are not.** API.md's rule stands
  * for every other failure: a missing, forged, unsigned or subject-less token
@@ -63,7 +65,7 @@ export interface SupabaseVerifierOptions {
  * `AUTH_SESSION_EXPIRED` is the re-login path and the browser already draws it
  * as one.
  */
-export type Verified = VerifiedSubject | 'expired';
+export type Verified = VerifiedSubject | 'expired' | 'absent';
 
 export type Verifier = (request: Context['req']) => Promise<Verified | undefined>;
 
@@ -102,7 +104,7 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     // The bearer when there is one (the command line), else the browser's
     // session cookie; the door has already held a cookie to the CSRF check.
     const token = bearerOf(request) ?? sessionCookieOf(request);
-    if (token === undefined) return undefined;
+    if (token === undefined) return presentsCredential(request) ? undefined : 'absent';
 
     // ES256 pinned, the key chosen by `kid` from the published set, and only
     // a signature that verified can be reported as expired (`jwks.ts`).
