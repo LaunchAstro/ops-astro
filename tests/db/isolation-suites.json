@@ -30,6 +30,7 @@
     "tests/reads/inbox-named.test.ts",
     "tests/api/inb1f-live-board.test.ts",
     "tests/api/live-board-lost-access.test.ts",
-    "tests/api/live-board-scoped-revocation-review.test.ts"
+    "tests/api/live-board-scoped-revocation-review.test.ts",
+    "tests/api/live-board-client-move-review.test.ts"
   ]
 }

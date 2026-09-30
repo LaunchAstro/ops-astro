@@ -81,3 +81,8 @@ tests/browser/built-page-refuses-planted-scripts.test.ts
 # Sol's REVB1ENDFIXAPIA proofs, byte-for-byte as the review patch held them.
 tests/api/live-board-closed-recheck-review.test.ts
 tests/api/live-board-scoped-revocation-review.test.ts
+
+# Sol's REVB1ENDFIXAPIB proofs, byte-for-byte as the review patch held them.
+tests/api/live-board-client-move-review.test.ts
+tests/api/live-board-revoked-during-rejoin-review.test.ts
+tests/api/live-task-admitted-during-close-review.test.ts

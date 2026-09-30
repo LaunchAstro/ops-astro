@@ -139,6 +139,7 @@
     "tests/api/inb1f-live-board.test.ts",
     "tests/api/live-board-lost-access.test.ts",
     "tests/api/live-board-scoped-revocation-review.test.ts",
+    "tests/api/live-board-client-move-review.test.ts",
     "tests/runtime/t2c1-dispatch.test.ts",
     "tests/runtime/t2c1-dispatch-migration.test.ts",
     "tests/runtime/t2c2-effect.test.ts",
