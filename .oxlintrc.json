@@ -15,7 +15,10 @@
   "overrides": [
     { "files": ["tests/review/sl01-s06-proof.test.ts"], "rules": { "no-await-in-loop": "off" } },
     {
-      "files": ["tests/commands/parity-rejects-direct-ui-write.test.ts"],
+      "files": [
+        "tests/commands/parity-rejects-direct-ui-write.test.ts",
+        "tests/commands/direct-entry-write-parity.test.ts"
+      ],
       "rules": { "no-inline-comments": "off" }
     },
     {
