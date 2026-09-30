@@ -83,7 +83,11 @@ describe.skipIf(serverUrl === undefined)(
       // `purge-retention.test.ts`.
       await db.app.withBusiness(business, async (tx) => {
         await installBusinessSettings(tx);
-        await writeBusinessSetting(tx, { key: 'retention_window_days', value: 0 });
+        await writeBusinessSetting(tx, {
+          key: 'retention_window_days',
+          owningOperation: 'settings.set_retention_window',
+          value: 0,
+        });
       });
     }, 60_000);
 
