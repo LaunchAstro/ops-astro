@@ -62,7 +62,7 @@ describe('MP-7-1 task.todos is declared', () => {
   });
 });
 
-/** A client message on the task from a person outside the business: owed a reply by the team. */
+/** A client message from a person outside the business, owed a reply; and one from the team, not owed. */
 async function owedMessage(taskId: string): Promise<void> {
   await commandOk(w, w.alpha, w.ada, {
     command: 'task.comment',
@@ -84,6 +84,13 @@ async function owedMessage(taskId: string): Promise<void> {
       where data ->> 'task' = $1 and data ->> 'audience' = 'client'`,
     [taskId, outsider],
   );
+  // The team's own client message is not acknowledged, and is not owed by the team.
+  await commandOk(w, w.alpha, w.ada, {
+    command: 'task.comment',
+    recordId: taskId,
+    body: 'from the team',
+    audience: 'client',
+  });
 }
 
 /** Ada's world: her open tasks, and the ones her list must leave out. */
