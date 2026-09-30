@@ -11,5 +11,16 @@
     "node": true,
     "es2024": true
   },
-  "ignorePatterns": ["node_modules", "dist", "tests/gate/canary.txt", ".claude/skills", ".codex"]
+  "ignorePatterns": ["node_modules", "dist", "tests/gate/canary.txt", ".claude/skills", ".codex"],
+  "overrides": [
+    {
+      "files": ["tests/ci/staging-no-production-data-guard.test.ts"],
+      "rules": {
+        "no-await-in-loop": "off",
+        "max-lines": "off",
+        "max-lines-per-function": "off",
+        "no-promise-executor-return": "off"
+      }
+    }
+  ]
 }

@@ -43,6 +43,12 @@ tests/ci/test-only-session-credentials-caught.test.ts
 tests/ci/test-only-journey-credentials-caught.test.ts
 # Sol's REV106D, REV140D and REVB1SL01EARLY proofs, byte-for-byte in the files
 # that carry them (REVB1SL01EARLY criterion 1).
+tests/ci/staging-no-production-data.test.ts
+tests/ci/staging-no-production-data-guard.test.ts
 tests/ci/s0-2-canary.test.ts
 # Sol's REVB1SL01S2 proofs, byte-for-byte in the files that carry them.
 tests/ci/s0-2-alerts.test.ts
+
+# Sol's proof tests in plain .mjs, kept byte-for-byte as applied: a review
+# attests a proof by its bytes. (Proofs in .ts pass through lint-staged.)
+tests/ci/s0-7-auth-up-replaces-18.test.mjs
