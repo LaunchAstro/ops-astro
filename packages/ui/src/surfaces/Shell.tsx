@@ -12,6 +12,7 @@
 // and layout and may not own a session [ui-reference CONTRACT.md:305 rule 3].
 
 import type { ReactElement, ReactNode } from 'react';
+import { BrandMark } from '../primitives/BrandMark.tsx';
 
 export interface RailEntry {
   /** Namespace-qualified. Sixteen bare identifiers collide in the corpus. */
@@ -46,9 +47,7 @@ export function Shell(props: ShellProps): ReactElement {
     <div className="shell" data-face={props.face} data-dock={props.seated ? 'seated' : 'floating'}>
       <nav className="rail" aria-label="Sections">
         <div className="rail__brand">
-          {/* The wordmark is a mask over an SVG in the pinned estate. No asset
-              ships here until the icon-and-font rights question is resolved
-              (#32), so the brand is its own words. */}
+          <BrandMark variant="wordmark" />
           <span className="rail__hub">Ops Astro</span>
         </div>
         <div className="rail__group">

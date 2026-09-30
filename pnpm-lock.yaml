@@ -202,7 +202,20 @@ importers:
         specifier: 8.3.0
         version: 8.3.0(@types/node@24.13.3)(jiti@2.6.1)(yaml@2.9.0)
 
-  packages/ui: {}
+  packages/ui:
+    dependencies:
+      '@fontsource-variable/chivo-mono':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource-variable/funnel-sans':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource/funnel-display':
+        specifier: 5.3.0
+        version: 5.3.0
+      lucide-react:
+        specifier: 1.47.0
+        version: 1.47.0(react@19.3.0)
 
 packages:
 
@@ -364,6 +377,15 @@ packages:
     peerDependenciesMeta:
       '@noble/hashes':
         optional: true
+
+  '@fontsource-variable/chivo-mono@5.3.0':
+    resolution: {integrity: sha512-S96WUAZDi9vm1YY35jhLhArRcfEp0Qcnh4xGdtVl8Ffm4QbRcfpArkyklHlsug8xv4Y9MfVn/DWIerOB1PQUMA==}
+
+  '@fontsource-variable/funnel-sans@5.3.0':
+    resolution: {integrity: sha512-NOgHy3KWMAJdl33XSESit33nI8vlFZh8/0E3tLD7z5jJA5gQoLeUkFcZtxehVVkyYpAZ747tF8O/kAHXXa96ZA==}
+
+  '@fontsource/funnel-display@5.3.0':
+    resolution: {integrity: sha512-3TA/c8FdK+W8Sme1A0Ukg7oEofFk1h+LJYy7A3NFqAJiL2KYDwJHwPTkgPA/GLCridQcaIcYaNJW8OjoQvWFrA==}
 
   '@hono/node-server@2.1.1':
     resolution: {integrity: sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==}
@@ -1306,6 +1328,11 @@ packages:
     resolution: {integrity: sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg==}
     engines: {node: 20 || >=22}
 
+  lucide-react@1.47.0:
+    resolution: {integrity: sha512-o8C23aXpNQypRY73W7fW02EyvWJinEMXgKeGjFoKym0zj3Q73hD97A1IQps1g8C14HTGsOpZL0Am+xjfgFZAbg==}
+    peerDependencies:
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
   magic-string@1.2.3:
     resolution: {integrity: sha512-Bpb0W2TbLKOZ7vJnOUnVRGq3WL2p+ISV29M6hYPL1AFCpyKZpdr5ytiXoTSSxRVhg8YW7f65+6gbG8WG6PCa/g==}
 
@@ -1942,6 +1969,12 @@ snapshots:
   '@csstools/css-tokenizer@4.0.1': {}
 
   '@exodus/bytes@1.15.2': {}
+
+  '@fontsource-variable/chivo-mono@5.3.0': {}
+
+  '@fontsource-variable/funnel-sans@5.3.0': {}
+
+  '@fontsource/funnel-display@5.3.0': {}
 
   '@hono/node-server@2.1.1(hono@4.13.9)':
     dependencies:
@@ -2601,6 +2634,10 @@ snapshots:
       yaml: 2.9.0
 
   lru-cache@11.5.3: {}
+
+  lucide-react@1.47.0(react@19.3.0):
+    dependencies:
+      react: 19.3.0
 
   magic-string@1.2.3:
     dependencies:
