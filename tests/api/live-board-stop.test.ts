@@ -110,7 +110,7 @@ describe('INB-1 live stream stop', () => {
   );
 
   it.each(streams)(
-    'Sol proof, criterion 35: a late %s stream is stopped before topic closure ends',
+    'a late %s stream is stopped before topic closure ends',
     async (_name, start) => {
       const listener = {
         listen: (_channel: string, _payload: unknown, onListening: () => void) => {
