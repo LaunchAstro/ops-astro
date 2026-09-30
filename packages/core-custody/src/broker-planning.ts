@@ -2,8 +2,10 @@
 //
 // AW-04's planning budget (U10, migration 0212): every planning reply before
 // the accept is priced, against a small budget of its own. The business's
-// planning cap (`budget_caps` key `planning`) is the allowance; none set means
-// no planning spend. Each conversation spends through one planning envelope.
+// planning cap (`budget_caps` key `planning`) is the allowance: AUD 50 until a
+// person moves it (the owner, NATHAN-STAGE1-TODAY 4), and the first hold writes
+// that default as the business's row. Each conversation spends through one
+// planning envelope.
 // A reply holds its operation's priced maximum as its own call row, under the
 // cap's row lock, as a task call holds out of its reservation (0191); it then
 // settles at its price, is released on proof nothing happened, or stays held
@@ -38,10 +40,20 @@ import type {
   ResolvedField,
 } from './broker-types.ts';
 
-export interface PlanningAllowance {
-  /** Whether the business has a planning cap: none set, no planning spend. */
+/** The planning cap of a business nobody has moved it for: AUD 50, in minor units. */
+export const PLANNING_CAP_DEFAULT = { limitMinor: 5_000, currency: 'AUD' } as const;
+
+/** The business's planning cap as a person is shown it: `set` false is the default. */
+export interface PlanningCapView {
+  readonly limitMinor: number;
+  readonly currency: string;
   readonly set: boolean;
-  readonly currency: string | null;
+}
+
+export interface PlanningAllowance {
+  /** Whether a cap row holds it: false is the default, `PLANNING_CAP_DEFAULT`. */
+  readonly set: boolean;
+  readonly currency: string;
   readonly limitMinor: number;
   /** The cap less every planning call's hold or settled actual, in the business. */
   readonly leftMinor: number;
@@ -68,6 +80,29 @@ async function planningCap(tx: TenantQuery, lock: boolean): Promise<Cap | undefi
     [tx.businessId],
   );
   return cap;
+}
+
+/** The cap under its row lock, the default written as the business's row when there is none. */
+async function lockedOrDefault(tx: TenantQuery): Promise<Cap> {
+  const cap = await planningCap(tx, true);
+  if (cap !== undefined) return cap;
+  await tx.query(
+    `insert into public.budget_caps (business_id, id, key, limit_minor, currency)
+     values ($1, $2, 'planning', $3, $4)
+     on conflict (business_id, key) do nothing`,
+    [tx.businessId, randomUUID(), PLANNING_CAP_DEFAULT.limitMinor, PLANNING_CAP_DEFAULT.currency],
+  );
+  const written = await planningCap(tx, true);
+  if (written === undefined) throw new Error("the business's planning cap was not written");
+  return written;
+}
+
+/** The limit, its currency, and whether a cap row holds it; the default when none does. */
+export async function readPlanningCap(tx: TenantQuery): Promise<PlanningCapView> {
+  const cap = await planningCap(tx, false);
+  return cap === undefined
+    ? { ...PLANNING_CAP_DEFAULT, set: false }
+    : { limitMinor: Number(cap.limit_minor), currency: cap.currency, set: true };
 }
 
 async function committedUnder(tx: TenantQuery, capId: string): Promise<number> {
@@ -114,8 +149,7 @@ async function holdPlanning(
   operation: ModelOperation,
   route: BrokerRoute,
 ): Promise<Held> {
-  const cap = await planningCap(tx, true);
-  if (cap === undefined) return refused('BUDGET_UNAVAILABLE');
+  const cap = await lockedOrDefault(tx);
   if (await atCeiling(tx, operation, route)) {
     return { ok: false, code: 'RATE_LIMITED', callId: null, retryAfterSeconds: WAIT_SECONDS };
   }
@@ -241,8 +275,10 @@ export async function readPlanningAllowance(
     [tx.businessId, conversationId, personId],
   );
   const conversation = { spentMinor: Number(own?.spent ?? 0), heldMinor: Number(own?.held ?? 0) };
+  // No row: nothing has been held against it, so all of the default is left.
   if (cap === undefined) {
-    return { set: false, currency: null, limitMinor: 0, leftMinor: 0, conversation };
+    const { limitMinor, currency } = PLANNING_CAP_DEFAULT;
+    return { set: false, currency, limitMinor, leftMinor: limitMinor, conversation };
   }
   const limitMinor = Number(cap.limit_minor);
   const leftMinor = Math.max(0, limitMinor - (await committedUnder(tx, cap.id)));

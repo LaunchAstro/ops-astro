@@ -581,6 +581,15 @@ export interface PresetPlanResult {
 export interface SettingsReadResult {
   readonly ok: true;
   readonly settings: readonly SettingView[];
+  /**
+   * The AI planning chat's budget (AW-04): the business's planning cap, AUD 50
+   * until a person moves it. `set` is false while it is that default.
+   */
+  readonly planningCap: {
+    readonly limitMinor: number;
+    readonly currency: string;
+    readonly set: boolean;
+  };
 }
 
 /**

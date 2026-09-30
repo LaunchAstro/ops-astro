@@ -89,7 +89,6 @@ async function waiting(execute: AdminConnection['execute'], count: number): Prom
 
 it('AW-04 set planning cap: a billing holder moves the default AUD 50 cap, the broker spends under it, and a lower cap refuses the next reply', async () => {
   expect((await caps(s))['planning']).toBeUndefined();
-  // The default is the limit there is to have seen; nothing is unset.
   const unseen = await asPerson(s, setBody(1_200, null));
   expect(unseen).toMatchObject({ code: 'VERSION_STALE', names: ['limitMinor=5000'] });
   expect((await caps(s))['planning']).toBeUndefined();

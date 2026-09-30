@@ -1742,19 +1742,20 @@ it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
 
 `POST /api/b/<key>/budget/set_planning_cap` with `limitMinor` (whole minor
 units above zero), `currency` (the price book's, `AUD`) and `fromLimitMinor`
-(the limit the caller last saw, `null` while none is set). It asks `decide` on
+(the limit the caller last saw: AUD 50, `5000`, while nobody has moved the
+default; `null` never matches). It asks `decide` on
 `billing` for the whole business, so owners and administrators; a grant on one
 task does not reach it, and no agent route serves it
 (`DELEGATION_EXCLUDES_OPERATION`). It writes the business's `budget_caps` row
 keyed `planning` and no other; the body names no key. A `fromLimitMinor` that
 is not the current limit is `VERSION_STALE` 409 naming the limit it is at
-(`limitMinor=<n>`, or `limitMinor=unset`), as a settings write names its
+(`limitMinor=<n>`, the default's `5000` while there is no row), as a settings write names its
 revision, and two setters at once from one limit leave one applied. The answer is the cap's id
 and `{ key: 'planning', limitMinor, currency }`. A lower limit is taken even
 below what is committed: the next planning reply that no longer fits is
-refused ([RUNTIME.md](RUNTIME.md#the-planning-budget)). No default is set: until
-a person sets the cap, planning replies are refused. Not here yet: the recent
-sign-in a money action asks (C59).
+refused ([RUNTIME.md](RUNTIME.md#the-planning-budget)). Until a person moves
+it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. Not here
+yet: the recent sign-in a money action asks (C59).
 
 ## Reads
 
@@ -1858,10 +1859,10 @@ case (g) carries the rows. The server declares the two answers as
 (`packages/core-wire/src/views.ts`), and the web imports that type
 rather than keeping a copy; the two are told apart by the key.
 
-| Read                   | Route                   | Body                     | Answer                                                                                       | Refusals it can answer                                                                                  |
-| ---------------------- | ----------------------- | ------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }` | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                             |
-| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                      | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
+| Read                   | Route                   | Body                     | Answer                                                                                                                                   | Refusals it can answer                                                                                  |
+| ---------------------- | ----------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }], planningCap: { limitMinor, currency, set } }` | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                             |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                  | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
 
 `settings.read` takes `read` on `settings` while the two settings commands take
 `manage` on the same collection. The asymmetry is deliberate. A setting is a

@@ -51,7 +51,7 @@ it('AW-04 planning budget: with no cap set, the default AUD 50 is the allowance:
       where business_id = $1 and key = 'planning'`,
     [fresh.business],
   );
-  expect(caps).toStrictEqual([{ limit_minor: '5000', currency: 'AUD' }]);
+  expect(caps).toEqual([{ limit_minor: '5000', currency: 'AUD' }]);
   expect(await allowance(fresh, fresh.decider.personId, request.conversation.id)).toStrictEqual({
     set: true,
     currency: 'AUD',

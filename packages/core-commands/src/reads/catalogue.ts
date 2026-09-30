@@ -31,6 +31,7 @@ import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
 import { readAwaitingReview } from './awaiting-review.ts';
+import { readPlanningCap } from '../../../core-custody/src/index.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
@@ -412,7 +413,14 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     spine: false,
     authority: 'declared',
     outsiderNotFound: false,
-    serve: async (tx) => ({ ok: true, settings: await readSettings(tx) }),
+    // The planning cap beside the settings (AW-04): the business's own
+    // configuration too, and every settings reader may see it; only
+    // `billing:decide` moves it (`budget.set_planning_cap`).
+    serve: async (tx) => ({
+      ok: true,
+      settings: await readSettings(tx),
+      planningCap: await readPlanningCap(tx),
+    }),
   },
   // `session.capabilities` has no collection of its own to hold a grant on:
   // it reports the caller's grants, so it is answered only to a caller who

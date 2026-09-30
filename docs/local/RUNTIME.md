@@ -1593,10 +1593,12 @@ the run's own origin column (the bound plan and the audit event carry the origin
 
 Every planning reply before the accept is priced (U10), against a small budget
 of its own (`0212_planning_envelopes`, `core-custody/src/broker-planning.ts`).
-The business's planning cap is the `budget_caps` row keyed `planning`; with none
-set a planning reply is refused `BUDGET_UNAVAILABLE` before anything is written
-or sent. Each conversation spends through one planning envelope, which names
-the conversation and its owner and carries no totals.
+The business's planning cap is the `budget_caps` row keyed `planning`. Until a
+person moves it the cap is AUD 50 (`PLANNING_CAP_DEFAULT`, the owner's ruling,
+NATHAN-STAGE1-TODAY 4): the first hold in a business with no row writes the
+default as its row, under the same lock. Each conversation spends through one
+planning envelope, which names the conversation and its owner and carries no
+totals.
 
 - **The hold.** `callModelForPlanning` runs the conversation seam's checks (the
   owner in their own session, the catalogue, a local route under AW-03's rule),
@@ -1610,7 +1612,8 @@ the conversation and its owner and carries no totals.
   a price above the hold, leaves it held at its maximum as unknown liability
   against the envelope until a person records an outcome, as a task call is.
 - **The allowance line and the spend.** `readPlanningAllowance` answers whether
-  a cap is set, its limit, what is left of it across the business, and the
+  a cap row holds it (no row is the default, all of it left), its limit, what
+  is left of it across the business, and the
   person's own conversation's settled spend and held amount. The conversation
   part is filtered by its owner inside the query: another person's
   conversation, or a made-up one, reads as nothing spent. The surface that
@@ -1619,12 +1622,16 @@ the conversation and its owner and carries no totals.
 - **Setting the cap.** `budget.set_planning_cap` writes the `planning` row and
   no other ([API.md](API.md#budgetset_planning_cap-aw-04-u10)): `billing:decide`
   on the whole business, against the limit the caller last saw, under the same
-  row lock the hold takes. Lowering it below what is committed is allowed; the
-  next reply that no longer fits is refused.
+  row lock the hold takes; with no row the limit seen is the default's.
+  Lowering it below what is committed is allowed; the next reply that no
+  longer fits is refused.
+- **On the settings page.** `settings.read` carries `planningCap` (limit,
+  currency, and `set` false while it is the default) for every settings reader;
+  the page's AI planning budget field moves it through the command, opened only
+  for a session holding `billing:decide` (`screens/settings/planning-cap.tsx`).
 
-Not here yet: the cap's default value (none is set by any migration: until an
-owner sets the cap, planning replies are refused), the recent sign-in the
-command asks as a money action (C59), and the surface above.
+Not here yet: the recent sign-in the command asks as a money action (C59), and
+the drawer's allowance line and spend beside the plan.
 
 ## The budget wait
 
