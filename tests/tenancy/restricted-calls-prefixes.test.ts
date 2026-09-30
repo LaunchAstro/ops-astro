@@ -454,6 +454,16 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
       const tables = await catalogueTables(db.admin);
       const functions = await catalogueFunctions(db.admin);
       const wrong: string[] = [...(await seedPrefix(db.admin, tables, reference, [alpha, bravo]))];
+      // The seed's ids are fresh per row, so each activation is pointed at its
+      // own business's version: 0052's mode check runs on a column update.
+      if (tables.some((table) => table.qualified === 'public.activations')) {
+        await asOwner(
+          db.admin,
+          `update public.activations a set version_id = v.id
+             from public.definition_versions v where v.business_id = a.business_id`,
+          [],
+        );
+      }
       let calls = 0;
       let populated = 0;
 
