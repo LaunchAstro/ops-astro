@@ -7,7 +7,9 @@ dev server on `127.0.0.1:5190` that proxies `/api` to the API on
 `127.0.0.1:8790`, so the browser only ever makes same-origin requests.
 `OperationsClient` takes an `origin`, empty for same-origin, and posts under
 `PREFIX.person` from `core-wire/src/surface.ts`. `App` takes it as `apiOrigin`, which
-`main.tsx` reads from `VITE_API_ORIGIN` (unset in local runs).
+`main.tsx` sets empty: the build bakes no address, so one build serves every
+environment. The identity service's address is the API's own `GOTRUE_URL`,
+which `main.tsx` reads from `GET /api/sign-in` before the first render (G3).
 
 ## Start it
 
@@ -17,7 +19,7 @@ pnpm install
 scripts/local/web-up.sh
 ```
 
-`WEB_PORT`, `API_ORIGIN` and `GOTRUE_URL` override the three addresses. The port
+`WEB_PORT` and `API_ORIGIN` override the two addresses. The port
 is strict: if 5190 is taken the script fails rather than moving, because
 evidence with the wrong address in it is worse than no evidence.
 
@@ -28,7 +30,9 @@ reports the API as unavailable, which is the intended reading.
 ## Sign in
 
 Email and password go to GoTrue's own `/token?grant_type=password`. The
-application never mints or inspects a token. The API verifies the signature.
+application never mints or inspects a token. It hands it to `POST /api/session`,
+which keeps it as an `HttpOnly` cookie no script reads (S0-6c, `API.md`, "Who
+is calling"). The built page's content policy runs only this origin's scripts.
 The business selector (`alpha` or `bravo`) chooses the `/api/b/<key>` prefix. It
 is a routing choice, not a claim, so picking `bravo` with an alpha-only account
 gets `AUTH_NO_MEMBERSHIP` rather than access to bravo.
@@ -525,7 +529,7 @@ changed without reading the rest:
 
 ### What B6 restarts
 
-B6 restarts `ops-astro-local-pg` with the `ops-astro-local-pgdata` volume by
+B6 restarts `ops-astro-local-pg` with the `ops-astro-local-pgdata-17` volume by
 default, which is the registered run. A stack of your own names its pair, and
 B6 restarts the API on `API_URL`'s port:
 
