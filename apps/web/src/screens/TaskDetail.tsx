@@ -101,6 +101,7 @@ import { TaskHeader } from './task/Header.tsx';
 import { TaskFacts } from './task/Facts.tsx';
 import { TaskUnknown } from './task/Absent.tsx';
 import { withPageDefaults } from './task/read-defaults.ts';
+import { AssignToAI } from './task/AssignToAI.tsx';
 import {
   PanelDoorButton,
   perspectiveCounts,
@@ -656,6 +657,8 @@ function Loaded(props: LoadedProps): ReactElement {
               disabled={busy || dirty}
               onAssign={onAssign}
             />
+
+            <AssignToAI client={client} task={task} scope="page" onChanged={props.onChanged} />
 
             <DetailsForm
               formRef={fields}
