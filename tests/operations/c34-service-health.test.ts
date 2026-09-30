@@ -154,6 +154,7 @@ describe.skipIf(serverUrl === undefined)('C34 service health on the operations v
     const answer = await view(api);
     expect(answer.status).toBe(200);
     expect(Object.keys(answer.body).toSorted()).toEqual([
+      'breachRunbook',
       'ok',
       'privacyIncidents',
       'serviceHealth',
