@@ -67,6 +67,8 @@ it('MP-1-3 chip with its variants', async () => {
   expect(rule('.chip')).toMatch(/padding:\s*3\.3px 8\.25px/u);
   expect(rule('.chip--filter')).not.toMatch(/border-radius/u);
   expect(rule('.chip--suggestion:hover')).toMatch(/border-color:\s*var\(--accent\)/u);
+  // The one pill: the unused Hub pill class is gone.
+  expect(sheet).not.toMatch(/\.u-pill\b/u);
 });
 
 it('MP-1-3 status pill in every tone, never a fill', () => {

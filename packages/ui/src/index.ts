@@ -30,14 +30,15 @@
 // the package before its own sheet, so the order holds in the bundle.
 import './styles/0-fonts.css';
 import './styles/1-tokens.css';
-import './styles/2-primitives.css';
 import './styles/2-controls-and-marks.css';
+import './styles/2-primitives.css';
 import './styles/3-shell.css';
 import './styles/4-board.css';
 import './styles/5-task.css';
 
 export * from './state/corpus.ts';
 export * from './state/project.ts';
+export * from './kit/blocks.tsx';
 export * from './kit/controls.tsx';
 export * from './kit/marks.tsx';
 export * from './primitives/Absence.tsx';
