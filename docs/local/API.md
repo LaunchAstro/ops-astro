@@ -1273,6 +1273,8 @@ proposals: {
     payload: unknown;
     supersededAt: string | null;
     runId: string | null;
+    startedAt: string | null;          // the run's first claim (MP-6-2)
+    endedAt: string | null;            // a hand-back with no claim after it
     evidence: { id; renderer; digest; body } | null;
     gate: { id; state; round; expiresAt; expired; payloadDigest } | null;
   }[];

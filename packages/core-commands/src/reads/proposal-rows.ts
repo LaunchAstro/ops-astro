@@ -22,6 +22,8 @@ export interface VersionRow {
   readonly payload: unknown;
   readonly superseded_at: string | null;
   readonly run_id: string | null;
+  readonly run_started_at: string | null;
+  readonly run_ended_at: string | null;
   readonly evidence_pack_id: string | null;
   readonly evidence_renderer: string | null;
   readonly evidence_digest: string | null;
@@ -75,6 +77,8 @@ export function asVersion(row: VersionRow, checks: readonly CheckRow[]): Proposa
     payload: row.payload,
     supersededAt: row.superseded_at === null ? null : isoTime(row.superseded_at),
     runId: row.run_id,
+    startedAt: row.run_started_at === null ? null : isoTime(row.run_started_at),
+    endedAt: row.run_ended_at === null ? null : isoTime(row.run_ended_at),
     evidence:
       row.evidence_pack_id === null
         ? null

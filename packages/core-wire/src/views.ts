@@ -320,6 +320,10 @@ export interface ProposalVersionView {
   readonly payload: unknown;
   readonly supersededAt: string | null;
   readonly runId: string | null;
+  /** The run's first claim, or null before one (MP-6-2's hero time). */
+  readonly startedAt: string | null;
+  /** A hand-back with no claim after it, or null while the run is out or never ran. */
+  readonly endedAt: string | null;
   readonly evidence: EvidenceView | null;
   readonly gate: GateView | null;
   /** The checks the run performed on this version, oldest first (MP-6-1, CS-16.3). */

@@ -15,7 +15,7 @@ import { insertBusiness } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { agentPath, createControls, type Controls } from './controls-fixture.ts';
 import { authorised, post, tokenFor, type Answer } from './fixture.ts';
-import { pickedUpOn } from './mp-6-1-checks-fixture.ts';
+import { pickedUpOn, type PickedUp } from './mp-6-1-checks-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -30,6 +30,8 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 run times', () => {
   let taskId = '';
   let versionId = '';
   let lease = { leaseId: '', fence: 0, credential: '' };
+  /** Another task's run, claimed first: its events are older than this run's. */
+  let sibling: PickedUp;
 
   const timesOf = (answer: Answer): Times | undefined => {
     const proposals = (answer.body['task'] as { proposals: unknown }).proposals as readonly {
@@ -39,15 +41,17 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 run times', () => {
     return found === undefined ? undefined : { startedAt: found.startedAt, endedAt: found.endedAt };
   };
   const eventAt = async (kind: string): Promise<string> => {
-    const [row] = await c.fixture.db.admin.execute<{ readonly at: Date }>(
-      `select created_at as at from public.run_events where task_id = $1 and kind = $2`,
+    const [row] = await c.fixture.db.admin.execute<{ readonly at: string }>(
+      `select to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as at
+         from public.run_events where task_id = $1 and kind = $2`,
       [taskId, kind],
     );
-    return new Date(String(row?.at)).toISOString();
+    return String(row?.at);
   };
 
   beforeAll(async () => {
     c = await createControls('mp_6_2_run_times');
+    sibling = await pickedUpOn(c, 'sibling_run');
     const task = await c.createTask('a task whose run is timed');
     const proposal = await c.propose(task.id, task.revision, 'timed_run');
     taskId = task.id;
@@ -68,7 +72,12 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 run times', () => {
     expect(running).toStrictEqual({ startedAt: await eventAt('claimed'), endedAt: null });
     const handedBack = await c.asAgent(
       'task.handback',
-      { ...lease, outcome: 'completed', report: { wrote: 'a timed draft' } },
+      {
+        leaseId: lease.leaseId,
+        fence: lease.fence,
+        outcome: 'completed',
+        report: { wrote: 'a timed draft' },
+      },
       lease.credential,
     );
     expect(handedBack.status).toBe(200);
@@ -122,7 +131,6 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 run times', () => {
     });
     carriesNothing(await c.asPerson('task.read', { recordId: taskId }, otherClient));
     // The agent under a live delegation on another task.
-    const sibling = await pickedUpOn(c, 'sibling_run');
     const agent = await post(
       c.api,
       agentPath('task.read'),

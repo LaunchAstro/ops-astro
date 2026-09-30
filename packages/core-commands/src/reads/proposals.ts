@@ -98,6 +98,18 @@ const VERSIONS = `select row_number() over (order by lin.created_at desc, lin.id
             ver.payload,
             ver.superseded_at,
             run.id                as run_id,
+            -- MP-6-2: the run's start, its first claim, and its end, a hand-back
+            -- with no claim after it; both from this run's own events here.
+            (select min(e.created_at) from public.run_events e
+              where e.business_id = run.business_id and e.run_id = run.id
+                and e.kind = 'claimed') as run_started_at,
+            (select max(e.created_at) from public.run_events e
+              where e.business_id = run.business_id and e.run_id = run.id
+                and e.kind = 'handed_back'
+                and not exists (select 1 from public.run_events l
+                                 where l.business_id = e.business_id and l.run_id = e.run_id
+                                   and l.kind = 'claimed' and l.position > e.position))
+                                  as run_ended_at,
             pack.id               as evidence_pack_id,
             pack.renderer         as evidence_renderer,
             pack.rendered_digest  as evidence_digest,
