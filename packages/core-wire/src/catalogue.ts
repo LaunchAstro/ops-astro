@@ -171,7 +171,8 @@ export interface HeldGrant {
 
 // Which commands `principal` may call, and where (issue 55). Business-scoped needs business-wide
 // keys; an agent reaches queue and pickup holding nothing (8.2) and never the person-only app.
-// A row asking no grant is the caller's own (self) or answered to anyone holding one.
+// A row asking no grant: a self-scoped write reaches anyone's own rows; a read (the inbox,
+// session.capabilities) is served only to a holder of some live grant, as its handler refuses.
 export function reachableBy(
   rows: readonly CatalogueRow[],
   principal: { readonly kind: 'person' | 'agent'; readonly grants: readonly HeldGrant[] },
@@ -185,7 +186,7 @@ export function reachableBy(
       (row) =>
         (agent && row.agent === 'before-pickup') ||
         (row.authority.length === 0
-          ? row.authorisedOn === 'self' || principal.grants.length > 0
+          ? (row.kind === 'write' && row.authorisedOn === 'self') || principal.grants.length > 0
           : row.authority.every((key) => holds(key, row.authorisedOn === 'business'))),
     )
     .map((row) => ({

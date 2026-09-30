@@ -24,14 +24,30 @@ import { OperationsClient, READ_NAMES } from '../apps/web/src/operations/client.
 const WEB = resolve(import.meta.dirname, '..', 'apps', 'web', 'src');
 // transport, addresses
 const NOT_ACTIONS = new Set(['operations/client.ts', 'manifest.ts', 'routes.ts']);
-// The only files that send a request themselves; everything else calls a command.
+// The only requests the app sends itself, each call exactly once; any other request fails.
 const TRANSPORTS = new Map([
-  ['operations/client.ts', 'the commands’ own client'],
-  ['session/sign-in.ts', 'signs a person in and out: a session, not a record'],
-  ['main.tsx', 'asks where to sign in, before there is a session'],
+  // the commands' own client: a read, then a write
+  [
+    'operations/client.ts',
+    ['this.#options.fetch(url, { headers, signal })', 'this.#options.fetch(url, {'],
+  ],
+  // signs a person in and out: a session, not a record
+  [
+    'session/sign-in.ts',
+    ['request.fetch(url, {', 'request.fetch(`${request.apiOrigin}${path}`, {'],
+  ],
+  // asks where to sign in before there is a session, and hands the app its fetch
+  ['main.tsx', ["window.fetch('/api/sign-in')", 'window.fetch.bind(window)']],
 ]);
+// A named call keeps its shape and loses its request: `fetch` and `/api/` read as nothing.
+const withoutNamed = (text, file) =>
+  (TRANSPORTS.get(file) ?? []).reduce(
+    (rest, call) => rest.replace(call, call.replaceAll('fetch', 'named').replaceAll('/api/', '/')),
+    text,
+  );
 const REQUEST_GLOBALS = new Set(['fetch', 'XMLHttpRequest', 'EventSource', 'WebSocket']);
 const REQUEST_METHODS = new Set(['fetch', 'sendBeacon']);
+const GLOBAL_OBJECTS = new Set(['window', 'globalThis', 'self']);
 
 function sources(root) {
   return readdirSync(root, { recursive: true, withFileTypes: true })
@@ -64,7 +80,7 @@ function nodesOf(text, file, values = false) {
 const textOf = (node) =>
   node.type === 'StringLiteral'
     ? node.value
-    : node.type === 'TemplateLiteral' && !node.expressions[0]
+    : node.type === 'TemplateLiteral' && !(node.expressions ?? node.types)[0]
       ? node.quasis[0].cooked
       : undefined;
 
@@ -77,13 +93,17 @@ export function commandsIn(text, namespaces, file = 'a.tsx') {
 
 /**
  * Whether `file` sends a request itself: a request global referenced (a bare identifier carries
- * `optional`; a property name or key does not), `.fetch(` or `.sendBeacon(` called, or an API address.
+ * `optional`; a property name or key does not) or read off `window`, `globalThis` or `self`,
+ * `.fetch(` or `.sendBeacon(` called, or an API address.
  */
 export function sendsDirectly(text, file = 'a.tsx') {
   return nodesOf(text, file, true).some((node) => {
     const method = node.type === 'CallExpression' ? node.callee.property : undefined;
     return (
       (node.type === 'Identifier' && 'optional' in node && REQUEST_GLOBALS.has(node.value)) ||
+      (node.type === 'MemberExpression' &&
+        GLOBAL_OBJECTS.has(node.object.value) &&
+        REQUEST_GLOBALS.has(node.property.value ?? node.property.expression?.value)) ||
       REQUEST_METHODS.has(method?.value ?? method?.expression?.value) ||
       (textOf(node) ?? '').startsWith('/api/')
     );
@@ -112,13 +132,13 @@ export function scanUses(files, namespaces, unparsed = []) {
   }
   const uses = [];
   for (const [file, text] of files) {
-    if (NOT_ACTIONS.has(file)) continue;
     let commands = [];
     try {
-      commands = commandsIn(text, namespaces, file);
-      if (!TRANSPORTS.has(file) && sendsDirectly(text, file)) {
+      if (sendsDirectly(withoutNamed(text, file), file)) {
         unparsed.push(`${file} sends a request itself, with no command or CLI verb`);
       }
+      if (NOT_ACTIONS.has(file)) continue;
+      commands = commandsIn(text, namespaces, file);
     } catch {
       // Fails closed: a file that cannot be read for commands fails the check.
       unparsed.push(`${file} does not parse, so its commands cannot be checked`);
