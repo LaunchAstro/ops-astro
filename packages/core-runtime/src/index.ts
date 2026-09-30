@@ -176,14 +176,20 @@ export {
   TRACE_ERRORS,
   TRACE_STAGES,
   TRANSFORM_VERSION,
+  TraceRefused,
   derivedId,
-  exportOnce,
   otlp,
   traceSpan,
+  type TraceError,
+  type TraceSpan,
+  type TraceStage,
+} from './trace-span.ts';
+export {
+  TRACE_BATCH,
+  exportOnce,
   type Deliver,
   type Delivered,
   type ExportOutcome,
   type GapCode,
   type TraceDatabase,
-  type TraceSpan,
 } from './trace-export.ts';

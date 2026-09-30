@@ -17,6 +17,7 @@ import {
   capCommitted,
   handbackBody,
   liveWork,
+  revisionOf,
   rows,
 } from './schedules-harness.ts';
 import {
@@ -121,6 +122,7 @@ it('AW-13 canary: a planted secret, message content and a client URL never reach
       command: 'task.comment',
       operationId: randomUUID(),
       recordId: work.taskId,
+      expectedRevision: await revisionOf(s, work.taskId),
       body: message,
       audience: 'internal',
     }),

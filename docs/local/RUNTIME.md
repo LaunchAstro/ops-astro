@@ -1596,6 +1596,41 @@ or delete.
 - **The spend to date** is counted as the broker counts it: settled calls at
   their actual, calls still open at the maximum they hold.
 
+## The diagnostic trace export
+
+AW-13, `0046_trace_export`. A run's durable events leave as timings, counts
+and codes, never a sentence, to a trace target an operator reads.
+
+- `core-runtime/src/trace-span.ts`: the span is a typed allowlist
+  (`traceSpan`): a derived trace id (32 hex) and span id (16 hex), the event
+  kind from a closed list, the transform version, start and duration in whole
+  milliseconds, the event's place in its task's order, and a drop's cause
+  from a closed list. Any other field, or a value outside a list, throws
+  `TraceRefused`, which names the field and never the value. `otlp` writes
+  OTLP/HTTP JSON with those cells as the only attributes. Ids are
+  HMAC-SHA256 under the installation's trace key over the business and the
+  run or event, so a replay sends the same ids and nothing maps a trace back
+  without the key.
+- `core-runtime/src/trace-export.ts`: `exportOnce` reads up to 100 events after
+  the business's cursor, registers each run's copy (`diagnostic_trace`,
+  `run:<id>`, retained as `trace`) before it is materialised, delivers through
+  the `Deliver` port, then advances the cursor or records a gap. The read and
+  the advance are separate transactions and no transaction is open while the
+  target is asked. Anything short of a 2xx JSON reply is a gap with a fixed
+  code (`target_unreachable`, `target_redirect`, `target_timeout`,
+  `target_oversized_reply`, `target_malformed_reply`, `target_refused`,
+  `target_forbidden`) and the cursor stays. No run reads either table and no
+  run waits on the exporter.
+- `trace_export_cursors`: one row per business, the last delivered event by
+  `(created_at, id)`. `trace_export_gaps`: append only (a trigger refuses
+  update and delete). Both under tenancy; the application group may select and
+  insert, and update the cursor.
+- The port is meant to be custody's egress (the target's origin on custody's
+  list, redirects refused, replies bounded by time and bytes, the target's key
+  in custody's credential file); the tests wire it that way against a loopback
+  stand-in. Nothing starts the exporter yet: the configuration switch, the
+  pinned local Langfuse profile and retention are AW-13's remaining lines.
+
 ## What is not here
 
 - **No machine write-off.** The worker (`apps/worker/`, T2b), effect
