@@ -9,8 +9,9 @@
 // repository path and, when it has one, its hyphenated stem
 // (`declining-reporter`), unless a shipped module under `apps/` or `packages/`
 // has the same stem (`sign-in`): the app says that word for its own module, so
-// it selects nothing, and the fixture is still caught by its path and in the
-// module graph. Every file the build wrote is searched for each,
+// it selects nothing, and the fixture is still caught by its path, in the
+// module graph and by its own quoted values that carry the stem
+// (`test-sign-in-es256`), wherever they were copied. Every file the build wrote is searched for each,
 // ignoring case, and the module graph Rollup recorded (`module-graph.json`) is
 // read for any module under `tests/`, which catches a fixture module whose
 // strings minifying removed. A generic `tests/` is not a selector: the bundle
@@ -42,10 +43,23 @@ export function fixtureSelectors(root: string = ROOT): readonly string[] {
       if (file.includes('.test.')) continue;
       selectors.add(`${directory}/${file}`);
       const stem = stemOf(file);
-      if (stem.includes('-') && !shipped.has(stem)) selectors.add(stem);
+      if (!stem.includes('-')) continue;
+      // The app says a shared stem for its own module, so the bare word selects
+      // nothing; the test-only file's own quoted values that carry it still do.
+      const shared = shipped.has(stem);
+      const found = shared ? valuesCarrying(join(root, directory, file), stem) : [stem];
+      for (const selector of found) selectors.add(selector);
     }
   }
   return [...selectors];
+}
+
+/** The quoted values in a test-only file that carry `stem` and are more than it. */
+function valuesCarrying(path: string, stem: string): string[] {
+  const quoted = readFileSync(path, 'utf8').matchAll(/(['"`])([^'"`\n]+)\1/gu);
+  return [...quoted]
+    .map((match) => match[2] ?? '')
+    .filter((value) => value.toLowerCase().includes(stem) && value.toLowerCase() !== stem);
 }
 
 function stemOf(file: string): string {
