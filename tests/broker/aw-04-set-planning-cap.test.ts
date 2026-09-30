@@ -7,9 +7,13 @@
 // (`fromLimitMinor`, null while unset), under the cap row's lock. It writes the
 // `budget_caps` row keyed `planning` and nothing else, and the planning broker
 // reads what it wrote. No default: the cap stays unset until a person sets it.
+//
+// A money action, so it is in the step-up set: AW-04 set planning cap: a
+// sign-in older than the money step-up window is refused before any write
+// (LEANS-ON C59, family B; written here at the batch rebase).
 
 import { randomUUID } from 'node:crypto';
-import { expect, it as vitestIt } from 'vitest';
+import { beforeAll, expect, it as vitestIt } from 'vitest';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { AdminConnection } from '../../packages/core-records/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
@@ -30,6 +34,16 @@ import { allowance, ask, ownerOf, p, plan, usePlanningWorld } from './aw-04-plan
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
 usePlanningWorld('aw04setcap');
+// Each business's decider holds `billing:decide` on the whole business: its owner.
+beforeAll(async () => {
+  if (noDatabase) return;
+  for (const on of [s, p.bravo]) {
+    // eslint-disable-next-line no-await-in-loop
+    await on.db.app.withBusiness(on.business, async (tx) => {
+      await grantTo(tx, on.decider, 'decide', undefined, false, 'billing');
+    });
+  }
+});
 
 const setBody = (
   limitMinor: unknown,
@@ -53,12 +67,6 @@ async function caps(on: Schedules): Promise<Record<string, string>> {
   return Object.fromEntries(found.map((row) => [row.key, row.limit_minor]));
 }
 
-async function billingOwner(on: Schedules): Promise<void> {
-  await on.db.app.withBusiness(on.business, async (tx) => {
-    await grantTo(tx, on.decider, 'decide', undefined, false, 'billing');
-  });
-}
-
 /** Resolves once `count` backends in this database wait on a lock. */
 async function waiting(execute: AdminConnection['execute'], count: number): Promise<void> {
   for (let tries = 0; tries < 200; tries += 1) {
@@ -79,7 +87,6 @@ async function waiting(execute: AdminConnection['execute'], count: number): Prom
 }
 
 it('AW-04 set planning cap: a billing holder sets the unset cap, the broker spends under it, and a lower cap refuses the next reply', async () => {
-  await billingOwner(s);
   expect((await caps(s))['planning']).toBeUndefined();
   const first = await asPerson(s, setBody(1_200, null));
   expect(codeOf(first)).toBe('applied');
@@ -103,7 +110,7 @@ it('AW-04 set planning cap: a billing holder sets the unset cap, the broker spen
   // next reply is refused with nothing written or sent.
   const lowered = await asPerson(s, setBody(spent + 499, 1_200));
   expect(codeOf(lowered)).toBe('applied');
-  expect((await caps(s))['planning']).toBe(String(spent + 499));
+  expect(await caps(s)).toStrictEqual({ local: '1000000', planning: String(spent + 499) });
   const sent = world.provider.seen.length;
   expect(await plan(s, ownerOf(s), request)).toMatchObject({ code: 'BUDGET_UNAVAILABLE' });
   expect(world.provider.seen.length).toBe(sent);
@@ -122,7 +129,7 @@ it('AW-04 set planning cap: a billing holder sets the unset cap, the broker spen
   expect(events.map((event) => event.outcome)).toStrictEqual(['applied', 'applied', 'applied']);
 });
 
-it('AW-04 set planning cap: a limit the caller did not last see is refused VERSION_STALE and the row keeps its limit', async () => {
+it('AW-04 set planning cap: a limit the caller did not last see is refused VERSION_STALE naming the one it is at, and the row keeps it', async () => {
   const [row] = await s.db.admin.execute<{ limit_minor: string }>(
     `select limit_minor::text from public.budget_caps where business_id = $1 and key = 'planning'`,
     [s.business],
@@ -131,7 +138,7 @@ it('AW-04 set planning cap: a limit the caller did not last see is refused VERSI
   for (const seen of [null, current + 1]) {
     // eslint-disable-next-line no-await-in-loop
     const stale = await asPerson(s, setBody(9_000, seen));
-    expect(codeOf(stale)).toBe('VERSION_STALE');
+    expect(stale).toMatchObject({ code: 'VERSION_STALE', names: [`limitMinor=${current}`] });
   }
   expect((await caps(s))['planning']).toBe(String(current));
   const refusals = await s.db.admin.execute<{ refusal_code: string }>(
@@ -143,17 +150,16 @@ it('AW-04 set planning cap: a limit the caller did not last see is refused VERSI
 });
 
 it('AW-04 set planning cap: the amount, the currency, the limit seen and any other field are refused by name, and nothing is written', async () => {
-  await billingOwner(p.bravo);
   const cases: readonly [Readonly<Record<string, unknown>>, string, string][] = [
     [setBody(0, null), 'FIELD_VALUE_INVALID', 'limitMinor'],
     [setBody(-5, null), 'FIELD_VALUE_INVALID', 'limitMinor'],
     [setBody(1.5, null), 'FIELD_VALUE_INVALID', 'limitMinor'],
     [setBody(2 ** 53, null), 'FIELD_VALUE_INVALID', 'limitMinor'],
-    [setBody('500', null), 'COMMAND_BODY_INVALID', 'limitMinor'],
+    [setBody('500', null), 'FIELD_VALUE_INVALID', 'limitMinor'],
     [setBody(500, 0), 'FIELD_VALUE_INVALID', 'fromLimitMinor'],
     [setBody(500, null, { currency: 'USD' }), 'FIELD_VALUE_INVALID', 'currency'],
     [setBody(500, null, { currency: 'aud' }), 'FIELD_VALUE_INVALID', 'currency'],
-    [setBody(500, null, { key: 'local' }), 'COMMAND_BODY_INVALID', 'key'],
+    [setBody(500, null, { key: 'local' }), 'FIELD_NOT_WRITABLE', 'key'],
     [setBody(500, null, { recordId: p.bravo.capId }), 'COMMAND_BODY_INVALID', 'recordId'],
   ];
   for (const [body, code, name] of cases) {
@@ -167,15 +173,19 @@ it('AW-04 set planning cap: the amount, the currency, the limit seen and any oth
 
 it('AW-04 set planning cap: two setters at once from the same limit, on two connections: one applies, the other is refused VERSION_STALE', async () => {
   const bravo = p.bravo;
-  for (const from of [null, 700]) {
+  // The first two meet on the unset cap (the unique key), the next two on its row lock.
+  for (const [from, mine, theirs] of [
+    [null, 700, 800],
+    [700, 900, 1_000],
+  ] as const) {
     const other = racer(bravo);
     try {
       // eslint-disable-next-line no-await-in-loop
       const both = await bravo.db.admin.transaction(async (execute) => {
         await execute('lock table public.budget_caps in exclusive mode');
         const racing = Promise.all([
-          asPerson(bravo, setBody(700, from)),
-          asPerson(bravo, setBody(800, from), other),
+          asPerson(bravo, setBody(mine, from)),
+          asPerson(bravo, setBody(theirs, from), other),
         ]);
         await waiting(execute, 2);
         return { racing };
@@ -183,23 +193,17 @@ it('AW-04 set planning cap: two setters at once from the same limit, on two conn
       // eslint-disable-next-line no-await-in-loop
       const codes = (await both.racing).map((result) => codeOf(result));
       expect(codes.toSorted()).toStrictEqual(['VERSION_STALE', 'applied']);
+      const won = codes[0] === 'applied' ? mine : theirs;
       // eslint-disable-next-line no-await-in-loop
-      const planning = (await caps(bravo))['planning'];
-      expect(planning).toBe(codes[0] === 'applied' ? '700' : '800');
-      if (planning === '800') {
-        // eslint-disable-next-line no-await-in-loop
-        await asPerson(bravo, setBody(700, 800));
-      }
+      expect((await caps(bravo))['planning']).toBe(String(won));
+      // eslint-disable-next-line no-await-in-loop
+      if (won !== 700 && from === null) await asPerson(bravo, setBody(700, won));
     } finally {
       // eslint-disable-next-line no-await-in-loop
       await other.close();
     }
   }
 });
-
-it.todo(
-  'AW-04 set planning cap: a sign-in older than the money step-up window is refused before any write (LEANS-ON C59)',
-);
 
 it('AW-04 set planning cap isolation: another business, another client, another person under a live delegation', async () => {
   // Alpha's cap at a planted amount no crossing may see.

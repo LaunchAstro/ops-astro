@@ -1605,9 +1605,15 @@ the conversation and its owner and carries no totals.
   conversation, or a made-up one, reads as nothing spent. The surface that
   shows it (the drawer's allowance line, the spend beside the plan) is not here
   yet; it is the team's and the conversation owner's to see.
+- **Setting the cap.** `budget.set_planning_cap` writes the `planning` row and
+  no other ([API.md](API.md#budgetset_planning_cap-aw-04-u10)): `billing:decide`
+  on the whole business, against the limit the caller last saw, under the same
+  row lock the hold takes. Lowering it below what is committed is allowed; the
+  next reply that no longer fits is refused.
 
-Not here yet: the cap's default value (none is set by any migration: an owner
-sets the cap), a command to set it, and the surface above.
+Not here yet: the cap's default value (none is set by any migration: until an
+owner sets the cap, planning replies are refused), the recent sign-in the
+command asks as a money action (C59), and the surface above.
 
 ## The budget wait
 

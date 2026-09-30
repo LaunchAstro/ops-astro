@@ -774,6 +774,11 @@ the runtime asks the same pair of the run's own task again under the run's
 locks. No agent holds `decide`, and neither row is in the agent's reach. The
 seed gives both pairs to `admin` only (`scripts/local-seed.mjs`).
 
+AW-04's `budget.set_planning_cap` asks `decide` on `billing` of the business
+as a whole (`authorisedOn: 'business'`), so a `billing:decide` grant on one
+task does not reach it: only a business-wide holder, which the seed makes the
+owner and administrators. It is not in the agent's reach.
+
 MP-6-2's `run.revise_state` asks `write` on `run` of the task named in
 `recordId` (ORCH33: `run:write` is the only key on `run`; its reads stay
 `task:read`). The handler refuses a run on another task with the bytes a

@@ -16,10 +16,9 @@ import {
   batchOf,
   approvableGate,
   approvedReservationId,
-  approvedTaskId,
+  moneyBody,
   ownLease,
   ownAppliedEffect,
-  ownUnknownAttempt,
 } from './role-case-bodies.ts';
 import { ownConversation } from './foreign-conversation.ts';
 import { answerAtTheStop } from './stopped-run.ts';
@@ -155,28 +154,10 @@ export function createPositiveBody(
       case 'settings.set_client_sign_off':
         return { body: { value: true } };
       case 'budget.top_up':
-        // The admin approved the plan and holds billing, so a top-up under
-        // the band is hers alone (T2e).
-        return {
-          body: {
-            recordId: await approvedTaskId(context),
-            amountMinor: 100,
-            fromMaximumMinor: PROPOSAL.maximumMinor,
-          },
-        };
       case 'budget.record_outcome':
-        // The admin holds billing, so any unknown attempt on the business's
-        // tasks is hers to record (O8, T3d1).
-        return { body: { ...(await ownUnknownAttempt(context)), outcome: 'happened' } };
       case 'budget.write_off':
-        // The same unknown hold, closed at nothing with a reason (T3c).
-        return {
-          body: {
-            ...(await ownUnknownAttempt(context)),
-            amountMinor: 0,
-            reason: 'The matrix writes its own unknown hold off.',
-          },
-        };
+      case 'budget.set_planning_cap':
+        return { body: await moneyBody(context, declaration.name) };
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');

@@ -152,6 +152,10 @@ vi.mock('../../packages/core-commands/src/commands/budget-write-off.ts', async (
   ...(await original<object>()),
   writeOffOnTask: recorder('writeOffOnTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/budget-planning-cap.ts', async (original) => ({
+  ...(await original<object>()),
+  setPlanningCap: recorder('setPlanningCap'),
+}));
 vi.mock('../../packages/core-commands/src/commands/model-call-person.ts', async (original) => ({
   ...(await original<object>()),
   refuseModelCallAsPerson: recorder('refuseModelCallAsPerson'),
@@ -183,6 +187,7 @@ const PINNED_RUNTIME_SHAPED = {
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.record_outcome': ['recordId', 'attemptId'],
+  'budget.set_planning_cap': [],
   'budget.top_up': ['recordId'],
   'budget.write_off': ['recordId', 'attemptId'],
   'conversation.message': ['conversationId'],
@@ -216,6 +221,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.record_outcome',
+  'budget.set_planning_cap',
   'budget.top_up',
   'budget.write_off',
   'conversation.list',
@@ -380,6 +386,13 @@ const REQUESTS: readonly CommandRequest[] = [
     reason: 'why',
   },
   {
+    command: 'budget.set_planning_cap',
+    operationId: 'op',
+    limitMinor: 2_000,
+    currency: 'AUD',
+    fromLimitMinor: null,
+  },
+  {
     command: 'task.check',
     operationId: 'op',
     leaseId: 'l',
@@ -460,6 +473,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'budget.set_planning_cap': ['setPlanningCap', 'request'],
   'task.check': ['checkOwnLease', 'request'],
   'conversation.start': ['startConversation', 'request'],
   'conversation.message': ['messageConversation', 'request'],
@@ -510,7 +524,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same forty-three from an expected revision', () => {
+  it('exempts the same forty-four from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
