@@ -196,10 +196,6 @@ test('C81 manual privacy runbook: dry run: each copy is deleted or kept for a la
   expect(after.hits.map((hit) => hit.table)).toEqual(['privacy_incidents']);
 });
 
-it.todo(
-  'C81 manual privacy runbook: a backup restored from before the erasure holds the canary only in lawfully kept copies (LEANS-ON SL01 S0-3 restore)',
-);
-
 test('C81 manual privacy runbook: the finder matches the text alone, in any letter case, as the row holds it, and refuses a text too short to name anyone', async () => {
   const quoted = `O"Brien\\${CANARY}x`;
   await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
