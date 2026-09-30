@@ -35,6 +35,9 @@ export interface RunVersion {
   readonly payload: unknown;
   readonly supersededAt: string | null;
   readonly runId: string | null;
+  /** The run's first claim and a hand-back with none after it (MP-6-2); absent on an older read. */
+  readonly startedAt?: string | null;
+  readonly endedAt?: string | null;
   readonly evidence: { readonly digest: string; readonly body: unknown } | null;
   readonly gate: RunGate | null;
   readonly checks: readonly RunCheck[];

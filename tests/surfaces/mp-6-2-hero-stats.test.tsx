@@ -48,3 +48,30 @@ describe('MP-6-2 hero stats', () => {
     expect(page.all('[data-agent="summary"] .tph__stat')).toHaveLength(2);
   });
 });
+
+const timed = (startedAt: string | null, endedAt: string | null) =>
+  pane({ lineages: [lineage({ versions: [version({ startedAt, endedAt })] })] });
+
+describe('MP-6-2 hero stats, the time cell', () => {
+  it('MP-6-2 hero stats: a run handed back shows the time it took, in hours and minutes', async () => {
+    const page = await timed('2026-09-30T01:00:00.000Z', '2026-09-30T02:18:10.000Z');
+    expect(stat(page, 'time')).toStrictEqual({ n: '1h 18m', k: 'elapsed' });
+  });
+
+  it('MP-6-2 hero stats: under an hour is minutes, and never less than one', async () => {
+    expect(
+      stat(await timed('2026-09-30T01:00:00.000Z', '2026-09-30T01:42:00.000Z'), 'time'),
+    ).toStrictEqual({
+      n: '42m',
+      k: 'elapsed',
+    });
+    expect(
+      stat(await timed('2026-09-30T01:00:00.000Z', '2026-09-30T01:00:05.000Z'), 'time').n,
+    ).toBe('1m');
+  });
+
+  it('MP-6-2 hero stats: a run still out, or never started, has no time cell', async () => {
+    expect((await timed('2026-09-30T01:00:00.000Z', null)).find('[data-hero="time"]')).toBeNull();
+    expect((await timed(null, null)).find('[data-hero="time"]')).toBeNull();
+  });
+});
