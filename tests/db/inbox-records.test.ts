@@ -504,7 +504,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
     expect(rows.length).toBe(1);
   });
 
-  it('separates person from person: a read is the recipient own, and so is attention', async () => {
+  it('separates person from person: a read is the recipient’s own, and so is attention', async () => {
     const beas = await inAlpha(async (tx) => await readInboxItems(tx, bea));
     expect(beas.length).toBeGreaterThan(0);
     const adas = await inAlpha(async (tx) => await readInboxItems(tx, ada));

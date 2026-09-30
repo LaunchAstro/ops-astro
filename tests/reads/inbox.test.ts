@@ -7,16 +7,17 @@
 // One permission-checked read serves the list, and the count is that same
 // read's counted entries: open, owed and readable now. Access is derived at the
 // read, so a lost grant withholds an item at the next read without touching it
-// (withheld items are not listed), and withheld is not gone. `seen` is the recipient's own attention row, written
-// by `inbox.seen` for the caller's own item only. No worker runs anywhere in
-// this suite: the fixture composes the API alone, so every count here is the
-// count with the dispatching worker stopped.
+// (withheld items are not listed), and withheld is not gone. `seen` is the
+// recipient's own attention row, written by `inbox.seen` for the caller's own
+// item only. No worker runs anywhere in this suite: the fixture composes the
+// API alone, so every count here is the count with the dispatching worker
+// stopped.
 //
 // Separations, each exercised below: business to business (another business's
 // person reads, counts and stamps nothing here, and this business's items never
 // reach theirs), client to client (a party grant on client A shows A's item and
-// neither lists nor stamps B's, in one business), person to person (a read returns the
-// caller's items only, and nobody stamps another person's item).
+// neither lists nor stamps B's, in one business), person to person (a read
+// returns the caller's items only, and nobody stamps another person's item).
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';

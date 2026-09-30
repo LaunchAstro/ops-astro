@@ -12,9 +12,9 @@
 // separate fields), and withheld is not gone. A withheld item, about a task the
 // caller holds no read on, is not listed at all: its identity, reason and times
 // would say that another client's task exists. It stays stored and comes back
-// at the first read after access returns. A gone item, a trashed task the
-// caller still holds read on, is listed as gone and names nothing of the task
-// or the fact it points at.
+// at the first read after access returns. A gone item, about a trashed task
+// the caller still holds read on, is listed as gone and names nothing of the
+// task or the fact it points at.
 
 import {
   countOwedItems,
@@ -54,7 +54,7 @@ function entryOf(item: InboxItem): InboxEntry {
 }
 
 /**
- * The caller's own inbox, newest raised last, as `readInboxItems` orders it.
+ * The caller's own inbox, oldest raised first, as `readInboxItems` orders it.
  * A readable entry is named in the same transaction: its task's key and title,
  * and who closed it. The item stores neither, so a renamed task reads renamed.
  */

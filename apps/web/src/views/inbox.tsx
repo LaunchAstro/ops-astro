@@ -3,8 +3,8 @@
 // The inbox inside Tasks (INB-1g), the working minimum on today's board
 // screen: the caller's own items and the owed count, from `inbox.read` and
 // `inbox.count`, the reads the API and the command line serve. The dock's
-// Notifications panel (MP-7-3) and `/inbox/` will read the same list; the
-// designed surfaces are theirs, and this is the record of the states.
+// Notifications panel (MP-7-3) and `/inbox/` will read the same list and
+// carry the design. This panel shows every state they will have to show.
 //
 // Opening an item stamps it seen (`inbox.seen`, the recipient's own row) and
 // leaves it open and counted: read is not done. The delivery word is the last
