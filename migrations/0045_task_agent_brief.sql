@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0035 the agent brief (MP-4-7, CS-4.23).
+-- 0045 the agent brief (MP-4-7, CS-4.23).
 --
 -- The pre-prompt an agent boots on for one task. A task spine field keyed
 -- `agent_brief` (`packages/core-records/src/tasks/spine.ts`), text, unslotted
@@ -14,7 +14,7 @@
 -- A preset field that already holds the key, moved aside.
 -- ---------------------------------------------------------------------------
 
--- The same move 0032 and 0033 make, for the same reason: a preset field keyed
+-- The same move 0042 and 0043 make, for the same reason: a preset field keyed
 -- `agent_brief` would keep the key, the insert below would skip it, and the
 -- core's brief would be a preset's field with a preset's slot and visibility.
 -- Its definition and every value stored under it move to

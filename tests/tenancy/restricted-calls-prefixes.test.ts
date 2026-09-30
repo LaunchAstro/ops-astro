@@ -98,7 +98,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
-  // 0035: no journey step logs time yet.
+  // 0047: no journey step logs time yet.
   'public.time_entries': {
     task_id: randomUUID(),
     person_id: randomUUID(),

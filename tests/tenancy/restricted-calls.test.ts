@@ -94,7 +94,7 @@ const UNREACHED_OWN: Readonly<Record<string, string>> = {
        join public.attempts att on att.business_id = r.business_id
        join public.planned_runs run on run.business_id = att.business_id and run.id = att.run_id
       where r.business_id = $1 order by att.id limit 1 returning 1`,
-  // 0035: no journey step logs time yet, so one finished entry is written here.
+  // 0047: no journey step logs time yet, so one finished entry is written here.
   'public.time_entries': `insert into public.time_entries
        (business_id, id, task_id, person_id, actor_id, started_at, ended_at, minutes,
         ad_hoc, source)

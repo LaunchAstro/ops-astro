@@ -188,7 +188,7 @@ table exactly:
 | `assignee`      | `uuid_2`             | `task.assign`                                |
 | `title`         | `txt_4`              | `task.update`                                |
 | `description`   | unslotted, in `data` | `task.update`                                |
-| `agent_brief`   | unslotted, in `data` | `task.update` (0035, MP-4-7)                 |
+| `agent_brief`   | unslotted, in `data` | `task.update` (0045, MP-4-7)                 |
 | `due`           | `ts_1`               | `task.update`                                |
 | `priority`      | `num_1`              | `task.update`                                |
 | `completed_at`  | `ts_2`               | derived on complete, cleared on reopen       |

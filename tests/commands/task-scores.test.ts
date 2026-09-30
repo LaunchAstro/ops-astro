@@ -602,7 +602,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-9 marks command over an upgrade',
 
   it('moves a preset field already keyed impact aside, values and all', async () => {
     const migrations = readMigrations('migrations');
-    const marks = migrations.findIndex((migration) => migration.version === '0032_task_marks');
+    const marks = migrations.findIndex((migration) => migration.version === '0042_task_marks');
     db = await createEmptyDatabase({ part: 'sup' });
     await applyMigrations(db.admin, migrations.slice(0, marks));
     const business = await insertBusiness(db.app, 'task-scores-upgrade');

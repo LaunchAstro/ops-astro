@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0034 replies and edits in a task conversation (MP-4-5, R42, CS-4.33, CS-4.34).
+-- 0044 replies and edits in a task conversation (MP-4-5, R42, CS-4.33, CS-4.34).
 --
 -- A reply names the top-level message it sits under, one level deep, in the
 -- comment type's `parent` field, owned by `task.comment`; and a comment's

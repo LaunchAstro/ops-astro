@@ -249,7 +249,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: ['task.set_audience'],
     escalatingOperation: null,
   },
-  // The three marks the derived rank reads (R70, migration 0032): whole
+  // The three marks the derived rank reads (R70, migration 0042): whole
   // numbers from 1 to 10, or absent, and absent is never 0. One command owns
   // all three, so a mark changes only as `task scores changed` in the audit.
   {
@@ -280,7 +280,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     escalatingOperation: null,
   },
   {
-    // The Ad hoc mark (MP-4-10, migration 0033): it drives billing and is the
+    // The Ad hoc mark (MP-4-10, migration 0043): it drives billing and is the
     // default for the task's new time entries. Absent reads as not ad hoc.
     key: 'ad_hoc',
     label: 'Ad hoc',
@@ -291,7 +291,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     escalatingOperation: null,
   },
   // A step left out of its parent's count without being done (MP-4-15,
-  // migration 0034): completing a task archives its unfinished subtasks and
+  // migration 0046): completing a task archives its unfinished subtasks and
   // reopening it restores them, both in the transition's own transaction.
   // System, like `completed_at`, because no operation takes either as an
   // input; unslotted, because no view filters on them.
@@ -326,7 +326,7 @@ export const TASK_SPINE: readonly SpineField[] = [
   },
   {
     // The pre-prompt an agent boots on for this task (MP-4-7, CS-4.23,
-    // migration 0035). Unslotted and generic like the description.
+    // migration 0045). Unslotted and generic like the description.
     key: 'agent_brief',
     label: 'Agent brief',
     valueType: 'text',

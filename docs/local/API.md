@@ -983,7 +983,7 @@ yet, although the key catalogue allows `time:write` inside a delegation.
 `task.read` carries `description` and `agentBrief` (MP-4-7, CS-4.23, CS-4.24),
 each null when none is written. Both are task text written through
 `task.update` under `task:write`; `agent_brief` is a field of its own
-(migration 0035), unslotted and internal like the description, so the shared
+(migration 0045), unslotted and internal like the description, so the shared
 view carries neither. The audit row names `task.update`; the field changed is
 the result's `changed` list, which the register stores in the same
 transaction. An agent writes the two on its own delegated task and nothing

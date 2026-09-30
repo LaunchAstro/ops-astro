@@ -6,7 +6,7 @@
 // `task:write` and audited as that command with the field named in its
 // `changed` list: `task.description changed` and `task.agent brief changed`
 // are its two tracked actions. The brief is a task field of its own
-// (`agent_brief`, migration 0035), unslotted like the description, internal
+// (`agent_brief`, migration 0045), unslotted like the description, internal
 // like it: a client's shared view carries neither. The agent's reach is
 // `task-writing-agent.test.ts`.
 

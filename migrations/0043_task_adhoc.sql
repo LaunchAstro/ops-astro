@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0033 the Ad hoc mark (MP-4-10, CS-4.9).
+-- 0043 the Ad hoc mark (MP-4-10, CS-4.9).
 --
 -- A task marked ad hoc drives billing and is the default for its new time
 -- entries. It is a task spine field owned by `task.set_adhoc`
@@ -40,7 +40,7 @@ update ops.slots set reservation = 'task_spine' where slot = 'bool_2';
 -- A preset field that already holds the key, moved aside.
 -- ---------------------------------------------------------------------------
 
--- The same move 0032 makes for the marks, for the same reason: a preset field
+-- The same move 0042 makes for the marks, for the same reason: a preset field
 -- keyed `ad_hoc` on a task type would keep the key, the backfill below would
 -- skip it, and `task.set_adhoc` would refuse the mark as a field it does not
 -- own. Its definition and every value stored under it move to

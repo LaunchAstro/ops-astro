@@ -6,7 +6,7 @@
 // already refuses a field this command does not own, a value of the wrong type
 // and an unknown key. What it adds is the range: a mark is a whole number from
 // 1 to 10, or null to clear it, because absent is never 0. The database holds
-// the same rule (0032); refusing here first answers by name instead of as a
+// the same rule (0042); refusing here first answers by name instead of as a
 // fault from the constraint.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';

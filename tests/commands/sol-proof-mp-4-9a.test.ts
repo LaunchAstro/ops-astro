@@ -62,7 +62,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('MP-4-9a upgrade pro
 
   it('Sol proof, criterion 7: an upgraded task with a pre-existing impact field can set its mark', async () => {
     const migrations = readMigrations('migrations');
-    const markIndex = migrations.findIndex((migration) => migration.version === '0032_task_marks');
+    const markIndex = migrations.findIndex((migration) => migration.version === '0042_task_marks');
     expect(markIndex).toBeGreaterThan(0);
     db = await createEmptyDatabase({ part: 'sol49a' });
     await applyMigrations(db.admin, migrations.slice(0, markIndex));

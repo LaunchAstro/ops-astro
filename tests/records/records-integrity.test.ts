@@ -291,8 +291,8 @@ describe.skipIf(serverUrl === undefined)('records integrity', () => {
       //
       // So the assertion moves rather than weakens: every registered slot is
       // indexed, and reservation is separately counted: eighteen, then
-      // twenty-one once 0032 reserved `num_3` to `num_5` for the three marks
-      // (MP-4-9), then twenty-two once 0033 reserved `bool_2` for the Ad hoc
+      // twenty-one once 0042 reserved `num_3` to `num_5` for the three marks
+      // (MP-4-9), then twenty-two once 0043 reserved `bool_2` for the Ad hoc
       // mark (MP-4-10). A migration that stopped indexing one, or reserved another,
       // still fails here.
       const reserved = slots.filter((slot) => slot.reservation !== null);

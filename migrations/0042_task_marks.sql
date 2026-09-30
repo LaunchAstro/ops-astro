@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0032 the three marks the derived rank reads: impact, confidence and ease
+-- 0042 the three marks the derived rank reads: impact, confidence and ease
 -- (MP-4-9, R70).
 --
 -- Each is a whole number from 1 to 10 or absent, and absent is never 0: a task
