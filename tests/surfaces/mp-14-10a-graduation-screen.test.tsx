@@ -181,7 +181,7 @@ describe('MP-14-10a Connections & signal: client scope bar, graduation and stand
     expect(page.find('[data-grad="ready"]')).not.toBeNull();
     expect(page.find('[data-grad="bready"]')).toBeNull();
     expect(page.find('[data-mandate="m-b"]')).toBeNull();
-    for (const section of ['009', '010', '011']) {
+    for (const section of ['010', '011', '012']) {
       expect(page.find(`[data-section="${section}"] [data-scope-client]`)?.textContent).toBe(
         'Client A',
       );
@@ -194,7 +194,7 @@ describe('MP-14-10a Connections & signal: client scope bar, graduation and stand
     expect(page.find('[data-grad="ready"]')).toBeNull();
     expect(page.find('[data-mandate="m-b"]')).not.toBeNull();
     expect(page.find('[data-mandate="m-yes"]')).toBeNull();
-    for (const section of ['009', '010', '011']) {
+    for (const section of ['010', '011', '012']) {
       expect(page.find(`[data-section="${section}"] [data-scope-client]`)?.textContent).toBe(
         'Client B',
       );
