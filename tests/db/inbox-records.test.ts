@@ -487,7 +487,10 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
     } as const;
     // The first holds its uncommitted insert open; the second waits on the
     // one-open index, then finds the committed item rather than raising another.
+    let firstBackend: number | undefined;
+    let secondBackend: number | undefined;
     const first = inAlpha(async (tx) => {
+      firstBackend = (await tx.query<{ pid: number }>('select pg_backend_pid() as pid'))[0]?.pid;
       const id = await raiseInboxItem(tx, item);
       await tx.query('select pg_sleep(0.5)');
       return id;
@@ -495,8 +498,15 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
     await new Promise((resolve) => {
       setTimeout(resolve, 150);
     });
-    const second = inAlpha(async (tx) => await raiseInboxItem(tx, item));
+    const second = inAlpha(async (tx) => {
+      secondBackend = (await tx.query<{ pid: number }>('select pg_backend_pid() as pid'))[0]?.pid;
+      return await raiseInboxItem(tx, item);
+    });
     const [one, two] = await Promise.all([first, second]);
+    expect(
+      firstBackend,
+      'the writers need distinct database sessions to contend on the index',
+    ).not.toBe(secondBackend);
     expect(two).toBe(one);
     const rows = await db.admin.execute('select id from public.inbox_items where fact_id = $1', [
       item.fact.id,
