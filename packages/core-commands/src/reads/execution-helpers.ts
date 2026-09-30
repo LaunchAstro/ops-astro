@@ -25,6 +25,10 @@ export interface HelperStep {
   readonly reservedMinor: number;
   /** What the call settled at; null until it settles. */
   readonly spentMinor: number | null;
+  /** The parent run's plan step: a step takes its parent node's placement (ORCH42 (a)). */
+  readonly planned: { readonly key: string; readonly title: string } | null;
+  /** Whether the parent run's node reads `unplanned`. */
+  readonly unplanned: boolean;
 }
 
 export interface HelperEntry extends Pick<ChildResult, 'state' | 'outcome' | 'refusal' | 'fault'> {
