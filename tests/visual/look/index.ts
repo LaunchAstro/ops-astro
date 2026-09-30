@@ -35,4 +35,18 @@ export interface LookScreen {
   readonly probes: readonly LookProbe[];
 }
 
+/**
+ * Rulings that moved one painted colour everywhere: where the mockup paints
+ * `mockup` in `theme`, the build paints `want`. DR-10 folded the dark muted
+ * ink to 55 percent; the mockup drew 46 (SIDEBAR.md DS-SIDE-2, 12).
+ */
+export const RULED_PAINT: readonly {
+  readonly theme: 'light' | 'dark';
+  readonly mockup: string;
+  readonly want: string;
+  readonly why: string;
+}[] = [
+  { theme: 'dark', mockup: 'rgba(248,248,248,117)', want: 'rgba(248,248,248,140)', why: 'DR-10' },
+];
+
 export const LOOK_SCREENS: readonly LookScreen[] = [SHELL, BOARD, TASK, SETTINGS, SIGN_IN];
