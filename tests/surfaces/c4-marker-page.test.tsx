@@ -148,3 +148,26 @@ it('C4 marker: a refused page claims nothing, and a closed page takes its marker
   await shown.render(header(again.client, false, 't2:g'));
   expect(shown.find('.topbar .freshrow')).toBeNull();
 });
+
+it('C4 marker: one marker in the header; the tab’s offline word only while no page gives one', async () => {
+  const offline = { state: 'offline', lastRead: '09:00' } as const;
+  const { client } = server();
+  shown = await mount(
+    <PageFreshnessProvider>
+      <header className="topbar">
+        <StripFreshness fallback={offline} />
+      </header>
+    </PageFreshnessProvider>,
+  );
+  expect(marker(shown)).toBe('Offline · showing data from 09:00');
+  await shown.render(
+    <PageFreshnessProvider>
+      <header className="topbar">
+        <StripFreshness fallback={offline} />
+      </header>
+      <TaskDetailScreen client={client} grantKey="t:g" taskKey="TSK-2" />
+    </PageFreshnessProvider>,
+  );
+  await until('the page’s own marker', () => marker(shown!) === 'Updated just now');
+  expect(shown.all('.topbar .fresh')).toHaveLength(1);
+});

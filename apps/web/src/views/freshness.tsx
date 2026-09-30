@@ -40,8 +40,11 @@ export function PageFreshnessProvider(props: { readonly children: ReactNode }): 
   );
 }
 
-export function StripFreshness(): ReactElement | null {
-  const shown = useContext(Shown);
+/** The open page's marker; `fallback` (the tab's own offline word) while no page gives one. */
+export function StripFreshness(props: {
+  readonly fallback?: Freshness | null;
+}): ReactElement | null {
+  const shown = useContext(Shown) ?? props.fallback ?? null;
   return shown === null ? null : <FreshnessMarker freshness={shown} />;
 }
 

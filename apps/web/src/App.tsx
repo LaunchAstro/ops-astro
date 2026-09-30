@@ -258,16 +258,17 @@ export function App(props: AppProps): ReactElement {
             />
           }
           tabs={tabs}
-          freshness={offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }}
           nav={{ open: navOpen, onToggle: setNavOpen }}
           onNavigate={navigate}
           meta={
-            session === null ? null : (
-              <>
-                <StripFreshness />
-                <StripPresence />
-              </>
-            )
+            <>
+              <StripFreshness
+                fallback={
+                  offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
+                }
+              />
+              {session === null ? null : <StripPresence />}
+            </>
           }
           title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
           // An open tab is announced as "Close", so pressing it leaves the address
