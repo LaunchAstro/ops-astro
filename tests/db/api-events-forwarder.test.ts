@@ -5,8 +5,8 @@
 // 2; ruling STEP2-SHAPE), and S0-2 heartbeats. The forwarder (`apps/forwarder`)
 // takes `ops_astro_forwarder` in its own transaction, counts what the API
 // instances appended under the detector's rules, raises the alert, sends each
-// error rebuilt from its allowlist, deletes what it handled and pings its
-// heartbeat. Asked of a fresh API fixture, two function entries as instances:
+// error rebuilt from its allowlist, deletes what it sent or counted into an
+// alert and pings its heartbeat. Asked of a fresh API fixture, two function entries as instances:
 // refusals over two instances raise one alert and one person's never bring
 // another's closer; business, client and delegate count apart; a planted
 // class, text or frame never reaches the sink; a failing sink keeps the rows
@@ -135,6 +135,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
     instanceCases();
     isolationCases();
     errorCases();
+    lockCases();
     heartbeatCases();
     retentionCases();
     loginCases();
@@ -163,12 +164,14 @@ function instanceCases() {
     const forward = forwarder(to);
     await forward.once();
     expect(to.alerts()).toEqual([]);
-    expect(await count()).toBe(0);
+    // The count is the table's: rows under their threshold stay for the next pass.
+    expect(await count()).toBe(18);
     expect((await b(board(mia))).status).toBe(403);
-    await rowsReach(1);
+    await rowsReach(19);
     await forward.once();
     expect(to.alerts()).toEqual(['cross-scope-burst']);
-    expect(await count()).toBe(0);
+    // Mia's ten went with her alert; Noah's nine wait inside their window.
+    expect(await count()).toBe(9);
   });
 }
 
@@ -318,7 +321,8 @@ function errorCases() {
     expect(to.events).toHaveLength(1);
     const [event] = to.events;
     expect(event?.environment).toBe('staging');
-    expect(event?.release).toBe('aaaaaaaaaaaa');
+    // The row's release is the app's to write: the forwarder sends its own stamp or none.
+    expect(event?.release).toBeUndefined();
     expect(event?.tags).toEqual({ alert: 'app-error' });
     expect(event?.exception?.values[0]?.type).toBe('Error');
     expect(event?.exception?.values[0]?.stacktrace.frames).toEqual([frame('apps/api/function.ts')]);
@@ -363,7 +367,7 @@ function retentionCases() {
     const to = sink();
     expect(await forwarder(to).once()).toEqual({ handled: 1, dropped: 6 });
     expect(to.alerts()).toEqual(['signals-dropped']);
-    expect(await count()).toBe(0);
+    expect(await count()).toBe(1);
   });
 }
 
@@ -383,5 +387,24 @@ function loginCases() {
       await bare.end();
       await role.end();
     }
+  });
+}
+
+function lockCases() {
+  it('two forwarder passes at once count one burst once: the pass lock serialises them', async () => {
+    await clear();
+    const outbox = connectOutbox(fixture.db.appUrl, { source: 'runtime' });
+    const alerts = createOutboxAlerts({ outbox, key: KEY, where: 'staging', root: ROOT });
+    for (let i = 0; i < 10; i += 1) {
+      alerts.observe({ kind: 'cross-scope-refusal', business: 'alpha', person: 'mia' });
+    }
+    await alerts.settled();
+    await outbox.close();
+    const [first, second] = [sink(), sink()];
+    const other = connectAsAdmin(logins[1]?.url ?? '', { source: 'forwarder' });
+    const b = createForwarder({ database: other, send: second.send, where: 'staging', root: ROOT });
+    await Promise.all([forwarder(first).once(), b.once()]).finally(() => other.close());
+    expect([...first.alerts(), ...second.alerts()]).toEqual(['cross-scope-burst']);
+    expect(await count()).toBe(0);
   });
 }

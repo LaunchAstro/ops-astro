@@ -74,7 +74,7 @@ interface Rule {
 }
 
 const MINUTE = 60_000;
-const RULES: Readonly<Record<SecuritySignal['kind'], Rule>> = {
+export const RULES: Readonly<Record<SecuritySignal['kind'], Rule>> = {
   'sign-in-failed': { alert: 'sign-in-failures', threshold: 5, windowMs: 15 * MINUTE },
   'authority-changed': { alert: 'authority-changed', threshold: 1, windowMs: MINUTE },
   'secret-scan-failed': { alert: 'secret-scan-failed', threshold: 1, windowMs: MINUTE },
