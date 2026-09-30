@@ -8,8 +8,8 @@
 // **Only the environment's own host is served.** Every deployment also answers
 // at a generated address of its own, and a promotion leaves the previous one
 // running. `SERVED_HOST` names the one host this environment answers on; a
-// request for any other, a forwarding header notwithstanding, is refused 421
-// before anything is read. So once the alias has moved, the deployment it moved
+// request naming any other, in its Host header or its own URL, a forwarding
+// header notwithstanding, is refused 421 before anything is read. So once the alias has moved, the deployment it moved
 // from serves nothing.
 //
 // What `main` does that a function does not: the loopback identity route, the
@@ -71,7 +71,8 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   });
 
   return async (request) => {
-    if ((request.headers.get('host') ?? '').toLowerCase() !== servedHost) {
+    const hosts = [request.headers.get('host') ?? '', new URL(request.url).host];
+    if (hosts.some((host) => host.toLowerCase() !== servedHost)) {
       return new Response(null, { status: 421, headers: { 'cache-control': 'private, no-store' } });
     }
     return await app.fetch(request);

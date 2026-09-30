@@ -11,7 +11,11 @@
 // - no edge runtime and no middleware, which run on the edge network wherever
 //   the request lands;
 // - no prerendered route (`.prerender-config.json`), which that network keeps;
-// - no symlink under `functions/`, so each function read is the one deployed.
+// - no symlink under `functions/`, inside a function's bundle included, so
+//   each function read is the one deployed.
+//
+// A `config.json` shape it does not recognise (a key other than `version` and
+// `routes`, or routes that are not a list of objects) is a problem too.
 //
 // `buildOutputProblems` reads the directory and answers every problem it
 // finds, in plain words and naming paths inside the output only; an empty list
@@ -41,7 +45,14 @@ function configProblems(root: string): string[] {
   if (!isRecord(config) || config['version'] !== 3) {
     return ['config.json is missing, unreadable or not version 3.'];
   }
-  const routes = Array.isArray(config['routes']) ? config['routes'] : [];
+  const routes = 'routes' in config ? config['routes'] : [];
+  if (
+    Object.keys(config).some((key) => key !== 'version' && key !== 'routes') ||
+    !Array.isArray(routes) ||
+    !routes.every((route) => isRecord(route))
+  ) {
+    return ['config.json has a shape this check does not recognise.'];
+  }
   return routes.some((route) => isRecord(route) && MIDDLEWARE_KEYS.some((key) => key in route))
     ? ['config.json routes a request through middleware, which runs outside Sydney.']
     : [];
@@ -68,17 +79,16 @@ function walk(root: string, directory: string, found: string[], problems: string
     const path = join(directory, entry.name);
     const name = relative(root, path);
     if (entry.isSymbolicLink()) {
-      problems.push(`${name} is a symlink; every function must be its own directory.`);
+      problems.push(`${name} is a symlink; nothing under functions/ may be one.`);
     } else if (entry.name.endsWith('.prerender-config.json')) {
       problems.push(`${name} prerenders a route, which the edge network would keep.`);
-    } else if (entry.name.endsWith('.func')) {
-      if (entry.isDirectory()) found.push(name);
-      problems.push(
-        ...(entry.isDirectory()
-          ? functionProblems(path, name)
-          : [`${name} is not a function directory.`]),
-      );
+    } else if (entry.name.endsWith('.func') && !entry.isDirectory()) {
+      problems.push(`${name} is not a function directory.`);
     } else if (entry.isDirectory()) {
+      if (entry.name.endsWith('.func')) {
+        found.push(name);
+        problems.push(...functionProblems(path, name));
+      }
       walk(root, path, found, problems);
     }
   }
