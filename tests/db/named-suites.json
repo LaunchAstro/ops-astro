@@ -65,6 +65,7 @@
     "SL01 (Vercel re-plan section 11 step 1) adds function-entry (S0-6 the function entry: the Vercel entry serves composeApi only to the environment's own host, SERVED_HOST; a deployment's generated address, a near-miss spelling or a forwarding header is refused 421 before anything is read, and a signed-in read on the own host answers private and no-store).",
     "SL01 (Vercel re-plan section 11 step 1) adds s0-6-isolation (S0-6 isolation: the three crossings through the Vercel function entry on its own host, runtime and lookup logins only: another business (404 NOT_FOUND, 403 AUTH_NO_MEMBERSHIP), the other client of the same business with one record grant each (403 SCOPE_NOT_GRANTED), and an agent under a person's live delegation reaching past its one task (403 DELEGATION_OUT_OF_PURPOSE); each own read answered, no refusal naming the other side's record or title).",
     "SL01 (REVB1SL01RELB) adds sl01-rel-g2-health-proof (Sol's proof: with the lookup login reachable and the runtime login not, health answers 503 database unreachable).",
+    "SL01 (guard-A, NATHAN-GUARD-A) adds staging-special-objects (staging refuses to start while a view over a private table owned by a role other than the app role, a definer function owned by another role past row security, or the seed tag readable in another session exists, each named; a clean staging passes).",
     "SL01 (Vercel re-plan section 6, the orchestrator's ruling G2 (a)) adds business-lookup (the business lookup identity, 0046: a login in ops_astro_lookup reads every business's id and key and no other column; every other table is refused a select, insert, update and delete, and businesses every write, each 42501; another business's records, another record in the same business and another person are refused over rows that exist; the served resolver reads a key through it, and without its set local role it answers nothing).",
     "SL01 (Vercel re-plan section 11 step 2, the orchestrator's ruling STEP2-SHAPE) adds api-events (S0-2 error outbox, 0047: the application group inserts four columns of ops.api_events and is refused every read, change and removal; the forwarder is a nologin role holding select and delete on that table alone; a scope is stored as a keyed digest, two keys differ and no column holds the raw value; two instances with one key agree on a scope; an error lands as its bounded event with no plant).",
     "Step 2 part (b) adds api-events-forwarder (S0-2 error outbox and S0-2 heartbeats: the forwarder, on a login that takes ops_astro_forwarder in its own transaction, counts refusals from two function instances as one scope and one person's never towards another's, keeps business, client and delegate apart, rebuilds an error from its allowlist, keeps the rows and pings nothing when the sink fails, and drops rows past the window with one signals-dropped alert).",
@@ -411,6 +412,7 @@
     "tests/cli/t2e-top-up-surfaces.test.ts",
     "tests/cli/t3c-write-off-surfaces.test.ts",
     "tests/cli/t3f-two-workers.test.ts",
-    "tests/review/sl01-rel-g2-health-proof.test.ts"
+    "tests/review/sl01-rel-g2-health-proof.test.ts",
+    "tests/ci/staging-special-objects.test.ts"
   ]
 }
