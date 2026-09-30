@@ -17,8 +17,10 @@
 // through first-slice operations is unchanged, or classified by name. The API
 // runs the pass per business, in its own transaction. Separations: business
 // to business (one business's sweep leaves another's holds untouched and
-// raises its unknown cost only at home), client to client and person to
-// person (the unknown amount reaches only a reader holding the task grant).
+// raises its unknown cost only at home; another business's member reads the
+// swept task as not found, beside the home read that shows it), client to
+// client and person to person (the unknown amount reaches only a reader
+// holding the task grant).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -280,6 +282,27 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
     expect((await sweepDeployment(s.db.app, resolve, ['nobody'])).ok).toBe(false);
   });
 
+  it('T3 isolation attempts a foreign-business task read: the swept unknown amount stays at home', async () => {
+    const w = await alpha.work();
+    await alpha.reported(w, DECLINING_REPORTER);
+    await alpha.expire(w);
+    await alpha.sweep();
+    const readIn = async (business: string, who: Member) =>
+      await executeRead(s.db.app, business, who.presented, {
+        read: 'task.read',
+        recordId: w.taskId,
+      } as never);
+    // Its positive control: at home the sweep's unknown liability reads back,
+    // so the refusal below hides what T3b's sweep wrote, not an empty task.
+    const home = JSON.stringify(await readIn(s.business, s.decider));
+    expect(home).toContain('"state":"liability_unknown"');
+    expect(home).toContain('2500');
+    // Business to business: another business's member names this task from home.
+    const foreign = await readIn(other.business, other.decider);
+    expect(foreign).toMatchObject({ code: 'NOT_FOUND' });
+    expect(JSON.stringify(foreign)).not.toMatch(/liability_unknown|2500/u);
+  });
+
   it('client to client and person to person: the unknown amount reaches only a reader holding the task grant', async () => {
     const w = await alpha.work();
     await alpha.reported(w, DECLINING_REPORTER);
@@ -291,14 +314,6 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
         recordId,
       } as never);
     expect(JSON.stringify(await readAs(s.decider))).toContain('"state":"liability_unknown"');
-
-    // Business to business: another business's member names this task from home.
-    const foreign = await executeRead(s.db.app, other.business, other.decider.presented, {
-      read: 'task.read',
-      recordId: w.taskId,
-    } as never);
-    expect(foreign).toMatchObject({ code: 'NOT_FOUND' });
-    expect(JSON.stringify(foreign)).not.toMatch(/liability_unknown|2500/u);
 
     const idle = await enrol(s.db.app, s.business, `t3b-idle-${randomUUID()}`);
     expect(await readAs(idle)).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
