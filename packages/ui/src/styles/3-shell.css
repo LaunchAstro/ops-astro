@@ -155,8 +155,6 @@
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.8rem;
-  line-height: 1;
   cursor: pointer;
   transition:
     color var(--dur-fast) var(--ease),
@@ -211,8 +209,9 @@
     place-items: center;
     width: 16px;
     height: 16px;
-    font-size: 0.8rem;
-    font-weight: var(--weight-medium);
+    font: var(--type-small-strong);
+    letter-spacing: var(--type-small-strong-tracking);
+    text-transform: var(--type-small-strong-case);
   }
   /* Hidden from sight only: each label stays its item's accessible name. */
   .shell[data-rail='collapsed'] .rail__hub,
@@ -353,8 +352,11 @@
   padding: 0 2.4px;
   background: var(--accent);
   color: var(--on-dark);
-  font-size: 0.625rem;
-  line-height: 16px;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  display: grid;
+  place-items: center;
 }
 /* Open is an OUTLINE and a rule, never a fill. */
 .dock__tab[aria-expanded='true'] {
@@ -406,7 +408,6 @@
 .dock__closeall {
   margin-top: 0.35rem;
   border-top: 1px solid var(--border);
-  font-size: 1rem;
 }
 .dock__closeall:hover {
   color: var(--danger);
@@ -436,9 +437,9 @@
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-family: var(--font-display);
-  font-weight: var(--weight-medium);
-  font-size: 1.05rem;
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -457,7 +458,6 @@
   border: 0;
   background: none;
   color: var(--ink-faint);
-  font-size: 0.95rem;
   text-decoration: none;
   cursor: pointer;
 }
@@ -525,7 +525,9 @@
   border: 1px solid var(--border-strong);
   background: var(--void);
   color: var(--on-dark);
-  font-size: 0.78rem;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 /* Nothing animates on the first layout: the shell and dock mark themselves
    ready two frames after it. A drag suspends every transition. */

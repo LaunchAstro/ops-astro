@@ -46,6 +46,8 @@ export interface DockPanel {
   readonly ariaLabel: string;
   /** The address of the view the panel is on, or of its board. */
   readonly door: string;
+  /** The door's glyph: its destination's own (DK-09); the in-app arrow when none is named. */
+  readonly icon?: GlyphName | undefined;
   readonly canBack: boolean;
   readonly canForward: boolean;
   /** Where the last walk of the dock's history puts this panel's scroll, if anywhere. */
@@ -183,9 +185,7 @@ export function Dock(props: DockProps): ReactElement {
             aria-label="Close all panels"
             onClick={props.onCloseAll}
           >
-            <span className="dock__glyph" aria-hidden="true">
-              ×
-            </span>
+            <Icon name="cross-small" />
           </button>
         ) : null}
       </nav>
@@ -269,7 +269,7 @@ function DockPanelView(props: {
               dock.onDoor(panel.door);
             }}
           >
-            <span aria-hidden="true">↗</span>
+            <Icon name={panel.icon ?? 'arrow-small-right'} />
           </a>
           <span className="dpanel__div" aria-hidden="true" />
           <HistoryButton act="back" able={panel.canBack} onPress={dock.onBack} />
@@ -283,7 +283,7 @@ function DockPanelView(props: {
               dock.onClose(panel.id);
             }}
           >
-            <span aria-hidden="true">×</span>
+            <Icon name="cross-small" />
           </button>
         </div>
       </header>
@@ -325,7 +325,7 @@ function HistoryButton(props: {
         if (props.able) props.onPress();
       }}
     >
-      <span aria-hidden="true">{props.act === 'back' ? '‹' : '›'}</span>
+      <Icon name={props.act === 'back' ? 'angle-small-left' : 'angle-small-right'} />
     </button>
   );
 }

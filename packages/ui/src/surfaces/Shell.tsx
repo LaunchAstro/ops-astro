@@ -24,6 +24,7 @@ import {
   type ReactNode,
 } from 'react';
 import { BrandMark } from '../primitives/BrandMark.tsx';
+import { Icon } from '../primitives/Icon.tsx';
 import { Dock, useReadyAfterFirstLayout, type DockProps } from './Dock.tsx';
 import { EdgeGrip } from './EdgeGrip.tsx';
 
@@ -100,7 +101,7 @@ export function Shell(props: ShellProps): ReactElement {
             aria-expanded={!collapsed}
             onClick={props.onRailFold}
           >
-            <span aria-hidden="true">{collapsed ? '»' : '«'}</span>
+            <Icon name={collapsed ? 'angle-double-right' : 'angle-double-left'} />
           </button>
         )}
         <div className="rail__brand">

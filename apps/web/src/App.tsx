@@ -336,6 +336,7 @@ function dockProps(input: {
           label: panel.label,
           ariaLabel: panel.ariaLabel,
           door,
+          icon: panel.icon,
           canBack: dock.history.canBack,
           canForward: dock.history.canForward,
           scrollTop: dock.history.restored.scroll[id],
