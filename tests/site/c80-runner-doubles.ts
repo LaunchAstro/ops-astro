@@ -32,6 +32,28 @@ export interface Seen {
 const html = (text: string): Uint8Array =>
   new TextEncoder().encode(`<!doctype html><html><body><main>${text}</main></body></html>`);
 
+/** The fence's inputs: a pool holding the agency's page, a public resolver, a transport serving it. */
+function fenceDouble(seen: Seen, page: () => string): CaptureOptions {
+  const transport: Transport = (request) => {
+    seen.captured.push(request.url.href);
+    return Promise.resolve({
+      kind: 'answer',
+      status: 200,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      body: html(page()),
+    });
+  };
+  return {
+    pool: { agencyPages: [PAGE], otherPages: [], closedPoolReviews: [] },
+    resolve: (host) => {
+      seen.resolved.push(host);
+      return Promise.resolve([PUBLIC_ADDRESS]);
+    },
+    transport,
+    record: (refusal) => seen.fenceRefusals.push(refusal),
+  };
+}
+
 /** Doubles of the providers, and the fence over a pool holding the agency's page. */
 export function doubles(
   overrides: Partial<Omit<RunnerPorts, 'capture'>> = {},
@@ -48,15 +70,6 @@ export function doubles(
   };
   let clock = 1_000;
   let page = AFTER;
-  const transport: Transport = (request) => {
-    seen.captured.push(request.url.href);
-    return Promise.resolve({
-      kind: 'answer',
-      status: 200,
-      headers: { 'content-type': 'text/html; charset=utf-8' },
-      body: html(page),
-    });
-  };
   return {
     seen,
     readSource: () => {
@@ -75,16 +88,7 @@ export function doubles(
         kind: 'ok',
         value: { revision: id === 'dep-3' ? 'rev-3' : 'rev-2', served: true },
       }),
-    capture: {
-      pool: { agencyPages: [PAGE], otherPages: [], closedPoolReviews: [] },
-      resolve: (host) => {
-        seen.resolved.push(host);
-        return Promise.resolve([PUBLIC_ADDRESS]);
-      },
-      transport,
-      record: (refusal) => seen.fenceRefusals.push(refusal),
-      ...fence,
-    },
+    capture: { ...fenceDouble(seen, () => page), ...fence },
     revert: () => {
       seen.reverted += 1;
       page = BEFORE;

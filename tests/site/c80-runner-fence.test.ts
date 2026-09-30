@@ -115,7 +115,9 @@ describe.skipIf(serverUrl === undefined)('C80 capture through the fence', () => 
     // What the fence recorded carries the origin only: no path, query or fragment.
     expect(JSON.stringify(ports.seen.fenceRefusals)).not.toMatch(/about|page=2|team/u);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('C80 capture through the fence', () => {
   it('refuses a page catalogued among others while the pool reviews are open', async () => {
     const id = await approved(ELSEWHERE);
     const pool = {
