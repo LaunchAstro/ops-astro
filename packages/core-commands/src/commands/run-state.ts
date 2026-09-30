@@ -40,6 +40,33 @@ const isItemList = (value: unknown): value is readonly string[] =>
     (item) => typeof item === 'string' && item.trim() !== '' && item.length <= MAXIMUM_ITEM_LENGTH,
   );
 
+/** The body's shape refused, naming each field, or nothing. */
+function refuseBody(
+  target: { readonly taskId: unknown; readonly runId: unknown },
+  revision: Revision,
+): HandlerOutcome | undefined {
+  const absent = [
+    ...(typeof target.taskId === 'string' ? [] : ['recordId']),
+    ...(typeof target.runId === 'string' ? [] : ['runId']),
+  ];
+  if (absent.length > 0) {
+    return refused(
+      refuseCommand('COMMAND_BODY_INVALID', absent, ['Name the task and the run on it.']),
+    );
+  }
+  const { expectedVersion } = revision;
+  const malformed = [
+    ...(isItemList(revision.knowledge) ? [] : ['knowledge']),
+    ...(isItemList(revision.unknowns) ? [] : ['unknowns']),
+    ...(Number.isSafeInteger(expectedVersion) && (expectedVersion as number) >= 0
+      ? []
+      : ['expectedVersion']),
+  ];
+  return malformed.length > 0
+    ? refused(refuseCommand('COMMAND_BODY_INVALID', malformed, LIST_FIXES))
+    : undefined;
+}
+
 /**
  * The revision on the run the task names, as `actorId`: the person, or the
  * agent working under its delegation. `taskId` is the id the authority check
@@ -52,31 +79,9 @@ export async function reviseRunState(
   revision: Revision,
   actorId: string,
 ): Promise<HandlerOutcome> {
-  const { taskId, runId } = target;
-  const absent = [
-    ...(typeof taskId === 'string' ? [] : ['recordId']),
-    ...(typeof runId === 'string' ? [] : ['runId']),
-  ];
-  if (absent.length > 0) {
-    return refused(
-      refuseCommand('COMMAND_BODY_INVALID', absent, ['Name the task and the run on it.']),
-    );
-  }
-  const malformed = [
-    ...(isItemList(revision.knowledge) ? [] : ['knowledge']),
-    ...(isItemList(revision.unknowns) ? [] : ['unknowns']),
-  ];
-  const { expectedVersion } = revision;
-  if (
-    typeof expectedVersion !== 'number' ||
-    !Number.isSafeInteger(expectedVersion) ||
-    expectedVersion < 0
-  ) {
-    malformed.push('expectedVersion');
-  }
-  if (malformed.length > 0) {
-    return refused(refuseCommand('COMMAND_BODY_INVALID', malformed, LIST_FIXES));
-  }
+  const invalid = refuseBody(target, revision);
+  if (invalid !== undefined) return invalid;
+  const { taskId, runId } = target as { readonly taskId: string; readonly runId: string };
   if (!isUuid(taskId)) return refused(refuseNotFound());
   const task = taskId.toLowerCase();
   // A task in the trash is gone from the work surface, and so is its run.
@@ -97,14 +102,23 @@ export async function reviseRunState(
     [tx.businessId, runId, task],
   );
   if (runs[0] === undefined) return refused(refuseNotFound(['runId']));
-  const run = runId.toLowerCase();
+  return await appendVersion(tx, { task, run: runId.toLowerCase() }, revision, actorId);
+}
+
+/** The next version after the newest, read under the run's lock, or `VERSION_STALE`. */
+async function appendVersion(
+  tx: TenantQuery,
+  { task, run }: { readonly task: string; readonly run: string },
+  revision: Revision,
+  actorId: string,
+): Promise<HandlerOutcome> {
   const newest = await tx.query<{ readonly version: number }>(
     `select coalesce(max(version), 0)::int as version from public.run_states
       where business_id = $1 and run_id = $2`,
     [tx.businessId, run],
   );
   const current = newest[0]?.version ?? 0;
-  if (current !== expectedVersion) {
+  if (current !== revision.expectedVersion) {
     return refused(refuseCommand('VERSION_STALE', [`version=${current}`], VERSION_FIXES));
   }
   const version = current + 1;

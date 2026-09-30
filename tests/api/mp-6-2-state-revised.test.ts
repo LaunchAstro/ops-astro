@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // MP-6-2's `state revised` (CS-16.4) as `run.revise_state`, through the real
-// boundary and a fresh Postgres. The only write the agent page has: a run's
-// current knowledge and unknowns, kept as versions with the actor who revised
-// them. It asks `run:write` on the run's task (ORCH33); an agent reaches it
-// only inside a delegation minted where its person holds `run:write`, as the
-// recorded actor (ORCH34). The stored versions and audit rows, read with the
-// admin role, are the oracle.
+// boundary and a fresh Postgres: `run:write` on the run's task (ORCH33), an
+// agent's only inside a delegation minted with `run`, as the recorded actor
+// (ORCH34). The stored versions and audit rows, read as admin, are the oracle.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -127,14 +124,17 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised on Postgres', () 
   }
 
   async function versionsOf(runId: string): Promise<readonly Version[]> {
-    return await world.db.admin
-      .execute<Version>(
-        `select version, knowledge, unknowns, revised_by_actor_id
-         from public.run_states where run_id = $1 order by version`,
-        [runId],
-      )
-      .then((rows) => [...rows]);
+    const sql = `select version, knowledge, unknowns, revised_by_actor_id
+      from public.run_states where run_id = $1 order by version`;
+    return [...(await world.db.admin.execute<Version>(sql, [runId]))];
   }
+
+  /** ada granted `run:write` on one task, or on the business. */
+  const holdRun = async (taskId?: string) =>
+    await world.db.app.withBusiness(world.alpha, async (tx) => {
+      const scope = taskId === undefined ? undefined : { kind: 'record' as const, id: taskId };
+      await grantTo(tx, ada, 'write', scope, false, 'run');
+    });
 
   const revise = async (
     who: Signed,
@@ -188,9 +188,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised on Postgres', () 
   });
 
   it('MP-6-2 revisions: each revision is a version kept with its actor, a stale one is refused, and a malformed body keeps nothing', async () => {
-    await world.db.app.withBusiness(world.alpha, async (tx) => {
-      await grantTo(tx, ada, 'write', { kind: 'record', id: one.recordId }, false, 'run');
-    });
+    await holdRun(one.recordId);
     const first = await revise(ada, one, 0);
     expect(first.code).toBe('ok');
     expect(first.body['detail']).toStrictEqual({ runId: one.runId, version: 1 });
@@ -199,7 +197,6 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised on Postgres', () 
       unknowns: [],
     });
     expect((second.body['detail'] as Record<string, unknown>)['version']).toBe(2);
-    // Two writers read version 1; the second to arrive is stale.
     const stale = await revise(ada, one, 1);
     expect(stale.code).toBe('VERSION_STALE');
     for (const bad of [
@@ -232,9 +229,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised on Postgres', () 
 
   it('MP-6-2 revisions race: two revisions of one version at once are one applied and one VERSION_STALE', async () => {
     const race = await proposedRun();
-    await world.db.app.withBusiness(world.alpha, async (tx) => {
-      await grantTo(tx, ada, 'write', { kind: 'record', id: race.recordId }, false, 'run');
-    });
+    await holdRun(race.recordId);
     const answers = await Promise.all([revise(ada, race, 0), revise(ada, race, 0)]);
     expect(answers.map((answer) => answer.code).toSorted()).toStrictEqual(['VERSION_STALE', 'ok']);
     expect((await versionsOf(race.runId)).map((kept) => kept.version)).toStrictEqual([1]);
@@ -266,8 +261,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised on Postgres', () 
     const fabricated = await revise(bravo, { recordId: randomUUID(), runId: randomUUID() }, 3);
     expect(foreign.status).toBe(404);
     expect(foreign.body).toStrictEqual(fabricated.body);
-    // Another client in the same business: shared task two, run:write on it,
-    // names task one. A read share writes nothing at all (R4), so both are 403.
+    // Another client, shared task two with run:write on it: a share writes nothing (R4).
     const client = await externalClient(world, ada, two.recordId);
     await world.db.app.withBusiness(world.alpha, async (tx) => {
       await grantTo(tx, client, 'write', { kind: 'record', id: two.recordId }, false, 'run');
@@ -277,9 +271,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised on Postgres', () 
     const crossed = await revise(client, { recordId: two.recordId, runId: one.runId }, 3);
     expect(crossed.status).toBe(403);
     // Another person under a live delegation: an agent on ada's other work names one.
-    await world.db.app.withBusiness(world.alpha, async (tx) => {
-      await grantTo(tx, ada, 'write', undefined, false, 'run');
-    });
+    await holdRun();
     const work = await pickUp();
     const delegated = await reviseAsAgent(work, one, 3);
     expect(delegated.status).toBe(403);
