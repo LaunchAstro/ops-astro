@@ -29,6 +29,8 @@ export function serving(
   vocabulary: readonly { readonly id: string; readonly name: string }[] = [],
   /** The projects `task.board` answers for the Projects board (MP-4-8). */
   projects: readonly { readonly id: string; readonly title: string | null }[] = [],
+  /** The business's task states `task.read` answers, the Status select's choices. */
+  states: readonly Readonly<Record<string, string>>[] = [],
 ): {
   readonly client: OperationsClient;
   readonly sent: Sent[];
@@ -44,7 +46,9 @@ export function serving(
     }
     if (where.endsWith('/task/execution')) return Promise.resolve(json({ ok: false }));
     if (where.includes('/live/task/')) return Promise.resolve(new Response(null, { status: 404 }));
-    if (where.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: task(over) }));
+    if (where.endsWith('/task/read')) {
+      return Promise.resolve(json({ ok: true, task: task(over), states }));
+    }
     if (where.endsWith('/tag/list')) return Promise.resolve(json({ ok: true, tags: vocabulary }));
     if (where.endsWith('/task/board')) {
       return Promise.resolve(json({ ok: true, tasks: projects, changedAt: null, viewer: 'p-1' }));
