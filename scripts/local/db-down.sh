@@ -9,7 +9,7 @@
 # "down" that took the volume with it would make the case unrunnable.
 #
 # Removing the data is a deliberate, separate act:
-#   docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata-17
+#   docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata
 
 set -euo pipefail
 
@@ -21,4 +21,4 @@ if ! docker inspect "$CONTAINER" >/dev/null 2>&1; then
 fi
 
 docker stop "$CONTAINER" >/dev/null
-printf 'db-down: %s stopped. The named volume ops-astro-local-pgdata-17 is untouched.\n' "$CONTAINER"
+printf 'db-down: %s stopped. The named volume ops-astro-local-pgdata is untouched.\n' "$CONTAINER"

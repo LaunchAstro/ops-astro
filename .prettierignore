@@ -54,5 +54,4 @@ tests/db/api-events-forwarder.test.ts
 
 # Sol's proof tests in plain .mjs, kept byte-for-byte as applied: a review
 # attests a proof by its bytes. (Proofs in .ts pass through lint-staged.)
-tests/ci/s0-7-auth-up-replaces-18.test.mjs
 tests/review/sl01-relc-lookup-grant-pin-proof.test.mjs
