@@ -24,7 +24,8 @@
 // that resolves to nothing is a worse answer than an address that does not
 // resolve.
 
-export type Namespace = 'agency' | 'portal';
+/** `agency` is the Hub; `clients` and `portal` are one client's two faces. */
+export type Namespace = 'agency' | 'clients' | 'portal';
 
 /**
  * One registered address. Its id is the key it is registered under,
@@ -40,8 +41,6 @@ export interface RouteDescriptor {
   readonly title: string;
   /** Which pinned surface this route draws, or `none` for one that draws none. */
   readonly surface: 'S1' | 'S2' | 'none';
-  /** Whether the rail carries an entry for it. */
-  readonly rail: boolean;
   readonly authenticated: boolean;
 }
 
@@ -51,7 +50,6 @@ export const ROUTES = {
     path: '/sign-in',
     title: 'Sign in',
     surface: 'none',
-    rail: false,
     authenticated: false,
   },
   'agency:projects-board': {
@@ -59,7 +57,6 @@ export const ROUTES = {
     path: '/projects/',
     title: 'Projects',
     surface: 'S1',
-    rail: true,
     authenticated: true,
   },
   // The one specification 13.3 requires be registered explicitly. Note the
@@ -77,20 +74,29 @@ export const ROUTES = {
     path: '/task/:key',
     title: 'Task',
     surface: 'S2',
-    rail: false,
     authenticated: true,
   },
   // The business's own two operation-classified settings. It draws no pinned
   // surface — the mockup has no settings screen — so `surface` is `none`
-  // rather than a letter it would be borrowing. It carries a rail entry
-  // because it is a place a person goes to deliberately, and the panel
-  // registry carries the same destination for the dock.
+  // rather than a letter it would be borrowing. The manifest places it in the
+  // Hub rail, and the panel registry carries the same destination for the dock.
   'agency:settings': {
     namespace: 'agency',
     path: '/settings',
     title: 'Settings',
     surface: 'none',
-    rail: true,
+    authenticated: true,
+  },
+  // The component gallery (MP-1-3): every piece of the kit in its states,
+  // for the owner's checks and the width-and-theme harness. It draws sample
+  // words and no record; it asks for a session like every working page, and
+  // the route manifest has no page for it, so it has no rail entry: it is not
+  // a place work happens.
+  'agency:gallery': {
+    namespace: 'agency',
+    path: '/gallery/',
+    title: 'Component gallery',
+    surface: 'none',
     authenticated: true,
   },
   // C36: a conversation's own address (CS-7.38), reached from the drawer's

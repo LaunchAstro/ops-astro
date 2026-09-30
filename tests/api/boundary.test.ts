@@ -3,7 +3,7 @@
 // The boundary, driven as a caller drives it.
 //
 // These cases run the real Hono app built by `createApi`, through `app.fetch`,
-// with real GoTrue-shaped HS256 tokens. What is substituted is the database
+// with real GoTrue-shaped ES256 tokens. What is substituted is the database
 // and the business resolver, because the questions here are the transport's:
 // which routes exist, what reaches identity, and what a caller is shown when
 // the answer is no. The questions the database owns — whether a task is
@@ -23,11 +23,11 @@ import type { VerifiedSubject } from '../../packages/core-records/src/identity/l
 import { COMMAND_SURFACE, pathOf } from '../../packages/core-wire/src/surface.ts';
 import { createApi, type ReadExecutor } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { signBearer, signForged, TEST_ISSUER, testSignIn } from '../support/sign-in.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 
-const SECRET = 'a-local-test-secret-that-is-not-the-running-one';
-const ISSUER = 'http://127.0.0.1:54391';
+const ISSUER: string = TEST_ISSUER;
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const MIA = '22222222-2222-4222-8222-222222222222';
 
@@ -65,30 +65,26 @@ function stubDatabase(seen: Seen[], admissions: unknown[][] = []): Database {
         },
       });
     },
-    close: async () => undefined,
+    close: () => Promise.resolve(),
   };
 }
 
 async function tokenFor(subject: string, options: { readonly expiresIn?: number } = {}) {
   const now = Math.floor(Date.now() / 1000);
-  return await sign(
-    {
-      sub: subject,
-      aud: 'authenticated',
-      iss: ISSUER,
-      role: 'authenticated',
-      exp: now + (options.expiresIn ?? 600),
-    },
-    SECRET,
-    'HS256',
-  );
+  return await signBearer({
+    sub: subject,
+    aud: 'authenticated',
+    iss: ISSUER,
+    role: 'authenticated',
+    exp: now + (options.expiresIn ?? 600),
+  });
 }
 
 function build(overrides: Partial<Parameters<typeof createApi>[0]> = {}, seen: Seen[] = []) {
   return createApi({
     database: stubDatabase(seen),
-    verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
-    resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
+    verify: createSupabaseVerifier(testSignIn(ISSUER)),
+    resolveBusiness: (key) => Promise.resolve(key === 'alpha' ? ALPHA : undefined),
     executeCommand,
     executeRead,
     ...overrides,
@@ -159,13 +155,25 @@ describe('only a verified token says who is calling', () => {
     expect(answer.body['code']).toBe('AUTH_UNKNOWN_LOGIN');
   });
 
-  it('refuses a token signed with another secret, identically', async () => {
-    const forged = await sign(
-      { sub: MIA, exp: Math.floor(Date.now() / 1000) + 600 },
-      'another-secret',
+  it('refuses a token signed with another key, identically', async () => {
+    const forged = await signForged({
+      sub: MIA,
+      aud: 'authenticated',
+      iss: ISSUER,
+      exp: Math.floor(Date.now() / 1000) + 600,
+    });
+    const answer = await post(build(), '/api/b/alpha/task/create', {}, authorised(forged));
+    expect(answer.status).toBe(401);
+    expect(answer.body['code']).toBe('AUTH_UNKNOWN_LOGIN');
+  });
+
+  it('refuses an HS256 token, whatever secret signed it, identically', async () => {
+    const legacy = await sign(
+      { sub: MIA, aud: 'authenticated', iss: ISSUER, exp: Math.floor(Date.now() / 1000) + 600 },
+      'the-shared-secret-the-api-used-to-hold',
       'HS256',
     );
-    const answer = await post(build(), '/api/b/alpha/task/create', {}, authorised(forged));
+    const answer = await post(build(), '/api/b/alpha/task/create', {}, authorised(legacy));
     expect(answer.status).toBe(401);
     expect(answer.body['code']).toBe('AUTH_UNKNOWN_LOGIN');
   });
@@ -175,7 +183,7 @@ describe('only a verified token says who is calling', () => {
     // missing, forged, unsigned and subject-less all answer
     // `AUTH_UNKNOWN_LOGIN`, because telling them apart tells an
     // unauthenticated caller which guess was closer. An expired token is not a
-    // guess — its signature verifies against this deployment's own secret, so
+    // guess — its signature verifies against a key the provider published, so
     // whoever sent it held a credential this server issued — and the caller
     // learns nothing from being told it ran out that they could not already
     // prove. What they gain is a door they can open: `AUTH_SESSION_EXPIRED` is
@@ -185,20 +193,20 @@ describe('only a verified token says who is calling', () => {
     expect(answer.status).toBe(401);
     expect(answer.body['code']).toBe('AUTH_SESSION_EXPIRED');
   });
+});
 
+describe('only a verified token says who is calling', () => {
   it('refuses a token with no subject', async () => {
-    const anonymous = await sign(
-      { aud: 'authenticated', iss: ISSUER, exp: Math.floor(Date.now() / 1000) + 600 },
-      SECRET,
-      'HS256',
-    );
+    const anonymous = await signBearer({
+      aud: 'authenticated',
+      iss: ISSUER,
+      exp: Math.floor(Date.now() / 1000) + 600,
+    });
     const answer = await post(build(), '/api/b/alpha/task/create', {}, authorised(anonymous));
     expect(answer.status).toBe(401);
     expect(answer.body['code']).toBe('AUTH_UNKNOWN_LOGIN');
   });
-});
 
-describe('only a verified token says who is calling', () => {
   it('does not read a token from anywhere but the Authorization header', async () => {
     const token = await tokenFor(MIA);
     const answer = await post(

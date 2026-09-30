@@ -107,6 +107,8 @@ describe('CQ-8 runtime structure', () => {
     expect(callers).toEqual([
       'packages/core-commands/src/commands/conversation-lifecycle.ts',
       'packages/core-commands/src/commands/occurrence-run.ts',
+      // The outbox forwarder's one lock, alone in its own transaction: no command order.
+      'apps/forwarder/forward.ts',
       'packages/core-commands/src/commands/prepare.ts',
       'packages/core-custody/src/broker-reserve.ts',
       'packages/core-records/src/tasks/placement.ts',

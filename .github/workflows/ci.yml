@@ -167,11 +167,28 @@ jobs:
           rm -f "${RUNNER_TEMP}/${archive}"
           "$bin/gitleaks" version
           echo "$bin" >> "$GITHUB_PATH"
+      - name: The pinned headless shell for MP-1-1's harness captures, which pnpm check runs
+        run: pnpm exec playwright install --with-deps --only-shell chromium
       - run: pnpm check
       - name: Semgrep p/default on the supply-chain settings, image pinned by digest (CQ-3)
         run: bash scripts/local/semgrep-settings.sh
       - name: Public content in the actual checked-out snapshot
         run: node scripts/public-content-check.mjs --repo "$PWD"
+      # S0-1 promotion same artefact, a dry run in CI: the release step turns
+      # the build `pnpm check` just made into the build output (the Vercel
+      # re-plan), stored the way staging keeps it, under the name the staging
+      # definition gives it; the promotion step must select it by the stamp
+      # it carries, check its bytes against the digest it records, and record
+      # it. It touches no service and no database.
+      - name: S0-1 promotion same artefact, a dry run over the build output just made
+        run: |
+          set -euo pipefail
+          version="$(node -p "JSON.parse(require('node:fs').readFileSync('apps/web/dist/build.json', 'utf8')).build")"
+          store="${RUNNER_TEMP}/artefacts"
+          mkdir -p "$store"
+          node scripts/ops/release.ts --out "${store}/ops-astro-${version}"
+          node scripts/ops/promote.mjs --dry-run --version "$version" --artefacts "$store" \
+            --line "CI dry run of the promotion step over the build just made"
 
   database-gate:
     # Proving the gate. These probes start their own throwaway Postgres, run
@@ -216,12 +233,13 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
     services:
       postgres:
-        # Pinned by digest, and recorded in docs/supply-chain-pins.md. The
-        # password is this container's own, it is thrown away with it, and it
+        # Postgres 17, the hosted database's major (S0-7), pinned by digest:
+        # the image staging's database runs, recorded in
+        # docs/supply-chain-pins.md. The password is this container's own, it is thrown away with it, and it
         # reaches nothing outside this job. No repository secret is used here,
         # and none should be: a check that needs a credential to prove a
         # database was reached is proving the wrong thing.
-        image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine
+        image: postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 # postgres:17-alpine
         env:
           POSTGRES_PASSWORD: conformance-throwaway
           POSTGRES_DB: conformance
@@ -237,7 +255,10 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
+      # The upgrade drill seeds through an older commit's checkout: full history.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -250,6 +271,60 @@ jobs:
           # T4a's clone past a reader dumps and restores inside the server's
           # own container; the service container is not ops-astro-local-pg.
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+      # S0-3: a pull request that adds a migration upgrades a database built and
+      # seeded at the base branch's newest migration, with the application
+      # stopped, and every row must come through unchanged. No migration added,
+      # nothing to drill; a push to main has no base to start from.
+      - name: The upgrade drill, when this pull request adds a migration
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+        run: |
+          git fetch --no-tags origin "$BASE_SHA"
+          added=$(git diff --name-only --diff-filter=A "$BASE_SHA" HEAD -- migrations/)
+          if [ -z "$added" ]; then echo "upgrade-drill: no migration added; not run"; exit 0; fi
+          from=$(git ls-tree --name-only "$BASE_SHA" migrations/ | grep '\.sql$' | sort | tail -1)
+          pnpm run verify:upgrade-drill --from "$(basename "$from" .sql)" --base "$BASE_SHA"
+
+  database-lookahead:
+    # S0-7: the same conformance run on Postgres 18, the next major, so a
+    # change that breaks on it shows before the provider moves. It is not a
+    # required check: its failure is reported red on the pull request and
+    # blocks nothing. When the provider offers 18, one ticket moves
+    # production, staging, CI and the restore drill to it together
+    # (docs/supply-chain-pins.md).
+    name: database look-ahead, Postgres 18 (not required)
+    needs: [gate]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: conformance-throwaway
+          POSTGRES_DB: conformance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d conformance"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      # The upgrade drill seeds through an older commit's checkout: full history.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run db:conformance
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          OPS_ASTRO_DB_LOOKAHEAD_MAJOR: '18'
 
   database:
     # The required check (ruleset 23396133, .github/required-checks.json): one
@@ -382,7 +457,7 @@ jobs:
     services:
       postgres:
         # The same digest and throwaway password as `database conformance`.
-        image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine
+        image: postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 # postgres:17-alpine
         env:
           POSTGRES_PASSWORD: conformance-throwaway
           POSTGRES_DB: conformance
@@ -407,3 +482,55 @@ jobs:
           # The T4a fixture suites are named here too; their clone past a
           # reader dumps and restores inside this job's own service container.
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+      # The named service-stop proof with both addresses a local setup has; it
+      # skips without both, and the shard jobs set only one.
+      - run: pnpm vitest run tests/ci/named-service-stop-proof-two-urls.test.ts
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+
+  parity:
+    # API-1: every app action has its API and CLI equivalent; no database.
+    name: command parity
+    needs: [gate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/command-parity.mjs --check
+      - run: pnpm vitest run tests/commands/api-1-catalogue.test.ts tests/commands/api-1-catalogue-authority.test.ts tests/commands/api-1-parity-bypasses.test.ts tests/commands/api-1-parity-redirects-and-agent-discovery.test.ts
+
+  visual-drift:
+    # MP-1-7: drift proved on the app's own page in the pinned headless shell on
+    # Linux (`run.ts --app-drift`), with no private mockup and no key to it. The
+    # live renderer, kernel release included, opens the step's log; the packet's
+    # `ciRenderer` pins the rest. The page, control, token and theme are the
+    # catalogue's `appDrift` (tests/visual/states.json).
+    name: visual drift
+    needs: [gate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: The pinned headless shell and its system libraries
+        run: pnpm exec playwright install --with-deps --only-shell chromium
+      - name: The mode's own cases, against a made-up page
+        run: node tests/visual/app-drift-cases.ts
+      - run: pnpm build:web
+      - name: App-only drift on the built app
+        run: |
+          set -euo pipefail
+          pnpm --filter @launchastro/web exec vite preview --host 127.0.0.1 --port 5391 --strictPort &
+          for _ in $(seq 1 30); do curl -sf http://127.0.0.1:5391/ >/dev/null && break; sleep 1; done
+          node tests/visual/run.ts --app-drift --app http://127.0.0.1:5391 --session tests/visual/made-up-session.json --out "$RUNNER_TEMP/visual"
