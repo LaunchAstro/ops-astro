@@ -106,7 +106,8 @@ const STILL_UNPRODUCED: readonly string[] = [
   // command envelope in `tests/commands/unproduced-reach.test.ts`.
   // `LEASE_HELD` came off when two lineages on one task, under an envelope
   // an earlier handback left open, reached it (`tests/commands/lease-held-reach.test.ts`).
-  'DELEGATION_EXCLUDES_INTAKE',
+  // `DELEGATION_EXCLUDES_INTAKE` came off with AW-11: an agent calling
+  // `task.triage` is refused it (`tests/commands/unproduced-reach.test.ts`).
   // `DELEGATION_EXPIRED` and `DELEGATION_REVOKED` came off with AW-11: a
   // child delegation's call walks to its parent, and a parent that has run
   // out, or was handed back or withdrawn, answers with them
