@@ -62,6 +62,36 @@ const seen = (): { calls: [string, Headers][]; fetch: typeof fetch } => {
   return { calls, fetch: fetcher };
 };
 
+/** A key of the given kind, built here so no key-shaped literal sits in the file. */
+const legacyKey = (role: string): string =>
+  ['{"alg":"HS256","typ":"JWT"}', JSON.stringify({ iss: 'supabase', role })]
+    .map((part) => Buffer.from(part).toString('base64url'))
+    .concat('signature')
+    .join('.');
+
+describe('S0-6 sign-in on hosted Supabase: only a publishable key is ever handed out', () => {
+  it('refuses to start with a secret key in the publishable key setting, naming the setting only', () => {
+    const secret = ['sb', 'secret', 'example-test-only'].join('_');
+    for (const key of [secret, legacyKey('service_role'), 'not-a-key']) {
+      expect(() => handler({ SUPABASE_PUBLISHABLE_KEY: key })).toThrow(
+        'SUPABASE_PUBLISHABLE_KEY is not a publishable key',
+      );
+      try {
+        handler({ SUPABASE_PUBLISHABLE_KEY: key });
+      } catch (error) {
+        expect(String(error)).not.toContain(key);
+      }
+    }
+  });
+
+  it('starts with a publishable key or a legacy anon key', async () => {
+    expect(await askSignIn({ SUPABASE_PUBLISHABLE_KEY: legacyKey('anon') })).toStrictEqual({
+      issuer: TEST_ISSUER,
+      key: legacyKey('anon'),
+    });
+  });
+});
+
 describe('S0-6 sign-in on hosted Supabase: the key goes to the sign-in service only', () => {
   it('adds the key to a call to the sign-in service, keeping its own headers', async () => {
     const { calls, fetch } = seen();
@@ -75,6 +105,23 @@ describe('S0-6 sign-in on hosted Supabase: the key goes to the sign-in service o
     });
     expect(calls[0]?.[1].get('apikey')).toBe(PUBLISHABLE);
     expect(calls[0]?.[1].get('content-type')).toBe('application/json');
+  });
+
+  it('keeps the headers a Request carries, and never follows a redirect with the key', async () => {
+    const { calls, fetch } = seen();
+    let redirect: RequestRedirect | undefined;
+    const watched = ((input: RequestInfo | URL, init?: RequestInit) => {
+      redirect = init?.redirect;
+      return fetch(input, init);
+    }) as typeof fetch;
+    await withProviderKey(
+      watched,
+      issuer,
+      PUBLISHABLE,
+    )(new Request(`${issuer}/token`, { headers: { 'content-type': 'application/json' } }));
+    expect(calls[0]?.[1].get('content-type')).toBe('application/json');
+    expect(calls[0]?.[1].get('apikey')).toBe(PUBLISHABLE);
+    expect(redirect).toBe('error');
   });
 
   it('never sends the key to the API or to a look-alike address', async () => {
