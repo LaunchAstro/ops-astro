@@ -17,6 +17,7 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { parseArgs } from 'node:util';
 import { deploy } from './deploy.ts';
 import { recordDeployment, requireOperator } from './operator.ts';
 import { compare, snapshot } from './service-report.mjs';
@@ -35,18 +36,15 @@ if (!gate.ok) {
   process.exit(1);
 }
 
-const VALUED = new Set(['--version', '--artefacts']);
-const args = process.argv.slice(2);
-const given = new Map();
-for (let at = 0; at < args.length; at += 1) {
-  const arg = args[at];
-  if (!VALUED.has(arg)) usage(`${arg} is not an argument of the staging deploy`);
-  const value = args[at + 1];
-  if (value === undefined || value.startsWith('--')) usage(`${arg} needs a value`);
-  given.set(arg, value);
-  at += 1;
+let values;
+try {
+  ({ values } = parseArgs({
+    options: { version: { type: 'string' }, artefacts: { type: 'string' } },
+  }));
+} catch (error) {
+  usage(error.message);
 }
-const [version, store] = ['--version', '--artefacts'].map((n) => given.get(n));
+const { version, artefacts: store } = values;
 if (version === undefined || store === undefined)
   usage('--version and --artefacts are both needed');
 
@@ -54,7 +52,7 @@ const definition = JSON.parse(readFileSync(DEFINITION, 'utf8'));
 const containers = Object.entries(definition.services).map(([n, s]) => s.container_name ?? n);
 
 const effects = {
-  snapshot: () => snapshot(),
+  snapshot,
   compare,
   buildImage(artefact) {
     const out = execFileSync('docker', ['build', '--quiet', '--file', DOCKERFILE, artefact], {

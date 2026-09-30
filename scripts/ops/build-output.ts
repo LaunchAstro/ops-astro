@@ -98,9 +98,8 @@ function walk(root: string, directory: string, found: string[], problems: string
 
 /** Every reason the build output at `root` may not deploy; empty when it may. */
 export function buildOutputProblems(root: string): string[] {
-  let functions: string;
+  const functions = join(root, 'functions');
   try {
-    functions = join(root, 'functions');
     if (!lstatSync(functions).isDirectory()) return ['functions is not a directory.'];
   } catch {
     return ['The build output has no functions directory.'];

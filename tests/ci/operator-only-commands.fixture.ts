@@ -26,12 +26,10 @@ export const OPERATOR: string = new URL('../../scripts/ops/operator.mjs', import
 
 export const PROMOTE: string = new URL('../../scripts/ops/promote.mjs', import.meta.url).pathname;
 
-export const DRILL: string = new URL('../../scripts/ops/restore-drill.mjs', import.meta.url)
-  .pathname;
+const DRILL = new URL('../../scripts/ops/restore-drill.mjs', import.meta.url).pathname;
 
-export const DEPLOY: string = new URL('../../scripts/ops/deploy.mjs', import.meta.url).pathname;
-export const WEB_DEPLOY: string = new URL('../../scripts/ops/web-deploy.mjs', import.meta.url)
-  .pathname;
+const DEPLOY = new URL('../../scripts/ops/deploy.mjs', import.meta.url).pathname;
+const WEB_DEPLOY = new URL('../../scripts/ops/web-deploy.mjs', import.meta.url).pathname;
 
 export const definition = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),

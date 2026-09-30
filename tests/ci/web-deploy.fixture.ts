@@ -18,7 +18,7 @@ import { artefactName } from '../../scripts/ops/promotion.ts';
 export const STAGED = '0123456789ab';
 export const CANARY = 'canary-5d19e0-web-deploy-secret';
 export const URL_MADE = 'https://ops-astro-staging-a1b2c3d4e.vercel.app';
-export const ORG = 'team_madeUpOrg0123';
+const ORG = 'team_madeUpOrg0123';
 export const PROJECT = 'prj_madeUpProject0123';
 export const AUTH_VERSION = 'v2.180.0';
 
