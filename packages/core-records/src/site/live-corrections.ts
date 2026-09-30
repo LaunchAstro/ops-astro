@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C80's records: the live correction, its decision and its receipts (0042).
+// C80's records: the live correction, its decision and its receipts (0053).
 //
 // Every read here filters by the caller's grant inside the query, at the
 // correction's own party, so a party-scoped grant on one client's site reaches
