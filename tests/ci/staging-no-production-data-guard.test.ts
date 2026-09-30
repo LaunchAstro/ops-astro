@@ -7,10 +7,12 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
+import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   admitMadeUp,
   markMadeUp,
   productionSigns,
+  SEED_TAG,
   type OwnerQuery,
 } from '../../scripts/ops/made-up-only.ts';
 import { serverUrl, MADE_UP } from './staging-no-production-data.fixture.ts';
@@ -65,6 +67,7 @@ describe.skipIf(serverUrl === undefined)('S0-1 no production data', () => {
   noProductionDataCases6();
   noProductionDataCases7();
   noProductionDataCasesSolNarrow();
+  noProductionDataCasesRecheck();
   noProductionDataCases8();
 });
 
@@ -214,6 +217,77 @@ function noProductionDataCasesSolNarrow() {
        from (select set_config('ops_astro.writer', 'seed', true)) as forged`,
       [businessId, randomUUID(), typeId, { title: 'Restored private customer canary' }],
     );
+    expect(await admitMadeUp(db.admin, true)).not.toEqual([]);
+  });
+}
+
+function noProductionDataCasesRecheck() {
+  it('an owner cannot read an active seed tag and replay it into a private task', async () => {
+    await reset();
+    const businessId = await business('alpha');
+    await markMadeUp(db.admin, [businessId]);
+    const url = new URL(serverUrl!);
+    url.pathname = `/${db.name}`;
+    const spy = connectAsAdmin(url.toString(), { source: 'review-spy' });
+    let captured: string | undefined;
+    try {
+      const genuine = db.admin.execute(`select pg_sleep(3) from ${SEED_TAG}`);
+      for (let i = 0; i < 30 && captured === undefined; i++) {
+        const rows = await spy.execute<{ query: string }>(
+          `select query from pg_stat_activity where datname = current_database()
+             and pid <> pg_backend_pid() and state = 'active' and query like '%set_config%'`,
+        );
+        for (const row of rows) {
+          captured = /set_config\('ops_astro\.writer', '([0-9a-f]{64})'/u.exec(row.query)?.[1];
+          if (captured !== undefined) break;
+        }
+        if (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      await genuine;
+    } finally {
+      await spy.close();
+    }
+    if (captured === undefined) throw new Error('the owner could not inspect an active seed statement');
+    const typeId = randomUUID();
+    try {
+      await db.admin.execute(
+        `insert into public.record_types (business_id,id,key,name)
+         select $1,$2,'task','Task' from (select set_config('ops_astro.writer',$3,true)) as forged`,
+        [businessId, typeId, captured],
+      );
+      await db.admin.execute(
+        `insert into public.records (business_id,id,record_type_id,data)
+         select $1,$2,$3,$4 from (select set_config('ops_astro.writer',$5,true)) as forged`,
+        [businessId, randomUUID(), typeId, { title: 'Restored private customer canary' }, captured],
+      );
+    } catch {
+      throw new Error('the replayed write failed before the guard could be checked');
+    }
+    expect(await admitMadeUp(db.admin, true)).not.toEqual([]);
+  }, 10_000);
+
+  it('a member-called owner function cannot pass a restored task row', async () => {
+    await reset();
+    const businessId = await business('alpha');
+    await markMadeUp(db.admin, [businessId]);
+    await db.admin.execute(
+      `create function public.sol_restore_load(p_business uuid,p_type uuid,p_record uuid)
+       returns void language plpgsql security definer set search_path=pg_catalog,public as $$
+       begin
+         perform set_config('ops_astro.writer','seed',true);
+         insert into public.record_types (business_id,id,key,name)
+           values (p_business,p_type,'task','Task');
+         insert into public.records (business_id,id,record_type_id,data)
+           values (p_business,p_record,p_type,'{"title":"Restored private customer canary"}');
+       end $$`,
+    );
+    await db.app.withBusiness(businessId as never, async (tx) => {
+      await tx.query('select public.sol_restore_load($1,$2,$3)', [
+        businessId,
+        randomUUID(),
+        randomUUID(),
+      ]);
+    });
     expect(await admitMadeUp(db.admin, true)).not.toEqual([]);
   });
 }
