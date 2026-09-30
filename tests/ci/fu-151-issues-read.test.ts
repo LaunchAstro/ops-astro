@@ -157,6 +157,14 @@ describe('FU-151 the review-evidence job reads open issues', () => {
     expect(checked.stderr).toContain(`follow-up #${String(issue)}`);
   });
 
+  it.each([5, 6])('FU-151 token: neither step prints the token (follow-up #%i)', (issue) => {
+    const { fetched, checked } = runJob(issue);
+    const output = [fetched, checked].flatMap((r) => [r.stdout, r.stderr]).join('\n');
+    expect(output).not.toContain(CANARY);
+  });
+});
+
+describe('Sol owed: the review-evidence job reads the labels', () => {
   // Owner, 1 October 2026: the `needs-sol` label and a `Sol-owed:` line stand in for the record.
   const owed = body(5).replace(/Reviewer:[\s\S]*$/u, 'Sol-owed: stage1/SOL-OWED.md MAIN-GATE-1');
   it('Sol owed: the job reads the needs-sol label GitHub shows and accepts the mark', () => {
@@ -169,11 +177,5 @@ describe('FU-151 the review-evidence job reads open issues', () => {
     const { checked } = runJob(5, 'mock', owed);
     expect(checked.status).toBe(1);
     expect(checked.stderr).toContain('not the `needs-sol` label');
-  });
-
-  it.each([5, 6])('FU-151 token: neither step prints the token (follow-up #%i)', (issue) => {
-    const { fetched, checked } = runJob(issue);
-    const output = [fetched, checked].flatMap((r) => [r.stdout, r.stderr]).join('\n');
-    expect(output).not.toContain(CANARY);
   });
 });
