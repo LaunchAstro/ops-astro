@@ -178,13 +178,37 @@ const DRIFTS: [string, RegExp, (dir: string, model: Model) => void][] = [
   ],
   [
     'a setting twice',
-    /langfuse-web TELEMETRY_ENABLED/u,
+    /langfuse-web LANGFUSE_S3_EVENT_UPLOAD_BUCKET is set twice/u,
     (_dir, model) => {
       const list = environment(model, web);
       model.services[web] = {
         ...model.services[web],
-        environment: [...list, 'TELEMETRY_ENABLED=true'],
+        environment: [...list, 'LANGFUSE_S3_EVENT_UPLOAD_BUCKET=elsewhere'],
       };
+    },
+  ],
+  [
+    'a secret with a fixed prefix',
+    /langfuse-web SALT/u,
+    (_dir, model) => {
+      setting(model, web, 'SALT', 'mysalt${TRACE_TARGET_SALT:?}');
+    },
+  ],
+  [
+    'the cache without its password',
+    /redis --requirepass/u,
+    (_dir, model) => {
+      model.services['redis'] = {
+        ...model.services['redis'],
+        command: ['--maxmemory-policy', 'noeviction'],
+      };
+    },
+  ],
+  [
+    'the blob store published, even on loopback',
+    /minio port/u,
+    (_dir, model) => {
+      model.services['minio'] = { ...model.services['minio'], ports: ['127.0.0.1:9090:9000'] };
     },
   ],
   [

@@ -1641,7 +1641,17 @@ and codes, never a sentence, to a trace target an operator reads.
   own file. `TRACE_EXPORT=on` is the one change that starts it
   ([API.md](API.md#the-composition-root)); the server then exports every
   recovered business on an interval, and a failure is logged by kind only.
-  The pinned local Langfuse profile and retention are AW-13's remaining lines.
+- The pinned local target, `scripts/local/trace-target/`, proved by
+  `AW-13 pinned profile`: the vendor's compose file and environment example at v4.33.0,
+  byte-identical, a checked override (images from Docker Hub by digest,
+  telemetry, media upload and batch export off, no SSRF allowlist, AI or
+  cloud variable, signup closed, only the web port and only on loopback, every
+  secret required from the run), and the model they render to, which is what
+  runs. `node scripts/local/trace-target.ts check | up <port> | down` checks the
+  pin and a fresh render, starts it with generated secrets in
+  `.local/trace-target.env` without pulling, and destroys it with its volumes.
+  Retention (the product's job deleting by derived id, the raw bucket's
+  lifecycle rule) and the operator readers are AW-13's remaining lines.
 
 ## What is not here
 
