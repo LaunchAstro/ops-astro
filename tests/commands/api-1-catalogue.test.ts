@@ -178,8 +178,16 @@ function exemptAndMergedTickets(): void {
       expect(row?.ui.length, command).toBeGreaterThan(0);
     }
     const ui = (name: string) => rows.find((row) => row.command === name)?.ui ?? [];
-    expect(ui('task.create')).toEqual(['agency:projects-board (screens/Projects.tsx)']);
-    expect(ui('task.start')).toEqual(['agency:task-detail (screens/task/Lifecycle.tsx)']);
+    expect(ui('task.create')).toEqual([
+      'agency:projects-board (screens/Projects.tsx)',
+      'agency:task-detail (screens/task/History.tsx)',
+      'agency:task-detail (screens/task/Subtasks.tsx)',
+      'app shell (screens/task/task-draft.ts)',
+    ]);
+    expect(ui('task.start')).toEqual([
+      'agency:task-detail (screens/task/History.tsx)',
+      'agency:task-detail (screens/task/Lifecycle.tsx)',
+    ]);
     expect(ui('settings.set_client_sign_off')).toEqual([
       'agency:settings (screens/settings/use-settings.ts)',
     ]);
