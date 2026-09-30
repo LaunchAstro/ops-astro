@@ -37,6 +37,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['settings.set_four_eyes_threshold', { value: 1300 }],
   ['settings.set_client_sign_off', { value: false }],
   ['settings.set_money_step_up', { value: true }],
+  ['settings.set_conversation_window', { value: 14 }],
+  ['settings.set_retention_window', { value: 90 }],
   [
     'privacy.record_incident',
     {

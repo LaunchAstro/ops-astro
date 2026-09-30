@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The two settings a named operation owns.
+// The settings a named operation owns.
 //
 // The settings catalogue classifies `four_eyes_threshold` and
 // `client_sign_off_required` as `operation` and named the commands that would
@@ -45,7 +45,24 @@ const KEY_OF: Readonly<Record<string, string>> = {
   'settings.set_four_eyes_threshold': 'four_eyes_threshold',
   'settings.set_client_sign_off': 'client_sign_off_required',
   'settings.set_money_step_up': 'money_step_up_required',
+  'settings.set_conversation_window': 'conversation_window_days',
+  'settings.set_retention_window': 'retention_window_days',
 };
+
+type WindowCommand = 'settings.set_conversation_window' | 'settings.set_retention_window';
+
+/** C122-1: a conversation body lives seven days at least, and never past the work window. */
+const CONVERSATION_FLOOR_DAYS = 7;
+
+const CONVERSATION_FIXES: readonly string[] = [
+  'Send value as a whole number of days, seven or more.',
+  'It cannot be longer than the retention window; lengthen that first.',
+];
+
+const RETENTION_FIXES: readonly string[] = [
+  'Send value as a whole number of days, zero or more.',
+  'It cannot be shorter than the conversation window; shorten that first.',
+];
 
 const THRESHOLD_FIXES: readonly string[] = [
   'Send value as a number of dollars, or null to turn the second approver off.',
@@ -74,7 +91,7 @@ function isCheckViolation(cause: unknown): boolean {
 }
 
 /**
- * Write one of the two settings a named operation owns.
+ * Write one setting a named operation owns.
  *
  * `expectedRevision` is the caller's own, straight off a `settings.read`, and
  * it is handed to the records writer unchanged: absent means "write it anyway",
@@ -93,7 +110,8 @@ export async function setBusinessSetting(
   command:
     | 'settings.set_four_eyes_threshold'
     | 'settings.set_client_sign_off'
-    | 'settings.set_money_step_up',
+    | 'settings.set_money_step_up'
+    | WindowCommand,
   value: unknown,
   expectedRevision?: number,
 ): Promise<HandlerOutcome> {
@@ -110,6 +128,20 @@ export async function setBusinessSetting(
     if (value === null) writable = null;
     else if (typeof value === 'number' && Number.isFinite(value) && value >= 0) writable = value;
     else return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], THRESHOLD_FIXES));
+  } else if (
+    command === 'settings.set_conversation_window' ||
+    command === 'settings.set_retention_window'
+  ) {
+    const floor = command === 'settings.set_conversation_window' ? CONVERSATION_FLOOR_DAYS : 0;
+    if (
+      typeof value !== 'number' ||
+      !Number.isSafeInteger(value) ||
+      value < floor ||
+      (await passesTheOtherWindow(tx, command, value))
+    ) {
+      return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], fixesFor(command)));
+    }
+    writable = value;
   } else if (typeof value === 'boolean') writable = value;
   else return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], fixesFor(command)));
 
@@ -151,6 +183,8 @@ export async function setBusinessSetting(
 }
 
 function fixesFor(command: string): readonly string[] {
+  if (command === 'settings.set_conversation_window') return CONVERSATION_FIXES;
+  if (command === 'settings.set_retention_window') return RETENTION_FIXES;
   if (command === 'settings.set_four_eyes_threshold') return THRESHOLD_FIXES;
   if (command === 'settings.set_money_step_up') return STEP_UP_FIXES;
   return SIGN_OFF_FIXES;
@@ -236,4 +270,28 @@ export function setNotificationChannel(
     outcome = applied(null, null, { channel: request.channel, mode: request.mode });
   }
   return Promise.resolve(outcome);
+}
+
+/**
+ * Whether `days` would put the conversation window past the retention window
+ * (C122-1's ceiling). Both rows are locked in key order before either is read,
+ * so of two administrators moving one window each, the second waits and reads
+ * the first's committed value instead of each passing against the other's old
+ * one. The write that follows locks its own row again, which it already holds.
+ */
+async function passesTheOtherWindow(
+  tx: TenantQuery,
+  command: WindowCommand,
+  days: number,
+): Promise<boolean> {
+  const rows = await tx.query<{ readonly key: string; readonly value: unknown }>(
+    `select key, value from business_settings
+      where business_id = $1 and key in ('conversation_window_days', 'retention_window_days')
+      order by key
+        for update`,
+    [tx.businessId],
+  );
+  const other = rows.find((row) => row.key !== KEY_OF[command])?.value;
+  if (typeof other !== 'number') return false;
+  return command === 'settings.set_conversation_window' ? days > other : days < other;
 }

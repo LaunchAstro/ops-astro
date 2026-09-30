@@ -161,6 +161,14 @@ refusal writes an audit row. A business with no such row is `NOT_FOUND` naming
 more, is `FIELD_VALUE_INVALID`. There is no default, floor or ceiling.
 `tests/commands/purge-retention.test.ts` holds it.
 
+**The two windows are written by a command each** (MP-2-11, 0061):
+`settings.set_retention_window` and `settings.set_conversation_window`, under
+`settings:manage`, against the revision `settings.read` handed back. The
+conversation window is seven days or more and never longer than the retention
+window (C122-1); either command locks both rows in key order before it
+compares, and a value outside that is `FIELD_VALUE_INVALID` naming `value`.
+`tests/commands/mp-2-11-business-windows.test.ts` holds it.
+
 A window longer than 2,000,000 days (`LONGEST_COMPUTED_WINDOW_DAYS`) purges
 nothing, and it is answered, not refused. No trash is that old, and a long
 enough window would take the date arithmetic past the database's calendar
@@ -435,6 +443,8 @@ no route written by hand.
 | `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                                 | `SCOPE_NOT_GRANTED` 403 (it asks `spend:decide`), `STEP_UP_REQUIRED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                               |
 | `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
 | `settings.set_money_step_up`       | `/settings/set_money_step_up`       | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
+| `settings.set_conversation_window` | `/settings/set_conversation_window` | `operationId`, `value` (whole days), `expectedRevision?`                                       | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
+| `settings.set_retention_window`    | `/settings/set_retention_window`    | `operationId`, `value` (whole days), `expectedRevision?`                                       | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
 
 A settings `value` of any other type, including a string, an object or an
 array, is `FIELD_VALUE_INVALID` naming `value` before any write
@@ -938,6 +948,8 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `session.person`                   | `readOwnName` (`reads/people.ts`)                                                         | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `session.end`                      | `endOwnSession` (`commands/session-end.ts`)                                               | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `settings.set_money_step_up`       | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `settings.set_conversation_window` | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `settings.set_retention_window`    | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").

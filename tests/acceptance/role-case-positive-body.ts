@@ -186,6 +186,12 @@ export function createPositiveBody(
         return { body: { value: true } };
       case 'settings.set_money_step_up':
         return { body: { value: true } };
+      // Inside C122-1's bounds whichever runs first: seven or more, and the
+      // retention window never below the conversation window.
+      case 'settings.set_conversation_window':
+        return { body: { value: 14 } };
+      case 'settings.set_retention_window':
+        return { body: { value: 90 } };
       // C81: the admin holds `privacy:manage`, as the owner does.
       case 'legal.draft_version':
       case 'legal.approve_version':

@@ -513,13 +513,13 @@ than as an answer about the preset. D05 says so, and the test counts
 landed contracts read without having. `records/business-settings.ts` produces
 the named rows:
 
-| Key                        | Default             | Write mode  | Why                                                               |
-| -------------------------- | ------------------- | ----------- | ----------------------------------------------------------------- |
-| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                         |
-| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                      |
-| `money_step_up_required`   | `true`              | `operation` | whether a money action needs a recent second-factor sign-in (C59) |
-| `retention_window_days`    | `30`                | `generic`   | policy an administrator sets; read by `task.purge` as its window  |
-| `conversation_window_days` | `30`                | `generic`   | policy an administrator sets                                      |
+| Key                        | Default             | Write mode  | Why                                                                     |
+| -------------------------- | ------------------- | ----------- | ----------------------------------------------------------------------- |
+| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                               |
+| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                            |
+| `money_step_up_required`   | `true`              | `operation` | whether a money action needs a recent second-factor sign-in (C59)       |
+| `retention_window_days`    | `30`                | `operation` | read by `task.purge` as its window; never below the conversation window |
+| `conversation_window_days` | `30`                | `operation` | seven days or more, never past the retention window (C122-1)            |
 
 The classification matters here, not the values. A setting that decides
 whether a second approver is needed changes authority, the same category the
