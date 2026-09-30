@@ -86,7 +86,7 @@ export function Inbox(props: InboxProps): ReactElement {
   };
 
   return (
-    <section className="card inbox" aria-labelledby="inbox-heading">
+    <section className="card card--flush inbox" aria-labelledby="inbox-heading">
       <Owed client={client} grantKey={props.grantKey} follow={props.follow} />
       <RecordState
         state={list.state}
@@ -128,16 +128,18 @@ function Owed(props: {
   useEffect(() => follow?.(count.reload), [follow, count.reload]);
   const owed = count.state.outcome === 'ready' ? count.state.value.owed : null;
   return (
-    <>
-      <h2 id="inbox-heading" className="card__title">
-        Inbox <CountBadge count={owed ?? 0} title="Waiting for you" />
-      </h2>
-      {owed === null ? null : (
-        <p className="card__sub" data-inbox-count={owed}>
-          {owed === 1 ? '1 waiting for you' : `${String(owed)} waiting for you`}
-        </p>
-      )}
-    </>
+    <div className="card__head">
+      <div>
+        <h2 id="inbox-heading" className="card__title">
+          Inbox <CountBadge count={owed ?? 0} title="Waiting for you" />
+        </h2>
+        {owed === null ? null : (
+          <p className="card__sub" data-inbox-count={owed}>
+            {owed === 1 ? '1 waiting for you' : `${String(owed)} waiting for you`}
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -149,30 +151,37 @@ function InboxRow(props: {
   const entry = props.entry;
   return (
     <li
-      className="inbox__item"
+      className="lrow lrow--page inbox__item"
       data-inbox-item={entry.id}
       data-work-state={entry.workState}
       data-counted={entry.counted}
     >
-      <span className="inbox__reason">{REASON[entry.reason]}</span>{' '}
-      {entry.task === undefined ? (
-        <span className="inbox__task" data-access={entry.access}>
-          This task is no longer there
+      <span className="lrow__main">
+        <span className="lrow__title">
+          {entry.task === undefined ? (
+            <span className="inbox__task" data-access={entry.access}>
+              This task is no longer there
+            </span>
+          ) : (
+            <a
+              className="inbox__task"
+              href={pathTo('agency:task-detail', { key: entry.task.key })}
+              onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+                event.preventDefault();
+                props.onOpen(event.currentTarget.href);
+              }}
+            >
+              {titleOf(entry.task.title)}
+            </a>
+          )}
         </span>
-      ) : (
-        <a
-          className="inbox__task"
-          href={pathTo('agency:task-detail', { key: entry.task.key })}
-          onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-            event.preventDefault();
-            props.onOpen(event.currentTarget.href);
-          }}
-        >
-          {titleOf(entry.task.title)}
-        </a>
-      )}{' '}
-      <span className="inbox__state">{workWord(entry)}</span>
-      <Marks entry={entry} />
+        <span className="lrow__meta">
+          <span className="inbox__reason">{REASON[entry.reason]}</span>
+          {' · '}
+          <span className="inbox__state">{workWord(entry)}</span>
+          <Marks entry={entry} />
+        </span>
+      </span>
     </li>
   );
 }
@@ -185,19 +194,19 @@ function Marks(props: { readonly entry: InboxEntry }): ReactElement {
     <>
       {entry.alert === undefined ? null : (
         <span className="inbox__alert" data-alert={entry.alert.kind}>
-          {' '}
+          {' · '}
           {say(entry.alert)}
         </span>
       )}
       {delivery === null ? null : (
         <span className="inbox__delivery" data-delivery={entry.lastDelivery}>
-          {' '}
+          {' · '}
           {delivery}
         </span>
       )}
       {entry.seenAt === null ? null : (
         <span className="inbox__seen" data-seen="true">
-          {' '}
+          {' · '}
           Seen
         </span>
       )}

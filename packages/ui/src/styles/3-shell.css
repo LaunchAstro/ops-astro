@@ -196,6 +196,50 @@
   }
 }
 
+/* -- The route tab row (DS-COMP-2): a section's pages, under the page head,
+      edge to edge across the main column. It is the first thing in the
+      content, so it steps out of the content's padding to meet the head. -- */
+.routetabs {
+  display: flex;
+  align-items: stretch;
+  gap: var(--s-6);
+  min-height: 2.6rem;
+  margin: calc(-1 * var(--s-6)) calc(-1 * var(--s-6)) 0;
+  padding: 0 var(--s-6);
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.routetabs a {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.65rem 0 calc(0.65rem - 2px);
+  border-bottom: 2px solid transparent;
+  color: var(--text-2);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--dur-1) var(--ease);
+}
+.routetabs a:hover {
+  color: var(--text);
+}
+.routetabs a[aria-current='page'] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+  font: var(--type-body-strong);
+  letter-spacing: var(--type-body-strong-tracking);
+  text-transform: var(--type-body-strong-case);
+}
+@media (width <= 900px) {
+  .routetabs {
+    margin: calc(-1 * var(--s-4)) calc(-1 * var(--s-4)) 0;
+  }
+}
+
 /* -- The dock rail. It does not disappear below 900: it ROTATES onto the
       bottom edge, and one panel draws, because a phone holds one thing.
       (The contract describes an icon-only topbar fallback at this width. At

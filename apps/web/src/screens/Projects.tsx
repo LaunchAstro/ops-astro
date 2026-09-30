@@ -13,7 +13,7 @@
 // stores is recorded rather than papered over by dropping the columns.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { Board, Empty, type BoardRow } from '@launchastro/ui';
+import { Board, Empty, Icon, type BoardRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { titleOf } from '../views/task-title.ts';
 import type { TaskBoardResult, TaskSummary } from '../../../../packages/core-wire/src/index.ts';
@@ -120,26 +120,28 @@ export function Projects(props: ProjectsProps): ReactElement {
     <div className="stack">
       {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
       <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
-      <form className="taskform projects__create" onSubmit={onCreate}>
-        <div className="field">
-          <label className="tf__k" htmlFor="create-title">
-            New task
-          </label>
+      {/* The mockup's quick-add field ("Add another…", P-02) and its New task button (P-06):
+          one form, sending task.create. */}
+      <form className="projects__create" onSubmit={onCreate}>
+        <label className="visually-hidden" htmlFor="create-title">
+          New task
+        </label>
+        <span className="cbd__field">
+          <Icon name="plus" size="xs" />
           <input
             id="create-title"
-            className="input"
             type="text"
             required
-            placeholder="What needs doing"
+            placeholder="Add a task…"
             disabled={locked}
             value={title}
             onChange={(event) => {
               setTitle(event.target.value);
             }}
           />
-        </div>
+        </span>
         <button
-          className="btn btn--primary"
+          className="btn btn--secondary btn--sm"
           type="submit"
           data-attempt={retrying ? 'retry' : 'new'}
           disabled={locked || title.trim() === ''}
@@ -148,7 +150,7 @@ export function Projects(props: ProjectsProps): ReactElement {
         </button>
         {pending === null ? null : (
           <button
-            className="btn"
+            className="btn btn--sm"
             type="button"
             data-attempt="discard"
             disabled={creating}
@@ -220,7 +222,11 @@ const groupsOf = (tasks: readonly TaskSummary[]): readonly string[] => [
 /** The heading a task sits under. A stateless one gets its own, not somebody else's. */
 const groupOf = (task: TaskSummary): string => task.state?.label ?? 'No state';
 
-const dayOf = (iso: string): string => iso.slice(0, 10);
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** The stored day as the board draws it: `30 Sep`, the mockup's day and short month. */
+export const dayOf = (iso: string): string =>
+  `${String(Number(iso.slice(8, 10)))} ${MONTHS[Number(iso.slice(5, 7)) - 1] ?? ''}`;
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 
