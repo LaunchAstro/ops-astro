@@ -303,7 +303,9 @@
     "tests/broker/aw-05-four-eyes-one-rule.test.ts",
     "tests/broker/c60-egress-before-route.test.ts",
     "tests/broker/c60-route-and-carry.test.ts",
-    "tests/broker/s3-bound-source.test.ts"
+    "tests/broker/s3-bound-source.test.ts",
+    "tests/runtime/aw-06-observed-layer.test.ts",
+    "tests/runtime/aw-06-isolation.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
