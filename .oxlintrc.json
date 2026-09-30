@@ -11,5 +11,8 @@
     "node": true,
     "es2024": true
   },
-  "ignorePatterns": ["node_modules", "dist", "tests/gate/canary.txt", ".claude/skills", ".codex"]
+  "ignorePatterns": ["node_modules", "dist", "tests/gate/canary.txt", ".claude/skills", ".codex"],
+  "overrides": [
+    { "files": ["tests/review/sl01-s06-proof.test.ts"], "rules": { "no-await-in-loop": "off" } }
+  ]
 }
