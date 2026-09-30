@@ -6,19 +6,37 @@
 // The visual comparison (T4c): the app against the pinned mockup, rendered at
 // the same width, never against a previous run of the app.
 //
-//   MOCKUP_DIR=<clone of the mockup> node tests/visual/run.ts [--app URL] [--prove-drift] [--out DIR]
+//   MOCKUP_DIR=<clone of the mockup> node tests/visual/run.ts [--app URL [--session FILE] [--task KEY]]
+//     [--prove-drift] [--out DIR]
+//   node tests/visual/run.ts --app-drift --app URL [--session FILE] [--page ID] [--theme light|dark]
+//     [--out DIR]
 //
-// Light is captured at every width in the packet; dark prints as undischarged,
-// owned by U04. Without --app each drawn state prints red: T4b1 drives the
+// Every width in the packet is captured in each theme the packet captures:
+// light, and dark from U04 (MP-1-1); while dark is pending it prints as
+// undischarged. Without --app each drawn state prints red: T4b1 drives the
 // app into the states this captures, from T4a's fixture, at a local address.
 // --prove-drift is `visual_fails_on_drift` in the pinned renderer: an
 // unchanged recapture of the mockup passes, and a control shifted by two
 // pixels or one changed token colour fails, naming the capture.
 // Evidence lands in DIR (default .local/evidence/visual, gitignored).
+//
+// MP-1-7 widens it to the boundary widths and adds the width-and-theme
+// report: with --app, every page the app registers is captured at each width
+// in each theme and measured for sideways scroll; the planted drift runs in
+// each theme too (MP-1-1 dark harness bites); --session is a signed-in local
+// fixture session (T4b1) as Playwright storage state, --task the key the task
+// page opens. The report goes to DIR/width-and-theme.txt.
+//
+// --app-drift is the app-only drift mode (app-drift.ts): drift proved on one of
+// the app's own pages, with no mockup, so the public CI runs it on Linux (the
+// `visual drift` job). The page, control, token and theme are the catalogue's
+// `appDrift`; --page and --theme override them.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { chromium, type Page } from 'playwright';
+import { chromium } from 'playwright';
+import { appDrift } from './app-drift.ts';
 import { comparePng } from './compare.ts';
+import { proveDrift, scrollMetrics } from './drift.ts';
 import {
   load,
   MOCKUP_ORIGIN,
@@ -35,9 +53,21 @@ import {
   checkMockupTree,
   checkRenderer,
   liveRenderer,
+  MODE,
   readPacket,
+  themesOf,
   visualDir,
+  type Theme,
 } from './packet.ts';
+import {
+  addressOf,
+  builtPages,
+  needsSession,
+  overflowOf,
+  pageAt,
+  report,
+  type PageShot,
+} from './report.ts';
 
 const args = process.argv.slice(2);
 const option = (flag: string): string | undefined => {
@@ -51,14 +81,6 @@ if (app !== undefined && !['127.0.0.1', 'localhost'].includes(app.hostname)) {
   // Captures come from the local fixture only, never a served business's data.
   throw new Error(`visual: --app must be a local address, not ${app.host}`);
 }
-const mockupDir = process.env['MOCKUP_DIR'];
-if (mockupDir === undefined)
-  throw new Error('visual: set MOCKUP_DIR to a clone holding the pinned mockup commit');
-
-const packet = readPacket();
-await fetchAssets(readAssets(), packet);
-checkAssets(packet);
-const tree = checkMockupTree(mockupDir, packet.mockup);
 const catalogue = JSON.parse(readFileSync(`${visualDir}states.json`, 'utf8')) as Catalogue;
 mkdirSync(out, { recursive: true });
 
@@ -69,29 +91,74 @@ const say = (line: string, fails = false): void => {
   lines.push(line);
   console.log(line);
 };
+const finish = (): void => {
+  writeFileSync(`${out}/summary.txt`, `${lines.join('\n')}\n`);
+  console.log(`\nvisual: ${failed === 0 ? 'pass' : `${failed} line(s) red`}; evidence in ${out}`);
+  process.exitCode = failed === 0 ? 0 : 1;
+};
 
-const browser = await chromium.launch({ headless: true });
+const session = option('--session');
+const task = option('--task');
+
+if (args.includes('--app-drift')) {
+  if (app === undefined) throw new Error('visual: --app-drift needs --app');
+  const page = option('--page') ?? catalogue.appDrift.page;
+  const address = addressOf(page, task === undefined ? {} : { key: task });
+  if (address === undefined) throw new Error(`visual: ${page} is not a page the app registers`);
+  const theme = option('--theme') ?? catalogue.appDrift.theme;
+  if (theme !== 'light' && theme !== 'dark') throw new Error(`visual: no theme ${theme}`);
+  if (needsSession(page) && session === undefined) {
+    say(`red ${page}: needs --session (a signed-in session for the app's origin)`, true);
+  } else {
+    const { control, token } = catalogue.appDrift;
+    const drift = { label: page, address, control, token, theme } as const;
+    await appDrift({ app, session, drift, mask: catalogue.mask, out, say });
+  }
+  finish();
+  process.exit();
+}
+
+const mockupDir = process.env['MOCKUP_DIR'];
+if (mockupDir === undefined)
+  throw new Error('visual: set MOCKUP_DIR to a clone holding the pinned mockup commit');
+
+const packet = readPacket();
+await fetchAssets(readAssets(), packet);
+checkAssets(packet);
+const tree = checkMockupTree(mockupDir, packet.mockup);
+const shots: PageShot[] = [];
+
+const browser = await chromium.launch(MODE);
 const sides: Side[] = [];
 try {
-  checkRenderer(packet, liveRenderer(browser));
+  checkRenderer(packet, liveRenderer(browser, MODE));
   say(`renderer ${JSON.stringify(packet.renderer)}; tolerance ${JSON.stringify(packet.tolerance)}`);
   say(`mockup tree ${tree}; ${catalogue.screenshots}`);
   for (const width of packet.widths) {
-    const mockup = await openSide(browser, packet, width, { mockupDir, tree });
-    const appSide = app === undefined ? undefined : await openSide(browser, packet, width, { app });
-    sides.push(mockup, ...(appSide === undefined ? [] : [appSide]));
-    for (const state of catalogue.states) await compareState(width, state, mockup, appSide);
-    const external = [...mockup.external].toSorted();
-    const listed = Object.keys(packet.external).toSorted();
-    say(
-      `blocked and served locally at ${width}: ${external.length} of ${listed.length} listed address(es)`,
-    );
-    const unresolved = [...mockup.unresolved, ...(appSide?.unresolved ?? [])];
-    if (JSON.stringify(external) !== JSON.stringify(listed) || unresolved.length > 0) {
+    for (const theme of themesOf(packet)) {
+      const at = `${width}-${theme}`;
+      const mockup = await openSide(browser, packet, width, { mockupDir, tree, theme });
+      const appSide =
+        app === undefined
+          ? undefined
+          : await openSide(browser, packet, width, { app, session, colorScheme: theme });
+      sides.push(mockup, ...(appSide === undefined ? [] : [appSide]));
+      for (const state of catalogue.states)
+        await compareState(width, theme, state, mockup, appSide);
+      if (appSide !== undefined && app !== undefined)
+        await capturePages(width, theme, appSide, app);
+      const external = [...mockup.external].toSorted();
+      const listed = Object.keys(packet.external).toSorted();
       say(
-        `FAIL blocked list at ${width}: served ${external.join(' ')}; unresolved ${unresolved.join(' ') || 'none'}`,
-        true,
+        `blocked and served locally at ${at}: ${external.length} of ${listed.length} listed address(es)`,
       );
+      const unresolved = [...mockup.unresolved, ...(appSide?.unresolved ?? [])];
+      if (JSON.stringify(external) !== JSON.stringify(listed) || unresolved.length > 0) {
+        say(
+          `FAIL blocked list at ${at}: served ${external.join(' ')}; unresolved ${unresolved.join(' ') || 'none'}`,
+          true,
+        );
+      }
     }
   }
 } finally {
@@ -99,15 +166,17 @@ try {
   await browser.close();
 }
 
-/** One state at one width: the mockup's regions, then the app's, compared. */
+/** One state at one width in one theme: the mockup's regions, then the app's, compared. */
 async function compareState(
   width: number,
+  theme: Theme,
   state: State,
   mockup: Side,
   appSide?: Side,
 ): Promise<void> {
-  say(`undischarged ${state.id}@${width}-dark: ${packet.themes.dark}`);
-  const name = `${state.id}@${width}-light`;
+  if (!themesOf(packet).includes('dark'))
+    say(`undischarged ${state.id}@${width}-dark: ${packet.themes.dark}`);
+  const name = `${state.id}@${width}-${theme}`;
   if (state.mockup === null) {
     say(`no visual reference ${name}: ${String(state.reason)}`);
     return;
@@ -117,12 +186,21 @@ async function compareState(
   const expected = await shoot(page, name, regions, catalogue.mask);
   for (const shot of expected) writeFileSync(`${out}/${shot.name}.mockup.png`, shot.png);
   if (catalogue.drift.state === state.id && args.includes('--prove-drift')) {
-    await proveDrift(page, name, regions, expected);
+    const { control, token } = catalogue.drift;
+    const baseline = { regions, mask: catalogue.mask, base: expected };
+    await proveDrift(page, name, baseline, { control, token, bites: 'gatebox' }, say);
   }
   await page.close();
   if (appSide === undefined || app === undefined || state.appPath === undefined) {
     for (const shot of expected)
       say(`red ${shot.name}: no app capture; ${String(state.app)}`, true);
+    return;
+  }
+  const drawn = pageAt(state.appPath);
+  if (drawn !== undefined && needsSession(drawn) && session === undefined) {
+    // Signed out, the app draws its sign-in page: nothing to compare with the mockup.
+    for (const shot of expected)
+      say(`red ${shot.name}: ${drawn} needs --session (T4b1's fixture)`, true);
     return;
   }
   const appPage = await load(appSide, packet, new URL(state.appPath, app).href, {});
@@ -136,38 +214,35 @@ async function compareState(
   }
 }
 
-async function proveDrift(
-  page: Page,
-  name: string,
-  regions: Record<string, string>,
-  base: { name: string; png: Buffer }[],
-): Promise<void> {
-  const verdicts = async (): Promise<ReturnType<typeof comparePng>[]> =>
-    (await shoot(page, name, regions, catalogue.mask)).map((s, i) =>
-      comparePng(s.name, base[i]?.png ?? Buffer.alloc(0), s.png),
-    );
-  const unchanged = await verdicts();
-  for (const v of unchanged) say(`drift, unchanged recapture: ${v.line}`, !v.pass);
-  const { control, token } = catalogue.drift;
-  const shift = await page.addStyleTag({ content: `${control}{position:relative;left:2px}` });
-  for (const v of await verdicts())
-    say(
-      `drift, control ${control} shifted 2px: ${v.line}`,
-      v.pass && v.capture.endsWith('#gatebox'),
-    );
-  await shift.evaluate((node) => (node as Element).remove());
-  // The token's own value, shifted a little towards black, on every element
-  // that could define it, so the change reaches wherever the token is set.
-  const original = await page.evaluate(
-    (t) => getComputedStyle(document.body).getPropertyValue(t).trim(),
-    token,
-  );
-  const colour = `*{${token}:color-mix(in oklch, ${original} 96%, black) !important}`;
-  await page.addStyleTag({ content: colour });
-  for (const v of await verdicts())
-    say(`drift, token ${token} changed: ${v.line}`, v.pass && v.capture.endsWith('#gatebox'));
+/** Every page the app registers, at one width in one theme: a picture and its sideways scroll. */
+async function capturePages(width: number, theme: Theme, side: Side, origin: URL): Promise<void> {
+  for (const id of builtPages()) {
+    const name = `${id}@${width}-${theme}`;
+    const address = addressOf(id, task === undefined ? {} : { key: task });
+    if (address === undefined || (needsSession(id) && session === undefined)) {
+      say(`red ${name}: needs ${address === undefined ? '--task' : '--session'} (T4b1's fixture)`);
+      continue;
+    }
+    const page = await load(side, packet, new URL(address, origin).href, {});
+    const [shot] = await shoot(page, name, { page: 'viewport' }, catalogue.mask);
+    const overflow = overflowOf(await page.evaluate(scrollMetrics));
+    await page.close();
+    const picture = `${out}/${name}.page.png`;
+    if (shot !== undefined) writeFileSync(picture, shot.png);
+    shots.push({
+      page: id,
+      width,
+      theme,
+      picture: shot === undefined ? null : picture,
+      overflow,
+    });
+  }
 }
 
-writeFileSync(`${out}/summary.txt`, `${lines.join('\n')}\n`);
-console.log(`\nvisual: ${failed === 0 ? 'pass' : `${failed} line(s) red`}; evidence in ${out}`);
-process.exitCode = failed === 0 ? 0 : 1;
+if (app !== undefined) {
+  const pages = report(packet, builtPages(), shots);
+  for (const line of pages.lines) say(line, false);
+  failed += pages.failed;
+  writeFileSync(`${out}/width-and-theme.txt`, `${pages.lines.join('\n')}\n`);
+}
+finish();

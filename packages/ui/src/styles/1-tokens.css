@@ -51,6 +51,27 @@
   --accent-ink: oklch(0.98 0 0);
   --accent-ring: color-mix(in oklch, var(--accent) 35%, transparent);
   --brand: var(--accent);
+  /* The only accent tint: a selected row, an armed drop zone, today. */
+  --accent-wash: color-mix(in oklch, var(--accent) 8%, transparent);
+  /* The backdrop behind the off-canvas rail and a modal sheet. */
+  --scrim: oklch(0 0 0 / 0.4);
+  /* Chart paint beside ink and the accent (the mockup's PAINT): the donut's
+     third and fourth slices. The same in both themes, as the mockup has them. */
+  --lilac: oklch(0.78 0.088 305);
+  --lilac-deep: oklch(0.52 0.125 300);
+
+  /* -- Chrome that is dark in both themes. The app strip lifts off the void
+        in dark; the client face paints it with the client's brand. The cover
+        photo's fallback gradient never flips. ----------------------------- */
+  --app-chrome: var(--void);
+  --client-brand: oklch(0.33 0.058 192);
+  --hero-paint: linear-gradient(135deg, #0e7c7b 0%, #17555a 42%, #14243b 100%);
+
+  /* -- The mock-data mark, shown only where a demo install shows mock data.
+        Its hue stays clear of the accent and it mixes in oklab. ------------ */
+  --mock-pink: oklch(0.7 0.19 350);
+  --mock-tint: color-mix(in oklab, var(--mock-pink) 9%, transparent);
+  --mock-edge: color-mix(in oklab, var(--mock-pink) 34%, transparent);
 
   /* -- Semantic neutrals. Feature code reads these, never the primitives. - */
   --bg: var(--paper);
@@ -93,6 +114,7 @@
   /* -- Radius. Sharp. The legacy names are kept so primitives cascade. ---- */
   --radius-none: 0;
   --radius-pill: 999px;
+  --radius-round: 50%;
   --radius-xs: var(--radius-none);
   --radius-sm: var(--radius-none);
   --radius-md: var(--radius-none);
@@ -101,7 +123,10 @@
   /* -- Elevation. Shadow is earned: it means an element is lifted. -------- */
   --shadow-sm: 0 1px 2px rgb(15 18 24 / 5%);
   --shadow: 0 1px 3px rgb(15 18 24 / 8%), 0 14px 32px -20px rgb(15 18 24 / 24%);
+  --shadow-lg: 0 2px 8px rgb(15 18 24 / 10%), 0 24px 64px -30px rgb(15 18 24 / 32%);
   --shadow-overlay: 0 24px 60px oklch(0 0 0 / 45%);
+  /* The shade on a sticky column's edge. It follows the text, so it flips. */
+  --shadow-edge: -10px 0 10px -10px color-mix(in srgb, var(--text) 30%, transparent);
   /* Focus is a SHADOW token rather than an outline, which is why the visual
      acceptance set captures focus-visible in both themes [13.4]. */
   --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
@@ -111,17 +136,26 @@
   --dur-fast: 0.12s;
   --dur: 0.18s;
   --dur-1: 220ms;
+  --dur-2: 420ms;
+  /* The locate flash only. */
+  --dur-flash: 1.5s;
 
   /* -- Spacing. The 8px rhythm at 4px granularity. ----------------------- */
+  --s-0-5: 2px;
   --s-1: 0.25rem;
+  --s-1-5: 6px;
   --s-2: 0.5rem;
   --s-3: 0.75rem;
   --s-4: 1rem;
   --s-5: 1.5rem;
   --s-6: 2rem;
   --s-7: 3rem;
+  --s-8: 4rem;
+  --s-9: 6rem;
+  /* The page gutter. */
+  --pad-x: clamp(20px, 3.2vw, 32px);
 
-  /* -- Type. Three families, named and never vendored. ------------------- */
+  /* -- Type. Three families, loaded by 0-fonts.css. ----------------------- */
   --font-display: 'Funnel Display', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-sans: 'Funnel Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'Chivo Mono', ui-monospace, SFMono-Regular, monospace;
@@ -145,6 +179,104 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
+  /* The rest of the scale's parts (DS-TOK-31, 35, 40, 45 to 49, 51, 53, 56). */
+  --text-display: clamp(28px, 4vw, 44px);
+  --text-num-lg: 34px;
+  --text-num-md: 26px;
+  --text-num-sm: 22px;
+  --text-body-lg: 15px;
+  --text-micro: 10px;
+  --leading-none: 1;
+  --lh-body: 1.4;
+  --weight-light: 300;
+  --tracking-display: -0.03em;
+  --tracking-caps: 0.06em;
+
+  /* -- The 23 text styles (DS-TOK-107 to 129, MP-1-4). A rule sets text by
+        one style and only that way: `font: var(--type-x)` with
+        `letter-spacing: var(--type-x-tracking)` and
+        `text-transform: var(--type-x-case)` beside it, so nothing leaks in
+        from a parent. `scripts/type-census.mjs` refuses any other size,
+        weight, family, line height, tracking or case. The three figure
+        sizes (`--type-num-*`) are kept apart from body text so a stat
+        never reflows. ------------------------------------------------------ */
+  --type-display: var(--weight-medium) var(--text-display)/var(--lh-title) var(--font-display);
+  --type-display-tracking: var(--tracking-display);
+  --type-display-case: none;
+  --type-section: var(--weight-medium) var(--fs-title)/var(--lh-title) var(--font-display);
+  --type-section-tracking: var(--tracking-tight);
+  --type-section-case: none;
+  --type-title: var(--weight-medium) var(--text-h1)/var(--lh-title) var(--font-display);
+  --type-title-tracking: var(--tracking-tight);
+  --type-title-case: none;
+  --type-heading: var(--weight-medium) var(--text-h2)/var(--lh-title) var(--font-display);
+  --type-heading-tracking: var(--tracking-tight);
+  --type-heading-case: none;
+  --type-subheading: var(--weight-medium) var(--text-h3)/var(--lh-title) var(--font-display);
+  --type-subheading-tracking: var(--tracking-tight);
+  --type-subheading-case: none;
+  --type-rail-label: var(--weight-medium) var(--text-sm)/var(--lh-title) var(--font-display);
+  --type-rail-label-tracking: var(--tracking-label);
+  --type-rail-label-case: uppercase;
+  --type-num-lg: var(--weight-medium) var(--text-num-lg)/var(--leading-none) var(--font-display);
+  --type-num-lg-tracking: var(--tracking-display);
+  --type-num-lg-case: none;
+  --type-num-md: var(--weight-regular) var(--text-num-md)/var(--leading-none) var(--font-display);
+  --type-num-md-tracking: 0.01em;
+  --type-num-md-case: none;
+  --type-num-sm: var(--weight-regular) var(--text-num-sm)/var(--leading-none) var(--font-display);
+  --type-num-sm-tracking: 0.01em;
+  --type-num-sm-case: none;
+  --type-body-lg: var(--weight-regular) var(--text-body-lg)/var(--leading-normal) var(--font-sans);
+  --type-body-lg-tracking: 0;
+  --type-body-lg-case: none;
+  --type-body: var(--weight-regular) var(--text-body)/var(--leading-normal) var(--font-sans);
+  --type-body-tracking: 0;
+  --type-body-case: none;
+  --type-body-strong: var(--weight-medium) var(--text-body)/var(--leading-normal) var(--font-sans);
+  --type-body-strong-tracking: 0;
+  --type-body-strong-case: none;
+  --type-card-title: var(--weight-semibold) var(--text-body-lg)/var(--lh-title) var(--font-sans);
+  --type-card-title-tracking: 0;
+  --type-card-title-case: none;
+  --type-small: var(--weight-regular) var(--text-sm)/var(--leading-normal) var(--font-sans);
+  --type-small-tracking: 0;
+  --type-small-case: none;
+  --type-small-strong: var(--weight-medium) var(--text-sm)/var(--leading-normal) var(--font-sans);
+  --type-small-strong-tracking: 0;
+  --type-small-strong-case: none;
+  --type-caption: var(--weight-regular) var(--text-label)/var(--leading-normal) var(--font-sans);
+  --type-caption-tracking: 0;
+  --type-caption-case: none;
+  --type-button: var(--weight-medium) var(--text-label)/var(--leading-none) var(--font-sans);
+  --type-button-tracking: var(--tracking-tight);
+  --type-button-case: none;
+  --type-data: var(--weight-regular) var(--text-label)/var(--leading-normal) var(--font-mono);
+  --type-data-tracking: 0;
+  --type-data-case: none;
+  --type-mono: var(--weight-regular) var(--text-body)/var(--leading-normal) var(--font-mono);
+  --type-mono-tracking: 0;
+  --type-mono-case: none;
+  --type-eyebrow: var(--weight-light) var(--text-label)/var(--lh-body) var(--font-mono);
+  --type-eyebrow-tracking: var(--tracking-label);
+  --type-eyebrow-case: uppercase;
+  --type-tag: var(--weight-light) var(--text-body)/var(--leading-normal) var(--font-mono);
+  --type-tag-tracking: var(--tracking-label);
+  --type-tag-case: uppercase;
+  --type-chip: var(--weight-regular) var(--text-overline)/var(--leading-none) var(--font-mono);
+  --type-chip-tracking: var(--tracking-caps);
+  --type-chip-case: uppercase;
+  --type-badge: var(--weight-regular) var(--text-micro)/var(--leading-none) var(--font-mono);
+  --type-badge-tracking: 0;
+  --type-badge-case: none;
+
+  /* -- Icon sizes (DS-TOK-102 to DS-TOK-106). A door mark is sized from
+        its host's text. ------------------------------------------------------ */
+  --icon-xs: 8px;
+  --icon-sm: 12px;
+  --icon-md: 16px;
+  --icon-lg: 24px;
+  --icon-door: 0.85em;
 
   /* -- Layout. The rail's own ground is a quiet step off the page so the
         sidebar reads as furniture rather than paper. ---------------------- */
@@ -165,15 +297,22 @@
    invisible in review, obvious to a client. So the primitives flip and every
    alias cascades from them. A custom property's var() references substitute
    where the property is DECLARED, so the semantic names are re-declared here
-   to re-resolve against the flipped primitives above. */
+   to re-resolve against the flipped primitives above.
+
+   The attribute sits on <html>. The step in `apps/web/index.html` sets it
+   before first paint, from a handed preference or else the system.
+
+   Three primitives take the ruled value rather than their own: secondary
+   ink is one value (--text-2's 72%), faint ink folds into --text-muted's
+   55%, and the faint rule is the border. */
 [data-theme='dark'] {
   --paper: oklch(0.145 0.006 285);
   --paper-cream: oklch(0.19 0.008 285);
   --ink: oklch(0.98 0 0);
-  --ink-muted: color-mix(in oklch, oklch(0.98 0 0) 66%, transparent);
-  --ink-faint: color-mix(in oklch, oklch(0.98 0 0) 46%, transparent);
-  --rule: oklch(1 0 0 / 24%);
-  --rule-faint: oklch(1 0 0 / 14%);
+  --ink-muted: var(--on-dark-muted);
+  --ink-faint: color-mix(in oklch, var(--on-dark) 55%, transparent);
+  --rule: oklch(1 0 0 / 0.24);
+  --rule-faint: color-mix(in oklch, var(--on-dark) 10%, transparent);
 
   --bg: var(--void);
   --surface: color-mix(in oklch, var(--on-dark) 3%, var(--void));
@@ -202,8 +341,15 @@
 
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 45%);
   --shadow: 0 1px 3px rgb(0 0 0 / 50%), 0 18px 42px -24px rgb(0 0 0 / 70%);
+  --shadow-lg: 0 2px 8px rgb(0 0 0 / 50%), 0 30px 80px -34px rgb(0 0 0 / 85%);
   --focus-ring: 0 0 0 2px var(--void), 0 0 0 4px var(--accent);
   --rail-bg: var(--bg);
+
+  --app-chrome: oklch(0.255 0.007 285);
+  /* The hue shifts so it never reads as the accent over the void. */
+  --mock-pink: oklch(0.78 0.2 358);
+  --mock-tint: color-mix(in oklab, var(--mock-pink) 20%, transparent);
+  --mock-edge: color-mix(in oklab, var(--mock-pink) 48%, transparent);
 }
 
 /* The resets the Hub serves from its application entry rather than from a
@@ -220,9 +366,19 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-sans);
-  font-size: var(--text-body);
-  line-height: var(--leading-normal);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  /* The mockup's base rendering: without it every glyph draws a shade heavier. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+/* Faux bold: no 700 face is loaded, so strong text is the medium weight. */
+b,
+strong {
+  /* type-exception DS-TOK-118: strong keeps its host's size at the medium weight */
+  font-weight: var(--weight-medium);
 }
 img,
 canvas,
@@ -236,6 +392,12 @@ svg {
 :where(button) {
   font: inherit;
   color: inherit;
+}
+/* Inline code in running text: the mono style, never the browser's monospace. */
+:where(code, kbd, samp) {
+  font: var(--type-mono);
+  letter-spacing: var(--type-mono-tracking);
+  text-transform: var(--type-mono-case);
 }
 :focus-visible {
   outline: none;
