@@ -98,13 +98,14 @@ const EXECUTION = {
 };
 
 function open() {
-  const fetch = (async (url: string | URL) => {
-    const at = String(url);
+  const answer = (at: string): Response => {
     if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
     if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
     if (at.endsWith('/task/execution')) return json(EXECUTION);
     return json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404);
-  }) as unknown as typeof globalThis.fetch;
+  };
+  const fetch = ((url: string | URL) =>
+    Promise.resolve(answer(String(url)))) as unknown as typeof globalThis.fetch;
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',

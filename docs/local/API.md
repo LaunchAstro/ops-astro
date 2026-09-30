@@ -518,6 +518,32 @@ only, and `task.queue` carries every live task's beside the queue, to the team
 only; an agent's queue carries none. Nothing delivers them. Each is
 `{ id, taskId, kind, waitingReason, causeId, raisedAt }`, one per cause and
 kind (`migrations/0036_alerts.sql`). `tests/runtime/t2h-alerts.test.ts` holds it.
+
+**The execution graph (AW-06).** `task.execution` carries `graph` beside its
+runs and page of events: `{ plan, sourceRevision, complete, nodes }`, one node
+per run, `{ nodeId, condition, planned, observed }`. The planned layer is the
+structured plan record the plan decision bound (AW-04), which this code does
+not read yet, so `plan` is `unbound`, every `planned` is null, and no node is
+called unplanned. The observed layer is the run's own record, read in the same
+statement as the events and never from the page, so a cursor never changes a
+condition: `not_started`; `in_progress` with `attemptId` and `whoseMove`
+(`{ kind: 'agent' | 'person', actorId }`, the lease's holder, or null actor
+when anyone with the grant may move: a pickup after a drop, a budget answer);
+`settled` with `outcome` (the attempt's, `cancelled`, `refused` for a rejected
+gate, `expired`); `superseded` for a version replaced on its lineage; and
+`unrecognised`, with the raw `runState`, for a state the projection does not
+know. Silence is not a verdict: a run with no progress after its claim stays in
+progress, and past its lease's expiry with no drop its `lease.state` is
+`lapsed`; a drop, once recorded, shows with its `fault`. `heldMinor` and
+`spentMinor` are null when nothing is held or spent, never 0, with the
+version's `currency`. `effectObserved` is true only for an attempt observed or
+settled: a dispatch marker (a staged intent) is not an effect. The projection
+takes facts the grant-checked read already fetched and computes no authority:
+every reader who may see the task gets the same bytes, and the graph is frozen
+(`reads/execution-graph.ts`). Malformed facts throw before projection, so the
+read answers unavailable, never an empty graph.
+`tests/runtime/aw-06-observed-layer.test.ts` and
+`tests/runtime/aw-06-isolation.test.ts` hold it.
 A drop raises no alert (T3e2): `task.queue` carries the team's `outages`
 beside the alerts, newest first, each
 `{ id, cause, fault, openedAt, lastDropAt, closedAt, runs: [{ taskId, runId, attemptId, reactivated }] }`,
