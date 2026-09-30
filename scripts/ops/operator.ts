@@ -125,7 +125,13 @@ async function personHolding(
   const admin = connectAsAdmin(env['DATABASE_ADMIN_URL']!, { source: 'admin' });
   const database = connect(env['DATABASE_URL']!, { source: 'runtime' });
   try {
-    const businessId = await createBusinessResolver(admin)(business);
+    // A database the lookup identity (0046) may not read holds no business.
+    const businessId = await createBusinessResolver(admin)(business).catch(
+      (error: unknown): undefined => {
+        if ((error as { code?: unknown }).code === '42501') return;
+        throw error;
+      },
+    );
     if (businessId === undefined) return undefined;
     try {
       await database.withBusiness(businessId, async (tx) => {

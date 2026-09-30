@@ -38,9 +38,12 @@ function served(executeRead: () => Promise<never>) {
     where: 'staging',
     root: process.cwd(),
   });
+  const execute = (_sql: string, parameters: readonly unknown[] = []) =>
+    Promise.resolve(parameters[0] === 'alpha' ? [{ id: ALPHA }] : []);
+  // The key is read in a transaction of its own, as the lookup identity (0046).
   const admin = {
-    execute: (_sql: string, parameters: readonly unknown[] = []) =>
-      Promise.resolve(parameters[0] === 'alpha' ? [{ id: ALPHA }] : []),
+    execute,
+    transaction: (run: (inner: typeof execute) => Promise<unknown>) => run(execute),
   } as unknown as AdminConnection;
   const { app } = composeApi({
     database: {} as Database,

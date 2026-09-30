@@ -112,16 +112,20 @@ describe('only a verified signature can be reported as expired', () => {
 /** An owner connection that answers the key lookup with fixed rows and counts the lookups. */
 function admin(rows: readonly { id: string }[]): AdminConnection & { readonly asked: string[] } {
   const asked: string[] = [];
+  const execute = <Row>(text: string) => {
+    asked.push(text);
+    return Promise.resolve(rows as unknown as readonly Row[]);
+  };
   return {
     asked,
     log: { record: () => undefined, statements: () => [] } as unknown as AdminConnection['log'],
-    execute: async <Row>(text: string) => {
-      asked.push(text);
-      return rows as unknown as readonly Row[];
-    },
-    transaction: async () => {
-      throw new Error('the resolver opens no transaction');
-    },
+    execute,
+    // The key is read in a transaction of its own after taking the lookup
+    // identity (0046); the role change is not a lookup, so it is not counted.
+    transaction: async <T>(run: (inner: AdminConnection['execute']) => Promise<T>) =>
+      await run(async <Row>(text: string) =>
+        text.startsWith('set local role') ? ([] as readonly Row[]) : await execute<Row>(text),
+      ),
     close: () => Promise.resolve(),
   } as AdminConnection & { readonly asked: string[] };
 }
