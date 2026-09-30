@@ -160,6 +160,11 @@ describe('S0-1 staging logins: a password reaches the database only as a SCRAM v
           `noreplication noinherit`,
       );
       expect(statements).toContain(`grant ${role} to ${role}_login`);
+      // A login already there loses any power it was given since.
+      expect(statements).toContain(
+        `alter role ${role}_login with login nosuperuser nocreatedb nocreaterole nobypassrls ` +
+          `noreplication noinherit password 'SCRAM-SHA-256$4096:`,
+      );
     }
     const before = statementsFor(
       'before-reset',
