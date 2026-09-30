@@ -121,6 +121,7 @@
     "S0-5 adds s0-5-readiness (the installation's mode and the eight gate items on a real-data installation: every client-data and invitation command refused GATE_SHUT and writing nothing, per item and per command, on the person and agent routes; the mode one way). Its unit twin, s0-5-gate-decision.test.ts, opens no database and must not be named.",
     "S0-5 adds s0-5-client-lock (every task-content command's fixture leaves its marker or a row naming its task; the client change on each such task refused CLIENT_LOCKED alike through the CLI and the API, writing nothing; an empty task's change goes through; a content write and a client change interleaved in both orders). s0-5-client-lock-world.ts is its helper and s0-5-client-lock-held.test.ts holds todos; neither is named.",
     "S0-5 adds s0-5-gate-commands (the gate's own commands, 0060: an item recorded once with its https link and audited, the mode moved to real only while every item is done and never back, only by the operating business's operations:manage; another business, a person without it, a delegated agent and any caller while no business operates the installation refused, writing nothing; every other direct app write to either table denied). s0-5-gate-world.ts is its helper and is not named.",
+    "S0-5 adds s0-5-lock-order (every envelope-locked command's fixture sends nothing before its task row lock but the envelope's named steps; a write planted before the lock in a copy of the envelope is caught on each; a content write before the lock is missed by task.set_party, which moves the client, while under the lock it is seen and refused).",
     "U14's CLI adds u14-access-cli (C32's access.read, access.grant and access.revoke and C34's operations.read through the CLI client and straight to the API as the same caller: the same record bar the minted values, the same refusal word for word per key, business to business by prefix and by id, another business's client, unknown, revoked and malformed ids, and the agent route; nothing refused wrote a row) and u14-access-end-cli (C58's access.end the same way, and each ended person's next call refused alike on both). Both share c32-clients-world; cli-parity.ts is their helper and must not be named."
   ],
   "invariant": [
@@ -341,6 +342,7 @@
     "tests/operations/s0-5-readiness.test.ts",
     "tests/operations/s0-5-client-lock.test.ts",
     "tests/operations/s0-5-gate-commands.test.ts",
+    "tests/operations/s0-5-lock-order.test.ts",
     "tests/cli/u14-access-cli.test.ts",
     "tests/cli/u14-access-end-cli.test.ts"
   ],
