@@ -247,6 +247,13 @@
           "file": "apps/web/src/operations/client.ts",
           "remove": []
         }
+      ],
+      "dependents": [
+        {
+          "part": "T3d2",
+          "reaches": "resync",
+          "why": "F1 reads T2f's live task stream after the API restarts and expects its resync; F2 follows it in one world"
+        }
       ]
     },
     {
@@ -389,6 +396,12 @@
           "part": "T3d1",
           "reaches": "sweepExpiredLeases",
           "why": "the reconciliation pass answers steps T3b's sweep holds as unknown liabilities"
+        },
+        {
+          "part": "T3d2",
+          "reaches": "startSweeper",
+          "via": "apps/api/server.ts",
+          "why": "F2 starts the real API before its work and waits for the interval pass T3b's sweeper runs in server.ts"
         },
         {
           "part": "T3e1",
