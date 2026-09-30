@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+// oxlint-disable max-lines -- failure-path proofs share one migrated database fixture
 //
 // S0-2 error outbox, the forwarder's half (the Vercel re-plan, section 11 step
 // 2; ruling STEP2-SHAPE), and S0-2 heartbeats. The forwarder (`apps/forwarder`)
@@ -137,6 +138,9 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
     heartbeatCases();
     retentionCases();
     loginCases();
+    deliveryHeartbeatCases();
+    deliveryAlertCases();
+    deliveryErrorCases();
   },
 );
 
@@ -165,6 +169,89 @@ function instanceCases() {
     await forward.once();
     expect(to.alerts()).toEqual(['cross-scope-burst']);
     expect(await count()).toBe(0);
+  });
+}
+
+function deliveryHeartbeatCases() {
+  it('reports a failed heartbeat instead of completing a pass successfully', async () => {
+    await clear();
+    const forward = createForwarder({
+      database: forwarderDb,
+      send: sink().send,
+      where: 'staging',
+      root: ROOT,
+      heartbeat: () => Promise.resolve('failed'),
+    });
+    await expect(forward.once()).rejects.toThrow('heartbeat');
+  });
+
+}
+
+function deliveryAlertCases() {
+  it('retries an alert after its sink call fails and the forwarder restarts', async () => {
+    await clear();
+    const outbox = connectOutbox(fixture.db.appUrl, { source: 'runtime' });
+    const alerts = createOutboxAlerts({ outbox, key: KEY, where: 'staging', root: ROOT });
+    for (let i = 0; i < 10; i += 1) {
+      alerts.observe({ kind: 'cross-scope-refusal', business: 'alpha', person: 'mia' });
+    }
+    await alerts.settled();
+    await outbox.close();
+    await expect(forwarder(sink(true)).once()).rejects.toThrow('the sink is down');
+    const afterRestart = sink();
+    await forwarder(afterRestart).once();
+    expect(afterRestart.alerts()).toEqual(['cross-scope-burst']);
+  });
+
+  it('counts a threshold across two forwarder processes', async () => {
+    await clear();
+    const outbox = connectOutbox(fixture.db.appUrl, { source: 'runtime' });
+    const alerts = createOutboxAlerts({ outbox, key: KEY, where: 'staging', root: ROOT });
+    const first = sink();
+    const second = sink();
+    const a = forwarder(first);
+    const b = forwarder(second);
+    for (let i = 0; i < 9; i += 1) {
+      alerts.observe({ kind: 'cross-scope-refusal', business: 'alpha', person: 'mia' });
+    }
+    await alerts.settled();
+    await a.once();
+    alerts.observe({ kind: 'cross-scope-refusal', business: 'alpha', person: 'mia' });
+    await alerts.settled();
+    await b.once();
+    expect([...first.alerts(), ...second.alerts()]).toEqual(['cross-scope-burst']);
+    await outbox.close();
+  });
+
+}
+
+function deliveryErrorCases() {
+  it('reuses the delivery id after an accepted error loses its sink response', async () => {
+    await clear();
+    const outbox = connectOutbox(fixture.db.appUrl, { source: 'runtime' });
+    const alerts = createOutboxAlerts({ outbox, key: KEY, where: 'staging', root: ROOT });
+    await alerts.fault(new TypeError(CANARY));
+    await outbox.close();
+    const accepted = new Map<string, SinkEvent>();
+    const lostResponse = createForwarder({
+      database: forwarderDb,
+      send: (event) => {
+        accepted.set(event.event_id, event);
+        return Promise.reject(new Error('response lost after acceptance'));
+      },
+      where: 'staging',
+      root: ROOT,
+    });
+    await expect(lostResponse.once()).rejects.toThrow('response lost after acceptance');
+    expect(await count()).toBe(1);
+    const retry = createForwarder({
+      database: forwarderDb,
+      send: (event) => Promise.resolve(void accepted.set(event.event_id, event)),
+      where: 'staging',
+      root: ROOT,
+    });
+    await retry.once();
+    expect(accepted.size).toBe(1);
   });
 }
 

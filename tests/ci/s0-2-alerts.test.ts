@@ -13,6 +13,7 @@ import {
   createAlerts,
   dsnTransport,
   errorEvent,
+  rebuiltError,
   sinkFrom,
 } from '../../apps/api/alerts/sink.ts';
 import { NOT_PLAIN } from './s0-2-plain.ts';
@@ -43,6 +44,7 @@ describe('S0-2 plain words: each alert names what broke, what it affects and wha
 describe('S0-2 errors land in the error sink', () => {
   errorsLandInCases1();
   errorsLandInCases2();
+  errorsLandInBoundaryCases();
   errorsLandInCases3();
   errorsLandInCases4();
 });
@@ -126,6 +128,43 @@ function errorsLandInCases2() {
     await alerts.fault(hostile);
     await alerts.fault(malformed);
     expect(sink.events.map((e) => e.exception?.values[0]?.stacktrace.frames)).toEqual([[], []]);
+  });
+}
+
+function errorsLandInBoundaryCases() {
+  it('refuses a private sink address before sending a key or an event', async () => {
+    const asked: string[] = [];
+    const fetchStub = ((url: string) => {
+      asked.push(url);
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    }) as typeof fetch;
+    for (const host of ['127.0.0.1', '10.0.0.8', '169.254.169.254']) {
+      // oxlint-disable-next-line no-await-in-loop -- each address is checked independently
+      await expect(async () => {
+        const send = dsnTransport(`https://canary@${host}/7`, fetchStub);
+        await send(alertEvent('test', 'staging'));
+      }).rejects.toThrow('OPS_ERROR_SINK_DSN');
+    }
+    expect(asked).toEqual([]);
+  });
+
+  it('does not follow a sink redirect with the key and event', async () => {
+    const calls: RequestInit[] = [];
+    const fetchStub = ((_url: string, init: RequestInit) => {
+      calls.push(init);
+      return Promise.resolve(new Response('', { status: 302, headers: { location: 'https://elsewhere.test/' } }));
+    }) as typeof fetch;
+    const send = dsnTransport('https://canary@example.test/7', fetchStub);
+    await expect(send(alertEvent('test', 'staging'))).rejects.toThrow();
+    expect(['manual', 'error']).toContain(calls[0]?.redirect);
+  });
+
+  it('uses the forwarder release instead of an error row supplied release', () => {
+    const event = rebuiltError(
+      { release: 'deadbeefcafe', exception: { values: [{ type: 'Error' }] } },
+      { where: 'staging', root: ROOT, release: 'abcdef012345' },
+    );
+    expect(event.release).toBe('abcdef012345');
   });
 }
 

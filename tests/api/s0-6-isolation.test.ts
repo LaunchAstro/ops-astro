@@ -10,7 +10,7 @@
 // read another person's token) is `session-cookie-binding.test.ts`.
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createFunctionHandler } from '../../apps/api/function.ts';
 import { Client, loginIn } from '../db/backup-identity.fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -24,6 +24,7 @@ const serverUrl = databaseUrlFromEnvironment();
 
 const HOST = 'ops.example.test';
 const KEY_ID = 'test/s0-6-isolation@1';
+const SCOPE_KEY = randomBytes(32).toString('hex');
 const BETA = 'beta';
 
 interface World {
@@ -145,6 +146,8 @@ async function build(): Promise<World> {
     GOTRUE_URL: ISSUER,
     SUPABASE_KEY_SET_URL: keySet.url,
     SERVED_HOST: HOST,
+    OPS_ENVIRONMENT: 'staging',
+    ALERT_SCOPE_KEY: SCOPE_KEY,
   });
   return {
     c,
@@ -194,4 +197,33 @@ describe.skipIf(serverUrl === undefined)('S0-6 isolation', () => {
     refused(await asAgent(tasks.y), 403, 'DELEGATION_OUT_OF_PURPOSE', 'y');
     refused(await asAgent(tasks.b), 403, 'DELEGATION_OUT_OF_PURPOSE', 'b');
   });
+
+  realOutboxCase();
 });
+
+function realOutboxCase() {
+  it('keeps real business, client and delegate crossing details out of outbox rows', async () => {
+    const { c, tasks, clientX, clientY } = built();
+    const rows = await vi.waitFor(async () => {
+      const found = await c.fixture.db.admin.execute<{ kind: string; scope: string; event: unknown }>(
+        'select kind, scope, event from ops.api_events',
+      );
+      expect(found.length).toBeGreaterThanOrEqual(3);
+      return found;
+    });
+    const serialised = JSON.stringify(rows);
+    for (const secret of [
+      tasks.x,
+      tasks.y,
+      tasks.b,
+      tasks.d,
+      clientX.presented.subject,
+      clientY.presented.subject,
+      c.fixture.agent.subject,
+      ...Object.values(TITLES),
+    ]) {
+      expect(serialised.includes(secret), 'crossing detail in outbox').toBe(false);
+    }
+    expect(new Set(rows.map((row) => row.scope)).size).toBeGreaterThan(1);
+  });
+}
