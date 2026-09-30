@@ -92,7 +92,7 @@ it("AW-04 isolation: another client in the same business accepts on its own task
   const asClient = async (body: Readonly<Record<string, unknown>>) =>
     await executeCommand(w.alpha.db.app, w.alpha.business, client.presented, 'api', body as never);
   const crossed = await asClient(acceptBody(other));
-  expect(codeOf(crossed)).toMatch(/^(SCOPE_NOT_GRANTED|NOT_FOUND)$/u);
+  expect(codeOf(crossed)).toBe('SCOPE_NOT_GRANTED');
   carriesNothing(crossed, title, other);
   await untouched(other);
   // Control: the client accepts the plan on its own task.
@@ -110,7 +110,7 @@ it('AW-04 isolation: another person, by their live delegation or with a conversa
   // The decider's agent holds a live delegation on other work; it never reaches the accept.
   const work = await liveWork(w.alpha, 'aw04 cmd delegated work', 1_000);
   const byDelegation = await asAgent(w.alpha, acceptBody(plan), String(work.picked['credential']));
-  expect(codeOf(byDelegation)).not.toBe('applied');
+  expect(codeOf(byDelegation)).toBe('DELEGATION_EXCLUDES_OPERATION');
   carriesNothing(byDelegation, title, plan);
   // Another person with every grant names the decider's conversation as the origin.
   const other = await enrol(w.alpha.db.app, w.alpha.business, `aw04-cmd-other-${randomUUID()}`);

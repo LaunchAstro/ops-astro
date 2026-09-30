@@ -100,6 +100,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-decide.ts', async (orig
   ...(await original<object>()),
   decideOnGate: recorder('decideOnGate'),
 }));
+vi.mock('../../packages/core-commands/src/commands/plan-accept.ts', async (original) => ({
+  ...(await original<object>()),
+  acceptPlanOnGate: recorder('acceptPlanOnGate'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-pickup.ts', async (original) => ({
   ...(await original<object>()),
   pickupAsPerson: recorder('pickupAsPerson'),
@@ -186,6 +190,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'run.top_up': ['recordId', 'runId'],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
+  'task.accept_plan': ['gateId', 'versionId', 'conversationId'],
   'task.cancel': ['recordId', 'lineageId'],
   'task.check': ['leaseId'],
   'task.create': ['parentId', 'board', 'boardSection', 'conversationId'],
@@ -223,6 +228,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'settings.read',
   'settings.set_client_sign_off',
   'settings.set_four_eyes_threshold',
+  'task.accept_plan',
   'task.board',
   'task.cancel',
   'task.check',
@@ -292,6 +298,17 @@ const REQUESTS: readonly CommandRequest[] = [
     versionId: 'v',
     decision: 'approve',
     note: 'n',
+  },
+  {
+    command: 'task.accept_plan',
+    operationId: 'op',
+    gateId: 'g-accept',
+    versionId: 'v-accept',
+    note: 'n-accept',
+    planText: 't-accept',
+    plan: {},
+    entryPath: 'e-accept',
+    paths: [],
   },
   { command: 'task.pickup', operationId: 'op', reservationId: 'res' },
   { command: 'task.handback', operationId: 'op', leaseId: 'l', fence: 2, outcome: 'done' },
@@ -390,6 +407,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.comment': ['commentOnTask', 'op', 'b-comment', 'a-comment', 't-comment'],
   'task.propose': ['proposeOnTask', 'request'],
   'task.decide': ['decideOnGate', 'request'],
+  'task.accept_plan': ['acceptPlanOnGate', 'request'],
   'task.pickup': ['pickupAsPerson', 'request'],
   'task.handback': ['handbackOwnLease', 'request'],
   'task.start': ['setState', 'started'],
@@ -474,7 +492,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same thirty-eight from an expected revision', () => {
+  it('exempts the same thirty-nine from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

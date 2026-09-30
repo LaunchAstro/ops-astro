@@ -47,6 +47,15 @@ export {
   type PlanAcceptResult,
 } from './plan-accept.ts';
 export {
+  boundPlanOf,
+  planRecordOf,
+  PLAN_TEXT_LIMIT,
+  type BoundPlan,
+  type PlanRecord,
+  type PlanRefusal,
+  type PlanStep,
+} from './plan-record.ts';
+export {
   configuredInstructionSource,
   directorySource,
   INSTRUCTION_ROOT_VARIABLE,

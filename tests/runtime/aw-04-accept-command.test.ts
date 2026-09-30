@@ -145,7 +145,7 @@ it('AW-04 plan validation: an unknown field, a missing or foreign reference, a d
 it('AW-04 authority: an agent cannot accept, a person without decide cannot, and an odd path or another person conversation is refused before any write', async () => {
   const plan = await proposed(w.alpha, 'aw04 cmd authority');
   const agent = await asAgent(w.alpha, acceptBody(plan));
-  expect(codeOf(agent)).not.toBe('applied');
+  expect(codeOf(agent)).toBe('DELEGATION_EXCLUDES_OPERATION');
   const reader = await enrol(w.alpha.db.app, w.alpha.business, `aw04-reader-${randomUUID()}`);
   await w.alpha.db.app.withBusiness(w.alpha.business, async (tx) => {
     await grantTo(tx, reader, 'read');
@@ -161,7 +161,7 @@ it('AW-04 authority: an agent cannot accept, a person without decide cannot, and
   for (const entryPath of ['../SKILL.md', '/etc/passwd', 'skills/./brief/SKILL.md', '']) {
     // eslint-disable-next-line no-await-in-loop
     const odd = await asPerson(w.alpha, acceptBody(plan, { entryPath }));
-    expect(codeOf(odd), entryPath).toMatch(/^(DEFINITION_UNAVAILABLE|FIELD_VALUE_INVALID)$/u);
+    expect(codeOf(odd), entryPath).toBe('DEFINITION_UNAVAILABLE');
   }
   const theirs = await conversationOf(w.alpha, reader);
   const foreignConversation = await asPerson(w.alpha, acceptBody(plan, { conversationId: theirs }));

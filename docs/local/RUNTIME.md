@@ -1545,10 +1545,24 @@ signed decision and reservation, and its refusal is the accept's); then the pin
 goes on the gate's run with the manifest beside it. A pin that cannot be
 written fails the transaction, so an approval never commits without its pin,
 and a gate is approved once, so a second accept is refused and leaves one pin.
-The accept authorises no effect: the plan decision is not an effect gate
-(AW-08's launch). Not here yet: the command that carries it on the app, API
-and command line, the task created in the same transaction, the plan's exact
-text and structured record bound to the decision, and the origin conversation.
+Last, the plan is bound to the decision in `plan_records` (`0058_plan_records`):
+the exact words, the structured record (`core-runtime/src/plan-record.ts`,
+checked for vocabulary, references, duplicates and cycles before anything is
+written), the SHA-256 of each, the run and the caller's origin conversation.
+The application may insert and read a bound plan, never change or remove one;
+it retains with the run's records. The accept authorises no effect: the plan
+decision is not an effect gate (AW-08's launch).
+
+The command is `task.accept_plan` ([API.md](API.md#the-plan-accept)), at
+parity on the API and the command line. It reads the files from the server's
+instruction root (`core-runtime/src/instruction-root.ts`), one read-only
+directory named by `OPS_ASTRO_INSTRUCTION_ROOT`; a symlink at any segment, a
+name outside the root, a directory or a missing file reads as nothing, and no
+root configured refuses the accept. C33's `definition_version` replaces the
+directory when it is built. Not here yet: the task and its components created
+in the same transaction (the gate's task exists from the plan's proposal), the
+run's own origin column (the bound plan and the audit event carry the origin),
+and the planning run's own budget (U10).
 
 ## The budget wait
 

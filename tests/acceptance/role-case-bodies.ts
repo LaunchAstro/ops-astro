@@ -39,6 +39,17 @@ export const PROPOSAL = {
   step: { kind: 'synthetic_comment', payload: {} },
 } as const;
 
+/**
+ * The plan every accept case approves (AW-04): its words, its structured
+ * record and the instruction file in `tests/support/instruction-root`.
+ */
+export const ACCEPTED_PLAN = {
+  planText: 'Draft the reply. Ceiling: $30.00. Launch happens later, on the task.',
+  plan: { steps: [{ key: 'draft', title: 'Draft the reply', after: [] }] },
+  entryPath: 'skills/brief/SKILL.md',
+  paths: [],
+} as const;
+
 /** A proposal on `task`, answering with the lineage it opened. */
 export async function lineageOn(context: BodyContext, task: Task): Promise<string> {
   const proposed = await context.asPerson('task.propose', {

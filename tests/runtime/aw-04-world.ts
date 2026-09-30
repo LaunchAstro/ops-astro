@@ -12,7 +12,9 @@ import { dirname, join } from 'node:path';
 import { afterAll, beforeAll } from 'vitest';
 import {
   acceptPlan,
+  boundPlanOf,
   gateSigningKey,
+  type BoundPlan,
   INSTRUCTION_ROOT_VARIABLE,
   type InstructionSource,
   type PlanAcceptRequest,
@@ -66,7 +68,16 @@ export function acceptRequest(
     capId: owner.capId,
     entryPath: ENTRY,
     paths: [FRAGMENT],
+    plan: boundPlan(),
+    originConversationId: null,
   };
+}
+
+/** `PLAN_TEXT` and `PLAN`, checked and digested as the accept binds them. */
+function boundPlan(): BoundPlan {
+  const bound = boundPlanOf(PLAN_TEXT, PLAN);
+  if ('field' in bound) throw new Error(bound.reason);
+  return bound;
 }
 
 /** The real accept, in `owner`'s business, one transaction on `database`. */
