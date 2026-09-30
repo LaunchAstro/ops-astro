@@ -110,8 +110,12 @@ export async function restoreDrill({
       record.sourceMajor = Number(/Dumped from database version: (\d+)/u.exec(listed)?.[1]);
       // The archive makes its own public schema; the empty one would collide.
       await psql('drop schema public');
+      // Staging's made-up guard triggers call functions in a schema the archive
+      // does not carry; the seed installs them again (made-up-only.ts).
+      const kept = listed.replaceAll(/^.* TRIGGER \S+ \S+ ops_astro_made_up_guard .*$/gmu, '');
+      await must(exec(['sh', '-c', 'cat > /tmp/restore.list'], kept));
       const flags = ['--exit-on-error', '--single-transaction', '--no-owner', '--no-privileges'];
-      await must(exec(['pg_restore', ...flags, ...AS], dump()));
+      await must(exec(['pg_restore', ...flags, '--use-list=/tmp/restore.list', ...AS], dump()));
       return [...listed.matchAll(/^\d+; \d+ \d+ TABLE DATA (\S+) (\S+) /gmu)].map(
         ([, schema, table]) => `${schema}.${table}`,
       );
@@ -138,7 +142,7 @@ export async function restoreDrill({
           `set role ${APP_ROLE}`,
           `set app.business_id = '${scope.business}'`,
           `${EFFECTIVE_GRANTS} select (select string_agg(schemaname || '.' || tablename, ',') from pg_tables
-             where schemaname in ('public', 'ops')),
+             where schemaname not in ('pg_catalog', 'information_schema')),
              (exists (select from public.memberships where person_id = '${p}' and active)
              and exists (select from effective where subject_kind = 'person' and subject_id = '${p}'
                and collection = 'person' and (action = 'read' and (scope_kind = 'business'
