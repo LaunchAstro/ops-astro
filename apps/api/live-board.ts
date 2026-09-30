@@ -15,6 +15,10 @@
 // another person, the old topic is dropped, the new person's is heard, and
 // nothing is said until the stream's own recheck tells the tab `resync`, so no
 // signal of the old person's times a frame for the new one.
+//
+// Stopping the stream (the tab leaving, or the topics closing) ends its
+// recheck, and the stream lets go only once no question it asked is in
+// flight, so none reaches a pool that closes after it.
 
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { BoardSignal, LiveTopics } from './live.ts';
@@ -30,6 +34,8 @@ export interface BoardQuestions {
 
 type Heard = BoardSignal | { readonly kind: 'check' };
 
+const noop = (): void => {};
+
 /** The person whose inbox the stream hears, and what their inbox showed when last said. */
 interface Bound {
   personId: string;
@@ -37,6 +43,8 @@ interface Bound {
   /** Rebound and not yet told: every signal waits for the recheck's `resync`, which it follows. */
   owed: boolean;
   unsubscribe: () => void;
+  /** The batch being asked; the stream lets go only once it is done. */
+  asking: Promise<void>;
 }
 
 export async function followBoard(
@@ -48,16 +56,25 @@ export async function followBoard(
   const ended = new Promise<void>((resolve) => {
     stream.onAbort(resolve);
   });
+  let finished = noop;
+  const done = new Promise<void>((resolve) => {
+    finished = resolve;
+  });
+  const stop = async (): Promise<void> => {
+    stream.abort();
+    await done;
+  };
   const bound: Bound = {
     personId: on.personId,
     shown: undefined,
     owed: false,
     unsubscribe: () => {},
+    asking: Promise.resolve(),
   };
   const bind = (personId: string): void => {
     bound.unsubscribe();
     bound.personId = personId;
-    bound.unsubscribe = topics.subscribeBoard(on.businessId, personId, hear);
+    bound.unsubscribe = topics.subscribeBoard(on.businessId, personId, hear, stop);
   };
   const hear = batch(stream, ask, bound, bind);
   bind(on.personId);
@@ -69,7 +86,9 @@ export async function followBoard(
     await ended;
   } finally {
     clearInterval(timer);
+    await bound.asking;
     bound.unsubscribe();
+    finished();
   }
 }
 
@@ -110,11 +129,10 @@ function batch(
     }
   };
   let queued = false;
-  let chain = Promise.resolve();
   const wake = (): void => {
     if (queued) return;
     queued = true;
-    chain = chain
+    bound.asking = bound.asking
       .then(async () => {
         queued = false;
         return await drain();

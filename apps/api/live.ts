@@ -27,19 +27,25 @@ export type BoardSignal =
 interface Board {
   readonly personId: string;
   readonly send: (signal: BoardSignal) => void;
+  readonly stop: () => Promise<void>;
 }
 
 export interface LiveTopics {
   /** Hear `taskId` in `businessId`; the returned function stops. */
   subscribe(businessId: string, taskId: string, send: Send): () => void;
-  /** Hear every task in `businessId` and `personId`'s own inbox there (INB-1f). */
+  /**
+   * Hear every task in `businessId` and `personId`'s own inbox there (INB-1f);
+   * `stop` ends the stream and resolves once none of its questions is in flight.
+   */
   subscribeBoard(
     businessId: string,
     personId: string,
     send: (signal: BoardSignal) => void,
+    stop: () => Promise<void>,
   ): () => void;
   /** Whether LISTEN has been in force since the last (re)connect, for `/api/health`. */
   readonly listening: boolean;
+  /** Stops every board stream, waiting out their questions in flight, then stops listening. */
   close(): Promise<void>;
 }
 
@@ -74,8 +80,8 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
         if (sends.size === 0 && subscribers.get(key) === sends) subscribers.delete(key);
       };
     },
-    subscribeBoard(businessId, personId, send) {
-      const board: Board = { personId, send };
+    subscribeBoard(businessId, personId, send, stop) {
+      const board: Board = { personId, send, stop };
       const set = boards.get(businessId) ?? new Set<Board>();
       boards.set(businessId, set.add(board));
       return () => {
@@ -88,10 +94,13 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
     },
     async close() {
       listening = false;
+      await Promise.allSettled([...boards.values()].flatMap((set) => Array.from(set, stopOf)));
       await listener.close();
     },
   };
 }
+
+const stopOf = async (board: Board): Promise<void> => await board.stop();
 
 /** One `business:kind:topic` to its hearers: a task to its own and to its business's boards, an inbox to its person's boards. */
 function hand(
