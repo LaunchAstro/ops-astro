@@ -1235,8 +1235,8 @@ it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `person.list`, `preset.plan`,
-`settings.read` and `session.capabilities` are declared in `COMMAND_SURFACE`
-with `kind: 'read'`. The boundary branches on that and calls the executor the
+`settings.read`, `session.capabilities`, `inbox.read`, `inbox.count` and
+`inbox.unattended` are declared in `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
 ```ts

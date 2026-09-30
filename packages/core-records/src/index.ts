@@ -90,6 +90,7 @@ export {
 } from './inbox/raise.ts';
 export { raiseMentions, readMentions, type Mentioned } from './inbox/mentions.ts';
 export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
+export { readUnattended, type UnattendedItem } from './inbox/unattended.ts';
 export {
   isSettingRevisionStale,
   readBusinessSetting,
