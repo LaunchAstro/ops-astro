@@ -15,6 +15,12 @@ it('MP-1-2 the required check keeps the history the forward-pair proof reads', (
   const checkJob = workflow.slice(start, end);
   expect(checkJob).toContain('run: pnpm check');
   const checkout = checkJob.split('- uses: actions/checkout@')[1]?.split('\n      - ')[0] ?? '';
+  const proof = readFileSync(
+    join(root, 'tests/surfaces/fonts-forward-pair-and-production-woff2.test.ts'),
+    'utf8',
+  );
+  const anchor = /const anchor = '([0-9a-f]{40})'/u.exec(proof)?.[1];
+  expect(anchor, 'the forward-pair proof names its anchor').toBeDefined();
 
   const scratch = mkdtempSync(join(tmpdir(), 'mp-1-2-checkout-'));
   try {
@@ -33,13 +39,7 @@ it('MP-1-2 the required check keeps the history the forward-pair proof reads', (
     expect(clone.status, clone.stderr).toBe(0);
     const history = spawnSync(
       'git',
-      [
-        '-C',
-        join(scratch, 'repo'),
-        'rev-list',
-        '--reverse',
-        '7ad6d39c610ad2c232820ca425c070bae154b457..HEAD',
-      ],
+      ['-C', join(scratch, 'repo'), 'rev-list', '--reverse', `${anchor}..HEAD`],
       { encoding: 'utf8' },
     );
     expect(history.status, history.stderr).toBe(0);
