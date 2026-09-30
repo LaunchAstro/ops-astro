@@ -56,8 +56,10 @@ describe.skipIf(serverUrl === undefined)('G2 the business lookup login', () => {
   refusalCases();
 });
 
+// ORCH37 (RELB-G2-POLICY): BYPASSRLS stays, so this is the pin: usage on its
+// schema and select (id, key) on businesses, and no other grant anywhere.
 function roleCases() {
-  it('is a role no one logs in as, owning nothing, granted select (id, key) on businesses alone', async () => {
+  it('is a role no one logs in as, owning nothing, granted usage on public and select (id, key) on businesses alone', async () => {
     const [role] = await world.db.admin.execute<Record<string, boolean>>(
       `select rolcanlogin, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb, rolreplication
          from pg_roles where rolname = $1`,
@@ -82,12 +84,26 @@ function roleCases() {
          from information_schema.routine_privileges where grantee = $1
        union all
        select 'owns ' || relname from pg_class where relowner = (select oid from pg_roles where rolname = $1)
+       union all
+       select format('%s %s %s', c.relkind, c.oid::regclass, a.privilege_type)
+         from pg_class c, aclexplode(c.relacl) a
+        where c.relkind not in ('r', 'p', 'v', 'm', 'f') and a.grantee = (select oid from pg_roles where rolname = $1)
+       union all
+       select format('schema %s %s', n.nspname, a.privilege_type)
+         from pg_namespace n, aclexplode(n.nspacl) a where a.grantee = (select oid from pg_roles where rolname = $1)
+       union all
+       select format('database %s %s', d.datname, a.privilege_type)
+         from pg_database d, aclexplode(d.datacl) a where a.grantee = (select oid from pg_roles where rolname = $1)
+       union all
+       select 'member of ' || roleid::regrole from pg_auth_members
+        where member = (select oid from pg_roles where rolname = $1)
        order by 1`,
       [LOOKUP],
     );
     expect(held.map((row) => row.held)).toStrictEqual([
       'public.businesses(id) SELECT',
       'public.businesses(key) SELECT',
+      'schema public USAGE',
     ]);
   });
 }
