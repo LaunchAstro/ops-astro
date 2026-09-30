@@ -13,9 +13,16 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { Shell } from '@launchastro/ui';
 import { gateOf, matchRoute, pathTo } from './routes.ts';
 import { NO_CLIENT_GRANTS, canonicalOf, pageAt, type ClientAccess } from './manifest.ts';
-import { ClientRefused, NotFound, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
+import {
+  ClientRefused,
+  NotFound,
+  PagePlaceholder,
+  RouteTabs,
+  SignedInAlready,
+  railFor,
+} from './route-views.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
-import { PANELS } from './panels.ts';
+import { dockTabs, dockTarget } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { signOut } from './session/sign-in.ts';
@@ -267,25 +274,11 @@ export function App(props: AppProps): ReactElement {
       // An open tab is announced as "Close", so pressing it leaves the address
       // for the board rather than pushing the same address again.
       // The client face has no dock (R17).
-      dock={
-        session === null || at?.page.namespace === 'portal'
-          ? []
-          : PANELS.map((panel) => ({
-              id: panel.id,
-              label: panel.label,
-              icon: panel.icon,
-              open: panel.route === null ? agentOpen : here === pathTo(panel.route),
-            }))
-      }
+      dock={session === null || at?.page.namespace === 'portal' ? [] : dockTabs(here, agentOpen)}
       onDockTab={(id) => {
-        const panel = PANELS.find((entry) => entry.id === id);
-        if (panel === undefined) return;
-        if (panel.route === null) {
-          setAgentOpen((open) => !open);
-          return;
-        }
-        const target = pathTo(panel.route);
-        props.navigate(here === target ? pathTo('agency:projects-board') : target);
+        const target = dockTarget(id, here);
+        if (target === 'agent') setAgentOpen((open) => !open);
+        else if (target !== null) props.navigate(target);
       }}
       seated={false}
       panel={
@@ -295,9 +288,7 @@ export function App(props: AppProps): ReactElement {
             route={match.id}
             here={here}
             entry={null}
-            onClose={() => {
-              setAgentOpen(false);
-            }}
+            onClose={() => setAgentOpen(false)}
           />
         ) : undefined
       }
@@ -305,16 +296,5 @@ export function App(props: AppProps): ReactElement {
       {at === null || refused || session === null ? null : <RouteTabs at={at} />}
       {content}
     </Shell>
-  );
-}
-
-function SignedInAlready(props: { readonly onGo: () => void }): ReactElement {
-  return (
-    <div className="readstate" data-outcome="ready">
-      <p className="empty__title">You are already signed in.</p>
-      <button className="btn btn--primary" type="button" onClick={props.onGo}>
-        Go to Projects
-      </button>
-    </div>
   );
 }

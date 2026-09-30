@@ -26,7 +26,7 @@
 // the tab has somewhere to arrive.
 
 import type { GlyphName } from '@launchastro/ui';
-import type { StaticRouteId } from './routes.ts';
+import { pathTo, type StaticRouteId } from './routes.ts';
 
 export interface PanelRegistration {
   /** Frozen. The label above it is not. */
@@ -56,3 +56,24 @@ export const PANELS: readonly PanelRegistration[] = [
     icon: 'sparkles',
   },
 ];
+
+/** The dock's tabs: a panel with a route is open at its address, the Agent drawer by its own state. */
+export const dockTabs = (here: string, agentOpen: boolean) =>
+  PANELS.map((panel) => ({
+    id: panel.id,
+    label: panel.label,
+    icon: panel.icon,
+    open: panel.route === null ? agentOpen : here === pathTo(panel.route),
+  }));
+
+/**
+ * Where a dock tab goes: the Agent drawer toggles over the page; a routed
+ * panel opens its address, or the board when it is already there.
+ */
+export function dockTarget(id: string, here: string): 'agent' | string | null {
+  const panel = PANELS.find((entry) => entry.id === id);
+  if (panel === undefined) return null;
+  if (panel.route === null) return 'agent';
+  const target = pathTo(panel.route);
+  return here === target ? pathTo('agency:projects-board') : target;
+}

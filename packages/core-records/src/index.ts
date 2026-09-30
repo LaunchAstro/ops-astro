@@ -38,13 +38,11 @@ export {
 } from './authority/delegations.ts';
 export {
   checkAuthority,
-  coveredScopes,
   EFFECTIVE as EFFECTIVE_GRANTS,
   effectiveGrants,
   OPERATIONS_MANAGE,
   revokeGrant,
   subjectsOf,
-  EFFECTIVE_GRANTS_CTE,
   type Action,
   type Decision,
   type EffectiveGrant,
@@ -53,6 +51,7 @@ export {
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { coveredScopes } from './authority/covered-scopes.ts';
 export {
   EXPIRED_FIXES,
   NO_AGENT_FIXES,

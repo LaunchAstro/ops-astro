@@ -85,3 +85,14 @@ export function NotFound(props: { readonly path: string }): ReactElement {
     </div>
   );
 }
+
+export function SignedInAlready(props: { readonly onGo: () => void }): ReactElement {
+  return (
+    <div className="readstate" data-outcome="ready">
+      <p className="empty__title">You are already signed in.</p>
+      <button className="btn btn--primary" type="button" onClick={props.onGo}>
+        Go to Projects
+      </button>
+    </div>
+  );
+}
