@@ -185,6 +185,9 @@
   letter-spacing: var(--type-body-tracking);
   text-transform: var(--type-body-case);
 }
+.tf {
+  height: 38px;
+}
 .ta {
   min-height: 6rem;
   resize: vertical;
