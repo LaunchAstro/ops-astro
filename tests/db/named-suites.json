@@ -223,7 +223,6 @@
     "tests/acceptance/identifier-negatives.test.ts",
     "tests/acceptance/audit-per-operation.test.ts",
     "tests/acceptance/d06-generated.test.ts",
-    "tests/db/planted-red.test.ts",
     "tests/acceptance/d06-agent.test.ts",
     "tests/cli/cli-process.test.ts",
     "tests/cli/cli-delegation-replay.test.ts",
