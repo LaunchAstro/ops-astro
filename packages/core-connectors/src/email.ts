@@ -39,14 +39,33 @@ export function emailText(address: string): string {
   ].join('\n');
 }
 
-/** Fields in, a request with neither origin nor credential out. Not built yet. */
-export function emailAdapter(_values: Readonly<Record<string, string>>): AdapterRequest {
-  return { path: EMAIL_PATH, method: 'POST', body: '{}' };
+/** Fields in, a request with neither origin nor credential out. The three are the declared fields. */
+export function emailAdapter(values: Readonly<Record<string, string>>): AdapterRequest {
+  const { to, from, address } = values;
+  if (to === undefined || from === undefined || address === undefined) {
+    throw new Error('email adapter: a declared field is missing');
+  }
+  return {
+    path: EMAIL_PATH,
+    method: 'POST',
+    body: JSON.stringify({ from, to: [to], subject: EMAIL_SUBJECT, text: emailText(address) }),
+  };
 }
 
-/** The answer schema. Not built yet: every answer reads as none. */
-export function readEmailAnswer(_body: unknown): ModelAnswer | undefined {
-  return undefined;
+/** A provider message id: letters, digits and dashes, nothing that could carry more. */
+const MESSAGE_ID = /^[A-Za-z0-9-]{1,64}$/u;
+
+/**
+ * The answer schema: exactly `{ "id": <message id> }`. Any other key, a
+ * planted instruction or decision among them, makes the whole answer
+ * malformed. The id is the only thing kept, as the attempt's evidence.
+ */
+export function readEmailAnswer(body: unknown): ModelAnswer | undefined {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined;
+  const keys = Object.keys(body);
+  const id = (body as Record<string, unknown>)['id'];
+  if (keys.length !== 1 || typeof id !== 'string' || !MESSAGE_ID.test(id)) return undefined;
+  return { text: id, model: null, usage: { inputUnits: 0, outputUnits: 0 }, providerCode: null };
 }
 
 /**
