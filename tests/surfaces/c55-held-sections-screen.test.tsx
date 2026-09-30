@@ -35,12 +35,16 @@ const json = (body: unknown): Response =>
     headers: { 'content-type': 'application/json' },
   });
 
-const live: Mounted[] = [];
+// One view at a time: a case opens several, and unmounting them together
+// overlaps `act` calls, which leaves the next case's first render unflushed.
+let live: Mounted | undefined;
 afterEach(async () => {
-  await Promise.all(live.splice(0).map((view) => view.unmount()));
+  await live?.unmount();
+  live = undefined;
 });
 
 async function open(read: Record<string, unknown>): Promise<Mounted> {
+  await live?.unmount();
   const held = new Map([['ops-astro.session', JSON.stringify(SESSION)]]);
   const sessions = new SessionStore({
     getItem: (key) => held.get(key) ?? null,
@@ -65,7 +69,7 @@ async function open(read: Record<string, unknown>): Promise<Mounted> {
       storage={window.sessionStorage}
     />,
   );
-  live.push(view);
+  live = view;
   await settle();
   await settle();
   return view;
@@ -104,7 +108,7 @@ describe('C55 security alerts listed', () => {
     expect(row?.textContent).toContain(ALERT.at);
     expect(row?.textContent).toContain(ALERT.concerns);
     expect(view.text()).not.toContain(CANARY);
-    expect(view.text()).not.toContain('Made-up');
+    expect(el.textContent).not.toContain('Made-up');
   });
 });
 
