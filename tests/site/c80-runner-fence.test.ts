@@ -118,6 +118,17 @@ describe.skipIf(serverUrl === undefined)('C80 capture through the fence', () => 
 });
 
 describe.skipIf(serverUrl === undefined)('C80 capture through the fence', () => {
+  it('answers an unapproved correction with its approval first, raising nothing', async () => {
+    const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId, pageUrl: ELSEWHERE }));
+    const ports = doubles();
+    expect(await publish(String(detail['correctionId']), ports)).toEqual({
+      kind: 'refused',
+      code: 'APPROVAL_MISSING',
+    });
+    expect(untouched(ports)).toEqual([0, 0, 0, 0, 0]);
+    expect([ports.seen.raised, ports.seen.fenceRefusals]).toEqual([[], []]);
+  });
+
   it('refuses a page catalogued among others while the pool reviews are open', async () => {
     const id = await approved(ELSEWHERE);
     const pool = {
