@@ -28,27 +28,27 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
-  // 0042 (C59): a factor is written and moved on, never deleted.
+  // 0047 (C59): a factor is written and moved on, never deleted.
   ['siu', 'second_factors'],
-  // 0043 (C55): a privacy incident is recorded and moved on, never deleted.
+  // 0048 (C55): a privacy incident is recorded and moved on, never deleted.
   ['siu', 'privacy_incidents'],
-  // 0044 (C81): a legal document version is drafted, then approved and
+  // 0049 (C81): a legal document version is drafted, then approved and
   // published by update; never deleted.
   ['siu', 'legal_document_versions'],
-  // 0045 (C81): a row of the overseas-services register is set by insert or
+  // 0050 (C81): a row of the overseas-services register is set by insert or
   // update; never deleted.
   ['siu', 'overseas_services'],
-  // 0046 (C81): a data class is set by insert or update; never deleted.
+  // 0051 (C81): a data class is set by insert or update; never deleted.
   ['siu', 'data_classes'],
-  // 0047 (API-2): an agent credential is issued by insert and revoked by
+  // 0052 (API-2): an agent credential is issued by insert and revoked by
   // update; never deleted.
   ['siu', 'agent_credentials'],
-  // 0048 (C32): a client is written once; never updated or deleted.
+  // 0053 (C32): a client is written once; never updated or deleted.
   ['si', 'clients'],
-  // 0049 (C58): an access ending is written, then its provider steps are
+  // 0054 (C58): an access ending is written, then its provider steps are
   // stamped by update; never deleted.
   ['siu', 'access_endings'],
-  // 0050 (C58): an ended session is written once; never changed or deleted.
+  // 0055 (C58): an ended session is written once; never changed or deleted.
   ['si', 'ended_sessions'],
   // 0051: the live change record, stamped by the writes' own triggers (C4).
   ['siu', 'live_changes'],

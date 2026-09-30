@@ -73,7 +73,7 @@ interface ResolutionRow {
   readonly membership_id: string | null;
   readonly role_key: string | null;
   readonly actor_id: string | null;
-  /** 'true' once the person has a verified second factor; null before 0042. */
+  /** 'true' once the person has a verified second factor; null before 0047. */
   readonly second_factor_verified: string | null;
 }
 
@@ -102,7 +102,7 @@ const RESOLUTION = `
          m.role_key,
          a.id as actor_id,
          -- Read through the row's json so this one query serves a database
-         -- from before 0042, which has no such column and so no factor.
+         -- from before 0047, which has no such column and so no factor.
          to_jsonb(p) ->> 'second_factor_verified' as second_factor_verified
     from public.logins l
     left join public.person_logins pl
@@ -238,7 +238,7 @@ export async function standsOnShares(tx: TenantQuery, personId: string): Promise
   return row !== undefined && row.shares > 0 && row.business === 0;
 }
 
-/** Whether this person ended the session the token belongs to (C58, 0050). */
+/** Whether this person ended the session the token belongs to (C58, 0055). */
 async function sessionEnded(
   tx: TenantQuery,
   personId: string,

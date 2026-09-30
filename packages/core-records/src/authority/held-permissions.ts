@@ -9,6 +9,8 @@ import { EFFECTIVE, type Action, type Scope, type ScopeKind } from './grants.ts'
 
 /** One live permission and the person it reaches. */
 export interface HeldPermission {
+  /** The grant row it comes from, what `access.revoke` takes. */
+  readonly grantId: string;
   readonly personId: string;
   /** Named on the grant as the person, rather than reached through their acting identity. */
   readonly direct: boolean;
@@ -26,6 +28,7 @@ export interface HeldPermission {
  */
 export async function heldPermissions(tx: TenantQuery): Promise<readonly HeldPermission[]> {
   const rows = await tx.query<{
+    readonly grant_id: string;
     readonly person_id: string;
     readonly direct: boolean;
     readonly collection: string;
@@ -34,7 +37,7 @@ export async function heldPermissions(tx: TenantQuery): Promise<readonly HeldPer
     readonly scope_id: string | null;
   }>(
     `${EFFECTIVE}
-     select distinct coalesce(a.person_id, e.subject_id) as person_id,
+     select distinct e.id as grant_id, coalesce(a.person_id, e.subject_id) as person_id,
             e.subject_kind = 'person' as direct,
             e.collection, e.action, e.scope_kind, e.scope_id
        from effective e
@@ -43,10 +46,11 @@ export async function heldPermissions(tx: TenantQuery): Promise<readonly HeldPer
         and a.id = e.subject_id and a.kind = 'person' and a.active
       where e.business_id = $1
         and (e.subject_kind = 'person' or a.person_id is not null)
-      order by 1, 3, 4, 5, 6`,
+      order by 2, 4, 5, 6, 7, 1`,
     [tx.businessId],
   );
   return rows.map((row) => ({
+    grantId: row.grant_id,
     personId: row.person_id,
     direct: row.direct,
     collection: row.collection,

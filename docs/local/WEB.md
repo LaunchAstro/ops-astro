@@ -85,7 +85,9 @@ session on that refusal, with the same notice. A person who signs out in the tab
 lands on `/sign-in` with a notice of its own (`data-reason="signed-out"`) saying
 that any edit they had not saved was not saved. In every ending the draft lived
 only in the screen's state, so it goes with the screen: no browser storage holds
-record content for a signed-out tab (`C58 no draft after session end`).
+record content for a signed-out tab (`C58 no draft after session end`). ND1 to
+ND3 in `tests/browser/cases-c58-no-draft.mjs` show it in a real browser against
+the real API, reading IndexedDB, Cache Storage and every cookie as well.
 
 **The refusal belongs to the session that made the request.** A client keeps the
 bearer it was built with, so a call can be answered after that bearer has
@@ -539,6 +541,7 @@ changed without reading the rest:
 | `cases-create-retry.mjs`   | R1, retrying a create whose answer was lost                                                                                                                |
 | `cases-task-drafts.mjs`    | D1, the explicit Save or Discard of an unsaved detail                                                                                                      |
 | `cases-session-expiry.mjs` | SX1 to SX3, an ended session reaching sign-in and returning to the same task                                                                               |
+| `cases-c58-no-draft.mjs`   | ND1 to ND3, an unsaved edit in no browser store after access ended, the 12-hour limit and signing out                                                      |
 | `cases-b6-b7.mjs`          | the API down, the process and database restart, and a pending gate, a lease and an attempt across it                                                       |
 | `cases-comments.mjs`       | C1 a comment posted and reloaded, C2 a member refused once                                                                                                 |
 | `cases-settings.mjs`       | S1 the screen's provenance, S2 a member stopped, S3 the value comes from the read, S4 closed by capability with no request, S5 a stale write as a conflict |

@@ -41,6 +41,7 @@ import { crashPointAfterCommit } from '../../../core-runtime/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import { storable, writeAuditEvent } from './audit.ts';
+import { firstClientGate } from './first-client-gate.ts';
 import {
   asCallerVisible,
   isCommandRefusal,
@@ -530,9 +531,9 @@ async function attemptWork(
 }
 
 /**
- * The preparation and then the command, which is all that is inside the
- * savepoint. The preparation hands back the request parsed against its row's
- * operands, and the command is given that and never the body.
+ * The preparation, the first-client gate and then the command, which is all
+ * that is inside the savepoint. The preparation hands back the request parsed
+ * against its row's operands, and the command is given that and never the body.
  */
 async function work(
   tx: TenantQuery,
@@ -543,6 +544,9 @@ async function work(
 ): Promise<Applied | Refused> {
   const prepared = await prepareCommand(tx, session, entryPoint, request, declaration);
   if ('refusal' in prepared) return prepared;
+  // S0-5: after authority, before the handler touches anything.
+  const shut = await firstClientGate(tx, declaration.name);
+  if (shut !== undefined) return refused(shut);
   return await handleCommand(tx, prepared, prepared.request);
 }
 

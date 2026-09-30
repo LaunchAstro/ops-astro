@@ -24,13 +24,14 @@ export {
   type OperandSpec,
 } from './surface.ts';
 // The keys a grant may carry (C32).
-export { isGrantableKey, SELF_SCOPED_COLLECTIONS } from './permission-keys.ts';
+export { GRANTABLE_KEYS, isGrantableKey, SELF_SCOPED_COLLECTIONS } from './permission-keys.ts';
 // The one refusal shape, for the clients that parse it off the wire. Type-only,
 // so no records code reaches a bundle.
 export type { CommandRefusal } from '../../core-records/src/index.ts';
 // What the reads answer, declared once for the server and every client.
 export type {
   AccessAgent,
+  AccessGrant,
   AccessPermission,
   AccessPerson,
   AccessReadResult,
