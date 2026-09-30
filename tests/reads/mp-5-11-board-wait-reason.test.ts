@@ -196,7 +196,7 @@ describe.skipIf(serverUrl === undefined)('MP-5-11 isolation', () => {
 
   it('another business: its reader is refused this board, shown no reason or canary', async () => {
     const crossing = await board(world.business, bravoOwner);
-    expect(isCommandRefusal(crossing) ? crossing.code : 'answered').not.toBe('answered');
+    expect(isCommandRefusal(crossing) ? crossing.code : 'answered').toBe('AUTH_NO_MEMBERSHIP');
     const text = JSON.stringify(crossing);
     expect(text).not.toContain(CANARY);
     expect(text).not.toMatch(/"waitReason"|needs_approval/u);
