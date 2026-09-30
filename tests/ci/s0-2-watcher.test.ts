@@ -65,10 +65,11 @@ describe('S0-2 uptime check off the machine for staging and production', () => {
 });
 
 function uptimeCheckOffCases1() {
-  it('staging alone: its web page, its API health, its backup and forwarder heartbeats, and the sink’s own health', () => {
+  it('staging alone: its web page and its maintenance page, its API health, its backup and forwarder heartbeats, and the sink’s own health', () => {
     const { monitors } = plan(BASE);
     expect(monitors.map((m) => [m.environment ?? '-', m.watch, m.type, m.url ?? '-'])).toEqual([
       ['staging', 'web', 'http', 'https://staging.example.test/'],
+      ['staging', 'maintenance', 'keyword', 'https://staging.example.test/'],
       ['staging', 'api', 'http', 'https://staging.example.test/api/health'],
       ['staging', 'backup', 'heartbeat', '-'],
       ['staging', 'restore', 'heartbeat', '-'],
@@ -82,6 +83,7 @@ function uptimeCheckOffCases1() {
     expect(
       monitors.filter((m) => m.environment === 'production').map((m) => m.url ?? m.type),
     ).toEqual([
+      'https://ops.example.test/',
       'https://ops.example.test/',
       'https://ops.example.test/api/health',
       'heartbeat',
@@ -130,8 +132,8 @@ function uptimeCheckOffCases2() {
       }
       expect(monitor.message.split('\n')[0]).toBe(`What broke: ${monitor.name}.`);
     }
-    expect(monitors[1]?.message).toBe(plainAlert('api-down', 'staging').text);
-    expect(monitors[1]?.name).toBe(plainAlert('api-down', 'staging').title);
+    expect(monitors[2]?.message).toBe(plainAlert('api-down', 'staging').text);
+    expect(monitors[2]?.name).toBe(plainAlert('api-down', 'staging').title);
   });
 }
 

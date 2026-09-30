@@ -173,3 +173,10 @@ export async function deployWeb(
   }
   return inFolder((folder) => deployCopy(folder, options.env, request.version, selected));
 }
+
+/** The maintenance page to the main address (ticket S0-6): not built yet. */
+export async function deployMaintenance(_options: {
+  env: Environment;
+}): Promise<{ kind: 'refused' | 'failed'; reason: string } | { kind: 'deployed'; record: object }> {
+  return await Promise.resolve(refused('not built'));
+}

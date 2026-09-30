@@ -162,6 +162,13 @@ export const COMMANDS: Record<string, Command> = {
       VERCEL_PROJECT_ID: 'prj_madeUpProject0123',
       ...env,
     }),
+  // S0-6 operator only: the maintenance page to the main address.
+  'the maintenance page': (env) =>
+    spawn(WEB_DEPLOY, ['--maintenance'], {
+      VERCEL_ORG_ID: 'team_madeUpOrg0123',
+      VERCEL_PROJECT_ID: 'prj_madeUpProject0123',
+      ...env,
+    }),
   'the promotion step': (env, at) =>
     spawn(
       PROMOTE,
