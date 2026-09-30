@@ -12,6 +12,7 @@ import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
 import { TASK } from './task.ts';
+import { TEAM } from './team.ts';
 
 export interface LookProbe {
   /** `<screen>.<element>`, unique across screens. */
@@ -36,4 +37,12 @@ export interface LookScreen {
   readonly probes: readonly LookProbe[];
 }
 
-export const LOOK_SCREENS: readonly LookScreen[] = [SHELL, BOARD, TASK, SETTINGS, SIGN_IN, INBOX];
+export const LOOK_SCREENS: readonly LookScreen[] = [
+  SHELL,
+  BOARD,
+  TASK,
+  SETTINGS,
+  SIGN_IN,
+  INBOX,
+  TEAM,
+];
