@@ -230,6 +230,16 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 state revised on Postgres', () 
     expect(await versionsOf(two.runId)).toStrictEqual([]);
   });
 
+  it('MP-6-2 revisions race: two revisions of one version at once are one applied and one VERSION_STALE', async () => {
+    const race = await proposedRun();
+    await world.db.app.withBusiness(world.alpha, async (tx) => {
+      await grantTo(tx, ada, 'write', { kind: 'record', id: race.recordId }, false, 'run');
+    });
+    const answers = await Promise.all([revise(ada, race, 0), revise(ada, race, 0)]);
+    expect(answers.map((answer) => answer.code).toSorted()).toStrictEqual(['VERSION_STALE', 'ok']);
+    expect((await versionsOf(race.runId)).map((kept) => kept.version)).toStrictEqual([1]);
+  });
+
   it('MP-6-2 no audit event: a revision adds only its own command event, and no other', async () => {
     const before = await world.db.admin.execute<{ readonly n: string }>(
       `select count(*)::text as n from public.audit_events where business_id = $1`,
