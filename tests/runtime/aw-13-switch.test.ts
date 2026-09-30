@@ -59,6 +59,11 @@ function malformed(canary: string): Record<string, string>[] {
     { ...staged(`http://127.0.0.1:9/${canary}`), TRACE_EXPORT: 'on' },
     { ...staged(`http://${canary}@127.0.0.1:9`), TRACE_EXPORT: 'on' },
     { ...staged(`file:///${canary}`), TRACE_EXPORT: 'on' },
+    { ...staged(`http://${canary}.example.com`), TRACE_EXPORT: 'on' },
+    { ...staged(`HTTP://${canary}.Example.com`), TRACE_EXPORT: 'on' },
+    { ...staged(`http://127.0.0.1.${canary}.example.com`), TRACE_EXPORT: 'on' },
+    { ...staged('http://10.0.0.5:3000'), TRACE_EXPORT: 'on' },
+    { ...staged('http://localhost:9'), TRACE_EXPORT: 'on' },
     { ...staged(), TRACE_EXPORT: 'on', TRACE_EXPORT_KEY_FILE: keyFile('open', KEY_HEX, 0o644) },
     {
       ...staged(),
@@ -93,6 +98,11 @@ describe('AW-13 off until one change', () => {
       destination: { key: 'trace_target', origin: 'http://127.0.0.1:9' },
     });
     expect(settings.kind === 'on' && settings.key.equals(Buffer.from(KEY_HEX, 'hex'))).toBe(true);
+    for (const origin of ['https://trace.example.com', 'http://[::1]:9', 'http://127.0.0.2:9']) {
+      expect(traceExportSettings({ ...staged(origin), TRACE_EXPORT: 'on' }).kind, origin).toBe(
+        'on',
+      );
+    }
   });
 
   vitestIt(
