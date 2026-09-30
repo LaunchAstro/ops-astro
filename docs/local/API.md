@@ -380,6 +380,17 @@ that person only, null to every other reader, and `myAgents` (the reader's own
 live delegations for this task); an agent reader is sent neither. Assignment
 starts no run.
 
+**A task an agent holds is completed after review** (MP-4-15, BOARDS P-30).
+`task.complete` on a task whose `agent` is set moves it to the business's
+unstarted state (Needs review, where a person confirms the agent's work),
+answering `detail.state` with that key and `completedAt` null, with no step
+archived; on a task already in the unstarted state it completes as any task.
+The board tick, the status select and the Projects panel's tick all send
+`task.complete`, so they agree. The answer names the state only, never the
+agent. An agent never sends `task.complete`.
+`tests/commands/task-complete-agent.test.ts` holds the cases and the three
+crossings.
+
 **`task.trash` asks `write` on the task and on every live descendant the walk
 reaches.** A business-scoped grant covers them all. Otherwise each descendant
 needs its own record-scoped grant. If any is not covered, the answer is
@@ -489,6 +500,14 @@ at such a gate and the caller's decide grant reaches the task, the grant
 cannot read is never read or counted. The Projects board's Review mode draws these rows and counts
 them. `tests/reads/mp-5-12-board-review.test.ts` holds the count and the three
 crossings.
+
+Each row also carries `agent` and `myAgents` (Assign to AI), the values
+`task.read` sends the same reader for that task: the delegation holding the
+task only when it is the reader's own, and the reader's own live delegations
+minted for it. They are read only for the rows already served
+(`reads/board-agents.ts`), so a delegation on a task the caller cannot read
+is never looked at, and another person's is never sent. An agent does not
+read the board. `tests/reads/board-agents.test.ts` holds the three crossings.
 
 Every admitted answer also carries `viewer` (MP-5-12): the caller's own person
 id, taken from the session, which the Projects board's viewer preset narrows

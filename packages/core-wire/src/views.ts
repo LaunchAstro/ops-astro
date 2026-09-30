@@ -540,6 +540,10 @@ export interface BoardTask extends TaskSummary {
    * caller's decide grant. The Review mode's rows and its live count.
    */
   readonly awaitingDecision: boolean;
+  /** The agent holding the task, only when it is the reader's own (Assign to AI), as `task.read` sends it. */
+  readonly agent: AgentAssigneeView | null;
+  /** The reader's own live agents that reach the task, as `task.read` sends them; never anyone else's. */
+  readonly myAgents: readonly AgentOfferView[];
 }
 
 /**

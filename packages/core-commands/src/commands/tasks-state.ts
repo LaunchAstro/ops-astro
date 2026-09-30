@@ -208,13 +208,23 @@ export async function setState(
     if (await openGateOn(tx, target.id)) return refused(gatePending());
   }
 
-  const state = context.spine.states.find((candidate) => candidate.machineCategory === category);
+  // A task an agent holds is completed only after review (MP-4-15, BOARDS
+  // P-30): its tick moves it to the unstarted state, Needs review, where a
+  // person confirms the agent's work, and the tick there completes it. So the
+  // board, the status select and the Projects panel run one transition. The
+  // agent was read with the target, under the envelope's row lock.
+  const review =
+    category === 'completed' &&
+    typeof target.data['agent'] === 'string' &&
+    current?.machineCategory !== 'unstarted';
+  const moveTo: MachineCategory = review ? 'unstarted' : category;
+  const state = context.spine.states.find((candidate) => candidate.machineCategory === moveTo);
   if (state === undefined) {
     return refuse(
       'NOT_FOUND',
-      [category],
+      [moveTo],
       [
-        `This installation seeds no state in the ${category} category.`,
+        `This installation seeds no state in the ${moveTo} category.`,
         'Seed one, or use a state whose category this installation carries.',
       ],
     );
@@ -222,7 +232,7 @@ export async function setState(
 
   // Completing archives the unfinished steps and reopening restores the ones
   // it archived (MP-4-15): locked and asked about before anything is written.
-  const stepMove = STEP_MOVE[category];
+  const stepMove = review ? undefined : STEP_MOVE[category];
   const steps =
     stepMove === undefined
       ? { ok: true as const, ids: [] }

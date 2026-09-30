@@ -281,6 +281,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         operands.board,
         scope.business ? null : scope.records,
         decide.business ? null : decide.records,
+        session.personId,
       );
       // The withheld count goes only to a member holding task:read on the
       // whole collection, whose grant reaches every task, so it is 0 until a
