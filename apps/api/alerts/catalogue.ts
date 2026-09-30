@@ -78,6 +78,16 @@ const WORDS = {
     'A large amount of client information may have been copied out',
     'Nothing is blocked automatically; the owner checks who did it and removes access if it was not expected',
   ],
+  'forwarder-silent': [
+    "{Place}'s forwarder did not check in on time",
+    'Errors and security alerts from the app on {place} are not being sent',
+    'The owner restarts the forwarder from the runbook; what the app recorded waits for it',
+  ],
+  'signals-dropped': [
+    "{Place}'s forwarder dropped errors and security signals it did not handle in time",
+    'Some errors were not recorded and some failed sign-ins, refusals or exports were not counted',
+    'The owner checks that the forwarder is running, from the runbook; nothing else happens on its own',
+  ],
 } as const;
 
 export type AlertKind = keyof typeof WORDS;

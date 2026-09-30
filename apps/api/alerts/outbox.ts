@@ -15,6 +15,17 @@ import type { ApiEvent, Outbox } from '../../../packages/core-records/src/index.
 import { scopeOf } from './detect.ts';
 import { errorEvent, type Alerts, type Place } from './sink.ts';
 
+/**
+ * `ALERT_SCOPE_KEY`: at least 32 bytes, as lowercase hex (`openssl rand -hex 32`).
+ * Every instance of one environment holds the same key, so one scope is one digest.
+ */
+export function scopeKey(value: string): Uint8Array {
+  if (!/^(?:[0-9a-f]{2}){32,}$/u.test(value)) {
+    throw new Error('ALERT_SCOPE_KEY is not at least 32 bytes as lowercase hex.');
+  }
+  return Buffer.from(value, 'hex');
+}
+
 export function createOutboxAlerts(
   options: Place & { readonly outbox: Outbox; readonly key: Uint8Array },
 ): Alerts {

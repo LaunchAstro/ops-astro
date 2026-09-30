@@ -47,6 +47,7 @@ function monitorsFor(where, base) {
     check('api', 'http', `${base}api/health`, 'api-down'),
     check('backup', 'heartbeat', undefined, 'backup-silent'),
     check('restore', 'heartbeat', undefined, 'restore-stale'),
+    check('forwarder', 'heartbeat', undefined, 'forwarder-silent'),
   ];
 }
 

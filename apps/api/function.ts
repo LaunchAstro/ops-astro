@@ -23,11 +23,19 @@
 // The entry refuses to start with `DATABASE_ADMIN_URL` in its environment, so
 // a breach of the function's settings never holds a login that reads every
 // business.
+//
+// **Alerts go to the outbox (S0-2).** A function has no route to the error
+// sink and no memory another instance shares: a deployment (`OPS_ENVIRONMENT`
+// set) appends each signal and error to `ops.api_events` on its own runtime
+// login, scopes keyed by `ALERT_SCOPE_KEY`, and the environment's forwarder
+// counts and sends (`apps/forwarder`). The sink's DSN is the forwarder's, so
+// the entry refuses to start beside it.
 
 import { join } from 'node:path';
-import { connect, connectAsAdmin } from '../../packages/core-records/src/index.ts';
+import { connect, connectAsAdmin, connectOutbox } from '../../packages/core-records/src/index.ts';
 import { crashSeamProblem, runtimeKeys } from '../../packages/core-runtime/src/index.ts';
-import { createAlerts, sinkFrom } from './alerts/sink.ts';
+import { createOutboxAlerts, scopeKey } from './alerts/outbox.ts';
+import type { Alerts } from './alerts/sink.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
 import { composeApi } from './server.ts';
 
@@ -70,14 +78,14 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   if (!keys.delegation.ok) {
     throw new Error(`delegation credential keys: ${keys.delegation.problem}`);
   }
-  const sink = sinkFrom(settings);
+  const alerts = outboxAlerts(settings, databaseUrl, required);
 
   const { app } = composeApi({
     database: connect(databaseUrl, { source: 'runtime' }),
     admin: connectAsAdmin(lookupUrl, { source: 'lookup' }),
     signIn: { issuer, keySetUrl },
     keys,
-    ...(sink === undefined ? {} : { alerts: createAlerts({ ...sink, root: ROOT }) }),
+    ...(alerts === undefined ? {} : { alerts }),
   });
 
   return async (request) => {
@@ -89,11 +97,29 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   };
 }
 
+/** A deployment's alerts, on the outbox; none where neither setting is given (the local world). */
+function outboxAlerts(
+  settings: Settings,
+  databaseUrl: string,
+  required: (name: string) => string,
+): Alerts | undefined {
+  const where = settings['OPS_ENVIRONMENT'] ?? '';
+  if (where === '' && (settings['ALERT_SCOPE_KEY'] ?? '') === '') return undefined;
+  if (where !== 'staging' && where !== 'production') {
+    throw new Error('OPS_ENVIRONMENT must be staging or production.');
+  }
+  const key = scopeKey(required('ALERT_SCOPE_KEY'));
+  const outbox = connectOutbox(databaseUrl, { source: 'runtime' });
+  const release = settings['OPS_RELEASE'];
+  return createOutboxAlerts({ outbox, key, where, root: ROOT, ...(release ? { release } : {}) });
+}
+
 let handler: ((request: Request) => Promise<Response>) | undefined;
 
-/** The admin login and the backup and restore credentials: the M5 worker's and the operator's. */
+/** The admin login, the sink's key and the backup and restore credentials: the M5's and the operator's. */
 const HELD_ELSEWHERE = [
   'DATABASE_ADMIN_URL',
+  'OPS_ERROR_SINK_DSN',
   'BACKUP_SOURCE_URL',
   'BACKUP_RETENTION_URL',
   'BACKUP_STORE_URL',
@@ -106,7 +132,7 @@ async function handle(request: Request): Promise<Response> {
   const held = HELD_ELSEWHERE.filter((name) => (process.env[name] ?? '') !== '');
   if (held.length > 0) {
     throw new Error(
-      `${held.join(', ')} set: the function never holds the admin login or a backup credential.`,
+      `${held.join(', ')} set: the function never holds the admin login, the sink key or a backup credential.`,
     );
   }
   handler ??= createFunctionHandler(process.env);

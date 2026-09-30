@@ -12,7 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { relative, sep } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { plainAlert, type AlertKind, type Where } from './catalogue.ts';
@@ -139,6 +139,45 @@ export function errorEvent(cause: unknown, place: Place): SinkEvent {
   const value = plainAlert('app-error', place.where).text;
   return {
     ...base('error', 'app-error', place.where, place.release),
+    exception: { values: [{ type, value, stacktrace: { frames } }] },
+  };
+}
+
+type Stored = {
+  readonly release?: unknown;
+  readonly exception?: { readonly values?: unknown };
+};
+
+/**
+ * An error row of the outbox (0047), rebuilt for the sink as `errorEvent`
+ * builds one: a standard class, the fixed words and the frames that name a
+ * file of this checkout, no more. A row is written by the application group,
+ * so whatever else it holds (a message, a tag, a custom class) is not sent.
+ */
+export function rebuiltError(stored: unknown, place: Place): SinkEvent {
+  const event: Stored = typeof stored === 'object' && stored !== null ? stored : {};
+  const values = event.exception?.values;
+  const thrown = (Array.isArray(values) ? values[0] : undefined) as
+    { type?: unknown; stacktrace?: { frames?: unknown } } | undefined;
+  const type =
+    typeof thrown?.type === 'string' && STANDARD.has(thrown.type) ? thrown.type : 'Error';
+  const listed = thrown?.stacktrace?.frames;
+  const frames = (Array.isArray(listed) ? listed : []).flatMap((frame: unknown): Frame[] => {
+    const { filename, lineno } = (frame ?? {}) as { filename?: unknown; lineno?: unknown };
+    if (typeof filename !== 'string' || typeof lineno !== 'number') return [];
+    const ours =
+      !filename.startsWith('/') &&
+      !filename.split('/').includes('..') &&
+      !filename.includes('node_modules') &&
+      existsSync(join(place.root, filename));
+    return ours && Number.isInteger(lineno) && lineno > 0
+      ? [{ filename, lineno, in_app: true }]
+      : [];
+  });
+  const release = typeof event.release === 'string' ? event.release : undefined;
+  const value = plainAlert('app-error', place.where).text;
+  return {
+    ...base('error', 'app-error', place.where, release),
     exception: { values: [{ type, value, stacktrace: { frames } }] },
   };
 }
