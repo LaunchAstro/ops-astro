@@ -181,10 +181,12 @@ export class OperationsClient {
     recordId: string,
     signal: AbortSignal,
   ): Promise<ReadableStream<Uint8Array> | null> {
-    const { origin, businessKey, token } = this.#options;
+    const { origin, businessKey, sessionId } = this.#options;
     const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live/task/${encodeURIComponent(recordId)}`;
-    const headers: Record<string, string> =
-      token === null ? {} : { authorization: `Bearer ${token}` };
+    // The cookie is the credential, as on every call (S0-6c): the door's own-page
+    // check, and the sign-in this tab names.
+    const headers: Record<string, string> = { [CSRF_HEADER]: '1' };
+    if (sessionId !== undefined) headers[SESSION_HEADER] = sessionId;
     try {
       const response = await this.#options.fetch(url, { headers, signal });
       return response.ok ? response.body : null;

@@ -54,7 +54,7 @@ function client(detail: ReturnType<typeof task>) {
   const operations = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => 'operation-7',
   });

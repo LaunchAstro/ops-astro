@@ -33,7 +33,7 @@ import {
   applyMigrations,
   readMigrations,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
-import { createEmptyDatabase } from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { Failure, seed } from './upgrade-drill-seed.mjs';
 
@@ -213,7 +213,7 @@ async function drill({ url, from, directory }) {
   // The seed's approval is signed. A throwaway key for this process, unless one is set.
   process.env.GATE_SIGNING_KEY_ID ??= 'upgrade-drill/throwaway@1';
   process.env.GATE_SIGNING_SECRET ??= randomBytes(32).toString('hex');
-  const db = await createEmptyDatabase({ serverUrl: url, part: 'drill' });
+  const db = await throwawayDatabase(url);
   try {
     // Row security would hide rows from the snapshot and the drill would pass
     // over what it could not see, so the owner must be above it.

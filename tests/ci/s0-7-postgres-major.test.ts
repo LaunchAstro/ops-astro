@@ -22,7 +22,7 @@ import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
   type FreshDatabase,
-} from '../../packages/core-records/src/tenancy/testing/fresh-database.ts';
+} from '../support/fresh-database.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');

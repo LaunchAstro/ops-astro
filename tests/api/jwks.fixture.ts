@@ -32,7 +32,7 @@ export async function keyPair(kid: string): Promise<KeyPair> {
   const pair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
     'sign',
     'verify',
-  ])) as webcrypto.CryptoKeyPair;
+  ])) as CryptoKeyPair;
   const priv = await crypto.subtle.exportKey('jwk', pair.privateKey);
   const pub = await crypto.subtle.exportKey('jwk', pair.publicKey);
   return {
