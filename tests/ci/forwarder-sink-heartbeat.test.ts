@@ -46,7 +46,7 @@ async function once(): Promise<void> {
       OPS_SINK_HEARTBEAT_URL: 'https://example.test/sink-beat',
     },
     timeout: 30_000,
-  }).catch(() => undefined);
+  }).catch(() => null);
 }
 
 describe('S0-2 heartbeats: the error sink', () => {
