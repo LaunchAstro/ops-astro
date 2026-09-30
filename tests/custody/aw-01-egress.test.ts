@@ -41,6 +41,9 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/web/src/operations/client.ts': "the browser calls the product's own API, same origin",
   'apps/web/src/session/sign-in.ts':
     "the browser signs in through the product's own API, same origin",
+  // Batch 1 (MP-2-1), met where SL14 stacks on SL11 and batch 1:
+  'apps/web/src/held-address.tsx':
+    "threads the browser's fetch to the product's own API for the held address's business",
 };
 
 const MODULES =
