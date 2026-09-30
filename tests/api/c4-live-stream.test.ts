@@ -2,11 +2,10 @@
 //
 // C4, one event stream per tab, against a real database.
 //
-// T2f built the live channel for one task per stream; a browser caps a origin
-// at about six connections, so a tab opens one stream naming every topic its
-// pages follow. Each topic is asked about at join and again before every
-// delivery, exactly as T2f asks about its one task; a topic the caller may not
-// read is closed alone, and an ended session closes them all.
+// T2f built the live channel for one task per stream; a browser caps an origin at about six
+// connections, so a tab opens one stream naming every topic its pages follow. Each topic is asked
+// about at join and again before every delivery, exactly as T2f asks about its one task; a topic
+// the caller may not read is closed alone, and an ended session closes them all.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -49,7 +48,6 @@ let pool: Database;
 let listener: Listener;
 let topics: LiveTopics;
 let api: Hono;
-let reads = 0;
 const opened: Joined[] = [];
 
 const keyOf = async (business: string): Promise<string> => {
@@ -159,17 +157,21 @@ async function streamScope(): Promise<void> {
 
 /** C4 stream scope, hostile topics: a malformed topic set is refused whole, before any read */
 async function hostileTopics(): Promise<void> {
+  // Its own door and count: the earlier cases' open streams recheck, a read each, through `api`.
+  let reads = 0;
+  const door = liveApi(s, pool, topics, () => (reads += 1));
   const real = topic(await createTask(s, 'c4s-hostile'));
-  const hostile = hostileTopicSets(real);
   const token = await tokenFor(s.decider.presented.subject);
-  for (const names of hostile) {
-    const before = reads;
+  for (const names of hostileTopicSets(real)) {
     // eslint-disable-next-line no-await-in-loop
-    const refused = await open(names, s.decider, token);
+    const refused = await join(door, key, names, token);
     expect([names, refused.status]).toEqual([names, 422]);
     expect(refused.refusal).toMatchObject({ code: 'FIELD_VALUE_INVALID', names: ['topic'] });
-    expect(reads).toBe(before);
   }
+  await sleep(300);
+  expect(reads).toBe(0);
+  opened.push(await join(door, key, [real], token));
+  expect([opened.at(-1)?.status, reads > 0]).toEqual([200, true]);
 }
 
 /** C4 revoked: a revoked topic is closed alone, the rest keep delivering, and nothing names more than the caller sent */
@@ -263,7 +265,7 @@ describe.skipIf(serverUrl === undefined)(
       pool = connect(s.db.appUrl, { max: 4 });
       listener = connectListener(s.db.appUrl);
       topics = await startLiveTopics(listener);
-      api = liveApi(s, pool, topics, () => (reads += 1));
+      api = liveApi(s, pool, topics, () => {});
     }, 180_000);
 
     afterAll(async () => {
