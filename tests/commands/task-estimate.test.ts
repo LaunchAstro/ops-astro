@@ -94,7 +94,9 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 estimate', () => {
     expect(answers).toStrictEqual([outside, outside, mistyped, outside, mistyped, mistyped]);
     expect(await estimateOf(id)).toBe(60);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('MP-4-8 estimate', () => {
   it('MP-4-8 refusal task:write: a reader sets no estimate', async () => {
     const id = await fresh(alpha, editor, 'reader estimate');
     const answer = await edit(alpha, reader, 'task.update', id, { estimated_minutes: 30 });
