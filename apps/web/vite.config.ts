@@ -27,6 +27,7 @@
 // artefact as `build.json`. The dev server stamps its page too, with the
 // checkout it started from, so a browser run can tell which build served it.
 
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -116,6 +117,24 @@ function buildStamp(): Plugin {
   };
 }
 
+/**
+ * The theme step (MP-1-1), a classic script index.html loads first by name:
+ * the content policy runs no inline script. The dev server serves it from the
+ * app's root; the build emits it beside index.html under the same name, since
+ * the public folder is the interface's licensed assets.
+ */
+function themeBeforePaint(): Plugin {
+  const file = 'theme-before-paint.js';
+  return {
+    name: 'ops-astro-theme-before-paint',
+    apply: 'build',
+    generateBundle() {
+      const source = readFileSync(new URL(`./${file}`, import.meta.url), 'utf8');
+      this.emitFile({ type: 'asset', fileName: file, source });
+    },
+  };
+}
+
 /** The dev server drops the content policy: fast refresh is an inline script. */
 function devWithoutContentPolicy(): Plugin {
   return {
@@ -141,6 +160,7 @@ export default defineConfig({
     moduleGraphManifest(),
     servedIdentity(),
     buildStamp(),
+    themeBeforePaint(),
     devWithoutContentPolicy(),
   ],
   resolve: {
