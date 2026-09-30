@@ -50,6 +50,9 @@ const GUARDED = `select c.oid from pg_class c join pg_namespace n on n.oid = c.r
       or (n.nspname = 'public' and exists (select from pg_attribute a
             where a.attrelid = c.oid and a.attname = 'business_id' and not a.attisdropped)))`;
 
+/** No tenant or sign-in table has ever held a row, judged by its storage size. */
+const NEVER_HELD_A_ROW = `coalesce((select bool_and(pg_relation_size(g.oid) = 0) from (${GUARDED}) g), true)`;
+
 const SIGNS: Readonly<Record<string, string>> = {
   'public.businesses': 'it holds a business the seed did not make',
   'public.people': 'it holds a person the seed did not make',
@@ -119,11 +122,18 @@ export async function productionSigns(
 ): Promise<string[]> {
   if (await marked(admin)) return [...(await guardSigns(admin)), ...(await specialSigns(admin))];
   if (!confirmed) return ['it carries no made-up mark'];
-  const empty = `coalesce((select bool_and(pg_relation_size(g.oid) = 0) from (${GUARDED}) g), true)`;
-  const signs = (await yes(admin, empty))
+  const signs = (await yes(admin, NEVER_HELD_A_ROW))
     ? []
     : ['it carries no made-up mark and is not a new database'];
   return [...signs, ...(await specialSigns(admin))];
+}
+
+/**
+ * Whether the staging reset may empty this database: the seed marked it, or no
+ * tenant table has ever held a row. Judged from the mark and storage sizes alone.
+ */
+export async function resettable(admin: OwnerQuery): Promise<boolean> {
+  return (await marked(admin)) || (await yes(admin, NEVER_HELD_A_ROW));
 }
 
 /** A marked database: what its guard's ledger names, and any table left unguarded. */

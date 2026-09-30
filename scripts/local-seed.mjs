@@ -37,12 +37,15 @@ import { readEnvFile } from '../packages/core-records/src/env-file.ts';
 import { admitMadeUp, bindSeed, markMadeUp, SEED_TAG } from './ops/made-up-only.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const usersFile = `${root}.local/synthetic-users.json`;
-const agentsFile = `${root}.local/synthetic-agents.json`;
-const gateFile = `${root}.local/gate.env`;
+// The staging reset names a new owner-only folder of its own (OPS_SEED_DIR), so
+// no local sign-in or key is carried into staging.
+const local = process.env['OPS_SEED_DIR'] || `${root}.local`;
+const usersFile = `${local}/synthetic-users.json`;
+const agentsFile = `${local}/synthetic-agents.json`;
+const gateFile = `${local}/gate.env`;
 
 function fromEnvFile(name) {
-  return process.env[name] || readEnvFile(`${root}.local/db.env`)[name] || undefined;
+  return process.env[name] || readEnvFile(`${local}/db.env`)[name] || undefined;
 }
 
 /**
@@ -633,14 +636,15 @@ async function seedAgentUser(auth, agent) {
  * key as auth-seed's is. Absent when `auth-up.sh` has not run yet.
  */
 async function authAdmin() {
+  // On staging, the provider's admin key the staging reset hands over.
   const { localServiceToken } = await import('./local/signing-key.mjs');
-  const token = await localServiceToken(root);
+  const token = process.env['SUPABASE_SERVICE_KEY'] || (await localServiceToken(root));
   if (token === undefined) return;
   return { url: readAuthEnv('GOTRUE_URL') ?? 'http://127.0.0.1:54391', token };
 }
 
 function readAuthEnv(name) {
-  return process.env[name] || readEnvFile(`${root}.local/auth.env`)[name] || undefined;
+  return process.env[name] || readEnvFile(`${local}/auth.env`)[name] || undefined;
 }
 
 /**
@@ -773,7 +777,7 @@ try {
   // the same function the API uses. It is its own key, never the gate key
   // above, and an existing file is never rewritten: every live delegation's
   // pickup replay depends on the key it was minted under (`credential-keys.ts`).
-  const credentialFile = `${root}.local/delegation.env`;
+  const credentialFile = `${local}/delegation.env`;
   const credentialExisted = existsSync(credentialFile);
   const credentialKeys = ensureCredentialKeyFile(credentialFile);
   if (!credentialKeys.ok) throw new Error(`local-seed: ${credentialKeys.problem}`);
