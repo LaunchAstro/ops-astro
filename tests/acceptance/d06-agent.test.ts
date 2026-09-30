@@ -39,6 +39,7 @@ import {
   type Durable,
 } from './d06-cases.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
+import { revisedState } from './d06-run-state.ts';
 import type { Answer } from './world.ts';
 import { serverUrl } from './world.ts';
 
@@ -53,6 +54,7 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.read',
   'task.comment',
   'task.propose',
+  'run.revise_state',
   'task.heartbeat',
   'task.dispatch',
   'task.observe',
@@ -188,6 +190,8 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       };
       return { body: { operationId, ...body }, credential };
     }
+    const state = name === 'run.revise_state' ? await revisedState(harness.world, held) : null;
+    if (state !== null) return { body: { operationId, ...state }, credential };
     if (name === 'task.heartbeat' || name === 'task.dispatch') {
       return { body: { operationId, leaseId: held.leaseId, fence: held.fence }, credential };
     }
