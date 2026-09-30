@@ -28,7 +28,7 @@ import type { InboxEntry, PersonView } from '../../../core-wire/src/index.ts';
 
 const iso = (at: Date | null): string | null => (at === null ? null : at.toISOString());
 
-function entryOf(item: InboxItem & { readonly access: InboxEntry['access'] }): InboxEntry {
+function entryOf(item: InboxItem): InboxEntry {
   const readable = item.access === 'readable';
   return {
     id: item.id,
@@ -53,23 +53,15 @@ function entryOf(item: InboxItem & { readonly access: InboxEntry['access'] }): I
   };
 }
 
-const isListed = (item: InboxItem): item is InboxItem & { readonly access: InboxEntry['access'] } =>
-  item.access !== 'withheld';
-
-/** The caller's own entries, before anything is named. */
-async function listed(tx: TenantQuery, personId: string): Promise<readonly InboxEntry[]> {
-  return (await readInboxItems(tx, personId))
-    .filter((item) => isListed(item))
-    .map((item) => entryOf(item));
-}
-
 /**
  * The caller's own inbox, newest raised last, as `readInboxItems` orders it.
  * A readable entry is named in the same transaction: its task's key and title,
  * and who closed it. The item stores neither, so a renamed task reads renamed.
  */
 export async function readInbox(tx: TenantQuery, personId: string): Promise<readonly InboxEntry[]> {
-  return await named(tx, await listed(tx, personId));
+  const items = await readInboxItems(tx, personId);
+  const listed = items.filter((item) => item.access !== 'withheld').map((item) => entryOf(item));
+  return await named(tx, listed);
 }
 
 /** The owed count: the list's counted entries, counted in one query under the same rule. */

@@ -442,8 +442,6 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'session.end', operationId: 'op' },
   { command: 'preference.save', operationId: 'op', preference: 'appearance', value: 'dark' },
-  { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
-  { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
   {
     command: 'preference.dismiss_tip',
     operationId: 'op',
@@ -451,6 +449,8 @@ const REQUESTS: readonly CommandRequest[] = [
     tip: 'triage',
     version: 1,
   },
+  { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
+  { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -518,9 +518,9 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.write_off': ['writeOffOnTask', 'request'],
   'session.end': ['endOwnSession', 'request'],
   'preference.save': ['saveOwnPreference', 'appearance', 'dark'],
+  'preference.dismiss_tip': ['dismissOwnTip', 'request'],
   'inbox.seen': ['stampOwnSeen', 'item'],
   'notifications.set_channel': ['setNotificationChannel', 'request'],
-  'preference.dismiss_tip': ['dismissOwnTip', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(

@@ -148,9 +148,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
 
   'preference.save': (tx, context, request) =>
     saveOwnPreference(tx, context, request.preference, request.value),
+  'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
   'notifications.set_channel': setNotificationChannel,
-  'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
 };
 
 function writeOwned(

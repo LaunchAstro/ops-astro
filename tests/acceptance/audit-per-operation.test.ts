@@ -273,14 +273,6 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           { preference: 'appearance', value: 'sepia' },
           'FIELD_VALUE_INVALID',
         );
-      case 'inbox.seen':
-        // Self-scoped: noah holds `preference:write` like every signed-in
-        // person, so the refusal is the item's. One not his is NOT_FOUND.
-        return personCell(noah, name, { itemId: randomUUID() }, 'NOT_FOUND');
-      case 'notifications.set_channel':
-        // Self-scoped too (INB-1e): the refusal is the setting's. In-app is
-        // always on, so switching it off is refused.
-        return personCell(noah, name, { channel: 'in_app', mode: 'off' }, 'FIELD_VALUE_INVALID');
       case 'preference.dismiss_tip':
         // As the save: his own row, so the refusal is the tip's shape (MP-2-11).
         return personCell(
@@ -289,6 +281,14 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           { page: 'agency:inbox', tip: 'Not A Tip', version: 1 },
           'FIELD_VALUE_INVALID',
         );
+      case 'inbox.seen':
+        // Self-scoped: noah holds `preference:write` like every signed-in
+        // person, so the refusal is the item's. One not his is NOT_FOUND.
+        return personCell(noah, name, { itemId: randomUUID() }, 'NOT_FOUND');
+      case 'notifications.set_channel':
+        // Self-scoped too (INB-1e): the refusal is the setting's. In-app is
+        // always on, so switching it off is refused.
+        return personCell(noah, name, { channel: 'in_app', mode: 'off' }, 'FIELD_VALUE_INVALID');
       default:
         return undefined;
     }

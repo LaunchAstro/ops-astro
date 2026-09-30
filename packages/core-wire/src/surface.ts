@@ -159,6 +159,7 @@ export type CommandName =
   // The one preference store (MP-2-11a): the caller's own keys.
   | 'preference.read'
   | 'preference.save'
+  | 'preference.dismiss_tip'
   // The inbox inside Tasks (INB-1d): the caller's own items and owed count,
   // and `seen` stamped on the caller's own attention row.
   | 'inbox.read'
@@ -167,8 +168,7 @@ export type CommandName =
   // Items no path reaches, for the operations view (INB-1e), and the caller's
   // own notification setting on one channel.
   | 'inbox.unattended'
-  | 'notifications.set_channel'
-  | 'preference.dismiss_tip';
+  | 'notifications.set_channel';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -518,9 +518,9 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   },
   'session.end': {},
   'preference.save': { preference: 'text', value: 'any' },
+  'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
   'inbox.seen': { itemId: 'id' },
   'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
-  'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -855,6 +855,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: [],
     audited: false,
   }),
+  // One guided tip dismissed (MP-2-11, CS-9.1), merged into the caller's own
+  // `tips.dismissed`; the reset is `preference.save` of that key as `{}`.
+  declare('preference.dismiss_tip', 'write', {
+    collection: PREFERENCE_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: [],
+    audited: false,
+  }),
 
   // The inbox is one person's: no agent reaches it, and each row answers the
   // caller about their own items only, with access derived per item.
@@ -877,15 +886,6 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'self',
     untargetedIdentifiers: [],
-  }),
-  // One guided tip dismissed (MP-2-11, CS-9.1), merged into the caller's own
-  // `tips.dismissed`; the reset is `preference.save` of that key as `{}`.
-  declare('preference.dismiss_tip', 'write', {
-    collection: PREFERENCE_COLLECTION,
-    targetsExistingRecord: false,
-    authorisedOn: 'self',
-    untargetedIdentifiers: [],
-    audited: false,
   }),
 ];
 
