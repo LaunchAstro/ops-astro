@@ -27,7 +27,9 @@
 // contract already named. `UNPRODUCED_CODES` names them, so a later part
 // closing one shows as a diff to this file rather than as nothing at all.
 
+import { DEFINITION_ROWS, UNPRODUCED_DEFINITION_CODES } from './register-definitions.ts';
 import { LIVE_CORRECTION_ROWS } from './site/refusal-rows.ts';
+
 export type Visibility = 'caller' | 'audit';
 
 /**
@@ -67,7 +69,7 @@ interface Declared {
   readonly runtime?: true;
 }
 
-const ROWS = [
+const ROWS_HEAD = [
   // Identity, T1b. Not signed in, or signed in as nobody this business knows.
   {
     code: 'AUTH_UNKNOWN_LOGIN',
@@ -592,35 +594,11 @@ const ROWS = [
     source: 'L4 RUNTIME.md',
     runtime: true,
   },
-  // Instruction files pinned by digest (AW-02, `core-runtime/src/definitions.ts`).
-  {
-    code: 'ACTIVATION_MODE_NOT_PERMITTED',
-    status: 403,
-    meaning: 'An instruction file has no activation modes: only a person activates it, by hand',
-    source: 'AW-02, automations contract E4',
-    runtime: true,
-  },
-  {
-    code: 'DELEGATION_EXCLUDES_ACTIVATION',
-    status: 403,
-    meaning: 'An agent never activates an instruction file, in any mode',
-    source: 'AW-02, automations contract 3.3',
-    runtime: true,
-  },
-  {
-    code: 'DEFINITION_DIGEST_MISMATCH',
-    status: 409,
-    meaning: "The file's bytes are not the ones the run pinned; a changed file is a new file",
-    source: 'AW-02, automations contract 5.1',
-    runtime: true,
-  },
-  {
-    code: 'DEFINITION_UNAVAILABLE',
-    status: 409,
-    meaning: 'The pinned instruction file cannot be read at its exact identity',
-    source: 'AW-02, automations contract 5.1',
-    runtime: true,
-  },
+] as const;
+
+// AW-02's and AW-01 J's definition codes sit here, in `register-definitions.ts`.
+
+const ROWS_TAIL = [
   // T2c1, the dispatch transaction's recheck of the effect-time facts
   // (`core-runtime/src/dispatch.ts`). Each is 409: the call was well formed,
   // and state moved under it, so nothing was dispatched.
@@ -742,14 +720,21 @@ const ROWS = [
 ] as const;
 
 /** Every registered code. Declared by the rows above and nowhere else. */
-export type RefusalCode = (typeof ROWS | typeof LIVE_CORRECTION_ROWS)[number]['code'];
+/** Every row, in register order: the head, the definition codes, the tail, C80's. */
+type Row =
+  | (typeof ROWS_HEAD)[number]
+  | (typeof DEFINITION_ROWS)[number]
+  | (typeof ROWS_TAIL)[number]
+  | (typeof LIVE_CORRECTION_ROWS)[number];
+
+export type RefusalCode = Row['code'];
 
 /**
  * The codes `core-runtime` returns as its own (`core-runtime/src/refusals.ts`).
  * A narrow union for that module's own types, taken from the rows marked
  * `runtime` rather than spelled a second time there.
  */
-export type RuntimeRefusalCode = Extract<(typeof ROWS)[number], { readonly runtime: true }>['code'];
+export type RuntimeRefusalCode = Extract<Row, { readonly runtime: true }>['code'];
 
 export interface RegisterEntry {
   readonly code: RefusalCode;
@@ -765,16 +750,19 @@ export interface RegisterEntry {
   readonly runtime: boolean;
 }
 
-export const REFUSAL_REGISTER: readonly RegisterEntry[] = [...ROWS, ...LIVE_CORRECTION_ROWS].map(
-  (row: Declared & { readonly code: RefusalCode }) => ({
-    code: row.code,
-    status: row.status,
-    visibility: row.visibility ?? 'caller',
-    meaning: row.meaning,
-    source: row.source,
-    runtime: row.runtime ?? false,
-  }),
-);
+export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
+  ...ROWS_HEAD,
+  ...DEFINITION_ROWS,
+  ...ROWS_TAIL,
+  ...LIVE_CORRECTION_ROWS,
+].map((row: Declared & { readonly code: RefusalCode }) => ({
+  code: row.code,
+  status: row.status,
+  visibility: row.visibility ?? 'caller',
+  meaning: row.meaning,
+  source: row.source,
+  runtime: row.runtime ?? false,
+}));
 
 const BY_CODE = new Map(REFUSAL_REGISTER.map((row) => [row.code, row]));
 
@@ -970,13 +958,7 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // reservations: the second pickup meets the first one's live lease.
   'EVIDENCE_MISMATCH',
   'LEASE_EXPIRED',
-  // AW-02's four. The pinned-file stores are built, and their one entry point
-  // is AW-04's plan accept, which activates a file and starts the run that
-  // reads it; each comes off this list with that accept.
-  'ACTIVATION_MODE_NOT_PERMITTED',
-  'DEFINITION_DIGEST_MISMATCH',
-  'DEFINITION_UNAVAILABLE',
-  'DELEGATION_EXCLUDES_ACTIVATION',
+  ...UNPRODUCED_DEFINITION_CODES,
   // Three codes are deliberately **not** on this list, and each is a command
   // path rather than a module one.
   //

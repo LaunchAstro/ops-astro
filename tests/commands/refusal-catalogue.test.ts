@@ -114,6 +114,10 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['DELEGATION_EXCLUDES_ACTIVATION', 403, 'caller'],
   ['DEFINITION_DIGEST_MISMATCH', 409, 'caller'],
   ['DEFINITION_UNAVAILABLE', 409, 'caller'],
+  ['OCCURRENCE_UNKNOWN', 404, 'caller'],
+  ['WORKER_REQUIRED', 403, 'caller'],
+  ['APPROVAL_NOT_STANDING', 409, 'caller'],
+  ['DEFINITION_REVOKED', 409, 'caller'],
   ['AUTHORITY_LOST', 409, 'caller'],
   ['DECISION_STALE', 409, 'caller'],
   ['EFFECT_NOT_RECONCILABLE', 409, 'caller'],
@@ -142,12 +146,13 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
 ];
 
 /**
- * The runtime's own thirty, as `core-runtime` names them; T2c1 added three,
- * T2c2 one, T2g one, T3d1 one, AW-02 four.
+ * The runtime's own thirty-four, as `core-runtime` names them; T2c1 added
+ * three, T2c2 one, T2g one, T3d1 one, AW-02 four, AW-01 J four.
  */
 const RUNTIME = [
   'ACTIVATION_MODE_NOT_PERMITTED',
   'ACTUAL_EXPENDITURE_UNSUPPORTED',
+  'APPROVAL_NOT_STANDING',
   'AUTHORITY_LOST',
   'BUDGET_EXHAUSTED',
   'BUDGET_UNAVAILABLE',
@@ -155,6 +160,7 @@ const RUNTIME = [
   'CHANGE_ROUNDS_EXHAUSTED',
   'DECISION_STALE',
   'DEFINITION_DIGEST_MISMATCH',
+  'DEFINITION_REVOKED',
   'DEFINITION_UNAVAILABLE',
   'DELEGATION_EXCLUDES_ACTIVATION',
   'EFFECT_NOT_OBSERVED',
@@ -170,12 +176,14 @@ const RUNTIME = [
   'LIABILITY_NOT_UNKNOWN',
   'LINEAGE_NOT_ON_TASK',
   'LINEAGE_TERMINAL',
+  'OCCURRENCE_UNKNOWN',
   'PROPOSAL_SCOPE_EXCEEDED',
   'PROPOSAL_SUPERSEDED',
   'RESERVATION_NOT_CLAIMABLE',
   'SCOPE_NOT_GRANTED',
   'SUCCESSOR_OUT_OF_BOUNDS',
   'TRANSITION_NOT_PERMITTED',
+  'WORKER_REQUIRED',
 ];
 
 describe('the refusal catalogue', () => {
@@ -185,7 +193,7 @@ describe('the refusal catalogue', () => {
     ).toStrictEqual(CATALOGUE);
   });
 
-  it('names the same thirty as the runtime’s own, each under its register status', () => {
+  it('names the same thirty-four as the runtime’s own, each under its register status', () => {
     expect(Object.keys(SUGGESTED_STATUS).toSorted()).toStrictEqual(RUNTIME);
     for (const [code, status] of Object.entries(SUGGESTED_STATUS)) {
       expect(status, code).toBe(CATALOGUE.find(([listed]) => listed === code)?.[1]);

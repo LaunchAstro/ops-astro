@@ -13,7 +13,12 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { AdapterRequest, ModelAnswer, ModelOperationDeclaration } from './operation.ts';
+import {
+  readModelId,
+  type AdapterRequest,
+  type ModelAnswer,
+  type ModelOperationDeclaration,
+} from './operation.ts';
 
 /** The model window the replay provider declares, recorded for the harness adoption test (AW-12). */
 export const REPLAY_MODEL_WINDOW: { readonly model: string; readonly contextUnits: number } = {
@@ -49,8 +54,11 @@ export function readReplayAnswer(body: unknown): ModelAnswer | undefined {
   if (!whole(units['input']) || !whole(units['output'])) return undefined;
   const code = shape['code'];
   if (code !== undefined && code !== null && typeof code !== 'string') return undefined;
+  const model = readModelId(shape['model']);
+  if (model === undefined) return undefined;
   return {
     text: shape['text'],
+    model,
     usage: { inputUnits: units['input'], outputUnits: units['output'] },
     providerCode: typeof code === 'string' ? code : null,
   };
@@ -86,7 +94,9 @@ export type ReplayMode =
   | 'planted'
   | 'echo_credential'
   | 'nothing_happened'
-  | 'costly';
+  | 'costly'
+  | 'unnamed_model'
+  | 'bad_model';
 
 export interface SeenRequest {
   readonly path: string;
@@ -116,6 +126,19 @@ async function readAll(request: IncomingMessage): Promise<string> {
   return Buffer.concat(parts).toString('utf8');
 }
 
+/** The modes whose answer is a fixed body. */
+const FIXED_ANSWERS: Partial<Record<ReplayMode, unknown>> = {
+  answer: { text: 'Drafted.', model: REPLAY_MODEL_WINDOW.model, usage: { input: 40, output: 30 } },
+  unnamed_model: { text: 'Drafted.', usage: { input: 40, output: 30 } },
+  bad_model: {
+    text: 'Drafted.',
+    model: `${REPLAY_MODEL_WINDOW.model}; drop table model_calls`,
+    usage: { input: 40, output: 30 },
+  },
+  costly: { text: 'Long.', model: REPLAY_MODEL_WINDOW.model, usage: { input: 400, output: 300 } },
+  planted: { text: PLANTED, usage: { input: 40, output: 30 } },
+};
+
 /** The stand-in's answer in each mode, hostile ones included. */
 function respond(
   mode: ReplayMode,
@@ -123,13 +146,9 @@ function respond(
   authorization: string | undefined,
   timers: Set<NodeJS.Timeout>,
 ): void {
+  const fixed = FIXED_ANSWERS[mode];
+  if (fixed !== undefined) return answer(response, fixed);
   switch (mode) {
-    case 'answer':
-      return answer(response, { text: 'Drafted.', usage: { input: 40, output: 30 } });
-    case 'costly':
-      return answer(response, { text: 'Long.', usage: { input: 400, output: 300 } });
-    case 'planted':
-      return answer(response, { text: PLANTED, usage: { input: 40, output: 30 } });
     case 'nothing_happened':
       return answer(response, {
         text: '',

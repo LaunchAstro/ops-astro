@@ -196,7 +196,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'settings.set_live_correction_approver': [],
   'task.cancel': ['recordId', 'lineageId'],
   'task.check': ['leaseId'],
-  'task.create': ['parentId', 'board', 'boardSection'],
+  'task.create': ['parentId', 'board', 'boardSection', 'conversationId'],
   'task.decide': ['gateId', 'versionId'],
   'task.handback': ['leaseId'],
   'task.heartbeat': ['leaseId'],

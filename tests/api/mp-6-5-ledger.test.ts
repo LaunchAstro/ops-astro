@@ -131,7 +131,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-5 token ledger', () => {
   it('MP-6-5 per-run rows match the ledger: a task never approved has no envelope, and says so', async () => {
     const bare = await c.createTask('never approved');
     const read = await taskRead(bare.id);
-    expect(read.ledger).toStrictEqual({ envelopes: [], stops: [] });
+    expect(read.ledger).toStrictEqual({ envelopes: [], stops: [], states: [] });
   });
 
   it('MP-6-5 no audit event: the ledger adds no event beyond the read’s own', async () => {

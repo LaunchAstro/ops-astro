@@ -23,6 +23,13 @@ export {
   type ModelBroker,
   type ModelCallExecutor,
 } from './commands/model-call.ts';
+// AW-01 J: the worker's occurrence path, never a command (no API route, no CLI).
+export {
+  startOccurrenceRun,
+  type OccurrenceAuthority,
+  type OccurrenceRun,
+  type ReadOccurrenceAuthority,
+} from './commands/occurrence-run.ts';
 export { isCommandRefusal, refuseCommand, type CommandRefusal } from './commands/refusal.ts';
 export { type CommandRequest } from './commands/requests.ts';
 // T3d1: the pass asks the register whether an unknown step's effect happened.

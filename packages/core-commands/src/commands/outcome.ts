@@ -17,6 +17,8 @@ export interface Applied {
   readonly revision: number | null;
   /** What the command did, in values a client can read. Never the record. */
   readonly detail: Readonly<Record<string, unknown>>;
+  /** The caller's own conversation a created task came from, for its audit event's origin (AW-03). */
+  readonly originConversationId?: string;
 }
 
 export interface Refused {

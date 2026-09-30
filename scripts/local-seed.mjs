@@ -103,18 +103,14 @@ const GRANTS_BY_ROLE = {
     // A top-up is a money decision on `billing` (T2e, the permission
     // catalogue's `billing:decide`): the owner and administrators hold it.
     ['billing', 'decide'],
-    // C80: a live correction is asked for as run work and approved as a gate
-    // decision (the permission key catalogue's `run:write` and `gate:decide`,
-    // the second seeded above), and an administrator is whom the catalogue
-    // names for both. Only the configured approver passes an approval, so the
-    // grant alone approves nothing.
-    ['run', 'read'],
-    ['run', 'write'],
     // A person's own conversations with the agent (AW-03): the owner and
     // administrators hold `conversation:write` (the permission key catalogue).
     // `conversation:read`, the read-any grant, is seeded to nobody: it is given
     // to a named person on purpose, never held by a role on install.
     ['conversation', 'write'],
+    // MP-6-2's `state revised` (ORCH33, ORCH38): `run:write`, a person's own
+    // and an agent's inside its delegation; the owner and administrators hold it.
+    ['run', 'write'],
   ],
   member: [
     ['task', 'read'],

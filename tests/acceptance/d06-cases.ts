@@ -52,16 +52,6 @@ import { createCli } from '../../apps/cli/client.ts';
 import { OperationsClient, type ReadName } from '../../apps/web/src/operations/client.ts';
 import type { Harness } from './role-case-harness.ts';
 
-/** The journey's live pickup on the agent prefix (`d06-agent.test.ts`). */
-export interface Pickup {
-  readonly credential: string;
-  readonly delegationId: string;
-  readonly leaseId: string;
-  readonly fence: number;
-  readonly taskId: string;
-  readonly attemptId: string;
-}
-
 export type Surface = 'api' | 'cli' | 'web';
 export const SURFACES: readonly Surface[] = ['api', 'cli', 'web'];
 

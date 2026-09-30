@@ -91,6 +91,21 @@ async function startedWork(tx: TenantQuery, conversationId: string): Promise<rea
   ];
 }
 
+/** The tasks whose creation audit event names the conversation as its origin. */
+async function createdTasks(
+  tx: TenantQuery,
+  conversationId: string,
+): Promise<readonly ConversationPointerView[]> {
+  const rows = await tx.query<{ readonly id: string }>(
+    `select subject_record_id as id from audit_events
+      where business_id = $1 and origin_conversation_id = $2
+        and command = 'task.create' and outcome = 'applied'
+      order by seq`,
+    [tx.businessId, conversationId],
+  );
+  return rows.map((row) => ({ kind: 'task', id: row.id, address: `/task/${row.id}` }));
+}
+
 export async function workOf(
   tx: TenantQuery,
   conversationId: string,
@@ -118,6 +133,7 @@ export async function itemsOf(
     [tx.businessId, conversationId],
   );
   const exchange = counts[0];
+  const created = await createdTasks(tx, conversationId);
   const self: ConversationPointerView = {
     kind: 'conversation',
     id: conversationId,
@@ -142,9 +158,12 @@ export async function itemsOf(
       fact: `${exchange?.n ?? '0'} messages, last ${locked.last_activity_at.toISOString()}`,
       pointers: [],
     },
-    // The task's creation audit event names its conversation once task.create
-    // carries one; until then no task records this conversation as its origin.
-    { key: 'tasks_created', fact: 'No task records this conversation as its origin', pointers: [] },
+    // Each task whose creation audit event names this conversation (AW-03).
+    {
+      key: 'tasks_created',
+      fact: `${String(created.length)} ${created.length === 1 ? 'task' : 'tasks'} created`,
+      pointers: created,
+    },
     { key: 'runs_started', fact: `${String(runs.length)} runs started`, pointers: runs },
     { key: 'gates_raised', fact: `${String(gates.length)} gates raised`, pointers: gates },
     // Priced model calls go through AW-01's broker; the conversation's own

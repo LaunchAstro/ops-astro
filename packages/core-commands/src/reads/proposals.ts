@@ -57,7 +57,7 @@ import { keyResolver, gateSigningKey } from '../../../core-runtime/src/index.ts'
 import type { KeyResolver, SigningKey } from '../../../core-runtime/src/index.ts';
 import { readVerifiedProjection, type VerifiedDecision } from './verified-decisions.ts';
 import { SCOPES, scopesOf, type ScopeRow } from './run-scopes.ts';
-import { ENVELOPES, ledgerOf, STOPS } from './task-ledger.ts';
+import { ENVELOPES, ledgerOf, STATES, STOPS } from './task-ledger.ts';
 import type { DecisionLink, ProposalView, TaskLedgerView } from '../../../core-wire/src/index.ts';
 import { asReservation, asVersion } from './proposal-rows.ts';
 import type { CheckRow, ReservationRow, VersionRow } from './proposal-rows.ts';
@@ -185,6 +185,7 @@ export async function readTaskWork(
         scopes: SCOPES,
         envelopes: ENVELOPES,
         stops: STOPS,
+        states: STATES,
       },
       parameter: taskId,
     },
