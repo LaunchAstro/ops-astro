@@ -205,11 +205,15 @@ async function admit(
   // verifier reads it (`auth/session.ts`).
   if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
   const presented = await options.verify(context.req);
-  if (presented !== undefined && presented !== 'expired') context.set(PRESENTED, presented);
-  if (presented === undefined) {
+  if (typeof presented === 'object') context.set(PRESENTED, presented);
+  else clearNamedCookie(context);
+  if (presented === undefined || presented === 'absent') {
     // A tab that names no sign-in of its own reads nothing on the cookies of
     // others: not them, their business or their clients.
     if (unnamedSession(context.req)) return refuse(context, MISMATCH());
+    // No credential at all (a crawler, a probe) tried no sign-in: the same
+    // answer, and never counted as a failed one (security line 9).
+    if (presented === 'absent') context.set(NO_CREDENTIAL, true);
     return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
   }
   // An expired bearer is its own answer on both paths. It is the re-login
@@ -231,6 +235,18 @@ async function admit(
   }
   if (businessId === undefined) return refuse(context, entry.unresolved());
   return { presented, businessId, body };
+}
+
+/**
+ * The page ends its session on `AUTH_SESSION_EXPIRED` and `AUTH_UNKNOWN_LOGIN`
+ * alike, and only the API can clear an `HttpOnly` cookie: a refused cookie
+ * left behind rides beside every later sign-in's until the headers are too
+ * large to answer. So the named sign-in's cookie goes with the refusal.
+ */
+function clearNamedCookie(context: Context): void {
+  const session = namedSession(context.req);
+  if (bearerOf(context.req) !== undefined || session === undefined) return;
+  deleteCookie(context, cookieNameFor(session), SESSION_COOKIE_OPTIONS);
 }
 
 export function createApi(options: ApiOptions): Hono {
@@ -282,7 +298,8 @@ export function createApi(options: ApiOptions): Hono {
         const response =
           admitted instanceof Response ? admitted : await run(context, declaration, admitted);
         const outcome = outcomeOf(context, declaration);
-        const signal = options.observe && signalOf(outcome);
+        const tried = (context as Context).get(NO_CREDENTIAL) !== true;
+        const signal = options.observe && tried && signalOf(outcome);
         if (signal) options.observe?.(signal);
         // Download volume (security line 9): the records each read handed out, per business and reader.
         const { business, person: who, items } = outcome;
@@ -413,7 +430,7 @@ async function mayWatch(
   recordId: string | undefined = context.req.param('recordId'),
 ): Promise<string | CommandRefusal> {
   const presented = await options.verify(context.req);
-  if (presented === undefined || presented === 'expired') {
+  if (typeof presented !== 'object') {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
   }
   const read = await options.executeRead(options.database, businessId, presented, {
@@ -432,7 +449,7 @@ async function mayJoinBoard(
   businessId: string,
 ): Promise<{ readonly personId: string } | CommandRefusal> {
   const presented = await options.verify(context.req);
-  if (presented === undefined || presented === 'expired') {
+  if (typeof presented !== 'object') {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
   }
   return await joinLiveBoard(options.database, businessId, presented);
@@ -446,7 +463,7 @@ async function mayShowInbox(
   personId: string,
 ): Promise<string | undefined> {
   const presented = await options.verify(context.req);
-  if (presented === undefined || presented === 'expired') return undefined;
+  if (typeof presented !== 'object') return undefined;
   return await shownInbox(options.database, businessId, presented, personId);
 }
 
@@ -530,6 +547,7 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
 const PRESENTED = 'presented';
 const REFUSAL = 'refusal';
 const HANDED_OUT = 'handed-out';
+const NO_CREDENTIAL = 'no-credential';
 
 /** How many records a read handed out: a task is one, a list is its length. */
 function recordsIn(read: object): number {
