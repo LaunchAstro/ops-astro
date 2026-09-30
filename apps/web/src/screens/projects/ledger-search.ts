@@ -15,33 +15,37 @@ import type { LedgerDayView } from '../../../../../packages/core-wire/src/index.
 interface Kind {
   /** How the reading line names them. */
   readonly label: string;
-  readonly operations: readonly string[];
+  /**
+   * The ledger events' task operations, by verb: `create` is an event of
+   * `task.create`. Verbs, not command names, since the page calls none of them.
+   */
+  readonly verbs: readonly string[];
   readonly words: readonly string[];
 }
 
 const KINDS: readonly Kind[] = [
-  { label: 'comments', operations: ['task.comment'], words: ['comment', 'comments', 'said'] },
+  { label: 'comments', verbs: ['comment'], words: ['comment', 'comments', 'said'] },
   {
     label: 'completions',
-    operations: ['task.complete'],
+    verbs: ['complete'],
     words: ['done', 'complete', 'completed', 'finished'],
   },
-  { label: 'starts', operations: ['task.start'], words: ['start', 'started'] },
-  { label: 'creations', operations: ['task.create'], words: ['create', 'created', 'new'] },
-  { label: 'updates', operations: ['task.update'], words: ['update', 'updated', 'edited'] },
-  { label: 'assignments', operations: ['task.assign'], words: ['assign', 'assigned'] },
+  { label: 'starts', verbs: ['start'], words: ['start', 'started'] },
+  { label: 'creations', verbs: ['create'], words: ['create', 'created', 'new'] },
+  { label: 'updates', verbs: ['update'], words: ['update', 'updated', 'edited'] },
+  { label: 'assignments', verbs: ['assign'], words: ['assign', 'assigned'] },
   {
     label: 'stage changes',
-    operations: ['task.set_stage', 'task.move'],
+    verbs: ['set_stage', 'move'],
     words: ['stage', 'stages', 'moved'],
   },
-  { label: 'decisions', operations: ['task.decide'], words: ['decided', 'decision', 'approved'] },
+  { label: 'decisions', verbs: ['decide'], words: ['decided', 'decision', 'approved'] },
   {
     label: 'proposals',
-    operations: ['task.propose', 'task.restart'],
+    verbs: ['propose', 'restart'],
     words: ['proposed', 'proposal', 'proposals'],
   },
-  { label: 'reopenings', operations: ['task.reopen'], words: ['reopen', 'reopened'] },
+  { label: 'reopenings', verbs: ['reopen'], words: ['reopen', 'reopened'] },
 ];
 
 export interface LedgerSearch {
@@ -84,7 +88,8 @@ export function passing(
 ): readonly LedgerDayView[] {
   const passes = (event: LedgerDayView['events'][number]): boolean =>
     (search.people.length === 0 || search.people.includes(event.actorName)) &&
-    (search.kinds.length === 0 || search.kinds.some((k) => k.operations.includes(event.operation)));
+    (search.kinds.length === 0 ||
+      search.kinds.some((k) => k.verbs.some((verb) => event.operation === `task.${verb}`)));
   return days
     .map((day) => ({ ...day, events: day.events.filter(passes) }))
     .filter((day) => day.events.length > 0);
