@@ -240,9 +240,9 @@ export async function moneyBody(
         reason: 'The matrix writes its own unknown hold off.',
       };
     case 'budget.set_planning_cap': {
-      // AW-04 (U10): one above where the cap is. No read shows it yet (the
-      // drawer waits on SL12's panel), so a probe from unset either sets it or
-      // is refused naming the limit it is at.
+      // AW-04 (U10): one above where the cap is. A probe naming no limit
+      // seen is refused naming the one it is at (the default, AUD 50, until
+      // a person moves it).
       const cap = { limitMinor: 1_000, currency: 'AUD' };
       const probe = await context.asPerson(name, { ...cap, fromLimitMinor: null });
       const named = /^limitMinor=(\d+)$/u.exec(String((probe.body['names'] as unknown[])?.[0]));

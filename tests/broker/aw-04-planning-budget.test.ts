@@ -3,7 +3,7 @@
 // `AW-04 planning budget` (U10, ORCH42 (a)): a priced planning reply from the
 // owner's own conversation holds its priced maximum on that conversation's
 // planning envelope, under the business's planning cap (`budget_caps` key
-// `planning`), read under the cap's row lock. No cap set: no planning spend.
+// `planning`), read under the cap's row lock. No cap set: the default, AUD 50.
 // The allowance line (the cap, and what is left) reads before the first
 // message; the planning spend (settled plus held) reads beside the plan. A
 // failed reply stays held as unknown liability against the envelope. The
@@ -12,7 +12,7 @@
 import { expect, it as vitestIt } from 'vitest';
 import { callModelForPlanning } from '../../packages/core-custody/src/index.ts';
 import type { AdminConnection } from '../../packages/core-records/src/index.ts';
-import { racer } from '../runtime/schedules-harness.ts';
+import { racer, seedSchedules } from '../runtime/schedules-harness.ts';
 import { LOCAL, callCount, noDatabase, s, world } from './broker-world.ts';
 import {
   allowance,
@@ -30,20 +30,34 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 
 usePlanningWorld('aw04plan');
 
-it('AW-04 planning budget: with no planning cap set, a planning reply is refused and nothing is written or sent', async () => {
-  const request = ask(s);
-  const before = await callCount();
-  const sent = world.provider.seen.length;
-  const result = await plan(s, ownerOf(s), request);
-  expect(result).toMatchObject({ ok: false, code: 'BUDGET_UNAVAILABLE', callId: null });
-  expect(await callCount()).toBe(before);
-  expect(world.provider.seen.length).toBe(sent);
-  expect(await allowance(s, s.decider.personId, request.conversation.id)).toStrictEqual({
+it('AW-04 planning budget: with no cap set, the default AUD 50 is the allowance: it reads before the first message, and the first reply holds and settles under it', async () => {
+  // A business no person has set a cap for: the default is its allowance.
+  const fresh = await seedSchedules(s.db, 'aw04plan-default', 1_000_000);
+  const request = ask(fresh);
+  expect(await allowance(fresh, fresh.decider.personId, request.conversation.id)).toStrictEqual({
     set: false,
-    currency: null,
-    limitMinor: 0,
-    leftMinor: 0,
+    currency: 'AUD',
+    limitMinor: 5_000,
+    leftMinor: 5_000,
     conversation: { spentMinor: 0, heldMinor: 0 },
+  });
+  world.provider.mode('answer');
+  const result = await plan(fresh, ownerOf(fresh), request);
+  expect(result).toMatchObject({ ok: true, reservedMinor: 500 });
+  const actual = result.ok ? result.actualMinor : -1;
+  // The hold made the default the business's cap row, which a person then moves.
+  const caps = await s.db.admin.execute<{ limit_minor: string; currency: string }>(
+    `select limit_minor::text, currency from public.budget_caps
+      where business_id = $1 and key = 'planning'`,
+    [fresh.business],
+  );
+  expect(caps).toStrictEqual([{ limit_minor: '5000', currency: 'AUD' }]);
+  expect(await allowance(fresh, fresh.decider.personId, request.conversation.id)).toStrictEqual({
+    set: true,
+    currency: 'AUD',
+    limitMinor: 5_000,
+    leftMinor: 5_000 - actual,
+    conversation: { spentMinor: actual, heldMinor: 0 },
   });
 });
 

@@ -4,9 +4,10 @@
 // that sets a business's planning cap, `budget.set_planning_cap`. `decide` on
 // `billing` for the whole business (owners and administrators), never an agent;
 // audited by the envelope; checked against the limit the caller last saw
-// (`fromLimitMinor`, null while unset), under the cap row's lock. It writes the
-// `budget_caps` row keyed `planning` and nothing else, and the planning broker
-// reads what it wrote. No default: the cap stays unset until a person sets it.
+// (`fromLimitMinor`), under the cap row's lock. It writes the `budget_caps` row
+// keyed `planning` and nothing else, and the planning broker reads what it
+// wrote. Until a person sets it the cap is the default, AUD 50, and that is
+// the limit a caller has seen.
 //
 // A money action, so it is in the step-up set: AW-04 set planning cap: a
 // sign-in older than the money step-up window is refused before any write
@@ -86,9 +87,13 @@ async function waiting(execute: AdminConnection['execute'], count: number): Prom
   throw new Error('the two setters never met');
 }
 
-it('AW-04 set planning cap: a billing holder sets the unset cap, the broker spends under it, and a lower cap refuses the next reply', async () => {
+it('AW-04 set planning cap: a billing holder moves the default AUD 50 cap, the broker spends under it, and a lower cap refuses the next reply', async () => {
   expect((await caps(s))['planning']).toBeUndefined();
-  const first = await asPerson(s, setBody(1_200, null));
+  // The default is the limit there is to have seen; nothing is unset.
+  const unseen = await asPerson(s, setBody(1_200, null));
+  expect(unseen).toMatchObject({ code: 'VERSION_STALE', names: ['limitMinor=5000'] });
+  expect((await caps(s))['planning']).toBeUndefined();
+  const first = await asPerson(s, setBody(1_200, 5_000));
   expect(codeOf(first)).toBe('applied');
   if (isCommandRefusal(first)) return;
   expect(first.detail).toStrictEqual({ key: 'planning', limitMinor: 1_200, currency: 'AUD' });
@@ -126,7 +131,12 @@ it('AW-04 set planning cap: a billing holder sets the unset cap, the broker spen
       where business_id = $1 and command = 'budget.set_planning_cap' and actor_id = $2`,
     [s.business, s.decider.actorId],
   );
-  expect(events.map((event) => event.outcome)).toStrictEqual(['applied', 'applied', 'applied']);
+  expect(events.map((event) => event.outcome)).toStrictEqual([
+    'refused',
+    'applied',
+    'applied',
+    'applied',
+  ]);
 });
 
 it('AW-04 set planning cap: a limit the caller did not last see is refused VERSION_STALE naming the one it is at, and the row keeps it', async () => {
@@ -173,9 +183,9 @@ it('AW-04 set planning cap: the amount, the currency, the limit seen and any oth
 
 it('AW-04 set planning cap: two setters at once from the same limit, on two connections: one applies, the other is refused VERSION_STALE', async () => {
   const bravo = p.bravo;
-  // The first two meet on the unset cap (the unique key), the next two on its row lock.
+  // The first two meet on the default cap (the unique key), the next two on its row lock.
   for (const [from, mine, theirs] of [
-    [null, 700, 800],
+    [5_000, 700, 800],
     [700, 900, 1_000],
   ] as const) {
     const other = racer(bravo);
@@ -197,7 +207,7 @@ it('AW-04 set planning cap: two setters at once from the same limit, on two conn
       // eslint-disable-next-line no-await-in-loop
       expect((await caps(bravo))['planning']).toBe(String(won));
       // eslint-disable-next-line no-await-in-loop
-      if (won !== 700 && from === null) await asPerson(bravo, setBody(700, won));
+      if (won !== 700 && from === 5_000) await asPerson(bravo, setBody(700, won));
     } finally {
       // eslint-disable-next-line no-await-in-loop
       await other.close();

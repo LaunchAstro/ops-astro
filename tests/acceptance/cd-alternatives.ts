@@ -48,8 +48,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['conversation.list', {}],
   // AW-04: a digest names a file's bytes, not a record of any business.
   ['definition.attribution', { digest: 'a'.repeat(64) }],
-  // AW-04 (U10): the business's own planning cap, set once from unset.
-  ['budget.set_planning_cap', { limitMinor: 2_000, currency: 'AUD', fromLimitMinor: null }],
+  // AW-04 (U10): the business's own planning cap, moved once from the default.
+  ['budget.set_planning_cap', { limitMinor: 2_000, currency: 'AUD', fromLimitMinor: 5_000 }],
   ['inbox.read', {}],
   ['inbox.count', {}],
   ['inbox.unattended', {}],
