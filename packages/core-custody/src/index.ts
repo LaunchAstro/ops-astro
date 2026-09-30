@@ -37,6 +37,14 @@ export {
   type MailSettings,
 } from './broker-email.ts';
 export {
+  emailAtOnce,
+  emailDailyBatch,
+  type BatchResult,
+  type EmailChoice,
+  type EmailPreferences,
+  type EmailTiming,
+} from './email-timing.ts';
+export {
   callModel,
   promptCopyRegistered,
   registerPromptCopy,

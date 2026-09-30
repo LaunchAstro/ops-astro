@@ -394,6 +394,8 @@
     "tests/broker/aw-05-four-eyes-one-rule.test.ts",
     "tests/broker/aw-07b-email.test.ts",
     "tests/broker/aw-07b-email-hostile.test.ts",
+    "tests/broker/aw-07b-timing.test.ts",
+    "tests/broker/aw-07b-client-cap.test.ts",
     "tests/broker/c60-egress-before-route.test.ts",
     "tests/broker/c60-route-and-carry.test.ts",
     "tests/broker/s3-bound-source.test.ts",
