@@ -6,45 +6,22 @@
 // served API, and an invented verb must exit 2 without reaching it (RN-10).
 
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
-import { accepts, httpTransport } from '../../apps/cli/client.ts';
-import { createWorker } from '../../apps/worker/worker.ts';
-import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
+import { accepts } from '../../apps/cli/client.ts';
 import { runCli } from '../cli/cli-process-harness.ts';
-import { approve, delegate, personOn, type PassContext } from './passes.ts';
+import { approvedTask, personOn, type PassContext, type Person } from './passes.ts';
 
-/** A task approved and waiting for the worker, for the live check. */
-async function approvedTask(context: PassContext): Promise<{
-  readonly taskId: string;
-  readonly worker: ReturnType<typeof createWorker>;
-}> {
-  const { world } = context;
-  const person = personOn('app', context, world.ada.token);
-  const withId = async (name: Parameters<typeof person>[0], body: Record<string, unknown>) =>
-    await person(name, { operationId: crypto.randomUUID(), ...body });
-  const made = await withId('task.create', { fields: { title: 'Live' } });
-  const taskId = String(made.body['recordId']);
-  const worker = createWorker({
-    transport: httpTransport(context.api),
-    businessKey: 'alpha',
-    credential: world.agent.token,
-    delegation: await delegate(world, taskId),
-    reporter: SYNTHETIC_USAGE,
-  });
-  const proposed = await worker.proposeOnce();
-  if (!('proposed' in proposed)) throw new Error(`propose: ${JSON.stringify(proposed)}`);
-  await approve(withId, taskId, proposed.proposed.gateId);
-  return { taskId, worker };
-}
-
-/** RN-01: an in-process event-stream client on the web origin sees the pickup within 2 s. */
 /** A check's line: its words, and the facts its own code typed beside them. */
 export interface Checked {
   readonly detail: string;
   readonly facts: Readonly<Record<string, string | number | boolean>>;
 }
 
+/** RN-01: an in-process event-stream client on the web origin sees the pickup within 2 s. */
 export async function liveWithin2s(context: PassContext, web: string): Promise<Checked> {
-  const { taskId, worker } = await approvedTask(context);
+  const person = personOn('app', context, context.world.ada.token);
+  const withId: Person = async (name, body) =>
+    await person(name, { operationId: crypto.randomUUID(), ...body });
+  const { taskId, worker } = await approvedTask(context, withId, 'Live');
   const response = await fetch(`${web}/api/b/alpha/live/task/${taskId}`, {
     headers: { authorization: `Bearer ${context.world.ada.token}` },
     signal: AbortSignal.timeout(10_000),

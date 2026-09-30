@@ -1,44 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Review evidence, bound to the revision being merged.
-//
-// ADR 0046: Nathan merges only what the machine has already proven, and the
-// required checks include a code-review evidence check and a security-review
-// check. Round four found neither in continuous integration, so a pull
-// request could carry a review of one revision and merge another, or carry no
-// review at all, and the merge button would still open.
-//
-// Two rules.
+// Review evidence, bound to the revision being merged (ADR 0046).
 //
 // 1. The pull request body carries the review checkpoint block from
 //    scripts/review-preflight.mjs, and its head is the head being merged.
-//    Evidence for a different revision is not evidence for this one; that is
-//    the whole point of recording the head.
 // 2. If the change touches the sensitive surface ADR 0046 names, the body
 //    also carries a security review bound to the same head.
-//
 // 3. CQ-13, product issue 42: the body carries the record of the review by a
 //    model from another company than the builder's, for this head.
 //
 // It reads PR_BODY, HEAD_SHA, CHANGED_FILES and AGENT_MODELS so the same code
-// runs in continuous integration and in its own tests.
-//
-// What it does not do, and the pull request template says so too: it reads no
-// reviewer identity. A green result proves the evidence is bound to this exact
-// head. It does not prove that any reviewer read anything.
-//
-// Round seven, 17 September, found the check passing a body that was the
-// template byte for byte with only the checkpoint filled: the outcome fields
-// were still the template's own instructional HTML comments, and the words
-// "no findings" inside one of them read as an outcome. The same substring
-// search failed a correct body that cited
-// .claude/skills/_shared/security-review.md by path, because the filename
-// read as a second field with no verdict in it. Both are the same defect:
-// a substring search over prose is not a grammar. So:
-//
-//   - HTML comments are removed before anything is parsed;
-//   - the two outcome fields are anchored to the start of a line, so a
-//     mention of a review in a sentence is a mention and not a field;
-//   - the template's literal placeholders are refused by name.
+// runs in continuous integration and in its own tests. It reads no reviewer
+// identity: a green result proves the evidence is bound to this exact head,
+// not that any reviewer read anything.
 
 import { execFileSync } from 'node:child_process';
 import { readBody, unfiled } from './review-evidence-read.mjs';
@@ -78,64 +51,37 @@ const SENSITIVE = [
   /(^|\/)(auth|tenancy|egress|custody|audit)[^/]*\.(ts|tsx|mjs|js|py|sql)$/u,
 ];
 
-const changed =
-  process.env['CHANGED_FILES'] !== undefined
-    ? process.env['CHANGED_FILES']
-        .split('\n')
-        .map((f) => f.trim())
-        .filter(Boolean)
-    : (() => {
-        const base = process.env['BASE_SHA'];
-        if (base === undefined || base === '') return [];
-        const mergeBase = execFileSync('git', ['merge-base', base, head], {
-          encoding: 'utf8',
-        }).trim();
-        return execFileSync('git', ['diff', '--name-only', `${mergeBase}...${head}`], {
-          encoding: 'utf8',
-        })
-          .split('\n')
-          .map((f) => f.trim())
-          .filter(Boolean);
-      })();
+const base = process.env['BASE_SHA'] ?? '';
+const git = (...args) => execFileSync('git', args, { encoding: 'utf8' });
+const nonEmptyLines = (text) =>
+  text
+    .split('\n')
+    .map((f) => f.trim())
+    .filter(Boolean);
+const changed = nonEmptyLines(
+  process.env['CHANGED_FILES'] ??
+    (base === ''
+      ? ''
+      : git('diff', '--name-only', `${git('merge-base', base, head).trim()}...${head}`)),
+);
 
 // The builder's models: every commit's `Agent-model:` trailer in the range.
-const base = process.env['BASE_SHA'] ?? '';
-const trailers = ['log', '--format=%(trailers:key=Agent-model,valueonly)', `${base}..${head}`];
 const builders = (
   process.env['AGENT_MODELS'] ??
-  (base === '' ? '' : execFileSync('git', trailers, { encoding: 'utf8' }))
+  (base === ''
+    ? ''
+    : git('log', '--format=%(trailers:key=Agent-model,valueonly)', `${base}..${head}`))
 ).split('\n');
 
 const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 
 // --- the grammar ----------------------------------------------------------
 
-// What GitHub shows, read in one pass over the lines, because comments and
-// fences each decide what the other is.
-//
-// An HTML comment is instruction to the author, never evidence. Removing it
-// is what stops the template's own prose from answering for the author. An
-// unclosed comment runs to the end of the body, as GitHub renders it: the
-// security review of d77b375, finding 2, found a line the merger never sees
-// read as the only outcome. Everything after an unclosed `<!--` is hidden.
-//
-// Fenced code is shown as code, not as a field. Copilot on PR A: a body whose
-// only outcome sat inside a fenced sample passed. Lines from an opening fence
-// to its closing fence are code, and an unclosed fence runs to the end of the
-// body. The checkpoint block, which the template ships inside a fence, is
-// read with fenced lines kept; the outcome fields are read with them blanked.
-//
-// Sol's recheck of 8eb0983 found two misreadings, both fixed here. A fence is
-// indented 0 to 3 spaces, as CommonMark has it: four spaces or a tab make an
-// indented code line, and the outcomes after it are visible. And comments
-// were removed before fences were found, so `<!--` inside a fenced sample ate
-// the closing fence; inside a fence it is literal code now, and a fence line
-// inside a comment is hidden with the comment.
+// The body as GitHub renders it (scripts/review-evidence-read.mjs).
 const { stated, record, buried, html, prose } = readBody(body);
 
-// The literal strings the template ships with. An unreplaced one is named in
-// the failure rather than reported as "no outcome stated", because the author
-// needs to know which line they missed.
+// The literal strings the template ships with, named in the failure so the
+// author knows which line they missed.
 const PLACEHOLDERS = [
   'REPLACE-WITH-OUTCOME',
   '<head sha>',
@@ -144,22 +90,10 @@ const PLACEHOLDERS = [
   'Closes #123',
 ];
 
-// A field is a line that begins with the field name. `Code review:` at the
-// start of a line is an answer; "the code review found nothing" inside a
-// sentence, or a path ending in security-review.md, is not.
-
-// Did the review happen, and what did it conclude?
-//
-// Rounds five to eleven read the outcome as free text: substrings, then
-// negators, then counts, conditions and closure verbs. Each round's rule
-// moved the hole rather than closing it. Sol's recheck of 526a4c8 still
-// passed `changes requested; all tests passed` and `2 findings; all
-// addressed except one`. Round twelve, 24 September (lead ruling, Sol's
-// "require an explicit review disposition"), stops reading English. The
-// outcome is the whole text after the field name on that line, trimmed,
+// The outcome is the whole text after the field name on that line, trimmed,
 // case-insensitive, with one optional trailing full stop, and it must be one
-// form of a closed grammar. Anything else fails. An explanation goes on the
-// following lines, which this check does not read.
+// form of a closed grammar (round twelve: free-text rules each moved the
+// hole). An explanation goes on the following lines, which are not read.
 const SHA = String.raw`[0-9a-f]{7,40}`;
 const COUNTED = String.raw`(?<raised>\d{1,4})\s+(?<noun>findings?),\s+(?:all|(?<closed>\d{1,4}))\s+closed`;
 
@@ -178,9 +112,8 @@ const RAN_FORMS = [
   new RegExp(String.raw`^run\s+against\s+${SHA},\s+no\s+findings$`, 'u'),
   new RegExp(String.raw`^run\s+against\s+${SHA},\s+${COUNTED}$`, 'u'),
 ];
-// Only where the change touches no sensitive path. Round thirteen, 24
-// September: a free reason read `not required: pending` and a rejected
-// review as answers, so the form is one fixed text.
+// Only where the change touches no sensitive path; one fixed text, since a
+// free reason read `not required: pending` as an answer (round thirteen).
 const NOT_REQUIRED = /^not\s+required:\s+no\s+sensitive\s+paths\s+changed$/u;
 const NOT_REQUIRED_HELP = 'not required: no sensitive paths changed';
 
@@ -246,6 +179,11 @@ const explain = {
 
 const failures = [];
 
+// A recorded revision names this head when either is a prefix of the other,
+// both read in lowercase (security review of d77b375, finding 3; round 14).
+const current = head.toLowerCase();
+const namesHead = (recorded) => current.startsWith(recorded) || recorded.startsWith(current);
+
 // --- rule 1: a checkpoint for this head ------------------------------------
 
 const checkpoint = /Review checkpoint[\s\S]{0,600}?head:\s*([0-9a-f]{7,40})/iu.exec(prose);
@@ -282,13 +220,8 @@ if (checkpoint === null) {
       '        See docs/agents/review-checkpoint.md.',
   );
 } else {
-  // The security review of d77b375, finding 3: the checkpoint head was read
-  // ignoring case and compared with it, so an uppercase head was a false red.
-  // Both sides in lowercase, as the security line has been since round
-  // fourteen.
   const recorded = (checkpoint[1] ?? '').toLowerCase();
-  const current = head.toLowerCase();
-  if (!current.startsWith(recorded) && !recorded.startsWith(current)) {
+  if (!namesHead(recorded)) {
     failures.push(
       `the review checkpoint records head ${recorded}, and this pull request is\n` +
         `        at ${head}. A review of one revision is not a review of another.\n` +
@@ -311,18 +244,12 @@ if (sensitive.length > 0) {
         '        a change to a governance gate is a change to what may merge.',
     );
   } else {
-    // Every security-review line, not the first one carrying a revision.
-    // Round eight found a body holding a review for this head followed by
-    // another for the base passing, because the search stopped at the first
-    // match. A later line naming an older revision is evidence for that older
-    // revision, and this check exists to say exactly that.
+    // Every security-review line, not the first one carrying a revision
+    // (round eight): a later line naming an older revision is evidence for
+    // that older revision only.
     for (const field of securityFields) {
-      // Round fourteen, 24 September: the outcome is matched ignoring case,
-      // and the revision was read case-sensitively, so a head written in
-      // uppercase hex read as none. Both sides are compared in lowercase.
       const match = /\b([0-9a-f]{7,40})\b/iu.exec(field.value);
       const recorded = match === null ? '' : (match[1] ?? '').toLowerCase();
-      const current = head.toLowerCase();
       if (recorded === '') {
         failures.push(
           `a security review line states no revision, so nothing binds it to\n` +
@@ -330,7 +257,7 @@ if (sensitive.length > 0) {
             `          ${field.line}\n` +
             '        Record the head it ran against.',
         );
-      } else if (!current.startsWith(recorded) && !recorded.startsWith(current)) {
+      } else if (!namesHead(recorded)) {
         failures.push(
           `a security review line records ${recorded}, and this pull request is\n` +
             `        at ${head}:\n` +
@@ -360,14 +287,8 @@ if (sensitive.length > 0) {
         `        \`Security review: ${NOT_REQUIRED_HELP}\`.`,
     );
   }
-  // The template ships both outcome lines as the same placeholder and asks
-  // for both to be replaced. Round eight found an unreplaced security
-  // placeholder passing on a change that touched no sensitive path, because
-  // placeholders were read only where a security review was required. An
-  // author who has not replaced the line has not read it, whatever the change
-  // touches. The surface still decides whether a review was needed: here the
-  // fixed `not required: no sensitive paths changed` is accepted, and since
-  // round twelve a security line on this surface is held to the grammar too.
+  // Round eight: an unreplaced placeholder fails whatever the change touches.
+  // Here the fixed `not required` text is accepted beside the ran forms.
   for (const field of securityFields) {
     const verdict = outcome(field.value, [...RAN_FORMS, NOT_REQUIRED]);
     if (verdict === 'accepted') continue;
@@ -409,8 +330,7 @@ const unknownBuilders = builders.filter((b) => b.trim() !== '' && companiesOf(b)
 const refused = {
   reviewer: () => false,
   model: (v) => companiesOf(v).length === 0 || companiesOf(v).some((c) => builtBy.has(c)),
-  'head sha': (v) =>
-    !head.toLowerCase().startsWith(/^[0-9a-f]{7,40}\b/iu.exec(v)?.[0].toLowerCase() ?? '-'),
+  'head sha': (v) => !current.startsWith(/^[0-9a-f]{7,40}\b/iu.exec(v)?.[0].toLowerCase() ?? '-'),
   verdict: (v) => !/^approve\.?$/iu.test(v),
 };
 const recordProblems = Object.entries(record).flatMap(([name, values]) =>
@@ -430,16 +350,11 @@ if (recordProblems.length > 0) {
   );
 }
 
-// --- rule 4: no review field where it could be hidden --------------------
+// --- rule 4: a review field counts only on a top-level plain line ---------
 
-// CQ-13, Sol's fourth review: fail closed. A raw line carrying a review field
-// after any run of marks must be one the reader counts as visible.
-
-// --- rule 5: a review field counts only on a top-level plain line ---------
-
-// CQ-13, Sol's fifth review: a field line counts only as a plain line of a
-// top-level paragraph, at the margin; in any container it fails. Where the
-// tracker cannot tell, the line is in a container.
+// CQ-13, Sol's fourth and fifth reviews: fail closed. Any line written or
+// shown as a review field that is not a plain line of a top-level paragraph,
+// at the margin, fails.
 if (buried.length > 0) {
   failures.push(
     'a review field appears where it could be hidden:\n' +
@@ -450,14 +365,13 @@ if (buried.length > 0) {
   );
 }
 
-// --- rule 6: no raw HTML -------------------------------------------------
+// --- rule 5: no raw HTML -------------------------------------------------
 
 // CQ-13, Sol's sixth review: a body is Markdown only. Any raw tag fails; a
 // comment, a fence and a code span are allowed.
-const tag = html.length > 0 ? html : null;
-if (tag !== null) {
+if (html.length > 0) {
   failures.push(
-    `the pull request body holds raw HTML (${tag[0]}):\n` +
+    `the pull request body holds raw HTML (${html[0]}):\n` +
       '        A body is Markdown only; an HTML comment is the one exception.\n' +
       '        Write the text in Markdown, or put a literal sample in a code span.',
   );

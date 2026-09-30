@@ -118,7 +118,8 @@
     "SL11-16 leaves aw-13-local-target.test.ts unnamed: it opens a database only against a running local trace target (TRACE_TARGET_ENV_FILE from scripts/local/trace-target.ts up), which the required checks never start; aw-13-switch.test.ts is named as an invariant.",
     "C80 (SL15 session 2) adds c80-approval (C80 approver, C80 no self-approval, the pinned version), c80-isolation (three crossings and C80 canary), c80-agent-request (the agent's reach under a live delegation) and c80-receipt-atomic (receipt written under the worker lease, in the observed result's transaction).",
     "C80 (SL15 session 3) adds c80-runner (C80 publish runner and C80 revert runner: the approved bytes rebuilt from the pinned source and dispatched once, the capture on the correction's own page, refusals before any dispatch, unknown and accepted never dispatched again, a lease lost mid-flight writing nothing, the revert observed and timed).",
-    "C80 (SL15 session 5) adds c80-runner-fence (C80 capture through the fence: the runner's capture port is the C18-1 fence's inputs; a stored page outside the catalogue, or the catalogued page spelt any other way, or awaiting the pool reviews, is refused before anything is read, sent, resolved or fetched, the refusal recorded with the origin only; an accepted publish is not observed again, nor a live one reverted, once its page leaves the catalogue; a name answering a private address is never fetched)."
+    "C80 (SL15 session 5) adds c80-runner-fence (C80 capture through the fence: the runner's capture port is the C18-1 fence's inputs; a stored page outside the catalogue, or the catalogued page spelt any other way, or awaiting the pool reviews, is refused before anything is read, sent, resolved or fetched, the refusal recorded with the origin only; an accepted publish is not observed again, nor a live one reverted, once its page leaves the catalogue; a name answering a private address is never fetched).",
+    "T4e REV185B2: role-case-matrix-fixture-clients proves T4-N2's matrix world holds T4a's two clients with one record grant each in both businesses, and role-case-matrix gains the client-to-client case (another client's task, in either business, answers as an id never issued). t2g-decide-parity's crossing now also finds the undecided gate holding its task open (GATE_PENDING on both surfaces) before the grant holder decides; t3f-expired-lease's business crossing settles its own expired lease marked expired."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -175,6 +176,7 @@
     "tests/runtime/decision-abort.test.ts",
     "tests/acceptance/surface-inventory.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
+    "tests/acceptance/role-case-matrix-fixture-clients.test.ts",
     "tests/acceptance/protected-fields.test.ts",
     "tests/acceptance/predicate-rls.test.ts",
     "tests/api/settings-revision-routes.test.ts",
