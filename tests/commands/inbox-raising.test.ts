@@ -366,6 +366,76 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
 
   // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
   describe('INB-1 mention', () => {
+    const comment = async (
+      task: { id: string; rev: number },
+      mentions: readonly string[],
+      audience: 'internal' | 'client' = 'internal',
+    ): Promise<Answer> =>
+      await call('task.comment', {
+        recordId: task.id,
+        expectedRevision: task.rev,
+        body: 'have a look',
+        audience,
+        mentions,
+      });
+
+    const comments = async (task: string): Promise<string> =>
+      String(
+        (
+          await fixture.db.admin.execute<{ n: string }>(
+            `select count(*)::text as n from public.records where data ->> 'task' = $1`,
+            [task],
+          )
+        )[0]?.n,
+      );
+
+    it('raises a mention for each person named, and none for the author', async () => {
+      const task = await newTask('mention me');
+      const written = ok(await comment(task, [reviewer.personId, fixture.member.personId]));
+      const commentId = detailOf(written)['commentId'];
+      expect(
+        (await open(reviewer.personId, 'mention'))
+          .filter((i) => readable(i))
+          .filter((i) => i.subjectRecordId === task.id),
+      ).toMatchObject([{ factKind: 'record', factId: commentId }]);
+      expect(await open(fixture.member.personId, 'mention')).toStrictEqual([]);
+    });
+
+    it('raises a mention for a teammate named by an uppercase identifier, under their stored one', async () => {
+      const task = await newTask('mention me loudly');
+      const written = ok(await comment(task, [reviewer.personId.toUpperCase()]));
+      expect(
+        (await open(reviewer.personId, 'mention'))
+          .filter((i) => readable(i))
+          .filter((i) => i.subjectRecordId === task.id),
+      ).toMatchObject([{ factKind: 'record', factId: detailOf(written)['commentId'] }]);
+    });
+
+    it('refuses before save a mention of someone who cannot read the task, naming them', async () => {
+      const onA = await newTask('client A', clientA);
+      const onB = await newTask('client B', randomUUID());
+      ok(await comment(onA, [clientStaff.personId]));
+      expect(await open(clientStaff.personId, 'mention')).toHaveLength(1);
+
+      const before = await allItems();
+      const refusedB = await comment(onB, [clientStaff.personId]);
+      expect(refusedB.status).toBe(422);
+      expect(refusedB.body['code']).toBe('MENTION_NOT_READABLE');
+      expect(JSON.stringify(refusedB.body['fixes'])).toContain('Cleo Clientside');
+      expect(await comments(onB.id)).toBe('0');
+
+      // Another business's person is not a person here, and is not named back.
+      const foreign = await comment(onA, [bravoDecider]);
+      expect(foreign.body['code']).toBe('MENTION_NOT_READABLE');
+      expect(JSON.stringify(foreign.body)).not.toContain('Bruno');
+
+      // An outside party reads client A's task, but not a team-only comment.
+      const internal = await comment(onA, [outsider]);
+      expect(internal.body['code']).toBe('MENTION_NOT_READABLE');
+      expect(JSON.stringify(internal.body['fixes'])).toContain('Olga Outside');
+      expect(await allItems()).toBe(before);
+    });
+
     it('a login without paid-client status does not raise a client comment', async () => {
       const freeWithLogin = await fixture.db.app.withBusiness(fixture.business, async (tx) => {
         const personId = await insertPerson(tx, 'Free portal contact');
@@ -379,6 +449,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
         return personId;
       });
       const task = await newTask('client A free contact', clientA);
+      ok(await comment(task, [freeWithLogin], 'client'));
       expect(
         (await open(freeWithLogin, 'client_comment'))
           .filter((i) => readable(i))
@@ -388,11 +459,24 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
 
     it('an outside party without paid-client status gets no client comment item', async () => {
       const onA = await newTask('client A without paid status', clientA);
+      ok(await comment(onA, [outsider], 'client'));
       expect(
         (await open(outsider, 'client_comment'))
           .filter((i) => readable(i))
           .filter((i) => i.subjectRecordId === onA.id),
       ).toStrictEqual([]);
+    });
+
+    it('refuses a mentions operand that is not a list of identifiers', async () => {
+      const task = await newTask('shape');
+      const answer = await call('task.comment', {
+        recordId: task.id,
+        expectedRevision: task.rev,
+        body: 'x',
+        audience: 'internal',
+        mentions: 'rhea',
+      });
+      expect(answer.body['code']).toBe('FIELD_VALUE_INVALID');
     });
   });
 });

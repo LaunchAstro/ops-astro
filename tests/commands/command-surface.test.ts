@@ -77,15 +77,21 @@ describe('the surface as a table', () => {
     // revocation writes, and the authority it asks is still on tasks.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget)\/[a-z_]+$/u.test(path),
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|inbox|notifications)\/[a-z_]+$/u.test(
+          path,
+        ),
       ),
     ).toBe(true);
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one table, read top to bottom
 describe('the surface as a table', () => {
-  it('declares the nine reads as reads, and everything else as a write', () => {
+  it('declares the twelve reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
+      'inbox.count',
+      'inbox.read',
+      'inbox.unattended',
       'person.list',
       'preset.plan',
       'session.capabilities',

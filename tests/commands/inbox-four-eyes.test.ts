@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { countOwed } from '../../packages/core-commands/src/reads/inbox.ts';
 import { enrol, grantTo, type Member } from './fixture.ts';
 import {
   appliedDetail,
@@ -77,6 +78,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 four eyes and the inbox', () => 
       )
     )[0]?.state;
 
+  const owed = async (person: string): Promise<number> =>
+    await s.db.app.withBusiness(s.business, async (tx) => await countOwed(tx, person));
+
   const assign = async (taskId: string, assignee: Member): Promise<void> => {
     appliedDetail(
       await asPerson(s, {
@@ -97,6 +101,8 @@ describe.skipIf(serverUrl === undefined)('INB-1 four eyes and the inbox', () => 
     const v1 = await propose(s, taskId);
     expect(codeOf(await as(approver, decideBody(v1, 'approve')))).toBe('FOUR_EYES_REQUIRED');
     expect(await stateOn(v1['gateId'], approver.personId)).toBeUndefined();
+    // Their assignment item alone: it is owed.
+    expect(await owed(approver.personId)).toBe(1);
   });
 
   it('INB-1 four eyes: assigning a decider withdraws their open decision item on the task', async () => {
@@ -106,6 +112,8 @@ describe.skipIf(serverUrl === undefined)('INB-1 four eyes and the inbox', () => 
     expect(await stateOn(v1['gateId'], approver.personId)).toBe('open');
     await assign(taskId, approver);
     expect(await stateOn(v1['gateId'], approver.personId)).toBe('withdrawn');
+    // Their assignment item alone: it is owed.
+    expect(await owed(approver.personId)).toBe(1);
   });
 
   it('INB-1 four eyes: a reassignment racing a decision leaves no open decision item on the decided gate', async () => {
@@ -130,6 +138,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 four eyes and the inbox', () => 
       [s.business, version['gateId']],
     );
     expect(open[0]?.total).toBe(0);
+    expect(await owed(first.personId)).toBe(0);
   });
 
   it('a former assignee regains an open decision item when reassigned', async () => {
@@ -142,8 +151,10 @@ describe.skipIf(serverUrl === undefined)('INB-1 four eyes and the inbox', () => 
     expect(await stateOn(version['gateId'], first.personId)).toBe('withdrawn');
     await assign(taskId, second);
     const restored = await stateOn(version['gateId'], first.personId);
+    const count = await owed(first.personId);
     expect(codeOf(await as(first, decideBody(version, 'approve')))).toBe('applied');
     expect(restored).toBe('open');
+    expect(count).toBe(1);
   });
 
   it("reassignment restores an eligible decider's gate item", async () => {
@@ -164,7 +175,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 four eyes and the inbox', () => 
           and fact_id = $2 and recipient_person_id = $3 and work_state = 'open'`,
       [s.business, version['gateId'], approver.personId],
     );
+    const countBeforeDecision = await owed(approver.personId);
     appliedDetail(await as(approver, decideBody(version, 'approve')), 'eligible former assignee');
     expect(open[0]?.total).toBe(1);
+    expect(countBeforeDecision).toBe(1);
   });
 });

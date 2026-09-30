@@ -1020,7 +1020,18 @@ partly covered rather than proved.
   `pending`; from then on `decide` admits only a business-scope decider.
   Before the bound it is `TRANSITION_NOT_PERMITTED`; a recipient outside the
   role, or nobody, is `SCOPE_NOT_GRANTED` naming `recipientPersonId`, with
-  nothing written.
+  nothing written. The inbox follows in the same transaction (INB-1): open
+  decision items on the gate held by anyone outside the business-scope role,
+  or by the task's assignee, are withdrawn, and every business-scope decider
+  but the assignee, the recipient among them, holds an open one, raised if
+  they had none (one granted the role after the gate was raised included).
+  Four eyes rules the inbox everywhere: no gate raises the assignee a
+  decision item, and an assignment reconciles each pending gate on the task
+  against the new assignee: their open decision items withdraw, and every
+  other person who decides the gate now (a record-scope decider, or once it
+  is escalated a business-scope one and the person it was escalated to)
+  holds an open one. A former assignee's withdrawn item is reopened, so they
+  are owed it again; anyone else without one is raised one.
 - **Rejection is terminal** (G05): the rejected gate takes no second decision,
   a new version in the same lineage is refused `LINEAGE_TERMINAL` on the
   lineage rather than on the gate, and the authorised restart is a new lineage
@@ -1365,7 +1376,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:775-786`). With neither setting present, the
+  rewrites it (`local-seed.mjs:779-790`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the

@@ -40,6 +40,13 @@ export const READ_NAMES = [
   'task.execution',
   // What an observed effect came from (T2c2); the task page draws it in T2g.
   'task.receipt',
+  // The caller's own inbox and owed count (INB-1d), the same read the API and
+  // the command line serve; the working minimum draws them in INB-1g.
+  'inbox.read',
+  'inbox.count',
+  // Items no path reaches (INB-1e), for `operations:read`; the operations view
+  // (C55) draws them.
+  'inbox.unattended',
 ] as const;
 
 /**

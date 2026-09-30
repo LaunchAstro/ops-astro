@@ -1,6 +1,7 @@
 {
   "invariant": [
     "tests/acceptance/external-party.test.ts",
+    "tests/acceptance/external-party-inbox.test.ts",
     "tests/identity/external-party.test.ts",
     "tests/tenancy/restricted-calls.test.ts",
     "tests/tenancy/restricted-calls-prefixes.test.ts",
@@ -12,6 +13,8 @@
     "tests/web/mp-2-1-isolation-api.test.tsx",
     "tests/api/api-1-isolation.test.ts",
     "tests/db/inbox-records.test.ts",
-    "tests/commands/inbox-clearing-client-isolation.test.ts"
+    "tests/reads/inbox.test.ts",
+    "tests/commands/inbox-clearing-client-isolation.test.ts",
+    "tests/reads/inbox-named.test.ts"
   ]
 }

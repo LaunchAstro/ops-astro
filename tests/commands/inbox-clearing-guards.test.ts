@@ -107,6 +107,20 @@ describe.skipIf(serverUrl === undefined)('INB-1 clearing guards', () => {
     const clientB = randomUUID();
     const onA = await w.proposed('client A work', clientA);
     const onB = await w.proposed('client B work', clientB);
+    // Person to person: the decider's own mention on the same task, from a teammate.
+    ok(
+      await w.call(
+        'task.comment',
+        {
+          recordId: onA.task.id,
+          expectedRevision: onA.task.rev,
+          body: 'have a look',
+          audience: 'internal',
+          mentions: [w.reviewer.personId],
+        },
+        w.writerToken,
+      ),
+    );
     const decided = detailOf(ok(await w.call('task.decide', decideBody(onA), w.reviewerToken)));
     const real = { gateId: onA.gateId, decisionId: String(decided['decisionId']) };
 
@@ -159,6 +173,17 @@ describe.skipIf(serverUrl === undefined)('INB-1 clearing guards', () => {
       { work_state: 'open', closed_by: null },
       { work_state: 'open', closed_by: null },
     ]);
+    // Person to person: only that gate's decision items closed; the decider's
+    // mention and the writer's (non-holder's) state are untouched.
+    const reviewers = await w.fixture.db.app.withBusiness(
+      w.fixture.business,
+      async (tx) => await readInboxItems(tx, w.reviewer.personId),
+    );
+    expect(
+      reviewers
+        .filter((i) => readable(i))
+        .filter((i) => i.subjectRecordId === onA.task.id && i.reason === 'mention'),
+    ).toMatchObject([{ workState: 'open', closedByPersonId: null }]);
     const writers = await w.fixture.db.app.withBusiness(
       w.fixture.business,
       async (tx) => await readInboxItems(tx, w.writer.personId),

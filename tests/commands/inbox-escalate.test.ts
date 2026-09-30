@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { raiseInboxItem } from '../../packages/core-records/src/index.ts';
+import { countOwed } from '../../packages/core-commands/src/reads/inbox.ts';
 import { enrol, grantTo, type Member } from './fixture.ts';
 import {
   appliedDetail,
@@ -116,11 +117,15 @@ describe.skipIf(serverUrl === undefined)('INB-1 escalate and the inbox', () => {
       [s.business, gateId],
     );
 
+  const owed = async (person: string): Promise<number> =>
+    await s.db.app.withBusiness(s.business, async (tx) => await countOwed(tx, person));
+
   it('INB-1 escalate withdraws a task-scoped decider’s item and keeps the recipient’s open and owed', async () => {
     const { taskId, v3, approver } = await atTheBound();
     const before = await onGate(v3['gateId']);
     expect(itemOf(before, approver.personId, taskId)?.state).toBe('open');
     expect(itemOf(before, holder.personId, taskId)?.state).toBe('open');
+    const approverOwed = await owed(approver.personId);
 
     appliedDetail(
       await asPerson(s, decideBody(v3, 'escalate', { recipientPersonId: holder.personId })),
@@ -134,6 +139,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 escalate and the inbox', () => {
     });
     expect(itemOf(after, holder.personId, taskId)?.state).toBe('open');
     expect(itemOf(after, s.decider.personId, taskId)?.state).toBe('open');
+    expect(await owed(approver.personId)).toBe(approverOwed - 1);
 
     // The escalation role decides; what is left on the gate clears naming them.
     appliedDetail(await as(holder, decideBody(v3, 'approve')), 'approve after escalate');
@@ -162,6 +168,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 escalate and the inbox', () => {
       'escalate to a later holder',
     );
     expect(itemOf(await onGate(v3['gateId']), late.personId, taskId)?.state).toBe('open');
+    expect(await owed(late.personId)).toBe(1);
   });
 
   it('INB-1 escalate raises every business decider granted after the gate, not only the recipient', async () => {
@@ -186,6 +193,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 escalate and the inbox', () => {
     const after = await onGate(v3['gateId']);
     expect(itemOf(after, named.personId, taskId)?.state).toBe('open');
     expect(itemOf(after, other.personId, taskId)?.state).toBe('open');
+    expect(await owed(other.personId)).toBe(1);
   });
 
   it('escalation does not count an assignee who cannot decide', async () => {
@@ -214,6 +222,8 @@ describe.skipIf(serverUrl === undefined)('INB-1 escalate and the inbox', () => {
     );
     expect(codeOf(await as(assignee, decideBody(v3, 'approve')))).toBe('FOUR_EYES_REQUIRED');
     expect(itemOf(await onGate(v3['gateId']), assignee.personId, taskId)).toBeUndefined();
+    // Their assignment item alone: task.assign raised it, and it is owed.
+    expect(await owed(assignee.personId)).toBe(1);
   });
 
   it('INB-1 a refused escalate moves no item', async () => {

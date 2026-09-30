@@ -10,6 +10,7 @@
 // at each read from the recipient's live grants (`read.ts`). Read is not done,
 // delivered is not seen, and withheld is not gone.
 
+import { taskAccess } from './access.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /** Why the item is owed to the recipient: CS-16.8's reasons, one each. */
@@ -138,4 +139,35 @@ export async function recordDeliveryAttempt(
   const id = rows[0]?.id;
   if (id === undefined) throw new Error('recordDeliveryAttempt: the insert returned no row');
   return id;
+}
+
+/**
+ * Stamp `seen` on the recipient's own attention row (INB-1d). The row is
+ * written only for an item whose recipient is `personId` and whose task they
+ * can read now, so nobody stamps another person's item or one about a task
+ * they cannot read; a second stamp keeps the first. Nothing on the item moves:
+ * seen leaves it open and counted. False otherwise.
+ */
+export async function stampSeen(
+  tx: TenantQuery,
+  personId: string,
+  itemId: string,
+): Promise<boolean> {
+  const mine = await tx.query<{ readonly subject: string }>(
+    `select subject_record_id as subject from public.inbox_items
+      where business_id = $1 and id = $2 and recipient_person_id = $3`,
+    [tx.businessId, itemId, personId],
+  );
+  // Opening needs read on the task now: an item about a task the recipient
+  // cannot read (another client's, a lost grant) is answered as not theirs.
+  const subject = mine[0]?.subject;
+  if (subject === undefined || (await taskAccess(tx, personId, subject)) !== 'readable') {
+    return false;
+  }
+  await tx.query(
+    `insert into public.inbox_attention (business_id, item_id, person_id)
+     values ($1, $2, $3) on conflict (business_id, item_id) do nothing`,
+    [tx.businessId, itemId, personId],
+  );
+  return true;
 }

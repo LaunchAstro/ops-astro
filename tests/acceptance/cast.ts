@@ -99,6 +99,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'preset',
   // `budget.top_up` asks `decide` on `billing` (T2e), as the seed's admin holds it.
   'billing',
+  // `inbox.unattended` asks `operations:read` (INB-1e, C55).
+  'operations',
 ];
 
 export async function tokenFor(
