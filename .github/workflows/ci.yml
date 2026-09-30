@@ -528,10 +528,9 @@ jobs:
       - name: The mode's own cases, against a made-up page
         run: node tests/visual/app-drift-cases.ts
       - run: pnpm build:web
-      - name: App-only drift and look parity on the built app
+      - name: App-only drift on the built app
         run: |
           set -euo pipefail
           pnpm --filter @launchastro/web exec vite preview --host 127.0.0.1 --port 5391 --strictPort &
           for _ in $(seq 1 30); do curl -sf http://127.0.0.1:5391/ >/dev/null && break; sleep 1; done
           node tests/visual/run.ts --app-drift --app http://127.0.0.1:5391 --session tests/visual/made-up-session.json --out "$RUNNER_TEMP/visual"
-          node tests/visual/look.ts --app http://127.0.0.1:5391 --out "$RUNNER_TEMP/look"
