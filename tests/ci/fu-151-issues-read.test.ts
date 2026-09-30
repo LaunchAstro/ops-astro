@@ -14,32 +14,12 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { script, step, top } from './workflow-text.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const REVIEW = readFileSync(join(ROOT, '.github/workflows/review-evidence.yml'), 'utf8');
 const FETCH = 'Read the description as it stands now';
 const BINDS = 'The review must cover the head being merged';
-
-/** A top-level key's block, from `key:` to the next line that starts in column one. */
-function top(text: string, key: string): string {
-  return new RegExp(`^${key}:.*\\n(?:(?: .*)?\\n)*`, 'mu').exec(text)?.[0] ?? '';
-}
-
-/** One step of a job, from its `- name:` line to the next step. */
-function step(block: string, name: string): string {
-  const start = block.indexOf(`      - name: ${name}\n`);
-  if (start === -1) return '';
-  const next = block.slice(start + 1).search(/^ {6}- /mu);
-  return block.slice(start, next === -1 ? undefined : start + 1 + next);
-}
-
-/** A step's `run: |` script, unindented. */
-function script(block: string): string {
-  const lines = block.split('\n');
-  const at = lines.findIndex((l) => /^ {8}run: \|$/u.test(l));
-  const body = lines.slice(at + 1).filter((l) => l === '' || l.startsWith('          '));
-  return at === -1 ? '' : body.map((l) => l.slice(10)).join('\n');
-}
 
 /**
  * The permissions the review-evidence job's token holds: its own block if it has one, which

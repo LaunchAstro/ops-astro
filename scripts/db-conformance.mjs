@@ -46,14 +46,19 @@
 // either side. That is what binds database activity to a path rather than to
 // a total, and it is why the runner spawns vitest once per suite.
 //
-// Usage: node scripts/db-conformance.mjs [--manifest <path>]
+// Usage: node scripts/db-conformance.mjs [--manifest <path>] [--shard <i>/<n>]
 //   DATABASE_URL  the database to run against. Required.
+//   --shard       run only shard i of n (scripts/db-shards.ts decides which
+//                 suites). Rules 2 and 3 still read the whole manifest.
+//   A suite tests/db/shard-plan.json splits into parts runs once per part,
+//   with SUITE_PART=i/k, sharded or not; every rule applies to each part.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import pg from 'pg';
+import { assignShards, itemOf, parseShard, planItems, readPlan } from './db-shards.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 
@@ -62,6 +67,15 @@ const manifestFlag = argv.indexOf('--manifest');
 const manifestPath = resolve(
   manifestFlag === -1 ? join(repoRoot, 'tests/db/named-suites.json') : argv[manifestFlag + 1],
 );
+
+const shardFlag = argv.indexOf('--shard');
+let shard;
+try {
+  shard = shardFlag === -1 ? undefined : parseShard(argv[shardFlag + 1]);
+} catch (error) {
+  console.error(`db-conformance: ${error instanceof Error ? error.message : String(error)}.`);
+  process.exit(2);
+}
 
 const url = (process.env['DATABASE_URL'] ?? '').trim();
 if (url === '') {
@@ -90,6 +104,24 @@ const named = [
 ].map(String);
 
 const failures = [];
+
+// A shard runs its share of the run items; every rule below reads that share,
+// except 2 and 3, which read the whole manifest in every shard.
+const plan = readPlan(join(repoRoot, 'tests/db/shard-plan.json'));
+const items = planItems(named, plan.parts);
+const toRun =
+  shard === undefined
+    ? items
+    : (assignShards(items, plan.seconds, shard.count)[shard.index - 1] ?? []);
+const shardLabel =
+  shard === undefined ? '' : `shard ${String(shard.index)}/${String(shard.count)} `;
+
+if (named.length > 0 && toRun.length === 0) {
+  failures.push(
+    `${shardLabel}was given no suite. A shard that runs nothing proves nothing;\n` +
+      '        use fewer shards than the manifest has suites.',
+  );
+}
 
 // 2. A manifest that names nothing is not a passing run.
 if (named.length === 0) {
@@ -179,7 +211,7 @@ const siblingsOf = (suite) => {
  * number that no suite owned; running them one at a time is what gives each
  * path a transaction count of its own.
  */
-const runSuite = async (suite) => {
+const runSuite = async (suite, part) => {
   // vitest's JSON reporter writes to a file, never to stdout, so the report
   // is collected from one and removed afterwards.
   const reportPath = join(mkdtempSync(join(tmpdir(), 'hub-db-conformance-')), 'report.json');
@@ -207,7 +239,7 @@ const runSuite = async (suite) => {
     {
       cwd: repoRoot,
       encoding: 'utf8',
-      env: { ...process.env, DATABASE_URL: url, CI: 'true' },
+      env: { ...process.env, DATABASE_URL: url, CI: 'true', SUITE_PART: part ?? '' },
       maxBuffer: 64 * 1024 * 1024,
     },
   );
@@ -237,8 +269,12 @@ if (failures.length === 0) {
   // suite are only that suite's if nothing else is touching the database
   // while it runs; run them in parallel and rule 7 becomes the whole-run
   // number this round removed.
-  // eslint-disable-next-line no-await-in-loop
-  for (const suite of named) results.push(await runSuite(suite));
+  for (const item of toRun) {
+    const started = performance.now();
+    // eslint-disable-next-line no-await-in-loop
+    const result = await runSuite(itemOf(item).suite, itemOf(item).part);
+    results.push({ ...result, item, seconds: (performance.now() - started) / 1000 });
+  }
 
   for (const { suite, run, report } of results) {
     if (report !== undefined) continue;
@@ -415,7 +451,7 @@ if (failures.length === 0 && beside.length > 0) {
       beside
         .map(
           (r) =>
-            `          ${r.suite}\n            pg_stat_database moved by ` +
+            `          ${r.item}\n            pg_stat_database moved by ` +
             `${String(r.moved)} while it ran.`,
         )
         .join('\n') +
@@ -426,16 +462,20 @@ if (failures.length === 0 && beside.length > 0) {
   );
 }
 
-for (const { suite, moved, readError } of results) {
+for (const { item, moved, readError, seconds } of results) {
+  const took = seconds.toFixed(1);
   console.log(
     readError === undefined
-      ? `db-conformance: ${suite} moved the database counter by ${String(moved)}.`
-      : `db-conformance: ${suite} was not measured: a counter read failed.`,
+      ? `db-conformance: ${item} moved the database counter by ${String(moved)} in ${took}s.`
+      : `db-conformance: ${item} was not measured: a counter read failed.`,
   );
 }
 
+const ofNamed =
+  shard === undefined ? '' : `ran ${String(toRun.length)} of ${String(items.length)} item(s) from `;
 console.log(
-  `db-conformance: ${String(named.length)} named suite(s), ${String(ran.total)} test(s): ` +
+  `db-conformance: ${shardLabel}${ofNamed}${String(named.length)} named suite(s), ` +
+    `${String(ran.total)} test(s): ` +
     `${String(ran.passed)} passed, ${String(ran.failed)} failed, ${String(ran.skipped + ran.todo)} skipped`,
 );
 console.log(

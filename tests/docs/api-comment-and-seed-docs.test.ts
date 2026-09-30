@@ -188,7 +188,7 @@ describe('API.md task.create row', () => {
       ...codesIn(bodyOf(write, 'refuseSpoof')),
       ...codesIn(bodyOf(read('packages/core-records/src/tasks/placement.ts'), 'planTaskPlacement')),
       ...codesIn(bodyOf(read('packages/core-records/src/records/fields.ts'), 'refuseGenericWrite')),
-      // `refuseCreateOperands` and `refuseWrongValueType` both answer this.
+      // `parseRequest` and `refuseWrongValueType` both answer this.
       'FIELD_VALUE_INVALID',
     ]);
     expect([...codes]).toEqual(
