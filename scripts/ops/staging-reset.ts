@@ -81,6 +81,8 @@ function databaseProject(name: string, value: string): string {
   if (/[?&](?:host|hostaddr|port|user)=/iu.test(url.search))
     throw new Refusal(`${name} names its host twice`);
   const host = url.hostname.toLowerCase();
+  // One named host: the driver falls back to PGHOST for none and tries a list in turn.
+  if (!/^[a-z0-9][a-z0-9.-]*$/u.test(host)) throw new Refusal(`${name} names no one host`);
   let user = '';
   try {
     user = decodeURIComponent(url.username);

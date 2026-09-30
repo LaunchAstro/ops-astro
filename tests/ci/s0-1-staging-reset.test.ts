@@ -83,7 +83,16 @@ live(
       }),
       'DATABASE_ADMIN_URL',
     );
-    // A host named again in the query, and a login no decoder can read.
+    // No host, a list of hosts, a host named again in the query, a login no decoder reads.
+    for (const address of [
+      own.replace(/@[^/]+\//u, '@/'),
+      own.replace(/@([^/]+)\//u, `@db.${OTHER}.supabase.co,$1/`),
+    ])
+      // oxlint-disable-next-line no-await-in-loop -- one refusal at a time, each checked
+      await refusedBeforeConnecting(
+        settings({ DATABASE_ADMIN_URL: address }),
+        'DATABASE_ADMIN_URL',
+      );
     await refusedBeforeConnecting(
       settings({ DATABASE_ADMIN_URL: `${own}?host=db.${OTHER}.supabase.co` }),
       'DATABASE_ADMIN_URL',
