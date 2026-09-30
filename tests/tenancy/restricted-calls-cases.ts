@@ -50,9 +50,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'access_endings'],
   // 0055 (C58): an ended session is written once; never changed or deleted.
   ['si', 'ended_sessions'],
-  // 0051: the live change record, stamped by the writes' own triggers (C4).
+  // 0057: the live change record, stamped by the writes' own triggers (C4).
   ['siu', 'live_changes'],
-  // 0052: a person's own availability, set by them alone (MP-7-10).
+  // 0058: a person's own availability, set by them alone (MP-7-10).
   ['siu', 'person_availability'],
   // 0053: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
   ['siu', 'person_preferences'],
