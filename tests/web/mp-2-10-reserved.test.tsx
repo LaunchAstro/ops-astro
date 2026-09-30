@@ -16,15 +16,16 @@ import { PAGES, SECTIONS, pageAt } from '../../apps/web/src/manifest.ts';
 import { matchRoute } from '../../apps/web/src/routes.ts';
 import { filled, hrefs, open } from './mp-2-1-support.tsx';
 
-/** The R2 list: the reserved addresses the mockup never designed. */
+/**
+ * The R2 list: the reserved addresses the mockup never designed. Access (C32)
+ * and Telemetry (C34) left it once built (ORCH37).
+ */
 const UNDESIGNED = [
   '/docs/',
   '/docs/snippets/',
   '/settings/keys/',
-  '/settings/access/',
   '/settings/emails/',
   '/settings/workflow-triggers/',
-  '/settings/telemetry/',
   '/settings/cal/',
 ];
 
@@ -82,7 +83,7 @@ describe('MP-2-10 each undesigned address stays out of the navigation, and a typ
     expect(docs?.navigable).toBe(false);
     const settings = SECTIONS.find((each) => each.namespace === 'agency' && each.id === 'general');
     expect(settings?.navigable).toBe(true);
-    expect(settings?.tabs.map((page) => page.label)).toEqual(['General']);
+    expect(settings?.tabs.map((page) => page.label)).toEqual(['General', 'Access', 'Telemetry']);
   });
 });
 
