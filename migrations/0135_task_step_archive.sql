@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0046 a step archived by its parent's completion (MP-4-15, CS-4.2).
+-- 0135 a step archived by its parent's completion (MP-4-15, CS-4.2).
 --
 -- Completing a task marks its unfinished subtasks archived, never done, and
 -- reopening it restores them (`task.complete` and `task.reopen`,
@@ -16,7 +16,7 @@
 -- A preset field that already holds a key, moved aside.
 -- ---------------------------------------------------------------------------
 
--- The move 0043 makes for `ad_hoc`, for the same reason: a preset field keyed
+-- The move 0132 makes for `ad_hoc`, for the same reason: a preset field keyed
 -- `archived_at` or `archived_why` on a task type would keep the key, the
 -- backfill below would skip it, and the transition would write a value into a
 -- field it does not own. Its definition and every value stored under it move

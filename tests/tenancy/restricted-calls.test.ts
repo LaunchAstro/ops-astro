@@ -108,7 +108,7 @@ const UNREACHED_OWN: Readonly<Record<string, string>> = {
        join public.attempts att on att.business_id = r.business_id
        join public.planned_runs run on run.business_id = att.business_id and run.id = att.run_id
       where r.business_id = $1 order by att.id limit 1 returning 1`,
-  // 0047: no journey step logs time yet, so one finished entry is written here.
+  // 0136: no journey step logs time yet, so one finished entry is written here.
   'public.time_entries': `insert into public.time_entries
        (business_id, id, task_id, person_id, actor_id, started_at, ended_at, minutes,
         ad_hoc, source)
@@ -117,7 +117,7 @@ const UNREACHED_OWN: Readonly<Record<string, string>> = {
        join public.people p on p.business_id = r.business_id
        join public.actors a on a.business_id = r.business_id
       where r.business_id = $1 order by r.id, p.id, a.id limit 1 returning 1`,
-  // 0050: no journey step tags a task yet, so one tag is named here...
+  // 0139: no journey step tags a task yet, so one tag is named here...
   'public.tags': `insert into public.tags (business_id, id, name, actor_id)
      select a.business_id, gen_random_uuid(), 'restricted ' || left(gen_random_uuid()::text, 8), a.id
        from public.actors a

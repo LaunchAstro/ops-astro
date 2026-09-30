@@ -251,7 +251,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: ['task.set_audience'],
     escalatingOperation: null,
   },
-  // The three marks the derived rank reads (R70, migration 0042): whole
+  // The three marks the derived rank reads (R70, migration 0131): whole
   // numbers from 1 to 10, or absent, and absent is never 0. One command owns
   // all three, so a mark changes only as `task scores changed` in the audit.
   {
@@ -282,7 +282,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     escalatingOperation: null,
   },
   {
-    // The Ad hoc mark (MP-4-10, migration 0043): it drives billing and is the
+    // The Ad hoc mark (MP-4-10, migration 0132): it drives billing and is the
     // default for the task's new time entries. Absent reads as not ad hoc.
     key: 'ad_hoc',
     label: 'Ad hoc',
@@ -293,7 +293,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     escalatingOperation: null,
   },
   // A step left out of its parent's count without being done (MP-4-15,
-  // migration 0046): completing a task archives its unfinished subtasks and
+  // migration 0135): completing a task archives its unfinished subtasks and
   // reopening it restores them, both in the transition's own transaction.
   // System, like `completed_at`, because no operation takes either as an
   // input; unslotted, because no view filters on them.
@@ -328,7 +328,7 @@ export const TASK_SPINE: readonly SpineField[] = [
   },
   {
     // The pre-prompt an agent boots on for this task (MP-4-7, CS-4.23,
-    // migration 0045). Unslotted and generic like the description.
+    // migration 0134). Unslotted and generic like the description.
     key: 'agent_brief',
     label: 'Agent brief',
     valueType: 'text',
@@ -339,7 +339,7 @@ export const TASK_SPINE: readonly SpineField[] = [
   },
   {
     // The in-product address the task is about, path and hash (MP-4-12,
-    // CS-4.22, migration 0048). Unslotted, display only, as the fixed-slots
+    // CS-4.22, migration 0137). Unslotted, display only, as the fixed-slots
     // contract has the legacy field; `task.update` keeps only an address
     // inside the product (`isInProductLink`).
     key: 'page_link',
@@ -352,7 +352,7 @@ export const TASK_SPINE: readonly SpineField[] = [
   },
   {
     // The time the burn bar and time logged measure against, in whole minutes
-    // (MP-4-8, CS-4.14, migration 0049). Generic, as the fixed-slots contract
+    // (MP-4-8, CS-4.14, migration 0138). Generic, as the fixed-slots contract
     // classifies `estimated_minutes`, and unslotted: the slots beyond the
     // reservation are the protected fields', and nothing filters on it yet.
     key: 'estimated_minutes',
@@ -364,7 +364,7 @@ export const TASK_SPINE: readonly SpineField[] = [
     escalatingOperation: null,
   },
   {
-    // The agent assignee (Assign to AI, migration 0051): a live delegation
+    // The agent assignee (Assign to AI, migration 0140): a live delegation
     // the assigner holds for this task. One kind at a time with `assignee`;
     // `task.assign` is its only writer, and a revoke clears it.
     key: 'agent',

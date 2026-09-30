@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The time entry store (MP-4-6, CS-4.1, CS-4.28 to CS-4.31; migration 0047).
+// The time entry store (MP-4-6, CS-4.1, CS-4.28 to CS-4.31; migration 0136).
 //
 // A time entry is a stretch of one person's time on one task: running while
 // it has no end, finished once it has whole minutes. Every statement here is
@@ -53,7 +53,7 @@ interface Person {
   readonly actorId: string;
 }
 
-/** A day is the most one entry can hold (0047's check). */
+/** A day is the most one entry can hold (0136's check). */
 const MAX_MINUTES = 1440;
 
 /**

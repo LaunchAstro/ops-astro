@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The tag store (MP-4-11, CS-4.19 to CS-4.21; migration 0050).
+// The tag store (MP-4-11, CS-4.19 to CS-4.21; migration 0139).
 //
 // A tag is a name in the business's vocabulary; a task carries any of them
 // once. Every statement here is filtered by the business the session set, on
@@ -25,7 +25,7 @@ export interface Tag {
   readonly name: string;
 }
 
-/** The longest tag name 0050 keeps. */
+/** The longest tag name 0139 keeps. */
 export const TAG_NAME_LIMIT = 40;
 
 /**

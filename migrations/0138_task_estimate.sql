@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0049 the estimate (MP-4-8, CS-4.14).
+-- 0138 the estimate (MP-4-8, CS-4.14).
 --
 -- The time the burn bar and time logged measure against, in whole minutes. A
 -- task spine field keyed `estimated_minutes`
@@ -15,7 +15,7 @@
 -- A preset field that already holds the key, moved aside.
 -- ---------------------------------------------------------------------------
 
--- The same move 0042, 0043, 0045 and 0048 make, for the same reason: a
+-- The same move 0131, 0132, 0134 and 0137 make, for the same reason: a
 -- preset field keyed `estimated_minutes` would keep the key, the insert below
 -- would skip it, and the core's estimate would be a preset's field with a
 -- preset's slot and visibility. Its definition and every value stored under

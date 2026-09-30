@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0047 time entries (MP-4-6, CS-4.1, CS-4.28 to CS-4.31).
+-- 0136 time entries (MP-4-6, CS-4.1, CS-4.28 to CS-4.31).
 --
 -- One row per stretch of a person's time on a task: running while `ended_at`
 -- is null, logged once it has `minutes`. The store is

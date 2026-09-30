@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0051 the agent assignee (Assign to AI).
+-- 0140 the agent assignee (Assign to AI).
 --
 -- A task's assignee is a person or an agent. The agent is a live delegation
 -- a person holds for that task (`delegations`, 0008), recorded in a task
@@ -16,7 +16,7 @@
 -- A preset field that already holds the key, moved aside.
 -- ---------------------------------------------------------------------------
 
--- The same move 0042, 0043, 0045, 0048 and 0049 make, for the same reason: a
+-- The same move 0131, 0132, 0134, 0137 and 0138 make, for the same reason: a
 -- preset field keyed `agent` would keep the key, the insert below
 -- would skip it, and the core's agent would be a preset's field with a
 -- preset's slot and visibility. Its definition and every value stored under

@@ -391,7 +391,7 @@ and `reads/dispatch.ts`; the manifest below cites each one. On the agent prefix
 all of these answer `DELEGATION_EXCLUDES_OPERATION` 403.
 
 **Assign to AI.** `task.assign` sets a task's assignee to a person
-(`assignee`) or to an agent (`agent`, a delegation id, migration 0051), one
+(`assignee`) or to an agent (`agent`, a delegation id, migration 0140), one
 kind at a time: either clears the other, and unassigning (`assignee: null`)
 clears both. Only the delegation's own person
 assigns it (another person's, a manager's included, is `NOT_FOUND`, as an
@@ -1132,7 +1132,7 @@ yet, although the key catalogue allows `time:write` inside a delegation.
 `task.read` carries `description` and `agentBrief` (MP-4-7, CS-4.23, CS-4.24),
 each null when none is written. Both are task text written through
 `task.update` under `task:write`; `agent_brief` is a field of its own
-(migration 0045), unslotted and internal like the description, so the shared
+(migration 0134), unslotted and internal like the description, so the shared
 view carries neither. The audit row names `task.update`; the field changed is
 the result's `changed` list, which the register stores in the same
 transaction. An agent writes the two on its own delegated task through
@@ -1148,7 +1148,7 @@ refused `SCOPE_NOT_GRANTED` by name.
 
 `task.read` also carries `pageLink` (MP-4-12, CS-4.22): the in-product address
 the task is about, its path and hash, or null. It is `page_link` (migration
-0048), unslotted and internal, written through `task.update` under
+0137), unslotted and internal, written through `task.update` under
 `task:write` and audited as that command. `task.create` and `task.update`
 keep only an address inside the product (`isInProductLink`, core-wire): one
 `/` first, no `//` or `/\` host, no backslash, whitespace or control
@@ -1158,7 +1158,7 @@ applies the same rule before drawing a stored link as a door.
 
 `task.read` also carries `estimateMinutes` (MP-4-8, CS-4.14): the time the
 burn bar and time logged measure against, in whole minutes, or null when not
-set. It is `estimated_minutes` (migration 0049), numeric, unslotted, generic
+set. It is `estimated_minutes` (migration 0138), numeric, unslotted, generic
 and internal, as the fixed-slots contract classifies it, written through
 `task.update` under `task:write` and audited as that command; an agent writes
 it on its own delegated task. `task.create` and `task.update` keep only whole

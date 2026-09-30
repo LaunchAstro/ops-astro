@@ -2,7 +2,7 @@
 //
 // `task.assign` with the agent assignee (Assign to AI). A task's assignee is
 // a person or an agent, one at a time; the agent is a live delegation, in the
-// task's `agent` field (migration 0051).
+// task's `agent` field (migration 0140).
 //
 // **You assign your own AI.** The envelope has asked `task:assign` of the
 // task, as for a person. Beyond that the delegation must be the assigner's

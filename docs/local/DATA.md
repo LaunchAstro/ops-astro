@@ -191,10 +191,10 @@ table exactly:
 | `assignee`          | `uuid_2`             | `task.assign`                                                  |
 | `title`             | `txt_4`              | `task.update`                                                  |
 | `description`       | unslotted, in `data` | `task.update`                                                  |
-| `agent_brief`       | unslotted, in `data` | `task.update` (0045, MP-4-7)                                   |
-| `page_link`         | unslotted, in `data` | `task.update` (0048, MP-4-12)                                  |
-| `estimated_minutes` | unslotted, in `data` | `task.update` (0049, MP-4-8)                                   |
-| `agent`             | unslotted, in `data` | `task.assign` (0051, Assign to AI)                             |
+| `agent_brief`       | unslotted, in `data` | `task.update` (0134, MP-4-7)                                   |
+| `page_link`         | unslotted, in `data` | `task.update` (0137, MP-4-12)                                  |
+| `estimated_minutes` | unslotted, in `data` | `task.update` (0138, MP-4-8)                                   |
+| `agent`             | unslotted, in `data` | `task.assign` (0140, Assign to AI)                             |
 | `due`               | `ts_1`               | `task.update`                                                  |
 | `priority`          | `num_1`              | `task.update`                                                  |
 | `completed_at`      | `ts_2`               | derived on complete, cleared on reopen                         |
@@ -213,7 +213,7 @@ is the machine category of the state record the task points at.
 A task's tags are not a field. The business's vocabulary is `tags` (one name
 per business whatever its case, a unique index on the lower-cased name) and
 the tags a task carries are rows of `task_tags`, keyed by the task and the
-tag (0050, MP-4-11): written by `tag.create`, `task.add_tag` and
+tag (0139, MP-4-11): written by `tag.create`, `task.add_tag` and
 `task.remove_tag`, read on `task.read` and by `tag.list`.
 
 A new task ranks after the last of its siblings: the tasks under its parent,

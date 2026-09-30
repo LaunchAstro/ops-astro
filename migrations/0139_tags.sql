@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0050 tags (MP-4-11, CS-4.19 to CS-4.21).
+-- 0139 tags (MP-4-11, CS-4.19 to CS-4.21).
 --
 -- A business's tag vocabulary, and which of its tags each task carries. The
 -- store is `packages/core-records/src/tasks/tags.ts`; the commands over it

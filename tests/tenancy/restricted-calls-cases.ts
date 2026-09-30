@@ -37,9 +37,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
-  // 0047: a time entry is deleted by a mark, never a row delete.
+  // 0136: a time entry is deleted by a mark, never a row delete.
   ['siu', 'time_entries'],
-  // 0050: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
+  // 0139: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
   ['si', 'tags'],
   ['sid', 'task_tags'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
