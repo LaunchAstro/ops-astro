@@ -28,56 +28,53 @@ afterEach(async () => {
   mounted = undefined;
 });
 
-function tipStore(initial: { dismissed?: string[]; tipsOff?: boolean } = {}): TipPreferences & {
-  readonly saved: string[];
-} {
-  const saved: string[] = [];
+function tipStore(
+  initial: { dismissed?: Readonly<Record<string, number>>; tipsOff?: boolean } = {},
+): TipPreferences & { readonly saved: { key: string; version: number }[] } {
+  const saved: { key: string; version: number }[] = [];
   return {
-    dismissed: initial.dismissed ?? [],
+    dismissed: initial.dismissed ?? {},
     tipsOff: initial.tipsOff ?? false,
-    dismiss: (key) => {
-      saved.push(key);
+    dismiss: (key, version) => {
+      saved.push({ key, version });
     },
     saved,
   };
 }
 
-describe('MP-9-1 a tip dismissal is stored per person against its page and text', () => {
-  it('keys the dismissal by page, tip id and text version', () => {
-    const a = tipKey({ page: '/dashboard/portfolio/', id: 'intro', text: 'Read the rollup here.' });
-    const b = tipKey({ page: '/dashboard/portfolio/', id: 'intro', text: 'Read the rollup here!' });
-    const c = tipKey({ page: '/clients/x/workbench/', id: 'intro', text: 'Read the rollup here.' });
-    expect(a.startsWith('/dashboard/portfolio/#intro@')).toBe(true);
-    expect(a).not.toBe(b);
-    expect(a).not.toBe(c);
-    expect(
-      tipKey({ page: '/dashboard/portfolio/', id: 'intro', text: 'Read the rollup here.' }),
-    ).toBe(a);
+describe('MP-9-1 a tip dismissal is stored per person against its page and version', () => {
+  it('keys the dismissal as the one store does: page and tip id, the version beside it', () => {
+    const tip = { page: '/dashboard/portfolio/', id: 'intro', version: 1, text: 'Read it here.' };
+    expect(tipKey(tip)).toBe('/dashboard/portfolio/#intro');
+    const rewritten = { ...tip, version: 2, text: 'Read it here!' };
+    const elsewhere = { ...tip, page: '/clients/x/workbench/' };
+    expect(tipKey(rewritten)).toBe(tipKey(tip));
+    expect(tipKey(elsewhere)).not.toBe(tipKey(tip));
   });
 
-  it('dismissing hides the tip at once and saves only its own key', async () => {
+  it('dismissing hides the tip at once and saves only its own key and version', async () => {
     const store = tipStore();
-    const tip = { page: '/dashboard/portfolio/', id: 'intro', text: 'Read the rollup here.' };
+    const tip = { page: '/dashboard/portfolio/', id: 'intro', version: 3, text: 'Read it here.' };
     mounted = await mount(<SectionTip tip={tip} preferences={store} />);
     // The kit's info banner (DS-PRIM-22), dismissed by the kit's icon button.
     expect(mounted.find('.sectip .banner.banner--info .banner__body')?.textContent).toBe(
-      'Read the rollup here.',
+      'Read it here.',
     );
     await mounted.click('.sectip .banner button.ibtn[aria-label="Dismiss this tip"]');
-    expect(store.saved).toEqual([tipKey(tip)]);
+    expect(store.saved).toEqual([{ key: tipKey(tip), version: 3 }]);
     expect(mounted.find('.sectip')).toBeNull();
   });
 
-  it('a dismissed tip stays hidden on the next load, a rewritten one comes back', () => {
-    const tip = { page: '/p/', id: 'intro', text: 'Old words.' };
-    const store = tipStore({ dismissed: [tipKey(tip)] });
+  it('a dismissed tip stays hidden on the next load, a new version comes back', () => {
+    const tip = { page: '/p/', id: 'intro', version: 1, text: 'Old words.' };
+    const store = tipStore({ dismissed: { [tipKey(tip)]: 1 } });
     expect(visibleTip(tip, store)).toBe(false);
-    expect(visibleTip({ ...tip, text: 'New words.' }, store)).toBe(true);
+    expect(visibleTip({ ...tip, version: 2, text: 'New words.' }, store)).toBe(true);
   });
 
   it('tips off hides every tip', () => {
     const store = tipStore({ tipsOff: true });
-    expect(visibleTip({ page: '/p/', id: 'a', text: 'x' }, store)).toBe(false);
+    expect(visibleTip({ page: '/p/', id: 'a', version: 1, text: 'x' }, store)).toBe(false);
   });
 });
 
@@ -241,7 +238,7 @@ describe('MP-9-1 section heads number top to bottom', () => {
         index={sectionIndex(9)}
         title="Skill costing"
         right="4 skills"
-        tip={{ page: '/p/', id: 'costing', text: 'Costs are per run.' }}
+        tip={{ page: '/p/', id: 'costing', version: 1, text: 'Costs are per run.' }}
         preferences={store}
       />,
     );

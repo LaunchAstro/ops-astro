@@ -3,11 +3,12 @@
 // The section tip (DS-COMP-5 `section tip`, CS-9.1) and its dismissal.
 //
 // A dismissal belongs to the person, on every device, so it lives in their
-// preferences, never in the browser. It is keyed by the page, the tip's id and
-// a version of its text: rewrite a tip and the key changes, so the person sees
-// the new words once. The preferences arrive through `TipPreferences`, which
-// the application wires to the one preference store's save and read; this
-// package imports no `core-*` package.
+// preferences, never in the browser. It is kept as the one store keeps it
+// (`preference.dismiss_tip`, core-wire's `tips.ts`): the entry `page#tip`
+// holds the version dismissed. Rewrite a tip and raise its version, and the
+// person sees the new words once. The preferences arrive through
+// `TipPreferences`, which the application wires to that command and the
+// preference read; this package imports no `core-*` package.
 
 import { useState, type ReactElement } from 'react';
 import { Banner } from '../kit/blocks.tsx';
@@ -18,33 +19,26 @@ export interface Tip {
   readonly page: string;
   /** Stable for the life of the tip, whatever its words. */
   readonly id: string;
+  /** A whole number from 1, raised whenever the words change. */
+  readonly version: number;
   readonly text: string;
 }
 
 export interface TipPreferences {
-  /** The keys this person has dismissed, as `tipKey` makes them. */
-  readonly dismissed: readonly string[];
+  /** The store's `tips.dismissed`: each `tipKey` and the version dismissed. */
+  readonly dismissed: Readonly<Record<string, number>>;
   /** The Settings switch that hides every tip. */
   readonly tipsOff: boolean;
-  readonly dismiss: (key: string) => void;
+  readonly dismiss: (key: string, version: number) => void;
 }
 
-/** FNV-1a over the code points: stable, synchronous and the same on a server. */
-function textVersion(text: string): string {
-  let hash = 0x811c9dc5;
-  for (const character of text) {
-    hash ^= character.codePointAt(0) ?? 0;
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0');
-}
-
-export function tipKey(tip: Tip): string {
-  return `${tip.page}#${tip.id}@${textVersion(tip.text)}`;
+/** The entry's name in `tips.dismissed`, as core-wire's `tipKey` makes it. */
+export function tipKey(tip: Pick<Tip, 'page' | 'id'>): string {
+  return `${tip.page}#${tip.id}`;
 }
 
 export function visibleTip(tip: Tip, preferences: TipPreferences): boolean {
-  return !preferences.tipsOff && !preferences.dismissed.includes(tipKey(tip));
+  return !preferences.tipsOff && preferences.dismissed[tipKey(tip)] !== tip.version;
 }
 
 export function SectionTip(props: {
@@ -66,7 +60,7 @@ export function SectionTip(props: {
             label="Dismiss this tip"
             onClick={() => {
               setDismissedHere(true);
-              props.preferences.dismiss(tipKey(props.tip));
+              props.preferences.dismiss(tipKey(props.tip), props.tip.version);
             }}
           />
         }
