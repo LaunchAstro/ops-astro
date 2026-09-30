@@ -5,9 +5,13 @@
 // The face opens the conversation when the host gives conversations and is a
 // plain face otherwise; the name is the door to their work when the host has
 // a view of it and plain text otherwise. Away is the word Away and a dashed
-// ring, with the person's own reason, if they gave one, on the face.
+// ring, with the person's own reason, if they gave one, on the face. The face
+// is the kit's team-card avatar and the door the kit's door mark (DS-PRIM-16,
+// DS-PRIM-17): the card's "on" ring marks the chosen teammate and wins over
+// the dashed one; the word Away stays either way.
 
 import type { ReactElement } from 'react';
+import { Avatar, DoorMark } from '../kit/marks.tsx';
 import type { Teammate } from '../state/team.ts';
 import { follow, type OpenHow } from './gesture.ts';
 
@@ -33,11 +37,8 @@ function Face(props: {
   readonly onSelect: (() => void) | null;
 }): ReactElement {
   const { person } = props;
-  const face = (
-    <span className="tmc__av" aria-hidden="true">
-      {person.initials}
-    </span>
-  );
+  const presence = props.on ? 'on' : person.away === null ? undefined : 'away';
+  const face = <Avatar name={person.name} kind="person-large" presence={presence} />;
   if (props.onSelect === null) {
     const label = faceLabel(person, false);
     return (
@@ -76,7 +77,7 @@ function Name(props: { readonly person: Teammate; readonly work: TeamWork | null
       }}
     >
       {person.short}
-      <span className="tmc__door" aria-hidden="true" />
+      <DoorMark to="page" />
     </a>
   );
 }

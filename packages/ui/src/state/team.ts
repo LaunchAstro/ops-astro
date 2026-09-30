@@ -17,7 +17,6 @@ export interface Teammate {
   readonly name: string;
   /** The short name under the face. */
   readonly short: string;
-  readonly initials: string;
   /** Set by the person themselves; null is in. */
   readonly away: Availability | null;
 }

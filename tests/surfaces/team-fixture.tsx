@@ -20,10 +20,6 @@ export const person = (personId: string, name: string, away: string | null = nul
   personId,
   name,
   short: name.split(' ')[0] ?? name,
-  initials: name
-    .split(' ')
-    .map((part) => part[0])
-    .join(''),
   away: away === null ? null : { reason: away },
 });
 

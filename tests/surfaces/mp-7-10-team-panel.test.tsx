@@ -113,7 +113,7 @@ describe('MP-7-10 the Team panel opens with the people strip and availability', 
     expect(mounted.find('.tmc__conv .empty.empty--inline .empty__title')?.textContent).toBe(
       'Nobody selected.',
     );
-    expect(mounted.all('.tmc__strip .is-on')).toHaveLength(0);
+    expect(mounted.all('.tmc__strip .tmc__p.is-on')).toHaveLength(0);
   });
 
   it('with no conversations to draw, a face opens nothing and the room stays empty', async () => {
@@ -128,7 +128,7 @@ describe('MP-7-10 the Team panel opens with the people strip and availability', 
     expect(mounted.find('.tmc__groups')).toBeNull();
     expect(mounted.find('.composer')).toBeNull();
     await mounted.click('[data-person="p-len"] .tmc__face');
-    expect(mounted.all('.tmc__strip .is-on')).toHaveLength(0);
+    expect(mounted.all('.tmc__strip .tmc__p.is-on')).toHaveLength(0);
     expect(p.calls.marks).toEqual([]);
     // The reader's own availability does not wait on the conversations.
     expect(mounted.find('.tmc__me')?.textContent).toContain('You are in');
@@ -139,7 +139,7 @@ describe('MP-7-10 the Team panel opens with the people strip and availability', 
     await mounted.click('[data-person="p-remy"] .tmc__face');
     await mounted.click('[data-person="p-cath"] .tmc__face');
     expect(
-      mounted.all('.tmc__strip .is-on').map((el) => (el as HTMLElement).dataset['person']),
+      mounted.all('.tmc__strip .tmc__p.is-on').map((el) => (el as HTMLElement).dataset['person']),
     ).toEqual(['p-cath']);
     expect(mounted.find('[data-person="p-cath"] .tmc__face')?.getAttribute('aria-pressed')).toBe(
       'true',

@@ -6,11 +6,12 @@
 // the name's door is the kit's door mark (DS-PRIM-17). Placed, never redrawn:
 // the page's own avatar and door rules are gone.
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { TeamPanel } from '../../packages/ui/src/index.ts';
 import { mount, type Mounted } from './mount.tsx';
 import { chip, props } from './team-fixture.tsx';
-import { readFileSync } from 'node:fs';
 
 let mounted: Mounted | undefined;
 afterEach(async () => {
@@ -42,9 +43,6 @@ it('MP-7-10 the name’s door is the kit’s door mark', async () => {
 });
 
 it('MP-7-10 the Team sheet draws no avatar or door of its own', () => {
-  const sheet = readFileSync(
-    new URL('../../packages/ui/src/styles/10-team.css', import.meta.url),
-    'utf8',
-  );
+  const sheet = readFileSync(join(process.cwd(), 'packages/ui/src/styles/10-team.css'), 'utf8');
   expect(sheet).not.toMatch(/\.tmc__av\b|\.tmc__door\b|border-style:\s*dashed/u);
 });

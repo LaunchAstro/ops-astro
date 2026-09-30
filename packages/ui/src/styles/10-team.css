@@ -2,7 +2,8 @@
 /* The Team panel (MP-7-10, C71-D, C71-G): the pinned mockup's `tmc__` rules. Buttons
    are the kit's `btn`, counts its `cbadge`, the empty line the kit's `Empty`, and the
    thread the task page's `thread`/`msg` dialect, all placed, never restyled.
-   Away is a dashed ring and the word Away, never a coloured dot. The group
+   Faces are the kit's team-card avatar and the door its door mark. Away is a
+   dashed ring and the word Away, never a coloured dot. The group
    list, picker and head (C71-G) are drawn by no mockup surface: spacing only,
    everything else from the kit. */
 
@@ -54,19 +55,6 @@
 button.tmc__face {
   cursor: pointer;
 }
-.tmc__av {
-  display: grid;
-  place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background: var(--surface-2);
-  color: var(--text-2);
-  font: var(--type-chip);
-  letter-spacing: var(--type-chip-tracking);
-  text-transform: var(--type-chip-case);
-}
 .tmc__n {
   color: inherit;
   text-decoration: none;
@@ -78,9 +66,6 @@ a.tmc__n:hover {
   color: var(--accent);
   text-decoration: underline;
 }
-.tmc__door::before {
-  content: ' \2197';
-}
 .tmc__u {
   position: absolute;
   top: -3px;
@@ -91,15 +76,8 @@ a.tmc__n:hover {
   letter-spacing: var(--type-badge-tracking);
   text-transform: var(--type-badge-case);
 }
-.tmc__p.is-on .tmc__av {
-  border-color: var(--accent);
-  color: var(--accent);
-}
 .tmc__p.is-on .tmc__n {
   color: var(--text);
-}
-.tmc__p--away .tmc__av {
-  border-style: dashed;
 }
 .tmc__conv {
   display: flex;

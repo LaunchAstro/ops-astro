@@ -20,17 +20,12 @@ import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { describeRefusal } from '../records/submit.ts';
 
-/** A member as the panel draws them: the first name under the face, up to two initials on it. */
+/** A member as the panel draws them: the first name under the face. */
 function teammate(member: TeamMemberView): Teammate {
-  const words = member.name.split(/\s+/u).filter((word) => word !== '');
   return {
     personId: member.personId,
     name: member.name,
-    short: words[0] ?? member.name,
-    initials: words
-      .slice(0, 2)
-      .map((word) => word.slice(0, 1).toUpperCase())
-      .join(''),
+    short: member.name.split(/\s+/u).find((word) => word !== '') ?? member.name,
     away: member.availability?.state === 'away' ? { reason: member.availability.reason } : null,
   };
 }
