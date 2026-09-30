@@ -811,7 +811,10 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
     const parameters = [fixture.businessId, onOther.runId, fixture.taskId];
     // The application may not rewrite a run's task at all (AW-02, 0192)...
     await expect(
-      database.app.withBusiness(fixture.businessId, async (tx) => tx.query(moveRun, parameters)),
+      database.app.withBusiness(
+        fixture.businessId,
+        async (tx) => await tx.query(moveRun, parameters),
+      ),
     ).rejects.toMatchObject({ code: '42501' });
     // ...and the owner, who may, meets the constraint.
     await expect(database.admin.execute(moveRun, parameters)).rejects.toThrow(

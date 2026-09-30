@@ -18,7 +18,7 @@
 // task's record. A grant the person holds on another task is never read into
 // this answer, so the stamp names no other client's record.
 
-import { EFFECTIVE_GRANTS_CTE } from '../../../core-records/src/index.ts';
+import { EFFECTIVE_GRANTS } from '../../../core-records/src/index.ts';
 import type { RunScopeView } from '../../../core-wire/src/index.ts';
 
 export interface ScopeRow {
@@ -72,7 +72,7 @@ export const SCOPES: string = `select row_number() over (order by lease.acquired
        left join public.delegations d
          on d.business_id = lease.business_id and d.id = lease.delegation_id
        left join lateral (
-         ${EFFECTIVE_GRANTS_CTE}
+         ${EFFECTIVE_GRANTS}
          select json_agg(json_build_object(
                   'id', e.id, 'collection', e.collection, 'action', e.action,
                   'scopeKind', e.scope_kind)
