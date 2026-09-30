@@ -472,9 +472,18 @@ export interface AccessPermission {
   readonly scope: { readonly kind: 'business' | 'party' | 'record'; readonly id: string | null };
 }
 
-/** A person on Team or Clients, with the preview of what they may do now. */
+/** One live grant row naming a person or their acting identity: what `access.revoke` takes. */
+export interface AccessGrant extends AccessPermission {
+  readonly grantId: string;
+}
+
+/**
+ * A person on Team or Clients, with the preview of what they may do now and
+ * the live grants behind it, each by id, so one can be revoked.
+ */
 export interface AccessPerson extends PersonView {
   readonly permissions: readonly AccessPermission[];
+  readonly grants: readonly AccessGrant[];
 }
 
 /** An agent on a live delegation, under the person record it draws on. */

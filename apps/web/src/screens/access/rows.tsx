@@ -7,6 +7,7 @@
 import type { ReactElement } from 'react';
 import { Button, Card, Chip, Table } from '@launchastro/ui';
 import type {
+  AccessGrant,
   AccessPermission,
   AccessReadResult,
   ClientView,
@@ -14,7 +15,10 @@ import type {
 } from '../../../../../packages/core-wire/src/index.ts';
 
 /** What a permission reaches, in words; a client only by the read's own record. */
-function scopeWords(scope: AccessPermission['scope'], clients: readonly ClientView[]): string {
+export function scopeWords(
+  scope: AccessPermission['scope'],
+  clients: readonly ClientView[],
+): string {
   if (scope.kind === 'business') return 'whole business';
   if (scope.kind === 'record') return 'one record';
   return clients.find((each) => each.clientId === scope.id)?.name ?? 'a client not listed here';
@@ -35,11 +39,35 @@ function Preview(props: {
   );
 }
 
+/** Each live grant behind the preview, by its own Revoke act. */
+function Grants(props: {
+  readonly grants: readonly AccessGrant[];
+  readonly clients: readonly ClientView[];
+  readonly onRevoke: (grant: AccessGrant) => void;
+}): ReactElement {
+  if (props.grants.length === 0) return <span className="card__sub">No grant</span>;
+  return (
+    <>
+      {props.grants.map((grant) => (
+        <span key={grant.grantId} data-revoke-grant={grant.grantId}>
+          <Chip>{`${grant.collection}:${grant.action} · ${scopeWords(grant.scope, props.clients)}`}</Chip>
+          <Button variant="ghost" onClick={() => props.onRevoke(grant)}>
+            Revoke
+          </Button>
+        </span>
+      ))}
+    </>
+  );
+}
+
 const PEOPLE_COLUMNS = [
   { key: 'name', label: 'Name' },
   { key: 'preview', label: 'May do now' },
+  { key: 'grants', label: 'Grants' },
   { key: 'act', label: '', align: 'end' as const },
 ];
+
+const AGENT_COLUMNS = PEOPLE_COLUMNS.filter((column) => column.key !== 'grants');
 
 export function People(props: {
   readonly id: 'team' | 'clients';
@@ -47,10 +75,18 @@ export function People(props: {
   readonly people: AccessReadResult['team'];
   readonly clients: readonly ClientView[];
   readonly onEnd: (person: PersonView) => void;
+  readonly onRevokeGrant: (person: PersonView, grant: AccessGrant) => void;
 }): ReactElement {
   const rows = props.people.map((person) => ({
     name: <span data-person={person.personId}>{person.name}</span>,
     preview: <Preview permissions={person.permissions} clients={props.clients} />,
+    grants: (
+      <Grants
+        grants={person.grants}
+        clients={props.clients}
+        onRevoke={(grant) => props.onRevokeGrant(person, grant)}
+      />
+    ),
     act: (
       <span data-end={person.personId}>
         <Button onClick={() => props.onEnd(person)}>End access</Button>
@@ -86,7 +122,7 @@ export function Agents(props: {
   return (
     <div data-access="agents">
       <Card title="Agents" sub="Each on a live delegation from a person, until it expires" flush>
-        <Table caption="Agents" columns={PEOPLE_COLUMNS} rows={rows} />
+        <Table caption="Agents" columns={AGENT_COLUMNS} rows={rows} />
       </Card>
     </div>
   );

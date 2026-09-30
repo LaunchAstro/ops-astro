@@ -26,6 +26,7 @@
     "tests/authority/c32-clients-and-grants.test.ts",
     "tests/authority/c32-clients-and-grants-refusals.test.ts",
     "tests/authority/c32-clients-and-grants-isolation.test.ts",
+    "tests/authority/c32-grant-ids.test.ts",
     "tests/authority/c58-end-access.test.ts",
     "tests/authority/c58-end-access-isolation.test.ts",
     "tests/authority/c58-end-access-race.test.ts",

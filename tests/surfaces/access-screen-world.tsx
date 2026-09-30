@@ -21,14 +21,23 @@ export const ADA = {
   personId: 'p-ada',
   name: 'Ada Alpha',
   permissions: [{ collection: 'access', action: 'manage', scope: { kind: 'business', id: null } }],
+  grants: [
+    {
+      grantId: 'g-ada-access',
+      collection: 'access',
+      action: 'manage',
+      scope: { kind: 'business', id: null },
+    },
+  ],
 };
-export const MIA = { personId: 'p-mia', name: 'Mia Alpha', permissions: [] };
+export const MIA = { personId: 'p-mia', name: 'Mia Alpha', permissions: [], grants: [] };
 export const CLEO = {
   personId: 'p-cleo',
   name: 'Cleo Client',
   permissions: [
     { collection: 'task', action: 'read', scope: { kind: 'party', id: ACME.clientId } },
   ],
+  grants: [],
 };
 export const AGENT = {
   agentActorId: 'a-1',
