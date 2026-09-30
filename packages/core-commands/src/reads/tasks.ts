@@ -33,7 +33,7 @@ import { READS } from '../../../core-wire/src/index.ts';
 import { readAlerts } from '../../../core-runtime/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
-import { awaitingDecision } from './awaiting.ts';
+import { awaitingApproval } from './awaiting.ts';
 
 // The rank's marks and pool are SL08's U15 (MP-4-9), not on main: until they
 // land every board row is unranked, which the board draws as a dash.
@@ -363,9 +363,10 @@ export async function readBoard(
  * newest of them last changed (MP-5-7, P-07). The tasks and the stamp come
  * from one query, so the stamp is of exactly the rows served and a newer task
  * the caller cannot read never moves it; null when no task is served. The
- * ranks are read over the same `readable` scope. `decidable` is the caller's
- * decide reach (null for business-wide); a row waits on the caller when its
- * task has an open gate inside it (MP-5-12). None when not given.
+ * ranks are read over the same `readable` scope. A row whose task has an open
+ * gate waits for approval, whoever may decide it (MP-5-11). `decidable` is the
+ * caller's decide reach (null for business-wide); such a row waits on the
+ * caller when the gate is inside it (MP-5-12). None when not given.
  */
 export async function readBoardStamped(
   tx: TenantQuery,
@@ -387,19 +388,20 @@ export async function readBoardStamped(
     if (newest === null || row.updated_at > newest) newest = row.updated_at;
   }
   // Asked only of the rows served, so a gate on a task outside the reader's
-  // scope is never read (MP-5-12).
-  const waiting = await awaitingDecision(
+  // scope is never read (MP-5-11, MP-5-12).
+  const gated = await awaitingApproval(
     tx,
     rows.map((row) => row.id),
-    decidable,
   );
+  const decides = decidable === null ? null : new Set(decidable);
   const tasks = rows.map((row): BoardTask =>
     Object.assign(summaryOf(row), {
       rank: UNRANKED,
       stage: row.stage,
       clientSet: row.client_set,
       statePosition: row.state_position === null ? null : Number(row.state_position),
-      awaitingDecision: waiting.has(row.id),
+      waitReason: gated.has(row.id) ? ('needs_approval' as const) : null,
+      awaitingDecision: gated.has(row.id) && (decides === null || decides.has(row.id)),
     }),
   );
   return { tasks, changedAt: newest?.toISOString() ?? null };

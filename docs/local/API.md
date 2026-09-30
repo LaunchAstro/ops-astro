@@ -432,13 +432,19 @@ caller is shown the positions of only the states their readable rows are in,
 never the whole vocabulary. `tests/reads/mp-5-11-board-status-order.test.ts`
 holds the order and the three crossings.
 
-Each row also carries `awaitingDecision` (MP-5-12): true when the task has a
-gate that is pending, not expired, on a version not superseded, and the
-caller's decide grant reaches the task, the grant `task.decide` checks. The
-decide reach comes from `readableScope` with action `decide`, and the gates
-are read only for the rows already served (`awaitingDecision`,
-`reads/awaiting.ts`), so a gate on a task the caller cannot read is never
-read or counted. The Projects board's Review mode draws these rows and counts
+Each row also carries `waitReason` (MP-5-11): why the task waits, from the
+run lifecycle. It is `needs_approval` while the task has a gate that is
+pending, not expired, on a version not superseded, whoever may decide it, and
+null otherwise; the Projects board prints "approval" after that group's
+heading. `tests/reads/mp-5-11-board-wait-reason.test.ts` holds the reasons
+and the three crossings.
+
+Each row also carries `awaitingDecision` (MP-5-12): true when the task waits
+at such a gate and the caller's decide grant reaches the task, the grant
+`task.decide` checks. The decide reach comes from `readableScope` with action
+`decide`, and the gates are read only for the rows already served
+(`awaitingApproval`, `reads/awaiting.ts`), so a gate on a task the caller
+cannot read is never read or counted. The Projects board's Review mode draws these rows and counts
 them. `tests/reads/mp-5-12-board-review.test.ts` holds the count and the three
 crossings.
 

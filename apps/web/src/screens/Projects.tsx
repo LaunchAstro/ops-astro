@@ -244,9 +244,9 @@ function rowOf(task: BoardTask): ProjectRow {
     stage: task.stage,
     status: task.state?.label ?? 'No state',
     statusPosition: task.statePosition,
-    // No stored field says why a task waits yet (the run lifecycle's
-    // approval reason, LEANS-ON), so no banner draws one.
-    waitReason: null,
+    // A run awaiting approval is the one wait the read carries; the banner
+    // prints the mockup's word for it (B-21).
+    waitReason: task.waitReason === 'needs_approval' ? 'approval' : null,
     // No task category is stored yet (it arrives with named board sections,
     // LEANS-ON), so no category chip draws.
     category: null,

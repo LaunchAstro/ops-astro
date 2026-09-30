@@ -383,6 +383,12 @@ export interface BoardTask extends TaskSummary {
    */
   readonly statePosition: number | null;
   /**
+   * Why the task waits (MP-5-11), from the run lifecycle: `needs_approval`
+   * while a gate on its live version is pending and not expired, whoever may
+   * decide it. Null when nothing the board reads holds it.
+   */
+  readonly waitReason: 'needs_approval' | null;
+  /**
    * True when the task waits at an open gate for the caller's decision
    * (MP-5-12): a pending gate, not expired, on its live version, inside the
    * caller's decide grant. The Review mode's rows and its live count.
