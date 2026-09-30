@@ -160,21 +160,29 @@ export const PLAN_TEXT: string =
   'Draft the brief, then check it against the notes. Ceiling: $10.00. ' +
   'Launch happens later, on the task.';
 
-/** A read-only instruction root on disk holding AW-02's two files, set on this process. */
-export function useInstructionRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'aw04-instructions-'));
-  for (const [path, bytes] of FILES) {
-    mkdirSync(dirname(join(root, path)), { recursive: true });
-    writeFileSync(join(root, path), bytes);
-  }
-  const previous = process.env[INSTRUCTION_ROOT_VARIABLE];
-  process.env[INSTRUCTION_ROOT_VARIABLE] = root;
+/**
+ * A read-only instruction root on disk holding AW-02's two files, set on this
+ * process. Made in `beforeAll`: a file whose every case is skipped runs no
+ * hook, so a root made at load would outlive the run.
+ */
+export function useInstructionRoot(): void {
+  let root: string | undefined;
+  let previous: string | undefined;
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), 'aw04-instructions-'));
+    for (const [path, bytes] of FILES) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), bytes);
+    }
+    previous = process.env[INSTRUCTION_ROOT_VARIABLE];
+    process.env[INSTRUCTION_ROOT_VARIABLE] = root;
+  });
   afterAll(() => {
+    if (root === undefined) return;
     if (previous === undefined) delete process.env[INSTRUCTION_ROOT_VARIABLE];
     else process.env[INSTRUCTION_ROOT_VARIABLE] = previous;
     rmSync(root, { recursive: true, force: true });
   });
-  return root;
 }
 
 /** `task.accept_plan` as the drawer sends it for `plan`. */
