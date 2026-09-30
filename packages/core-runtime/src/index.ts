@@ -172,3 +172,18 @@ export {
   withRuntimeKeys,
   type RuntimeKeys,
 } from './runtime-config.ts';
+export {
+  TRACE_ERRORS,
+  TRACE_STAGES,
+  TRANSFORM_VERSION,
+  derivedId,
+  exportOnce,
+  otlp,
+  traceSpan,
+  type Deliver,
+  type Delivered,
+  type ExportOutcome,
+  type GapCode,
+  type TraceDatabase,
+  type TraceSpan,
+} from './trace-export.ts';
