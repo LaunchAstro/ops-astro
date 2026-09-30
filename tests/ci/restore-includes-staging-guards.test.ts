@@ -21,6 +21,8 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
         });
         const container = process.env['FIXTURE_PG_CONTAINER'];
         if (!container) throw new Error('the isolated source container must be named');
+        const dumpModule = '../../scripts/ops/backup-dump.mjs';
+        const { SCHEMAS: schemas } = await import(/* @vite-ignore */ dumpModule);
         const dump = (): Buffer => {
           const result = spawnSync(
             'docker',
@@ -34,9 +36,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
               fixture.db.name,
               '--format=custom',
               '--role=ops_astro_backup',
-              '--schema=public',
-              '--schema=ops',
-              '--schema=auth',
+              ...schemas.map((schema: string) => `--schema=${schema}`),
             ],
             { maxBuffer: 16 * 1024 * 1024 },
           );

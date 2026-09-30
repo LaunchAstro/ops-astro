@@ -13,7 +13,7 @@ const BACKUP_ROLE = 'ops_astro_backup';
 // The product's schemas, the auth server's sign-in data in the same database,
 // and staging's made-up guard, whose functions the guarded tables' triggers call.
 // A database without the guard has no such schema, and pg_dump skips it.
-const SCHEMAS = ['public', 'ops', 'auth', 'ops_astro_made_up'];
+export const SCHEMAS = ['public', 'ops', 'auth', 'ops_astro_made_up'];
 
 const staging = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
