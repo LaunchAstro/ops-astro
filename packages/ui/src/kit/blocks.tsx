@@ -131,9 +131,13 @@ export function RowNote(props: { readonly children: ReactNode }): ReactElement {
 }
 
 /**
- * DS-PRIM-32. Marks a region whose values are sample data. Only a demo
- * install has any (R56); on a real client nothing is sample, so nothing is
- * marked. `nested` keeps only the edge inside a marked region.
+ * DS-PRIM-32, the one shared mock label. Marks a region whose values are
+ * made-up data: the pink wash and edge, and with `word` the MOCK label in the
+ * region's top-right corner. A screen whose back end is not built yet wraps
+ * the made-up region in it; a real data path never does. Only a demo install
+ * has sample data (R56); on a real client nothing is marked. `nested` keeps
+ * only the edge inside a marked region. `data-provenance="mock"` lets a test
+ * find every marked region.
  */
 export function MockRegion(props: {
   readonly children: ReactNode;
@@ -141,7 +145,10 @@ export function MockRegion(props: {
   readonly word?: boolean | undefined;
 }): ReactElement {
   return (
-    <div className={props.nested === true ? 'is-mock is-mock--nested' : 'is-mock'}>
+    <div
+      className={props.nested === true ? 'is-mock is-mock--nested' : 'is-mock'}
+      data-provenance="mock"
+    >
       {props.word === true ? <span className="mocktag">Mock</span> : null}
       {props.children}
     </div>
