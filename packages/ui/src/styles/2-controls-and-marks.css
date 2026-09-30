@@ -1,0 +1,484 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+   ============================================================================
+   Layer 2 of 3, first half: the component kit's controls and marks (MP-1-3):
+   actions, fields, the segmented control, tabs, containers, status, marks,
+   the three absence voices and the icon. The second half, 2-primitives.css,
+   loads straight after it (packages/ui/src/index.ts), so the two read as one
+   sheet in this order; its header holds the rules for the whole layer.
+   ============================================================================ */
+
+/* -- Actions (DS-PRIM-1, DS-PRIM-2, MP-1-3). ----------------------------
+   One focus ring, the global one (DR-1): nothing here draws an outline. A bare
+   `.btn` is the secondary button, so an unmarked button is never invisible;
+   its border is the mockup's outline strength, --btn-outline (full ink on
+   light, on-dark at 55% in dark).
+   `sm` is the house size and the base; `md` pairs with a 38 input (DR-21). */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6.6px;
+  height: 27px;
+  padding: 0 11.4px;
+  border: 1px solid var(--btn-outline);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: var(--type-button);
+  letter-spacing: var(--type-button-tracking);
+  text-transform: var(--type-button-case);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.btn--sm {
+  height: 27px;
+  padding: 0 11.4px;
+}
+.btn--md {
+  height: 38px;
+  padding: 0 14px;
+  /* type-exception DS-TOK-123: the 13 px size variant of the button label */
+  font-size: var(--text-sm);
+}
+.btn--lg {
+  height: 43px;
+  padding: 12.75px 22.5px;
+  /* type-exception DS-TOK-123: the 15 px size variant of the button label (R53) */
+  font-size: var(--text-body-lg);
+}
+.btn--primary {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+}
+.btn--primary:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+/* DR-22: a disabled primary is an outline, never a grey fill. */
+.btn--primary:disabled {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 1;
+}
+.btn--secondary:hover:not(:disabled) {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
+}
+/* The filter-preset toggle, pressed (DR-20). */
+.btn[aria-pressed='true'] {
+  background: var(--text);
+  color: var(--bg);
+}
+.btn--ghost {
+  border-color: transparent;
+  color: var(--text-2);
+}
+.btn--ghost:hover:not(:disabled) {
+  color: var(--accent);
+}
+.btn--text {
+  height: auto;
+  padding: 0;
+  border-color: transparent;
+  color: var(--text-2);
+}
+.btn--text:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.ibtn {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.ibtn:hover:not(:disabled) {
+  color: var(--text);
+}
+.ibtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.ibtn--compact {
+  width: 22px;
+  height: 22px;
+}
+.ibtn--danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+.ibtn--accent {
+  transition:
+    color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease);
+}
+.ibtn--accent:hover:not(:disabled) {
+  color: var(--accent);
+  transform: scale(1.12);
+}
+/* DR-24: row tools wait for the row's hover above 900, and always show on
+   focus and on touch-width screens. */
+.ibtn--reveal {
+  opacity: 0;
+}
+:hover > .ibtn--reveal,
+.ibtn--reveal:focus-visible {
+  opacity: 1;
+}
+@media (width <= 900px) {
+  .ibtn--reveal {
+    opacity: 1;
+  }
+}
+.disclosure .icon {
+  transition: transform var(--dur-fast) var(--ease);
+}
+.disclosure[aria-expanded='true'] .icon {
+  transform: rotate(90deg);
+}
+
+/* -- Fields (DS-PRIM-3 to DS-PRIM-7, DS-PRIM-9, DS-PRIM-19). -------------
+   One paper field ground on both faces (DR-25). Focus moves the border to the
+   accent; the global ring still shows for the keyboard. */
+.field {
+  display: grid;
+  gap: var(--s-1-5);
+  min-width: 0;
+}
+.field__label {
+  color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+.tf,
+.ta {
+  width: 100%;
+  min-width: 0;
+  padding: 7.2px 12px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.ta {
+  min-height: 6rem;
+  resize: vertical;
+}
+.tf::placeholder,
+.ta::placeholder,
+.search__in::placeholder {
+  color: var(--text-muted);
+}
+.tf:focus,
+.ta:focus,
+.sel__btn:focus,
+.sel__btn[aria-expanded='true'] {
+  border-color: var(--accent);
+}
+.tf:disabled,
+.ta:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.tf--inline {
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  font: inherit;
+}
+.tf--inline:focus {
+  border-bottom-color: var(--accent);
+}
+.sel {
+  position: relative;
+}
+.sel__btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  width: 100%;
+  height: 37px;
+  padding: 8.8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  text-align: left;
+  cursor: pointer;
+}
+.sel__btn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.sel__btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.sel__caret {
+  width: 0;
+  height: 0;
+  border-top: 5px solid currentColor;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+}
+.menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  margin: 0;
+  padding: var(--s-1) 0;
+  list-style: none;
+  border: 1px solid var(--accent);
+  background: var(--bg);
+  box-shadow: var(--shadow-overlay);
+}
+.menu__opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: 6px 12px;
+  color: var(--text-2);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  cursor: pointer;
+}
+.menu__opt:hover,
+.menu__opt.is-active {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.menu__opt[aria-selected='true'] {
+  color: var(--accent);
+}
+.search {
+  display: flex;
+  align-items: center;
+  gap: 7.2px;
+  height: 34px;
+  padding: 4.8px 8.8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+}
+.search:focus-within {
+  border-color: var(--accent);
+}
+.search__in {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  outline: none;
+}
+.keycap {
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
+}
+.check {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--accent);
+  cursor: pointer;
+}
+.check:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.check[aria-checked='true'] {
+  border-color: var(--accent);
+}
+.switch {
+  display: inline-flex;
+  align-items: center;
+  width: 42px;
+  height: 20px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg);
+  cursor: pointer;
+}
+.switch:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.switch:focus-visible {
+  border-color: var(--accent);
+}
+.switch:disabled {
+  border-style: dashed;
+  cursor: not-allowed;
+}
+.switch__knob {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-strong);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.switch[aria-checked='true'] {
+  border-color: var(--success);
+}
+.switch[aria-checked='true'] .switch__knob {
+  border-color: var(--success);
+  background: var(--success);
+  transform: translateX(20px);
+}
+
+/* -- Segmented control and facet (DS-PRIM-10). Both have a hover rule (SHELL
+      I8). Pressed segmented is an ink fill; a pressed facet is an accent
+      outline and no fill. -- */
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+}
+.segmented__opt {
+  height: 30px;
+  padding: 5.6px 11.2px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-2);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+.segmented__opt:last-child {
+  border-right: 0;
+}
+.segmented__opt:hover:not([aria-pressed='true']) {
+  color: var(--text);
+}
+.segmented__opt[aria-pressed='true'] {
+  background: var(--text);
+  color: var(--bg);
+}
+.facets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.facet {
+  display: inline-flex;
+  align-items: center;
+  gap: 7.2px;
+  height: 34px;
+  padding: 5.6px 11.2px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-2);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.facet:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.facet[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.facet__num {
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+/* -- Voice one: no rows. ------------------------------------------------- */
+/* -- Voice two: this input is wrong. Red is legitimate status here, because
+      the field IS in an error state. ------------------------------------- */
+/* DS-PRIM-30's field error (adopted at build-ready). */
+[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.field__error {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  color: var(--danger);
+}
+.field__hint {
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  color: var(--text-muted);
+}
+
+/* The icon (DS-PRIM-17, MP-1-2). Stroked glyphs in the text's colour, sized by
+   the icon tokens, sitting on the text's middle. */
+.icon {
+  display: inline-block;
+  flex: none;
+  width: var(--icon-md);
+  height: var(--icon-md);
+  vertical-align: middle;
+  color: inherit;
+}
+.icon--xs {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
+.icon--sm {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+.icon--lg {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}

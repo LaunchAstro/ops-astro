@@ -90,6 +90,7 @@ const CONSTANT = new Set([
 const COLOUR_PROPERTY =
   /^(color|background(-color|-image)?|border(-(top|right|bottom|left|block|inline)(-start|-end)?)?(-color)?|outline(-color)?|box-shadow|fill|stroke|caret-color|accent-color|text-decoration(-color)?|column-rule(-color)?)$/u;
 const SHEETS = [
+  `${styles}2-controls-and-marks.css`,
   `${styles}2-primitives.css`,
   `${styles}3-shell.css`,
   `${styles}4-board.css`,
