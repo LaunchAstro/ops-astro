@@ -82,19 +82,16 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0253: tripwires and night round steps are written by the checks and the
   // round itself and only read here (MP-14-8).
   ['s', 'night_round_steps tripwires'],
-  // 0254: a graduation row is written by the agent loops and only has its
-  // revision bumped here; a mandate is filed and revoked, never deleted
-  // (MP-14-10a). Both updates are column grants.
+  // 0254: a graduation row only has its revision bumped here; a mandate is
+  // filed and revoked, never deleted (MP-14-10a). Both are column grants.
   ['su', 'graduation_classes'],
   ['siu', 'standing_mandates'],
-  // 0255: a definition, a released version and an occurrence are written once
-  // and never changed; an activation's setting is a column-granted update
-  // (C33).
+  // 0255: a definition, a released version and an occurrence are written once;
+  // an activation's setting is a column-granted update (C33).
   ['si', 'activation_occurrences automation_definitions definition_versions'],
   ['siu', 'activations'],
-  // 0256: an adoption, a revocation and a dispatch are written once and never
-  // changed; the activation names its standing adoption through a column
-  // grant (C52-A).
+  // 0256: an adoption, a revocation and a dispatch are written once; the
+  // activation names its adoption through a column grant (C52-A).
   ['si', 'occurrence_dispatches standing_approval_revocations standing_approvals'],
   // 0257: an onboarding and its steps are laid out once and moved on by
   // column grants, never deleted (C41-A).

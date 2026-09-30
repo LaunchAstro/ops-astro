@@ -171,8 +171,6 @@ export {
   type SecretScope,
   type SecretStale,
   type SecretWritten,
-} from './custody/index.ts';
-export {
   generateSealingPair,
   loadSealingKey,
   seal,
