@@ -71,31 +71,32 @@ function signalOf({ kind, scope, weight }: Row): SecuritySignal | undefined {
   }
 }
 
-/** An error's id at the sink, fixed by its row: a retry after a lost answer is the same event. */
-const eventId = (row: Row): string =>
-  createHash('sha256').update(`${row.id}\u0001${row.at.toISOString()}`).digest('hex').slice(0, 32);
-
-/** Each rule's window in seconds, for the database to judge a signal past it. */
-const WINDOWS = JSON.stringify(
-  Object.fromEntries(Object.entries(RULES).map(([kind, rule]) => [kind, rule.windowMs / 1000])),
-);
+/** An event's id at the sink, fixed by what it stands for: a retry after a lost answer reuses it. */
+const fixedId = (...parts: readonly string[]): string =>
+  createHash('sha256').update(parts.join('\u0001')).digest('hex').slice(0, 32);
+const rowId = (row: Row): string => fixedId(row.id, row.at.toISOString());
 
 type Execute = AdminConnection['execute'];
-type Counted = Pick<Row, 'kind' | 'scope' | 'id'>;
+type Raised = { readonly kind: AlertKind; readonly id: string };
 
 /**
- * Every row left, in order: each error sent, each signal counted. What an
- * alert counted is returned with its last row, so the pass can delete its burst.
+ * Every row left, in order: each error sent, each signal counted. Returns the
+ * ids to clear, exactly: the errors sent, the rows each raised alert counted,
+ * and the signals read that are past their rule's window at `now`, the
+ * database's own clock.
  */
-async function replay(execute: Execute, options: ForwarderOptions, raised: AlertKind[]) {
-  const sent: string[] = [];
-  const counted: Counted[] = [];
+async function replay(execute: Execute, options: ForwarderOptions, now: number, raised: Raised[]) {
+  const spent: string[] = [];
+  const held = new Map<string, Row[]>();
   let clock = 0;
   let current: Row | undefined;
   const detector = createDetector(
     (kind) => {
-      raised.push(kind);
-      if (current !== undefined) counted.push(current);
+      if (current === undefined) return;
+      const key = `${current.kind}\u0001${current.scope}`;
+      raised.push({ kind, id: fixedId(kind, rowId(current)) });
+      spent.push(...(held.get(key) ?? []).map((row) => row.id));
+      held.delete(key);
     },
     { now: () => clock },
   );
@@ -111,36 +112,27 @@ async function replay(execute: Execute, options: ForwarderOptions, raised: Alert
     for (const row of rows.toSorted((a, b) => a.at.getTime() - b.at.getTime())) {
       if (row.kind === 'error') {
         // oxlint-disable-next-line no-await-in-loop -- one error at a time, inside the pass
-        await options.send(rebuiltError(row.event, options, eventId(row)));
-        sent.push(row.id);
+        await options.send(rebuiltError(row.event, options, rowId(row)));
+        spent.push(row.id);
         continue;
       }
       const signal = signalOf(row);
+      if (signal === undefined) continue;
+      const window = RULES[signal.kind].windowMs;
+      const key = `${row.kind}\u0001${row.scope}`;
+      const inWindow = (held.get(key) ?? []).filter(
+        (r) => row.at.getTime() - r.at.getTime() < window,
+      );
+      held.set(key, [...inWindow, row]);
+      if (now - row.at.getTime() >= window) spent.push(row.id);
       clock = row.at.getTime();
       current = row;
-      if (signal !== undefined) detector.observe(signal);
+      detector.observe(signal);
     }
     if (rows.length < BATCH) break;
     after = rows.at(-1)?.id ?? after;
   }
-  return { handled, sent, counted };
-}
-
-/** The errors sent, each alert's burst up to its last row, and the signals past their window. */
-async function clear(execute: Execute, sent: readonly string[], counted: readonly Counted[]) {
-  await execute(
-    `delete from ops.api_events e where e.id = any($1::bigint[])
-       or exists (select 1 from unnest($2::text[], $3::text[], $4::bigint[]) as c(kind, scope, id)
-         where c.kind = e.kind and c.scope = e.scope and e.id <= c.id)
-       or (e.kind <> 'error' and e.at < now() - make_interval(secs => ($5::jsonb ->> e.kind)::float8))`,
-    [
-      sent,
-      counted.map((row) => row.kind),
-      counted.map((row) => row.scope),
-      counted.map((row) => row.id),
-      WINDOWS,
-    ],
-  );
+  return { handled, spent };
 }
 
 export function createForwarder(options: ForwarderOptions): {
@@ -149,26 +141,29 @@ export function createForwarder(options: ForwarderOptions): {
   const pass = async (execute: Execute) => {
     await execute('set local role ops_astro_forwarder');
     await advisoryLock({ query: execute }, 'ops.api_events forwarder');
-    const [stale] = await execute<{ dropped: number }>(
+    const [stale] = await execute<{ dropped: number; last: string | null; now: Date }>(
       `with gone as (delete from ops.api_events where at < now() - make_interval(secs => $1)
-         returning 1) select count(*)::int as dropped from gone`,
+         returning id) select count(*)::int as dropped, max(id)::text as last, now() from gone`,
       [WINDOW_MS / 1000],
     );
     const dropped = stale?.dropped ?? 0;
-    const raised: AlertKind[] = dropped > 0 ? ['signals-dropped'] : [];
-    const { handled, sent, counted } = await replay(execute, options, raised);
-    for (const kind of raised) {
+    const raised: Raised[] = [];
+    if (dropped > 0) raised.push({ kind: 'signals-dropped', id: fixedId('dropped', stale!.last!) });
+    const now = stale?.now.getTime() ?? Date.now();
+    const { handled, spent } = await replay(execute, options, now, raised);
+    for (const { kind, id } of raised) {
       // oxlint-disable-next-line no-await-in-loop -- in the order raised
-      await options.send(alertEvent(kind, options.where, options.release));
+      await options.send(alertEvent(kind, options.where, options.release, id));
     }
-    await clear(execute, sent, counted);
+    await execute('delete from ops.api_events where id = any($1::bigint[])', [spent]);
     return { handled, dropped };
   };
 
   async function once(): Promise<{ handled: number; dropped: number }> {
     const done = await options.database.transaction(pass);
     const beat = await options.heartbeat?.();
-    if (beat === 'failed' || beat === 'refused') throw new Error(`the heartbeat was ${beat}`);
+    // Only a ping the watcher took completes a pass: failed, refused or not set is silence.
+    if (beat !== undefined && beat !== 'sent') throw new Error(`the heartbeat was ${String(beat)}`);
     return done;
   }
 

@@ -186,9 +186,14 @@ export function rebuiltError(stored: unknown, place: Place, id?: string): SinkEv
   };
 }
 
-export function alertEvent(kind: AlertKind, where: Where, release?: string): SinkEvent {
+export function alertEvent(
+  kind: AlertKind,
+  where: Where,
+  release?: string,
+  id?: string,
+): SinkEvent {
   const message = { formatted: plainAlert(kind, where).text };
-  return { ...base('warning', kind, where, release), message };
+  return { ...base('warning', kind, where, release, id), message };
 }
 
 // What a watcher or a sink off the machine cannot be: loopback, private, shared,
