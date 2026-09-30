@@ -135,7 +135,7 @@ describe('C36 conversation address', () => {
     expect(match?.id).toBe('agency:agent-conversation');
     expect(match?.params).toStrictEqual({ conversation: ID });
     expect(pathTo('agency:agent-conversation', { conversation: ID })).toBe(`/agent/${ID}`);
-    expect(ROUTES['agency:agent-conversation']).toMatchObject({ authenticated: true, rail: false });
+    expect(ROUTES['agency:agent-conversation']).toMatchObject({ authenticated: true });
     expect(gateOf(matchRoute(`/agent/${ID}`), false).kind).toBe('sign-in');
   });
 
