@@ -34,7 +34,7 @@ describe.skipIf(serverUrl === undefined)(
       await world?.drop();
     });
 
-    it('is refused the board and shown no rank, stage, actual or canary', async () => {
+    it('is refused the board and shown no rank, stage, actual, estimate, page or canary', async () => {
       const decider = await world.decider('decider');
       const other = await world.asPerson(decider, {
         command: 'task.create',
@@ -51,7 +51,7 @@ describe.skipIf(serverUrl === undefined)(
       const text = JSON.stringify(answer);
       expect(text).not.toContain(CANARY);
       expect(text).not.toContain(otherId);
-      expect(text).not.toMatch(/"rank"|"stage"|"actualMinutes"/u);
+      expect(text).not.toMatch(/"rank"|"stage"|"actualMinutes"|"estimateMinutes"|"pageLink"/u);
     });
   },
 );
