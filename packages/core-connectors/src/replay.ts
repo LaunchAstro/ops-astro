@@ -13,7 +13,12 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { AdapterRequest, ModelAnswer, ModelOperationDeclaration } from './operation.ts';
+import {
+  readModelId,
+  type AdapterRequest,
+  type ModelAnswer,
+  type ModelOperationDeclaration,
+} from './operation.ts';
 
 /** The model window the replay provider declares, recorded for the harness adoption test (AW-12). */
 export const REPLAY_MODEL_WINDOW: { readonly model: string; readonly contextUnits: number } = {
@@ -49,8 +54,11 @@ export function readReplayAnswer(body: unknown): ModelAnswer | undefined {
   if (!whole(units['input']) || !whole(units['output'])) return undefined;
   const code = shape['code'];
   if (code !== undefined && code !== null && typeof code !== 'string') return undefined;
+  const model = readModelId(shape['model']);
+  if (model === undefined) return undefined;
   return {
     text: shape['text'],
+    model,
     usage: { inputUnits: units['input'], outputUnits: units['output'] },
     providerCode: typeof code === 'string' ? code : null,
   };

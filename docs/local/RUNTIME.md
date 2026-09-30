@@ -1442,6 +1442,16 @@ both tenancy-scoped with row security forced, and the fair share's count
   past what its operation declares. The route, its reach, the credential kind
   and the account that carried it are recorded; a replay call records no
   account. The application group may select, insert and update.
+- Usage (`0050_model_call_usage`, ORCH37): a settled call records the model
+  the provider says answered (`model_id`, null when the answer named none)
+  and the units its answer says it used (`input_units`, `output_units`, both
+  or neither), written by the priced settle in the transaction that settles
+  the money and by nothing else, so a released, refused or held call carries
+  none. The adapter's answer schema reads the model id (`readModelId`); one
+  out of shape makes the whole answer malformed, bounded as any hostile
+  answer, and the database holds the same shape
+  (`model_calls_model_id_shape`, `model_calls_units_whole`). Test:
+  `aw-01-call-usage`.
 - `copy_registrations`: the copy register's registration half. A call's
   outbound prompt is registered before it is first materialised, and nothing
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses

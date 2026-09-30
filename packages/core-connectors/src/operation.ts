@@ -33,9 +33,23 @@ export type SettleLevel = (typeof SETTLE_LEVELS)[number];
 /** What an answer means once the adapter has read it. Text only: the broker never acts on it. */
 export interface ModelAnswer {
   readonly text: string;
+  /** The model the provider says answered, or null when it named none. */
+  readonly model: string | null;
   readonly usage: { readonly inputUnits: number; readonly outputUnits: number };
   /** The provider's own code for an answer that did nothing (a refusal before any work). */
   readonly providerCode: string | null;
+}
+
+/** A model id as a provider may name one; 0050 holds the same shape. */
+const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/u;
+
+/**
+ * The model an answer names: null when it names none, `undefined` when what it
+ * names is out of shape, which makes the whole answer malformed.
+ */
+export function readModelId(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  return typeof value === 'string' && MODEL_ID.test(value) ? value : undefined;
 }
 
 /** The request an adapter builds. No origin, no credential: custody adds both. */
