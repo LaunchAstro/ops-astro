@@ -56,6 +56,7 @@ export async function main(argv, env) {
       failed = true;
     }
     // The sink is on the machine, out of the watcher's sight: its heartbeat says it answers.
+    // oxlint-disable-next-line no-await-in-loop -- one probe after each pass
     if (await sinkAnswers(env['OPS_ERROR_SINK_DSN'])) await ping(env['OPS_SINK_HEARTBEAT_URL']);
     if (argv.includes('--once')) break;
     // oxlint-disable-next-line no-await-in-loop -- the poll interval
