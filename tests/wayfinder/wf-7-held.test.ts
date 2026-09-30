@@ -9,7 +9,8 @@
 //   'run', pickup narrowing it from the person) is SL12-B's (U37, MP-6-2).
 // - Reserve before a priced call, the ceiling, the broker's catalogued
 //   operations and model.call: SL11 U100 AW-01; the top-up shape AW-05.
-// - Model egress for the map's client: C60 (SL11, on SL09 U18).
+// - Model egress for the map's client is no longer held: C60 came with the
+//   SL11 stack, and it is `wf-7-egress.test.ts`.
 // - The waiting-run inbox item: SL04 U99 (`inbox_items`, the raise).
 // - The ceiling approval's recent sign-in: C59's step-up (S0-5's sweep).
 // - The run's lease and checks: SL12 U31 (MP-6-1).
@@ -19,7 +20,7 @@
 
 import { describe, it } from 'vitest';
 
-describe('WF-7 held (LEANS-ON SL12-B U37, SL11 U100, C60, SL04 U99, C59, SL12 U31)', () => {
+describe('WF-7 held (LEANS-ON SL12-B U37, SL11 U100, SL04 U99, C59, SL12 U31)', () => {
   it.todo('WF-7 isolation');
   it.todo('WF-7 canary');
   it.todo('WF-7 hostile provider');
@@ -30,7 +31,6 @@ describe('WF-7 held (LEANS-ON SL12-B U37, SL11 U100, C60, SL04 U99, C59, SL12 U3
   it.todo('WF-7 claim first');
   it.todo('WF-7 reserve before a priced call');
   it.todo('WF-7 no ceiling stops and asks');
-  it.todo('WF-7 egress off makes no call');
   it.todo('WF-7 holds no credential');
   it.todo('WF-7 twice failed');
   it.todo('WF-7 skill pinned by digest');
