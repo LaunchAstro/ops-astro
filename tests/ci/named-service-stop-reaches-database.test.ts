@@ -27,10 +27,13 @@ it.skipIf(serverUrl === undefined)(
       url.pathname = `/${db.name}`;
       // Let the new database's creation counters settle before measuring this suite.
       await setTimeout(1500);
+      // Both addresses the suite reads: the harness prefers DATABASE_ADMIN_URL,
+      // so an inherited one would send the suite to a database not measured.
+      const measured = url.toString();
       const run = spawnSync(process.execPath, ['scripts/db-conformance.mjs', '--manifest', manifest], {
         cwd: join(import.meta.dirname, '../..'),
         encoding: 'utf8',
-        env: { ...process.env, DATABASE_URL: url.toString() },
+        env: { ...process.env, DATABASE_URL: measured, DATABASE_ADMIN_URL: measured },
       });
       expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
     } finally {
