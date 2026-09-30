@@ -46,7 +46,6 @@ import {
   agentAnswer,
   isCommandRefusal,
   isReadName,
-  boardHears,
   boardReach,
   joinLiveBoard,
   shownInbox,
@@ -383,9 +382,9 @@ export function createApi(options: ApiOptions): Hono {
         await follow(stream, live, admitted.businessId, taskId, may);
       });
     });
-    // INB-1f: the board's one stream per tab, through the same door. Each task
-    // it names is asked as the task's own stream asks it; the inbox topic is
-    // the caller's own person, which the join resolves, asked again each batch.
+    // INB-1f: the board's one stream per tab, through the same door. It digests
+    // the reads of the person the join resolves, asked again on every run, and
+    // hears that person's inbox topic (`live-board.ts`).
     api.get(`${PREFIX.person}:businessKey/live`, async (context) => {
       const admitted = await admit(options, context, PERSON, false);
       if (admitted instanceof Response) return admitted;
@@ -406,9 +405,8 @@ export function createApi(options: ApiOptions): Hono {
               const again = await join();
               return isCommandRefusal(again) ? undefined : again.personId;
             },
-            reads: async (id, personId) =>
-              await mayHear(options, context, admitted.businessId, { id, personId }),
-            reach: async () => await mayReach(options, context, admitted.businessId),
+            reach: async (personId) =>
+              await mayReach(options, context, admitted.businessId, personId),
             shown: async (personId) =>
               await mayShowInbox(options, context, admitted.businessId, personId),
           },
@@ -457,27 +455,16 @@ async function mayJoinBoard(
   return await joinLiveBoard(options.database, businessId, presented);
 }
 
-/** Whether the board's reader may hear this task move, with the bearer verified again. */
-async function mayHear(
-  options: ApiOptions,
-  context: Context,
-  businessId: string,
-  task: { readonly id: string; readonly personId: string },
-): Promise<boolean> {
-  const presented = await options.verify(context.req);
-  if (typeof presented !== 'object') return false;
-  return await boardHears(options.database, businessId, presented, task);
-}
-
-/** A digest of the board reader's grants now, with the bearer verified again. */
+/** A digest of the tasks the stream's own person reads now, with the bearer verified again. */
 async function mayReach(
   options: ApiOptions,
   context: Context,
   businessId: string,
+  personId: string,
 ): Promise<string | undefined> {
   const presented = await options.verify(context.req);
   return typeof presented === 'object'
-    ? await boardReach(options.database, businessId, presented)
+    ? await boardReach(options.database, businessId, presented, personId)
     : undefined;
 }
 
@@ -524,9 +511,9 @@ export async function follow(
     // The tab may have left while the caller was asked: nothing is written after.
     if (stream.aborted) return;
     if (!allowed) {
-      await stream.writeSSE({ event: 'closed', data: taskId });
+      await stream.writeSSE({ event: 'closed', data: '' });
       stream.abort();
-    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: taskId });
+    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: '' });
   };
   const want = (signal: LiveSignal | 'check'): void => {
     if (pending === null) chain = chain.then(send).catch(() => stream.abort());
@@ -544,7 +531,7 @@ export async function follow(
   const timer = setInterval(() => want('check'), live.recheckMs ?? RECHECK_MS);
   try {
     // Topics closing stop a stream as it subscribes: nothing is written after.
-    if (!stream.aborted) await stream.writeSSE({ event: 'resync', data: taskId });
+    if (!stream.aborted) await stream.writeSSE({ event: 'resync', data: '' });
     await ended;
   } finally {
     clearInterval(timer);

@@ -49,7 +49,7 @@ it('a board task event cannot name a task revoked after the final read sampled i
   try {
     await vi.waitFor(() => expect(writes.some((frame) => frame.event === 'resync')).toBe(true));
     hear({ kind: 'task', taskId });
-    await vi.waitFor(() => expect(reads).toBe(2));
+    await new Promise((resolve) => { setTimeout(resolve, 20); });
     const answerAtRead = canRead;
     canRead = false;
     release(answerAtRead);

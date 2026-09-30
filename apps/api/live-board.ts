@@ -1,25 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // INB-1f: the board screen's one stream per tab, on T2f's content-free
-// channel. No frame carries a task or client identifier: the board refetches
-// through its own read, which applies the grant when it is read. `resync` on
-// connect, after the listener reconnects, when a task the caller reads now
-// moved (a burst heard while one batch is asked is one resync), and when the
-// tasks the caller sees change (one revoked, trashed or moved to another
-// client), found by the recheck; a task they cannot read says nothing. `inbox`
-// when what `inbox.read` shows the caller changed (their topic names no item,
-// so a change to an item about a task they cannot read says nothing); `closed`
-// the first time the caller may no longer hold the stream. Signals that arrive
-// while one batch is being asked merge into the next. A resync on connect or
-// from the recheck stands for every inbox change before it; one for a task
-// move leaves the inbox its own signal.
+// channel. Frames are `resync` and `closed`, and neither carries a task,
+// client or item identifier: the tab refetches its board and inbox through
+// their own reads, which apply the grant when they are read.
 //
-// The stream hears one person's inbox topic, the person the bearer resolves
-// to. Each batch asks the join again, and so does a changed inbox digest
-// before its frame is written: when the bearer now resolves to
-// another person, the old topic is dropped, the new person's is heard, and
-// nothing is said until the stream's own recheck tells the tab `resync`, so no
-// signal of the old person's times a frame for the new one.
+// One rule (ORCH46, REVB1ENDFIXAPID): the stream holds one digest, of what
+// the reader's own reads show them now (the tasks they read and their
+// activity, and their inbox), taken for the person the bearer resolves to.
+// Any signal for the business, and the recheck, run the rule once for every
+// signal heard while it runs: digest that person's reads, ask the join again,
+// and say `resync` when the digest moved since the tab was last told. A
+// change the reader cannot read moves nothing they are shown and says
+// nothing; `closed` the first time the join is refused.
+//
+// When the bearer resolves to another person, the old topic is dropped and
+// the new person's is heard, and nothing is said until the stream's own
+// recheck tells the tab `resync`, so no signal of the old person's times a
+// frame for the new one. The join is asked after each digest and before its
+// frame, so a digest taken for a person the bearer has left is never said.
 //
 // Stopping the stream (the tab leaving, or the topics closing) ends its
 // recheck, and the stream lets go only once no question it asked is in
@@ -31,28 +30,22 @@ import type { BoardSignal, LiveTopics } from './live.ts';
 export interface BoardQuestions {
   /** The person the bearer resolves to now, if they may still hold the stream. */
   readonly joinedAs: () => Promise<string | undefined>;
-  /** Whether the caller, still `personId`, may read this task now. */
-  readonly reads: (taskId: string, personId: string) => Promise<boolean>;
-  /** A digest of the tasks the caller sees now; when it moves, the board refetches. */
-  readonly reach?: () => Promise<string | undefined>;
-  /** A digest of what `inbox.read` shows `personId` now; undefined when it may not be read. */
+  /** A digest of the tasks `personId` reads now and their activity; undefined when refused. */
+  readonly reach: (personId: string) => Promise<string | undefined>;
+  /** A digest of what `inbox.read` shows `personId` now; undefined when refused. */
   readonly shown: (personId: string) => Promise<string | undefined>;
 }
 
-type Heard = BoardSignal | { readonly kind: 'check' };
-
 const noop = (): void => {};
 
-/** The person whose inbox the stream hears, and what their inbox showed when last said. */
+/** The person whose reads the stream digests, and the digest the tab was last told. */
 interface Bound {
   personId: string;
-  shown: string | undefined;
-  /** The tasks the caller saw when last resynced: one lost says nothing else it hears. */
-  reach: string | undefined;
-  /** Rebound and not yet told: every signal waits for the recheck's `resync`, which it follows. */
+  seen: string | undefined;
+  /** Rebound and not yet told: only the recheck's `resync` tells the tab. */
   owed: boolean;
   unsubscribe: () => void;
-  /** The batch being asked; the stream lets go only once it is done. */
+  /** The rule being run; the stream lets go only once it is done. */
   asking: Promise<void>;
 }
 
@@ -75,8 +68,7 @@ export async function followBoard(
   };
   const bound: Bound = {
     personId: on.personId,
-    shown: undefined,
-    reach: undefined,
+    seen: undefined,
     owed: false,
     unsubscribe: () => {},
     asking: Promise.resolve(),
@@ -88,11 +80,11 @@ export async function followBoard(
   };
   const hear = batch(stream, ask, bound, bind);
   bind(on.personId);
-  const timer = setInterval(() => hear({ kind: 'check' }), on.recheckMs);
+  const timer = setInterval(() => hear('check'), on.recheckMs);
   try {
     // Taken after subscribing and before the resync the tab reads from, so a
     // change between the two is either in the tab's read or said after it.
-    if (!stream.aborted) await resyncs(stream, ask, bound);
+    if (!stream.aborted) hear('check');
     await ended;
   } finally {
     clearInterval(timer);
@@ -102,38 +94,23 @@ export async function followBoard(
   }
 }
 
-/**
- * What the stream has heard and not yet said, asked and said a batch at a
- * time; the answer takes each signal, and `check` asks the join again alone.
- */
+/** The rule run once for every signal heard while it runs; `check` is the stream's own. */
 function batch(
   stream: SSEStreamingApi,
   ask: BoardQuestions,
   bound: Bound,
   bind: (personId: string) => void,
-): (signal: Heard) => void {
-  const tasks = new Set<string>();
-  const pending = { resync: false, inbox: false, check: false };
+): (signal: BoardSignal | 'check') => void {
+  const pending = { heard: false, check: false };
   const drain = async (): Promise<void> => {
-    while (
-      !stream.aborted &&
-      (pending.check || (!bound.owed && (pending.resync || pending.inbox || tasks.size > 0)))
-    ) {
+    while (!stream.aborted && (pending.heard || pending.check)) {
       const { check } = pending;
-      pending.check = false;
-      // eslint-disable-next-line no-await-in-loop -- one batch is asked before the next.
-      if ((await rejoin(stream, ask, bound, bind)) === 'closed') return;
-      if (bound.owed && !check) continue;
-      // A rebind owes the recheck's resync; a lost task moves only the reach.
-      // eslint-disable-next-line no-await-in-loop
-      pending.resync ||= bound.owed || (check && (await ask.reach?.()) !== bound.reach);
-      bound.owed = false;
-      const { resync, inbox } = pending;
-      const named = [...tasks];
-      pending.resync = pending.inbox = false;
-      tasks.clear();
-      // eslint-disable-next-line no-await-in-loop
-      if ((await say(stream, ask, { named, resync, inbox }, bound, bind)) === 'closed') return;
+      pending.heard = pending.check = false;
+      // eslint-disable-next-line no-await-in-loop -- one run before the next.
+      const joined = await rule(stream, ask, bound, bind, check);
+      if (joined === 'closed') return;
+      // A rebind the recheck found is told by that recheck, from the new person's reads.
+      if (joined === 'rebound' && check) pending.check = true;
     }
   };
   let queued = false;
@@ -148,15 +125,40 @@ function batch(
       .catch(() => stream.abort());
   };
   return (signal) => {
-    if (signal.kind === 'task') tasks.add(signal.taskId);
-    else pending[signal.kind] = true;
+    if (signal === 'check') pending.check = true;
+    else pending.heard = true;
     wake();
   };
 }
 
 /** A frame, unless the stream ended while a question before it was asked. */
-async function send(stream: SSEStreamingApi, event: string, data = ''): Promise<void> {
-  if (!stream.aborted) await stream.writeSSE({ event, data });
+async function send(stream: SSEStreamingApi, event: string): Promise<void> {
+  if (!stream.aborted) await stream.writeSSE({ event, data: '' });
+}
+
+/**
+ * The one rule: the bound person's reads digested, the join asked again, and
+ * `resync` when the bearer is still that person and the digest moved.
+ */
+async function rule(
+  stream: SSEStreamingApi,
+  ask: BoardQuestions,
+  bound: Bound,
+  bind: (personId: string) => void,
+  check: boolean,
+): Promise<'closed' | 'rebound' | 'same'> {
+  const tasks = await ask.reach(bound.personId);
+  const inbox = await ask.shown(bound.personId);
+  const joined = await rejoin(stream, ask, bound, bind);
+  // A read refused because the bearer moved during it is asked again by the next run.
+  if (joined !== 'same' || tasks === undefined || inbox === undefined) return joined;
+  if (bound.owed && !check) return joined;
+  bound.owed = false;
+  const seen = `${tasks} ${inbox}`;
+  if (seen === bound.seen) return joined;
+  bound.seen = seen;
+  await send(stream, 'resync');
+  return joined;
 }
 
 /**
@@ -178,53 +180,7 @@ async function rejoin(
   }
   if (personId === bound.personId) return 'same';
   bind(personId);
+  bound.seen = undefined;
   bound.owed = true;
   return 'rebound';
-}
-
-/** A resync; with `inbox`, it stands for every inbox change so far, taken first. */
-async function resyncs(
-  stream: SSEStreamingApi,
-  ask: BoardQuestions,
-  bound: Bound,
-  inbox = true,
-): Promise<void> {
-  if (inbox) bound.shown = await ask.shown(bound.personId);
-  bound.reach = await ask.reach?.();
-  await send(stream, 'resync');
-}
-
-/**
- * One batch said: `resync` when asked for or when a task the caller reads now
- * moved, never which task (read, the join asked again, read again); then the
- * inbox, if what it shows moved, the join asked again after it so a digest that
- * finished after the bearer moved is dropped.
- */
-async function say(
-  stream: SSEStreamingApi,
-  ask: BoardQuestions,
-  heard: { readonly named: readonly string[]; readonly resync: boolean; readonly inbox: boolean },
-  bound: Bound,
-  bind: (personId: string) => void,
-): Promise<'closed' | 'rebound' | 'same'> {
-  let moved = false;
-  for (const taskId of heard.resync ? [] : heard.named) {
-    // eslint-disable-next-line no-await-in-loop -- in the order they were heard.
-    if (!(await ask.reads(taskId, bound.personId))) continue;
-    // eslint-disable-next-line no-await-in-loop
-    const joined = await rejoin(stream, ask, bound, bind);
-    if (joined !== 'same') return joined;
-    // eslint-disable-next-line no-await-in-loop
-    moved = await ask.reads(taskId, bound.personId);
-    if (moved) break;
-  }
-  if (heard.resync || moved) await resyncs(stream, ask, bound, heard.resync);
-  if (!heard.inbox) return 'same';
-  const now = await ask.shown(bound.personId);
-  if (now === undefined || now === bound.shown) return 'same';
-  const joined = await rejoin(stream, ask, bound, bind);
-  if (joined !== 'same') return joined;
-  bound.shown = now;
-  await send(stream, 'inbox');
-  return 'same';
 }

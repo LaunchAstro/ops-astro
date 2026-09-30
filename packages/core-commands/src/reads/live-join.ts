@@ -13,7 +13,7 @@
 // read moves nothing they are shown, and says nothing.
 
 import { createHash } from 'node:crypto';
-import { readScopes, taskAccess, withSession } from '../../../core-records/src/index.ts';
+import { readScopes, withSession } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, VerifiedSubject } from '../../../core-records/src/index.ts';
 import {
   asCallerVisible,
@@ -61,42 +61,23 @@ export async function shownInbox(
 }
 
 /**
- * Whether the board may tell its reader that one task moved (INB-1 35), by the
- * grants `inbox.read` asks: the business, the task, or a party grant on the
- * task's own client, so a reader of client A hears client A and never client B;
- * never when the bearer now resolves to another person than the stream's.
- */
-export async function boardHears(
-  database: Database,
-  businessId: BusinessId,
-  presented: VerifiedSubject,
-  task: { readonly id: string; readonly personId: string },
-): Promise<boolean> {
-  const outcome = await withSession(
-    database,
-    businessId,
-    presented,
-    async (tx, session) =>
-      session.personId === task.personId &&
-      isInternalReader(session.roleKey) &&
-      (await taskAccess(tx, session.personId, task.id)) === 'readable',
-  );
-  return outcome === true;
-}
-
-/**
- * A digest of the tasks the board's reader sees now: live tasks their read
- * scopes reach, as `inbox.read` and `taskAccess` ask them. A task revoked,
- * trashed or moved to another client moves it, so the board refetches.
+ * A digest of the tasks `personId` reads now, as `inbox.read` and `taskAccess`
+ * ask their read scopes, with each one's activity: its own row and the rows
+ * about it (comments), its planned runs and their events. Any change the
+ * reader can see moves it, and so does a task revoked, trashed or moved to
+ * another client; undefined unless the bearer still resolves to that person.
  */
 export async function boardReach(
   database: Database,
   businessId: BusinessId,
   presented: VerifiedSubject,
+  personId: string,
 ): Promise<string | undefined> {
   const outcome = await withSession(database, businessId, presented, async (tx, session) => {
-    if (!isInternalReader(session.roleKey)) return refuseNotFound();
-    const { business, records, parties } = await readScopes(tx, session.personId);
+    if (session.personId !== personId || !isInternalReader(session.roleKey)) {
+      return refuseNotFound();
+    }
+    const { business, records, parties } = await readScopes(tx, personId);
     const rows = await tx.query<{ readonly seen: string }>(SEEN, [
       tx.businessId,
       (await readTaskSpine(tx)).taskTypeId,
@@ -109,8 +90,19 @@ export async function boardReach(
   return typeof outcome === 'string' ? outcome : undefined;
 }
 
-const SEEN = `select encode(sha256(convert_to(coalesce(string_agg(id::text, ',' order by id), ''),
+const SEEN = `with seen as (
+         select id from public.records
+          where business_id = $1 and record_type_id = $2 and deleted_at is null
+            and ($3::boolean or id = any($4::uuid[]) or uuid_7 = any($5::uuid[])))
+       select encode(sha256(convert_to(coalesce(string_agg(part, ',' order by part), ''),
                 'UTF8')), 'hex') as seen
-         from public.records
-        where business_id = $1 and record_type_id = $2 and deleted_at is null
-          and ($3::boolean or id = any($4::uuid[]) or uuid_7 = any($5::uuid[]))`;
+         from (select r.id::text || ':' || r.revision::text from public.records r
+                where r.business_id = $1 and r.deleted_at is null
+                  and (r.id in (select id from seen)
+                       or r.data ->> 'task' in (select id::text from seen))
+               union all
+               select 'p' || p.id::text || ':' || p.xmin::text from public.planned_runs p
+                where p.business_id = $1 and p.task_id in (select id from seen)
+               union all
+               select 'e' || e.id::text from public.run_events e
+                where e.business_id = $1 and e.task_id in (select id from seen)) as parts(part)`;
