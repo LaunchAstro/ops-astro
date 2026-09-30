@@ -27,6 +27,7 @@ import {
   APPLICATION_EXECUTES,
   WORKER_ROLE,
   BROKER_ROLE,
+  OCCURRENCE_ROLE,
   APPLICATION_GRANTS,
   catalogueFunctions,
   catalogueTables,
@@ -376,11 +377,12 @@ async function roleClasses(
                  when pg_has_role(r.rolname, $1, 'member') then 'application login'
                  when r.rolname = $2 then 'worker'
                  when r.rolname = $3 then 'broker'
+                 when r.rolname = $4 then 'occurrence'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
        from pg_roles r where r.rolname !~ '^pg_' order by 1`,
-    [APPLICATION_ROLE, WORKER_ROLE, BROKER_ROLE],
+    [APPLICATION_ROLE, WORKER_ROLE, BROKER_ROLE, OCCURRENCE_ROLE],
   );
   const classes: Record<string, string[]> = {};
   for (const row of rows) (classes[row.class] ??= []).push(row.rolname);
@@ -454,6 +456,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(classes['application group']).toStrictEqual([APPLICATION_ROLE]);
     expect(classes['worker']).toStrictEqual(['ops_astro_worker']);
     expect(classes['broker']).toStrictEqual([BROKER_ROLE]);
+    expect(classes['occurrence']).toStrictEqual([OCCURRENCE_ROLE]);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });

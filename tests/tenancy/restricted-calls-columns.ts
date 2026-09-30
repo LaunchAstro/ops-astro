@@ -7,7 +7,11 @@
 
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { APPLICATION_ROLE } from '../support/fresh-database.ts';
-import { catalogueColumnGrants, describeOutcome } from './restricted-calls-cases.ts';
+import {
+  catalogueColumnGrants,
+  describeOutcome,
+  roleColumnGrantsAt,
+} from './restricted-calls-cases.ts';
 import {
   APPLICATION_CALLERS,
   fingerprint,
@@ -114,6 +118,7 @@ export async function columnUpdateFindings(
   const wanted = [
     ...columnSelectsAt(at).map((pair) => `${APPLICATION_ROLE} SELECT ${pair}`),
     ...pairs.map((pair) => `${APPLICATION_ROLE} UPDATE ${pair}`),
+    ...roleColumnGrantsAt(at),
   ];
   const wrong = held.join(', ') === wanted.join(', ') ? [] : [`column grants: ${held.join(', ')}`];
   for (const pair of pairs) {

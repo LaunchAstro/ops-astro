@@ -1368,7 +1368,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:799-810`). With neither setting present, the
+  rewrites it (`local-seed.mjs:802-813`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1426,7 +1426,7 @@ both tenancy-scoped with row security forced, and the fair share's count
 
 - `model_calls`: one row per priced model call or recorded refusal, bound to
   its run, step, lease, approved version, reservation and delegation.
-- A conversation call (`0048_model_call_conversation`, AW-01's conversation
+- A conversation call (`0053_model_call_conversation`, AW-01's conversation
   seam): a person's call from their own conversation, through
   `callModelInConversation` (`core-custody/src/broker-conversation.ts`). The
   row names the conversation and none of the five task facts, no delegation,
@@ -1445,6 +1445,16 @@ both tenancy-scoped with row security forced, and the fair share's count
   past what its operation declares. The route, its reach, the credential kind
   and the account that carried it are recorded; a replay call records no
   account. The application group may select, insert and update.
+- Usage (`0055_model_call_usage`, ORCH37): a settled call records the model
+  the provider says answered (`model_id`, null when the answer named none)
+  and the units its answer says it used (`input_units`, `output_units`, both
+  or neither), written by the priced settle in the transaction that settles
+  the money and by nothing else, so a released, refused or held call carries
+  none. The adapter's answer schema reads the model id (`readModelId`); one
+  out of shape makes the whole answer malformed, bounded as any hostile
+  answer, and the database holds the same shape
+  (`model_calls_model_id_shape`, `model_calls_units_whole`). Test:
+  `aw-01-call-usage`.
 - `copy_registrations`: the copy register's registration half. A call's
   outbound prompt is registered before it is first materialised, and nothing
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses
@@ -1667,6 +1677,48 @@ and codes, never a sentence, to a trace target an operator reads.
   `.local/trace-target.env` without pulling, and destroys it with its volumes.
   Retention (the product's job deleting by derived id, the raw bucket's
   lifecycle rule) and the operator readers are AW-13's remaining lines.
+
+## An automation occurrence's run
+
+AW-01 J, `core-commands/src/commands/occurrence-run.ts` and migration 0054
+(ORCH36's ruling, option B). C33 records an occurrence, C52-A's dispatch
+rechecks the activation and its standing approval under the activation's lock,
+and then asks `startOccurrenceRun` for the run. It is never a command: no API
+route, command-line verb or agent operation reaches it.
+
+- **The task.** A new task in the definition's own business and client,
+  landing `intake_state: accepted`: the standing approval is the decision that
+  accepts it (automations contract 4.2). Its source is `system:automation`.
+- **The run.** On that task, naming its occurrence, definition and approver,
+  with no plan lineage or version: a plan version opens a per-run gate, which
+  is what the standing approval stands in for. The agent's output on the task
+  still takes its own review round (AW-09). One run per occurrence: the
+  occurrence's advisory lock makes a second start answer the first as
+  replayed, and past the code the database's unique index holds it.
+- **Who writes it.** An active worker of the business, never a person or an
+  agent (`WORKER_REQUIRED`). The run row goes in through
+  `ops_astro_occurrence`, taken for the one insert with
+  `set_config('role', ..., true)`; 0054's trigger refuses an origin written by
+  any other role, and any change to an origin after the insert.
+- **What refuses it.** An unknown or malformed occurrence
+  (`OCCURRENCE_UNKNOWN`); a revoked, ended or superseded approval, or one that
+  names no person of the business (`APPROVAL_NOT_STANDING`); a revoked version
+  (`DEFINITION_REVOKED`); a malformed id, digest, size, client or title
+  (`DEFINITION_UNAVAILABLE`). Each writes nothing. A newer release of the
+  definition does not refuse it: the activation pins its version (automations
+  contract 4.3).
+- **What it writes.** The task, the run, its definition pin (0043, kind
+  `definition_version`, pinned by the worker) and one `occurrence.run_start`
+  audit event by the worker, whose payload digest covers the occurrence, run,
+  task, definition, version, approval and approver.
+- **Pickup.** Pickup claims reservations on approved plan versions, and 0054
+  binds a reservation's run and version together, so no reservation can name
+  an occurrence's run. AW-04 builds its claim.
+
+The approval and version facts come through `ReadOccurrenceAuthority`, which
+C52-A fills from its own rows under the activation lock; its foreign keys and
+that read join at the batch 3 join. Tests: `aw-01-occurrence-run` and
+`aw-01-occurrence-run-isolation`.
 
 ## What is not here
 

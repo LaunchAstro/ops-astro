@@ -150,7 +150,8 @@ export async function settlePriced(
             credential_kind = $5,
             completed_at = case when $6 then clock_timestamp() end,
             landed_at = case when $7 then clock_timestamp() end,
-            ended_at = clock_timestamp()
+            ended_at = clock_timestamp(),
+            model_id = $8, input_units = $9, output_units = $10
       where business_id = $1 and id = $2`,
     [
       tx.businessId,
@@ -160,6 +161,9 @@ export async function settlePriced(
       settlement.credentialKind,
       reaches(operation, 'completed'),
       reaches(operation, 'landed'),
+      settlement.answer.model,
+      settlement.answer.usage.inputUnits,
+      settlement.answer.usage.outputUnits,
     ],
   );
   await broker.audit(tx, {

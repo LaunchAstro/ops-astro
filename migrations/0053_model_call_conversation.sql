@@ -1,8 +1,8 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0048 a model call from a person's own conversation (AW-01's conversation
--- seam, ORCH35 option a). Numbered after 0047 here; SL12, SL13 and SL14 also
--- use 0048 in their stacks, and the batch 3 join sets the final numbers.
+-- 0053 a model call from a person's own conversation (AW-01's conversation
+-- seam, ORCH35 option a). SL11's 0048, numbered after SL12's 0052 where the
+-- two stack (ORCH38); the batch 3 join sets the final numbers.
 --
 -- A conversation has no task lease, run, step or approved version, and no
 -- money moves on it: its calls take local routes only and hold nothing. So a
