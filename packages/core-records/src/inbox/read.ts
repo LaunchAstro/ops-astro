@@ -2,9 +2,11 @@
 //
 // Reading the inbox (INB-1d): one recipient's items as they may be shown now,
 // access derived from their live grants inside the read's own query, and the
-// owed count under the same rule. The closed history is read newest first on
-// its own index and the scan stops at the page, so neither read grows with a
-// person's history. Raising and recording are `items.ts`.
+// owed count under the same rule. The closed history's page is found from the
+// grants' side, so an item about a task the recipient cannot read is never
+// looked at for it, and the withheld history beside the page is read on its
+// own, bounded: neither read grows with a person's history. Raising and
+// recording are `items.ts`.
 
 import { readScopes, type InboxAccess } from './access.ts';
 import type { Disclosed, InboxAlert, InboxItem, InboxItemAxes } from './items.ts';
@@ -14,9 +16,9 @@ import type { TenantQuery } from '../tenancy/database.ts';
 export const INBOX_HISTORY_PAGE = 50;
 
 /**
- * The most closed items one read looks at for its page. Past it the read
- * stops, even when the page is not full because the newest history is about
- * tasks the recipient cannot read now: the work stays bounded.
+ * The most closed items the withheld history looks at. Withheld items never
+ * take a place in the page, which is read on its own; this bounds the read of
+ * those beside it.
  */
 export const INBOX_HISTORY_SCAN: number = 4 * INBOX_HISTORY_PAGE;
 
@@ -42,39 +44,72 @@ async function reach(tx: TenantQuery, personId: string): Promise<readonly unknow
   return [tx.businessId, personId, scopes.business, scopes.records, scopes.parties];
 }
 
-/** The columns `shown` carries from an item and its task. */
-const SHOWN = `i.id, i.business_id, i.recipient_person_id, i.subject_record_id, i.reason,
+/** An item's own columns, as `shown` carries them before trashed and held. */
+const COLUMNS = `i.id, i.business_id, i.recipient_person_id, i.subject_record_id, i.reason,
        i.fact_kind, i.fact_id, i.owed, i.work_state, i.raised_at, i.closed_at,
-       i.closed_by_person_id, r.deleted_at is not null as trashed, ${HELD} as held`;
+       i.closed_by_person_id`;
 
-/**
- * Every open item, and the closed history newest first up to and including
- * the page's last held item: `before` counts the held items ahead of a row,
- * `nth` its place. Both only grow down the scan, so Postgres takes them as the
- * window's run condition and stops reading `inbox_items_recipient_history_idx`
- * at the first row either rules out: the page ($6) or the scan bound ($7).
- * Access and alert are derived here.
- */
-const ITEMS = `with shown as (
-       select ${SHOWN}
+/** Every open item, access derived per row. */
+const OPEN = `select ${COLUMNS}, r.deleted_at is not null as trashed, ${HELD} as held
          from public.inbox_items i
          join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
-        where i.business_id = $1 and i.recipient_person_id = $2 and i.work_state = 'open'
-       union all
-       select id, business_id, recipient_person_id, subject_record_id, reason, fact_kind, fact_id,
-              owed, work_state, raised_at, closed_at, closed_by_person_id, trashed, held
-         from (select ${SHOWN},
-                      count(*) filter (where ${HELD}) over newest as before,
-                      row_number() over newest as nth
+        where i.business_id = $1 and i.recipient_person_id = $2 and i.work_state = 'open'`;
+
+/**
+ * The page: the newest $6 closed items about a task the recipient reads now,
+ * found from the grants' side. A business-wide read takes the history index
+ * (0044) as it stands. Otherwise each task the grants reach, named or through
+ * its client, gives at most $6 of its newest items on the subject history
+ * index (0044), and the newest $6 of those are the page. A closed item about
+ * a task the recipient cannot read is never looked at, so it takes no place.
+ */
+const PAGE = `select * from (
+         (select ${COLUMNS}, r.deleted_at is not null as trashed, true as held
+            from public.inbox_items i
+            join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
+           where $3::boolean and i.business_id = $1 and i.recipient_person_id = $2
+             and i.work_state <> 'open'
+           order by i.closed_at desc, i.id desc
+           limit $6)
+         union all
+         (select h.*
+            from public.records r
+            cross join lateral (
+              select ${COLUMNS}, r.deleted_at is not null as trashed, true as held
+                from public.inbox_items i
+               where i.business_id = r.business_id and i.recipient_person_id = $2
+                 and i.subject_record_id = r.id and i.work_state <> 'open'
+               order by i.closed_at desc, i.id desc
+               limit $6) h
+           where not $3::boolean and r.business_id = $1
+             and (r.id = any($4::uuid[]) or r.uuid_7 = any($5::uuid[]))
+           order by h.closed_at desc, h.id desc
+           limit $6)
+       ) page`;
+
+/**
+ * The withheld history beside the page: closed items about a task the
+ * recipient cannot read now, closed no earlier than the page's oldest item
+ * ($6, `-infinity` while the page is not full), among the newest $7 closed
+ * items on the history index (0044), which the scan starts and stops on.
+ */
+const WITHHELD = `shown as (
+       select ${COLUMNS}, r.deleted_at is not null as trashed, false as held
+         from (select ${COLUMNS}
                  from public.inbox_items i
-                 join public.records r
-                   on r.business_id = i.business_id and r.id = i.subject_record_id
                 where i.business_id = $1 and i.recipient_person_id = $2
-                  and i.work_state <> 'open'
-               window newest as (order by i.closed_at desc, i.id desc
-                                 rows between unbounded preceding and 1 preceding)) h
-        where h.before < $6 and h.nth <= $7
-     )
+                  and i.work_state <> 'open' and i.closed_at >= $6::text::timestamptz
+                order by i.closed_at desc, i.id desc
+                limit $7) i
+         join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
+        where not ${HELD}
+     )`;
+
+/**
+ * The rows of `shown` as the item carries them, access and alert derived here.
+ * An item about a planned run carries T2h's latest alert on that run.
+ */
+const listing = (ctes: string): string => `with ${ctes}
      select s.id, s.recipient_person_id as "recipientPersonId",
             s.subject_record_id as "subjectRecordId", s.reason, s.fact_kind as "factKind",
             s.fact_id as "factId", s.owed, s.work_state as "workState", s.raised_at as "raisedAt",
@@ -103,18 +138,20 @@ const ITEMS = `with shown as (
        ) al on true
       order by s.raised_at, s.id`;
 
+/** Every open item and the page. */
+const ITEMS = listing(`shown as (${OPEN}\n       union all\n       ${PAGE})`);
+
 /**
  * What one recipient can be shown, each axis read separately and access derived
  * in the same query: every open item, and the newest `INBOX_HISTORY_PAGE`
- * closed ones about a task they read now, with every closed item newer than
- * the page's oldest that is about a task they cannot read, back as withheld
- * (withheld is not gone). A withheld item takes no place in the page, so a
- * list that leaves withheld items out shows a full page with no gap, as long
- * as the page is found within the newest `INBOX_HISTORY_SCAN` closed items;
- * the read never looks further, so its work does not grow with history. The
- * recipient is the only person whose items come back: the query names them,
- * and the attention row it joins is theirs by its foreign key. Oldest raised
- * first.
+ * closed ones about a task they read now, found from their grants so a
+ * withheld item takes no place in the page; then, in a read of its own, every
+ * closed item since the page's oldest that is about a task they cannot
+ * read, back as withheld (withheld is not gone), among the newest
+ * `INBOX_HISTORY_SCAN` closed items. Neither read looks further, so the work
+ * does not grow with history. The recipient is the only person whose items
+ * come back: each query names them, and the attention row it joins is theirs
+ * by its foreign key. Oldest raised first.
  *
  * An item about a planned run carries T2h's latest alert on that run: one
  * whose cause is an attempt under the run's reservation (a settlement or a
@@ -125,13 +162,23 @@ export async function readInboxItems(
   tx: TenantQuery,
   recipientPersonId: string,
 ): Promise<readonly InboxItem[]> {
-  const rows = await tx.query<ItemRow>(ITEMS, [
-    ...(await reach(tx, recipientPersonId)),
-    INBOX_HISTORY_PAGE,
+  const reached = await reach(tx, recipientPersonId);
+  const shown = await tx.query<ItemRow>(ITEMS, [...reached, INBOX_HISTORY_PAGE]);
+  const page = shown.flatMap((row) => (row.closedAt === null ? [] : [row.closedAt.getTime()]));
+  // As text: the driver writes a timestamp parameter through `Date`, which has no infinity.
+  const edge =
+    page.length < INBOX_HISTORY_PAGE ? '-infinity' : new Date(Math.min(...page)).toISOString();
+  const withheld = await tx.query<ItemRow>(listing(WITHHELD), [
+    ...reached,
+    edge,
     INBOX_HISTORY_SCAN,
   ]);
-  return rows.map((row) => itemOf(row));
+  return [...shown, ...withheld].toSorted(byRaised).map((row) => itemOf(row));
 }
+
+/** Oldest raised first, as one query's `order by raised_at, id` would have it. */
+const byRaised = (a: ItemRow, b: ItemRow): number =>
+  a.raisedAt.getTime() - b.raisedAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 /** One row as the recipient may be shown it: pointers and the alert only while readable. */
 function itemOf(row: ItemRow): InboxItem {

@@ -7,13 +7,13 @@
 // with a person's closed history.
 //
 // The timing case counts the queries each read makes, the cost that grew per
-// row, and the rows the item query reads from the inbox and the records, from
+// row, and the rows each item query reads from the inbox and the records, from
 // its own plan, rather than a wall clock that a loaded cluster would make
-// flaky. The closed history is read newest first and the scan stops at the
-// page: after the page's last readable item, or at the scan bound, whichever
-// comes first, so the history behind it is never read. Closed items about a
-// task the caller cannot read come back withheld and the list does not show
-// them; inside the scan bound they leave no gap in the page.
+// flaky. The page of closed items is found from the caller's grants, newest
+// first per task they read, so a closed item about a task they cannot read is
+// never looked at for it and takes no place in it. Those come back withheld
+// from a second read beside the page, newest first, which stops at the page's
+// oldest item or at the scan bound; the list does not show them.
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -78,7 +78,12 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
     return id;
   };
 
-  /** `count` closed items for Hana on `taskId`, each closed a second apart, newest `newest`s ago. */
+  /**
+   * `count` closed items for Hana on `taskId`, each closed a second apart,
+   * newest `newest`s ago. The table is then analysed, as autovacuum analyses
+   * it after a bulk load: the plan measured is the one the planner makes with
+   * statistics, not its guess over a table it has never looked at.
+   */
   const history = async (taskId: string, count: number, newest: number): Promise<void> => {
     await w.fixture.db.admin.execute(
       `insert into public.inbox_items
@@ -89,6 +94,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
          from generate_series(1, $4) as g`,
       [w.fixture.business, hana.personId, taskId, count, newest],
     );
+    await w.fixture.db.admin.execute('analyze public.inbox_items');
   };
 
   const listed = async (): Promise<readonly Entry[]> =>
@@ -98,7 +104,9 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
 
   /**
    * The queries each read makes for Hana, counted on the real transaction, and
-   * the rows the item query read, from its plan run again with its own values.
+   * the rows each item query read, from its plan run again with its own values:
+   * the page (every open item and the readable page) and the withheld history
+   * beside it.
    */
   const cost = async (): Promise<{
     read: number;
@@ -107,35 +115,43 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
     itemRows: number;
     recordRows: number;
     recordLookups: number;
+    withheldRows: number;
+    withheldLookups: number;
   }> =>
     await inAlpha(async (tx) => {
       let queries = 0;
-      let items: { sql: string; parameters: readonly unknown[] | undefined } | undefined;
+      const items: { sql: string; parameters: readonly unknown[] | undefined }[] = [];
       const counted: TenantQuery = {
         businessId: tx.businessId,
         query: async (sql, parameters) => {
           queries += 1;
-          if (items === undefined && sql.includes('"raisedAt"')) items = { sql, parameters };
+          if (sql.includes('"raisedAt"')) items.push({ sql, parameters });
           return await tx.query(sql, parameters);
         },
       };
       await readInbox(counted, hana.personId);
       const read = queries;
       const owed = await countOwed(counted, hana.personId);
-      if (items === undefined) throw new Error('the inbox read made no item query');
-      const [explained] = await tx.query<{ 'QUERY PLAN': readonly [{ Plan: PlanNode }] }>(
-        `explain (analyze, format json) ${items.sql}`,
-        items.parameters as unknown[],
-      );
-      const plan = explained?.['QUERY PLAN'][0].Plan;
-      if (plan === undefined) throw new Error('the item query has no plan');
+      if (items.length !== 2) throw new Error('the inbox read made other than two item queries');
+      const planOf = async (query: (typeof items)[number]): Promise<PlanNode> => {
+        const [explained] = await tx.query<{ 'QUERY PLAN': readonly [{ Plan: PlanNode }] }>(
+          `explain (analyze, format json) ${query.sql}`,
+          query.parameters as unknown[],
+        );
+        const plan = explained?.['QUERY PLAN'][0].Plan;
+        if (plan === undefined) throw new Error('an item query has no plan');
+        return plan;
+      };
+      const [page, withheld] = [await planOf(items[0]!), await planOf(items[1]!)];
       return {
         read,
         count: queries - read,
         owed,
-        itemRows: rowsFrom(plan, 'inbox_items'),
-        recordRows: rowsFrom(plan, 'records'),
-        recordLookups: lookupsOn(plan, 'records'),
+        itemRows: rowsFrom(page, 'inbox_items'),
+        recordRows: rowsFrom(page, 'records'),
+        recordLookups: lookupsOn(page, 'records'),
+        withheldRows: rowsFrom(withheld, 'inbox_items'),
+        withheldLookups: lookupsOn(withheld, 'records'),
       };
     });
 
@@ -167,7 +183,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
     );
   }, 120_000);
 
-  it('INB-1 timing: the list and the count make the same queries and read the same rows for a long closed history as a short one', async () => {
+  it('INB-1 timing: the list and the count make the same queries and read no more rows for a long closed history than a short one', async () => {
     // A short history just past the page, then 600 older items, half of them
     // about a task Hana cannot read.
     await history(onA, PAGE + 5, 10_000);
@@ -176,13 +192,23 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
     await history(onB, 300, 30_000);
     const long = await cost();
     expect(long.owed).toBe(1);
-    expect(long).toStrictEqual(short);
+    expect({ read: long.read, count: long.count }).toStrictEqual({
+      read: short.read,
+      count: short.count,
+    });
+    // The planner may read a short history whole and sort it, and a long one
+    // down the index to the page; either way the long read is no larger.
+    expect(long.itemRows).toBeLessThanOrEqual(short.itemRows);
+    expect(long.recordLookups).toBeLessThanOrEqual(short.recordLookups);
+    expect(long.withheldRows).toBeLessThanOrEqual(short.withheldRows);
     // The open item, the page, and the one row read to see the page is full.
     expect(long.itemRows).toBeGreaterThan(PAGE);
     expect(long.itemRows).toBeLessThanOrEqual(1 + PAGE + 1);
     // One lookup of the task per item read (rows per lookup are the
     // planner's business on a small table; the equality above holds them).
     expect(long.recordLookups).toBeLessThanOrEqual(1 + PAGE + 1);
+    // The withheld history beside the page stops at the page's oldest item.
+    expect(long.withheldRows).toBeLessThanOrEqual(PAGE + 1);
   }, 60_000);
 
   it('INB-1 the list carries every open item and the newest page of readable closed ones, with no gap for withheld ones', async () => {
@@ -217,6 +243,11 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
     expect(bounded.owed).toBe(1);
     expect(bounded.itemRows).toBeLessThanOrEqual(1 + SCAN + 1);
     expect(bounded.recordLookups).toBeLessThanOrEqual(1 + SCAN + 1);
+    // The page is found from Hana's grants: the withheld run is never read for it.
+    expect(bounded.itemRows).toBeLessThanOrEqual(1 + PAGE + 1);
+    // The withheld history beside it stops at the scan bound.
+    expect(bounded.withheldRows).toBeLessThanOrEqual(SCAN + 1);
+    expect(bounded.withheldLookups).toBeLessThanOrEqual(SCAN + 1);
     expect(JSON.stringify(await listed())).not.toContain(onB);
   }, 60_000);
 
