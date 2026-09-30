@@ -55,16 +55,6 @@ function revisionOf(value: unknown): Revision {
   return { ok: false };
 }
 
-function stale(found: SecretStale): HandlerOutcome {
-  return refused(
-    refuseCommand(
-      'VERSION_STALE',
-      [`revision=${found.revision}`],
-      ['Read the secret again and set it against the revision it is at now.'],
-    ),
-  );
-}
-
 /**
  * Whether a value is, or carries, a consumer chat product's session (AW-01,
  * C60): custody refuses one at load before any other check, so its answer on
@@ -73,6 +63,37 @@ function stale(found: SecretStale): HandlerOutcome {
 function isChatSession(value: string): boolean {
   const read = parseCredentials([{ kind: 'api_key', value }]);
   return !read.ok && read.code === 'SESSION_TOKEN_REFUSED';
+}
+
+type Value =
+  | { readonly ok: true; readonly value: string }
+  | { readonly ok: false; readonly refusal: HandlerOutcome };
+
+/** The value as text of the allowed size, and never a chat product's session. */
+function valueOf(value: unknown): Value {
+  if (typeof value !== 'string' || value.length === 0 || value.length > VALUE_LIMIT) {
+    return {
+      ok: false,
+      refusal: refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], VALUE_FIXES)),
+    };
+  }
+  if (isChatSession(value)) {
+    return {
+      ok: false,
+      refusal: refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], SESSION_FIXES)),
+    };
+  }
+  return { ok: true, value };
+}
+
+function stale(found: SecretStale): HandlerOutcome {
+  return refused(
+    refuseCommand(
+      'VERSION_STALE',
+      [`revision=${found.revision}`],
+      ['Read the secret again and set it against the revision it is at now.'],
+    ),
+  );
 }
 
 /** Seal and store one secret, business-wide or for one client. */
@@ -89,13 +110,8 @@ export async function setCustodySecret(
   if (!NAME_SHAPE.test(request.name)) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['name'], NAME_FIXES));
   }
-  const { value } = request;
-  if (typeof value !== 'string' || value.length === 0 || value.length > VALUE_LIMIT) {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], VALUE_FIXES));
-  }
-  if (isChatSession(value)) {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], SESSION_FIXES));
-  }
+  const value = valueOf(request.value);
+  if (!value.ok) return value.refusal;
   const revision = revisionOf(request.expectedRevision);
   if (!revision.ok) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['expectedRevision'], REVISION_FIXES));
@@ -115,7 +131,7 @@ export async function setCustodySecret(
   const written = await setSecret(tx, {
     name: request.name,
     scope,
-    value,
+    value: value.value,
     key,
     actorId: context.session.actorId,
     ...(revision.value === undefined ? {} : { expectedRevision: revision.value }),
