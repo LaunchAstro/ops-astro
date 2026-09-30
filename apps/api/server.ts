@@ -240,6 +240,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
     );
   });
 
+  // G3: the page reads its sign-in address here, so one web build serves every
+  // environment. The issuer is public, and nothing is read to answer it.
+  server.get('/api/sign-in', (context) => context.json({ issuer: config.signIn.issuer }));
+
   const { identity } = config;
   if (identity !== undefined) {
     // Loopback only: the answer names the checkout path and the process id.
