@@ -1184,7 +1184,7 @@ stay. An internal reader's comments also carry `own`, true where the
 reader's own actor wrote it, so the page draws the edit and delete controls
 on those rows only; the two commands check the author again. An @ in a comment notifies nobody yet: there is no notification model.
 
-For the agent bundles, `readConversation` (`reads/conversation.ts`) reads a
+For the agent bundles, `readConversation` (`reads/task-conversation.ts`) reads a
 task's thread at three detail levels in one statement each: `brief` (the
 counts and the last message), `standard` (the counts and the last twenty)
 and `full` (the whole thread). A reader outside the business gets the client
