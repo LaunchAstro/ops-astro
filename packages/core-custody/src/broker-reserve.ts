@@ -284,7 +284,7 @@ async function insertHold(
 const CALL_COLUMNS = `business_id, id, run_id, step_id, lease_id, version_id, reservation_id,
        delegation_id, caller_delegation_id`;
 
-/** The call's facts in `CALL_COLUMNS`' order: the lease's delegation, then the caller's (0062). */
+/** The call's facts in `CALL_COLUMNS`' order: the lease's delegation, then the caller's (0060). */
 function callFacts(facts: Facts): readonly (string | null)[] {
   return [
     facts.runId,

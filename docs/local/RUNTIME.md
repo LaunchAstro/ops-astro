@@ -1455,7 +1455,7 @@ both tenancy-scoped with row security forced, and the fair share's count
   answer, and the database holds the same shape
   (`model_calls_model_id_shape`, `model_calls_units_whole`). Test:
   `aw-01-call-usage`.
-- Caller (`0062_model_call_caller`, AW-11): the delegation the broker's caller
+- Caller (`0060_model_call_caller`, AW-11): the delegation the broker's caller
   presented (`caller_delegation_id`): the lease's own for its holder, a
   child's for a helper spending on its parent's lease; null for a call no
   delegation made. `delegation_id` stays the lease's, the one ledger. Written

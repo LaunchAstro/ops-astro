@@ -569,7 +569,7 @@ the fault (`DELEGATION_EXPIRED` first, then `DELEGATION_REVOKED` or
 `DELEGATION_NARROWED`), by the rule the parent's merged result uses. `steps` are
 the helper's own model calls on the parent's lease,
 `{ callId, operation, state, reservedMinor, spentMinor }`, found by the caller's
-delegation the broker records (`0062`); they spend the parent's one
+delegation the broker records (`0060`); they spend the parent's one
 reservation, so the node's `heldMinor` and `spentMinor` already carry them.
 `tests/broker/aw-11-child-graph.test.ts` and its isolation suite hold it.
 A drop raises no alert (T3e2): `task.queue` carries the team's `outages`
