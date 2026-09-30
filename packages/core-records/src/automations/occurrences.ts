@@ -108,6 +108,21 @@ async function withinRates(tx: TenantQuery, activationId: string): Promise<Occur
   return 'approved';
 }
 
+/** The intake queue: this business's approved events whose run is not yet dispatched. */
+const eventQueue: DurableLimit = {
+  name: 'c33.intake',
+  limit: FIRING_LIMITS.eventQueue,
+  async count(tx) {
+    const rows = await tx.query<{ readonly n: number }>(
+      `select count(*)::int as n from public.activation_occurrences o
+        where o.event_id is not null and o.outcome = 'approved'
+          and not exists (select 1 from public.occurrence_dispatches d
+                           where d.business_id = o.business_id and d.occurrence_id = o.id)`,
+    );
+    return rows[0]?.n ?? 0;
+  },
+};
+
 export type OccurrenceCause = { readonly dueAt: Date } | { readonly eventId: string };
 
 export type OccurrenceClaim =
@@ -127,6 +142,8 @@ export type OccurrenceClaim =
  * on, under a standing approval that is not revoked (C52-A), and within both
  * rates, is `approved` and names that approval, and dispatch rechecks it
  * before any run; every other occurrence records why it will not start one.
+ * An event past the business's intake queue is recorded `over_intake_bound`,
+ * never dropped unseen; the queue's lock comes before the rates' locks.
  */
 export async function claimOccurrence(
   tx: TenantQuery,
@@ -151,6 +168,9 @@ export async function claimOccurrence(
   const standing = found[0].standing;
   let outcome: OccurrenceOutcome = 'activation_off';
   if (activation.enabled) outcome = standing === null ? 'no_standing_approval' : 'approved';
+  if (outcome === 'approved' && !scheduled && !(await hasRoom(tx, [eventQueue]))) {
+    outcome = 'over_intake_bound';
+  }
   if (outcome === 'approved') outcome = await withinRates(tx, activation.id);
   const approvalId = outcome === 'approved' ? standing : null;
   const dueAt = scheduled ? cause.dueAt : null;
@@ -189,5 +209,5 @@ export async function waitingOccurrences(tx: TenantQuery, limit = 50): Promise<O
       limit $1`,
     [limit],
   );
-  return rows.map(occurrenceOf);
+  return rows.map((row) => occurrenceOf(row));
 }

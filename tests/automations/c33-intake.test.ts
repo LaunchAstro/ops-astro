@@ -33,6 +33,11 @@ import { createAutomationWorld, type AutomationWorld } from './world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
+/** The ids a business's worker sees waiting, read on `pool`. */
+async function waitingIn(pool: AutomationWorld['db']['app'], business: string): Promise<string[]> {
+  return (await pool.withBusiness(business, (tx) => waitingOccurrences(tx))).map((o) => o.id);
+}
+
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('C33 run ceiling and event intake', () => {
   let w: AutomationWorld;
@@ -79,9 +84,6 @@ describe.skipIf(serverUrl === undefined)('C33 run ceiling and event intake', () 
     }
     return kinds;
   };
-
-  const waitingIn = async (business: string): Promise<string[]> =>
-    (await w.db.app.withBusiness(business, (tx) => waitingOccurrences(tx))).map((o) => o.id);
 
   const queuedEvents = async (): Promise<number> =>
     await w.count(
@@ -130,7 +132,7 @@ describe.skipIf(serverUrl === undefined)('C33 run ceiling and event intake', () 
         [sixth],
       ),
     ).toBe(0);
-    expect(await waitingIn(w.alpha)).toEqual([sixth]);
+    expect(await waitingIn(w.db.app, w.alpha)).toEqual([sixth]);
 
     // A restarted worker: a new pool, nothing carried over in memory.
     const restarted = connect(w.db.appUrl, { source: 'runtime' });
@@ -152,7 +154,7 @@ describe.skipIf(serverUrl === undefined)('C33 run ceiling and event intake', () 
       kind: 'dispatched',
       dispatch: { outcome: 'started' },
     });
-    expect(await waitingIn(w.alpha)).toEqual([]);
+    expect(await waitingIn(w.db.app, w.alpha)).toEqual([]);
   }, 120_000);
 
   it('C33 run ceiling waits: two dispatches racing for the last slot, the second waits for the first and is told to wait', async () => {
@@ -227,6 +229,7 @@ describe.skipIf(serverUrl === undefined)('C33 run ceiling and event intake', () 
     );
   }, 120_000);
 
+  // eslint-disable-next-line max-lines-per-function -- one race: both locks held, bravo answered
   it('C33 limits fair across businesses: one business at its run ceiling and intake bound, with both locks held, never delays another business, whose event is queued and whose run starts', async () => {
     await finishAll();
     const { activation } = await f.approved();
@@ -246,11 +249,15 @@ describe.skipIf(serverUrl === undefined)('C33 run ceiling and event intake', () 
     try {
       // An alpha worker, refused at intake and told to wait, holds both locks open.
       const first = w.inAlpha(async (tx) => {
-        const claim = await claimOccurrence(tx, events.activation.id, { eventId: 'evt-busy' });
-        const dispatch = await dispatchOccurrence(tx, busy[FIRING_LIMITS.runsInFlight]!, s.start);
-        firstIn.release();
-        await held.held;
-        return [occurrenceOf(claim).outcome, dispatch.kind];
+        try {
+          const claim = await claimOccurrence(tx, events.activation.id, { eventId: 'evt-busy' });
+          const dispatch = await dispatchOccurrence(tx, busy[FIRING_LIMITS.runsInFlight]!, s.start);
+          firstIn.release();
+          await held.held;
+          return [occurrenceOf(claim).outcome, dispatch.kind];
+        } finally {
+          firstIn.release();
+        }
       });
       await firstIn.held;
       // The lock is real: another alpha activation's dispatch waits on it.
@@ -277,7 +284,8 @@ describe.skipIf(serverUrl === undefined)('C33 run ceiling and event intake', () 
       };
       expect(await Promise.race([bravoFires(), parked])).toEqual(['approved', 'dispatched']);
       expect(bravoStarter.runs).toHaveLength(1);
-      expect(await waitingIn(w.bravo)).toEqual([]);
+      // On bravo's own pool: alpha's is the held transaction's.
+      expect(await waitingIn(bravoWorker, w.bravo)).toEqual([]);
 
       held.release();
       expect(await first).toEqual(['over_intake_bound', 'waiting']);

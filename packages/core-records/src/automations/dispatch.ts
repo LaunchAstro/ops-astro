@@ -13,7 +13,8 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { lockActivation, readStandingApproval, type StandingApprovalRow } from './approvals.ts';
 import type { ActivationRow } from './automations.ts';
-import type { OccurrenceOutcome } from './occurrences.ts';
+import { hasRoom, type DurableLimit } from '../tenancy/limit.ts';
+import { FIRING_LIMITS, type OccurrenceOutcome } from './occurrences.ts';
 
 export type DispatchOutcome = 'started' | 'activation_off' | 'approval_revoked' | 'approval_ended';
 
@@ -130,6 +131,19 @@ export async function readOccurrenceFacts(
   };
 }
 
+/** C33's run ceiling: this business's activation runs not yet handed back or cancelled. */
+const runsInFlight: DurableLimit = {
+  name: 'activation_run',
+  limit: FIRING_LIMITS.runsInFlight,
+  async count(tx) {
+    const rows = await tx.query<{ readonly n: number }>(
+      `select count(*)::int as n from public.planned_runs
+        where origin_occurrence_id is not null and state not in ('handed_back', 'cancelled')`,
+    );
+    return rows[0]?.n ?? 0;
+  },
+};
+
 const dispatchOf = (row: DispatchDbRow): DispatchRow => ({
   occurrenceId: row.occurrence_id,
   outcome: row.outcome,
@@ -150,7 +164,11 @@ function dispatchOutcome(
  * Dispatches an approved occurrence once. Under the activation's lock it
  * rechecks the switch and the approval, so an occurrence claimed before a
  * revoke or a turn-off starts nothing after it; a second dispatch of the same
- * occurrence waits for the first and answers `replayed` with its result.
+ * occurrence waits for the first and answers `replayed` with its result. At
+ * the business's run ceiling it answers `waiting` and writes nothing: the
+ * occurrence stays listed as waiting until the worker dispatches it again
+ * after a run finishes. The ceiling's lock is held to commit, so the run is
+ * written before the next dispatch counts.
  */
 export async function dispatchOccurrence(
   tx: TenantQuery,
@@ -177,6 +195,7 @@ export async function dispatchOccurrence(
   const outcome = dispatchOutcome(activation, standing, occurrence.approval_id);
   let runId: string | null = null;
   if (outcome === 'started') {
+    if (!(await hasRoom(tx, [runsInFlight]))) return { kind: 'waiting' };
     const started = await startRun(tx, {
       occurrenceId,
       activationId: occurrence.activation_id,

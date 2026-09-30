@@ -1963,6 +1963,16 @@ occurrence recorded still stands unrevoked, then AW-01 J writes the run
 revoked, ended or superseded since. A start J refuses writes nothing and
 records no dispatch (`{ kind: 'refused', code }`), so the worker may try again.
 
+C33's limits (`FIRING_LIMITS`, `automations/occurrences.ts`) are durable limits
+keyed by the business, so one business at a limit never delays another. The
+business's activation runs in flight (not handed back or cancelled) are at
+most 5: at the ceiling dispatch answers `{ kind: 'waiting' }` and writes
+nothing. Its event intake holds at most 1,000 approved events not yet
+dispatched: past that, the claim records the event `over_intake_bound`
+(migration 0063) and starts nothing. `waitingOccurrences` lists the approved
+occurrences with no dispatch, oldest first: the queued events and the runs
+waiting, which the worker dispatches again as runs finish.
+
 ## What agent runs cost (U39)
 
 Skill costing on Connections & signal (MP-14-9) and what our agents cost us
