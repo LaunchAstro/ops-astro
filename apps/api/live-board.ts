@@ -155,6 +155,11 @@ function batch(
   };
 }
 
+/** A frame, unless the stream ended while a question before it was asked. */
+async function send(stream: SSEStreamingApi, event: string, data = ''): Promise<void> {
+  if (!stream.aborted) await stream.writeSSE({ event, data });
+}
+
 /**
  * The join asked again: `closed` (said, and the stream ended) when it is
  * refused; `rebound` when the bearer now resolves to another person, whose
@@ -168,7 +173,7 @@ async function rejoin(
 ): Promise<'closed' | 'rebound' | 'same'> {
   const personId = await ask.joinedAs();
   if (personId === undefined) {
-    await stream.writeSSE({ event: 'closed', data: '' });
+    await send(stream, 'closed');
     stream.abort();
     return 'closed';
   }
@@ -182,7 +187,7 @@ async function rejoin(
 async function resyncs(stream: SSEStreamingApi, ask: BoardQuestions, bound: Bound): Promise<void> {
   bound.shown = await ask.shown(bound.personId);
   bound.reach = await ask.reach?.();
-  await stream.writeSSE({ event: 'resync', data: '' });
+  await send(stream, 'resync');
 }
 
 /**
@@ -209,7 +214,7 @@ async function say(
     // eslint-disable-next-line no-await-in-loop
     if (access === 'gone') await resyncs(stream, ask, bound);
     // eslint-disable-next-line no-await-in-loop
-    else await stream.writeSSE({ event: 'invalidate', data: taskId });
+    else await send(stream, 'invalidate', taskId);
   }
   if (!inbox) return 'same';
   const now = await ask.shown(bound.personId);
@@ -217,6 +222,6 @@ async function say(
   const joined = await rejoin(stream, ask, bound, bind);
   if (joined !== 'same') return joined;
   bound.shown = now;
-  await stream.writeSSE({ event: 'inbox', data: '' });
+  await send(stream, 'inbox');
   return 'same';
 }

@@ -519,7 +519,10 @@ export async function follow(
     const signal = pending;
     pending = null;
     if (signal === null || stream.aborted) return;
-    if (typeof (await may()) !== 'string') {
+    const allowed = typeof (await may()) === 'string';
+    // The tab may have left while the caller was asked: nothing is written after.
+    if (stream.aborted) return;
+    if (!allowed) {
       await stream.writeSSE({ event: 'closed', data: taskId });
       stream.abort();
     } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: taskId });

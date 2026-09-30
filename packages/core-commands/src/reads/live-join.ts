@@ -13,7 +13,7 @@
 // read moves nothing they are shown, and says nothing.
 
 import { createHash } from 'node:crypto';
-import { taskAccess, withSession } from '../../../core-records/src/index.ts';
+import { readScopes, taskAccess, withSession } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, VerifiedSubject } from '../../../core-records/src/index.ts';
 import {
   asCallerVisible,
@@ -85,7 +85,10 @@ export async function boardHears(
   return outcome === true || outcome === 'gone' ? outcome : false;
 }
 
-/** A digest of the grants the board's reader holds now: a revoked read moves it. */
+/**
+ * A digest of where the board's reader reads tasks now, the scopes `inbox.read`
+ * asks (the business, each task, each client): any revoked read moves it.
+ */
 export async function boardReach(
   database: Database,
   businessId: BusinessId,
@@ -93,8 +96,9 @@ export async function boardReach(
 ): Promise<string | undefined> {
   const outcome = await withSession(database, businessId, presented, async (tx, session) => {
     if (!isInternalReader(session.roleKey)) return refuseNotFound();
-    const held = (await readCapabilities(tx, session)).grants.map((grant) => JSON.stringify(grant));
-    return createHash('sha256').update(JSON.stringify(held.toSorted())).digest('hex');
+    const { business, records, parties } = await readScopes(tx, session.personId);
+    const scopes = [business, records.toSorted(), parties.toSorted()];
+    return createHash('sha256').update(JSON.stringify(scopes)).digest('hex');
   });
   return typeof outcome === 'string' ? outcome : undefined;
 }
