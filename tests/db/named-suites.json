@@ -291,6 +291,8 @@
     "tests/db/api-events.test.ts",
     "tests/db/api-events-forwarder.test.ts",
     "tests/ci/upgrade-drill.test.ts",
+    "tests/ci/service-stop.test.ts",
+    "tests/ci/service-stop-gated.test.ts",
     "tests/runtime/storage-backstop-migrations.test.ts",
     "tests/runtime/cap-ceiling-fails-closed.test.ts",
     "tests/tenancy/temporary-tables.test.ts",
