@@ -16,6 +16,8 @@ export interface Facts {
   readonly versionId: string;
   readonly reservationId: string;
   readonly delegationId: string | null;
+  /** The caller's own delegation: the lease's for its holder, a child's for a helper (AW-11). */
+  readonly callerDelegationId: string | null;
   readonly workForPersonId: string | null;
   readonly heldMinor: number;
   /** The run's task's client link, or null for a task no client is on (C60). */
@@ -225,6 +227,7 @@ export async function lockFacts(
       versionId: held.versionId,
       reservationId: lease.reservation_id,
       delegationId: lease.delegation_id,
+      callerDelegationId: caller.delegationId,
       workForPersonId: delegation.personId,
       heldMinor: held.heldMinor,
       clientId: task.clientId,

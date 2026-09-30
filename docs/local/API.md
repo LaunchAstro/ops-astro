@@ -560,6 +560,18 @@ every reader who may see the task gets the same bytes, and the graph is frozen
 read answers unavailable, never an empty graph.
 `tests/runtime/aw-06-observed-layer.test.ts` and
 `tests/runtime/aw-06-isolation.test.ts` hold it.
+Each node also carries `helpers` (AW-11, `reads/execution-helpers.ts`): the
+helper agents the run's work was handed to, under any of its leases, so a
+replacement parent's new helper sits beside the old one. Each is
+`{ childDelegationId, helperActorId, state, outcome, refusal, fault, spentMinor, steps }`:
+`working`, `handed_back` with its outcome and named refusal, or `dropped` with
+the fault (`DELEGATION_EXPIRED` first, then `DELEGATION_REVOKED` or
+`DELEGATION_NARROWED`), by the rule the parent's merged result uses. `steps` are
+the helper's own model calls on the parent's lease,
+`{ callId, operation, state, reservedMinor, spentMinor }`, found by the caller's
+delegation the broker records (`0062`); they spend the parent's one
+reservation, so the node's `heldMinor` and `spentMinor` already carry them.
+`tests/broker/aw-11-child-graph.test.ts` and its isolation suite hold it.
 A drop raises no alert (T3e2): `task.queue` carries the team's `outages`
 beside the alerts, newest first, each
 `{ id, cause, fault, openedAt, lastDropAt, closedAt, runs: [{ taskId, runId, attemptId, reactivated }] }`,

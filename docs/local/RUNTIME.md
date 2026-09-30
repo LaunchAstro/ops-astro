@@ -1455,6 +1455,12 @@ both tenancy-scoped with row security forced, and the fair share's count
   answer, and the database holds the same shape
   (`model_calls_model_id_shape`, `model_calls_units_whole`). Test:
   `aw-01-call-usage`.
+- Caller (`0062_model_call_caller`, AW-11): the delegation the broker's caller
+  presented (`caller_delegation_id`): the lease's own for its holder, a
+  child's for a helper spending on its parent's lease; null for a call no
+  delegation made. `delegation_id` stays the lease's, the one ledger. Written
+  once by the reserve, read by the execution graph's helper steps. Test:
+  `aw-11-child-graph`.
 - `copy_registrations`: the copy register's registration half. A call's
   outbound prompt is registered before it is first materialised, and nothing
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses

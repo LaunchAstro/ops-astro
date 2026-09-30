@@ -54,9 +54,11 @@ export {
 } from './child-work.ts';
 export {
   childResults,
+  childStateOf,
   handBackChild,
   type ChildHandback,
   type ChildResult,
+  type ChildStanding,
 } from './child-handback.ts';
 export {
   boundPlanOf,

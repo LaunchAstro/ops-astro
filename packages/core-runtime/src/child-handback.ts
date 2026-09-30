@@ -139,14 +139,18 @@ async function openChild(
   return rows.length === 0 ? undefined : only(rows, "handBackChild: the child's parent lease");
 }
 
-interface ChildRow {
-  readonly id: string;
-  readonly agent_actor_id: string;
+/** What a child's standing is read from: its row, and its handback if one landed. */
+export interface ChildStanding {
   readonly expired: boolean;
   readonly revoked: boolean;
   readonly cause: string | null;
   readonly outcome: 'completed' | 'partial' | null;
   readonly refusal: string | null;
+}
+
+interface ChildRow extends ChildStanding {
+  readonly id: string;
+  readonly agent_actor_id: string;
 }
 
 export async function childResults(
@@ -168,13 +172,20 @@ export async function childResults(
   return rows.map((row) => resultOf(row));
 }
 
-/** Handed back, else dropped with its fault (expiry first, as the walk reads it), else working. */
 function resultOf(row: ChildRow): ChildResult {
+  return { childDelegationId: row.id, helperActorId: row.agent_actor_id, ...childStateOf(row) };
+}
+
+/**
+ * Handed back, else dropped with its fault (expiry first, as the walk reads
+ * it), else working. The execution graph reads a helper by the same rule.
+ */
+export function childStateOf(
+  row: ChildStanding,
+): Pick<ChildResult, 'state' | 'outcome' | 'refusal' | 'fault'> {
   const handedBack = row.outcome !== null;
   const fault = handedBack ? null : faultOf(row);
   return {
-    childDelegationId: row.id,
-    helperActorId: row.agent_actor_id,
     state: handedBack ? 'handed_back' : fault === null ? 'working' : 'dropped',
     outcome: row.outcome,
     refusal: handedBack ? row.refusal : null,
@@ -182,7 +193,7 @@ function resultOf(row: ChildRow): ChildResult {
   };
 }
 
-function faultOf(row: ChildRow): ChildResult['fault'] {
+function faultOf(row: ChildStanding): ChildResult['fault'] {
   if (row.expired) return 'DELEGATION_EXPIRED';
   if (!row.revoked) return null;
   return row.cause === 'authority_lost' ? 'DELEGATION_NARROWED' : 'DELEGATION_REVOKED';

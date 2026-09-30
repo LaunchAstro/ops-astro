@@ -353,9 +353,17 @@ handed back with its outcome, or dropped with the fault named
 (`DELEGATION_EXPIRED`, `DELEGATION_REVOKED`, `DELEGATION_NARROWED`); nothing
 re-delegates on a guess.
 
-Not built yet: the graph rows (with AW-06's planned layer), and the command
-surface for the hand-over and the handback (the runtime functions take the
-parent as resolved from the caller's own credential).
+A person sees the helpers under the parent's run on `task.execution` (API.md,
+the execution graph): each helper's standing by the same rule, and its steps,
+the calls the broker records with the caller's own delegation beside the
+lease's (`model_calls.caller_delegation_id`, `0062`). When the parent's lease
+runs out, the child it was capped at runs out with it and its credential is
+`DELEGATION_NOT_LIVE`; the sweep brings the work back, and a replacement parent
+picks it up and hands a new helper the work. The old child is never resumed.
+
+Not built yet: the command surface for the hand-over and the handback (the
+runtime functions take the parent as resolved from the caller's own
+credential), and an unplanned helper step against AW-06's planned layer.
 
 ## The expired session
 
