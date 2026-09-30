@@ -30,9 +30,11 @@ export interface GoTrueLoginOptions {
   /** GoTrue's own URL, `GOTRUE_URL`. The only destination this adapter calls. */
   readonly baseUrl: string;
   /** A short-lived administrative bearer for the deactivation. */
-  readonly adminToken: () => Promise<string>;
+  readonly adminToken?: () => Promise<string>;
+  /** The admin API's key (red step: declared, not yet used). */
+  readonly adminKey?: () => Promise<string>;
   /** A short-lived bearer naming the subject, for its global sign-out. */
-  readonly subjectToken: (subject: string) => Promise<string>;
+  readonly subjectToken?: (subject: string) => Promise<string>;
   /** Milliseconds before a call is abandoned as slow. */
   readonly timeoutMs?: number;
   /** Bytes of answer read before it is abandoned as oversized. */
@@ -66,7 +68,7 @@ export function createGoTrueLogins(options: GoTrueLoginOptions): LoginProvider {
   return {
     async endSessions(subject) {
       if (!isUserId(subject)) return { ok: false, fault: 'refused' };
-      const bearer = await options.subjectToken(subject);
+      const bearer = await options.subjectToken!(subject);
       const sent = await call(to, 'POST', '/logout?scope=global', bearer);
       if ('fault' in sent) return { ok: false, fault: sent.fault };
       return sent.status === 204 && sent.text === ''
@@ -76,7 +78,7 @@ export function createGoTrueLogins(options: GoTrueLoginOptions): LoginProvider {
 
     async deactivate(subject) {
       if (!isUserId(subject)) return { ok: false, fault: 'refused' };
-      const bearer = await options.adminToken();
+      const bearer = await options.adminToken!();
       const sent = await call(to, 'PUT', `/admin/users/${subject}`, bearer, {
         ban_duration: BAN_DURATION,
       });

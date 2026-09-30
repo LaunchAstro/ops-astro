@@ -188,6 +188,8 @@ export interface ApiConfig {
    * never reads it. Absent, those calls are not sent and stay owed.
    */
   readonly providerSecret?: string;
+  /** C58's admin key (red step: declared, not yet used). */
+  readonly providerAdminKey?: () => Promise<string>;
   /** Where the browser's sign-out ends a provider session for every business (C58, 0065). */
   readonly sessionEnds?: SessionEnds;
   /** Langfuse's URL, `LANGFUSE_HOST` (C34); absent is tracing switched off. */
@@ -336,6 +338,14 @@ export function composeApi(config: ApiConfig): ComposedApi {
   });
 
   return { app: server, logins, resolveBusiness };
+}
+
+/** C58's admin key (red step: declared, not yet chosen). */
+export function providerAdminKey(
+  _environment: Readonly<Record<string, string | undefined>>,
+  _localDirectory: string,
+): (() => Promise<string>) | undefined {
+  return undefined;
 }
 
 /** How often the server retries the provider steps an access ending owes (C58). */

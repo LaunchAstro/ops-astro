@@ -187,42 +187,42 @@ async function c58CanaryAPlantedSecretInThe(): Promise<void> {
 
 async function c58RefreshRevokedTheProviderStepsAre(): Promise<void> {
   const subject = randomUUID();
-  const sent: { url: string; method: string; auth: string | null; body: string | null }[] = [];
+  const sent: {
+    url: string;
+    method: string;
+    auth: string | null;
+    apikey: string | null;
+    body: string | null;
+  }[] = [];
   const logins = createGoTrueLogins({
     baseUrl: 'http://127.0.0.1:9/auth/v1',
-    adminToken: () => Promise.resolve('admin-bearer'),
-    subjectToken: (who) => Promise.resolve(`subject-bearer-for-${who}`),
+    adminKey: () => Promise.resolve('admin-key'),
     fetch: (input, init) => {
       const headers = new Headers(init?.headers);
       sent.push({
         url: String(input),
         method: String(init?.method),
         auth: headers.get('authorization'),
+        apikey: headers.get('apikey'),
         body: typeof init?.body === 'string' ? init.body : null,
       });
-      return Promise.resolve(
-        String(input).includes('/logout')
-          ? new Response(null, { status: 204 })
-          : Response.json({ id: subject, banned_until: '2999-01-01T00:00:00Z' }),
-      );
+      return Promise.resolve(Response.json({ id: subject, banned_until: '2999-01-01T00:00:00Z' }));
     },
   });
   expect(await logins.endSessions(subject)).toEqual({ ok: true, value: undefined });
   expect(await logins.deactivate(subject)).toEqual({ ok: true, value: undefined });
-  expect(sent).toEqual([
-    {
-      url: 'http://127.0.0.1:9/auth/v1/logout?scope=global',
-      method: 'POST',
-      auth: `Bearer subject-bearer-for-${subject}`,
-      body: null,
-    },
-    {
-      url: `http://127.0.0.1:9/auth/v1/admin/users/${subject}`,
-      method: 'PUT',
-      auth: 'Bearer admin-bearer',
-      body: JSON.stringify({ ban_duration: '876000h' }),
-    },
-  ]);
+  // GoTrue has no admin call that ends a user's sessions: the ban is the
+  // session end (ORCH46), since GoTrue refuses a banned user's every refresh
+  // and sign-in. Both steps are the ban under the admin key; none names the
+  // subject's own bearer.
+  const ban = {
+    url: `http://127.0.0.1:9/auth/v1/admin/users/${subject}`,
+    method: 'PUT',
+    auth: 'Bearer admin-key',
+    apikey: 'admin-key',
+    body: JSON.stringify({ ban_duration: '876000h' }),
+  };
+  expect(sent).toEqual([ban, ban]);
 }
 
 describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act", () => {
@@ -243,7 +243,7 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     c58CanaryAPlantedSecretInThe,
   );
   it(
-    "C58 refresh revoked: the provider steps are the global sign-out (every refresh token) and the login's deactivation, each shaped",
+    'C58 refresh revoked: both provider steps are the login ban under the admin key, which ends every refresh, each shaped',
     c58RefreshRevokedTheProviderStepsAre,
   );
 });

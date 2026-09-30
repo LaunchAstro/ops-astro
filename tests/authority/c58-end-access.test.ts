@@ -243,8 +243,7 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     for (const [index, hostile] of answers.entries()) {
       const logins = createGoTrueLogins({
         baseUrl: 'http://127.0.0.1:9/auth/v1',
-        adminToken: () => Promise.resolve('admin-bearer'),
-        subjectToken: () => Promise.resolve('subject-bearer'),
+        adminKey: () => Promise.resolve('admin-key'),
         timeoutMs: 200,
         maxBytes: 16 * 1024,
         fetch: (input, init) => {
@@ -269,8 +268,7 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
   it("C58 hostile provider: a subject not in the provider's id shape is never sent, and a hostile answer through the act leaves both steps owed", async () => {
     const never = createGoTrueLogins({
       baseUrl: 'http://127.0.0.1:9',
-      adminToken: () => Promise.resolve('a'),
-      subjectToken: () => Promise.resolve('s'),
+      adminKey: () => Promise.resolve('a'),
       fetch: () => Promise.reject(new Error('sent')),
     });
     expect(await never.deactivate('../admin/users')).toEqual({ ok: false, fault: 'refused' });
