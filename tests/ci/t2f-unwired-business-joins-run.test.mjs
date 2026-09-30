@@ -11,7 +11,8 @@ import { PARTS, revertPart } from './self-test/mutations.ts';
 const root = resolve(import.meta.dirname, '../..');
 const marker = 'SOL_T2F_FOREIGN_BUSINESS_JOIN_REACHED';
 
-test('Sol proof, criterion 1: T2f foreign-business joins execute under its unwire', () => {
+// eslint-disable-next-line max-lines-per-function -- a review proof, its body kept byte for byte
+test('T2f foreign-business joins execute under its unwire', () => {
   const container = process.env.FIXTURE_PG_CONTAINER;
   const databaseUrl = process.env.DATABASE_URL;
   assert.ok(container && databaseUrl, 'point the proof at your own Postgres container');
