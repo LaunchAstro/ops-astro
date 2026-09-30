@@ -26,7 +26,7 @@ export const CASE = {
 } as const;
 
 /**
- * The twelve operations that name no identifier, each with a minimal valid body.
+ * The thirteen operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -46,6 +46,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['session.capabilities', {}],
   ['conversation.start', { body: 'a conversation started while bravo is watched' }],
   ['conversation.list', {}],
+  // AW-04: a digest names a file's bytes, not a record of any business.
+  ['definition.attribution', { digest: 'a'.repeat(64) }],
 ];
 
 /** The identifier-bearing operations outside (c) and (d): operand and executed case. */
