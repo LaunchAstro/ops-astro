@@ -14,10 +14,12 @@
 // It is not behind the operator gate: the first reset makes staging's operator.
 //
 // In order: every refusal that needs no connection; then, connected, a
-// database neither marked made-up nor new is refused; then empty (the
-// product's schemas and the made-up mark), migrate, make the sign-ins, seed
-// (`scripts/local-seed.mjs`, which judges the database again and marks it) and
-// write the installation's operating business once. Exit 0 when done, 1 when
+// database neither marked made-up nor new is refused, and so is a service key
+// the admin API does not accept (one read); then the owner's folder and the
+// record folder are made; only then empty (the product's schemas and the
+// made-up mark), migrate, make the sign-ins, seed (`scripts/local-seed.mjs`,
+// which judges the database again and marks it) and write the installation's
+// operating business once. Exit 0 when done, 1 when
 // refused or stopped. Nothing it prints carries an address, a password, a key
 // or a project reference.
 
@@ -112,6 +114,20 @@ async function signIn(member, password) {
   return id;
 }
 
+/** The admin API takes the key: one sign-in read, before anything is emptied. */
+async function keyAccepted() {
+  const key = env.SUPABASE_SERVICE_KEY;
+  try {
+    const response = await fetch(`${env.GOTRUE_URL}/admin/users?page=1&per_page=1`, {
+      headers: { authorization: `Bearer ${key}`, apikey: key },
+      redirect: 'error',
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 const why = refusalBeforeConnecting(env, process.argv.slice(2));
 if (why !== undefined) refuse(why);
 const folder = env.OPS_SEED_DIR;
@@ -126,6 +142,10 @@ const admin = connectAsAdmin(env.DATABASE_ADMIN_URL, { source: 'reset' });
 try {
   if (!(await resettable(admin)))
     refuse('the database is neither marked made-up nor new, so it may hold real data');
+  // Every precondition before anything is emptied: a refusal empties and records nothing.
+  if (!(await keyAccepted())) refuse('the admin API did not accept SUPABASE_SERVICE_KEY');
+  mkdirSync(folder, { mode: 0o700 });
+  mkdirSync(env.OPS_ASTRO_DEPLOYMENTS, { recursive: true, mode: 0o700 });
   step = 'emptying';
   // oxlint-disable-next-line no-await-in-loop -- in order: each builds on the one before
   for (const statement of EMPTY) await admin.execute(statement);
@@ -147,7 +167,6 @@ await admin.close();
 
 try {
   step = 'making the sign-ins';
-  mkdirSync(folder, { mode: 0o700 });
   const users = [];
   for (const member of STAGING_CAST) {
     const password = randomBytes(18).toString('base64url');
@@ -194,7 +213,6 @@ try {
   // Each run is recorded where the other operator acts are, and names no setting's value.
   step = 'recording the run';
   const record = { action: 'staging reset', migrations, signIns: users.length };
-  mkdirSync(env.OPS_ASTRO_DEPLOYMENTS, { recursive: true, mode: 0o700 });
   appendFileSync(
     join(env.OPS_ASTRO_DEPLOYMENTS, RECORD_FILE),
     `${JSON.stringify({ ...record, at: new Date().toISOString() })}\n`,
