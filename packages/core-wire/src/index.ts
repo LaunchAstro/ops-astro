@@ -88,3 +88,5 @@ export type {
 } from './views.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
+// each command's data effects and its class, read by the first-client gate (S0-5)
+export * from './data-effects.ts';
