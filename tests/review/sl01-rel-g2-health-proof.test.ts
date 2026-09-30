@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Narrow re-check proof: the health route must measure the runtime login.
+// Guard only (ORCH40): skipped without a database, as the other database suites are.
 
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
@@ -11,6 +12,7 @@ import {
   type FreshDatabase,
 } from '../support/fresh-database.ts';
 
+const withDatabase = it.skipIf(databaseUrlFromEnvironment() === undefined);
 let db: FreshDatabase;
 let login: { url: string; name: string };
 
@@ -26,7 +28,7 @@ afterAll(async () => {
   await cleanup.query(`drop role if exists "${login.name}"`).finally(() => cleanup.end());
 });
 
-it('G2 health measures the runtime login when lookup is reachable', async () => {
+withDatabase('G2 health measures the runtime login when lookup is reachable', async () => {
   const runtime = new URL(db.appUrl);
   runtime.port = '1';
   const keyId = 'test/rel-health@1';
