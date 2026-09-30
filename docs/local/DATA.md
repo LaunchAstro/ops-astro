@@ -282,7 +282,7 @@ not inherit it, so the broker takes it for the one statement with
 `set_config('role', ..., true)` and gives it back. The suites sort that role
 into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
 proves the separation and the grants.
-`live_correction_receipts_append_only` (migration 0056, C80)
+`live_correction_receipts_append_only` (migration 0311, C80)
 is `security invoker`: raising needs no privilege, and the group holds only
 `select` and `insert` on `live_correction_receipts`, so the definer set is
 unchanged. `live_corrections` takes `select`, `insert` and `update`, and a
