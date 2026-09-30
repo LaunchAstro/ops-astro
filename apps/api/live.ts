@@ -44,7 +44,7 @@ export interface LiveTopics {
   ): () => void;
   /** Whether LISTEN has been in force since the last (re)connect, for `/api/health`. */
   readonly listening: boolean;
-  /** Stops every stream, waiting out their questions in flight, then stops listening. */
+  /** Stops every stream, waiting out their questions in flight, then stops listening; one admitted meanwhile is stopped at once. */
   close(): Promise<void>;
 }
 
@@ -53,7 +53,7 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
   const subscribers = new Map<string, Set<Send>>();
   // A business to its board streams.
   const boards = new Map<string, Set<Board>>();
-  const stops = new Set<Stop>();
+  const held: Held = { stops: new Set<Stop>(), stopping: undefined };
   let listening = false;
 
   await listener.listen(
@@ -73,7 +73,7 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
       const key = `${businessId}:${taskId}`;
       const sends = subscribers.get(key) ?? new Set<Send>();
       subscribers.set(key, sends.add(send));
-      return holding(stops, stop, () => {
+      return holding(held, stop, () => {
         sends.delete(send);
         if (sends.size === 0 && subscribers.get(key) === sends) subscribers.delete(key);
       });
@@ -82,7 +82,7 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
       const board: Board = { personId, send };
       const set = boards.get(businessId) ?? new Set<Board>();
       boards.set(businessId, set.add(board));
-      return holding(stops, stop, () => {
+      return holding(held, stop, () => {
         set.delete(board);
         if (set.size === 0 && boards.get(businessId) === set) boards.delete(businessId);
       });
@@ -92,17 +92,43 @@ export async function startLiveTopics(listener: Listener): Promise<LiveTopics> {
     },
     async close() {
       listening = false;
-      await Promise.allSettled(Array.from(stops, async (stop) => await stop()));
-      await listener.close();
+      await closeAll(held, listener);
     },
   };
 }
 
-/** `unsubscribe`, with the stream's `stop` held for `close` until it runs. */
-function holding(stops: Set<Stop>, stop: Stop | undefined, unsubscribe: () => void): () => void {
-  if (stop) stops.add(stop);
+/** The streams' stops, and once the topics are closing, the stops under way. */
+interface Held {
+  readonly stops: Set<Stop>;
+  stopping: Promise<void>[] | undefined;
+}
+
+/**
+ * Marks the topics closing, then stops every stream and waits them out before
+ * the listener closes, and again after it: a stream admitted meanwhile is
+ * stopped as it comes, and waited out too.
+ */
+async function closeAll(held: Held, listener: Listener): Promise<void> {
+  held.stopping = [];
+  held.stopping.push(...Array.from(held.stops, async (stop) => await stop()));
+  await settle(held.stopping);
+  await listener.close();
+  await settle(held.stopping);
+}
+
+async function settle(stopping: Promise<void>[]): Promise<void> {
+  while (stopping.length > 0) {
+    // eslint-disable-next-line no-await-in-loop -- until no stop is left under way.
+    await Promise.allSettled(stopping.splice(0));
+  }
+}
+
+/** `unsubscribe`, with the stream's `stop` held for `close` until it runs; once closing, stopped at once. */
+function holding(held: Held, stop: Stop | undefined, unsubscribe: () => void): () => void {
+  if (stop) held.stops.add(stop);
+  if (stop && held.stopping) held.stopping.push(stop());
   return () => {
-    if (stop) stops.delete(stop);
+    if (stop) held.stops.delete(stop);
     unsubscribe();
   };
 }

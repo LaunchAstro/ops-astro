@@ -82,7 +82,7 @@ export async function followBoard(
   try {
     // Taken after subscribing and before the resync the tab reads from, so a
     // change between the two is either in the tab's read or said after it.
-    await resyncs(stream, ask, bound);
+    if (!stream.aborted) await resyncs(stream, ask, bound);
     await ended;
   } finally {
     clearInterval(timer);
