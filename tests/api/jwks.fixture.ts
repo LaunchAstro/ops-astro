@@ -4,7 +4,7 @@
 // and tokens, hand-made headers, and a substitute provider that records every
 // call and answers from a key set built in the test.
 
-import type { webcrypto } from 'node:crypto';
+import { randomBytes, type webcrypto } from 'node:crypto';
 import { sign } from 'hono/jwt';
 import {
   createKeySetVerifier,
@@ -13,10 +13,14 @@ import {
   type KeySetRefusal,
   type KeySetVerifier,
 } from '../../apps/api/auth/jwks.ts';
+import { TEST_ONLY_MARKER } from '../support/marker.ts';
 
-export const KEY_SET_URL = 'https://auth.example.test/auth/v1/.well-known/jwks.json';
+/** Made at run time from the one marker (option A), as tests/support/sign-in.ts does. */
+const made = (name = ''): string => `${TEST_ONLY_MARKER}-${name}${randomBytes(6).toString('hex')}`;
 
-export const ISSUER = 'https://auth.example.test/auth/v1';
+export const ISSUER: string = `https://${made()}.example.test/auth/v1`;
+
+export const KEY_SET_URL: string = `${ISSUER}/.well-known/jwks.json`;
 
 export const AUDIENCE = 'authenticated';
 
@@ -28,7 +32,8 @@ export interface KeyPair {
   readonly publicJwk: webcrypto.JsonWebKey & { alg: 'ES256'; kid: string };
 }
 
-export async function keyPair(kid: string): Promise<KeyPair> {
+export async function keyPair(name: string): Promise<KeyPair> {
+  const kid = made(`${name}-`);
   const pair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
     'sign',
     'verify',
