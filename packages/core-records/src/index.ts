@@ -118,14 +118,12 @@ export {
   connect,
   connectAsAdmin,
   connectListener,
-  connectOutbox,
   isBusinessId,
   type AdminConnection,
-  type ApiEvent,
   type BusinessId,
   type Database,
   type Listener,
-  type Outbox,
   type TenantQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
+export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';

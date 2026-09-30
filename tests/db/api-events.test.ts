@@ -53,6 +53,7 @@ describe.skipIf(serverUrl === undefined)(
 
     roleCases();
     digestCases();
+    sharedScopeCases();
     errorCases();
   },
 );
@@ -145,7 +146,9 @@ function digestCases() {
       expect(text.includes(raw), 'a raw value in a stored column').toBe(false);
     }
   });
+}
 
+function sharedScopeCases() {
   it('two instances with one key count one scope together: every row carries the same digest', async () => {
     await clear();
     const one = outboxAlerts(KEY_A);

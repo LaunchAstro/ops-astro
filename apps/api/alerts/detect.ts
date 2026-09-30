@@ -98,7 +98,7 @@ export interface Detector {
 }
 
 /** A scope as a JSON array: no business key or subject can spell another scope. */
-function scopeOf(signal: SecuritySignal): string {
+export function scopeOf(signal: SecuritySignal): string {
   switch (signal.kind) {
     case 'sign-in-failed':
     case 'cross-scope-refusal':
