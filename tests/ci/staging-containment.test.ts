@@ -371,8 +371,8 @@ it('S0-1 resource limits: the backup store’s volume is the only persistent pla
 const dockerUp = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
 const live = dockerUp || process.env['CI'] ? describe : describe.skip;
 
-const docker = (args: string[], env: NodeJS.ProcessEnv = process.env) => {
-  const result = spawnSync('docker', args, { encoding: 'utf8', env, timeout: 180_000 });
+const docker = (args: string[], env: NodeJS.ProcessEnv = process.env, timeout = 180_000) => {
+  const result = spawnSync('docker', args, { encoding: 'utf8', env, timeout });
   return { status: result.status, out: `${result.stdout}${result.stderr}`.trim() };
 };
 const freePort = () =>
@@ -412,7 +412,8 @@ live('S0-1 containment and resource limits, live', () => {
   let prodPort = 0;
   const compose = (args: string[]) =>
     docker(['compose', '-p', project, '-f', DEFINITION, '-f', override, ...args], env);
-  const inStaging = (script: string) => docker(['exec', `${project}-backups`, 'sh', '-c', script]);
+  const inStaging = (script: string, timeout?: number) =>
+    docker(['exec', `${project}-backups`, 'sh', '-c', script], process.env, timeout);
   const productionGreen = async () => {
     expect(docker(['exec', prod, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres']).status).toBe(
       0,
@@ -644,16 +645,22 @@ live('S0-1 containment and resource limits, live', () => {
     // Production's files and credentials: a planted file on the machine and the
     // stand-in's password are nowhere inside staging, on disk or in a process.
     writeFileSync(join(scratch, 'production.env'), `PASSWORD=${CANARY}\n`);
+    // ORCH41: the search keeps its set; at 0.5 CPU on a busy hosted runner it
+    // outran the 180 s exec limit, so it alone gets 600 s and its time is printed.
+    const searchStarted = Date.now();
     const search = inStaging(
       `grep -rsl '${CANARY}' /etc /home /mnt /opt /root /run /srv /tmp /usr/local /var /proc/[0-9]*/environ 2>/dev/null; echo searched`,
+      600_000,
     );
-    expect(search.out).toBe('searched');
+    const took = `S0-1 containment: the canary search took ${Date.now() - searchStarted} ms`;
+    process.stderr.write(`${took}\n`);
+    expect(search.out, took).toBe('searched');
     // The same search inside production finds it, so the search is not blind.
     const control = docker(['exec', prod, 'sh', '-c', `grep -sl '${CANARY}' /proc/self/environ`]);
     expect(control.out).toBe('/proc/self/environ');
     listener.close();
     // Thirteen containers and probes: a hosted runner needs more than 120 s.
-  }, 300_000);
+  }, 900_000);
 
   // eslint-disable-next-line max-lines-per-function -- one test, its body kept byte for byte
   it('S0-1 resource limits: saturating each inside staging leaves production green', async () => {
