@@ -14,7 +14,7 @@ import {
   expireOnce,
   TRACE_WINDOW_DAYS,
 } from '../../packages/core-runtime/src/index.ts';
-import { liveWork, rows, type Schedules } from './schedules-harness.ts';
+import { asAgent, codeOf, handbackBody, liveWork, type Schedules } from './schedules-harness.ts';
 import { drain, noDatabase, t, TRACE_KEY, useAw13World } from './aw-13-world.ts';
 import { age, batchesOf, clearSeen, deletedIds } from './aw-13-retention-world.ts';
 
@@ -136,19 +136,39 @@ it('AW-13 retention is idempotent: a rerun deletes nothing it already confirmed'
 });
 
 it('AW-13 retention leaves a run with events not yet exported, and a run inside the window', async () => {
-  const pendingWork = await liveWork(t.alpha, 'aw13 pending', 1_000);
-  const pendingRun = String(pendingWork.picked['runId']);
-  await age(pendingRun, TRACE_WINDOW_DAYS + 1);
-  const inside = String((await liveWork(t.alpha, 'aw13 inside', 1_000)).picked['runId']);
-  const found = await rows<{ n: string }>(
+  // Exported, then handed back: its newest event is still ahead of the cursor.
+  const part = await liveWork(t.alpha, 'aw13 part', 1_000);
+  await drain(t.alpha);
+  const handedBack = await asAgent(
     t.alpha,
-    `select count(*)::text as n from public.run_events where business_id = $1 and run_id = $2`,
-    [t.alpha.business, pendingRun],
+    handbackBody(part.picked),
+    String(part.picked['credential']),
   );
-  expect(Number(found[0]?.n)).toBeGreaterThan(0);
+  expect(codeOf(handedBack)).toBe('applied');
+  const partRun = String(part.picked['runId']);
+  await age(partRun, TRACE_WINDOW_DAYS + 1);
+  const inside = String((await liveWork(t.alpha, 'aw13 inside', 1_000)).picked['runId']);
   clearSeen();
   await pass(t.alpha);
-  expect(deletedIds()).not.toContain(traceOf(t.alpha, pendingRun));
+  expect(deletedIds()).not.toContain(traceOf(t.alpha, partRun));
   expect(deletedIds()).not.toContain(traceOf(t.alpha, inside));
+  // Once every event is exported, the same run is due.
   await drain(t.alpha);
+  clearSeen();
+  await pass(t.alpha);
+  expect(deletedIds()).toContain(traceOf(t.alpha, partRun));
+  expect(deletedIds()).not.toContain(traceOf(t.alpha, inside));
+});
+
+it('AW-13 retention: two passes at once both finish, and the run’s trace is gone', async () => {
+  const old = await oldRun(t.alpha);
+  const both = await Promise.all([pass(t.alpha), pass(t.alpha)]);
+  for (const passes of both) {
+    for (const batch of passes) expect(batch.code).toBeNull();
+  }
+  expect(t.target.stored.has(traceOf(t.alpha, old))).toBe(false);
+  // Deletion by derived id is idempotent: a run two passes confirmed is two facts, one absence.
+  const confirming = (await batchesOf(t.alpha)).filter((one) => one.expired_run_ids.includes(old));
+  expect(confirming.length).toBeGreaterThanOrEqual(1);
+  expect(confirming.length).toBeLessThanOrEqual(2);
 });

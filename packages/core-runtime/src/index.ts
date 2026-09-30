@@ -210,6 +210,7 @@ export {
   EXPIRY_PAGE,
   expireOnce,
   TRACE_WINDOW_DAYS,
+  type ExpiryCode,
   type ExpiryPorts,
   type RetentionBatch,
 } from './trace-retention.ts';

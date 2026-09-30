@@ -1637,7 +1637,7 @@ or delete.
 
 ## The diagnostic trace export
 
-AW-13, `0046_trace_export` and `0047_trace_export_horizon`. A run's durable events leave as timings, counts
+AW-13, `0046_trace_export`, `0047_trace_export_horizon` and `0059_trace_expiry`. A run's durable events leave as timings, counts
 and codes, never a sentence, to a trace target an operator reads.
 
 - `core-runtime/src/trace-span.ts`: the span is a typed allowlist
@@ -1678,7 +1678,15 @@ and codes, never a sentence, to a trace target an operator reads.
   `scheme: "basic"` and leaves as HTTP Basic (the pinned target's OpenTelemetry
   route refuses a Bearer key), so the target's origin is https unless it is
   this machine's loopback address; the trace key is read by the exporter from its
-  own file. `TRACE_EXPORT=on` is the one change that starts it
+  own file. The destination (`traceDestination`) also names a fixed header,
+  `x-langfuse-ingestion-version: 4` (the contract wants it on every request;
+  the value is the vendor's documented one), and two routes beyond the
+  export's POST: `DELETE /api/public/traces` and `GET /api/public/traces/*`
+  (one id segment). Custody (`core-custody/src/egress-routes.ts`) adds the
+  header itself and answers any other method or path with `bad_path`; a
+  request naming a header, or any key beyond its six, is refused whole; a
+  header that is reserved (the credential, framing, host), not lower case, or
+  not visible ASCII is refused when custody loads its list. `TRACE_EXPORT=on` is the one change that starts it
   ([API.md](API.md#the-composition-root)); the server then exports every
   recovered business on an interval, and a failure is logged by kind only.
 - The pinned local target, `scripts/local/trace-target/`, proved by
@@ -1690,8 +1698,25 @@ and codes, never a sentence, to a trace target an operator reads.
   runs. `node scripts/local/trace-target.ts check | up <port> | down` checks the
   pin and a fresh render, starts it with generated secrets in
   `.local/trace-target.env` without pulling, and destroys it with its volumes.
-  Retention (the product's job deleting by derived id, the raw bucket's
-  lifecycle rule) and the operator readers are AW-13's remaining lines.
+  The blob store's start command sets the raw event bucket's lifecycle rule,
+  14 days on the prefix the worker writes, chained so the store stops if it
+  cannot be set: on the OpenTelemetry path nothing else ever deletes a raw
+  event. The pin check refuses a profile without exactly that rule.
+- Retention (`core-runtime/src/trace-retention.ts`, `expireOnce`): the
+  product is the trace store's deletion authority. A pass for one business
+  takes the runs with a registered trace copy, every event behind the
+  export's cursor (a pending event would be exported after its trace went),
+  the newest event older than the window (30 days) and no batch confirming
+  them since; deletes their derived ids through custody, at most 1,000 per
+  call; then reads each id back, because the endpoint may answer success for
+  work it skipped: only a 404 confirms a run. Each page is one
+  `trace_expiry_batches` row (append only, under tenancy; the application
+  group may select and insert): the window, the runs asked, the runs
+  confirmed, and the gap code when it did not finish (a delivery code, or
+  `expiry_unconfirmed`). A failed delete confirms nothing; an unconfirmed run
+  is due again next pass. Two passes at once are harmless: deletion by
+  derived id is idempotent. The server runs it hourly beside the export.
+  The operator readers (`operations:read`) are AW-13's remaining line.
 
 ## An automation occurrence's run
 
