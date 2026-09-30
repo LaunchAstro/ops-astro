@@ -212,21 +212,21 @@ describe('the generic write refusal', () => {
   });
 });
 
-describe('view validation', () => {
-  const fields = [
-    field('title', { slot: 'txt_4' }),
-    field('description'),
-    field('state', { valueType: 'uuid', slot: 'uuid_1' }),
-    field('priority', { valueType: 'numeric', slot: 'num_1' }),
-    field('keep', { valueType: 'boolean', slot: 'bool_1' }),
-  ];
-  const view = {
-    recordTypeId: TYPE,
-    filters: [],
-    sort: [],
-    visibleFields: ['title', 'description'],
-  };
+const fields = [
+  field('title', { slot: 'txt_4' }),
+  field('description'),
+  field('state', { valueType: 'uuid', slot: 'uuid_1' }),
+  field('priority', { valueType: 'numeric', slot: 'num_1' }),
+  field('keep', { valueType: 'boolean', slot: 'bool_1' }),
+];
+const view = {
+  recordTypeId: TYPE,
+  filters: [],
+  sort: [],
+  visibleFields: ['title', 'description'],
+};
 
+describe('view validation', () => {
   it('groups on a link and on a boolean', () => {
     for (const key of ['state', 'keep']) {
       expect(isRecordsRefusal(validateView({ ...view, groupBy: { field: key } }, fields))).toBe(

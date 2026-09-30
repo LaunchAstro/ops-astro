@@ -98,6 +98,79 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
+  // 0042 (C59): no journey enrols a second factor.
+  'public.second_factors': {
+    person_id: randomUUID(),
+    provider: 'supabase',
+    provider_factor_id: 'restricted-calls-seed',
+  },
+  // 0043 (C55): no journey records a privacy incident.
+  'public.privacy_incidents': {
+    what_happened: 'restricted calls seed',
+    found_at: new Date(),
+    found_by: 'seed',
+    affected: 'nobody',
+    information_kinds: ['other'],
+    recorded_by_actor: randomUUID(),
+  },
+  // 0044 (C81): no journey drafts a legal document version.
+  'public.legal_document_versions': {
+    document: 'breach-runbook',
+    version: '0.1',
+    body: 'restricted calls seed',
+    body_digest: '',
+    drafted_by_actor: randomUUID(),
+  },
+  // 0045 (C81): no journey sets a register row.
+  'public.overseas_services': {
+    service: 'restricted calls seed',
+    receives: 'nothing',
+    stored_where: 'nowhere',
+    trains_on_it: 'no',
+    contract: 'none',
+    to_confirm: false,
+    in_use: true,
+    updated_by_actor: randomUUID(),
+  },
+  // 0046 (C81): no journey sets a data class.
+  'public.data_classes': {
+    data_class: 'restricted calls seed',
+    purpose: 'nothing',
+    disclosures: 'no one',
+    retention: 'a day',
+    deletion: 'deleted',
+    in_use: true,
+    updated_by_actor: randomUUID(),
+  },
+  // 0047 (API-2): no journey issues an agent credential.
+  'public.agent_credentials': {
+    agent_actor_id: randomUUID(),
+    issued_by_person_id: randomUUID(),
+    issued_by_actor_id: randomUUID(),
+    purpose: 'restricted calls seed',
+    scope: ['task:read'],
+    credential_hash: '0'.repeat(64),
+    credential_scheme: 'hmac-sha256-v1',
+    credential_key_id: 'seed',
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  },
+  // 0048 (C32): no journey makes a client.
+  'public.clients': {
+    name: `restricted calls seed ${randomUUID()}`,
+    created_by_actor_id: randomUUID(),
+  },
+  // 0049 (C58): no journey ends a person's access.
+  'public.access_endings': {
+    person_id: randomUUID(),
+    login_id: randomUUID(),
+    ended_by_actor_id: randomUUID(),
+  },
+  // 0050 (C58): no journey here signs out.
+  'public.ended_sessions': {
+    person_id: randomUUID(),
+    session_id: randomUUID(),
+    reason: 'sign_out',
+  },
   'public.person_availability': {
     person_id: randomUUID(),
     state: 'away',

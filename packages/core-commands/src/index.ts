@@ -30,6 +30,14 @@ export {
   type Viewer,
 } from './reads/execute.ts';
 export { isReadName } from './reads/catalogue.ts';
+export {
+  HEALTH_STALE_SECONDS,
+  readServiceHealth,
+  type HealthSource,
+  type HealthSources,
+  type ServiceObservation,
+  type SourceAnswer,
+} from './reads/service-health.ts';
 export { type ReadRequest } from './reads/requests.ts';
 export {
   createRollupCache,
@@ -38,3 +46,29 @@ export {
   type RollupCache,
   type RollupCacheOptions,
 } from './reads/rollup.ts';
+export {
+  enrolSecondFactor,
+  removeSecondFactor,
+  verifySecondFactor,
+  type FactorCaller,
+} from './commands/account-factor.ts';
+export {
+  type FactorProvider,
+  type FactorSession,
+  type IssuedFactor,
+  type ProviderAnswer,
+  type ProviderFault,
+  type SessionsEnded,
+} from './commands/account-factor-provider.ts';
+export {
+  endOtherSessions,
+  listOwnSessions,
+  signOutSession,
+  type SessionView,
+} from './commands/account-sessions.ts';
+export {
+  ACCESS_ENDING_CLAIM_SECONDS,
+  settleAccessEndings,
+  type LoginProvider,
+  type SettleReport,
+} from './commands/access-end.ts';

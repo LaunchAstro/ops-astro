@@ -35,7 +35,7 @@ type Refusal = CommandRefusal<IdentityRefusalCode>;
 const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
-import type { VerifiedSubject } from './verified-subject.ts';
+import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
 
@@ -52,7 +52,20 @@ export interface Session {
    * no role a preset names can be mistaken for one.
    */
   readonly roleKey: string | null;
+  /**
+   * How strongly the provider says this call signed in (C59): the level, and
+   * the times of the first sign-in and of the second factor. The money
+   * step-up reads it (`authority/step-up.ts`); nothing else grants on it.
+   */
+  readonly assurance: Assurance;
 }
+
+/**
+ * Whether a sign-in without the second factor is refused for a person who has
+ * one. `required` everywhere but the factor routes themselves, which serve the
+ * sign-in that has not yet given its code (C59: verifying is how it gets one).
+ */
+export type SecondFactorRule = 'required' | 'enrolling';
 
 interface ResolutionRow {
   readonly login_id: string;
@@ -60,6 +73,8 @@ interface ResolutionRow {
   readonly membership_id: string | null;
   readonly role_key: string | null;
   readonly actor_id: string | null;
+  /** 'true' once the person has a verified second factor; null before 0042. */
+  readonly second_factor_verified: string | null;
 }
 
 export const NO_MEMBERSHIP_FIXES = [
@@ -68,6 +83,12 @@ export const NO_MEMBERSHIP_FIXES = [
 ] as const;
 
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
+
+const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
+
+const SECOND_FACTOR_FIXES = [
+  'enter the code from your authenticator app to finish signing in',
+] as const;
 
 // Left joins rather than four round trips, because the four facts are read
 // under one snapshot and one policy evaluation. Row security scopes every
@@ -79,7 +100,10 @@ const RESOLUTION = `
          pl.person_id,
          m.id as membership_id,
          m.role_key,
-         a.id as actor_id
+         a.id as actor_id,
+         -- Read through the row's json so this one query serves a database
+         -- from before 0042, which has no such column and so no factor.
+         to_jsonb(p) ->> 'second_factor_verified' as second_factor_verified
     from public.logins l
     left join public.person_logins pl
       on pl.business_id = l.business_id and pl.login_id = l.id and pl.active
@@ -88,6 +112,8 @@ const RESOLUTION = `
     left join public.actors a
       on a.business_id = pl.business_id and a.person_id = pl.person_id
      and a.kind = 'person' and a.active
+    left join public.people p
+      on p.business_id = pl.business_id and p.id = pl.person_id
    where l.provider = $1 and l.subject = $2`;
 
 /**
@@ -104,27 +130,20 @@ const RESOLUTION = `
 export async function resolveLogin(
   tx: TenantQuery,
   presented: VerifiedSubject,
+  rule: SecondFactorRule = 'required',
 ): Promise<Session | Refusal> {
-  const standing = await standingOf(tx, presented);
+  const standing = await standingOf(tx, presented, rule);
   if ('refused' in standing) return await recordRefusal(tx, presented, standing);
-  // The attempt and what it resolved to commit together with whatever the
-  // caller goes on to do. I13 asks for every attempt, which includes the ones
-  // that succeeded and the ones whose transaction later rolled back — those
-  // roll back with it, and a recorded attempt for work that never happened
-  // would be the worse trail.
-  await recordAuthenticationAttempt(tx, {
-    owner: 'person_login',
-    presented,
-    outcome: 'resolved',
-    loginId: standing.loginId,
-    actorId: standing.actorId,
-    personId: standing.personId,
-  });
+  await recordResolved(tx, presented, standing);
   return standing;
 }
 
 /** Steps 2 to 4 as `resolveLogin` takes them, recording nothing. */
-async function standingOf(tx: TenantQuery, presented: VerifiedSubject): Promise<Session | Refusal> {
+async function standingOf(
+  tx: TenantQuery,
+  presented: VerifiedSubject,
+  rule: SecondFactorRule,
+): Promise<Session | Refusal> {
   const rows = await tx.query<ResolutionRow>(RESOLUTION, [presented.provider, presented.subject]);
   const found = rows[0];
 
@@ -135,13 +154,58 @@ async function standingOf(tx: TenantQuery, presented: VerifiedSubject): Promise<
     return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
   }
   if (found.actor_id === null) return refuse('ACTOR_INACTIVE', INACTIVE_FIXES);
+
+  // A session the person has ended (C58: signed out, or ended from another
+  // session or by a factor change) is over from that commit, whatever the
+  // token's own expiry says. Before the factor, so an ended session is told
+  // to sign in again rather than to give a code.
+  if (presented.sessionId !== undefined && (await sessionEnded(tx, found.person_id, presented))) {
+    return refuse('AUTH_SESSION_EXPIRED', ENDED_FIXES);
+  }
+
+  // After the person is known and active, because only a person has a factor,
+  // and before anything is served: a sign-in that stopped at the password is
+  // not yet a sign-in for someone who enrolled a second factor (C59, LF-4).
+  const assurance = presented.assurance ?? NO_ASSURANCE;
+  if (rule === 'required' && stoppedAtPassword(assurance, found)) {
+    return refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES);
+  }
+
   return {
     businessId: tx.businessId,
     loginId: found.login_id,
     personId: found.person_id,
     actorId: found.actor_id,
     roleKey: found.role_key,
+    assurance,
   };
+}
+
+/** A sign-in short of `aal2` for a person whose second factor is verified (C59, LF-4). */
+function stoppedAtPassword(assurance: Assurance, found: ResolutionRow): boolean {
+  return assurance.level !== 'aal2' && found.second_factor_verified === 'true';
+}
+
+/**
+ * The attempt and what it resolved to commit together with whatever the
+ * caller goes on to do. I13 asks for every attempt, which includes the ones
+ * that succeeded and the ones whose transaction later rolled back — those
+ * roll back with it, and a recorded attempt for work that never happened
+ * would be the worse trail.
+ */
+async function recordResolved(
+  tx: TenantQuery,
+  presented: VerifiedSubject,
+  session: Session,
+): Promise<void> {
+  await recordAuthenticationAttempt(tx, {
+    owner: 'person_login',
+    presented,
+    outcome: 'resolved',
+    loginId: session.loginId,
+    actorId: session.actorId,
+    personId: session.personId,
+  });
 }
 
 // An external party's standing, read under the same snapshot as the mapping.
@@ -165,12 +229,29 @@ const STANDING = `
      and ((g.subject_kind = 'person' and g.subject_id = $1)
           or (g.subject_kind = 'actor' and a.person_id = $1))`;
 
-async function standsOnShares(tx: TenantQuery, personId: string): Promise<boolean> {
+/** Exported so the Access preview (C32) asks the one rule sign-in asks. */
+export async function standsOnShares(tx: TenantQuery, personId: string): Promise<boolean> {
   const rows = await tx.query<{ readonly shares: number; readonly business: number }>(STANDING, [
     personId,
   ]);
   const row = rows[0];
   return row !== undefined && row.shares > 0 && row.business === 0;
+}
+
+/** Whether this person ended the session the token belongs to (C58, 0050). */
+async function sessionEnded(
+  tx: TenantQuery,
+  personId: string,
+  presented: VerifiedSubject,
+): Promise<boolean> {
+  const rows = await tx.query<{ readonly ended: boolean }>(
+    `select exists (
+       select 1 from public.ended_sessions
+        where business_id = $1 and person_id = $2 and session_id = $3
+     ) as ended`,
+    [tx.businessId, personId, presented.sessionId],
+  );
+  return rows[0]?.ended === true;
 }
 
 /** A refusal and its record commit together, so nobody is turned away unrecorded. */
@@ -201,9 +282,10 @@ export async function withSession<T>(
   businessId: BusinessId,
   presented: VerifiedSubject,
   run: (tx: TenantQuery, session: Session) => Promise<T>,
+  rule: SecondFactorRule = 'required',
 ): Promise<T | Refusal> {
   return await database.withBusiness(businessId, async (tx) => {
-    const resolved = await resolveLogin(tx, presented);
+    const resolved = await resolveLogin(tx, presented, rule);
     if ('refused' in resolved) return resolved;
     return await run(tx, resolved);
   });
@@ -212,10 +294,11 @@ export async function withSession<T>(
 /**
  * `withSession` for a session already admitted at the door and asked again:
  * the live channel's recheck of an open stream (C4 live-sync 6). The standing
- * is resolved the same way, so a lost membership or an inactive actor still
- * refuses, and nothing is recorded: the attempt was recorded when the stream
- * was opened, and a row for every recheck would record who kept which task
- * open rather than who came through the door.
+ * is resolved the same way, so a lost membership, an inactive actor, a session
+ * the person has ended or a missing second factor still refuses, and nothing
+ * is recorded: the attempt was recorded when the stream was opened, and a row
+ * for every recheck would record who kept which task open rather than who came
+ * through the door.
  */
 export async function withStanding<T>(
   database: Database,
@@ -224,7 +307,7 @@ export async function withStanding<T>(
   run: (tx: TenantQuery, session: Session) => Promise<T>,
 ): Promise<T | Refusal> {
   return await database.withBusiness(businessId, async (tx) => {
-    const standing = await standingOf(tx, presented);
+    const standing = await standingOf(tx, presented, 'required');
     if ('refused' in standing) return standing;
     return await run(tx, standing);
   });

@@ -38,24 +38,44 @@ import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
   EXPIRED_FIXES,
+  PUBLIC_LEGAL_DOCUMENTS,
+  readPublishedLegal,
   recordBodyRefusal,
   statusOf,
 } from '../../packages/core-records/src/index.ts';
-import type { Database, VerifiedSubject } from '../../packages/core-records/src/index.ts';
+import type {
+  Database,
+  LegalDocument,
+  VerifiedSubject,
+} from '../../packages/core-records/src/index.ts';
 import {
   agentAnswer,
+  endOtherSessions,
+  enrolSecondFactor,
+  listOwnSessions,
   isCommandRefusal,
   isReadName,
   refuseCommand,
   refuseNotFound,
   setOwnAvailability,
   viewerOf,
+  removeSecondFactor,
+  signOutSession,
+  verifySecondFactor,
+} from '../../packages/core-commands/src/index.ts';
+import {
+  readServiceHealth,
+  settleAccessEndings,
+  type FactorProvider,
+  type HealthSources,
+  type LoginProvider,
 } from '../../packages/core-commands/src/index.ts';
 import {
   ACCOUNT_AVAILABILITY_PATH,
   COMMAND_SURFACE,
   DELEGATION_HEADER,
   PREFIX,
+  PUBLIC_PREFIX,
   pathOf,
 } from '../../packages/core-wire/src/index.ts';
 import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
@@ -68,7 +88,7 @@ import type {
   admitReads,
   AdmissionAt,
 } from '../../packages/core-commands/src/index.ts';
-import type { Verifier } from './auth/supabase.ts';
+import { bearerOf, type Verifier } from './auth/supabase.ts';
 import type { LiveTopics } from './live.ts';
 import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
 import { follow, topicsOf, TOPICS, type Seated, type Watching } from './live-follow.ts';
@@ -124,6 +144,27 @@ export interface ApiOptions {
    * which is the honest answer for a deployment that has not enabled it.
    */
   readonly executeAgentCommand?: AgentExecutor;
+  /**
+   * The sign-in provider's second-factor calls (C59), `auth/factors.ts` in a
+   * deployment. Absent means the three factor routes are not mounted, which is
+   * the honest answer for a deployment whose provider has no second factor.
+   * They are mounted on the person prefix only: a factor is a person's own,
+   * and no agent holds `account:write`.
+   */
+  readonly factors?: FactorProvider;
+  /**
+   * The installation's service-health sources (C34): the watcher, the error
+   * sink and, where switched on, tracing. Read for `operations.read` after its
+   * grant check, outside the serving transaction.
+   */
+  readonly health?: HealthSources;
+  /**
+   * The sign-in provider's calls for a login whose access has ended (C58),
+   * `auth/logins.ts` in a deployment. `access.end` ends access locally either
+   * way; with a provider, the owed provider steps are tried as soon as the act
+   * commits. Absent, they stay owed for the server's retry.
+   */
+  readonly logins?: LoginProvider;
   readonly live?: LiveOptions;
 }
 
@@ -262,6 +303,14 @@ export function createApi(options: ApiOptions): Hono {
         read: name,
       });
       if (isCommandRefusal(read)) return refuse(context, read);
+      // C34: the operations view's service-health section, read only after
+      // the grant check above let the caller in, and outside the serving
+      // transaction, so a refused caller asks no source and no source call
+      // holds a transaction open.
+      if (name === 'operations.read') {
+        const serviceHealth = await readServiceHealth(options.health ?? {}, new Date());
+        return context.json({ ...read, serviceHealth }, 200);
+      }
       return context.json(read, 200);
     }
 
@@ -271,6 +320,14 @@ export function createApi(options: ApiOptions): Hono {
     });
 
     if (isCommandRefusal(result)) return refuse(context, result);
+    // C58: the provider steps an ending owes are tried as soon as it commits,
+    // outside its transaction; what fails stays owed for the server's retry.
+    if (name === 'access.end' && options.logins !== undefined) {
+      const only = endingIdsOf(result);
+      if (only.length > 0) {
+        await settleAccessEndings(options.database, businessId, options.logins, { only });
+      }
+    }
     return context.json({ ...result }, 200);
   });
 
@@ -365,6 +422,9 @@ export function createApi(options: ApiOptions): Hono {
       });
     }
   }
+  const factors = options.factors;
+  if (factors !== undefined) mountFactorRoutes(api, options, factors);
+  mountPublicLegal(api, options);
 
   // MP-7-10: the person's own availability, on the person prefix alone (their
   // own account; no agent holds it), audited with its row.
@@ -482,6 +542,76 @@ async function mayWatch(
 }
 
 /**
+ * A business's published legal documents (C81), read with no sign-in: the
+ * version published most recently, its words and their digest. No business,
+ * nothing published, the breach runbook (the operators' own) and a name that
+ * is no document are one answer, so the address tells an outsider nothing
+ * about which businesses exist or what they have drafted.
+ */
+function mountPublicLegal(api: Hono, options: ApiOptions): void {
+  const PUBLIC: ReadonlySet<string> = new Set(PUBLIC_LEGAL_DOCUMENTS);
+  api.get(`${PUBLIC_PREFIX}:businessKey/legal/:document`, async (context) => {
+    const document = context.req.param('document');
+    const businessId = PUBLIC.has(document)
+      ? await options.resolveBusiness(context.req.param('businessKey'))
+      : undefined;
+    const published =
+      businessId === undefined
+        ? undefined
+        : await options.database.withBusiness(
+            businessId,
+            async (tx) => await readPublishedLegal(tx, document as LegalDocument),
+          );
+    if (published === undefined) return context.json({ code: 'NOT_FOUND' }, 404);
+    return context.json({ ...published, publishedAt: published.publishedAt.toISOString() }, 200);
+  });
+}
+
+/**
+ * The person's own second factor (C59): `account/factor/enrol`, `verify` and
+ * `remove`; and their own sessions (C58): `account/sessions/list`,
+ * `end-others` and `sign-out`. Each goes through the same door as every
+ * person route. The bearer goes to the provider as the person's own; the body
+ * is the code, or nothing.
+ */
+function mountFactorRoutes(api: Hono, options: ApiOptions, factors: FactorProvider): void {
+  const routes = new Hono();
+  type Caller = Parameters<typeof enrolSecondFactor>[0];
+  const acts = {
+    'factor/enrol': async (caller: Caller) => await enrolSecondFactor(caller, factors),
+    'factor/verify': async (caller: Caller, body: unknown) =>
+      await verifySecondFactor(caller, body, factors),
+    'factor/remove': async (caller: Caller, body: unknown) =>
+      await removeSecondFactor(caller, body, factors),
+    'sessions/list': async (caller: Caller, body: unknown) => await listOwnSessions(caller, body),
+    'sessions/end-others': async (caller: Caller, body: unknown) =>
+      await endOtherSessions(caller, body, factors),
+    'sessions/sign-out': async (caller: Caller, body: unknown) =>
+      await signOutSession(caller, body, factors),
+  } as const;
+  for (const [name, act] of Object.entries(acts)) {
+    routes.post(`/account/${name}`, async (context) => {
+      const admitted = await admit(options, context, PERSON);
+      if (admitted instanceof Response) return admitted;
+      const accessToken = bearerOf(context.req.header('authorization'));
+      if (accessToken === undefined) {
+        return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
+      }
+      const caller = {
+        database: options.database,
+        businessId: admitted.businessId,
+        presented: admitted.presented,
+        accessToken,
+      };
+      const result = await act(caller, admitted.body);
+      if (isCommandRefusal(result)) return refuse(context, result);
+      return context.json(result, 200);
+    });
+  }
+  api.route(`${PREFIX.person}:businessKey`, routes);
+}
+
+/**
  * One way out for every refusal, so the ones the boundary raises itself go
  * through the register's constructor and the status table like any other,
  * and none of them mints a code by hand.
@@ -551,4 +681,12 @@ async function readLimited(request: Request, limit: number): Promise<string | un
   } catch {
     return undefined;
   }
+}
+
+/** The endings an `access.end` answer names (C58): ids, and nothing else. */
+function endingIdsOf(result: object): readonly string[] {
+  const detail = (result as { readonly detail?: unknown }).detail;
+  if (typeof detail !== 'object' || detail === null) return [];
+  const ids = (detail as { readonly endingIds?: unknown }).endingIds;
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
 }

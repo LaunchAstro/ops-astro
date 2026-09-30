@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 44 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 61 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 44. For
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 61. For
 // the three lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
 // own refusals of those three are a case of their own below.
@@ -379,9 +379,9 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 44 exported operations both ways', () => {
+  it('covered all 61 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(44);
+    expect(names).toHaveLength(61);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
     // R2 (`noah`, no grant) is the refused caller on every one of the 44.
@@ -456,6 +456,8 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           login_id: null,
           actor_id: null,
           person_id: null,
+          // C58: a refused attempt names no session.
+          session_id: null,
         },
       ]);
     }

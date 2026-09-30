@@ -226,6 +226,33 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           );
           continue;
         }
+        if (declaration.name === 'client.list' && grants !== undefined) {
+          // C32: the clients a caller's live grants reach, so like
+          // `session.capabilities` the grant it takes is holding one at all.
+          // `noah` holds nothing and is refused; `mia` holds the task keys
+          // over the whole business, so her row is a 200 listing clients.
+          // eslint-disable-next-line no-await-in-loop
+          const listed = await call(
+            harness.world.api,
+            personPath('alpha', pathOf(declaration.name)),
+            harness.probeBody(declaration),
+            bearer(caller.token),
+          );
+          if (grants.size === 0) {
+            observe(
+              caller.name,
+              'e-no-grant',
+              declaration.name,
+              listed,
+              refusal('SCOPE_NOT_GRANTED'),
+            );
+            expect(listed.body['clients'], caller.name).toBeUndefined();
+            continue;
+          }
+          observe(caller.name, 'e-no-grant', declaration.name, listed, SUCCESS);
+          expect(Array.isArray(listed.body['clients']), caller.name).toBe(true);
+          continue;
+        }
         if (declaration.name === 'session.capabilities' && grants !== undefined) {
           // The read with no collection of its own: it reports the caller's
           // grants, so the grant it takes is holding one at all. `noah`, a

@@ -41,6 +41,9 @@ import {
   subjectsOf,
   revokeDelegation,
   isUuid,
+  lastManager,
+  lockAccess,
+  otherManagers,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Action, Scope } from '../../../core-records/src/index.ts';
 import { classifyAuthorityLoss, requireUnchanged } from '../../../core-runtime/src/index.ts';
@@ -196,8 +199,39 @@ export async function revokeGrantAsManager(
   context: CommandContext,
   grantId: unknown,
 ): Promise<HandlerOutcome> {
+  return await revokeGrantRow(tx, context, grantId, 'ceiling');
+}
+
+/**
+ * `access.revoke` (C32): any live grant of the business, under
+ * `access:manage`, which the envelope has asked over the whole business, so
+ * no ceiling is asked here. A grant already revoked is not live, so it is the
+ * same `NOT_FOUND` as a made-up one. The authority loss it causes is
+ * classified exactly as the manager's revocation classifies it.
+ */
+export async function revokeGrantOnAccess(
+  tx: TenantQuery,
+  context: CommandContext,
+  grantId: unknown,
+): Promise<HandlerOutcome> {
+  return await revokeGrantRow(tx, context, grantId, 'access');
+}
+
+/**
+ * The one revocation of a grant row. Both paths take the business's access
+ * lock first (`lockAccess`, the widest, before the grant row), so the last
+ * business-wide `access:manage` of a person who can sign in is never revoked
+ * by either: two revocations that would each leave one holder serialise on it.
+ */
+async function revokeGrantRow(
+  tx: TenantQuery,
+  context: CommandContext,
+  grantId: unknown,
+  authority: 'ceiling' | 'access',
+): Promise<HandlerOutcome> {
   if (typeof grantId !== 'string') return absent('grantId');
   if (!isUuid(grantId)) return NOT_FOUND;
+  await lockAccess(tx);
   const rows = await tx.query<{
     readonly collection: string;
     readonly action: Action;
@@ -220,7 +254,10 @@ export async function revokeGrantAsManager(
   const grant = rows[0];
   if (grant === undefined) return NOT_FOUND;
   const scope: Scope = { kind: grant.scope_kind, id: grant.scope_id };
-  if (!(await withinCeiling(tx, context, grant.collection, grant.action, scope))) {
+  if (
+    authority === 'ceiling' &&
+    !(await withinCeiling(tx, context, grant.collection, grant.action, scope))
+  ) {
     return OUTSIDE_CEILING;
   }
   const already = refused(
@@ -230,7 +267,15 @@ export async function revokeGrantAsManager(
       ['This grant is already revoked. A revocation is written once and never undone.'],
     ),
   );
-  if (grant.revoked) return already;
+  if (grant.revoked) return authority === 'access' ? NOT_FOUND : already;
+  if (
+    grant.collection === 'access' &&
+    grant.action === 'manage' &&
+    grant.scope_kind === 'business' &&
+    (await otherManagers(tx, [grantId])) === 0
+  ) {
+    return refused(lastManager());
+  }
 
   const candidates = await dependents(tx, grantId);
   const loss = await classifyAuthorityLoss(tx, {
@@ -341,4 +386,129 @@ export async function revokeDelegationAsManager(
     revokedAt: revokedAt.toISOString(),
     classifiedHolds: classifiedHolds(loss.classified),
   });
+}
+
+/**
+ * The person's live grants, locked in id order, and the live delegations they
+ * gave. Discovery for `endPersonAuthority`; the grant rows stay locked.
+ */
+async function heldAndGiven(
+  tx: TenantQuery,
+  personId: string,
+): Promise<{ readonly grantIds: readonly string[]; readonly given: readonly string[] }> {
+  const ids = async (sql: string): Promise<readonly string[]> =>
+    (await tx.query<{ readonly id: string }>(sql, [tx.businessId, personId])).map((row) => row.id);
+  return {
+    grantIds: await ids(
+      `select g.id from public.grants g
+        where g.business_id = $1 and g.revoked_at is null
+          and ((g.subject_kind = 'person' and g.subject_id = $2::uuid)
+               or (g.subject_kind = 'actor' and g.subject_id in (
+                     select a.id from public.actors a
+                      where a.business_id = $1 and a.person_id = $2::uuid)))
+        order by g.id
+        for update`,
+    ),
+    given: await ids(
+      `select id from public.delegations
+        where business_id = $1 and delegate_person_id = $2::uuid
+          and revoked_at is null and settled_at is null
+        order by id`,
+    ),
+  };
+}
+
+/**
+ * Under the complete lock set: revoke the person's grants, then name what lost
+ * its authority. Every delegation the person gave loses its ceiling with their
+ * grants; an attempt still covered by another live grant is untouched.
+ */
+async function revokeHeldAndGiven(
+  tx: TenantQuery,
+  grantIds: readonly string[],
+  given: readonly string[],
+  candidates: readonly Dependent[],
+): Promise<{
+  readonly applied: true;
+  readonly value: number;
+  readonly lost: readonly string[];
+  readonly lostLeases: readonly string[];
+}> {
+  for (const grantId of grantIds) {
+    // eslint-disable-next-line no-await-in-loop -- the person's grants, already locked
+    await revokeGrant(tx, grantId);
+  }
+  const lost = new Set(given);
+  const lostLeases: string[] = [];
+  for (const dependent of candidates) {
+    // eslint-disable-next-line no-await-in-loop -- one per live attempt, each decisive
+    if (await stillAuthorised(tx, dependent)) continue;
+    if (dependent.delegation_id === null) lostLeases.push(dependent.lease_id);
+    else lost.add(dependent.delegation_id);
+  }
+  return { applied: true, value: grantIds.length, lost: [...lost], lostLeases };
+}
+
+/** What ending a person's authority revoked, by count, and the holds it classified. */
+export interface EndedAuthority {
+  readonly grantsRevoked: number;
+  readonly delegationsRevoked: number;
+  readonly classifiedHolds: readonly string[];
+}
+
+/**
+ * `access.end` (C58): every live grant the person holds, as themselves or as
+ * their acting identity, and every delegation they gave an agent, ended in one
+ * authority-loss classification, so the work they carried is classified
+ * exactly as a revocation classifies it.
+ *
+ * The caller holds the access lock. The person's grant rows are locked next,
+ * all of them and in id order, before any runtime lock: the order a single
+ * revocation takes (the access lock, the grant row, the runtime set), and the
+ * order `task.pickup` holds its covering grants in. Locking them one at a time
+ * between classifications would wait on a grant row while holding runtime
+ * locks, the cycle `revokeGrantRow` is written to avoid. One classification
+ * takes one complete lock set.
+ */
+export async function endPersonAuthority(
+  tx: TenantQuery,
+  personId: string,
+): Promise<EndedAuthority> {
+  const { grantIds, given } = await heldAndGiven(tx, personId);
+  const discover = async (): Promise<readonly Dependent[]> => {
+    const found: Dependent[] = [];
+    for (const grantId of grantIds) {
+      // eslint-disable-next-line no-await-in-loop -- one per grant the person holds
+      found.push(...(await dependents(tx, grantId)));
+    }
+    return found;
+  };
+  const candidates = await discover();
+  let delegationsRevoked = 0;
+  const loss = await classifyAuthorityLoss(tx, {
+    delegationIds: [
+      ...given,
+      ...candidates.flatMap((each) => (each.delegation_id === null ? [] : [each.delegation_id])),
+    ],
+    personLeases: {
+      leaseIds: candidates.flatMap((each) => (each.delegation_id === null ? [each.lease_id] : [])),
+      // The recorded cause of a person's own lease: a grant this act revoked.
+      causeId: grantIds[0] ?? personId,
+    },
+    revoke: async () => {
+      requireUnchanged(
+        candidates,
+        await discover(),
+        'access.end: the dependent attempts changed under discovery; roll back and rediscover rather than extending the lock set',
+      );
+      const written = await revokeHeldAndGiven(tx, grantIds, given, candidates);
+      delegationsRevoked = written.lost.length;
+      return written;
+    },
+  });
+  return {
+    grantsRevoked: loss.value,
+    delegationsRevoked,
+    classifiedHolds: classifiedHolds(loss.classified),
+  };
 }

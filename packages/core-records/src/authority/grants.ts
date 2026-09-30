@@ -70,8 +70,7 @@ export function subjectsOf(session: Session): readonly Subject[] {
 //
 // The depth guard is not decoration. `parent_grant_id` sits under the same
 // UPDATE privilege that writes `revoked_at`, so a cycle is reachable, and an
-// unbounded recursive term that meets a cycle does not return. Exported for
-// the one other read that filters by it in SQL, `tasks/changes.ts`.
+// unbounded recursive term that meets a cycle does not return.
 export const EFFECTIVE = `
   with recursive effective as (
     select g.*, 1 as depth
@@ -263,10 +262,17 @@ async function exceedsGranter(
  * It answers with the timestamp this call wrote, or null when it wrote none
  * because the grant was already revoked or is not in this business. Callers
  * that only needed the write may ignore it; `grant.revoke` returns it.
+ *
+ * `now()` is when this transaction began. A revocation that waited on the
+ * access lock behind a grant made after it began (C58: ending a person's
+ * access while a grant to them commits) would otherwise be stamped before the
+ * grant existed, which `grants_revoked_after_granted` refuses; it is stamped
+ * no earlier than the grant.
  */
 export async function revokeGrant(tx: TenantQuery, grantId: string): Promise<Date | null> {
   const rows = await tx.query<{ readonly revoked_at: Date }>(
-    'update public.grants set revoked_at = now() where id = $1 and revoked_at is null returning revoked_at',
+    `update public.grants set revoked_at = greatest(now(), granted_at)
+      where id = $1 and revoked_at is null returning revoked_at`,
     [grantId],
   );
   return rows[0]?.revoked_at ?? null;

@@ -24,6 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { PrivacyRequest } from './requests-privacy.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -206,11 +207,31 @@ export type CommandRequest =
       readonly value: boolean;
       readonly expectedRevision?: number;
     } & Envelope)
+  | ({
+      readonly command: 'settings.set_money_step_up';
+      readonly value: boolean;
+      readonly expectedRevision?: number;
+    } & Envelope)
+  // C55, C81 and API-2, in their own file.
+  | PrivacyRequest<Envelope>
   // The support controls. Revocation names the row it revokes; the time is the
   // server's. Cancel and restart name the task and the lineage on it, so the
   // task is where the work-control authority is asked and the lineage is
   // checked against it. A restart carries no proposal of its own: it is the
   // terminal lineage's last version, proposed again under a new lineage.
+  // C32: the client record and Settings ▸ Access, each field checked by the
+  // handler in its own words (`access-write.ts`).
+  | ({ readonly command: 'client.create'; readonly name: unknown } & Envelope)
+  | ({
+      readonly command: 'access.grant';
+      readonly holderId: unknown;
+      readonly collection: unknown;
+      readonly action: unknown;
+      readonly clientId?: unknown;
+    } & Envelope)
+  | ({ readonly command: 'access.revoke'; readonly grantId: string } & Envelope)
+  // C58: end a person's access in one act (`access-end.ts`).
+  | ({ readonly command: 'access.end'; readonly holderId: unknown } & Envelope)
   | ({ readonly command: 'grant.revoke'; readonly grantId: string } & Envelope)
   | ({ readonly command: 'delegation.revoke'; readonly delegationId: string } & Envelope)
   | ({

@@ -43,6 +43,13 @@ export const READ_NAMES = [
   'task.receipt',
   // The activity ledger (MP-8-4), a read from the day it was declared.
   'task.ledger',
+  // Settings ▸ Access (C32), under `access:manage` on the server.
+  'access.read',
+  'client.list',
+  // The operations view (C55), under `operations:read` on the server.
+  'operations.read',
+  // The breach drill's notices (C81), under `privacy:manage` on the server.
+  'privacy.draft_breach_notices',
 ] as const;
 
 /**

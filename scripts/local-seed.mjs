@@ -98,6 +98,18 @@ const GRANTS_BY_ROLE = {
     // A top-up is a money decision on `billing` (T2e, the permission
     // catalogue's `billing:decide`): the owner and administrators hold it.
     ['billing', 'decide'],
+    // Settings ▸ Access (C32): the owner and administrators hold
+    // `access:manage` on install (the key catalogue's default holders).
+    ['access', 'manage'],
+    // The operations view and the privacy incident record (C55): the owner
+    // and administrators hold both on install, and no agent ever does.
+    ['operations', 'read'],
+    ['privacy', 'manage'],
+    // An agent credential of their own (API-2): the owner and administrators
+    // hold `credential:write` on install.
+    ['credential', 'write'],
+    // The client record (C32): the owner and administrators make clients.
+    ['record', 'write'],
   ],
   member: [
     ['task', 'read'],

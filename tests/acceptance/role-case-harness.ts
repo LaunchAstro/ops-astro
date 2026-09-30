@@ -35,7 +35,8 @@ import {
   type Answer,
   type Caller,
 } from './world.ts';
-import { PROPOSAL, type Task } from './role-case-bodies.ts';
+import { enrol } from '../commands/fixture.ts';
+import { PROPOSAL, breachDrillBody, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
 import { plainRows, seedFixtureClients } from './role-case-clients.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
@@ -185,6 +186,7 @@ export async function createHarness(part: string): Promise<Harness> {
       ...(declaration.name === 'preset.plan'
         ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
         : {}),
+      ...(declaration.name === 'privacy.draft_breach_notices' ? breachDrillBody() : {}),
     };
   }
 
@@ -279,6 +281,8 @@ export async function createHarness(part: string): Promise<Harness> {
       assigneePersonId: world.mia.personId as string,
       asPerson: async (name, body) => await asPerson(name, body),
       freshTask,
+      freshMember: async () =>
+        (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
     }),
     approvedReservation,
     reserve,

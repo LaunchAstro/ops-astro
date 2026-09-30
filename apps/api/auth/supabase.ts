@@ -17,7 +17,8 @@
 // missing a `sub`, or absent: all of them return nothing, and the boundary turns nothing into one
 // `AUTH_UNKNOWN_LOGIN`. Distinguishing them tells an unauthenticated caller
 // which of their guesses was closer. The one exception is a bearer whose
-// signature verifies against this secret and whose `exp` has passed: it
+// signature verifies against this secret and whose `exp` has passed, or whose
+// session is past its 12-hour absolute limit (C58, `pastAbsoluteLimit`): it
 // returns `'expired'`, which the boundary answers `AUTH_SESSION_EXPIRED` (see
 // `Verified` and `signatureVerifies`).
 //
@@ -28,7 +29,11 @@
 
 import type { Context } from 'hono';
 import { verify } from 'hono/jwt';
-import type { VerifiedSubject } from '../../../packages/core-records/src/index.ts';
+import {
+  SESSION_ABSOLUTE_SECONDS,
+  type Assurance,
+  type VerifiedSubject,
+} from '../../../packages/core-records/src/index.ts';
 
 /** The provider string the `logins` rows carry for tokens verified here. */
 export const SUPABASE_PROVIDER = 'supabase';
@@ -41,6 +46,8 @@ export interface SupabaseVerifierOptions {
   readonly secret: string;
   /** The `iss` GoTrue stamps on its tokens: its own URL, `GOTRUE_URL`. */
   readonly issuer: string;
+  /** The time in whole seconds, injected for tests; the clock otherwise. */
+  readonly now?: () => number;
 }
 
 /**
@@ -73,6 +80,7 @@ export type Verifier = (request: Context['req']) => Promise<Verified | undefined
  */
 export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifier {
   const { secret, issuer } = options;
+  const now = options.now ?? (() => Math.floor(Date.now() / 1000));
   if (secret === '') throw new Error('createSupabaseVerifier: the JWT secret is empty');
   const expected = { alg: 'HS256', aud: SUPABASE_AUDIENCE, iss: issuer } as const;
 
@@ -101,13 +109,95 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     const subject = claims['sub'];
     if (typeof subject !== 'string' || subject === '') return undefined;
 
-    // Only `sub` crosses. The token's `email`, `role`, `app_metadata` and
+    // `sub` crosses, and beside it how strongly the provider says the caller
+    // signed in (C59, LF-4). The token's `email`, `role`, `app_metadata` and
     // `user_metadata` are the provider's business and carry no authority here:
     // membership and role are the database's answer, read inside the serving
     // transaction, not a claim a token can assert.
-    return { provider: SUPABASE_PROVIDER, subject };
+    const assurance = assuranceOf(claims);
+    if (pastAbsoluteLimit(assurance.signedInAt, now())) return 'expired';
+    const sessionId = sessionIdOf(claims);
+    return sessionId === undefined
+      ? { provider: SUPABASE_PROVIDER, subject, assurance }
+      : { provider: SUPABASE_PROVIDER, subject, assurance, sessionId };
   };
 }
+
+/**
+ * The provider's session, `session_id`, which a refresh carries unchanged
+ * (C58): how a person's sessions are told apart, listed and ended. Anything
+ * but a UUID names no session, so a token cannot aim at a session by a
+ * crafted value; a token with none is served as before and simply has no
+ * session to list or end here.
+ */
+function sessionIdOf(claims: Readonly<Record<string, unknown>>): string | undefined {
+  const value = claims['session_id'];
+  return typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : undefined;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+/**
+ * The assurance a verified token carries: `aal`, and from `amr` the time of the
+ * session's first sign-in and of its second factor.
+ *
+ * **The factor time is the `amr` entry, never `iat`.** GoTrue stamps each
+ * method with the time it was performed and copies the list into every token
+ * the session refreshes, so a refresh carries the factor time unchanged and
+ * never renews it (TR-SEC4-6). `iat` moves on every refresh.
+ *
+ * **Anything it cannot read is the lowest level.** An unknown `aal`, an `amr`
+ * that is not a list, a time that is not a whole number, or `aal2` with no
+ * factor entry all read as `aal1` with no factor time, so a malformed claim
+ * grants nothing a missing one would not.
+ */
+function assuranceOf(claims: Readonly<Record<string, unknown>>): Assurance {
+  const methods = Array.isArray(claims['amr']) ? (claims['amr'] as readonly unknown[]) : [];
+  const times = (wanted: ReadonlySet<string>): number | null => {
+    const found = methods
+      .map((entry) => (typeof entry === 'object' && entry !== null ? entry : {}))
+      .filter((entry) => wanted.has(String((entry as Record<string, unknown>)['method'])))
+      .map((entry) => (entry as Record<string, unknown>)['timestamp'])
+      .filter((time): time is number => Number.isSafeInteger(time) && (time as number) > 0);
+    return found.length === 0 ? null : Math.max(...found);
+  };
+  const signedInAt = times(FIRST_FACTOR_METHODS);
+  const factorAt = times(SECOND_FACTOR_METHODS);
+  if (claims['aal'] === 'aal2' && factorAt !== null) {
+    return { level: 'aal2', signedInAt, factorAt };
+  }
+  return { level: 'aal1', signedInAt, factorAt: null };
+}
+
+/**
+ * The session's absolute limit (C58): 12 hours from the first sign-in, set in
+ * `SESSION_ABSOLUTE_SECONDS` and nowhere else, with no idle limit. The first
+ * sign-in is the `amr` first-factor time, which a refresh carries unchanged,
+ * never `iat`, which every refresh moves. A token with no first-sign-in time,
+ * or one more than a minute ahead of this clock, cannot be shown to be inside
+ * the limit, so it is past it: the same `AUTH_SESSION_EXPIRED`, whose answer
+ * is to sign in again.
+ */
+function pastAbsoluteLimit(signedInAt: number | null, now: number): boolean {
+  if (signedInAt === null) return true;
+  const age = now - signedInAt;
+  return age > SESSION_ABSOLUTE_SECONDS || age < -60;
+}
+
+/** GoTrue's `amr` methods that begin a session: the first factor. */
+const FIRST_FACTOR_METHODS: ReadonlySet<string> = new Set([
+  'password',
+  'otp',
+  'magiclink',
+  'email/signup',
+  'recovery',
+  'invite',
+  'oauth',
+  'sso/saml',
+]);
+
+/** The one second factor C59 enrols: the authenticator app. */
+const SECOND_FACTOR_METHODS: ReadonlySet<string> = new Set(['totp']);
 
 /**
  * Whether Hono's verifier rejected a token for its `exp` rather than its
@@ -143,7 +233,7 @@ async function signatureVerifies(token: string, secret: string, checks: Checks):
 }
 
 /** `Authorization: Bearer <token>`, and nothing else counts as one. */
-function bearerOf(header: string | undefined): string | undefined {
+export function bearerOf(header: string | undefined): string | undefined {
   if (header === undefined) return undefined;
   const match = /^Bearer\s+(?<token>[^\s]+)$/iu.exec(header.trim());
   const token = match?.groups?.['token'];

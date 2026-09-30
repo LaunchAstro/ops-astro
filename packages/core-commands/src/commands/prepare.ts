@@ -40,6 +40,7 @@
 import {
   advisoryLock,
   checkAuthority,
+  refuseStaleMoneyStep,
   subjectsOf,
   isUuid,
 } from '../../../core-records/src/index.ts';
@@ -233,7 +234,8 @@ function refuseMalformedIdentifier(
 /**
  * The operands a command writes to a text or jsonb column as the caller sent
  * them: a comment's body, a cancel's reason, a decision's note, a proposal's
- * purpose, currency, payload and step, a handback's report and successor.
+ * purpose, currency, payload and step, a handback's report and successor, a
+ * privacy incident's words (C55), and a legal document version's words (C81).
  *
  * Without this check, each of them could reach its insert holding a NUL or an
  * unpaired surrogate, which the column refuses with a raise. The owed refusal
@@ -247,15 +249,28 @@ function refuseMalformedIdentifier(
  * field key it does not know is `FIELD_UNKNOWN`, as before.
  */
 const FREE_OPERANDS: readonly string[] = [
+  'affected',
   'body',
+  'contract',
   'currency',
+  'dataClass',
+  'deletion',
+  'disclosures',
+  'foundBy',
+  'name',
   'note',
   'payload',
   'purpose',
   'reason',
+  'receives',
   'report',
+  'retention',
+  'service',
   'step',
   'successor',
+  'trainsOnIt',
+  'whatHappened',
+  'where',
 ];
 
 /**
@@ -573,6 +588,11 @@ export async function prepareCommand(
     scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
   });
   if (!authorised.ok) return refused(authorised.refusal);
+  // The one step-up (C59), inside the grant check and straight after it: only
+  // a key in the money set is asked, so a caller without the grant is told
+  // that first, and nothing after this line runs on a stale sign-in.
+  const stale = await refuseStaleMoneyStep(tx, session, declaration);
+  if (stale !== undefined) return refused(stale);
   // A field the row does not describe, after authority as on the agent prefix:
   // a caller without the right is told that first (R4, `external-party`).
   // Against the row itself: a replay prepares with the target left out, and
