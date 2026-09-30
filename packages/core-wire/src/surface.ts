@@ -733,6 +733,13 @@ export const CSRF_HEADER = 'x-ops-astro-csrf';
 export const SESSION_HEADER = 'x-ops-astro-session';
 
 /** The reads, which no caller may reach through the command envelope. */
+/**
+ * The writes an external party (R4) may reach: a comment, only in the client audience, and
+ * opening their own inbox item. `commands/prepare.ts` refuses every other write to a person
+ * without a membership, and `session.capabilities` and discovery read this same list.
+ */
+export const EXTERNAL_WRITES: readonly CommandName[] = ['task.comment', 'inbox.seen'];
+
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(
   (command) => command.kind === 'read',
 ).map((command) => command.name);

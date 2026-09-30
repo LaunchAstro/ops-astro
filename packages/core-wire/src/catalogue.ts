@@ -6,6 +6,7 @@
 
 import {
   COMMAND_SURFACE,
+  EXTERNAL_WRITES,
   PREFIX,
   pathOf,
   type CommandDeclaration,
@@ -171,13 +172,24 @@ export interface HeldGrant {
 
 // Which commands `principal` may call, and where (issue 55). Business-scoped needs business-wide
 // keys; an agent reaches queue and pickup holding nothing (8.2) and never the person-only app.
-// A row asking no grant: a self-scoped write reaches anyone's own rows; a read (the inbox,
-// session.capabilities) is served only to a holder of some live grant, as its handler refuses.
+// A row asking no grant: a self-scoped write reaches a member, and an external party only for
+// EXTERNAL_WRITES; a read (the inbox, session.capabilities) is served only to a holder of some
+// live grant. An external party stands on a live share, which gives record reads only, so no
+// grant at all or a business-wide one proves a membership; `member` says so for a member
+// holding record grants alone.
 export function reachableBy(
   rows: readonly CatalogueRow[],
-  principal: { readonly kind: 'person' | 'agent'; readonly grants: readonly HeldGrant[] },
+  principal: {
+    readonly kind: 'person' | 'agent';
+    readonly grants: readonly HeldGrant[];
+    readonly member?: boolean;
+  },
 ): { readonly command: CommandName; readonly surfaces: readonly string[] }[] {
   const agent = principal.kind === 'agent';
+  const member =
+    principal.member ??
+    (principal.grants.length === 0 ||
+      principal.grants.some((one) => one.scope.kind === 'business'));
   const holds = (key: string, wide: boolean) =>
     principal.grants.some((one) => one.key === key && (!wide || one.scope.kind === 'business'));
   return rows
@@ -186,7 +198,9 @@ export function reachableBy(
       (row) =>
         (agent && row.agent === 'before-pickup') ||
         (row.authority.length === 0
-          ? (row.kind === 'write' && row.authorisedOn === 'self') || principal.grants.length > 0
+          ? row.kind === 'write' && row.authorisedOn === 'self'
+            ? member || EXTERNAL_WRITES.includes(row.command)
+            : principal.grants.length > 0
           : row.authority.every((key) => holds(key, row.authorisedOn === 'business'))),
     )
     .map((row) => ({

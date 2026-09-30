@@ -39,12 +39,18 @@ const TRANSPORTS = new Map([
   // asks where to sign in before there is a session, and hands the app its fetch
   ['main.tsx', ["window.fetch('/api/sign-in')", 'window.fetch.bind(window)']],
 ]);
-// A named call keeps its shape and loses its request: `fetch` and `/api/` read as nothing.
+// A named call keeps its shape and loses its request: `fetch` and `/api/` read as nothing. Its
+// first occurrence in code counts; one on a comment line is passed over (at worst, a false alarm).
+const inComment = (text, at) =>
+  /\/\/|^\s*\*|\/\*/u.test(text.slice(text.lastIndexOf('\n', at) + 1, at));
 const withoutNamed = (text, file) =>
-  (TRANSPORTS.get(file) ?? []).reduce(
-    (rest, call) => rest.replace(call, call.replaceAll('fetch', 'named').replaceAll('/api/', '/')),
-    text,
-  );
+  (TRANSPORTS.get(file) ?? []).reduce((rest, call) => {
+    let at = rest.indexOf(call);
+    while (at !== -1 && inComment(rest, at)) at = rest.indexOf(call, at + 1);
+    if (at === -1) return rest;
+    const named = call.replaceAll('fetch', 'named').replaceAll('/api/', '/');
+    return rest.slice(0, at) + named + rest.slice(at + call.length);
+  }, text);
 const REQUEST_GLOBALS = new Set(['fetch', 'XMLHttpRequest', 'EventSource', 'WebSocket']);
 const REQUEST_METHODS = new Set(['fetch', 'sendBeacon']);
 const GLOBAL_OBJECTS = new Set(['window', 'globalThis', 'self']);
