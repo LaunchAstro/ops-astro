@@ -456,6 +456,11 @@ export interface InternalTaskDetail extends TaskDetail {
 export interface InternalTaskRead {
   readonly ok: true;
   readonly task: InternalTaskDetail;
+  /**
+   * The business's task states in the workflow's order: the status select's
+   * choices, each with the id `task.set_state` takes (Stage 1 adds).
+   */
+  readonly states: readonly TaskStateView[];
 }
 
 /**

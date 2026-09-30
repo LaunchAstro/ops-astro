@@ -54,15 +54,15 @@ const idsOf = async (business: BusinessId): Promise<readonly string[]> =>
 
 const statesIn = (answer: unknown): unknown => (answer as { readonly states?: unknown }).states;
 
+beforeAll(async () => {
+  if (serverUrl !== undefined) await setUp();
+}, 180_000);
+
+afterAll(async () => {
+  if (serverUrl !== undefined) await tearDown();
+});
+
 describe.skipIf(serverUrl === undefined)('Stage 1 adds: the states task.read offers', () => {
-  beforeAll(async () => {
-    await setUp();
-  }, 180_000);
-
-  afterAll(async () => {
-    await tearDown();
-  });
-
   it('carries the business’s five states in the workflow’s order, each with its id', async () => {
     const task = await fresh(alpha, writer, 'a status select');
     const answer = await read(alpha, writer, task.recordId);
@@ -75,9 +75,13 @@ describe.skipIf(serverUrl === undefined)('Stage 1 adds: the states task.read off
 
   it('another business: its task is not found, with none of its states; its own reader gets its own', async () => {
     const foreign = await fresh(bravo, bravoWriter, CANARY);
+    await db.app.withBusiness(bravo, async (tx) => {
+      await grantTo(tx, bravoWriter, 'read');
+    });
     const bravoIds = await idsOf(bravo);
     const refused = await read(alpha, writer, foreign.recordId);
     expect(codeOf(refused as never)).toBe('NOT_FOUND');
+    expect(statesIn(refused)).toBeUndefined();
     const text = JSON.stringify(refused);
     expect(text).not.toContain(CANARY);
     for (const id of bravoIds) expect(text).not.toContain(id);

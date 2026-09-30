@@ -33,6 +33,7 @@ import {
   readTaskDetail,
   resolveTaskId,
 } from './tasks.ts';
+import { readStateChoices } from './task-states.ts';
 import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
@@ -224,7 +225,8 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         session.personId,
       );
       // Not there, or there in another business: one answer, deliberately.
-      return task === undefined ? refuseNotFound() : { ok: true, task };
+      if (task === undefined) return refuseNotFound();
+      return { ok: true, task, states: await readStateChoices(tx, spine.taskStateTypeId) };
     },
   },
   'task.board': {

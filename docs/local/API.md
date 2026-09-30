@@ -1573,6 +1573,11 @@ case (g) carries the rows. The server declares the two answers as
 `TaskReadResult = InternalTaskRead | SharedTaskRead`
 (`packages/core-wire/src/views.ts`), and the web imports that type
 rather than keeping a copy; the two are told apart by the key.
+`InternalTaskRead` also carries `states`: the business's live task states
+in the workflow's order (`position`), each `{ id, key, label,
+machineCategory }`, the status select's choices and the ids `task.set_state`
+takes (`reads/task-states.ts`). It is served only with a found task; a
+refusal, the shared answer and an agent's read carry none.
 
 | Read                   | Route                   | Body                     | Answer                                                                                       | Refusals it can answer                                                                                  |
 | ---------------------- | ----------------------- | ------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
