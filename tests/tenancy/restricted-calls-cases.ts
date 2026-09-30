@@ -71,7 +71,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'live_changes'],
   // 0060: a person's own availability, set by them alone (MP-7-10).
   ['siu', 'person_availability'],
-  // 0059: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
+  // 0061: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
   ['siu', 'person_preferences'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).

@@ -6,7 +6,7 @@
 // conversation window is seven days or more and never past the retention
 // window, which is whole days, zero or more. That ceiling spans two rows, so
 // each command locks both before it compares. The declarations, the agent
-// crossing and 0061 are in `mp-2-11-business-windows-upgrade.test.ts`.
+// crossing and 0063 are in `mp-2-11-business-windows-upgrade.test.ts`.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';

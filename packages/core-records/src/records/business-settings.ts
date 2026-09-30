@@ -84,7 +84,7 @@ export interface SettingDefinition {
  * operations: both change who has to agree before something happens, which is
  * an authority change wearing configuration's clothes — the same category of
  * field the task spine protects. The two windows are owned by a command each
- * too (MP-2-11, 0061): no generic editor exists, and the conversation window's
+ * too (MP-2-11, 0063): no generic editor exists, and the conversation window's
  * ceiling is the retention window (C122-1), a rule across two rows that a
  * generic write could not hold.
  */

@@ -2,7 +2,7 @@
 //
 // MP-2-11's two windows: both declared `settings:manage`, which no agent
 // holds, and the cases that need a world of their own. An agent under a live
-// delegation from a `settings:manage` holder writes neither, and 0061 hands the
+// delegation from a `settings:manage` holder writes neither, and 0063 hands the
 // rows a business installed before this change to their commands, keeping the
 // values the business chose. The rest are in `mp-2-11-business-windows.test.ts`.
 
@@ -81,11 +81,11 @@ it.skipIf(serverUrl === undefined)(
 );
 
 it.skipIf(serverUrl === undefined)(
-  'MP-2-11 business rows: 0061 hands both windows to their commands and keeps their values',
+  'MP-2-11 business rows: 0063 hands both windows to their commands and keeps their values',
   async () => {
     const onDisk = readMigrations('migrations');
-    upgraded = await createEmptyDatabase({ part: 'mp211win0061' });
-    const before = onDisk.filter((migration) => migration.version.slice(0, 4) < '0061');
+    upgraded = await createEmptyDatabase({ part: 'mp211win0063' });
+    const before = onDisk.filter((migration) => migration.version.slice(0, 4) < '0063');
     await applyMigrations(upgraded.admin, before);
     const business = await insertBusiness(upgraded.app, 'early');
     await upgraded.app.withBusiness(business, async (tx) => await installBusinessSettings(tx));

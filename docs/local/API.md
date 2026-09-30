@@ -164,7 +164,7 @@ refusal writes an audit row. A business with no such row is `NOT_FOUND` naming
 more, is `FIELD_VALUE_INVALID`. There is no default, floor or ceiling.
 `tests/commands/purge-retention.test.ts` holds it.
 
-**The two windows are written by a command each** (MP-2-11, 0061):
+**The two windows are written by a command each** (MP-2-11, 0063):
 `settings.set_retention_window` and `settings.set_conversation_window`, under
 `settings:manage`, against the revision `settings.read` handed back. The
 conversation window is seven days or more and never longer than the retention

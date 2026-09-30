@@ -86,7 +86,7 @@ async function awaitBlockedOnLock(
 /** How long the interleaving is given to appear. Generous, and finite. */
 const WITHIN = 10_000;
 
-/** The conversation window and its own command, which owns the row since 0061 (MP-2-11). */
+/** The conversation window and its own command, which owns the row since 0063 (MP-2-11). */
 const WINDOW = {
   key: 'conversation_window_days',
   owningOperation: 'settings.set_conversation_window',

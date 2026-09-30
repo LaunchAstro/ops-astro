@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0061 the conversation and retention windows, owned by a command each
+-- 0063 the conversation and retention windows, owned by a command each
 -- (MP-2-11, U07).
 --
 -- Both rows have been installed since 0009 as `generic`, and nothing could
