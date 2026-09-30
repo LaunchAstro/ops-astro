@@ -16,38 +16,17 @@
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { parseSheet } from './type-census.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const DEFAULT_CSS = `${root}packages/ui/src/styles/1-tokens.css`;
 const DEFAULT_EXPECTED = `${root}tests/surfaces/fixtures/mp-1-1-tokens.json`;
 
-/**
- * The declarations of the first block whose selector is exactly `selector`:
- * a block opens at the start of the sheet or after a `}`, and its selector is
- * compared as text, never built into a pattern.
- */
+/** The custom properties of the first top-level block whose selector is exactly `selector`. */
 function block(css, selector) {
-  const bare = css.replaceAll(/\/\*[\s\S]*?\*\//gu, '');
-  const chunk = bare.split('}').find((part) => {
-    const open = part.indexOf('{');
-    return open >= 0 && part.slice(0, open).trim() === selector;
-  });
-  if (chunk === undefined) return new Map();
-  const body = chunk.slice(chunk.indexOf('{') + 1);
-  const declared = new Map();
-  for (const line of body.split(';')) {
-    const at = line.indexOf(':');
-    const name = line.slice(0, at).trim();
-    if (!name.startsWith('--')) continue;
-    declared.set(
-      name,
-      line
-        .slice(at + 1)
-        .replaceAll(/\s+/gu, ' ')
-        .trim(),
-    );
-  }
-  return declared;
+  const rule = parseSheet(css).find((one) => one.selector === selector && one.context === '');
+  const tokens = (rule?.decls ?? []).filter(({ prop }) => prop.startsWith('--'));
+  return new Map(tokens.map(({ prop, value }) => [prop, value]));
 }
 
 /** Every declared token with its references substituted, in one theme. */
