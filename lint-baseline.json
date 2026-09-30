@@ -1,6 +1,5 @@
 {
   "rules": {
-    "eslint(eqeqeq)": 1,
     "eslint(max-classes-per-file)": 1,
     "eslint(max-lines-per-function)": 625,
     "eslint(max-lines)": 149,
@@ -9,7 +8,7 @@
     "eslint(no-loop-func)": 34,
     "eslint(no-negated-condition)": 12,
     "eslint(no-promise-executor-return)": 13,
-    "eslint(require-await)": 97,
+    "eslint(require-await)": 96,
     "eslint(require-unicode-regexp)": 6,
     "oxc(branches-sharing-code)": 2,
     "unicorn(escape-case)": 2,
@@ -18,11 +17,10 @@
     "unicorn(no-immediate-mutation)": 2,
     "unicorn(no-negated-condition)": 12,
     "unicorn(no-useless-promise-resolve-reject)": 1,
-    "unicorn(no-useless-undefined)": 84,
+    "unicorn(no-useless-undefined)": 82,
     "unicorn(prefer-dom-node-dataset)": 66,
     "unicorn(prefer-import-meta-properties)": 5,
     "unicorn(prefer-native-coercion-functions)": 1,
-    "unicorn(prefer-query-selector)": 1,
     "unicorn(prefer-single-call)": 1,
     "unicorn(prefer-string-replace-all)": 7
   }
