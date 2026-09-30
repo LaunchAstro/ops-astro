@@ -22,10 +22,11 @@ export function useMark<Box>(
 } {
   const holder = useRef<HTMLDivElement | null>(null);
   const [box, setBox] = useState<Box | null>(null);
-  const first = useRef<string | null | undefined>(undefined);
+  // The first lit key seen; null until there is one.
+  const first = useRef<string | null>(null);
   const moved = useRef(false);
-  if (first.current === undefined && key !== null) first.current = key;
-  if (key !== null && first.current !== undefined && key !== first.current) moved.current = true;
+  if (first.current === null && key !== null) first.current = key;
+  if (key !== null && first.current !== null && key !== first.current) moved.current = true;
   useLayoutEffect(() => {
     const item = holder.current?.querySelector<HTMLElement>(select) ?? null;
     setBox(item === null ? null : measure(item));

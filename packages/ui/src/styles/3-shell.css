@@ -279,8 +279,9 @@
   padding: 0.4rem var(--s-4);
   background: var(--app-chrome);
   color: var(--on-dark);
-  font-family: var(--font-sans);
-  font-size: 13px;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .appbar[data-face='client'] {
   background: var(--client-brand);
@@ -329,17 +330,16 @@
   margin-left: auto;
   padding: 0 0.25rem;
   border: 1px solid color-mix(in oklch, var(--on-dark) 20%, transparent);
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  font-weight: 300;
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
 }
 .appbar__preview {
   flex: 1;
   color: color-mix(in oklch, var(--on-dark) 72%, transparent);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   text-align: right;
   white-space: nowrap;
 }
@@ -381,7 +381,6 @@
   box-sizing: border-box;
   border: 0;
   background: none;
-  font-family: var(--font-sans);
   text-align: start;
   text-decoration: none;
 }
@@ -399,12 +398,15 @@
 }
 .who__name {
   color: var(--text);
-  font-size: var(--text-sm);
-  font-weight: 600;
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
 }
 .who__email {
   color: var(--text-muted);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   overflow-wrap: anywhere;
 }
 
@@ -420,10 +422,9 @@
   border: 0;
   background: none;
   color: color-mix(in oklch, var(--on-dark) 60%, transparent);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 300;
-  text-transform: uppercase;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   cursor: pointer;
 }
 .facesw button[aria-pressed='true'] {
@@ -441,7 +442,9 @@
   border: 1px solid color-mix(in oklch, var(--on-dark) 22%, transparent);
   background: none;
   color: var(--on-dark);
-  font-size: 13px;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -479,27 +482,26 @@
   height: 22px;
   background: var(--accent);
   color: var(--on-dark);
-  font-family: var(--font-display);
-  font-size: 12px;
-  font-weight: 600;
+  font: var(--type-rail-label);
+  letter-spacing: var(--type-rail-label-tracking);
+  text-transform: var(--type-rail-label-case);
 }
 .appbar[data-face='client'] .clienthdr__mark {
   background: color-mix(in oklch, var(--on-dark) 20%, transparent);
 }
 .clienthdr__name {
   overflow: hidden;
-  font-family: var(--font-display);
-  font-size: 0.9rem;
-  font-weight: 600;
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 .clienthdr__tag {
   color: color-mix(in oklch, var(--on-dark) 46%, transparent);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   white-space: nowrap;
 }
 @media (width <= 900px) {
@@ -551,8 +553,9 @@
   padding: 0.65rem 0 0.525rem;
   border-bottom: 2px solid transparent;
   color: var(--text-2);
-  font-size: 0.875rem;
-  line-height: 1.55;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -561,7 +564,9 @@
 }
 .tabbar__t[aria-current='page'] {
   color: var(--text);
-  font-weight: var(--weight-medium);
+  font: var(--type-body-strong);
+  letter-spacing: var(--type-body-strong-tracking);
+  text-transform: var(--type-body-strong-case);
 }
 .tabmark {
   position: absolute;
@@ -930,8 +935,9 @@ button.appbar__search:hover {
   border-bottom: 1px solid var(--border);
   background: transparent;
   color: var(--text);
-  font: inherit;
-  font-size: 1rem;
+  font: var(--type-body-lg);
+  letter-spacing: var(--type-body-lg-tracking);
+  text-transform: var(--type-body-lg-case);
 }
 .palette__field:focus-visible {
   outline: 2px solid var(--accent);
@@ -958,8 +964,9 @@ button.appbar__search:hover {
 .palette__key {
   flex: none;
   color: var(--ink-faint);
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
 }
 .palette__none {
   margin: 0;

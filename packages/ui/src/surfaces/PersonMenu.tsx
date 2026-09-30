@@ -6,9 +6,9 @@
 // Sign out. Not drawn in the mockup, so the look is those two kit parts and
 // nothing of its own.
 //
-// The circle and the menu use the kit's own markup (`av av--person`, `menu`,
-// `menu__opt`). Until the kit's `Avatar` and menu land (MP-1-3) their rules
-// stand in from `styles/2b-kit-standin.css`, which goes when they do.
+// The circle is the kit's `Avatar` (MP-1-3) and the menu its `menu` and
+// `menu__opt` rules; the button carries the name, so the circle is hidden from
+// it.
 
 import {
   useEffect,
@@ -19,6 +19,7 @@ import {
   type ReactElement,
   type RefObject,
 } from 'react';
+import { Avatar } from '../kit/marks.tsx';
 
 export interface PersonMenuProps {
   /** The person's own name, or null while it is unknown; the email stands in. */
@@ -30,14 +31,6 @@ export interface PersonMenuProps {
   readonly onSettings: () => void;
   readonly onSignOut: () => void;
 }
-
-const initials = (name: string): string =>
-  name
-    .split(/\s+/u)
-    .filter((part) => part !== '')
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('');
 
 export function PersonMenu(props: PersonMenuProps): ReactElement {
   const [open, setOpen] = useState(false);
@@ -57,8 +50,8 @@ export function PersonMenu(props: PersonMenuProps): ReactElement {
           setOpen((was) => !was);
         }}
       >
-        <span className="av av--person" aria-hidden="true">
-          {initials(shown)}
+        <span className="who__av" aria-hidden="true">
+          <Avatar name={shown} />
         </span>
       </button>
       {open ? (

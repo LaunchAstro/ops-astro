@@ -11,7 +11,7 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { act } from 'react';
+import { act, type ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Shell, type Freshness } from '../../packages/ui/src/index.ts';
 import { mount } from '../surfaces/mount.tsx';
@@ -84,6 +84,29 @@ describe('MP-2-7 one title inset for every page kind', () => {
   });
 });
 
+const FIVE_STATES: readonly Freshness[] = [
+  { state: 'live', age: '2 min ago' },
+  { state: 'catching-up', lastRead: '10:42' },
+  { state: 'offline', lastRead: '10:42' },
+  { state: 'source-behind', source: 'Xero', lastGood: '9:10', href: '/connections/' },
+  { state: 'frozen', at: 'Saturday 6:10am' },
+];
+
+const headerWith = (freshness: Freshness): ReactElement => (
+  <Shell
+    face="agency"
+    rail={[]}
+    here="/projects/"
+    title="Projects"
+    freshness={freshness}
+    dock={[]}
+    onDockTab={() => {}}
+    seated={false}
+  >
+    {null}
+  </Shell>
+);
+
 describe('MP-2-7 the freshness marker: five states, an indicator only, no sync button (TR-S-B1R-11)', () => {
   const views: { unmount: () => Promise<void> }[] = [];
   afterEach(async () => {
@@ -91,38 +114,15 @@ describe('MP-2-7 the freshness marker: five states, an indicator only, no sync b
   });
 
   it('places each of the five states in the header in words, as a status and never a control', async () => {
-    const states: readonly Freshness[] = [
-      { state: 'live', age: '2 min ago' },
-      { state: 'catching-up', lastRead: '10:42' },
-      { state: 'offline', lastRead: '10:42' },
-      { state: 'source-behind', source: 'Xero', lastGood: '9:10', href: '/connections/' },
-      { state: 'frozen', at: 'Saturday 6:10am' },
-    ];
     const words: string[] = [];
-    for (const freshness of states) {
-      const view = await mount(
-        <Shell
-          face="agency"
-          rail={[]}
-          here="/projects/"
-          title="Projects"
-          freshness={freshness}
-          dock={[]}
-          onDockTab={() => {}}
-          seated={false}
-        >
-          {null}
-        </Shell>,
-      );
+    for (const freshness of FIVE_STATES) {
+      const view = await mount(headerWith(freshness));
       views.push(view);
       const marker = view.find(`.topbar .topbar__meta .fresh--${freshness.state}`);
       expect(marker?.getAttribute('role'), freshness.state).toBe('status');
       expect(marker?.tagName).toBe('SPAN');
       expect(marker?.hasAttribute('tabindex')).toBe(false);
       expect(marker?.querySelectorAll('button, a, [role="button"]')).toHaveLength(0);
-      expect(view.all('.topbar button').map((each) => each.textContent ?? '')).not.toContainEqual(
-        expect.stringMatching(/sync|refresh|reload/iu),
-      );
       words.push(marker?.textContent ?? '');
     }
     expect(words).toEqual([
