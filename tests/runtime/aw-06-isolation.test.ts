@@ -25,12 +25,14 @@ import {
   asAgent,
   asPerson,
   codeOf,
+  createTask,
   handbackBody,
   liveWork,
   type Work,
 } from './schedules-harness.ts';
 import { cq8World } from './cq-8-world.ts';
 import {
+  acceptPlanOn,
   graphIn,
   noDatabase,
   readAs,
@@ -47,11 +49,11 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 useAw06World('aw06iso');
 
 /** The three crossings, each beside its own positive control. */
-async function crossings(crossed: Work, own: Work) {
+async function crossings(crossed: Work, own: Work, key = 'aw06') {
   const world = cq8World(w.s);
 
   // 1. Another business: its member reads its own task, and names this one.
-  const other = await world.party('aw06-other');
+  const other = await world.party(`${key}-other`);
   const otherTask = other.tasks[0]!;
   const otherOwn = await readIn(other.id, other.member, otherTask.id);
   expect(isCommandRefusal(otherOwn), 'other business, own task').toBe(false);
@@ -63,8 +65,8 @@ async function crossings(crossed: Work, own: Work) {
     w.s.business,
     async (tx) => await grantTo(tx, w.s.decider, 'share'),
   );
-  const first = await world.client(w.s.business, w.s.decider, 'aw06-c1', own.taskId);
-  const second = await world.client(w.s.business, w.s.decider, 'aw06-c2', crossed.taskId);
+  const first = await world.client(w.s.business, w.s.decider, `${key}-c1`, own.taskId);
+  const second = await world.client(w.s.business, w.s.decider, `${key}-c2`, crossed.taskId);
   const clientOwn = await executeRead(w.s.db.app, w.s.business, first.presented, {
     read: 'task.read',
     recordId: own.taskId,
@@ -120,6 +122,52 @@ it('AW-06 isolation: another business, another client in the same business and a
   // The other business's answer about its own task names nothing of this one's.
   const foreignOwn = JSON.stringify(otherOwn);
   for (const needle of hidden) expect(foreignOwn.includes(needle), needle).toBe(false);
+});
+
+it('AW-06 planned isolation: a bound plan is projected to its own readers only; the three crossings see no step, record or canary, and another business cannot bind a record to this decision', async () => {
+  const canary = `aw06-plan-canary-${randomUUID()}`;
+  const taskId = await createTask(w.s, `aw06-planned-crossed-${randomUUID()}`);
+  const plan = await acceptPlanOn(taskId, {
+    steps: [{ key: 'canary', title: canary, after: [] }],
+  });
+  const own = await liveWork(w.s, `aw06-planned-own-${randomUUID()}`, 1_000);
+
+  // Positive control: the owner reads the plan, canary title and all.
+  const control = graphIn(await readAs(w.s.decider, taskId));
+  expect(control).toMatchObject({ plan: 'bound', planRecordId: plan.planRecordId });
+  expect(JSON.stringify(control)).toContain(canary);
+
+  const crossed = { taskId, picked: { runId: plan.runId } } as unknown as Work;
+  const { otherOwn, cases } = await crossings(crossed, own, 'aw06plan');
+  const hidden = [canary, taskId, plan.runId, plan.planRecordId, plan.decisionId];
+  for (const [name, answer, code] of cases) {
+    expect(codeOf(answer as never), name).toBe(code);
+    const body = JSON.stringify(answer);
+    expect(body, name).not.toContain('"steps"');
+    const needles = name === 'client to client, back' ? [own.taskId] : hidden;
+    for (const needle of needles) expect(body.includes(needle), `${name}: ${needle}`).toBe(false);
+  }
+  const foreignOwn = JSON.stringify(otherOwn);
+  for (const needle of hidden) expect(foreignOwn.includes(needle), needle).toBe(false);
+  expect(graphIn(otherOwn)?.plan).toBe('unbound');
+
+  // A write across: the other business's role names this business's decision,
+  // gate and run for a record of its own. Nothing is written.
+  const other = await cq8World(w.s).party('aw06-plan-writer');
+  const forged = w.s.db.app.withBusiness(other.id, async (tx) => {
+    await tx.query(
+      `insert into public.plan_records (business_id, id, gate_id, decision_id, run_id,
+         plan_text, text_digest, record, record_digest, bound_by_actor_id)
+       values ($1, $2, $3, $4, $5, 'forged', repeat('0', 64), '{}'::jsonb, repeat('0', 64), $6)`,
+      [other.id, randomUUID(), plan.gateId, plan.decisionId, plan.runId, other.member.actorId],
+    );
+  });
+  await expect(forged).rejects.toThrow(/plan_records_(gate|decision|run|actor)_fkey|violates/u);
+  const stored = await w.s.db.admin.execute<{ n: string }>(
+    `select count(*)::text as n from public.plan_records where decision_id = $1`,
+    [plan.decisionId],
+  );
+  expect(stored).toEqual([{ n: '1' }]);
 });
 
 /** Every payload the live channel carries while `act` runs, until the topics it returns are heard. */

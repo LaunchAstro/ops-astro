@@ -49,10 +49,11 @@ const onDisk = readMigrations('migrations');
 const THROUGH_0032 = (version: string): boolean => version.slice(0, 4) <= '0032';
 // And T2h's 0036 alerts: that runtime raises an alert when it hands back.
 // And AW-11's 0056 delegation parent: that runtime's pickup mints with it.
-// Neither reads anything 0033 to 0035 add, and the runner applies whatever is
+// And AW-06's 0061 plan step key: that runtime's proposal writes its step with it.
+// None reads anything 0033 to 0035 add, and the runner applies whatever is
 // pending, so the upgrade below still applies 0033 onto these rows.
 const SEEDED = (version: string): boolean =>
-  THROUGH_0032(version) || ['0036', '0056'].includes(version.slice(0, 4));
+  THROUGH_0032(version) || ['0036', '0056', '0061'].includes(version.slice(0, 4));
 
 /** Proposes work on the task and approves it, answering the reservation the approval made. */
 async function approvedReservation(

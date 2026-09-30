@@ -70,6 +70,12 @@ export {
   type PlanStep,
 } from './plan-record.ts';
 export {
+  PLAN_CANDIDATES,
+  projectedPlan,
+  readProjectedPlan,
+  type ProjectedPlan,
+} from './plan-binding.ts';
+export {
   configuredInstructionSource,
   directorySource,
   INSTRUCTION_ROOT_VARIABLE,
