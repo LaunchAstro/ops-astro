@@ -17,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import { plainAlert, type AlertKind, type Where } from './catalogue.ts';
 import { createDetector, type SecuritySignal } from './detect.ts';
+// What a sink off the machine cannot be: the watcher's own rule.
+import { UNREACHABLE } from '../../worker/heartbeat.ts';
 
 export type Frame = { filename: string; lineno: number; in_app: true };
 
@@ -195,13 +197,6 @@ export function alertEvent(
   const message = { formatted: plainAlert(kind, where).text };
   return { ...base('warning', kind, where, release, id), message };
 }
-
-// What a watcher or a sink off the machine cannot be: loopback, private, shared,
-// link-local (the metadata address), IPv6 literals and local names. URL has
-// already normalised case and numeric forms (2130706433 and 0x7f.0.0.1 read as
-// 127.0.0.1).
-export const UNREACHABLE: RegExp =
-  /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|169\.254\.|0\.|\[)|(^|\.)(localhost|local|internal|lan)\.?$/u;
 
 const NOT_A_DSN =
   'OPS_ERROR_SINK_DSN is not a DSN at a public https address (https://<key>@<host>/<project>).';
