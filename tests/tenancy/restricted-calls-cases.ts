@@ -51,6 +51,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // AW-13: the export's cursor moves; its gaps are facts and never rewritten.
   ['siu', 'trace_export_cursors'],
   ['si', 'trace_export_gaps'],
+  // AW-13: a retention batch is a fact, never rewritten.
+  ['si', 'trace_expiry_batches'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
   // AW-02: a historical run is never rewritten; the application moves its

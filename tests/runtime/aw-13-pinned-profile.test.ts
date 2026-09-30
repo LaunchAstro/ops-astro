@@ -239,3 +239,49 @@ it('AW-13 pinned profile: a version, digest, service set or environment that dri
     expect(refusals.join('\n'), name).toMatch(reason);
   }
 });
+
+/** The blob store's start command as one text, whether the model holds a string or a list. */
+const commandOf = (model: Model): string => {
+  const command = model.services['minio']?.['command'];
+  return Array.isArray(command) ? command.join(' ') : String(command);
+};
+
+const RULE = 'mc ilm rule add --expire-days 14 --prefix events/ local/langfuse';
+
+it('AW-13 pinned profile: the raw event bucket’s 14-day lifecycle rule is required, on the prefix the worker writes', () => {
+  const model = JSON.parse(readFileSync(join(PROFILE, 'profile.resolved.json'), 'utf8')) as Model;
+  expect(commandOf(model)).toContain(RULE);
+  const withCommand =
+    (edit: (command: string) => string) =>
+    (_dir: string, drift: Model): void => {
+      drift.services['minio'] = {
+        ...drift.services['minio'],
+        command: ['-c', edit(commandOf(drift).replace(/^-c /u, ''))],
+      };
+    };
+  const drifts: [string, (dir: string, model: Model) => void][] = [
+    ['no rule', withCommand((command) => command.replace(RULE, 'true'))],
+    ['30 days', withCommand((command) => command.replace('--expire-days 14', '--expire-days 30'))],
+    ['1 day', withCommand((command) => command.replace('--expire-days 14', '--expire-days 1'))],
+    [
+      'another prefix',
+      withCommand((command) => command.replace('--prefix events/', '--prefix media/')),
+    ],
+    ['no prefix', withCommand((command) => command.replace('--prefix events/ ', ''))],
+    ['another bucket', withCommand((command) => command.replace('local/langfuse', 'local/other'))],
+    ['a failed rule ignored', withCommand((command) => command.replace(RULE, `${RULE} || true`))],
+    [
+      'a second rule',
+      withCommand((command) => `${command} && mc ilm rule add --expire-days 3650 local/langfuse`),
+    ],
+    [
+      'the worker writes elsewhere',
+      (_dir, drift) => {
+        setting(drift, worker, 'LANGFUSE_S3_EVENT_UPLOAD_PREFIX', 'raw/');
+      },
+    ],
+  ];
+  for (const [name, change] of drifts) {
+    expect(profileRefusals(drifted(change)).join('\n'), name).toMatch(/minio lifecycle rule/u);
+  }
+});
