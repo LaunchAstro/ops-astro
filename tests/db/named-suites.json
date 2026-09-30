@@ -291,6 +291,7 @@
     "tests/broker/aw-01-broker-fair-share.test.ts",
     "tests/broker/aw-01-conversation-call.test.ts",
     "tests/runtime/aw-01-durable-limit.test.ts",
+    "tests/runtime/aw-01-occurrence-run.test.ts",
     "tests/runtime/aw-02-pins.test.ts",
     "tests/runtime/aw-02-isolation.test.ts",
     "tests/runtime/aw-02-lease-race.test.ts",
