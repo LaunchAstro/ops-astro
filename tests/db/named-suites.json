@@ -378,6 +378,7 @@
     "tests/automations/c52a-commands.test.ts",
     "tests/automations/c52a-authority.test.ts",
     "tests/onboarding/c41-a-onboarding.test.ts",
+    "tests/onboarding/c41-a-inbox-raise.test.ts",
     "tests/api/mp-6-1-isolation.test.ts",
     "tests/api/mp-6-4-isolation.test.ts",
     "tests/api/aw-03-address.test.ts",
