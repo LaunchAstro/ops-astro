@@ -65,13 +65,14 @@ describe('S0-2 uptime check off the machine for staging and production', () => {
 });
 
 function uptimeCheckOffCases1() {
-  it('staging alone: its web page, its API health and its backup heartbeat, and the sink’s own health', () => {
+  it('staging alone: its web page, its API health, its backup and forwarder heartbeats, and the sink’s own health', () => {
     const { monitors } = plan(BASE);
     expect(monitors.map((m) => [m.environment ?? '-', m.watch, m.type, m.url ?? '-'])).toEqual([
       ['staging', 'web', 'http', 'https://staging.example.test/'],
       ['staging', 'api', 'http', 'https://staging.example.test/api/health'],
       ['staging', 'backup', 'heartbeat', '-'],
       ['staging', 'restore', 'heartbeat', '-'],
+      ['staging', 'forwarder', 'heartbeat', '-'],
       ['-', 'error sink', 'http', 'https://example.test/_health/'],
     ]);
   });
@@ -83,6 +84,7 @@ function uptimeCheckOffCases1() {
     ).toEqual([
       'https://ops.example.test/',
       'https://ops.example.test/api/health',
+      'heartbeat',
       'heartbeat',
       'heartbeat',
     ]);
