@@ -44,6 +44,8 @@ export const READ_NAMES = [
   'task.search',
   // Who is signed in, for the person menu (C23).
   'session.person',
+  // The caller's own preferences (MP-2-11a); MP-2-11 draws them.
+  'preference.read',
 ] as const;
 
 /**

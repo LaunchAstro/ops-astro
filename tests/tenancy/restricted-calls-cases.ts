@@ -28,6 +28,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
+  // 0033: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
+  ['siu', 'person_preferences'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],

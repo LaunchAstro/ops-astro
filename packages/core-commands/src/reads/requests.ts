@@ -108,6 +108,8 @@ export interface ReadOperands {
   readonly 'task.receipt': { readonly attemptId: string };
   /** Who is signed in: the caller's own name (C23). It takes no grant either. */
   readonly 'session.person': NoOperands;
+  /** The caller's own saved preferences (MP-2-11a). */
+  readonly 'preference.read': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -135,4 +137,5 @@ export type ReadResult =
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
-  | SessionPersonResult;
+  | SessionPersonResult
+  | { readonly ok: true; readonly preferences: Readonly<Record<string, unknown>> };

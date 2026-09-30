@@ -52,6 +52,10 @@ vi.mock('../../packages/core-commands/src/commands/session-end.ts', async (origi
   ...(await original<object>()),
   endOwnSession: recorder('endOwnSession'),
 }));
+vi.mock('../../packages/core-commands/src/commands/preference-save.ts', async (original) => ({
+  ...(await original<object>()),
+  saveOwnPreference: recorder('saveOwnPreference'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-write.ts', async (original) => ({
   ...(await original<object>()),
   createTask: recorder('createTask'),
@@ -147,6 +151,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.write_off': ['recordId', 'attemptId'],
   'delegation.revoke': [],
   'grant.revoke': [],
+  'preference.save': [],
   'session.end': [],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
@@ -170,6 +175,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'delegation.revoke',
   'grant.revoke',
   'person.list',
+  'preference.read',
+  'preference.save',
   'preset.plan',
   'session.capabilities',
   'session.end',
@@ -300,6 +307,7 @@ const REQUESTS: readonly CommandRequest[] = [
     reason: 'why',
   },
   { command: 'session.end', operationId: 'op' },
+  { command: 'preference.save', operationId: 'op', preference: 'appearance', value: 'dark' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -348,6 +356,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
   'session.end': ['endOwnSession', 'request'],
+  'preference.save': ['saveOwnPreference', 'appearance', 'dark'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -387,7 +396,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same thirty from an expected revision', () => {
+  it('exempts the same thirty-two from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

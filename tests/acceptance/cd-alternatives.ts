@@ -24,7 +24,7 @@ export const CASE = {
 } as const;
 
 /**
- * The nine operations that name no identifier, each with a minimal valid body.
+ * The eleven operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -45,6 +45,9 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   // The person menu's two (C23): the caller's own account, naming nobody.
   ['session.person', {}],
   ['session.end', {}],
+  // The caller's own preferences (MP-2-11a).
+  ['preference.read', {}],
+  ['preference.save', { preference: 'appearance', value: 'dark' }],
 ];
 
 /** The sixteen identifier-bearing operations outside (c) and (d): operand and executed case. */

@@ -77,7 +77,9 @@ describe('the surface as a table', () => {
     // revocation writes, and the authority it asks is still on tasks.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget)\/[a-z_]+$/u.test(path),
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|preference)\/[a-z_]+$/u.test(
+          path,
+        ),
       ),
     ).toBe(true);
   });
@@ -86,6 +88,7 @@ describe('the surface as a table', () => {
 /** The reads the surface declares, sorted. */
 const DECLARED_READS = [
   'person.list',
+  'preference.read',
   'preset.plan',
   'session.capabilities',
   'session.person',
@@ -99,7 +102,7 @@ const DECLARED_READS = [
 ];
 
 describe('the surface as a table', () => {
-  it('declares the eleven reads as reads, and everything else as a write', () => {
+  it('declares the twelve reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

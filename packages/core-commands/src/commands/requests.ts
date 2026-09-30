@@ -266,6 +266,12 @@ export type CommandRequest =
       readonly attemptId: unknown;
       readonly amountMinor: unknown;
       readonly reason: unknown;
+    } & Envelope)
+  // A key of the caller's own preference row (MP-2-11a).
+  | ({
+      readonly command: 'preference.save';
+      readonly preference: string;
+      readonly value: unknown;
     } & Envelope);
 
 /**

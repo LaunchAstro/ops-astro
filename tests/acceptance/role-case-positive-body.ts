@@ -140,7 +140,12 @@ export function createPositiveBody(
       case 'session.capabilities':
       case 'session.person':
       case 'session.end':
+      // The caller's own preferences (MP-2-11a): a live grant of any kind, as
+      // `session.capabilities` asks, which the admin holds.
+      case 'preference.read':
         return { body: {} };
+      case 'preference.save':
+        return { body: { preference: 'appearance', value: 'dark' } };
       case 'task.search':
         // A word no audit row carries, so digest-only is checked on it.
         return { body: { query: 'brochure' } };

@@ -226,6 +226,25 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           );
           continue;
         }
+        if (declaration.name === 'preference.read' && grants !== undefined) {
+          // The caller's own preferences (MP-2-11a): self-scoped, but asking a
+          // live grant of any kind, as `session.capabilities` does. `noah`,
+          // holding nothing, is refused; a member holding any grant is served
+          // their own row, which names nobody else.
+          // eslint-disable-next-line no-await-in-loop
+          const own = await call(
+            harness.world.api,
+            personPath('alpha', pathOf(declaration.name)),
+            harness.probeBody(declaration),
+            bearer(caller.token),
+          );
+          const expected = grants.size === 0 ? refusal('SCOPE_NOT_GRANTED') : SUCCESS;
+          observe(caller.name, 'e-no-grant', declaration.name, own, expected);
+          expect(JSON.stringify(own.body), caller.name).not.toContain(
+            String(harness.world.ada.personId),
+          );
+          continue;
+        }
         if (declaration.authorisedOn === 'self' && grants !== undefined) {
           // The person menu's two (C23): `account:write` and the caller's own
           // name are every signed-in person's, on their own account only, so a

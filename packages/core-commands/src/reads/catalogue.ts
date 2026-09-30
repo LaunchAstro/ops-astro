@@ -14,7 +14,7 @@
 // `COMMAND_SURFACE` row: that is what the route generator and the surface
 // inventory read. This row says only how the check is asked.
 
-import { planPresetSync, isUuid } from '../../../core-records/src/index.ts';
+import { planPresetSync, isUuid, readPreferences } from '../../../core-records/src/index.ts';
 import { readAlerts, readOutages } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
@@ -415,7 +415,24 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       person: { name: await readOwnName(tx, session.personId) },
     }),
   },
+  // The caller's own preferences (MP-2-11a): the query names the caller, so
+  // nothing else is reachable. A caller holding no live grant is refused.
+  'preference.read': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'self',
+    outsiderNotFound: false,
+    serve: async (tx, session) =>
+      (await holdsAnyGrant(tx, session))
+        ? { ok: true, preferences: await readPreferences(tx, session.personId) }
+        : NO_GRANT_AT_ALL,
+  },
 };
+
+async function holdsAnyGrant(tx: TenantQuery, session: Session): Promise<boolean> {
+  return (await readCapabilities(tx, session)).grants.length > 0;
+}
 
 /** Whether `id` names a live task in the caller's business: `task.move`'s own check. */
 async function liveTask(tx: TenantQuery, taskTypeId: string, id: string): Promise<boolean> {

@@ -14,7 +14,9 @@
 // 3. **Authority.** Checked inside the serving transaction through T1c's
 //    grants, so a revocation bites on the next call rather than soon.
 // 4. **The audit event.** Written on every attempt: applied, refused,
-//    replayed, and the ones that raised.
+//    replayed, and the ones that raised. The one exception is an applied
+//    attempt on a row the surface declares not audited (a person's own
+//    preference, CS-2.8), and the replay of one; its refusals are audited.
 // 5. **Atomicity of a refusal.** The handler's writes sit inside a savepoint
 //    that is rolled back the moment it refuses, so a command cannot half-apply
 //    and then say no. That is a mechanism rather than a convention: a handler
@@ -376,6 +378,9 @@ async function replay(
     const { refusal, attempted } = released;
     return await settle(tx, caller, request, digest, refusal, 'registered', attempted);
   }
+  if (!isCommandRefusal(stored) && !declarationOf(request.command).audited) {
+    return released ?? stored;
+  }
   await writeAuditEvent(tx, {
     actorId: caller.actorId,
     command: request.command,
@@ -465,6 +470,7 @@ async function attempt(
     };
     await register(tx, session, request, digest, handle, outcome.recordId);
     await tx.query('release savepoint command_attempt');
+    if (!declaration.audited) return handle;
     await writeAuditEvent(tx, {
       actorId: session.actorId,
       command: request.command,
