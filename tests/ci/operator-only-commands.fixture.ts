@@ -5,7 +5,7 @@
 // docker and launchctl log every call, and the marks it would leave.
 
 import { spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
   chmodSync,
   mkdirSync,
@@ -17,7 +17,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll } from 'vitest';
+import { afterAll, beforeAll } from 'vitest';
 import { outputDigest } from '../../scripts/ops/build-output.ts';
 
 export const CANARY = 'canary-7c2f41-operator-secret';
@@ -39,7 +39,9 @@ export const STAGED = '0123456789ab';
 
 export const LINE = 'Tried the task page and the approval queue on staging; both behave.';
 
-export const scratch: string = mkdtempSync(join(tmpdir(), 's0-1e-'));
+// Made by the file's first hook, so a file whose tests all skip leaves no folder (temp guard).
+export const scratch: string = join(tmpdir(), `s0-1e-${randomBytes(6).toString('hex')}`);
+beforeAll(() => mkdirSync(scratch, { mode: 0o700 }));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 /** A PATH whose docker and launchctl append every call to `calls` and answer as the live manager. */

@@ -6,10 +6,10 @@
 // refuses every call, and one carried archive in a folder of its own.
 
 import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll } from 'vitest';
+import { afterAll, beforeAll } from 'vitest';
 
 export type Archive = { takenAt: string; sha256: string; body: Buffer };
 export type Receipt = Record<string, unknown>;
@@ -61,7 +61,9 @@ export const scope: { business: string; client: string; person: string } = {
 /** A refusal message that names no scratch folder or canary. */
 export const NAMES_NOTHING: RegExp = /^(?!.*(?:s0-3e-|canary-)).*$/u;
 
-export const scratch: string = mkdtempSync(join(tmpdir(), 's0-3e-'));
+// Made by the file's first hook, so a file whose tests all skip leaves no folder (temp guard).
+export const scratch: string = join(tmpdir(), `s0-3e-${randomBytes(6).toString('hex')}`);
+beforeAll(() => mkdirSync(scratch, { mode: 0o700 }));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 /** A folder of its own under the suite's scratch folder. */

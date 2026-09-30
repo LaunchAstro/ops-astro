@@ -5,10 +5,11 @@
 // store's drills, a receipt carried back, --record, and a new backup exported
 // by the appointed operator's own store login.
 
-import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { beforeAll } from 'vitest';
 import {
   BACKUP,
   keys,
@@ -48,7 +49,9 @@ export const drillModule = async (): Promise<DrillModule> => {
   };
 };
 
-export const scratch: string = mkdtempSync(join(tmpdir(), 's0-3e-db-'));
+// Made by the file's first hook, so a file whose tests all skip leaves no folder (temp guard).
+export const scratch: string = join(tmpdir(), `s0-3e-db-${randomBytes(6).toString('hex')}`);
+beforeAll(() => mkdirSync(scratch, { mode: 0o700 }));
 export { operator };
 export const gateOf = (personId: string): Receipt => ({
   ok: true,

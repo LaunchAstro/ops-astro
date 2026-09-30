@@ -5,10 +5,11 @@
 // manager and the callers.
 
 import { spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -17,7 +18,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, expect } from 'vitest';
+import { afterAll, beforeAll, expect } from 'vitest';
 import { signBearer, signForged, TEST_ISSUER } from '../support/sign-in.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
@@ -50,7 +51,9 @@ export const STAGED = '0123456789ab';
 
 export const serverUrl: string | undefined = databaseUrlFromEnvironment();
 
-export const scratch: string = mkdtempSync(join(tmpdir(), 's0-1g-'));
+// Made by the file's first hook, so a file whose tests all skip leaves no folder (temp guard).
+export const scratch: string = join(tmpdir(), `s0-1g-${randomBytes(6).toString('hex')}`);
+beforeAll(() => mkdirSync(scratch, { mode: 0o700 }));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 /** A sign-in's ES256 bearer, as the provider issues it; `forged` signs with a stranger's key. */

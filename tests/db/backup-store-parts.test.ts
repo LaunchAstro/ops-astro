@@ -10,10 +10,10 @@
 // tests/ci/staging-backup-reach-live.test.ts.
 
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   job,
   serverUrl,
@@ -39,7 +39,9 @@ import { operator } from './backup-drill-records.fixture.ts';
 /** The appointed operator, as the gate hands them to the drill. */
 const WHO = { personId: operator, business: OPERATING_BUSINESS };
 
-const folder = mkdtempSync(join(tmpdir(), 's0-3p-'));
+// Made by the file's first hook, so a file whose tests all skip leaves no folder (temp guard).
+const folder = join(tmpdir(), `s0-3p-${randomBytes(6).toString('hex')}`);
+beforeAll(() => mkdirSync(folder, { mode: 0o700 }));
 afterAll(() => rmSync(folder, { recursive: true, force: true }));
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 
