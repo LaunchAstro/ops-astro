@@ -86,3 +86,5 @@ export type {
   TaskStateView,
   TaskSummary,
 } from './views.ts';
+// the command catalogue and its parity check (API-1)
+export * from './catalogue.ts';

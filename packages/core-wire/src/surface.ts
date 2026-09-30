@@ -240,6 +240,10 @@ export interface CommandDeclaration {
    * (`reads/catalogue.ts`), so it carries none here.
    */
   readonly operands?: OperandSpec;
+  // two-part keys (API-1); the handler checks past `action`
+  readonly authority?: readonly string[];
+  // a hold every path keeps, carried onto the catalogue row (API-1)
+  readonly rule?: string;
 }
 
 /**
@@ -271,6 +275,8 @@ function declare(
     readonly untargetedIdentifiers?: readonly string[];
     readonly runtimeShaped?: string;
     readonly agent?: CommandDeclaration['agent'];
+    readonly authority?: readonly string[];
+    readonly rule?: string;
   } = {},
 ): CommandDeclaration {
   const targetsExistingRecord = options.targetsExistingRecord ?? true;
@@ -281,6 +287,8 @@ function declare(
       : { untargetedIdentifiers: options.untargetedIdentifiers }),
     ...(options.runtimeShaped === undefined ? {} : { runtimeShaped: options.runtimeShaped }),
     ...(options.serialise === undefined ? {} : { serialise: options.serialise }),
+    ...(options.authority === undefined ? {} : { authority: options.authority }),
+    ...(options.rule === undefined ? {} : { rule: options.rule }),
     name,
     kind: 'write',
     collection: options.collection ?? TASK_COLLECTION,
@@ -495,7 +503,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.assign', 'assign'),
   declare('task.triage', 'write'),
   declare('task.set_stage', 'write'),
-  declare('task.set_party', 'share'),
+  declare('task.set_party', 'share', {
+    rule: 'once the task has content: refused CLIENT_LOCKED (409), writes nothing, on every path (S0-5)',
+  }),
   declare('task.set_audience', 'share'),
   declare('task.reparent', 'write', { serialise: TASK_PLACEMENT_LOCK }),
   declare('task.move', 'write', { serialise: TASK_PLACEMENT_LOCK }),

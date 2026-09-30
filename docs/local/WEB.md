@@ -685,8 +685,32 @@ places this build does not yet reach it.
   to. Offering to switch back, or carrying more than one interruption, is not
   built. The interruption keeps the business key, which is the word in the URL
   prefix, and never the token.
-- Fonts and icons are not fetched. The redistribution question (#32) is open, so
-  the families are a stack with real fallbacks and the brand is its own words.
+- Fonts, icons and the brand marks are bundled, each with its licence recorded
+  in `packages/ui/assets/licences.json` (MP-1-2): Funnel Display, Funnel Sans
+  and Chivo Mono under the SIL Open Font License, Lucide's icons under ISC,
+  and the project's own wordmark and planet mark. The build copies the record
+  and the licence texts into its output.
+- Text is set in the 23 styles of the declared scale, `--type-<name>` in
+  `packages/ui/src/styles/1-tokens.css` (MP-1-4). A rule sets text with the
+  style's `font`, `letter-spacing` and `text-transform` together, or not at
+  all; `pnpm type:census` refuses any other size, weight, family, line height,
+  tracking or case, and lists the four exceptions a ruling keeps (strong text
+  at the medium weight, the two larger button labels, the run hero's mono
+  figure). A stat number keeps one size at every width. Inline `code`, `kbd`
+  and `samp` take the mono style from the base layer. The census reads the
+  sheets; the MP-1-4 visual match also measures every built page as the
+  browser draws it, so an element left on the browser's own default is caught.
+- Charts are hand-drawn SVG in `packages/ui/src/kit/charts.tsx` (MP-1-5), with
+  no chart library: line, column with a dashed line, donut, gauge, score dial,
+  sparkline and the true-scale funnel, shown on `/gallery/`. Line and column
+  charts measure their width with the browser's resize observer and redraw
+  when shown or resized. Line, column and donut charts are one tab stop each;
+  the arrow keys walk the points, and hover or focus shows the value. A
+  second quantity gets its own labelled right-hand axis. They take the
+  mockup's paint: a donut's slices ink, accent, lilac, lilac deep, ink muted
+  and ink faint in that order; a sparkline the accent; a score dial's number
+  at the medium weight. No page draws a chart yet; the Executive page
+  (MP-14-3) is the first.
 - Layouts are written for 1480, 900 and 390. Photographed at all three, light
   and dark, on 2026-09-23 with `node tests/browser/keyboard-and-widths.mjs`,
   which writes `width-<w>-<theme>-<page>.png` into `SHOT_DIR`; that run's
@@ -700,9 +724,10 @@ places this build does not yet reach it.
   - At 390 the sidebar is gone, and with it the only navigation apart from the
     breadcrumb. A person who lands on a task deep-linked has `Projects` in the
     crumb and nothing else.
-  - At 390 the task page's assignee section can still be drawing
-    `Loading the people…` after the record itself is on screen: two reads, two
-    arrival times, and the slower one is a block of text in the middle of the
-    form rather than a field-shaped placeholder.
+  - At 390 the task page's assignee section could still be drawing
+    `Loading the people…` after the record itself was on screen: two reads,
+    two arrival times, and the slower one a block of text in the middle of the
+    form. Fixed by MP-1-3: it now draws a field-shaped placeholder, and the
+    words are kept for a screen reader.
 
   Recorded, not fixed.
