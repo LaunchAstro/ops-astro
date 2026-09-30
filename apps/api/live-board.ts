@@ -10,11 +10,11 @@
 // merge into the next, and a resync stands for every inbox change before it.
 //
 // The stream hears one person's inbox topic, the person the bearer resolves
-// to. Each batch asks the join again, and so does each task read before its
-// `invalidate` is written: when the bearer now resolves to another person,
-// the old topic is dropped, the new person's is heard, and nothing is said
-// until the stream's own recheck tells the tab `resync`, so no signal of the
-// old person's times a frame for the new one.
+// to. Each batch asks the join again, and so does each task read or changed
+// inbox digest before its frame is written: when the bearer now resolves to
+// another person, the old topic is dropped, the new person's is heard, and
+// nothing is said until the stream's own recheck tells the tab `resync`, so no
+// signal of the old person's times a frame for the new one.
 
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { BoardSignal, LiveTopics } from './live.ts';
@@ -160,7 +160,8 @@ async function resyncs(stream: SSEStreamingApi, ask: BoardQuestions, bound: Boun
 /**
  * Each named task the caller reads now, by its identifier only, the join asked
  * again after the read so an answer that finished after the bearer moved is
- * dropped; then the inbox, if what it shows moved.
+ * dropped; then the inbox, if what it shows moved, the join asked again the
+ * same way before the digest is kept or said.
  */
 async function say(
   stream: SSEStreamingApi,
@@ -182,6 +183,8 @@ async function say(
   if (!inbox) return 'same';
   const now = await ask.shown(bound.personId);
   if (now === undefined || now === bound.shown) return 'same';
+  const joined = await rejoin(stream, ask, bound, bind);
+  if (joined !== 'same') return joined;
   bound.shown = now;
   await stream.writeSSE({ event: 'inbox', data: '' });
   return 'same';
