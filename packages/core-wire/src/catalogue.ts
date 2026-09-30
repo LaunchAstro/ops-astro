@@ -11,7 +11,7 @@ import {
   type CommandDeclaration,
   type CommandName,
 } from './surface.ts';
-import { COMMAND_EFFECTS, classOf, type ClassedEffects } from './data-effects.ts';
+import { COMMAND_EFFECTS, classOf, type ClassedEffects, type DataEffects } from './data-effects.ts';
 
 /** A place in the app that calls a command; `file` is relative to apps/web/src. */
 export type UiUse = { readonly command: string; readonly route: string; readonly file: string };
@@ -38,8 +38,9 @@ export interface CatalogueRow extends Profile {
   readonly cli: string;
   // `route (file)` per place the app calls it; empty: none yet
   readonly ui: readonly string[];
-  // S0-5 (U18): what it does to data, and the class the gate reads
-  readonly dataEffects: ClassedEffects;
+  // S0-5 (U18): what it does to data, and the class the gate reads; null only
+  // for a declaration with no entry, which S0-5's coverage test fails
+  readonly dataEffects: ClassedEffects | null;
 }
 
 /** A UI action with no command, and why it needs none (CS-15.18). */
@@ -78,6 +79,7 @@ export function buildCatalogue(
   return declarations.map((declaration) => {
     const profile = profileOf(declaration);
     const path = pathOf(declaration.name);
+    const effects = (COMMAND_EFFECTS as Partial<Record<string, DataEffects>>)[declaration.name];
     const ui = uses
       .filter((use) => use.command === declaration.name)
       .map((use) => `${use.route} (${use.file})`);
@@ -93,10 +95,7 @@ export function buildCatalogue(
       },
       cli: declaration.name,
       ui: [...new Set(ui)].toSorted(),
-      dataEffects: {
-        ...COMMAND_EFFECTS[declaration.name],
-        class: classOf(COMMAND_EFFECTS[declaration.name]),
-      },
+      dataEffects: effects === undefined ? null : { ...effects, class: classOf(effects) },
     };
   });
 }
