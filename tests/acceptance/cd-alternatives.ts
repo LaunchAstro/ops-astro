@@ -26,7 +26,7 @@ export const CASE = {
 } as const;
 
 /**
- * The seventeen operations that name no identifier, each with a minimal valid body.
+ * The nineteen operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -44,10 +44,14 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
   ['settings.read', {}],
   ['session.capabilities', {}],
-  // Wayfinder (WF-2): a chart files a new map and names no existing record.
-  ['map.chart', { title: 'a map charted while bravo is watched' }],
   ['conversation.start', { body: 'a conversation started while bravo is watched' }],
   ['conversation.list', {}],
+  // AW-04: a digest names a file's bytes, not a record of any business.
+  ['definition.attribution', { digest: 'a'.repeat(64) }],
+  // AW-04 (U10): the business's own planning cap, moved once from the default.
+  ['budget.set_planning_cap', { limitMinor: 2_000, currency: 'AUD', fromLimitMinor: 5_000 }],
+  // Wayfinder (WF-2): a chart files a new map and names no existing record.
+  ['map.chart', { title: 'a map charted while bravo is watched' }],
   ['inbox.read', {}],
   ['inbox.count', {}],
   ['inbox.unattended', {}],
@@ -64,6 +68,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'grant.revoke': ['grantId', 'control'],
   'delegation.revoke': ['delegationId', 'control'],
   'task.decide': ['gateId', 'gate'],
+  'task.accept_plan': ['gateId', 'gate'],
   'task.board': ['board', 'board'],
   'task.heartbeat': ['leaseId', 'agent'],
   'task.dispatch': ['leaseId', 'agent'],
@@ -72,6 +77,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.check': ['leaseId', 'agent'],
   'task.handback': ['leaseId', 'agent'],
   'model.call': ['leaseId', 'agent'],
+  'run.delegate_child': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
@@ -97,6 +103,14 @@ export function alternativeFor(name: CommandName): string | undefined {
     return (
       `executed alternative: identifier-negatives.test.ts "${CASE[kase]}" compares a foreign ` +
       `and a fabricated ${operand} by status and raw bytes, audited at home (ledger I03)`
+    );
+  }
+  if (name === 'run.child_handback') {
+    // AW-11: the body names nothing; the helper's own child credential is the
+    // target, so a foreign one and a made-up one are the operand compared.
+    return (
+      'executed alternative: aw-11-child-commands-isolation.test.ts "another business" ' +
+      "compares another business's child credential and a fabricated one by status and bytes"
     );
   }
   if (TARGET_FREE.some(([op]) => op === name)) {

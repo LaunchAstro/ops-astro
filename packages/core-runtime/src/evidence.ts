@@ -50,6 +50,23 @@ interface StepRow {
   readonly kind: string;
   readonly payload: Record<string, unknown>;
   readonly dispatched_at: Date | null;
+  readonly plan_step_key: string | null;
+}
+
+/** One step as the approver reads it. */
+function renderStep(step: StepRow): Record<string, unknown> {
+  const rendered: Record<string, unknown> = {
+    ordinal: step.ordinal,
+    kind: step.kind,
+    payload: step.payload,
+    // Stated, not omitted. An approver reading this pack is being told that
+    // nothing here has been dispatched, rather than being left to infer it.
+    dispatched: step.dispatched_at !== null,
+  };
+  // The plan step it was proposed under (AW-06), only where it names one, so
+  // a pack over a step naming none renders, and digests, as it always has.
+  if (step.plan_step_key !== null) rendered['planStep'] = step.plan_step_key;
+  return rendered;
 }
 
 export async function renderEvidence(
@@ -85,7 +102,7 @@ export async function renderEvidence(
   }
 
   const steps = await tx.query<StepRow>(
-    `select id, ordinal, kind, payload, dispatched_at from public.planned_steps
+    `select id, ordinal, kind, payload, dispatched_at, plan_step_key from public.planned_steps
       where business_id = $1 and run_id = $2 order by ordinal`,
     [tx.businessId, of.runId],
   );
@@ -106,14 +123,7 @@ export async function renderEvidence(
     purpose: version.purpose,
     bound: { maximumMinor: Number(version.maximum_minor), currency: version.currency },
     payload: version.payload,
-    steps: steps.map((step) => ({
-      ordinal: step.ordinal,
-      kind: step.kind,
-      payload: step.payload,
-      // Stated, not omitted. An approver reading this pack is being told that
-      // nothing here has been dispatched, rather than being left to infer it.
-      dispatched: step.dispatched_at !== null,
-    })),
+    steps: steps.map((step) => renderStep(step)),
     externalEffect: false,
     providerRequested: false,
   };

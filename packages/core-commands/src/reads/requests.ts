@@ -26,6 +26,7 @@
 
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type {
+  AttributionResult,
   CapabilitiesResult,
   InboxCountResult,
   InboxReadResult,
@@ -130,6 +131,8 @@ export interface ReadOperands {
   readonly 'conversation.read': { readonly conversationId: unknown };
   /** The caller's own conversations, for the assistant panel's tab row (MP-7-11). */
   readonly 'conversation.list': NoOperands;
+  /** The runs that read one file, by its digest: pre-review (AW-04). */
+  readonly 'definition.attribution': { readonly digest: string };
   /** The caller's own inbox items, each with its access derived now (INB-1d). */
   readonly 'inbox.read': NoOperands;
   /** The caller's owed count: the counted entries of `inbox.read`. */
@@ -180,6 +183,7 @@ export type ReadResult =
   | TicketContextResult
   | ConversationReadResult
   | ConversationListResult
+  | AttributionResult
   | InboxReadResult
   | InboxCountResult
   | { readonly ok: true; readonly unattended: readonly UnattendedEntry[] };

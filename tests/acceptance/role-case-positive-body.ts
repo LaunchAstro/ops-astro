@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
 import {
+  ACCEPTED_PLAN,
   PROPOSAL,
   lineageOn,
   type Prepared,
@@ -15,10 +16,9 @@ import {
   batchOf,
   approvableGate,
   approvedReservationId,
-  approvedTaskId,
+  moneyBody,
   ownLease,
   ownAppliedEffect,
-  ownUnknownAttempt,
 } from './role-case-bodies.ts';
 import { WAYFINDER_BODIES } from './role-case-wayfinder.ts';
 import { ownConversation } from './foreign-conversation.ts';
@@ -114,6 +114,10 @@ export function createPositiveBody(
         const gate = await approvableGate(context);
         return { body: { ...gate, decision: 'approve', note: 'the admin approves' } };
       }
+      case 'task.accept_plan': {
+        const gate = await approvableGate(context);
+        return { body: { ...gate, ...ACCEPTED_PLAN, note: 'the admin accepts the plan' } };
+      }
       case 'task.pickup':
         // Person pickup (EX-01, transaction contract T3 line 66, minimum
         // contract line 331, ledger line 30): the admin claims approved work
@@ -163,33 +167,17 @@ export function createPositiveBody(
       }
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
+      case 'definition.attribution':
+        return { body: { digest: 'a'.repeat(64) } };
       case 'settings.set_four_eyes_threshold':
         return { body: { value: 1200 } };
       case 'settings.set_client_sign_off':
         return { body: { value: true } };
       case 'budget.top_up':
-        // The admin approved the plan and holds billing, so a top-up under
-        // the band is hers alone (T2e).
-        return {
-          body: {
-            recordId: await approvedTaskId(context),
-            amountMinor: 100,
-            fromMaximumMinor: PROPOSAL.maximumMinor,
-          },
-        };
       case 'budget.record_outcome':
-        // The admin holds billing, so any unknown attempt on the business's
-        // tasks is hers to record (O8, T3d1).
-        return { body: { ...(await ownUnknownAttempt(context)), outcome: 'happened' } };
       case 'budget.write_off':
-        // The same unknown hold, closed at nothing with a reason (T3c).
-        return {
-          body: {
-            ...(await ownUnknownAttempt(context)),
-            amountMinor: 0,
-            reason: 'The matrix writes its own unknown hold off.',
-          },
-        };
+      case 'budget.set_planning_cap':
+        return { body: await moneyBody(context, declaration.name) };
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');
@@ -227,9 +215,11 @@ export function createPositiveBody(
             'case (h), k-revoke rows',
         };
       case 'model.call':
-        // The run's worker's, never a person's: the person prefix refuses it
-        // SCOPE_NOT_GRANTED (AW-01, "n/a (system)"). The agent makes the call
-        // under its delegation in the agent journey, case (h).
+      case 'run.delegate_child':
+      case 'run.child_handback':
+        // The run's worker's, never a person's: the person prefix refuses each
+        // SCOPE_NOT_GRANTED (AW-01, AW-11, "n/a (system)"). The agent makes the
+        // call under its delegation in the agent journey, case (h).
         return {
           exception:
             'executed alternative: the person prefix refuses it by design; the agent calls it ' +

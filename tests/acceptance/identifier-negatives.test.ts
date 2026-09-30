@@ -22,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { READS } from '../../packages/core-wire/src/surface.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
-import { PROPOSAL } from './role-case-bodies.ts';
+import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
@@ -355,6 +355,16 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         foreign: { gateId, versionId, ...decision },
         fabricated: { gateId: randomUUID(), versionId: randomUUID(), ...decision },
       });
+      // AW-04: the plan accept is that decision, refused the same way.
+      await refuses('task.accept_plan', 'gateId', ada, 'NOT_FOUND', {
+        foreign: { gateId, versionId, ...ACCEPTED_PLAN, note: NOBODY },
+        fabricated: {
+          gateId: randomUUID(),
+          versionId: randomUUID(),
+          ...ACCEPTED_PLAN,
+          note: NOBODY,
+        },
+      });
     },
     120_000,
   );
@@ -410,6 +420,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['task.observe', { attemptId: randomUUID() }],
         ['task.check', { name: NOBODY, outcome: 'passed' }],
         ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
+        ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
       ];
       for (const [op, extra] of byLease) {
         const forms = {

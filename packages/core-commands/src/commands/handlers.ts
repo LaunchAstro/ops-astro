@@ -21,6 +21,7 @@ import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
+import { acceptPlanOnGate } from './plan-accept.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
 import { dispatchOwnLease } from './tasks-dispatch.ts';
@@ -38,8 +39,10 @@ import { reviseMap } from './wayfinder-revision.ts';
 import { chartMap } from './wayfinder-chart.ts';
 import { claimTicket, graduateFog, setBlocking } from './wayfinder-blocking.ts';
 import { closeOutOfScope, resolveTicket } from './wayfinder-resolve.ts';
+import { setPlanningCap } from './budget-planning-cap.ts';
 import { messageConversation, startConversation } from './conversations.ts';
 import { renameConversation, setConversationScope } from './conversation-tabs.ts';
+import { refuseChildWorkAsPerson } from './child-work-person.ts';
 import { refuseModelCallAsPerson } from './model-call-person.ts';
 import { endOnRun, topUpOnRun } from './run-answers.ts';
 import { reviseStateOnRun } from './run-state.ts';
@@ -103,6 +106,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,
+  // AW-04: the plan accept, the only activation of a run's instruction file.
+  'task.accept_plan': acceptPlanOnGate,
 
   'grant.revoke': (tx, context, request) => revokeGrantAsManager(tx, context, request.grantId),
   'delegation.revoke': (tx, context, request) =>
@@ -138,6 +143,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'map.graduate': graduateFog,
   'task.resolve': resolveTicket,
   'task.close_out_of_scope': closeOutOfScope,
+  // AW-04 (U10). A person sets the planning cap; no agent route reaches it.
+  'budget.set_planning_cap': setPlanningCap,
   // AW-03: the conversation's first message mints it; later ones are its owner's.
   'conversation.start': startConversation,
   'conversation.message': messageConversation,
@@ -153,6 +160,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // MP-6-2: a run's state revised, a person's under run:write; the agent's is
   // served on its own prefix (`agent-operations.ts`).
   'run.revise_state': reviseStateOnRun,
+  // AW-11: the parent's and the helper's, on the agent prefix only.
+  'run.delegate_child': refuseChildWorkAsPerson,
+  'run.child_handback': refuseChildWorkAsPerson,
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
   'notifications.set_channel': setNotificationChannel,
 };

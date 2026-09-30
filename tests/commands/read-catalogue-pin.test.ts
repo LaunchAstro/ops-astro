@@ -27,6 +27,7 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 const PINNED_SHAPE = {
   'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'definition.attribution': { spine: true, subject: false, authority: 'holds-any-grant' },
   'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
   'inbox.count': { spine: false, subject: false, authority: 'self' },
   'inbox.read': { spine: false, subject: false, authority: 'self' },
@@ -49,6 +50,7 @@ const PINNED_SHAPE = {
 const PINNED_IDENTIFIERS = {
   'conversation.list': [],
   'conversation.read': ['conversationId'],
+  'definition.attribution': [],
   'gate.pending': [],
   'inbox.count': [],
   'inbox.read': [],
@@ -172,6 +174,12 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'session.capabilities': BODIES.map(() => null),
   'conversation.read': BODIES.map(() => null),
   'conversation.list': BODIES.map(() => null),
+  // AW-04: the file's digest, which none of these bodies carries.
+  'definition.attribution': BODIES.map(() => ({
+    code: 'FIELD_VALUE_INVALID',
+    names: ['digest'],
+    fixes: ['Send digest as the file’s sha-256, 64 lowercase hex characters.'],
+  })),
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
@@ -186,7 +194,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same sixteen reads (API-4 added map.status and task.context)', () => {
+  it('names the same twenty reads (API-4 added map.status and task.context)', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

@@ -43,6 +43,7 @@ if (serverUrl === undefined) {
 const DECLARED_READS = [
   'conversation.list',
   'conversation.read',
+  'definition.attribution',
   'gate.pending',
   'inbox.count',
   'inbox.read',
@@ -98,12 +99,14 @@ describe('the surface as a table', () => {
     // about the caller rather than about the business's records. `grant` and
     // `delegation` are the revocation controls': the path names the row a
     // revocation writes, and the authority it asks is still on tasks. `gate`
-    // is MP-6-1's awaiting-review read, `conversation` AW-03's writes and read,
-    // `map` wayfinder's (WF-1, WF-2; a map is a task), `model` AW-01's call
-    // through the broker, and `run` AW-05's answers at the budget stop.
+    // is the awaiting-review read's (MP-6-1): the gates waiting on a decision,
+    // asked with `decide` on tasks. `conversation` is a person's conversation
+    // with the agent (AW-03), its writes and its read at its address. `model`
+    // is AW-01's call through the broker, asked of the lease's task. `run` is
+    // AW-05's budget stop answers; `definition`, AW-04's attribution by digest.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate|conversation|map|model|run|inbox|notifications)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate|conversation|map|model|run|definition|inbox|notifications)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -113,7 +116,7 @@ describe('the surface as a table', () => {
 
 // eslint-disable-next-line max-lines-per-function -- one table, read top to bottom
 describe('the surface as a table', () => {
-  it('declares the nineteen reads as reads, and everything else as a write', () => {
+  it('declares the twenty reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

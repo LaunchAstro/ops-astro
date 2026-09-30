@@ -24,6 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { BudgetRequest } from './requests-budget.ts';
 import type { CheckRequest } from './requests-check.ts';
 import type { ConversationRequest } from './requests-conversation.ts';
 import type { RunRequest } from './requests-run.ts';
@@ -114,6 +115,20 @@ export type CommandRequest =
       readonly decision: string;
       readonly note: string;
       readonly recipientPersonId?: string | null;
+    } & Envelope)
+  // The plan accept (AW-04): a decision on the plan's gate, the words and the
+  // structured record it binds, and the instruction files the run may read.
+  // The record and the paths are checked by value, so they are `unknown` here.
+  | ({
+      readonly command: 'task.accept_plan';
+      readonly gateId: string;
+      readonly versionId: string;
+      readonly note: string;
+      readonly planText: unknown;
+      readonly plan: unknown;
+      readonly entryPath: unknown;
+      readonly paths: unknown;
+      readonly conversationId?: string | null;
     } & Envelope)
   | ({
       readonly command: 'task.pickup';
@@ -245,25 +260,7 @@ export type CommandRequest =
       readonly usage?: { readonly item: string; readonly quantity: number } | null;
       readonly outcome?: 'completed' | 'failed';
     } & Envelope)
-  | ({
-      readonly command: 'budget.top_up';
-      readonly recordId: unknown;
-      readonly amountMinor: number;
-      readonly fromMaximumMinor: number;
-    } & Envelope)
-  | ({
-      readonly command: 'budget.record_outcome';
-      readonly recordId: unknown;
-      readonly attemptId: unknown;
-      readonly outcome: unknown;
-    } & Envelope)
-  | ({
-      readonly command: 'budget.write_off';
-      readonly recordId: unknown;
-      readonly attemptId: unknown;
-      readonly amountMinor: unknown;
-      readonly reason: unknown;
-    } & Envelope)
+  | BudgetRequest
   | CheckRequest
   | ConversationRequest
   // Read by its own parser (`model-call.ts`), never by a person handler.

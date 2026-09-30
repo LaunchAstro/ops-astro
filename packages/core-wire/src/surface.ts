@@ -43,6 +43,8 @@ export type CommandName =
   | 'task.decide'
   | 'task.pickup'
   | 'task.handback'
+  // AW-04: the plan accept, a person's one click on the plan's gate.
+  | 'task.accept_plan'
   // The owning operations the task type's field definitions name.
   | 'task.start'
   | 'task.assign'
@@ -66,6 +68,9 @@ export type CommandName =
   | 'task.execution'
   // The gate engine's pending decisions a person may make (MP-6-1).
   | 'gate.pending'
+  // AW-04: which runs read an instruction file, by digest, and what they
+  // reached: a pre-review projection, the team's only.
+  | 'definition.attribution'
   | 'person.list'
   // The preset planner. It reads the model and writes nothing at all, so it is
   // a read by the only definition this table has; what makes it unlike the
@@ -130,6 +135,9 @@ export type CommandName =
   | 'map.frontier'
   | 'map.status'
   | 'task.context'
+  // AW-04 (U10): a person sets the business's planning cap, the allowance the
+  // planning replies spend before the accept.
+  | 'budget.set_planning_cap'
   // A check the run performed, recorded under its worker lease (MP-6-1,
   // CS-16.3): a system write whose authority is the live lease, not a grant.
   | 'task.check'
@@ -156,6 +164,10 @@ export type CommandName =
   // CS-16.4): `run:write` on the run's task, a person's or an agent's inside
   // its delegation, the agent the recorded actor.
   | 'run.revise_state'
+  // AW-11: the parent's holder hands part of its work to a helper that can do
+  // strictly less, and the helper hands its result back. Both agents only.
+  | 'run.delegate_child'
+  | 'run.child_handback'
   // The inbox inside Tasks (INB-1d): the caller's own items and owed count,
   // and `seen` stamped on the caller's own attention row.
   | 'inbox.read'
@@ -412,6 +424,16 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     note: 'any',
     recipientPersonId: 'id?|null',
   },
+  'task.accept_plan': {
+    gateId: 'id',
+    versionId: 'id',
+    note: 'any',
+    planText: 'any',
+    plan: 'any',
+    entryPath: 'any',
+    paths: 'any',
+    conversationId: 'id?|null',
+  },
   'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },
   // A lease call names its task through its lease; a `recordId` beside the
   // lease is taken and plays no part in the check (API.md, id operands).
@@ -455,6 +477,12 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'budget.record_outcome': { recordId: 'any', attemptId: 'any', outcome: 'any' },
   // The task, the attempt held unknown, the minor units charged and why (T3c).
   'budget.write_off': { recordId: 'any', attemptId: 'any', amountMinor: 'count', reason: 'text' },
+  // Minor units in the price book's currency, against the limit last seen (null: unset).
+  'budget.set_planning_cap': {
+    limitMinor: 'count',
+    currency: 'text',
+    fromLimitMinor: 'count|null',
+  },
   'task.observe': {
     leaseId: 'any',
     recordId: 'any',
@@ -511,6 +539,19 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     knowledge: 'any',
     unknowns: 'any',
   },
+  // The parent's own lease and fence, then the helper and its narrower set.
+  'run.delegate_child': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    helperActorId: 'any',
+    purpose: 'any',
+    collections: 'any',
+    actions: 'any',
+    expiresInSeconds: 'any',
+  },
+  // The helper's credential says whose work it is; the body only how it went.
+  'run.child_handback': { outcome: 'any', refusal: 'any' },
   'inbox.seen': { itemId: 'id' },
   'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
 };
@@ -546,6 +587,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'target',
     untargetedIdentifiers: ['gateId', 'versionId'],
     agent: 'delegated',
+  }),
+  // AW-04: the plan accept is `task.decide`'s approval asked on the gate's own
+  // task, with the plan bound and the run's instruction file pinned in the
+  // same transaction. Out of the agent's reach: only a person activates.
+  declare('task.accept_plan', 'decide', {
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['gateId', 'versionId', 'conversationId'],
   }),
   // Own-lease work is `write` on the task the reservation or lease belongs to,
   // the scope the runtime and `grant.revoke` ask under their locks: a
@@ -596,6 +645,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // `decide` on tasks (`gate:decide`), asked per row inside the query, so a
   // record-scoped decider sees its own records' gates (`reads/awaiting-review.ts`).
   read('gate.pending', TASK_COLLECTION, { action: 'decide' }),
+  // `read` on tasks, asked per run inside the query, so a record-scoped reader
+  // sees its own tasks' runs (`reads/attribution.ts`). No agent route.
+  read('definition.attribution', TASK_COLLECTION),
   read('person.list', 'person'),
   // `preset` is what this route is about; the grant it takes is `manage` on
   // the family the request names, which `reads/dispatch.ts` reads off the
@@ -782,6 +834,13 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   read('map.status', TASK_COLLECTION, { authorisedOn: 'record' }),
   // API-4: work this ticket, the whole bundle in one call and one statement.
   read('task.context', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // `billing:decide` on the whole business (AW-04, U10): owners and
+  // administrators set the planning cap; no agent route serves it.
+  declare('budget.set_planning_cap', 'decide', {
+    collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
   // The lease holder's, asked of the lease's task like the heartbeat. The
   // agent path checks the delegation; the broker then verifies the lease, the
   // delegation and the reservation again under their locks when it holds the
@@ -819,6 +878,26 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'runId'],
+    agent: 'delegated',
+  }),
+  // AW-11: `run:write` inside the parent's delegation, asked of its lease's
+  // task like the heartbeat; the runtime binds the parent to that lease at its
+  // fence under the locks. A person holding a lease has no route to it.
+  declare('run.delegate_child', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // The helper's handback answers to its own child credential, bound to its
+  // own login by the runtime, not to a grant: a revoked or run-out child still
+  // hands its partial work back, and the handback grants nothing.
+  declare('run.child_handback', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
     agent: 'delegated',
   }),
 

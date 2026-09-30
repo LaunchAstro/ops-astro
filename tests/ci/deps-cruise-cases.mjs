@@ -338,3 +338,34 @@ for (const [name, file, from] of [
     });
   });
 }
+
+// AW-04: attribution by digest is pre-review. Only its catalogue row loads the
+// read; any other module that reached for it (an evaluation set, a promotion
+// input or a conformance claim, when they exist) fails by the named rule.
+const ATTRIBUTION = {
+  [`${COMMANDS}/reads/attribution.ts`]: 'export const attribution = 1;\n',
+  [`${COMMANDS}/reads/catalogue.ts`]:
+    "import { attribution } from './attribution.ts';\nexport const row = attribution;\n",
+};
+
+test('AW-04 attribution pre-review: its catalogue row alone loads the read', () => {
+  layered(ATTRIBUTION, (root) => {
+    const run = cruiseTree(root);
+    assert.equal(run.status, 0, `expected exit 0, got ${String(run.status)}: ${run.stderr}`);
+  });
+});
+
+test('AW-04 attribution pre-review: any other module loading the read fails by its named rule', () => {
+  const taker = `${COMMANDS}/reads/promotion.ts`;
+  layered(
+    {
+      ...ATTRIBUTION,
+      [taker]: "import { attribution } from './attribution.ts';\nexport const x = attribution;\n",
+    },
+    (root) => {
+      const run = cruiseTree(root);
+      assert.equal(run.status, 1, `expected exit 1, got ${String(run.status)}: ${run.stdout}`);
+      assert.match(run.stderr, /pre-review-attribution-stays-in-its-read/u);
+    },
+  );
+});
