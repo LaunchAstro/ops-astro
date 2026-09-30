@@ -147,6 +147,14 @@ describe.skipIf(serverUrl === undefined)(
       expect(noahCli.json?.['code']).toBe(noahApp.body['code']);
 
       expect(await recorded(gate)).toEqual([{ decision: null, state: 'pending' }]);
+      // Beside its positive control: the grant holder's same call on the same
+      // gate is recorded, so each refusal above is the crossing's, never a
+      // command line that decides nothing for anyone.
+      const adaCli = await cli(gate, 'request_changes', as(world.ada.token));
+      expect(adaCli.code, adaCli.stdout + adaCli.stderr).toBe(0);
+      expect(await recorded(gate)).toEqual([
+        { decision: 'request_changes', state: 'changes_requested' },
+      ]);
     });
 
     it("an agent's own login is refused the decision, which the person's credential then makes (cases 5 and 9)", async () => {
