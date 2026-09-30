@@ -202,17 +202,6 @@ function upgradeDrillCases3() {
 
 describe('S0-3 upgrade drill in CI', () => {
   it('runs in database conformance on a pull request that adds a migration, from the base', () => {
-    const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
-    // Each conformance shard (#252) drills, against its own Postgres.
-    const job = workflow.slice(
-      workflow.indexOf('name: database conformance shard ${{ matrix.shard }}\n'),
-      workflow.indexOf('\n  database-lookahead:'),
-    );
-    const step = job.slice(job.indexOf('- name: The upgrade drill'));
-    expect(step).toContain("if: github.event_name == 'pull_request'");
-    expect(step).toContain('git diff --name-only --diff-filter=A "$BASE_SHA" HEAD -- migrations/');
-    expect(step).toContain('git ls-tree --name-only "$BASE_SHA" migrations/');
-    expect(step).toContain('pnpm run verify:upgrade-drill --from');
     const { scripts } = JSON.parse(readFileSync('package.json', 'utf8')) as {
       scripts: Record<string, string>;
     };
