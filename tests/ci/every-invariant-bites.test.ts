@@ -97,7 +97,9 @@ describe('every_invariant_bites: the catalogue', () => {
     }
     // Two git calls per commit: on a loaded host they outrun vitest's five seconds.
   }, 60_000);
+});
 
+describe('every_invariant_bites: an unwire at the head', () => {
   it('unwires at the head only files the part changed, each call site there exactly once', () => {
     for (const part of PARTS) {
       for (const { file, remove } of part.unwire ?? []) {

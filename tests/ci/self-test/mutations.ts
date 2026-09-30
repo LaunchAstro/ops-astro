@@ -200,6 +200,15 @@ function addedBy(scratch: Scratch, part: Part): string[] {
   return [...added];
 }
 
+/** Removes each call site once from the head's file; the files it could not, else ''. */
+function unwireAtHead(scratch: Scratch, unwire: NonNullable<Part['unwire']>): string {
+  return unwire
+    .filter((one) => one.remove.length > 0)
+    .filter((one) => !edit(scratch, one.file, `${one.remove.join('\n')}\n`, ''))
+    .map((one) => one.file)
+    .join(', ');
+}
+
 /**
  * T4-N4. Reverts every commit of the part, newest first, outside what the part
  * keeps. A commit whose reverse no longer applies, because later parts built
@@ -253,13 +262,9 @@ export function revertPart(
     scratch.commit(`self-test: revert ${commit.slice(0, 8)} (${part.id})`);
   }
   scratch.git(['checkout', scratch.base, '--', ...keep]);
-  const stale = unwire.filter(
-    (one) => one.remove.length > 0 && !edit(scratch, one.file, `${one.remove.join('\n')}\n`, ''),
-  );
-  if (stale.length > 0) {
-    const files = stale.map((one) => one.file).join(', ');
-    return { applied: false, detail: `its unwire at the head no longer applies in ${files}` };
-  }
+  const stale = unwireAtHead(scratch, unwire);
+  if (stale !== '')
+    return { applied: false, detail: `its unwire at the head no longer applies in ${stale}` };
   scratch.commit(`self-test: keep ${part.id}'s invariant files`);
   const changed = scratch
     .git(['diff', '--name-only', scratch.base, 'HEAD'])
