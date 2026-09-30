@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
-import { derivedId } from '../../packages/core-runtime/src/index.ts';
+import { derivedId, exportOnce } from '../../packages/core-runtime/src/index.ts';
 import {
   appliedDetail,
   asAgent,
@@ -144,4 +144,27 @@ it('AW-13 canary: a planted secret, message content and a client URL never reach
     expect(sent.includes(needle), needle).toBe(false);
     expect(t.target.custody.stderr().includes(needle), needle).toBe(false);
   }
+});
+
+it('AW-13 two exporters at once: a slower export that read an older batch never moves the cursor back', async () => {
+  const s = t.alpha;
+  await drain(s);
+  await liveWork(s, `aw13-race-a-${randomUUID()}`, 1_000);
+  // The slow export reads its batch, then waits at the target while another
+  // export delivers the same batch and a newer one.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const slow = exportOnce(t.alpha.db.app, s.business, TRACE_KEY, async (body) => {
+    await held;
+    return await t.target.deliver(body);
+  });
+  await drain(s);
+  await liveWork(s, `aw13-race-b-${randomUUID()}`, 1_000);
+  await drain(s);
+  const ahead = await cursorOf(s);
+  release();
+  expect((await slow).kind).toBe('delivered');
+  expect(await cursorOf(s)).toBe(ahead);
 });
