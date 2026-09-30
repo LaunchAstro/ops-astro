@@ -129,10 +129,11 @@ under a live lease, Team otherwise; the rank as `#N` or "not ranked"; the Ad
 hoc and Client access marks), the calc line, and the ten-field band
 (Assignee, Client, Due date, Estimate, Project, Category, Stage, Status, Page
 link, Handling) in a frame of 5, 2 and 1 columns. An empty value reads "not
-set" and an empty Page link "nothing yet"; the page link reads as words and
-the estimate as the panel's words; Category has no value on the record yet,
-and Client says "On file" until the client model names it. Every mark here is inert: no tab stop, role or handler, and
-the default cursor. The ticks that change them are the dock panel's:
+set" and an empty Page link "nothing yet"; the page link reads as words, the
+estimate as the panel's words and the stage by its label; Category has no
+value on the record yet, and Client says "On file" until the client model
+names it. Every mark here is inert: no tab stop, role or handler, and the
+default cursor. The ticks that change them are the dock panel's:
 `HandlingTicks` (`screens/task/Ticks.tsx`, MP-4-10), which the dock task
 panel (MP-4-8) mounts. Each is a checkbox a person can tab to, turned by a
 press, Space or Enter, through `task.set_adhoc` or `task.share_with_client`
@@ -217,14 +218,16 @@ Its ids carry a `panel-` prefix, so none repeats the page's. The page link
 (Relink once linked) sends the address being read, path and hash, through
 `task.update`; a link inside the product is drawn as a door, with the head's
 go-to beside Open its page, and any other stored value as words with no
-go-to. The grid also sets the estimate (`task.update`, 15m to 2d) and Assign
-to AI (`screens/task/AssignToAI.tsx`, the viewer's own agents that reach the
-task). The Project select (`screens/task/ProjectField.tsx`) offers None and
-the projects `task.board` answers for the Projects board, never the task
-itself, marks the task's board by the crumb's id (a board that is not a
+go-to. The grid also sets the estimate (`task.update`, 15m to 2d), the stage
+(`task.set_stage`, from the task stage list `TASK_STAGES` the board reads; a
+stored value off the list stays as itself) and Assign to AI
+(`screens/task/AssignToAI.tsx`, the viewer's own agents that reach the task).
+The Project select (`screens/task/ProjectField.tsx`) offers None and the
+projects `task.board` answers for the Projects board, never the task itself,
+marks the task's board by the crumb's id (a board that is not a
 project stays as itself; one the reader may not open is drawn as that and
 cannot be chosen) and moves the task through `task.move`. The pin waits on the
-preference model. Category, stage, state, the client and "Duplicate without
+preference model. Category, state, the client and "Duplicate without
 contents" wait on their owners on the record or on other slices.
 
 The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`

@@ -24,7 +24,10 @@
 
 import type { ReactElement } from 'react';
 import { estimateWords } from './estimates.ts';
-import type { InternalTaskDetail } from '../../../../../packages/core-wire/src/index.ts';
+import {
+  TASK_STAGES,
+  type InternalTaskDetail,
+} from '../../../../../packages/core-wire/src/index.ts';
 
 type Move = 'Review' | 'Agent' | 'Team';
 
@@ -125,7 +128,7 @@ export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactEl
     ['estimate', 'Estimate', orNotSet(estimateOf(task))],
     ['project', 'Project', projectOf(task)],
     ['category', 'Category', NOT_SET],
-    ['stage', 'Stage', orNotSet(task.stage)],
+    ['stage', 'Stage', orNotSet(task.stage === null ? null : TASK_STAGES.labelOf(task.stage))],
     ['status', 'Status', orNotSet(task.state?.label)],
     ['page-link', 'Page link', task.pageLink ?? 'nothing yet'],
     ['handling', 'Handling', <Handling key="handling" task={task} />],
