@@ -21,10 +21,9 @@ import {
   readInboxItems,
   readUnattended,
   type InboxItem,
-  type UnattendedItem,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import type { InboxEntry, PersonView } from '../../../core-wire/src/index.ts';
+import type { InboxEntry, PersonView, UnattendedView } from '../../../core-wire/src/index.ts';
 
 const iso = (at: Date | null): string | null => (at === null ? null : at.toISOString());
 
@@ -113,9 +112,6 @@ async function named(
   });
 }
 
-/** An item no path reaches (INB-1e), as the operations view is shown it. */
-export type UnattendedEntry = Omit<UnattendedItem, 'raisedAt'> & { readonly raisedAt: string };
-
 /**
  * The business's unattended items whose task the caller can read: the list
  * the operations view (C55) shows, and `inbox.unattended` on the API and the
@@ -124,7 +120,7 @@ export type UnattendedEntry = Omit<UnattendedItem, 'raisedAt'> & { readonly rais
 export async function readUnattendedInbox(
   tx: TenantQuery,
   viewerPersonId: string,
-): Promise<readonly UnattendedEntry[]> {
+): Promise<readonly UnattendedView[]> {
   return (await readUnattended(tx, viewerPersonId)).map((item) => ({
     id: item.id,
     recipientPersonId: item.recipientPersonId,

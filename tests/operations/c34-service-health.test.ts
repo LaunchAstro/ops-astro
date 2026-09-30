@@ -158,6 +158,7 @@ describe.skipIf(serverUrl === undefined)('C34 service health on the operations v
       'ok',
       'privacyIncidents',
       'serviceHealth',
+      'unattended',
     ]);
     expect([watcher.calls - watcherBefore, errorSink.calls - sinkBefore, heard.length]).toEqual([
       1, 1, 1,

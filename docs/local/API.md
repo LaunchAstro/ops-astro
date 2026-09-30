@@ -1616,8 +1616,8 @@ local end stands, and asking again is safe. The provider's words go nowhere.
 
 ## The operations view and privacy incidents (C55)
 
-`operations.read` answers `{ ok, unattended, privacyIncidents, serviceHealth }` to a holder of
-`operations:read` (install default: the owner and administrators). It is
+`operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, serviceHealth }`
+to a holder of `operations:read` (install default: the owner and administrators). It is
 never an agent's: on the agent prefix it is `DELEGATION_EXCLUDES_OPERATION` 403. Each incident carries its day-0 facts, its status and `assessBy`, 30 days
 after `foundAt` (the breach runbook's assessment limit), most recently found
 first, at most 200. The clock starts at `foundAt`, day 0, whenever the record
