@@ -18,6 +18,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import type { TaskPanelHost } from '../../screen-registry.tsx';
+import type { DraftScope } from './DraftPanel.tsx';
 import type { PanelOpening } from './Panel.tsx';
 import type { ConversationTab, PanelDoor } from './Perspectives.tsx';
 
@@ -27,6 +28,8 @@ export interface TaskPanelState {
   readonly opening: PanelOpening | null;
   readonly changed: () => void;
   readonly close: () => void;
+  readonly openDraft: (scope: DraftScope) => void;
+  readonly leaving: (stop: (() => void) | null) => void;
 }
 
 export function useTaskPanel(): TaskPanelState {
@@ -46,5 +49,5 @@ export function useTaskPanel(): TaskPanelState {
     opener?.focus();
   }, [opening]);
   const host = useMemo(() => ({ open, changes }), [open, changes]);
-  return { host, opening, changed, close };
+  return { host, opening, changed, close, openDraft: () => undefined, leaving: () => undefined };
 }

@@ -67,6 +67,8 @@ export interface TaskPanelProps {
   readonly changes?: number;
   readonly onChanged: () => void;
   readonly onClose: () => void;
+  readonly onNewTask?: () => void;
+  readonly onLeaving?: (stop: (() => void) | null) => void;
 }
 
 const CONTROLS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
