@@ -193,28 +193,27 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run db:cases
 
-  database:
+  database-shard:
     # Claiming product conformance. This runs the named invariant suite and the
     # affected conformance suites against a real Postgres, and it fails when a
     # named suite is missing, when any database test is skipped, when zero
     # tests ran, or when the suites passed without the database recording a
     # single transaction.
     #
-    # On this head it fails, and that is correct rather than broken: no product
-    # invariant or conformance suite exists yet, tests/db/named-suites.json
-    # names none, and an empty manifest is a failure. The alternative is a
-    # green tick beside the words "database conformance" that proves nothing,
-    # which is the one outcome the ticket forbids.
-    #
-    # So: after PG0 lands, and before the first port is dispatched, both
-    # `database conformance gate` and `database conformance` are bound as
-    # required contexts on ruleset 23396133. A required context is evaluated
-    # on each pull request's own head, so the first port head, which names
-    # its suites in the manifest, passes this job rather than deadlocking on
-    # it. docs/agents/database-conformance.md holds the order.
-    name: database conformance
+    # Run one after another the suites took 40 to 50 minutes, so each shard
+    # runs its share against a Postgres of its own; scripts/db-shards.mjs
+    # splits them by measured time, and tests/ci/db-shards.test.ts proves every
+    # suite lands in exactly one shard. Each shard still checks the whole
+    # manifest (rules 2 and 3). `database conformance` below is the required
+    # check, and it passes only when every shard did.
+    name: database conformance shard ${{ matrix.shard }}
     needs: [gate]
     runs-on: ubuntu-latest
+    strategy:
+      # Every shard runs to the end, so one red names all of its suites.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     services:
       postgres:
         # Pinned by digest, and recorded in docs/supply-chain-pins.md. The
@@ -245,12 +244,30 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run db:conformance
+      - run: pnpm run db:conformance --shard ${{ matrix.shard }}/${{ strategy.job-total }}
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           # T4a's clone past a reader dumps and restores inside the server's
           # own container; the service container is not ops-astro-local-pg.
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+
+  database:
+    # The required check (ruleset 23396133, .github/required-checks.json): one
+    # name over every shard. `always()` runs it when a shard failed, was
+    # skipped or was cancelled, and each of those fails it; without it this
+    # job would be skipped, and a skipped required check reads as passed.
+    # docs/agents/database-conformance.md holds what the check means.
+    name: database conformance
+    needs: [database-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every shard succeeded
+        env:
+          SHARDS: ${{ needs.database-shard.result }}
+        run: |
+          echo "database conformance shards: $SHARDS"
+          test "$SHARDS" = success
 
   licences:
     name: OSI licence allowlist

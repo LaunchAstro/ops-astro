@@ -38,6 +38,7 @@ import {
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
 import { ownTaskRecipes } from './role-case-own-tasks.ts';
+import { plainRows, seedFixtureClients } from './role-case-clients.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
 export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
@@ -61,6 +62,7 @@ export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts
 export async function createHarness(part: string): Promise<Harness> {
   const world = await createWorld(part);
   await world.db.app.withBusiness(world.alpha, installBusinessSettings);
+  const clients = await seedFixtureClients(world);
 
   const needed = new Map(COMMAND_SURFACE.map((one) => [pairFor(one), one]));
   const heldBy = new Map<string, ReadonlySet<string>>();
@@ -263,11 +265,12 @@ export async function createHarness(part: string): Promise<Harness> {
   }
 
   return {
-    world,
+    world: { ...world, db: { ...world.db, admin: plainRows(world.db.admin) } },
     alphaTask,
     bravoRecordId,
     heldBy,
     otherCallers: [world.noah, world.mia, world.orphan, world.bea],
+    clients,
     pairFor,
     asPerson,
     asAgent,

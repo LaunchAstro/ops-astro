@@ -12,8 +12,13 @@
 
 import { createHash } from 'node:crypto';
 
-/** Keys whose string values are identifiers, states or the chain, never a person's words. */
-const PLAIN = new Set([
+/**
+ * The decision payload's fields the bundle may show: identifiers, the
+ * decision and the chain. Anything else, the note first, is written by a
+ * person and may be a client's words, so it is withheld and named by its
+ * digest (Sol, review 1 on #164).
+ */
+const SHOWN = new Set([
   'id',
   'by',
   'actor',
@@ -27,6 +32,11 @@ const PLAIN = new Set([
   'key',
   'evidence',
   'prev',
+]);
+
+/** Keys whose string values are identifiers, states or the chain, never a person's words. */
+const PLAIN = new Set([
+  ...SHOWN,
   'kind',
   'state',
   'status',
@@ -105,28 +115,6 @@ export function scrub(text: string, held: ReadonlySet<string>): string {
   }
   return out;
 }
-
-/**
- * The decision payload's fields the bundle may show: identifiers, the
- * decision and the chain. Anything else, the note first, is written by a
- * person and may be a client's words, so it is withheld and named by its
- * digest (Sol, review 1 on #164).
- */
-const SHOWN = new Set([
-  'id',
-  'by',
-  'actor',
-  'gate',
-  'lineage',
-  'version',
-  'decision',
-  'round',
-  'seq',
-  'link',
-  'key',
-  'evidence',
-  'prev',
-]);
 
 /** The approval as the bundle carries it: the row's exact bytes by digest, and its shown fields. */
 export function approvalOf(

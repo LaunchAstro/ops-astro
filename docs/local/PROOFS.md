@@ -102,6 +102,10 @@ PROOF-CLOSURE their 243 cells sent fabricated ids with no control and no retry.
 `d06-agent.test.ts` holds the contract and exclusion cells for the agent
 route, including the top-level system-field keys, which the agent route now
 also refuses `FIELD_NOT_WRITABLE`.
+The hosted `database conformance` job runs `d06-generated.test.ts` in the six
+parts `tests/db/shard-plan.json` names (`SUITE_PART=i/6`). Each part runs its
+share of the cells and its own last check on its tally, and the two
+metadata tests run in part 1, so every cell and test above runs once.
 
 The in-flight half of I10 is `tests/acceptance/i10-inflight.test.ts`. A read
 is held at admission (after `effectiveGrants`) in its open transaction while
