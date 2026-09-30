@@ -41,6 +41,7 @@ tests/review/sl01-s06-proof.test.ts
 tests/ci/test-only-jwks-value-caught.test.ts
 tests/ci/test-only-cookie-issuer-caught.test.ts
 tests/ci/test-only-session-credentials-caught.test.ts
+tests/ci/computed-sign-in-fixture-export-refused.test.ts
 tests/ci/test-only-journey-credentials-caught.test.ts
 # Sol's REV106D, REV140D and REVB1SL01EARLY proofs, byte-for-byte in the files
 # that carry them (REVB1SL01EARLY criterion 1).
@@ -51,6 +52,8 @@ tests/ci/s0-2-canary.test.ts
 tests/api/s0-6-isolation.test.ts
 tests/ci/s0-2-alerts.test.ts
 tests/db/api-events-forwarder.test.ts
+# Sol's REVB1SL01S34 proof, byte-for-byte.
+tests/ci/staging-deploy-records-auth-version.test.ts
 
 # Sol's proof tests in plain .mjs, kept byte-for-byte as applied: a review
 # attests a proof by its bytes. (Proofs in .ts pass through lint-staged.)
