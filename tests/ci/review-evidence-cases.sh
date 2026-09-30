@@ -964,6 +964,21 @@ run_case "Sol owed: a Sol record is still accepted as today" 0 "$OWED_SEC" "$GAT
 run_case "Sol owed: a Sol record beside an owed line without the label fails" 1 "$OWED_SEC$P2$OWED_LINE" "$GATE"
 LABELS="needs-sol"
 run_case "Sol owed: a Sol record with the label and no line is still accepted" 0 "$OWED_SEC" "$GATE"
+run_case "Sol owed: a Sol record beside the mark and the label is read as the record" 0 "$OWED_SEC$P2$OWED_LINE" "$GATE"
+RECORD=""
+# Opus review of b4ee1fa: the mark keeps rule 3's other checks. A range names
+# this head at its end, and Sol is owed only for work another company built.
+run_case "Sol owed: a range ending at another head fails" 1 "$OWED_SEC${P2}Sol-owed: stage1/SOL-OWED.md 1c51169..${OTHER:0:7}" "$GATE"
+run_case "Sol owed: a range ending at the full head passes" 0 "$OWED_SEC${P2}Sol-owed: stage1/SOL-OWED.md 1c51169..$HEAD" "$GATE"
+run_case "Sol owed: text after the row id fails" 1 "$OWED_SEC${P2}Sol-owed: stage1/SOL-OWED.md MAIN-GATE-1 later" "$GATE"
+run_case "Sol owed: one bad line among good ones fails" 1 "$OWED_SEC$P2$OWED_LINE${P2}Sol-owed: pending" "$GATE"
+BUILDER=gpt-6-sol
+run_case "Sol owed: work Sol's own company built cannot owe Sol" 1 "$OWED_SEC$P2$OWED_LINE" "$GATE"
+BUILDER="claude-opus-5-5
+codex"
+run_case "Sol owed: work partly built by Sol's company cannot owe Sol" 1 "$OWED_SEC$P2$OWED_LINE" "$GATE"
+BUILDER=claude-opus-5-5
+RECORD="$SAVED"
 LABELS=""
 
 echo

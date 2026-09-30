@@ -342,25 +342,40 @@ const refused = {
 // the closed form below, and no record line at all: a record beside it is read
 // as before. Rules 1 and 2 are unchanged, so the code-review line and, on a
 // sensitive path, the security review bound to this head are still required.
+// A range ends at this head, as every other revision here names it; Sol, of
+// OpenAI, is owed only for work no OpenAI model built (Opus review of b4ee1fa).
 const OWED_FORM =
-  /^stage1\/SOL-OWED\.md\s+(?:[0-9a-f]{7,40}\.\.[0-9a-f]{7,40}|[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d{1,4})$/u;
+  /^stage1\/SOL-OWED\.md\s+(?:[0-9a-f]{7,40}\.\.(?<end>[0-9a-f]{7,40})|[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d{1,4})$/u;
 const OWED_HELP = 'Sol-owed: stage1/SOL-OWED.md <base sha>..<head sha> or <ROW-ID-N>';
 const labelled = nonEmptyLines(process.env['PR_LABELS'] ?? '').includes('needs-sol');
-const owedForm = (value) => OWED_FORM.test(value.trim().replace(/\.$/u, '').trim());
+const owedForm = (value) => {
+  const m = OWED_FORM.exec(value.trim().replace(/\.$/u, '').trim());
+  const end = m?.groups?.['end'];
+  return m !== null && (end === undefined || namesHead(end));
+};
 for (const field of owed.filter((f) => !owedForm(f.value))) {
   failures.push(
     `a Sol-owed line is not the accepted form:\n          ${field.line}\n` +
-      `        Write \`${OWED_HELP}\`, naming the row that holds this piece for Sol.`,
+      `        Write \`${OWED_HELP}\`, naming the row that holds this piece for Sol;\n` +
+      '        a range ends at this head.',
   );
 }
 if (owed.length > 0 && !labelled) {
   failures.push(
     'the pull request carries a Sol-owed line and not the `needs-sol` label.\n' +
-      '        The mark is both: add the label, or copy in the review record.',
+      '        The mark is both: add the label, or delete this line and copy in\n' +
+      '        the review record.',
+  );
+}
+if (owed.length > 0 && builtBy.has('OpenAI')) {
+  failures.push(
+    "the pull request marks Sol's review owed, and an OpenAI model built part of it.\n" +
+      "        Sol cannot review its own company's work: copy in another company's record.",
   );
 }
 const owedMark =
   labelled &&
+  !builtBy.has('OpenAI') &&
   owed.length > 0 &&
   owed.every((f) => owedForm(f.value)) &&
   Object.values(record).every((values) => values.length === 0);
