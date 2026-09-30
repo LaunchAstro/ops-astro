@@ -6,9 +6,11 @@
 // 2. If the change touches the sensitive surface ADR 0046 names, the body
 //    also carries a security review bound to the same head.
 // 3. CQ-13, product issue 42: the body carries the record of the review by a
-//    model from another company than the builder's, for this head.
+//    model from another company than the builder's, for this head, or, while
+//    Sol's review is owed (owner, 1 October 2026), the `needs-sol` label and
+//    a `Sol-owed:` line naming its row in stage1/SOL-OWED.md.
 //
-// It reads PR_BODY, HEAD_SHA, CHANGED_FILES and AGENT_MODELS so the same code
+// It reads PR_BODY, PR_LABELS, HEAD_SHA, CHANGED_FILES and AGENT_MODELS so the same code
 // runs in continuous integration and in its own tests. It reads no reviewer
 // identity: a green result proves the evidence is bound to this exact head,
 // not that any reviewer read anything.
@@ -78,7 +80,7 @@ const sensitive = changed.filter((f) => SENSITIVE.some((r) => r.test(f)));
 // --- the grammar ----------------------------------------------------------
 
 // The body as GitHub renders it (scripts/review-evidence-read.mjs).
-const { stated, record, buried, html, prose } = readBody(body);
+const { stated, record, owed, buried, html, prose } = readBody(body);
 
 // The literal strings the template ships with, named in the failure so the
 // author knows which line they missed.
@@ -333,12 +335,44 @@ const refused = {
   'head sha': (v) => !current.startsWith(/^[0-9a-f]{7,40}\b/iu.exec(v)?.[0].toLowerCase() ?? '-'),
   verdict: (v) => !/^approve\.?$/iu.test(v),
 };
+
+// Owner, 1 October 2026: Sol is off the path until about 4 October, so the
+// record may instead be an explicit owed mark. It holds only with the
+// `needs-sol` label (PR_LABELS, one name per line), every `Sol-owed:` line in
+// the closed form below, and no record line at all: a record beside it is read
+// as before. Rules 1 and 2 are unchanged, so the code-review line and, on a
+// sensitive path, the security review bound to this head are still required.
+const OWED_FORM =
+  /^stage1\/SOL-OWED\.md\s+(?:[0-9a-f]{7,40}\.\.[0-9a-f]{7,40}|[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d{1,4})$/u;
+const OWED_HELP = 'Sol-owed: stage1/SOL-OWED.md <base sha>..<head sha> or <ROW-ID-N>';
+const labelled = nonEmptyLines(process.env['PR_LABELS'] ?? '').includes('needs-sol');
+const owedForm = (value) => OWED_FORM.test(value.trim().replace(/\.$/u, '').trim());
+for (const field of owed.filter((f) => !owedForm(f.value))) {
+  failures.push(
+    `a Sol-owed line is not the accepted form:\n          ${field.line}\n` +
+      `        Write \`${OWED_HELP}\`, naming the row that holds this piece for Sol.`,
+  );
+}
+if (owed.length > 0 && !labelled) {
+  failures.push(
+    'the pull request carries a Sol-owed line and not the `needs-sol` label.\n' +
+      '        The mark is both: add the label, or copy in the review record.',
+  );
+}
+const owedMark =
+  labelled &&
+  owed.length > 0 &&
+  owed.every((f) => owedForm(f.value)) &&
+  Object.values(record).every((values) => values.length === 0);
+
 const recordProblems = Object.entries(record).flatMap(([name, values]) =>
-  values.length === 0
-    ? [`no \`${name}:\` line`]
-    : values
-        .filter((v) => outcome(v, [/./u]) !== 'accepted' || refused[name](v))
-        .map((v) => `${name}: ${v}`),
+  owedMark
+    ? []
+    : values.length === 0
+      ? [`no \`${name}:\` line`]
+      : values
+          .filter((v) => outcome(v, [/./u]) !== 'accepted' || refused[name](v))
+          .map((v) => `${name}: ${v}`),
 );
 recordProblems.push(...unknownBuilders.map((b) => `Agent-model: ${b.trim()} (no known company)`));
 if (recordProblems.length > 0) {
@@ -346,7 +380,9 @@ if (recordProblems.length > 0) {
     "the pull request carries no complete record of another company's review\n" +
       `        of this head:\n${recordProblems.map((p) => `          ${p}`).join('\n')}\n` +
       "        Copy the reviewer's four lines: `Head SHA:` this head, `Model:` from\n" +
-      "        another company than the commits' `Agent-model:`, `Verdict: approve`.",
+      "        another company than the commits' `Agent-model:`, `Verdict: approve`.\n" +
+      "        Or, while Sol's review is owed: the `needs-sol` label, no record lines,\n" +
+      `        and a top-level line \`${OWED_HELP}\`.`,
   );
 }
 

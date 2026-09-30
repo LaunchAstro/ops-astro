@@ -34,12 +34,14 @@ Verdict: approve
 
 "
 BUILDER=claude-opus-5-5
+# The pull request's labels, newline separated; none unless a case sets LABELS.
+LABELS=""
 
 # run <label> <expect> <body> <changed files, newline separated>
 run_case() {
   local label="$1" expect="$2" body="$3" files="$4" actual
   actual="$(
-    PR_BODY="${RECORD//@HEAD@/$HEAD}$body" HEAD_SHA="$HEAD" CHANGED_FILES="$files" AGENT_MODELS="$BUILDER" \
+    PR_BODY="${RECORD//@HEAD@/$HEAD}$body" PR_LABELS="$LABELS" HEAD_SHA="$HEAD" CHANGED_FILES="$files" AGENT_MODELS="$BUILDER" \
       node "$CHECKER" >/dev/null 2>&1; echo $?
   )"
   if [ "$actual" = "$expect" ]; then pass "$label"; else fail "$label" "expected exit $expect, got $actual"; fi
@@ -920,6 +922,49 @@ Code review: no findings
 done*$NOT_SENSITIVE" "README.md"
 run_case "FU88 open markup: emphasis closed on an earlier line leaves the field plain" 0 "$BARE_BLOCK${P2}*A note* first.
 Code review: no findings$NOT_SENSITIVE" "README.md"
+
+# Owner, 1 October 2026 (Sol off the path until about 4 October): the other
+# company's record may instead be an explicit owed mark, the `needs-sol`
+# label and a top-level `Sol-owed:` line naming the stage1/SOL-OWED.md row.
+# Nothing else relaxes: the code-review line, and on a sensitive path the
+# security review bound to the head, are still required.
+SAVED="$RECORD"
+RECORD=""
+OWED_LINE="Sol-owed: stage1/SOL-OWED.md 1c51169..${HEAD:0:7}"
+OWED_SEC="$BARE_BLOCK${P2}Code review: no findings
+
+Security review: run against $HEAD, no findings."
+GATE=scripts/review-evidence-check.mjs
+LABELS="needs-sol"
+run_case "Sol owed: the label and the line stand in for the record" 0 "$OWED_SEC$P2$OWED_LINE" "$GATE"
+run_case "Sol owed: a row id names the row as well as a range" 0 "$OWED_SEC${P2}Sol-owed: stage1/SOL-OWED.md MAIN-GATE-1" "$GATE"
+run_case "Sol owed: with the label but no line fails" 1 "$OWED_SEC" "$GATE"
+run_case "Sol owed: without the security review on a sensitive path fails" 1 "$GOOD_BLOCK$P2$OWED_LINE" "$GATE"
+run_case "Sol owed: with a security review for another head fails" 1 "$BARE_BLOCK${P2}Code review: no findings
+
+Security review: run against $OTHER, no findings.$P2$OWED_LINE" "$GATE"
+run_case "Sol owed: without the code-review line fails" 1 "$BARE_BLOCK${P2}Security review: run against $HEAD, no findings.$P2$OWED_LINE" "$GATE"
+run_case "Sol owed: a line that is not the grammar fails" 1 "$OWED_SEC${P2}Sol-owed: pending" "$GATE"
+run_case "Sol owed: a line naming another file fails" 1 "$OWED_SEC${P2}Sol-owed: stage1/TODO.md MAIN-GATE-1" "$GATE"
+run_case "Sol owed: a line in a list is not counted" 1 "$OWED_SEC$P2- $OWED_LINE" "$GATE"
+run_case "Sol owed: a line inside a comment is not counted" 1 "$OWED_SEC$P2<!--
+$OWED_LINE
+-->" "$GATE"
+RECORD="$(record REPLACE-WITH-OUTCOME '<head sha>' REPLACE-WITH-OUTCOME)"$'\n\n'
+run_case "Sol owed: a record line left beside the mark fails" 1 "$OWED_SEC$P2$OWED_LINE" "$GATE"
+RECORD="$(record gpt-6-sol "$OTHER" approve)"$'\n\n'
+run_case "Sol owed: a record for an older head beside the mark fails" 1 "$OWED_SEC$P2$OWED_LINE" "$GATE"
+RECORD=""
+LABELS="needs sol"
+run_case "Sol owed: a label spelled otherwise fails" 1 "$OWED_SEC$P2$OWED_LINE" "$GATE"
+LABELS=""
+run_case "Sol owed: without the label fails" 1 "$OWED_SEC$P2$OWED_LINE" "$GATE"
+RECORD="$SAVED"
+run_case "Sol owed: a Sol record is still accepted as today" 0 "$OWED_SEC" "$GATE"
+run_case "Sol owed: a Sol record beside an owed line without the label fails" 1 "$OWED_SEC$P2$OWED_LINE" "$GATE"
+LABELS="needs-sol"
+run_case "Sol owed: a Sol record with the label and no line is still accepted" 0 "$OWED_SEC" "$GATE"
+LABELS=""
 
 echo
 echo "review evidence cases: $PASSED passed, $FAILED failed"

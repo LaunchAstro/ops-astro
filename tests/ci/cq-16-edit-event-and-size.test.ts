@@ -318,11 +318,21 @@ describe('FU-93 one workflow owns review evidence', () => {
     expect(workflows().filter((p) => job(read(p), CHECK) !== '')).toEqual([REVIEW]);
   });
 
-  it('FU-93 one workflow owns review evidence: it runs when the head is opened, moved or reopened, and on an edit', () => {
+  it('FU-93 one workflow owns review evidence: it runs when the head is opened, moved or reopened, on an edit and on a label change', () => {
+    // Owner, 1 October 2026: the `needs-sol` label is half of the Sol-owed mark.
     expect(top(read(REVIEW), 'on')).toBe(
-      'on:\n  pull_request:\n    types: [opened, synchronize, reopened, edited]\n\n',
+      'on:\n  pull_request:\n    types: [opened, synchronize, reopened, edited, labeled, unlabeled]\n\n',
     );
     expect(read(REVIEW)).not.toContain('pull_request_target');
+  });
+
+  it('Sol owed: the check reads the labels as they stand when it judges, not the event copy', () => {
+    const block = job(read(REVIEW), CHECK);
+    expect(block).not.toContain('github.event.pull_request.labels');
+    expect(step(block, FETCH)).toContain(
+      `gh api "repos/\${REPO}/pulls/\${PR_NUMBER}" --jq '(.labels // [])[].name' > "\${RUNNER_TEMP}/pr-labels.txt"`,
+    );
+    expect(step(block, BINDS)).toContain('PR_LABELS="$(cat "${RUNNER_TEMP}/pr-labels.txt")"');
   });
 
   it('FU-93 one workflow owns review evidence: a push runs every required check, and an edit runs this one alone', () => {
