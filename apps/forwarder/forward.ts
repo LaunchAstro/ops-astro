@@ -80,10 +80,73 @@ const WINDOWS = JSON.stringify(
   Object.fromEntries(Object.entries(RULES).map(([kind, rule]) => [kind, rule.windowMs / 1000])),
 );
 
+type Execute = AdminConnection['execute'];
+type Counted = Pick<Row, 'kind' | 'scope' | 'id'>;
+
+/**
+ * Every row left, in order: each error sent, each signal counted. What an
+ * alert counted is returned with its last row, so the pass can delete its burst.
+ */
+async function replay(execute: Execute, options: ForwarderOptions, raised: AlertKind[]) {
+  const sent: string[] = [];
+  const counted: Counted[] = [];
+  let clock = 0;
+  let current: Row | undefined;
+  const detector = createDetector(
+    (kind) => {
+      raised.push(kind);
+      if (current !== undefined) counted.push(current);
+    },
+    { now: () => clock },
+  );
+  let handled = 0;
+  for (let after = '0'; ;) {
+    // oxlint-disable-next-line no-await-in-loop -- one batch after another
+    const rows = await execute<Row>(
+      `select id, kind, scope, weight, event, at from ops.api_events
+         where id > $1 order by id limit $2`,
+      [after, BATCH],
+    );
+    handled += rows.length;
+    for (const row of rows.toSorted((a, b) => a.at.getTime() - b.at.getTime())) {
+      if (row.kind === 'error') {
+        // oxlint-disable-next-line no-await-in-loop -- one error at a time, inside the pass
+        await options.send(rebuiltError(row.event, options, eventId(row)));
+        sent.push(row.id);
+        continue;
+      }
+      const signal = signalOf(row);
+      clock = row.at.getTime();
+      current = row;
+      if (signal !== undefined) detector.observe(signal);
+    }
+    if (rows.length < BATCH) break;
+    after = rows.at(-1)?.id ?? after;
+  }
+  return { handled, sent, counted };
+}
+
+/** The errors sent, each alert's burst up to its last row, and the signals past their window. */
+async function clear(execute: Execute, sent: readonly string[], counted: readonly Counted[]) {
+  await execute(
+    `delete from ops.api_events e where e.id = any($1::bigint[])
+       or exists (select 1 from unnest($2::text[], $3::text[], $4::bigint[]) as c(kind, scope, id)
+         where c.kind = e.kind and c.scope = e.scope and e.id <= c.id)
+       or (e.kind <> 'error' and e.at < now() - make_interval(secs => ($5::jsonb ->> e.kind)::float8))`,
+    [
+      sent,
+      counted.map((row) => row.kind),
+      counted.map((row) => row.scope),
+      counted.map((row) => row.id),
+      WINDOWS,
+    ],
+  );
+}
+
 export function createForwarder(options: ForwarderOptions): {
   readonly once: () => Promise<{ handled: number; dropped: number }>;
 } {
-  const pass = async (execute: AdminConnection['execute']) => {
+  const pass = async (execute: Execute) => {
     await execute('set local role ops_astro_forwarder');
     await advisoryLock({ query: execute }, 'ops.api_events forwarder');
     const [stale] = await execute<{ dropped: number }>(
@@ -93,58 +156,12 @@ export function createForwarder(options: ForwarderOptions): {
     );
     const dropped = stale?.dropped ?? 0;
     const raised: AlertKind[] = dropped > 0 ? ['signals-dropped'] : [];
-    const sent: string[] = [];
-    const counted: { kind: string; scope: string; id: string }[] = [];
-    let clock = 0;
-    let current: Row | undefined;
-    const detector = createDetector(
-      (kind) => {
-        raised.push(kind);
-        if (current !== undefined) counted.push(current);
-      },
-      { now: () => clock },
-    );
-    let handled = 0;
-    for (let after = '0'; ;) {
-      // oxlint-disable-next-line no-await-in-loop -- one batch after another
-      const rows = await execute<Row>(
-        `select id, kind, scope, weight, event, at from ops.api_events
-           where id > $1 order by id limit $2`,
-        [after, BATCH],
-      );
-      handled += rows.length;
-      for (const row of rows.toSorted((a, b) => a.at.getTime() - b.at.getTime())) {
-        if (row.kind === 'error') {
-          // oxlint-disable-next-line no-await-in-loop -- one error at a time, inside the pass
-          await options.send(rebuiltError(row.event, options, eventId(row)));
-          sent.push(row.id);
-          continue;
-        }
-        const signal = signalOf(row);
-        clock = row.at.getTime();
-        current = row;
-        if (signal !== undefined) detector.observe(signal);
-      }
-      if (rows.length < BATCH) break;
-      after = rows.at(-1)?.id ?? after;
-    }
+    const { handled, sent, counted } = await replay(execute, options, raised);
     for (const kind of raised) {
       // oxlint-disable-next-line no-await-in-loop -- in the order raised
       await options.send(alertEvent(kind, options.where, options.release));
     }
-    await execute(
-      `delete from ops.api_events e where e.id = any($1::bigint[])
-         or exists (select 1 from unnest($2::text[], $3::text[], $4::bigint[]) as c(kind, scope, id)
-           where c.kind = e.kind and c.scope = e.scope and e.id <= c.id)
-         or (e.kind <> 'error' and e.at < now() - make_interval(secs => ($5::jsonb ->> e.kind)::float8))`,
-      [
-        sent,
-        counted.map((row) => row.kind),
-        counted.map((row) => row.scope),
-        counted.map((row) => row.id),
-        WINDOWS,
-      ],
-    );
+    await clear(execute, sent, counted);
     return { handled, dropped };
   };
 
