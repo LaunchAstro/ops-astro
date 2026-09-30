@@ -30,6 +30,7 @@ const send = async (item: string, business: string = w.alpha, broker = w.broker)
 const linksIn = (text: string): readonly string[] =>
   [...text.matchAll(/(?:[a-z][a-z0-9+.-]*:\/\/|www\.)\S+/giu)].map((match) => match[0]);
 
+// eslint-disable-next-line max-lines-per-function -- the ticket's one invariant, read as one case
 it('email_carries_an_address_and_never_a_decision', async () => {
   w.provider.mode('accept');
   const item = await itemFor(w.task, 'decision');
@@ -48,7 +49,7 @@ it('email_carries_an_address_and_never_a_decision', async () => {
   expect(masked(JSON.stringify(message['to']))).toBe('["[address]@recipient.example.test"]');
   expect(message['subject']).toBe(EMAIL_SUBJECT);
   const text = String(message['text']);
-  expect(linksIn(text).map(masked)).toEqual([`[link]/${item}`]);
+  expect(linksIn(text).map((link) => masked(link))).toEqual([`[link]/${item}`]);
   // Nothing that decides or names what is decided: no decision word, no gate,
   // no task, no token or query on the address.
   expect(`${text} ${EMAIL_SUBJECT}`).not.toMatch(

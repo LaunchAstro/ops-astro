@@ -74,13 +74,14 @@ const inAlpha = async <T>(work: (tx: TenantQuery) => Promise<T>): Promise<T> =>
 export async function itemFor(
   task: string,
   reason: InboxReason = 'decision',
-  business: { id: string; person: string } = { id: w.alpha, person: w.person },
+  business?: { id: string; person: string },
 ): Promise<string> {
+  const { id, person } = business ?? { id: w.alpha, person: w.person };
   return await w.db.app.withBusiness(
-    business.id,
+    id,
     async (tx) =>
       await raiseInboxItem(tx, {
-        recipientPersonId: business.person,
+        recipientPersonId: person,
         subjectRecordId: task,
         reason,
         fact: { kind: reason === 'decision' ? 'gate' : 'record', id: randomUUID() },

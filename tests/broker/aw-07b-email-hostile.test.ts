@@ -66,6 +66,7 @@ it('AW-07b hostile provider: oversized, redirected, malformed and slow answers a
   expect(await send(redirected)).toMatchObject({ ok: true, state: 'accepted' });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one capture around every path the canary could leak by
 it('AW-07b canary: a planted recipient address and item link never reach logs, errors or traces', async () => {
   const written: string[] = [];
   const capture = (chunk: unknown): boolean => {
