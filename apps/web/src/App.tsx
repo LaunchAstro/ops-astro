@@ -18,6 +18,7 @@ import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-addr
 import { PANELS } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
+import { signOut } from './session/sign-in.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { drawScreen } from './screen-registry.tsx';
 
@@ -105,6 +106,12 @@ export function App(props: AppProps): ReactElement {
   );
 
   const onSignOut = useCallback(() => {
+    const sessionId = props.sessions.session?.sessionId;
+    void signOut({
+      apiOrigin: props.apiOrigin,
+      fetch: props.fetch,
+      ...(sessionId === undefined ? {} : { sessionId }),
+    });
     props.sessions.clear();
     setSession(null);
     setNotice(null);
@@ -148,7 +155,8 @@ export function App(props: AppProps): ReactElement {
       new OperationsClient({
         origin: props.apiOrigin,
         businessKey: session?.businessKey ?? 'alpha',
-        token: session?.token ?? null,
+        signedIn: session !== null,
+        ...(session?.sessionId === undefined ? {} : { sessionId: session.sessionId }),
         fetch: props.fetch,
         onSessionEnded: (refusal) => {
           // `session` here is this client's own generation, captured when it
@@ -182,6 +190,7 @@ export function App(props: AppProps): ReactElement {
   const signIn = (
     <SignIn
       gotrueUrl={props.gotrueUrl}
+      apiOrigin={props.apiOrigin}
       fetch={props.fetch}
       onSignedIn={onSignedIn}
       ended={props.sessions.interruption}

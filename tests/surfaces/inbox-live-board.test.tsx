@@ -63,7 +63,7 @@ function server(options: { readonly down?: boolean } = {}) {
     if (at.endsWith('/task/board')) asked.board += 1;
     return Promise.resolve(Response.json({ ok: true, tasks: [] }));
   }) as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   return {
     client,
     asked,

@@ -41,7 +41,7 @@ function server(inbox: readonly InboxEntry[], owed: number) {
     }
     return Promise.resolve(Response.json({ ok: true, tasks: [] }));
   }) as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   return { client, posted };
 }
 

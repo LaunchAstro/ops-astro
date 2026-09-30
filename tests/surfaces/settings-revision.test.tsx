@@ -69,20 +69,22 @@ function server(
   let value: unknown = 500;
   let revision = options.revision;
   let refuseNext = options.stale === true;
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     sent.push({ at, body });
     if (at.endsWith('/session/capabilities')) {
-      return json({
-        ok: true,
-        personId: 'p-ada',
-        businessKey: 'alpha',
-        grants: [{ collection: 'settings', action: 'manage' }],
-      });
+      return Promise.resolve(
+        json({
+          ok: true,
+          personId: 'p-ada',
+          businessKey: 'alpha',
+          grants: [{ collection: 'settings', action: 'manage' }],
+        }),
+      );
     }
     if (at.endsWith('/settings/read')) {
-      return json({ ok: true, settings: [row(value, revision)] });
+      return Promise.resolve(json({ ok: true, settings: [row(value, revision)] }));
     }
     if (at.endsWith('/settings/set_four_eyes_threshold')) {
       if (refuseNext) {
@@ -90,28 +92,32 @@ function server(
         refuseNext = false;
         value = 999;
         revision = (revision ?? 0) + 1;
-        return json(
-          {
-            refused: true,
-            code: 'VERSION_STALE',
-            names: ['four_eyes_threshold'],
-            fixes: ['reread and try again'],
-          },
-          409,
+        return Promise.resolve(
+          json(
+            {
+              refused: true,
+              code: 'VERSION_STALE',
+              names: ['four_eyes_threshold'],
+              fixes: ['reread and try again'],
+            },
+            409,
+          ),
         );
       }
       value = body['value'];
       revision = revision === undefined ? undefined : revision + 1;
-      return json({ recordId: 'row', revision: revision ?? null, detail: { value } });
+      return Promise.resolve(
+        json({ recordId: 'row', revision: revision ?? null, detail: { value } }),
+      );
     }
-    throw new Error(`unrouted ${at}`);
+    return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
   return { fetch, sent };
 }
 
 const screen = (fetch: typeof globalThis.fetch) => (
   <SettingsScreen
-    client={new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch })}
+    client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
     grantKey="alpha:ada"
     storage={window.sessionStorage}
   />
@@ -125,6 +131,12 @@ describe('the settings screen writes by exact revision', () => {
     window.sessionStorage.clear();
   });
 
+  theSettingsScreenCases1();
+  theSettingsScreenCases2();
+  theSettingsScreenCases3();
+});
+
+function theSettingsScreenCases1() {
   it('sends the revision the read carried', async () => {
     const api = server({ revision: 7 });
     const page = await mount(screen(api.fetch));
@@ -170,7 +182,9 @@ describe('the settings screen writes by exact revision', () => {
     expect(writesOf(api)).toHaveLength(1);
     await page.unmount();
   });
+}
 
+function theSettingsScreenCases2() {
   it('overwrites only on a second explicit press, against the reread revision', async () => {
     const api = server({ revision: 7, stale: true });
     const page = await mount(screen(api.fetch));
@@ -192,7 +206,9 @@ describe('the settings screen writes by exact revision', () => {
     expect(page.find('[data-settings="four-eyes-value"]')?.textContent).toContain('1200');
     await page.unmount();
   });
+}
 
+function theSettingsScreenCases3() {
   it('a press made before the reread lands writes nothing, then writes against the reread (O7)', async () => {
     const api = server({ revision: 7, stale: true });
     // Every read after the first write is held until the test lets it through.
@@ -231,4 +247,4 @@ describe('the settings screen writes by exact revision', () => {
     expect(again[1]?.body['expectedRevision']).toBe(8);
     await page.unmount();
   });
-});
+}

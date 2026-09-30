@@ -97,7 +97,7 @@ function server() {
 }
 
 const client = (fetch: typeof globalThis.fetch): OperationsClient =>
-  new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
 
 const valueOf = (host: HTMLElement, selector: string): string =>
   (host.querySelector(selector) as HTMLInputElement | null)?.value ?? '';

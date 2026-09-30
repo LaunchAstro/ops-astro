@@ -59,7 +59,12 @@ describe('SL04 live Tasks screen', () => {
       }
       throw new Error(`Unexpected request: ${path}`);
     }) as typeof globalThis.fetch;
-    const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch,
+    });
     const view = await mount(<Projects client={client} grantKey="alpha:recipient" />);
     try {
       await settle();

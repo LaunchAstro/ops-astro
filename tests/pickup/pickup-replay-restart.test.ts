@@ -15,7 +15,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { LOCAL_KEY_FILE } from '../../packages/core-records/src/authority/credential-keys.ts';
-import { BUSINESS_KEY, ISSUER, SECRET } from '../api/fixture.ts';
+import { BUSINESS_KEY, ISSUER } from '../api/fixture.ts';
+import { sharedKeySetUrl } from '../support/sign-in.ts';
 import { detailOf, replayWorld, type Approver, type ReplayWorld } from './pickup-replay-harness.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -30,7 +31,9 @@ const enabled =
   container === 'ops-astro-pickup-replay-pg';
 
 const sleep = async (ms: number): Promise<void> => {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 };
 
 interface Running {
@@ -52,7 +55,7 @@ describe.skipIf(!enabled)('a lost pickup across an API and Postgres restart', ()
   };
 
   /** The API process's environment: this fixture's database, keys and business. */
-  const apiEnvironment = (): NodeJS.ProcessEnv => {
+  const apiEnvironment = async (): Promise<NodeJS.ProcessEnv> => {
     const admin = new URL(serverUrl as string);
     admin.pathname = `/${world.fixture.db.name}`;
     return {
@@ -60,7 +63,7 @@ describe.skipIf(!enabled)('a lost pickup across an API and Postgres restart', ()
       API_PORT: port,
       DATABASE_URL: world.fixture.db.appUrl,
       DATABASE_ADMIN_URL: admin.toString(),
-      SUPABASE_JWT_SECRET: SECRET,
+      SUPABASE_KEY_SET_URL: await sharedKeySetUrl(),
       GOTRUE_URL: ISSUER,
       GATE_SIGNING_KEY_ID: world.fixture.environment.GATE_SIGNING_KEY_ID,
       GATE_SIGNING_SECRET: world.fixture.environment.GATE_SIGNING_SECRET,
@@ -74,7 +77,7 @@ describe.skipIf(!enabled)('a lost pickup across an API and Postgres restart', ()
   async function startApi(): Promise<Running> {
     if (await health()) throw new Error(`something already answers on ${port as string}`);
     const child: ChildProcess = spawn(process.execPath, ['apps/api/server.ts'], {
-      env: apiEnvironment(),
+      env: await apiEnvironment(),
       stdio: ['ignore', 'ignore', 'pipe'],
     });
     let complaint = '';
