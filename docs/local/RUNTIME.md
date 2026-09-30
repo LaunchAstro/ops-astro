@@ -1540,7 +1540,12 @@ one person's approval of the plan's gate, in the caller's one transaction. It
 admits the activation as that person's manual act, captures the manifest (the
 entry file first, then every other file the run may read) before any row is
 written, so an unreadable file or an odd path is `DEFINITION_UNAVAILABLE` and
-nothing is decided; then `decide` approves (its own `gate:decide` check, locks,
+nothing is decided. The store itself unreachable (the instruction root gone or
+unreadable) is the same code naming `fault: ours`, telling the person that
+nothing was approved and no run started (`storeUnavailable`, AW-04 pin
+recovery); a restore that puts other bytes at a path is a new file, so runs
+pinned before keep their digest and a read on one refuses
+`DEFINITION_DIGEST_MISMATCH`. Then `decide` approves (its own `gate:decide` check, locks,
 signed decision and reservation, and its refusal is the accept's); then the pin
 goes on the gate's run with the manifest beside it. A pin that cannot be
 written fails the transaction, so an approval never commits without its pin,
