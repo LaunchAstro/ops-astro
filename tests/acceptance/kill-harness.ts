@@ -90,6 +90,28 @@ export async function until(probe: () => Promise<boolean> | boolean, ms: number)
 }
 
 /**
+ * Probes `pid` until it reads stopped (`T`), for up to `ms`. Each reading is
+ * kept, with how long its `ps` took, for the kill record.
+ */
+export async function awaitStopped(
+  pid: number,
+  ms: number,
+  probe: (pid: number) => string = processState,
+): Promise<{ readonly stopped: boolean; readonly probes: readonly string[] }> {
+  const probes: string[] = [];
+  const stopped = await until(() => {
+    const at = Date.now();
+    const seen = probe(pid);
+    probes.push(`${seen || '-'} in ${String(Date.now() - at)} ms`);
+    return seen.startsWith('T');
+  }, ms).then(
+    () => true,
+    () => false,
+  );
+  return { stopped, probes };
+}
+
+/**
  * Stop `target` (it may have parked itself already), take checks 1 and 2,
  * kill it hard, then take checks 3 and 4. `relevantApp` names the process
  * whose backend must be idle: the API's.
@@ -101,7 +123,9 @@ export async function hardKill(
   relevantApp: string,
 ): Promise<KillRecord> {
   if (!processState(target.pid).startsWith('T')) process.kill(target.pid, 'SIGSTOP');
-  await until(() => processState(target.pid).startsWith('T'), 2_000);
+  const { stopped, probes } = await awaitStopped(target.pid, 2_000);
+  if (!stopped) evidence({ notStopped: { label, pid: target.pid, probes } });
+  expect(stopped, `${label}: stopped within 2 s: ${probes.join(', ')}`).toBe(true);
   const state = processState(target.pid);
   const children = childCount(target.pid);
   const relevant = await backends(admin, relevantApp);
