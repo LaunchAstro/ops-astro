@@ -169,10 +169,6 @@ describe('MP-5-9 reopen restores', () => {
       (one(board, 'tr[data-row="done"] input.cbd__tick') as HTMLInputElement | null)?.checked,
     ).toBe(true);
   });
-
-  it.todo(
-    'an agent task’s tick sends it to Needs review (LEANS-ON MP-4-15’s transition, SL08 U19)',
-  );
 });
 
 describe('MP-5-9 the hover box holds timer, add subtask and a door with its in-app or external mark', () => {
