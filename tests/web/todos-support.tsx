@@ -6,7 +6,6 @@
 //
 // A harness, not a suite: nothing here runs on its own.
 
-import type { TaskPanelHost } from '../../apps/web/src/screen-registry.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { TodosScreen } from '../../apps/web/src/screens/todos/Todos.tsx';
 import { tick } from './task-page-stub.tsx';
@@ -83,17 +82,13 @@ export async function todos(
   } = {},
 ) {
   const opened: string[] = [];
-  const host: TaskPanelHost = {
-    open: (key, door) => {
-      opened.push(`${key}:${door}`);
-    },
-    changes: 0,
-  };
   const view = await mount(
     <TodosScreen
       client={over.client ?? serving().client}
       grantKey="alpha:member"
-      taskPanel={host}
+      onOpen={(key) => {
+        opened.push(`${key}:open`);
+      }}
       now={() => over.now ?? NOW}
     />,
   );

@@ -51,7 +51,14 @@ export const SCREENS: {
       <Projects
         client={context.client}
         grantKey={context.grantKey}
-        {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
+        {...(context.taskPanel === undefined
+          ? {}
+          : {
+              onOpen: (key: string) => {
+                context.taskPanel?.open(key, 'open');
+              },
+              changes: context.taskPanel.changes,
+            })}
       />
     </>
   ),
@@ -78,7 +85,14 @@ export const SCREENS: {
     <TodosScreen
       client={context.client}
       grantKey={context.grantKey}
-      {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
+      {...(context.taskPanel === undefined
+        ? {}
+        : {
+            onOpen: (key: string) => {
+              context.taskPanel?.open(key, 'open');
+            },
+            changes: context.taskPanel.changes,
+          })}
     />
   ),
 };

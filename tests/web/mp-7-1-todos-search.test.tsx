@@ -41,7 +41,7 @@ describe('MP-7-1 Token search with the tag kinds and the reading line', () => {
     expect(view.find('[data-todos-reading]')?.textContent).toBe('Reading this as: due today');
     await view.click('[data-todos="clear"]');
     expect(keysOf(view)).toHaveLength(6);
-    expect((view.find(SEARCH) as HTMLInputElement).value).toBe('');
+    expect(view.host.querySelector<HTMLInputElement>(SEARCH)?.value).toBe('');
     expect(view.find('[data-todos-reading]')).toBeNull();
   });
 });
@@ -109,10 +109,7 @@ describe('MP-7-1 Priority yields below a 380px list', () => {
     expect(cell?.classList.contains('todo__priority')).toBe(true);
     expect(cell?.textContent).toBe('P2');
     expect(view.find('.todos')).not.toBeNull();
-    const sheet = readFileSync(
-      new URL('../../apps/web/src/styles/6-slice.css', import.meta.url),
-      'utf8',
-    );
+    const sheet = readFileSync('apps/web/src/styles/6-slice.css', 'utf8');
     expect(sheet).toMatch(/\.todos \{[^}]*container-type: inline-size/u);
     expect(sheet).toMatch(
       /@container \(max-width: 379px\) \{\s*\.todo__priority \{\s*display: none;/u,
