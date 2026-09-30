@@ -22,6 +22,11 @@ import type { SearchHit, TaskSearchResult } from '../../../core-wire/src/index.t
 
 /** The most hits one search answers; the ⌘K list shows a handful. */
 const HIT_LIMIT = 20;
+/**
+ * The most a server caller may ask for (the ledger's search, MP-8-4). The
+ * `task.search` read passes no limit, so what it answers stays at twenty.
+ */
+const SERVER_HIT_LIMIT = 500;
 /** The words of a query that reach the index; the rest are dropped. */
 const WORD_LIMIT = 8;
 
@@ -48,13 +53,21 @@ interface HitRow {
  * A session with no membership is refused too: the portal has no search until
  * a client search is designed (ticket C1), and a searchable field the share
  * does not show would otherwise be found by a word it never displays.
+ *
+ * A server caller may pass `limit` (1 to 500), checked before anything is
+ * read. The answer then says whether more of the caller's own matches lie
+ * past it: one row more is asked of the same scoped statement, so `more`
+ * counts nothing the caller may not read.
  */
 export async function searchTasks(
   tx: TenantQuery,
   session: Session,
-  target: { readonly taskTypeId: string; readonly query: string },
+  target: { readonly taskTypeId: string; readonly query: string; readonly limit?: number },
 ): Promise<TaskSearchResult | CommandRefusal> {
+  const asked = target.limit === undefined ? HIT_LIMIT : target.limit;
+  if (!Number.isInteger(asked) || asked < 1 || asked > SERVER_HIT_LIMIT) return LIMIT_INVALID;
   if (session.roleKey === null) return NOT_A_MEMBER;
+  const wanted = target.limit === undefined ? asked : asked + 1;
   const scopes = await heldScopes(tx, subjectsOf(session), { collection: 'task', action: 'read' });
   if (scopes.length === 0) return NO_READ_GRANT;
   const wholeBusiness = scopes.some((scope) => scope.kind === 'business');
@@ -71,10 +84,13 @@ export async function searchTasks(
         and ($3::boolean or r.id = any($4::uuid[]))
         and r.search_tsv @@ to_tsquery('english', $5)
       order by ts_rank(r.search_tsv, to_tsquery('english', $5)) desc, r.txt_1
-      limit ${HIT_LIMIT}`,
-    [tx.businessId, target.taskTypeId, wholeBusiness, records, words.join(' & ')],
+      limit $6::int`,
+    [tx.businessId, target.taskTypeId, wholeBusiness, records, words.join(' & '), wanted],
   );
-  return { ok: true, hits: rows.map((row) => hitOf(row)) };
+  const hits = rows.slice(0, asked).map((row) => hitOf(row));
+  return target.limit === undefined
+    ? { ok: true, hits }
+    : { ok: true, hits, more: rows.length > asked };
 }
 
 function hitOf(row: HitRow): SearchHit {
@@ -85,6 +101,12 @@ const NO_READ_GRANT = refuseCommand(
   'SCOPE_NOT_GRANTED',
   [],
   ['no live grant covers it', 'ask a holder who may delegate'],
+);
+
+const LIMIT_INVALID = refuseCommand(
+  'FIELD_VALUE_INVALID',
+  ['limit'],
+  [`send limit as a whole number from 1 to ${String(SERVER_HIT_LIMIT)}`],
 );
 
 const NOT_A_MEMBER = refuseCommand(
