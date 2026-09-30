@@ -56,6 +56,7 @@ export type {
   TagView,
   AgentAssigneeView,
   AgentOfferView,
+  BoardComments,
   PersonView,
   PresetPlanResult,
   ProposalVersionView,

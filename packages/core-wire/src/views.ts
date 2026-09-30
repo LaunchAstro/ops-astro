@@ -554,6 +554,19 @@ export interface BoardTask extends TaskSummary {
   readonly agent: AgentAssigneeView | null;
   /** The reader's own live agents that reach the task, as `task.read` sends them; never anyone else's. */
   readonly myAgents: readonly AgentOfferView[];
+  /** The reader's own waiting client signals and mentions on the task (MP-5-8); never anyone else's. */
+  readonly comments: BoardComments;
+}
+
+/**
+ * A board row's comment badge (MP-5-8, P-22): of the reader's own open inbox
+ * items (INB-1) about the task, how many are `client_comment` and how many
+ * `mention`, and when the newest of them was raised; null when there are none.
+ */
+export interface BoardComments {
+  readonly client: number;
+  readonly mentions: number;
+  readonly latest: string | null;
 }
 
 /**
@@ -587,6 +600,8 @@ export interface TaskBoardResult {
   readonly changedAt: string | null;
   /** The caller's own person id, which the viewer preset narrows to (MP-5-12). */
   readonly viewer: string;
+  /** The caller's owed count, INB-1's one count, as `inbox.count` gives it: Review's count (MP-5-12). */
+  readonly owed: number;
 }
 
 export interface PersonListResult {

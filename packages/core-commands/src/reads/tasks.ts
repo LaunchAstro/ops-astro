@@ -45,6 +45,7 @@ import { readBoardCrumb } from './board-crumb.ts';
 import { readTaskSteps } from './steps.ts';
 import { readTaskAgents } from './task-agents.ts';
 import { NO_AGENTS, readBoardAgents } from './board-agents.ts';
+import { NO_COMMENTS, readBoardComments } from './board-comments.ts';
 
 // A served row is always in its reader's pool; this is only the type's answer.
 const UNRANKED = { number: null, score: null, calc: '' } as const;
@@ -426,7 +427,8 @@ export async function readBoard(
  * caller's decide reach (null for business-wide); such a row waits on the
  * caller when the gate is inside it (MP-5-12). None when not given.
  * `reader` is the caller's own person, whose agents alone a row carries
- * (Assign to AI); null for none.
+ * (Assign to AI), and whose waiting client signals and mentions alone it
+ * counts (MP-5-8); null for none.
  */
 export async function readBoardStamped(
   tx: TenantQuery,
@@ -456,6 +458,7 @@ export async function readBoardStamped(
   const ranks = await readRanks(tx, taskTypeId, readable);
   const actuals = await readActualMinutes(tx, served);
   const agents = await readBoardAgents(tx, served, reader);
+  const comments = await readBoardComments(tx, served, reader);
   const decides = decidable === null ? null : new Set(decidable);
   const tasks = rows.map((row): BoardTask =>
     Object.assign(summaryOf(row), {
@@ -469,6 +472,7 @@ export async function readBoardStamped(
       waitReason: gated.has(row.id) ? ('needs_approval' as const) : null,
       awaitingDecision: gated.has(row.id) && (decides === null || decides.has(row.id)),
       ...(agents.get(row.id) ?? NO_AGENTS),
+      comments: comments.get(row.id) ?? NO_COMMENTS,
     }),
   );
   return { tasks, changedAt: newest?.toISOString() ?? null };

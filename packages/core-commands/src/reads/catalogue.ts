@@ -297,11 +297,11 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // at all, not a filtered one (SL07-B22-ANSWER).
       // The stamp is the newest of the rows served, so it is in scope (MP-5-7).
       // `viewer` is the caller's own person, the one the viewer preset
-      // narrows to (MP-5-12): never anyone else's identifier.
-      const viewer = session.personId;
+      // narrows to (MP-5-12), and `owed` their own count as `inbox.count` gives it.
+      const [viewer, owed] = [session.personId, await countOwed(tx, session.personId)];
       return scope.business
-        ? { ok: true, tasks, changedAt, viewer, withheld: 0 }
-        : { ok: true, tasks, changedAt, viewer };
+        ? { ok: true, tasks, changedAt, viewer, owed, withheld: 0 }
+        : { ok: true, tasks, changedAt, viewer, owed };
     },
   },
   'person.list': {

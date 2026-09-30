@@ -215,6 +215,7 @@ export function Projects(props: ProjectsProps): ReactElement {
             changedAt={value.changedAt ?? null}
             stages={STAGE_LABELS}
             viewer={value.viewer ?? null}
+            {...(value.owed === undefined ? {} : { owed: value.owed })}
             href={(row) => pathTo('agency:task-detail', { key: row.key })}
             actions={rowActions({
               client,
@@ -244,8 +245,9 @@ const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);
 
 /** One task from the read as a Projects board row (MP-5-8). */
 function rowOf(task: BoardTask): ProjectRow {
-  // A read from a server that predates Assign to AI carries neither: none.
-  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents'>> = task;
+  // A read from a server that predates Assign to AI, or the comment counts,
+  // carries none of them: none.
+  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents' | 'comments'>> = task;
   const agent = read.agent ?? null;
   return {
     id: task.id,
@@ -282,6 +284,7 @@ function rowOf(task: BoardTask): ProjectRow {
     // A stored link that is not an address inside the product is never a
     // door (MP-4-12); the door is then the task's own page.
     ...(isInProductLink(task.pageLink) ? { page: task.pageLink } : {}),
-    comments: { client: 0, mentions: 0, latest: null },
+    // The reader's own waiting client signals and mentions (MP-5-8).
+    comments: read.comments ?? { client: 0, mentions: 0, latest: null },
   };
 }
