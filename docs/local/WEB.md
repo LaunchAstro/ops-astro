@@ -161,11 +161,21 @@ is the actor's identifier until the read carries a name. The dock task panel
 folds the trail behind "Show all N changes" and "Hide the trail"; keeping that
 choice as the person's preference waits on a preference model.
 
-The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
-goes to `/settings`. An open dock tab is announced as "Close Settings"
+The dock has two tabs (`PANELS` in `apps/web/src/panels.ts`): Settings goes to
+`/settings`, and Projects to `/todos`, the reader's own to-dos (MP-7-1,
+`screens/todos/Todos.tsx`). An open dock tab is announced as "Close Settings"
 (`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
 leaves its address for the board when pressed (`onDockTab` in
-`apps/web/src/App.tsx`).
+`apps/web/src/App.tsx`). The to-dos list reads `task.todos`: each row's name
+opens the task in the dock task panel beside its page door, its tick sends
+`task.complete` at the row's revision, and its due reads as Overdue, Today,
+Tomorrow, This week or Later on the business day (`todo-list.ts`, one today,
+overdue included, for the words and the today scope). Typed tokens scope it by
+name, `tag:` and `due:today`, read back on the "Reading this as" line; a
+comment count scopes it to that task; the sort (due, task, priority with P1
+first) lasts the session until the preference store holds it (MP-2-11a). The
+priority cell yields under a 380px list (a container rule in
+`styles/6-slice.css`).
 
 The dock task panel (`screens/task/Panel.tsx`, MP-4-8) is where a task is
 changed beside its page. A page door opens it (`useTaskPanel` in

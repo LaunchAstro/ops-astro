@@ -42,6 +42,8 @@ export const READ_NAMES = [
   'task.receipt',
   // The business's tag vocabulary, which the tag field suggests from (MP-4-11).
   'tag.list',
+  // The reader's own to-dos, the Projects dock panel's list (MP-7-1).
+  'task.todos',
 ] as const;
 
 /**
