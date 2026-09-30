@@ -13,7 +13,16 @@
 // convert their own `Date`s so the type the server builds is the type a
 // client parses.
 
-import type { Action, PresetPlan, SettingValueType } from '../../core-records/src/index.ts';
+import type {
+  Action,
+  DeliveryState,
+  InboxAccess,
+  InboxFactKind,
+  InboxReason,
+  InboxWorkState,
+  PresetPlan,
+  SettingValueType,
+} from '../../core-records/src/index.ts';
 
 /** The task state a task points at. The machine category is what a board groups on. */
 export interface TaskStateView {
@@ -462,4 +471,56 @@ export interface ReceiptResult {
         }
       | { readonly state: string; readonly heldMinor: number };
   };
+}
+
+/**
+ * One of the caller's own inbox items (INB-1d). The pointers, the task's key
+ * and title, and the decider's name are present only while the caller can
+ * read the task: a gone entry keeps its own identity and axes and names
+ * nothing of the task or the fact it points at (INB-1g reads them at the same
+ * read, so the item stays a pointer and never a copy).
+ */
+export interface InboxEntry {
+  readonly id: string;
+  readonly reason: InboxReason;
+  readonly workState: InboxWorkState;
+  readonly access: InboxAccess;
+  readonly owed: boolean;
+  /** Open, owed and readable now: exactly what the count counts. */
+  readonly counted: boolean;
+  readonly raisedAt: string;
+  readonly closedAt: string | null;
+  readonly seenAt: string | null;
+  /** The last delivery attempt's state; asked, accepted and delivered are three words. */
+  readonly lastDelivery: DeliveryState | null;
+  readonly subjectRecordId?: string;
+  readonly factKind?: InboxFactKind;
+  readonly factId?: string;
+  readonly closedByPersonId?: string | null;
+  /** The task the item is about, for its link and its name. */
+  readonly task?: { readonly key: string; readonly title: string | null };
+  /** Who closed it, by name: a cleared decision names who decided. */
+  readonly closedBy?: PersonView | null;
+  /**
+   * T2h's alert on the run a readable item points at: the same record the task
+   * page and the queue read show (INB-1, the alert's third and last place).
+   */
+  readonly alert?: {
+    readonly id: string;
+    readonly kind: 'settled' | 'failed' | 'cancelled' | 'awaiting_person';
+    readonly waitingReason: 'needs_approval' | 'liability_unknown' | 'quarantined' | null;
+    readonly raisedAt: string;
+  };
+}
+
+/** `inbox.read`'s answer: the caller's open items and newest page of closed ones, oldest raised first. */
+export interface InboxReadResult {
+  readonly ok: true;
+  readonly inbox: readonly InboxEntry[];
+}
+
+/** `inbox.count`'s answer: the list's counted entries, under the same rule. */
+export interface InboxCountResult {
+  readonly ok: true;
+  readonly owed: number;
 }

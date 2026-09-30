@@ -256,8 +256,12 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
       expect(answer.status, name).toBeGreaterThanOrEqual(400);
       expect(JSON.stringify(answer.body), name).not.toContain(TITLE);
       // Pickup and handback are refused on the person path by design
-      // (`handlers.ts`), before authority; every other write reaches it.
-      if (!/^task\.(pickup|handback)/u.test(name)) {
+      // (`handlers.ts`), before authority. `inbox.seen` passes R4 (the party
+      // opens their own item) and its handler answers an item that is not
+      // theirs as not found. Every other write is refused on authority.
+      if (name === 'inbox.seen') {
+        expect(answer.code, name).toBe('NOT_FOUND');
+      } else if (!/^task\.(pickup|handback)/u.test(name)) {
         expect(answer.code, name).toBe('SCOPE_NOT_GRANTED');
       }
     }
