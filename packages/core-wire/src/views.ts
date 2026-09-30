@@ -605,9 +605,10 @@ export interface ServiceHealthSection {
  * own records. The service-health section (C34) is the installation's
  * watcher, error sink and optional tracing, read by the API after the grant
  * check and outside the serving transaction. The unattended items are INB-1's
- * own read (`inbox.unattended`'s answer). Security alerts (S0-2) and the last
- * tested restore (S0-3) join it as those parts land; each is its owner's
- * read, placed here, never a second copy.
+ * own read (`inbox.unattended`'s answer). Security alerts (S0-2), the last
+ * tested restore (S0-3) and the error sink link join it as those parts land;
+ * each is its owner's read, placed here, never a second copy. Until then the
+ * server leaves them out and the view draws made-up values, labelled Mock.
  */
 export interface OperationsReadResult {
   readonly ok: true;
@@ -618,6 +619,37 @@ export interface OperationsReadResult {
   readonly breachRunbook: BreachRunbookLink | null;
   /** Present on every answer the API serves; absent from a read made in-process. */
   readonly serviceHealth?: ServiceHealthSection;
+  /**
+   * S0-2's security alerts, drawn beside incidents. Not yet served: the API
+   * does not fill it until S0-2's read lands (BUILDABLE-NOW decision 6).
+   */
+  readonly securityAlerts?: readonly SecurityAlertView[];
+  /**
+   * The last successful tested restore, from S0-3's drill receipt; `stale`
+   * once the restore alert fires. Not yet served (BUILDABLE-NOW decision 7).
+   */
+  readonly lastTestedRestore?: LastTestedRestoreView;
+  /** Where the error sink is read; `null` with none configured. Not yet served. */
+  readonly errorSink?: { readonly url: string } | null;
+}
+
+/**
+ * One security alert S0-2 raises: its kind, when, and what it concerns, in
+ * words. Never the secret or the record content behind it (TR-SEC-9).
+ */
+export interface SecurityAlertView {
+  readonly kind: string;
+  /** ISO 8601. */
+  readonly at: string;
+  readonly concerns: string;
+}
+
+/** The drill receipt's last successful tested restore (S0-3). */
+export interface LastTestedRestoreView {
+  /** ISO 8601, or null when no restore has been tested. */
+  readonly at: string | null;
+  /** The restore alert has fired since. */
+  readonly stale: boolean;
 }
 
 /** One notice the breach runbook's template drafts; nothing sends it (owner line 54). */
