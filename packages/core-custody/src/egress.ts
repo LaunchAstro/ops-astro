@@ -261,7 +261,11 @@ async function exchange(
 export async function send(
   destinations: ReadonlyMap<string, Destination>,
   request: OutboundRequest,
-  credential: { readonly header: string; readonly value: string } | null,
+  credential: {
+    readonly header: string;
+    readonly scheme: 'bearer' | 'basic';
+    readonly value: string;
+  } | null,
   resolve: Resolve = resolveBySystem,
 ): Promise<Outbound> {
   const destination = destinations.get(request.destination);
@@ -282,7 +286,11 @@ export async function send(
   };
   if (credential !== null) {
     headers[credential.header] =
-      credential.header === 'authorization' ? `Bearer ${credential.value}` : credential.value;
+      credential.header !== 'authorization'
+        ? credential.value
+        : credential.scheme === 'basic'
+          ? `Basic ${Buffer.from(credential.value).toString('base64')}`
+          : `Bearer ${credential.value}`;
   }
   return await exchange(
     url,

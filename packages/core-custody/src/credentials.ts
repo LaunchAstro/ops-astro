@@ -22,6 +22,12 @@ export interface StoredCredential {
   /** The one destination this credential may be sent to. */
   readonly destination: string;
   readonly header: 'authorization' | 'x-api-key';
+  /**
+   * How an `authorization` value is presented: `bearer` (the default), or
+   * `basic` for a `user:secret` pair sent as HTTP Basic, as the trace
+   * target's project route takes it (AW-13).
+   */
+  readonly scheme: 'bearer' | 'basic';
   readonly value: string;
 }
 
@@ -85,6 +91,9 @@ function isSessionToken(value: string): boolean {
 
 const REF = /^[a-z][a-z0-9_]{0,62}$/u;
 
+/** A Basic pair: one colon, a user, and a secret of 8 or more; the value holds no space. */
+const PAIR = /^[^:]+:[^:]{8,}$/u;
+
 /**
  * Read custody's credential list, refusing the whole list on any bad entry.
  * A refusal names the entry's position and why, and never its value.
@@ -101,6 +110,8 @@ export function parseCredentials(
       return { ok: false, code: 'CREDENTIAL_MALFORMED', at };
     const shape = entry as Record<string, unknown>;
     const { ref, kind, account, destination, header, value } = shape;
+    // Absent only: JSON has no undefined, so a null or empty scheme is malformed.
+    const scheme = 'scheme' in shape ? shape['scheme'] : 'bearer';
     if (kind === 'subscription') return { ok: false, code: 'CREDENTIAL_NOT_STORABLE', at };
     if (typeof value === 'string' && isSessionToken(value)) {
       return { ok: false, code: 'SESSION_TOKEN_REFUSED', at };
@@ -113,7 +124,10 @@ export function parseCredentials(
       typeof destination !== 'string' ||
       !REF.test(destination) ||
       (header !== 'authorization' && header !== 'x-api-key') ||
+      (scheme !== 'bearer' && scheme !== 'basic') ||
+      (scheme === 'basic' && header !== 'authorization') ||
       typeof value !== 'string' ||
+      (scheme === 'basic' && !PAIR.test(value)) ||
       value.length < 8 ||
       /[\s\0]/u.test(value) ||
       (kind === 'replay' ? account !== null : typeof account !== 'string' || account === '')
@@ -126,6 +140,7 @@ export function parseCredentials(
       account: account as string | null,
       destination,
       header,
+      scheme,
       value,
     });
   }

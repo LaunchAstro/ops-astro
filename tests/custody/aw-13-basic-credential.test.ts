@@ -110,6 +110,8 @@ it('AW-13 basic credential: a malformed pair or scheme is refused at load, never
     { header: 'x-api-key', scheme: 'basic', value: `${user}:${secret}` },
     { header: 'authorization', scheme: 'Basic', value: `${user}:${secret}` },
     { header: 'authorization', scheme: 'digest', value: `${user}:${secret}` },
+    { header: 'authorization', scheme: null, value: `${user}:${secret}` },
+    { header: 'authorization', scheme: 'basic', value: `${user}:${secret.slice(0, 7)}` },
   ];
   for (const shape of cases) {
     const file = world.writeCredentials([
