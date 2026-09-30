@@ -482,6 +482,13 @@ jobs:
           # The T4a fixture suites are named here too; their clone past a
           # reader dumps and restores inside this job's own service container.
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+      # The named service-stop proof with both addresses a local setup has; it
+      # skips without both, and the shard jobs set only one.
+      - run: pnpm vitest run tests/ci/named-service-stop-proof-two-urls.test.ts
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
 
   parity:
     # API-1: every app action has its API and CLI equivalent; no database.
