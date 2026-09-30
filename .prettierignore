@@ -73,6 +73,8 @@ tests/ci/two-url-service-stop-required-ci.test.ts
 
 # Sol's REV258D proof, byte-for-byte as the review patch held it.
 tests/ci/two-url-service-stop-skip-fails-required-job.test.ts
+tests/api/hosted-recovery-waits-for-pass.test.ts
+tests/ci/staging-archive-restores-guards.test.ts
 
 # Sol's batch-1-end proofs (REVB1ENDSL03B, REVB1ENDSL01A), byte-for-byte as the
 # review patches held them.

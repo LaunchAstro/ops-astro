@@ -7,12 +7,11 @@
 // the version asked, found and checked as the promotion step finds it
 // (`storedArtefact`), and never builds the product itself.
 //
-// The app runs from one image built on the pinned base with that artefact
-// copied in (deploy/staging/Dockerfile), no path from the machine mounted.
-// Compose names that image by the id the build answers, through the one
-// placeholder an app service's `image` may hold. Every other service is named
-// by a digest recorded in a pin row of docs/supply-chain-pins.md, so a moved
-// tag changes nothing (`S0-6 image pins`). After Compose is up, each staging
+// The app and API run on Vercel (`web-deploy.mjs`); this deploy starts the
+// M5's unit, the worker, forwarder, backup store and egress, with no image of
+// its own. Every service is named by a digest recorded in a pin row of
+// docs/supply-chain-pins.md, so a moved tag changes nothing (`S0-6 image
+// pins`). After Compose is up, each staging
 // container must be on exactly the image it was named by; one that is not
 // fails the deploy.
 //
@@ -20,7 +19,7 @@
 // before the deploy and after it, and compared with the report's own compare:
 // one that stopped, restarted, vanished or changed fails the deploy (`S0-6
 // services unchanged`). Only a deploy that passes both returns its record: the
-// version, the artefact's name and the image id. Nothing from the environment
+// version and the artefact's name. Nothing from the environment
 // and no path goes in it.
 //
 // Every act on the machine goes through `DeployEffects`, so the decisions are
@@ -37,13 +36,9 @@ import { storedArtefact } from './promotion.ts';
 
 /** The staging definition, as the deploy reads it. */
 export interface StagingDefinition {
-  'x-ops-astro': { ownPrefix: string; artefact: string; appServices?: string[] };
+  'x-ops-astro': { ownPrefix: string; artefact: string };
   services: Record<string, { container_name?: string; image?: unknown; [key: string]: unknown }>;
 }
-
-/** The only `image` an app service may name: the id the deploy's build answers. */
-export const APP_IMAGE_PLACEHOLDER =
-  '${OPS_ASTRO_STAGING_APP_IMAGE:?set by scripts/ops/deploy.mjs}';
 
 /** Everything the deploy does to the machine, so a test can watch it. */
 export interface DeployEffects {
@@ -51,10 +46,8 @@ export interface DeployEffects {
   snapshot(): string;
   /** The service report's compare of two snapshots. */
   compare(before: string, after: string): { unchanged: boolean; report: string };
-  /** Build the app image from the artefact; answers the image id. */
-  buildImage(artefactPath: string): string;
-  /** Compose up, the app services named by `appImage`, waiting for health. */
-  up(appImage: string): void;
+  /** Compose up, waiting for health. */
+  up(): void;
   /** The local image id a pinned reference resolves to, or undefined when it is not there. */
   imageId(ref: string): string | undefined;
   /** Each staging container's name and the image id it runs. */
@@ -65,7 +58,6 @@ export interface DeployRecord {
   action: 'deploy recorded';
   version: string;
   artefact: string;
-  image: string;
 }
 
 export type DeployOutcome =
@@ -82,8 +74,6 @@ const PINNED =
 /** A pin row: repository, tag and digest, each in its own code cell. */
 const PIN_ROW =
   /^\|\s*`(?<repo>[^`]+)`\s*\|\s*`(?<tag>[^`]+)`\s*\|\s*`sha256:(?<digest>[0-9a-f]{64})`\s*\|/u;
-/** A full local image id. */
-const IMAGE_ID = /^sha256:[0-9a-f]{64}$/u;
 /** Keys that let Compose build or choose an image other than the one named. */
 const UNPINNED_KEYS = ['build', 'platform', 'pull_policy'];
 
@@ -97,21 +87,15 @@ function recordedPins(record: string): Set<string> {
   return pins;
 }
 
-/** Why each service is not named by a recorded digest or the deploy's own image; empty when all are. */
+/** Why each service is not named by a recorded digest; empty when all are. */
 export function imagePinProblems(def: StagingDefinition, record: string): string[] {
   const pins = recordedPins(record);
-  const apps = def['x-ops-astro'].appServices ?? [];
-  const problems = apps
-    .filter((name) => !(name in def.services))
-    .map((name) => `${name}: named an app service, but staging has no such service`);
+  const problems: string[] = [];
   for (const [name, service] of Object.entries(def.services)) {
     const key = UNPINNED_KEYS.find((k) => k in service);
     const image = service.image;
     if (key !== undefined) problems.push(`${name}: \`${key}\` lets Compose run another image`);
-    else if (apps.includes(name)) {
-      if (image !== APP_IMAGE_PLACEHOLDER)
-        problems.push(`${name}: an app service runs only the image the deploy builds`);
-    } else if (typeof image !== 'string' || !PINNED.test(image)) {
+    else if (typeof image !== 'string' || !PINNED.test(image)) {
       problems.push(`${name}: not named repository:tag@sha256:digest`);
     } else if (!pins.has(image)) {
       problems.push(`${name}: ${image} has no pin row in docs/supply-chain-pins.md`);
@@ -133,14 +117,13 @@ export async function stagingSigns(): Promise<string[]> {
 }
 
 /** Each staging container not on the image it was named by. */
-function imageProblems(effects: DeployEffects, image: string): string[] {
+function imageProblems(effects: DeployEffects): string[] {
   const problems: string[] = [];
   const running = effects.runningImages();
-  const apps = definition['x-ops-astro'].appServices ?? [];
   for (const [name, service] of Object.entries(definition.services)) {
     const container = service.container_name ?? name;
-    const named = apps.includes(name) ? image : String(service.image);
-    const wanted = apps.includes(name) ? image : effects.imageId(named);
+    const named = String(service.image);
+    const wanted = effects.imageId(named);
     if (wanted === undefined) problems.push(`${named} is not there to inspect`);
     else if (running[container] !== wanted) {
       problems.push(`${container} runs ${running[container] ?? 'nothing'}, not ${named}`);
@@ -173,17 +156,9 @@ export async function deploy(
   }
 
   const before = effects.snapshot();
-  const image = effects.buildImage(selected.path);
-  if (!IMAGE_ID.test(image)) {
-    return {
-      kind: 'failed',
-      reason:
-        'the build did not answer a full image id, so Compose was not asked; nothing was deployed',
-    };
-  }
-  effects.up(image);
+  effects.up();
 
-  const problems = imageProblems(effects, image);
+  const problems = imageProblems(effects);
   const compared = effects.compare(before, effects.snapshot());
   if (!compared.unchanged) problems.push(`a live service changed:\n${compared.report}`);
   if (problems.length > 0) {
@@ -194,6 +169,6 @@ export async function deploy(
   }
   return {
     kind: 'deployed',
-    record: { action: 'deploy recorded', version: request.version, artefact: selected.name, image },
+    record: { action: 'deploy recorded', version: request.version, artefact: selected.name },
   };
 }
