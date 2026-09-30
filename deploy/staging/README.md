@@ -43,13 +43,19 @@ The staging worker and its outbox forwarder (`worker`, `forwarder`) are one
 unit: the same pinned Node image, running the checkout the runbook copies into
 the read-only volume `ops-astro-staging-app`. Starting the forwarder starts the
 worker, and production's stop names the pair. The worker holds no database.
-Their one way out, to staging's own web app and Supabase project and to the
-watcher, is not built yet: on the internal network alone they reach none of
-them (re-plan step 3's containment).
-
-The database's files live on a 512 MB tmpfs volume, so staging's data does not
-survive the database container stopping. It holds made-up data only, and the
-runbook migrates and seeds it again after a restart.
+Staging's one way out is two egress hops of the same image and a script of
+ours (`scripts/ops/egress.mjs`, `S0-1 egress allow-list` in
+`tests/ci/staging-egress.test.ts`). `egress` sits on `staging` and answers
+there for exactly four host names, each a setting: the API host
+(`STAGING_EGRESS_API_HOST`), the pooler's host and port
+(`STAGING_EGRESS_POOLER_HOST`, `STAGING_EGRESS_POOLER_PORT`), the watcher's
+heartbeat host (`STAGING_EGRESS_HEARTBEAT_HOST`) and the error sink's host
+(`STAGING_EGRESS_SINK_HOST`). It picks the destination from the TLS hello's
+server name on 443, or the pooler's port, and hands the bytes over an internal
+link to `egress-out`, the one service on a routed network (`egress`), which
+checks the list again. Neither hop ends TLS, so the worker, the forwarder and
+the backup dump still check each host's own certificate; anything else is
+closed with nothing sent on.
 
 Staging's database holds made-up data only (`S0-1 no production data`).
 `scripts/local-seed.mjs` decides from what it installed itself, never from a
