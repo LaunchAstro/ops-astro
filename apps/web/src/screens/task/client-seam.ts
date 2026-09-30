@@ -69,6 +69,16 @@ export interface DuplicateSource {
   readonly send: DuplicateSender;
 }
 
+/** What the panel's host hands the Client field; each absent one is the made-up one. */
+export interface ClientSeams {
+  /** The client list and the content answer, made up until wired. */
+  readonly clientFacts?: ClientFactsSource | undefined;
+  /** "Duplicate without contents"'s sender, made up until wired. */
+  readonly duplicate?: DuplicateSource | undefined;
+  /** A duplicate landed: the host opens the new task by its key. */
+  readonly onDuplicated?: ((key: string) => void) | undefined;
+}
+
 /** The refusal code the carried-text warning arrives under. */
 export const CARRIED_TEXT_NAMES_CLIENT = 'CARRIED_TEXT_NAMES_CLIENT';
 

@@ -50,7 +50,7 @@ import {
 } from './Perspectives.tsx';
 import { PageLink, pageLinkDoor } from './PageLink.tsx';
 import type { DraftScope } from './DraftPanel.tsx';
-import type { ClientFactsSource, DuplicateSource } from './client-seam.ts';
+import type { ClientSeams } from './client-seam.ts';
 import { PanelFields, PanelName } from './PanelFields.tsx';
 import { statesOf, withPageDefaults } from './read-defaults.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
@@ -64,7 +64,8 @@ export interface PanelOpening {
   readonly tab: ConversationTab | null;
 }
 
-export interface TaskPanelProps {
+/** The Client field's seams (`client-seam.ts`) come in beside the rest. */
+export interface TaskPanelProps extends ClientSeams {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly opening: PanelOpening;
@@ -76,12 +77,6 @@ export interface TaskPanelProps {
   readonly onNewTask?: (scope: DraftScope) => void;
   /** Hand the host this person's timer stop while it runs on the task, or null. */
   readonly onLeaving?: (stop: (() => void) | null) => void;
-  /** The Client field's client list and content answer (`client-seam.ts`); made up until wired. */
-  readonly clientFacts?: ClientFactsSource;
-  /** "Duplicate without contents"'s sender (`client-seam.ts`); made up until wired. */
-  readonly duplicate?: DuplicateSource;
-  /** A duplicate landed: the host opens the new task by its key. */
-  readonly onDuplicated?: (key: string) => void;
 }
 
 const CONTROLS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
@@ -132,13 +127,7 @@ function PanelBody(
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
       <PanelHead {...props} />
-      <PanelFields
-        client={client}
-        grantKey={props.grantKey}
-        task={task}
-        states={props.states}
-        onChanged={props.onChanged}
-      />
+      <PanelFields {...props} />
       <PageLink client={client} task={task} onChanged={props.onChanged} />
       <TaskFacts task={task} />
       <HandlingTicks client={client} task={task} onChanged={props.onChanged} />

@@ -240,8 +240,26 @@ offers the states `task.read` sends in the workflow's order (a state off the
 list stays as itself) and sends `task.set_state`; Complete is `task.complete`,
 and leaving Complete is `task.reopen` first, then `task.set_state` at the
 reopen's revision unless the unstarted state was chosen. The pin waits on the
-preference model. Category, the client and "Duplicate without contents" wait
-on their owners on the record or on other slices.
+preference model. Category waits on its owner on the record. The Client
+select (`screens/task/ClientField.tsx`, CS-4.12, DP-19) changes an empty task's
+client through `task.set_party` at the read revision; once the task has content
+it is drawn locked, with the line "This task has content, so its client is
+locked. Duplicate it without contents to start one for another client." and a
+Duplicate without contents action. That opens `screens/task/DuplicateForm.tsx`:
+a client choice (not the task's own) and the shell, the title and the subtasks'
+names, each prefilled, editable and marked "Carried from the old task". Create
+hands `{ recordId, client, title, stepNames, confirmCarried }` to the panel's
+sender; a `CARRIED_TEXT_NAMES_CLIENT` refusal warns on each field it names
+(`title`, `stepNames.<index>`) and Create waits for the person to tick the
+confirmation, then resends with `confirmCarried: true`; editing a warned field
+clears its warning and the next send is checked again. Any other refusal is
+quoted; a landed duplicate's `detail.key` goes to `onDuplicated`, which the
+dock opens. The client list (C32), the task's client, its content answer (S0-5)
+and `task.duplicate` are not on this base: they come through the seams in
+`screens/task/client-seam.ts` (`TaskPanel`'s `clientFacts`, `duplicate` and
+`onDuplicated`), and until the host passes real ones the panel uses the made-up
+`MOCK_CLIENT_FACTS` and `MOCK_DUPLICATE`, each drawn under the one Mock corner
+label (`SourceRegion`). A real source carries no label.
 
 The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`
 looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an
