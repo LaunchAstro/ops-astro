@@ -74,9 +74,8 @@ function settings(service: Service): Map<string, string[]> {
   const raw = service['environment'] ?? {};
   const pairs: [string, string][] = Array.isArray(raw)
     ? raw.map((entry) => {
-        const text = String(entry);
-        const at = text.indexOf('=');
-        return at === -1 ? [text, ''] : [text.slice(0, at), text.slice(at + 1)];
+        const [name = '', ...value] = String(entry).split('=');
+        return [name, value.join('=')];
       })
     : Object.entries(raw as Record<string, unknown>).map(([name, value]) => [name, String(value)]);
   const map = new Map<string, string[]>();

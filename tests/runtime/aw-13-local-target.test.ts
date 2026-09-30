@@ -13,11 +13,12 @@
 
 import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, expect, it as vitestIt } from 'vitest';
+import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
 import { startTraceExporter, traceExportSettings } from '../../apps/api/trace-exporter.ts';
+import { readEnvFile } from '../../packages/core-records/src/index.ts';
 import { derivedId } from '../../packages/core-runtime/src/index.ts';
 import { liveWork, rows } from './schedules-harness.ts';
 import { noDatabase, t, useAw13World } from './aw-13-world.ts';
@@ -26,17 +27,16 @@ const envFile = process.env['TRACE_TARGET_ENV_FILE'];
 const it = envFile === undefined || noDatabase ? vitestIt.skip : vitestIt;
 if (envFile !== undefined) useAw13World('aw13_local');
 
-const folder = mkdtempSync(join(tmpdir(), 'aw13-local-'));
+let folder = '';
+beforeAll(() => {
+  if (envFile !== undefined) folder = mkdtempSync(join(tmpdir(), 'aw13-local-'));
+});
 afterAll(() => {
-  rmSync(folder, { recursive: true, force: true });
+  if (folder !== '') rmSync(folder, { recursive: true, force: true });
 });
 
-const setting = (name: string): string => {
-  const line = readFileSync(envFile ?? '', 'utf8')
-    .split('\n')
-    .find((entry) => entry.startsWith(`${name}=`));
-  return line?.slice(name.length + 1) ?? '';
-};
+const setting = (name: string): string =>
+  readEnvFile(envFile ?? '', { required: true })[name] ?? '';
 
 const sleep = async (ms: number): Promise<void> =>
   await new Promise((resolve) => {
