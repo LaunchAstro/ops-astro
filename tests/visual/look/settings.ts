@@ -9,7 +9,7 @@
 // the made-up set answers both reads, and no mockup page draws `.cbd__empty`
 // on load.
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './probe.ts';
 
 const MOCKUP = { path: '/clients/meridian-dental/account/settings/' } as const;
 const APP = { page: 'agency:settings' } as const;
