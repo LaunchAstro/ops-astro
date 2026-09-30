@@ -27,6 +27,8 @@ describe('MP-7-1 Token search with the tag kinds and the reading line', () => {
 
   it('tag: scopes by the tag, and the tokens are read back together', async () => {
     const { view } = await todos();
+    await typeInto(view, SEARCH, 'tag:LEGAL');
+    expect(keysOf(view)).toStrictEqual(['Proj-Alpha']);
     await typeInto(view, SEARCH, 'tag:launch audit');
     expect(keysOf(view)).toStrictEqual(['Proj-Charlie']);
     expect(view.find('[data-todos-reading]')?.textContent).toBe(
