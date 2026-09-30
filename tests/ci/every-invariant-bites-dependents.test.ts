@@ -48,13 +48,13 @@ describe('every_invariant_bites: a part’s declared dependents', () => {
           `${part.id} added ${reaches}`,
         ).toBe(true);
         const suite = suiteOf(dependent?.files ?? []);
-        // Through a process the suite starts: it names the entry file, which names the symbol.
-        if (via !== undefined) {
+        if (via === undefined) {
+          expect(suite.includes(reaches), `${id}'s suite reaches ${reaches}`).toBe(true);
+        } else {
+          // Through a process the suite starts: it names the entry file, which names the symbol.
           expect(suite.includes(via), `${id}'s suite starts ${via}`).toBe(true);
           const entry = readFileSync(resolve(ROOT, via), 'utf8');
           expect(entry.includes(reaches), `${via} reaches ${reaches}`).toBe(true);
-        } else {
-          expect(suite.includes(reaches), `${id}'s suite reaches ${reaches}`).toBe(true);
         }
       }
     }
