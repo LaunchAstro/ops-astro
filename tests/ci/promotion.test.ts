@@ -8,10 +8,9 @@
 // the command is run as the owner runs it, over a fixture artefact store and
 // fixture service-manager output, the way S0-1a's report is tested.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   parseService,
   promote,
@@ -20,39 +19,10 @@ import {
   type ServiceRef,
   type ServiceState,
 } from '../../scripts/ops/promotion.ts';
-import { outputDigest } from '../../scripts/ops/build-output.ts';
+import { LINE, named, NEWER, scratch, STAGED, store, STORE } from './promotion.fixture.ts';
 
 const COMMAND = new URL('../../scripts/ops/promote.mjs', import.meta.url).pathname;
-const definition = JSON.parse(
-  readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
-) as { 'x-ops-astro': { artefact: string } };
-/** The artefact name S0-1a's definition names, for one version. */
-const named = (version: string): string =>
-  definition['x-ops-astro'].artefact.replace('{version}', version);
-
-const STAGED = '0123456789ab';
-const NEWER = 'fedcba987654';
-const LINE = 'Tried the task page and the approval queue on staging; both behave.';
 const CANARY = 'canary-5d1e9a-promotion-secret';
-
-const scratch = mkdtempSync(join(tmpdir(), 's0-1d-'));
-afterAll(() => rmSync(scratch, { recursive: true, force: true }));
-let stores = 0;
-/** An artefact store: one directory per build, each carrying its own stamp. */
-const store = (builds: Record<string, string | null>): string => {
-  stores += 1;
-  const root = join(scratch, `store${stores}`);
-  for (const [name, stamp] of Object.entries(builds)) {
-    mkdirSync(join(root, name), { recursive: true });
-    writeFileSync(join(root, name, 'index.html'), `<meta name="ops-astro-build">`);
-    if (stamp === null) continue;
-    writeFileSync(join(root, name, 'build.json'), JSON.stringify({ build: stamp }));
-    const digest = outputDigest(join(root, name));
-    writeFileSync(join(root, name, 'build.json'), JSON.stringify({ build: stamp, digest }));
-  }
-  return root;
-};
-const STORE = (): string => store({ [named(STAGED)]: STAGED, [named(NEWER)]: NEWER });
 
 const API: ServiceRef = { manager: 'docker', name: 'prod-api' };
 const AUTH: ServiceRef = { manager: 'launchd', name: 'org.example.prod-auth' };
@@ -142,6 +112,18 @@ function promotionSameArtefactCases1() {
     }
   });
 
+  it("records the owner's one line, and refuses without exactly one", () => {
+    for (const line of ['', '   ', 'tried it\nand it was fine', 'x'.repeat(201)]) {
+      const { calls, effects } = watched([]);
+      const outcome = promote(request({ line, dryRun: true }), effects);
+      expect(outcome.kind).toBe('refused');
+      if (outcome.kind === 'refused') expect(outcome.reason).toMatch(/one line/u);
+      expect(calls).toEqual([]);
+    }
+  });
+}
+
+function promotionSameArtefactCases2() {
   it('the same bytes: an artefact changed after its digest, or recording none, is refused', () => {
     const changed = STORE();
     writeFileSync(join(changed, named(STAGED), 'index.html'), '<p>another build</p>');
@@ -161,18 +143,6 @@ function promotionSameArtefactCases1() {
     }
   });
 
-  it("records the owner's one line, and refuses without exactly one", () => {
-    for (const line of ['', '   ', 'tried it\nand it was fine', 'x'.repeat(201)]) {
-      const { calls, effects } = watched([]);
-      const outcome = promote(request({ line, dryRun: true }), effects);
-      expect(outcome.kind).toBe('refused');
-      if (outcome.kind === 'refused') expect(outcome.reason).toMatch(/one line/u);
-      expect(calls).toEqual([]);
-    }
-  });
-}
-
-function promotionSameArtefactCases2() {
   it('the command dry-runs over a store and prints the record, and nothing else', () => {
     const artefacts = STORE();
     const result = run(
