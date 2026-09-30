@@ -6,8 +6,11 @@
 // where it runs again as written.
 
 import type { ReactElement } from 'react';
-import { BoardMachine, type BoardMachineProps } from '../surfaces/BoardMachine.tsx';
-import type { ColumnSpec, Facet } from './types.ts';
+import {
+  BoardMachine,
+  type BoardMachineProps,
+} from '../../packages/ui/src/surfaces/BoardMachine.tsx';
+import type { ColumnSpec, Facet } from '../../packages/ui/src/board/types.ts';
 
 export interface GalleryTask {
   readonly id: string;

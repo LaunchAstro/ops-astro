@@ -11,11 +11,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  BoardGallery,
-  GALLERY_BOARD,
-  GALLERY_FACETS,
-} from '../../packages/ui/src/board/gallery-fixture.tsx';
+import { BoardGallery, GALLERY_BOARD, GALLERY_FACETS } from './mp-5-board-gallery-fixture.tsx';
 import {
   widthsFromPreference,
   widthsToPreference,
