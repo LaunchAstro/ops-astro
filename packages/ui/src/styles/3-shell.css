@@ -237,7 +237,41 @@
   width: 2px;
   background: var(--accent);
 }
+/* The callout: a dark chip to the tab's left, the side the panels open on.
+   Display-gated, so it never widens the page or takes a click. In dark its
+   ground is the page's own, so the edge is what shows where it ends; in light
+   the edge sits on the dark chip and cannot be seen. The padding gives back
+   the edge's pixel so the chip keeps its size. */
+.dock__tablabel {
+  display: none;
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 7px);
+  z-index: 80;
+  max-width: 14rem;
+  padding: calc(0.35rem - 1px) calc(0.6rem - 1px);
+  border: 1px solid var(--border-strong);
+  background: var(--void);
+  color: var(--on-dark);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  white-space: nowrap;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.dock__tab:hover .dock__tablabel,
+.dock__tab:focus-visible .dock__tablabel {
+  display: block;
+}
 @media (width <= 900px) {
+  .dock__tablabel {
+    top: auto;
+    right: auto;
+    bottom: calc(100% + 7px);
+    left: 50%;
+    transform: translateX(-50%);
+  }
   .dock__rail {
     order: 2;
     flex-direction: row;
