@@ -26,7 +26,7 @@ const GROWS: Readonly<Record<GripEdge, { grow: string; shrink: string; sign: 1 |
   right: { grow: 'ArrowRight', shrink: 'ArrowLeft', sign: 1 },
 };
 
-export function EdgeGrip(props: {
+export interface EdgeGripProps {
   readonly edge: GripEdge;
   readonly className: string;
   readonly label: string;
@@ -38,16 +38,16 @@ export function EdgeGrip(props: {
   readonly onDragging: (dragging: boolean) => void;
   readonly onChange: ((value: number) => void) | undefined;
   readonly onCommit: ((value: number) => void) | undefined;
-}): ReactElement {
+}
+
+export function EdgeGrip(props: EdgeGripProps): ReactElement {
   const start = useRef<{ readonly at: number; readonly value: number } | null>(null);
-  const { grow, shrink, sign } = GROWS[props.edge];
-  const held = (value: number): number =>
-    Math.max(props.min, Math.min(Math.round(value), props.max ?? Number.POSITIVE_INFINITY));
+  const { sign } = GROWS[props.edge];
   const along = (event: PointerEvent<HTMLDivElement>): number =>
     props.edge === 'top' ? event.clientY : event.clientX;
   const at = (point: number): number => {
     const from = start.current ?? { at: point, value: props.value };
-    return held(from.value + (sign * (point - from.at)) / props.per);
+    return held(props, from.value + (sign * (point - from.at)) / props.per);
   };
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
     start.current = { at: along(event), value: props.value };
@@ -65,18 +65,10 @@ export function EdgeGrip(props: {
     props.onCommit?.(value);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    const step = event.shiftKey ? BIG_STEP : STEP;
-    const next =
-      event.key === grow
-        ? props.value + step
-        : event.key === shrink
-          ? props.value - step
-          : event.key === 'Home'
-            ? props.reset
-            : null;
+    const next = keyed(props, event);
     if (next === null) return;
     event.preventDefault();
-    const value = held(next);
+    const value = held(props, next);
     props.onChange?.(value);
     props.onCommit?.(value);
   };
@@ -97,4 +89,18 @@ export function EdgeGrip(props: {
       onKeyDown={onKeyDown}
     />
   );
+}
+
+/** The value held to the grip's range, in whole pixels. */
+function held(props: EdgeGripProps, value: number): number {
+  return Math.max(props.min, Math.min(Math.round(value), props.max ?? Number.POSITIVE_INFINITY));
+}
+
+/** Where a key moves the grip's value, before it is held to its range: null for a key it ignores. */
+function keyed(props: EdgeGripProps, event: KeyboardEvent<HTMLDivElement>): number | null {
+  const { grow, shrink } = GROWS[props.edge];
+  const step = event.shiftKey ? BIG_STEP : STEP;
+  if (event.key === grow) return props.value + step;
+  if (event.key === shrink) return props.value - step;
+  return event.key === 'Home' ? props.reset : null;
 }

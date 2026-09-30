@@ -16,6 +16,7 @@ import { chromium } from 'playwright';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
+import { dockOf } from './dock-props.ts';
 import { captureBuiltPages, madeUpSession, serveApp } from '../visual/app-pages.ts';
 import { comparePng } from '../visual/compare.ts';
 import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
@@ -245,19 +246,10 @@ describe('MP-1-1 tokens', () => {
         rail={[]}
         here="/"
         title="Board"
-        dock={{
-          tabs: [
-            { id: 'assistant', label: 'Assistant', count: null, open: false },
-            { id: 'clients', label: 'Clients', count: null, open: true },
-          ],
-          panels: [],
-          onTab: () => {},
-          onClose: () => {},
-          onCloseAll: () => {},
-          onBack: () => {},
-          onForward: () => {},
-          onDoor: () => {},
-        }}
+        dock={dockOf([
+          { id: 'assistant', label: 'Assistant', open: false },
+          { id: 'clients', label: 'Clients', open: true },
+        ])}
       >
         <p>content</p>
       </Shell>,

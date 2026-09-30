@@ -159,12 +159,12 @@ export function useDock(
       if (event.defaultPrevented || event.button !== 0) return;
       const door =
         event.target instanceof Element
-          ? event.target.closest('[data-dock-open], [data-ask]')
+          ? event.target.closest<HTMLElement>('[data-dock-open], [data-ask]')
           : null;
       if (door === null) return;
-      const id = door.getAttribute('data-dock-open') ?? 'ai';
+      const id = door.dataset['dockOpen'] ?? 'ai';
       if (!isPanelId(id) || !dockTabs({}, registry).some((tab) => tab.id === id)) return;
-      const place = door.getAttribute('data-dock-place');
+      const place = door.dataset['dockPlace'];
       event.preventDefault();
       change((state) =>
         openByGesture(state, id, event.shiftKey, isOwnAddress(place) ? place : undefined),

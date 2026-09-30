@@ -11,6 +11,7 @@
     "tests/fixture/snapshot/snapshot-clone-and-privileges.test.ts",
     "tests/web/mp-2-1-isolation-api.test.tsx",
     "tests/api/api-1-isolation.test.ts",
-    "tests/web/mp-3-1-isolation-api.test.tsx"
+    "tests/web/mp-3-1-isolation-api.test.tsx",
+    "tests/web/dock-door-isolation-api.test.tsx"
   ]
 }

@@ -65,8 +65,8 @@ async function draw(
     onTab: (id, shift) => calls.tab.push([id, shift]),
     onClose: (id) => calls.close.push(id),
     onCloseAll: () => calls.closeAll.push(1),
-    onBack: () => undefined,
-    onForward: () => undefined,
+    onBack: () => {},
+    onForward: () => {},
     onDoor: (href) => calls.door.push(href),
   };
   drawn = await mount(<Dock {...props} />);
@@ -77,14 +77,17 @@ describe('MP-3-1 rail from registry', () => {
   it('draws one glyph per tab, in the order it is handed', async () => {
     const { page } = await draw([tab('todos', 'Projects'), tab('settings', 'Settings')]);
     const tabs = page.all('.dock__rail .dock__tab');
-    expect(tabs.map((each) => each.getAttribute('data-panel'))).toEqual(['todos', 'settings']);
+    expect(tabs.map((each) => (each as HTMLElement).dataset['panel'])).toEqual([
+      'todos',
+      'settings',
+    ]);
     expect(tabs.map((each) => each.querySelectorAll('svg.icon').length)).toEqual([1, 1]);
   });
 
   it('hands the shift key to the gesture with the tab id', async () => {
     const { page, calls } = await draw([tab('todos', 'Projects'), tab('settings', 'Settings')]);
     const [first, second] = page.all('.dock__tab') as HTMLElement[];
-    await act(async () => {
+    await act(() => {
       first?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       second?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
     });
@@ -134,12 +137,12 @@ describe('MP-3-1 callout', () => {
       rail.getBoundingClientRect = () => ({ left }) as DOMRect;
     };
     at(149);
-    await act(async () => {
+    await act(() => {
       rail.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
     });
     expect(dock.classList.contains('dock--tipflip')).toBe(true);
     at(151);
-    await act(async () => {
+    await act(() => {
       rail.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
     });
     expect(dock.classList.contains('dock--tipflip')).toBe(false);
@@ -191,7 +194,7 @@ describe('MP-3-1 head', () => {
     const head = page.find('.dpanel__head') as HTMLElement;
     expect(head.querySelectorAll('.dpanel__div')).toHaveLength(1);
     const acts = [...head.querySelectorAll('.dpanel__acts > *')].map(
-      (each) => each.getAttribute('data-act') ?? each.className,
+      (each) => (each as HTMLElement).dataset['act'] ?? each.className,
     );
     expect(acts).toEqual(['door', 'dpanel__div', 'back', 'forward', 'close']);
     const back = head.querySelector('[data-act="back"]');

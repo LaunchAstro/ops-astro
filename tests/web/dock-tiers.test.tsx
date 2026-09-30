@@ -73,11 +73,11 @@ async function at(width: number, height = 1000): Promise<Mounted> {
   const page = await mount(
     <App
       path="/projects/"
-      navigate={() => undefined}
+      navigate={() => {}}
       sessions={new SessionStore(storage)}
       gotrueUrl="http://gotrue.test"
       apiOrigin=""
-      fetch={(() => new Promise<Response>(() => undefined)) as typeof globalThis.fetch}
+      fetch={(() => new Promise<Response>(() => {})) as typeof globalThis.fetch}
       storage={storage as Storage}
       panels={REGISTRY}
     />,
@@ -87,15 +87,15 @@ async function at(width: number, height = 1000): Promise<Mounted> {
 }
 
 async function open(page: Mounted, id: string, shiftKey = false): Promise<void> {
-  await act(async () => {
+  await act(() => {
     page
       .find(`.dock__tab[data-panel="${id}"]`)
       ?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey }));
   });
 }
 
-const openIds = (page: Mounted): (string | null)[] =>
-  page.all('.dpanel').map((each) => each.getAttribute('data-panel-id'));
+const openIds = (page: Mounted): (string | undefined)[] =>
+  page.all('.dpanel').map((each) => (each as HTMLElement).dataset['panelId']);
 
 const geometry = (viewport: number): string =>
   dockGeometry({ viewport, navRail: 224, width: 550, open: ['todos'] }).mode;
@@ -110,7 +110,7 @@ describe('MP-3-3 sheet tier', () => {
     const page = await at(1100);
     await open(page, 'todos');
     await open(page, 'settings', true);
-    expect(page.find('.dock')?.getAttribute('data-mode')).toBe('sheet');
+    expect((page.find('.dock') as HTMLElement | null)?.dataset['mode']).toBe('sheet');
     expect(openIds(page)).toEqual(['todos', 'settings']);
     expect((page.find('.dock') as HTMLElement).style.getPropertyValue('--dock-sheet-h')).toBe(
       '460px',
@@ -142,7 +142,7 @@ describe('MP-3-3 sheet height', () => {
     const press = async (key: string, times: number): Promise<void> => {
       for (let turn = 0; turn < times; turn += 1) {
         // eslint-disable-next-line no-await-in-loop -- each press meets the height the last left
-        await act(async () => {
+        await act(() => {
           grip.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey: true, bubbles: true }));
         });
       }
@@ -158,8 +158,8 @@ describe('MP-3-3 sheet height', () => {
 describe('MP-3-3 phone strip', () => {
   it('keeps the tab strip on screen at rest at 900 and below', async () => {
     const page = await at(390);
-    expect(page.find('.dock')?.getAttribute('data-mode')).toBe('phone');
-    expect(page.find('.dock')?.getAttribute('data-open')).toBe('0');
+    expect((page.find('.dock') as HTMLElement | null)?.dataset['mode']).toBe('phone');
+    expect((page.find('.dock') as HTMLElement | null)?.dataset['open']).toBe('0');
     expect(page.all('.dock__rail .dock__tab')).toHaveLength(2);
     const phone = media('(width <= 900px)');
     expect(phone).toMatch(/\.dock \{[^}]*bottom: 0/u);
@@ -170,7 +170,7 @@ describe('MP-3-3 phone strip', () => {
     const page = await at(390);
     await open(page, 'settings');
     await open(page, 'todos', true);
-    expect(page.find('.dock')?.getAttribute('data-mode')).toBe('phone');
+    expect((page.find('.dock') as HTMLElement | null)?.dataset['mode']).toBe('phone');
     expect(openIds(page)).toEqual(['todos']);
     await open(page, 'todos', true);
     expect(openIds(page)).toEqual(['settings']);

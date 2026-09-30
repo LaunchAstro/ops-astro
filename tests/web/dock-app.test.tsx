@@ -29,7 +29,7 @@ function memory(): StorageLike & { readonly held: Map<string, string> } {
   };
 }
 
-const pending = (() => new Promise<Response>(() => undefined)) as typeof globalThis.fetch;
+const pending = (() => new Promise<Response>(() => {})) as typeof globalThis.fetch;
 
 const closedFor: string[] = [];
 const REGISTRY: PanelRegistry = {
@@ -81,14 +81,14 @@ const tabOf = (page: Mounted, id: string): HTMLElement =>
   page.find(`.dock__tab[data-panel="${id}"]`) as HTMLElement;
 
 async function press(page: Mounted, id: string, shiftKey = false): Promise<void> {
-  await act(async () => {
+  await act(() => {
     tabOf(page, id).dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey }));
   });
 }
 
 async function escapeOn(target: EventTarget, init: KeyboardEventInit = {}): Promise<boolean> {
   let dispatched = true;
-  await act(async () => {
+  await act(() => {
     dispatched = target.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, ...init }),
     );
@@ -96,8 +96,8 @@ async function escapeOn(target: EventTarget, init: KeyboardEventInit = {}): Prom
   return dispatched;
 }
 
-const openIds = (page: Mounted): (string | null)[] =>
-  page.all('.dpanel').map((each) => each.getAttribute('data-panel-id'));
+const openIds = (page: Mounted): (string | undefined)[] =>
+  page.all('.dpanel').map((each) => (each as HTMLElement).dataset['panelId']);
 
 describe('MP-3-1 gesture opens', () => {
   it('a plain click shows one panel and a shift-click adds a second beside it, in rank order', async () => {
@@ -192,7 +192,9 @@ describe('MP-3-1 escape order', () => {
     }
     expect(openIds(page)).toEqual(['settings']);
   });
+});
 
+describe('MP-3-1 escape order', () => {
   it('closes nothing when something else already took the key', async () => {
     const page = await at('/projects/', memory());
     await press(page, 'settings');
@@ -278,7 +280,7 @@ describe('MP-3-1 door falls back', () => {
     const page = await at('/settings', stored({}), went);
     const link = Object.assign(document.createElement('a'), { href: '/task/T-9' });
     (page.find('[data-panel-id="todos"] .dpanel__body') as HTMLElement).append(link);
-    await act(async () => {
+    await act(() => {
       link.click();
     });
     expect(went).toEqual([]);

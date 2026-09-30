@@ -48,11 +48,11 @@ async function at(storage: StorageLike = memory()): Promise<Mounted> {
   const page = await mount(
     <App
       path="/settings"
-      navigate={() => undefined}
+      navigate={() => {}}
       sessions={new SessionStore(storage)}
       gotrueUrl="http://gotrue.test"
       apiOrigin=""
-      fetch={(() => new Promise<Response>(() => undefined)) as typeof globalThis.fetch}
+      fetch={(() => new Promise<Response>(() => {})) as typeof globalThis.fetch}
       storage={storage as Storage}
       panels={REGISTRY}
     />,
@@ -63,15 +63,15 @@ async function at(storage: StorageLike = memory()): Promise<Mounted> {
 
 async function clickOn(target: Element | null, shiftKey = false): Promise<void> {
   if (target === null) throw new Error('no target');
-  await act(async () => {
+  await act(() => {
     target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey }));
   });
 }
 
 const tab = (page: Mounted, id: string): Element | null =>
   page.find(`.dock__tab[data-panel="${id}"]`);
-const openIds = (page: Mounted): (string | null)[] =>
-  page.all('.dpanel').map((each) => each.getAttribute('data-panel-id'));
+const openIds = (page: Mounted): (string | undefined)[] =>
+  page.all('.dpanel').map((each) => (each as HTMLElement).dataset['panelId']);
 const doorOf = (page: Mounted, id: string): string | null =>
   page.find(`[data-panel-id="${id}"] [data-act="door"]`)?.getAttribute('href') ?? null;
 const disabled = (page: Mounted, way: 'back' | 'forward'): (string | null)[] =>
@@ -127,7 +127,7 @@ describe('MP-3-5 driven sequence', () => {
     await clickOn(tab(page, 'todos'));
     const body = page.find('[data-panel-id="todos"] .dpanel__body') as HTMLElement;
     body.scrollTop = 180;
-    await act(async () => {
+    await act(() => {
       body.dispatchEvent(new Event('scroll'));
     });
     await walk(page, 'todos', '/task/T-1');
@@ -179,9 +179,9 @@ describe('MP-3-5 one person in one business', () => {
     const page = await mount(<Harness session={SESSION} storage={storage} />);
     live.push(page);
     await page.click('[data-open]');
-    expect(page.find('output')?.getAttribute('data-can-back')).toBe('true');
+    expect((page.find('output') as HTMLElement | null)?.dataset['canBack']).toBe('true');
     await page.render(<Harness session={{ ...SESSION, businessKey: 'bravo' }} storage={storage} />);
-    expect(page.find('output')?.getAttribute('data-can-back')).toBe('false');
+    expect((page.find('output') as HTMLElement | null)?.dataset['canBack']).toBe('false');
     await page.render(<Harness session={SESSION} storage={storage} />);
     await page.click('[data-open]');
     await page.render(
@@ -190,6 +190,6 @@ describe('MP-3-5 one person in one business', () => {
         storage={storage}
       />,
     );
-    expect(page.find('output')?.getAttribute('data-can-back')).toBe('false');
+    expect((page.find('output') as HTMLElement | null)?.dataset['canBack']).toBe('false');
   });
 });

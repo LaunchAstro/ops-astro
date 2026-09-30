@@ -129,7 +129,7 @@ export const isOwnAddress = (value: unknown): value is string =>
   !value.startsWith('//') &&
   !value.startsWith('/\\') &&
   // oxlint-disable-next-line no-control-regex -- refusing control characters is the point
-  !/[\u0000-\u001f\\]/u.test(value);
+  !/[\u0000-\u001F\\]/u.test(value);
 
 interface StoredDock {
   readonly who: string;
@@ -151,7 +151,7 @@ export interface DockSlot {
 
 /** The tab's copy of one person's dock in one business. No session, no copy. */
 export function dockSlot(storage: StorageLike | null, session: Session | null): DockSlot {
-  if (session === null) return { read: () => CLOSED, write: () => undefined };
+  if (session === null) return { read: () => CLOSED, write: () => {} };
   const slot = jsonSlot(storage, dockKey(session.businessKey), isStoredDock);
   return {
     read: () => {

@@ -15,7 +15,7 @@ import { SessionStore, type StorageLike } from '../../apps/web/src/session/token
 import { mount, type Mounted } from '../surfaces/mount.tsx';
 
 const SESSION = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };
-const pending = (() => new Promise<Response>(() => undefined)) as typeof globalThis.fetch;
+const pending = (() => new Promise<Response>(() => {})) as typeof globalThis.fetch;
 
 const REGISTRY: PanelRegistry = {
   ai: { label: 'Client intelligence', ariaLabel: 'Client intelligence', route: 'agency:settings' },
@@ -49,7 +49,7 @@ async function at(path = '/projects/'): Promise<Mounted> {
   const page = await mount(
     <App
       path={path}
-      navigate={() => undefined}
+      navigate={() => {}}
       sessions={new SessionStore(storage)}
       gotrueUrl="http://gotrue.test"
       apiOrigin=""
@@ -64,15 +64,15 @@ async function at(path = '/projects/'): Promise<Mounted> {
 
 async function clickOn(target: Element | null, shiftKey = false): Promise<void> {
   if (target === null) throw new Error('no target');
-  await act(async () => {
+  await act(() => {
     target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey }));
   });
 }
 
 const tab = (page: Mounted, id: string): Element | null =>
   page.find(`.dock__tab[data-panel="${id}"]`);
-const openIds = (page: Mounted): (string | null)[] =>
-  page.all('.dpanel').map((each) => each.getAttribute('data-panel-id'));
+const openIds = (page: Mounted): (string | undefined)[] =>
+  page.all('.dpanel').map((each) => (each as HTMLElement).dataset['panelId']);
 const doorOf = (page: Mounted, id: string): string | null =>
   page.find(`[data-panel-id="${id}"] [data-act="door"]`)?.getAttribute('href') ?? null;
 
@@ -143,7 +143,9 @@ describe('MP-3-4 every programmatic open', () => {
     await clickOn(inner, true);
     expect(openIds(page)).toEqual(['todos', 'settings']);
   });
+});
 
+describe('MP-3-4 every programmatic open', () => {
   it('refuses an unknown or unregistered target and a place this application does not own', async () => {
     const page = await at();
     await clickOn(tab(page, 'settings'));

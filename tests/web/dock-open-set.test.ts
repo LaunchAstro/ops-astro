@@ -107,7 +107,9 @@ describe('MP-3-1 open set survives navigation', () => {
     dockSlot(storage, mia).write(opened(['settings', false]));
     expect([...storage.held.entries()].join(' ')).not.toContain('tok-mia');
   });
+});
 
+describe('MP-3-1 open set survives navigation', () => {
   it('drops a hostile stored row: unknown ids, repeats, other origins, odd shapes', () => {
     const storage = memory();
     const row = (value: unknown): DockState => {

@@ -65,7 +65,9 @@ describe('MP-3-2 geometry table', () => {
     expect(row(at(1480, THREE))).toMatchObject({ mode: 'floating', each: 418, group: 1254 });
     expect(row(at(1440, THREE))).toMatchObject({ mode: 'floating', each: 405, group: 1215 });
   });
+});
 
+describe('MP-3-2 geometry table', () => {
   it('where three cannot fit at the floor, closes the lowest-ranked one and says so (R39)', () => {
     const narrow = at(1280, THREE);
     expect(narrow.closes).toBe('notes');

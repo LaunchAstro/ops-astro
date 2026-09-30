@@ -3,6 +3,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, it } from 'vitest';
 import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
+import { dockOf } from './dock-props.ts';
 
 it('MP-1-2 dock tabs use licensed icons instead of initials', () => {
   const html = renderToStaticMarkup(
@@ -11,16 +12,7 @@ it('MP-1-2 dock tabs use licensed icons instead of initials', () => {
       rail={[]}
       here="/gallery/"
       title="Component gallery"
-      dock={{
-        tabs: [{ id: 'activity', label: 'Activity', count: null, open: false }],
-        panels: [],
-        onTab: () => undefined,
-        onClose: () => undefined,
-        onCloseAll: () => undefined,
-        onBack: () => undefined,
-        onForward: () => undefined,
-        onDoor: () => undefined,
-      }}
+      dock={dockOf([{ id: 'activity', label: 'Activity', open: false }])}
     >
       {null}
     </Shell>,

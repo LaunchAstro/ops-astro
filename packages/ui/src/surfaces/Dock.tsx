@@ -16,17 +16,9 @@
 // the arrows step it, shift steps it further, Home resets it. Nothing
 // animates until the first layout is drawn.
 
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type MouseEvent,
-  type CSSProperties,
-  type ReactElement,
-  type ReactNode,
-} from 'react';
+import { useEffect, useState, type CSSProperties, type ReactElement } from 'react';
 import { Icon, type GlyphName } from '../primitives/Icon.tsx';
+import { DockPanelView, type DockPanel, type DockPanelActs } from './DockPanel.tsx';
 import { EdgeGrip } from './EdgeGrip.tsx';
 
 export interface DockTab {
@@ -39,21 +31,7 @@ export interface DockTab {
   readonly open: boolean;
 }
 
-export interface DockPanel {
-  readonly id: string;
-  /** The panel's name. The head never names the item open inside it. */
-  readonly label: string;
-  readonly ariaLabel: string;
-  /** The address of the view the panel is on, or of its board. */
-  readonly door: string;
-  /** The door's glyph: its destination's own (DK-09); the in-app arrow when none is named. */
-  readonly icon?: GlyphName | undefined;
-  readonly canBack: boolean;
-  readonly canForward: boolean;
-  /** Where the last walk of the dock's history puts this panel's scroll, if anywhere. */
-  readonly scrollTop?: number | undefined;
-  readonly body: ReactNode;
-}
+export type { DockPanel, DockPanelActs } from './DockPanel.tsx';
 
 export interface DockLayout {
   readonly mode: 'rest' | 'seated' | 'floating' | 'sheet' | 'phone';
@@ -70,7 +48,7 @@ export const DOCK_PANEL_DEFAULT = 550;
 export const DOCK_SHEET_FLOOR = 220;
 export const DOCK_SHEET_DEFAULT = 460;
 
-export interface DockProps {
+export interface DockProps extends DockPanelActs {
   readonly tabs: readonly DockTab[];
   readonly layout?: DockLayout;
   /** One width for every panel, while the grip moves. */
@@ -79,22 +57,12 @@ export interface DockProps {
   readonly onResizeEnd?: (width: number) => void;
   /** The sheet's one height, while its grip moves and when it is let go. */
   readonly onSheetResize?: (height: number) => void;
-  /** Which walk of the history the panels' scrollTop belongs to; each new walk applies it once. */
-  readonly restoreWalk?: number;
-  /** A panel's body scrolled. */
-  readonly onScroll?: (id: string, top: number) => void;
   /** One line saying why the dock changed on its own (R39), or null. */
   readonly stamp?: string | null;
   /** The open panels, in the order they are drawn. */
   readonly panels: readonly DockPanel[];
   readonly onTab: (id: string, shift: boolean) => void;
-  readonly onClose: (id: string) => void;
   readonly onCloseAll: () => void;
-  readonly onBack: () => void;
-  readonly onForward: () => void;
-  readonly onDoor: (href: string) => void;
-  /** A click inside a panel's body, which may walk the panel rather than the page. */
-  readonly onBodyClick?: (id: string, event: MouseEvent<HTMLDivElement>) => void;
 }
 
 /** How near the window's left edge the rail may sit before its callout opens rightwards. */
@@ -102,16 +70,11 @@ const TIP_FLIP_PX = 150;
 
 export function Dock(props: DockProps): ReactElement {
   const [flip, setFlip] = useState(false);
-  const measure = (event: { readonly currentTarget: HTMLElement }): void => {
-    setFlip(event.currentTarget.getBoundingClientRect().left < TIP_FLIP_PX);
-  };
   const ready = useReadyAfterFirstLayout();
   const [dragging, setDragging] = useState(false);
   const anyOpen = props.panels.length > 0;
   const width = props.layout?.panelWidth ?? DOCK_PANEL_DEFAULT;
   const height = props.layout?.sheetHeight ?? DOCK_SHEET_DEFAULT;
-  // Below the side tier the panels share one height, dragged on the sheet's top edge.
-  const sheet = props.layout?.mode === 'sheet' || props.layout?.mode === 'phone';
   return (
     <div
       className={`dock${flip ? ' dock--tipflip' : ''}`}
@@ -139,57 +102,94 @@ export function Dock(props: DockProps): ReactElement {
               panel={panel}
               dock={props}
               grip={
-                sheet ? (
-                  index === 0 ? (
-                    <EdgeGrip
-                      edge="top"
-                      className="dpanel__grip"
-                      label="Sheet height"
-                      value={height}
-                      min={DOCK_SHEET_FLOOR}
-                      max={props.layout?.sheetMax}
-                      reset={DOCK_SHEET_DEFAULT}
-                      per={1}
-                      onDragging={setDragging}
-                      onChange={props.onSheetResize}
-                      onCommit={props.onSheetResize}
-                    />
-                  ) : null
-                ) : (
-                  <EdgeGrip
-                    edge="left"
-                    className="dpanel__grip"
-                    label="Panel width"
-                    value={width}
-                    min={DOCK_PANEL_FLOOR}
-                    reset={DOCK_PANEL_DEFAULT}
-                    per={props.panels.length}
-                    onDragging={setDragging}
-                    onChange={props.onResize}
-                    onCommit={props.onResizeEnd}
-                  />
-                )
+                <PanelGrip
+                  dock={props}
+                  first={index === 0}
+                  width={width}
+                  height={height}
+                  onDragging={setDragging}
+                />
               }
             />
           ))}
         </div>
       ) : null}
-      <nav className="dock__rail" aria-label="Side panels" onMouseOver={measure} onFocus={measure}>
-        {props.tabs.map((tab) => (
-          <DockTabButton key={tab.id} tab={tab} onTab={props.onTab} />
-        ))}
-        {anyOpen ? (
-          <button
-            className="dock__tab dock__closeall"
-            type="button"
-            aria-label="Close all panels"
-            onClick={props.onCloseAll}
-          >
-            <Icon name="cross-small" />
-          </button>
-        ) : null}
-      </nav>
+      <DockRail dock={props} anyOpen={anyOpen} onFlip={setFlip} />
     </div>
+  );
+}
+
+/**
+ * The grip on a panel's edge. Beside the page it sets one width for every
+ * panel; below the side tier the panels share one height, dragged on the
+ * sheet's top edge, so only the first panel carries it.
+ */
+function PanelGrip(props: {
+  readonly dock: DockProps;
+  readonly first: boolean;
+  readonly width: number;
+  readonly height: number;
+  readonly onDragging: (dragging: boolean) => void;
+}): ReactElement | null {
+  const { dock } = props;
+  const sheet = dock.layout?.mode === 'sheet' || dock.layout?.mode === 'phone';
+  if (sheet) {
+    return props.first ? (
+      <EdgeGrip
+        edge="top"
+        className="dpanel__grip"
+        label="Sheet height"
+        value={props.height}
+        min={DOCK_SHEET_FLOOR}
+        max={dock.layout?.sheetMax}
+        reset={DOCK_SHEET_DEFAULT}
+        per={1}
+        onDragging={props.onDragging}
+        onChange={dock.onSheetResize}
+        onCommit={dock.onSheetResize}
+      />
+    ) : null;
+  }
+  return (
+    <EdgeGrip
+      edge="left"
+      className="dpanel__grip"
+      label="Panel width"
+      value={props.width}
+      min={DOCK_PANEL_FLOOR}
+      reset={DOCK_PANEL_DEFAULT}
+      per={dock.panels.length}
+      onDragging={props.onDragging}
+      onChange={dock.onResize}
+      onCommit={dock.onResizeEnd}
+    />
+  );
+}
+
+function DockRail(props: {
+  readonly dock: DockProps;
+  readonly anyOpen: boolean;
+  readonly onFlip: (flip: boolean) => void;
+}): ReactElement {
+  const measure = (event: { readonly currentTarget: HTMLElement }): void => {
+    props.onFlip(event.currentTarget.getBoundingClientRect().left < TIP_FLIP_PX);
+  };
+  return (
+    <nav className="dock__rail" aria-label="Side panels" onMouseOver={measure} onFocus={measure}>
+      {props.dock.tabs.map((tab) => (
+        <DockTabButton key={tab.id} tab={tab} onTab={props.dock.onTab} />
+      ))}
+      {props.anyOpen ? (
+        <button
+          className="dock__tab dock__closeall"
+          type="button"
+          aria-label="Close all panels"
+          onClick={props.dock.onCloseAll}
+        >
+          <Icon name="cross-small" />
+        </button>
+      ) : null}
+    </nav>
   );
 }
 
@@ -239,93 +239,4 @@ export function useReadyAfterFirstLayout(): boolean {
     };
   }, []);
   return ready;
-}
-
-function DockPanelView(props: {
-  readonly panel: DockPanel;
-  readonly dock: DockProps;
-  readonly grip: ReactNode;
-}): ReactElement {
-  const { panel, dock } = props;
-  const body = useRef<HTMLDivElement>(null);
-  const top = panel.scrollTop;
-  // A walk of the history puts the panel's scroll back, once per walk.
-  useLayoutEffect(() => {
-    if (top !== undefined && body.current !== null) body.current.scrollTop = top;
-  }, [dock.restoreWalk, top]);
-  return (
-    <section className="dpanel" data-panel-id={panel.id} aria-label={panel.ariaLabel}>
-      {props.grip}
-      <header className="dpanel__head">
-        <h2 className="dpanel__name">{panel.label}</h2>
-        <div className="dpanel__acts">
-          <a
-            className="dpanel__btn"
-            data-act="door"
-            href={panel.door}
-            aria-label={`Open ${panel.label} as a page`}
-            onClick={(event) => {
-              event.preventDefault();
-              dock.onDoor(panel.door);
-            }}
-          >
-            <Icon name={panel.icon ?? 'arrow-small-right'} />
-          </a>
-          <span className="dpanel__div" aria-hidden="true" />
-          <HistoryButton act="back" able={panel.canBack} onPress={dock.onBack} />
-          <HistoryButton act="forward" able={panel.canForward} onPress={dock.onForward} />
-          <button
-            className="dpanel__btn dpanel__x"
-            type="button"
-            data-act="close"
-            aria-label={`Close ${panel.label}`}
-            onClick={() => {
-              dock.onClose(panel.id);
-            }}
-          >
-            <Icon name="cross-small" />
-          </button>
-        </div>
-      </header>
-      {/* A click here is heard, not handled: the application decides whether
-          a link walks the panel. Keyboard activation of a link is a click. */}
-      {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div
-        ref={body}
-        className="dpanel__body"
-        onClick={(event) => {
-          dock.onBodyClick?.(panel.id, event);
-        }}
-        onScroll={(event) => {
-          dock.onScroll?.(panel.id, event.currentTarget.scrollTop);
-        }}
-      >
-        {panel.body}
-      </div>
-    </section>
-  );
-}
-
-function HistoryButton(props: {
-  readonly act: 'back' | 'forward';
-  readonly able: boolean;
-  readonly onPress: () => void;
-}): ReactElement {
-  const label = props.act === 'back' ? 'Back, where the dock was' : 'Forward, where the dock was';
-  // Disabled but never hidden, and still focusable, so the head keeps its shape
-  // and a keyboard user can learn the control is there.
-  return (
-    <button
-      className="dpanel__btn"
-      type="button"
-      data-act={props.act}
-      aria-label={label}
-      aria-disabled={!props.able}
-      onClick={() => {
-        if (props.able) props.onPress();
-      }}
-    >
-      <Icon name={props.act === 'back' ? 'angle-small-left' : 'angle-small-right'} />
-    </button>
-  );
 }

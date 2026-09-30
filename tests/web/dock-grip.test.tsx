@@ -41,12 +41,12 @@ async function dock(panels: readonly DockPanel[], widths: number[], resets: numb
     tabs: panels.map((each) => ({ id: each.id, label: each.label, count: null, open: true })),
     panels,
     layout: { mode: 'floating', panelWidth: 550 },
-    onTab: () => undefined,
-    onClose: () => undefined,
-    onCloseAll: () => undefined,
-    onBack: () => undefined,
-    onForward: () => undefined,
-    onDoor: () => undefined,
+    onTab: () => {},
+    onClose: () => {},
+    onCloseAll: () => {},
+    onBack: () => {},
+    onForward: () => {},
+    onDoor: () => {},
     onResize: (width) => widths.push(width),
     onResizeEnd: (width) => resets.push(width),
   };
@@ -64,8 +64,8 @@ describe('MP-3-2 pointer grip', () => {
     const saved: number[] = [];
     const page = await dock([panel('a'), panel('b')], widths, saved);
     const grip = page.find('.dpanel__grip') as HTMLElement;
-    grip.setPointerCapture = () => undefined;
-    await act(async () => {
+    grip.setPointerCapture = () => {};
+    await act(() => {
       grip.dispatchEvent(pointer('pointerdown', 1000));
       grip.dispatchEvent(pointer('pointermove', 900));
       grip.dispatchEvent(pointer('pointerup', 900));
@@ -73,7 +73,7 @@ describe('MP-3-2 pointer grip', () => {
     // Two panels share the 100px the group grew by.
     expect(widths).toEqual([600]);
     expect(saved).toEqual([600]);
-    expect(page.find('.dock')?.hasAttribute('data-dragging')).toBe(false);
+    expect(Object.hasOwn((page.find('.dock') as HTMLElement).dataset, 'dragging')).toBe(false);
   });
 });
 
@@ -88,7 +88,7 @@ describe('MP-3-2 keyboard grip', () => {
     expect(grip.getAttribute('aria-valuenow')).toBe('550');
     expect(grip.getAttribute('aria-valuemin')).toBe('380');
     const press = async (key: string, shiftKey = false): Promise<void> => {
-      await act(async () => {
+      await act(() => {
         grip.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true }));
       });
     };
@@ -103,11 +103,13 @@ describe('MP-3-2 keyboard grip', () => {
 describe('MP-3-2 no first animation', () => {
   it('marks the dock ready only after its first layout, and animates only when ready', async () => {
     const page = await dock([panel('a')], []);
-    expect(page.find('.dock')?.hasAttribute('data-ready')).toBe(false);
+    expect(Object.hasOwn((page.find('.dock') as HTMLElement).dataset, 'ready')).toBe(false);
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 60);
+      });
     });
-    expect(page.find('.dock')?.hasAttribute('data-ready')).toBe(true);
+    expect(Object.hasOwn((page.find('.dock') as HTMLElement).dataset, 'ready')).toBe(true);
     expect(SHEET).toMatch(/\.shell\[data-dock-ready\]\s*\{[^}]*transition:/u);
     expect(SHEET).not.toMatch(/\n\.shell\s*\{[^}]*transition:/u);
   });
@@ -123,7 +125,7 @@ describe('MP-3-2 reduced motion', () => {
 });
 
 const open = async (page: Mounted, id: string, shiftKey = false): Promise<void> => {
-  await act(async () => {
+  await act(() => {
     page
       .find(`.dock__tab[data-panel="${id}"]`)
       ?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey }));
@@ -132,66 +134,67 @@ const open = async (page: Mounted, id: string, shiftKey = false): Promise<void> 
 const shellWidth = (page: Mounted): string =>
   (page.find('.shell') as HTMLElement).style.getPropertyValue('--dock-w');
 
-describe('MP-3-2 layout from geometry', () => {
-  const SESSION = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };
-  const REGISTRY: PanelRegistry = {
-    ai: {
-      label: 'Client intelligence',
-      ariaLabel: 'Client intelligence',
-      route: 'agency:settings',
+const SESSION = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };
+const REGISTRY: PanelRegistry = {
+  ai: {
+    label: 'Client intelligence',
+    ariaLabel: 'Client intelligence',
+    route: 'agency:settings',
+  },
+  todos: { label: 'Projects', ariaLabel: 'Projects', route: 'agency:projects-board' },
+  settings: { label: 'Settings', ariaLabel: 'Business settings', route: 'agency:settings' },
+};
+function memory(): StorageLike {
+  const held = new Map([['ops-astro.session', JSON.stringify(SESSION)]]);
+  return {
+    getItem: (key) => held.get(key) ?? null,
+    setItem: (key, value) => {
+      held.set(key, value);
     },
-    todos: { label: 'Projects', ariaLabel: 'Projects', route: 'agency:projects-board' },
-    settings: { label: 'Settings', ariaLabel: 'Business settings', route: 'agency:settings' },
+    removeItem: (key) => {
+      held.delete(key);
+    },
   };
-  function memory(): StorageLike {
-    const held = new Map([['ops-astro.session', JSON.stringify(SESSION)]]);
-    return {
-      getItem: (key) => held.get(key) ?? null,
-      setItem: (key, value) => {
-        held.set(key, value);
-      },
-      removeItem: (key) => {
-        held.delete(key);
-      },
-    };
-  }
-  async function at(width: number): Promise<Mounted> {
-    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
-    const storage = memory();
-    const page = await mount(
-      <App
-        path="/projects/"
-        navigate={() => undefined}
-        sessions={new SessionStore(storage)}
-        gotrueUrl="http://gotrue.test"
-        apiOrigin=""
-        fetch={(() => new Promise<Response>(() => undefined)) as typeof globalThis.fetch}
-        storage={storage as Storage}
-        panels={REGISTRY}
-      />,
-    );
-    live.push(page);
-    return page;
-  }
+}
+async function at(width: number): Promise<Mounted> {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+  const storage = memory();
+  const page = await mount(
+    <App
+      path="/projects/"
+      navigate={() => {}}
+      sessions={new SessionStore(storage)}
+      gotrueUrl="http://gotrue.test"
+      apiOrigin=""
+      fetch={(() => new Promise<Response>(() => {})) as typeof globalThis.fetch}
+      storage={storage as Storage}
+      panels={REGISTRY}
+    />,
+  );
+  live.push(page);
+  return page;
+}
+
+describe('MP-3-2 layout from geometry', () => {
   it('seats one panel at 2400 as the grid track, and floats it at 1480', async () => {
     const wide = await at(2400);
     await open(wide, 'todos');
-    expect(wide.find('.dock')?.getAttribute('data-mode')).toBe('seated');
+    expect((wide.find('.dock') as HTMLElement | null)?.dataset['mode']).toBe('seated');
     expect(shellWidth(wide)).toBe('550px');
     const narrow = await at(1480);
     await open(narrow, 'todos');
-    expect(narrow.find('.dock')?.getAttribute('data-mode')).toBe('floating');
+    expect((narrow.find('.dock') as HTMLElement | null)?.dataset['mode']).toBe('floating');
     expect(shellWidth(narrow)).toBe('0px');
   });
 
   it('follows the window when it is resized', async () => {
     const page = await at(2400);
     await open(page, 'todos');
-    await act(async () => {
+    await act(() => {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
       window.dispatchEvent(new Event('resize'));
     });
-    expect(page.find('.dock')?.getAttribute('data-mode')).toBe('floating');
+    expect((page.find('.dock') as HTMLElement | null)?.dataset['mode']).toBe('floating');
   });
 
   it('closes the lowest-ranked of three at 1280 and says so in one line (R39)', async () => {
@@ -199,7 +202,7 @@ describe('MP-3-2 layout from geometry', () => {
     await open(page, 'ai');
     await open(page, 'todos', true);
     await open(page, 'settings', true);
-    expect(page.all('.dpanel').map((each) => each.getAttribute('data-panel-id'))).toEqual([
+    expect(page.all('.dpanel').map((each) => (each as HTMLElement).dataset['panelId'])).toEqual([
       'ai',
       'todos',
     ]);
