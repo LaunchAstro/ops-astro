@@ -1280,9 +1280,10 @@ shows the caller changed (the topic names no item, so the stream compares a
 digest of that read, `shownInbox`, and a change to an item the caller is not
 shown says nothing), and `closed` the first time the join is refused again (at
 every recheck, 30 seconds by default, and before each batch). The stream hears
-the inbox of the person the bearer resolves to at each batch: if that is now
-another person, the previous person's topic is dropped unsaid, the new one's is
-heard, and the stream sends `resync`. The inbox topic is
+the inbox of the person the bearer resolves to, asked at each batch and again
+after each task read, before its `invalidate`: if that is now another person,
+the previous person's topic is dropped unsaid, the new one's is heard, and the
+stream says nothing until its next recheck sends `resync`. The inbox topic is
 `business:inbox:person`, sent at commit by migration 0043's trigger on
 `inbox_items`, and the fan-out (`apps/api/live.ts`) hands it only to that
 person's streams in that business. The page re-reads the board on

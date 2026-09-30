@@ -7,13 +7,14 @@
 // changed (their topic names no item, so a change to an item about a task
 // they cannot read says nothing); `closed` the first time the caller may no
 // longer hold the stream. Signals that arrive while one batch is being asked
-// merge into the next, and a resync stands for everything it would have said.
+// merge into the next, and a resync stands for every inbox change before it.
 //
 // The stream hears one person's inbox topic, the person the bearer resolves
-// to. Each batch asks the join again: when the bearer now resolves to another
-// person, the old topic is dropped before anything is said, the new person's
-// is heard, and the tab is told `resync`, as a fresh connection would be. A
-// signal heard for the old person is never said.
+// to. Each batch asks the join again, and so does each task read before its
+// `invalidate` is written: when the bearer now resolves to another person,
+// the old topic is dropped, the new person's is heard, and nothing is said
+// until the stream's own recheck tells the tab `resync`, so no signal of the
+// old person's times a frame for the new one.
 
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { BoardSignal, LiveTopics } from './live.ts';
@@ -33,6 +34,8 @@ type Heard = BoardSignal | { readonly kind: 'check' };
 interface Bound {
   personId: string;
   shown: string | undefined;
+  /** Rebound and not yet told: every signal waits for the recheck's `resync`, which it follows. */
+  owed: boolean;
   unsubscribe: () => void;
 }
 
@@ -45,7 +48,12 @@ export async function followBoard(
   const ended = new Promise<void>((resolve) => {
     stream.onAbort(resolve);
   });
-  const bound: Bound = { personId: on.personId, shown: undefined, unsubscribe: () => {} };
+  const bound: Bound = {
+    personId: on.personId,
+    shown: undefined,
+    owed: false,
+    unsubscribe: () => {},
+  };
   const bind = (personId: string): void => {
     bound.unsubscribe();
     bound.personId = personId;
@@ -80,19 +88,25 @@ function batch(
   const drain = async (): Promise<void> => {
     while (
       !stream.aborted &&
-      (pending.resync || pending.inbox || pending.check || tasks.size > 0)
+      (pending.check || (!bound.owed && (pending.resync || pending.inbox || tasks.size > 0)))
     ) {
+      const { check } = pending;
+      pending.check = false;
+      // eslint-disable-next-line no-await-in-loop -- one batch is asked before the next.
+      if ((await rejoin(stream, ask, bound, bind)) === 'closed') return;
+      if (bound.owed) {
+        if (!check) continue;
+        pending.resync = true;
+        bound.owed = false;
+      }
       const { resync, inbox } = pending;
       const named = [...tasks];
-      pending.resync = pending.inbox = pending.check = false;
+      pending.resync = pending.inbox = false;
       tasks.clear();
-      // eslint-disable-next-line no-await-in-loop -- one batch is asked before the next.
-      const joined = await rejoin(stream, ask, bound, bind);
-      if (joined === 'closed') return;
       // eslint-disable-next-line no-await-in-loop
-      if (joined === 'rebound' || resync) await resyncs(stream, ask, bound);
+      if (resync) await resyncs(stream, ask, bound);
       // eslint-disable-next-line no-await-in-loop
-      else await say(stream, ask, named, bound, inbox);
+      if ((await say(stream, ask, named, bound, inbox, bind)) === 'closed') return;
     }
   };
   let queued = false;
@@ -115,10 +129,9 @@ function batch(
 }
 
 /**
- * The join asked again before a batch: `closed` (said, and the stream ended)
- * when it is refused; `rebound` when the bearer now resolves to another
- * person, whose topic replaces the previous one's, and what was heard for
- * the previous person is dropped unsaid; `same` otherwise.
+ * The join asked again: `closed` (said, and the stream ended) when it is
+ * refused; `rebound` when the bearer now resolves to another person, whose
+ * topic replaces the previous one's; `same` otherwise.
  */
 async function rejoin(
   stream: SSEStreamingApi,
@@ -134,6 +147,7 @@ async function rejoin(
   }
   if (personId === bound.personId) return 'same';
   bind(personId);
+  bound.owed = true;
   return 'rebound';
 }
 
@@ -143,21 +157,32 @@ async function resyncs(stream: SSEStreamingApi, ask: BoardQuestions, bound: Boun
   await stream.writeSSE({ event: 'resync', data: '' });
 }
 
-/** Each named task the caller reads now, by its identifier only; then the inbox, if what it shows moved. */
+/**
+ * Each named task the caller reads now, by its identifier only, the join asked
+ * again after the read so an answer that finished after the bearer moved is
+ * dropped; then the inbox, if what it shows moved.
+ */
 async function say(
   stream: SSEStreamingApi,
   ask: BoardQuestions,
   named: readonly string[],
   bound: Bound,
   inbox: boolean,
-): Promise<void> {
+  bind: (personId: string) => void,
+): Promise<'closed' | 'rebound' | 'same'> {
   for (const taskId of named) {
     // eslint-disable-next-line no-await-in-loop -- in the order they were heard.
-    if (await ask.reads(taskId)) await stream.writeSSE({ event: 'invalidate', data: taskId });
+    if (!(await ask.reads(taskId))) continue;
+    // eslint-disable-next-line no-await-in-loop
+    const joined = await rejoin(stream, ask, bound, bind);
+    if (joined !== 'same') return joined;
+    // eslint-disable-next-line no-await-in-loop
+    await stream.writeSSE({ event: 'invalidate', data: taskId });
   }
-  if (!inbox) return;
+  if (!inbox) return 'same';
   const now = await ask.shown(bound.personId);
-  if (now === undefined || now === bound.shown) return;
+  if (now === undefined || now === bound.shown) return 'same';
   bound.shown = now;
   await stream.writeSSE({ event: 'inbox', data: '' });
+  return 'same';
 }
