@@ -64,7 +64,17 @@ export interface CommandOutcome {
    * have nothing to add beyond the handle and the revision.
    */
   readonly detail?: Readonly<Record<string, unknown>>;
+  /**
+   * AW-03: the agent's answer beside a message the person just kept, or why
+   * there is none, where the deployment answers conversations. Absent, the
+   * message is kept and nothing answers it.
+   */
+  readonly reply?: ConversationReply;
 }
+
+export type ConversationReply =
+  | { readonly answered: true; readonly messageId: string; readonly body: string }
+  | { readonly answered: false; readonly code: string; readonly words: string };
 
 /**
  * A refusal as it arrives over HTTP: the server's one refusal shape, taken

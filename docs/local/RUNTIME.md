@@ -1434,8 +1434,11 @@ both tenancy-scoped with row security forced, and the fair share's count
   foreign key joins with its table at the batch 3 join. The broker refuses
   before writing anything: another business's conversation, another person's,
   or any delegation (`AUTHORITY_LOST`); a cloud route (`LOCAL_MODEL_REQUIRED`,
-  AW-03 egress off). AW-01's ceilings count it in flight. A priced answer is
-  above a hold of nothing and is held as unknown liability; the sweep holds a
+  AW-03 egress off). AW-03's exchange is its one caller (the person path,
+  after a message is kept; API.md). AW-01's ceilings count it in flight. A
+  priced answer is above a hold of nothing and is held as unknown liability
+  (on the stand-in stack, whose replay provider prices every answer, so the
+  exchange shows no answer there until a local provider prices at nothing); the sweep holds a
   call still started ten minutes on (five times custody's longest wait). Its
   state is `reserved`, `dispatched`, `settled`, `released`, `refused` or
   `liability_unknown`, and constraints tie each state to its amounts, facts

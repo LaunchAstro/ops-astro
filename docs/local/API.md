@@ -297,7 +297,8 @@ directly.
 (`brokerSettings` and `startModelBroker`, `apps/api/model-broker.ts`): custody's
 own process, forked with only its credential file and destination list, and
 the `model.call` executor over it, handed to `composeApi` as
-`executeModelCall`. None set is no broker, and `model.call` answers
+`executeModelCall`, and the conversation exchange over the same broker as
+`answerConversation` (below). None set is no broker, and `model.call` answers
 `DEPENDENCY_NOT_LANDED` 501. Some of them, or a malformed one, stops the server
 with a problem naming the setting, never its value. The model operations and
 their adapters are registered in code there, not configured: the replay
@@ -919,6 +920,28 @@ written by the product's exchange, never by an agent calling in. The message
 text is stored in `conversation_messages` and nowhere else: the answer and the
 operation register carry ids and the address, and the audit event the
 payload's digest.
+
+The exchange (AW-03, `commands/conversation-exchange.ts`). Where the
+deployment started a broker, `composeApi` mounts `answerConversation` beside
+`executeModelCall`, and after `conversation.start` or `conversation.message`
+is applied on the person path the API asks it for the agent's answer, after
+the command has committed: the message stays kept whatever the answer is. It
+resolves the caller again, finds the message as the caller's own person
+message in a conversation of this business whose body is kept, and sends its
+words through AW-01's conversation seam (`callModelInConversation`,
+`model.conversation_answer`, the owner's own session, local routes only,
+nothing held). The answer is kept as an `agent` message whose
+`answers_message_id` names the question (0056: one reply per message, in the
+same conversation), in a second transaction under the conversation's row
+lock. The HTTP answer then carries `reply` beside the command's own fields:
+`{ answered: true, messageId, body }`, or `{ answered: false, code, words }`
+in fixed words (`LOCAL_MODEL_REQUIRED`: models are off for this material and
+nothing was sent, AW-03 egress off; `RATE_LIMITED`; anything else, an answer
+that could not be used and nothing kept). No `reply` means nothing answers: no
+broker, or the message is not the caller's to have answered. A repeat of the
+same operation finds the reply kept and answers with it; the model is not
+asked again. The register stores the command's answer only, so the model's
+words are in the reply's row and nowhere else.
 
 Two system operations, the worker's and no person's command
 (`commands/conversation-lifecycle.ts`), each take the conversation's row lock

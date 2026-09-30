@@ -114,6 +114,7 @@
     "MP-6-2 (SL12, session 11, named in session 12) names mp-6-2-run-reach (pickup mints run only where the approving person holds run:write, and the agent reaches run:write alone) and run-write-ceiling (the mint and the delegated check hold run to write, a sibling task is outside the delegation, a task-only delegation is unchanged) as conformance",
     "MP-6-2 (SL12, session 12) names mp-6-2-states-read (the state revision lists on the task read's ledger: each kept version of the task's runs, newest first, with its actor and time; a task reads only its own runs' states, and another business, another client and another person's agent read none) as conformance",
     "AW-03 (SL12, session 12) names aw-03-origin (the origin setter: a task created from the owner's conversation names it on its creation audit event, one created without names none; another person's, another business's or a made-up conversation NOT_FOUND alike and no task made; a client and an agent refused; the wrap-up's tasks created counts and points at them) as conformance",
+    "AW-03 (SL12, session 13) names aw-03-exchange (the agent's answer to a person's message through AW-01's conversation seam, kept as the reply to that message, a repeat answered with the same reply; AW-03 egress off through the server's own broker; AW-03 exchange isolation across another business, another client in the same business, another person and the owner's agent under a live delegation, each also asked of the exchange itself; AW-03 canary) and mp-7-11-hostile-provider (an oversized, redirected, malformed, slow or over-long answer is a failed reply and nothing is kept) as conformance, the exchange suite listed in isolation-suites.json too.",
     "C54 (SL12, session 10) names c54-isolation (the three money acts on an unknown effect and the top-up, across another business, another client in the same business and the agent under a live delegation, statuses checked, no foreign task, attempt, hold or envelope id in any body, the hold unmoved) as an invariant, and c54-money (refusal billing:decide, audit readback of each act on an intact chain, and the top-up approver with two approvers at once) as conformance",
     "SL11-16 leaves aw-13-local-target.test.ts unnamed: it opens a database only against a running local trace target (TRACE_TARGET_ENV_FILE from scripts/local/trace-target.ts up), which the required checks never start; aw-13-switch.test.ts is named as an invariant."
   ],
@@ -435,6 +436,8 @@
     "tests/identity/run-write-ceiling.test.ts",
     "tests/api/mp-6-2-states-read.test.ts",
     "tests/api/aw-03-origin.test.ts",
-    "tests/api/c54-money.test.ts"
+    "tests/api/c54-money.test.ts",
+    "tests/api/aw-03-exchange.test.ts",
+    "tests/api/mp-7-11-hostile-provider.test.ts"
   ]
 }

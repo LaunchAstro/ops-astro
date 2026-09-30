@@ -11,13 +11,12 @@
 // words or conversation: another business, another client in the same
 // business, another person in it, and the owner's own agent under a live
 // delegation. Each is also asked of the exchange itself, not only of the
-// command in front of it.
+// command in front of it. Hostile answers: mp-7-11-hostile-provider.
 
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ConversationReply } from '../../packages/core-commands/src/index.ts';
-import type { ModelAnswer } from '../../packages/core-connectors/src/index.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { openReplayBroker, type ReplayBroker } from '../broker/replay-broker.ts';
 import { enrol, grantTo, installSpine, shareWithClient, type Member } from '../commands/fixture.ts';
@@ -228,10 +227,10 @@ describe.skipIf(serverUrl === undefined)('AW-03 the exchange', () => {
     const asked = { conversationId, messageId };
     const direct = async (businessId: BusinessId, presented: Member['presented']) =>
       await model.exchange(db.app, businessId, presented, asked);
-    expect(await direct(bravo, both.presented)).toBeUndefined();
-    expect(await direct(business, client.presented)).toBeUndefined();
-    expect(await direct(business, w.colleague.presented)).toBeUndefined();
-    expect(await direct(business, c.fixture.agent)).toBeUndefined();
+    expect(await direct(bravo, both.presented)).toBeNull();
+    expect(await direct(business, client.presented)).toBeNull();
+    expect(await direct(business, w.colleague.presented)).toBeNull();
+    expect(await direct(business, c.fixture.agent)).toBeNull();
 
     expect(model.provider.seen.length).toBe(sent);
     expect(await calls()).toBe(before);
@@ -269,56 +268,6 @@ describe.skipIf(serverUrl === undefined)('AW-03 the exchange', () => {
     for (const text of [...rows.map((row) => row.row), ...said]) {
       expect(text).not.toContain(canary);
       expect(text).not.toContain(planted);
-    }
-  });
-
-  it('MP-7-11 hostile provider: an oversized, redirected, malformed or slow answer is a failed reply, and nothing is kept', async () => {
-    const conversationId = await started(w, w.owner, { body: 'hostile?' });
-    for (const mode of ['oversized', 'redirect', 'malformed', 'slow'] as const) {
-      model.provider.mode(mode);
-      try {
-        // eslint-disable-next-line no-await-in-loop -- one mode at a time on one provider
-        const answer = await w.as(w.owner, 'conversation.message', {
-          conversationId,
-          body: `and in ${mode}?`,
-        });
-        expect(answer.status).toBe(200);
-        expect(replyOf(answer)).toEqual({
-          answered: false,
-          code: expect.any(String) as string,
-          words: expect.stringMatching(/could not be used/iu) as string,
-        });
-        expect(JSON.stringify(answer.body)).not.toContain('203.0.113.9');
-      } finally {
-        model.provider.mode('answer');
-      }
-    }
-    expect(await agentRows(conversationId)).toBe(1);
-  }, 60_000);
-
-  it('MP-7-11 hostile provider: an answer longer than a message may be is a failed reply, and nothing is kept', async () => {
-    const long = await localModel((body: unknown): ModelAnswer | undefined =>
-      typeof body === 'object' && body !== null
-        ? {
-            text: 'x'.repeat(20_001),
-            model: 'replay-1',
-            usage: { inputUnits: 1, outputUnits: 1 },
-            providerCode: null,
-          }
-        : undefined,
-    );
-    try {
-      const api = composedWith(c.fixture, long.exchange);
-      const answer = await post(
-        api,
-        personPath('conversation.start'),
-        { operationId: randomUUID(), body: 'a long answer?' },
-        authorised(await tokenFor(w.owner.presented.subject)),
-      );
-      expect(replyOf(answer)).toMatchObject({ answered: false });
-      expect(await agentRows(String(detail(answer)['conversationId']))).toBe(0);
-    } finally {
-      await long.close();
     }
   });
 });

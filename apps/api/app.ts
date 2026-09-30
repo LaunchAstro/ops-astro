@@ -60,6 +60,7 @@ import type {
   executeAgentCommand,
   CommandRefusal,
   ConversationExchange,
+  ConversationReply,
   executeRead,
   ModelCallExecutor,
 } from '../../packages/core-commands/src/index.ts';
@@ -267,7 +268,8 @@ export function createApi(options: ApiOptions): Hono {
     });
 
     if (isCommandRefusal(result)) return refuse(context, result);
-    return context.json({ ...result }, 200);
+    const reply = await answered(options, businessId, presented, result);
+    return context.json({ ...result, ...(reply === null ? {} : { reply }) }, 200);
   });
 
   // The second entry point. Same surface table, same paths, a different
@@ -318,6 +320,30 @@ export function createApi(options: ApiOptions): Hono {
   }
 
   return api;
+}
+
+/**
+ * AW-03: the agent's answer to the message a person just kept, where the
+ * deployment mounted an exchange. After the command committed, never inside
+ * it: the answer is a network call, and the message stays kept whatever it
+ * says. Only `conversation.start` and `conversation.message` name a message.
+ */
+const MESSAGE_KEEPERS: ReadonlySet<string> = new Set([
+  'conversation.start',
+  'conversation.message',
+]);
+
+async function answered(
+  options: ApiOptions,
+  businessId: string,
+  presented: VerifiedSubject,
+  kept: { readonly command: string; readonly detail: Readonly<Record<string, unknown>> },
+): Promise<ConversationReply | null> {
+  const exchange = options.answerConversation;
+  if (exchange === undefined || !MESSAGE_KEEPERS.has(kept.command)) return null;
+  const { conversationId, messageId } = kept.detail;
+  if (typeof conversationId !== 'string' || typeof messageId !== 'string') return null;
+  return await exchange(options.database, businessId, presented, { conversationId, messageId });
 }
 
 /**
