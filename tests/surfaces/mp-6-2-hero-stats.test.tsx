@@ -75,3 +75,17 @@ describe('MP-6-2 hero stats, the time cell', () => {
     expect((await timed(null, null)).find('[data-hero="time"]')).toBeNull();
   });
 });
+
+const spent = (tokenUnits: number | null) =>
+  pane({ lineages: [lineage({ versions: [version({ tokenUnits })] })] });
+
+describe('MP-6-2 hero stats, the tokens cell', () => {
+  it('MP-6-2 hero stats: the run’s token units, in thousands from a thousand', async () => {
+    expect(stat(await spent(122_400), 'tokens')).toStrictEqual({ n: '122k', k: 'tokens spent' });
+    expect(stat(await spent(840), 'tokens')).toStrictEqual({ n: '840', k: 'tokens spent' });
+  });
+
+  it('MP-6-2 hero stats: a run with no recorded units has no tokens cell, never a zero', async () => {
+    expect((await spent(null)).find('[data-hero="tokens"]')).toBeNull();
+  });
+});

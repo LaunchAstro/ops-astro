@@ -38,6 +38,8 @@ export interface RunVersion {
   /** The run's first claim and a hand-back with none after it (MP-6-2); absent on an older read. */
   readonly startedAt?: string | null;
   readonly endedAt?: string | null;
+  /** The token units the run's model calls recorded (MP-6-2); absent on an older read. */
+  readonly tokenUnits?: number | null;
   readonly evidence: { readonly digest: string; readonly body: unknown } | null;
   readonly gate: RunGate | null;
   readonly checks: readonly RunCheck[];
