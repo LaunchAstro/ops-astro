@@ -32,7 +32,9 @@ afterEach(() => {
 
 describe('MP-2-2 each rail section has its own glyph', () => {
   it('names a licensed glyph for every navigable section of every face, and nothing else', () => {
-    expect(Object.keys(RAIL_GLYPHS).toSorted()).toStrictEqual(navigable.map(keyOf).toSorted());
+    expect(Object.keys(RAIL_GLYPHS).toSorted()).toStrictEqual(
+      navigable.map((each) => keyOf(each)).toSorted(),
+    );
     for (const [key, glyph] of Object.entries(RAIL_GLYPHS)) {
       expect(GLYPH_NAMES, key).toContain(glyph);
     }
@@ -54,8 +56,8 @@ describe('MP-2-2 each rail section has its own glyph', () => {
     const { view } = await open(address);
     const items = view.all('.rail .rail__group .rail__item');
     expect(items.length).toBeGreaterThan(0);
-    const drawn = items.map((item) =>
-      item.querySelector('.rail__icon')?.getAttribute('data-glyph'),
+    const drawn = items.map(
+      (item) => item.querySelector<HTMLElement>('.rail__icon')?.dataset['glyph'],
     );
     for (const [index, item] of items.entries()) {
       const icon = item.querySelector('.rail__icon');

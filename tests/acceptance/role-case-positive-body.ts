@@ -135,13 +135,13 @@ export function createPositiveBody(
       // the admin holds, so the admin reaches both here.
       // The person menu's two (C23), `session.person` and `session.end`, take
       // an empty body too: the caller's own name, and the caller's own
-      // sign-out, which records it and leaves the bearer working.
+      // sign-out, which records it and leaves the bearer working. The
+      // caller's own preferences (MP-2-11a) ask a live grant of any kind, as
+      // `session.capabilities` does, which the admin holds.
       case 'settings.read':
       case 'session.capabilities':
       case 'session.person':
       case 'session.end':
-      // The caller's own preferences (MP-2-11a): a live grant of any kind, as
-      // `session.capabilities` asks, which the admin holds.
       case 'preference.read':
         return { body: {} };
       case 'preference.save':

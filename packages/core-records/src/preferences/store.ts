@@ -19,7 +19,7 @@ const isColumnWidths = (value: unknown): boolean =>
   typeof value === 'object' &&
   value !== null &&
   !Array.isArray(value) &&
-  Object.values(value).every(isLength);
+  Object.values(value).every((width) => isLength(width));
 
 export type PreferenceKey =
   'appearance' | 'rail.width' | 'dock.width' | 'dock.sheetHeight' | 'columns.widths';
