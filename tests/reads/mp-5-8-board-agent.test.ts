@@ -3,7 +3,7 @@
 // MP-5-8 isolation, the third crossing: another person under a live
 // delegation. An agent's pool is its one task and the board is not an
 // operation its delegation carries, so it is refused the board, and the
-// refusal carries no rank, stage or canary from another task.
+// refusal carries no rank, stage, actual or canary from another task.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -34,7 +34,7 @@ describe.skipIf(serverUrl === undefined)(
       await world?.drop();
     });
 
-    it('is refused the board and shown no rank, stage or canary', async () => {
+    it('is refused the board and shown no rank, stage, actual or canary', async () => {
       const decider = await world.decider('decider');
       const other = await world.asPerson(decider, {
         command: 'task.create',
@@ -51,7 +51,7 @@ describe.skipIf(serverUrl === undefined)(
       const text = JSON.stringify(answer);
       expect(text).not.toContain(CANARY);
       expect(text).not.toContain(otherId);
-      expect(text).not.toMatch(/"rank"|"stage"/u);
+      expect(text).not.toMatch(/"rank"|"stage"|"actualMinutes"/u);
     });
   },
 );
