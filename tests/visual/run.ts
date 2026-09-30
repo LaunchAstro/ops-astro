@@ -33,7 +33,7 @@
 // `appDrift`; --page and --theme override them.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { chromium } from 'playwright';
+import { launchChromium } from '../support/chromium.ts';
 import { appDrift } from './app-drift.ts';
 import { comparePng } from './compare.ts';
 import { proveDrift, scrollMetrics } from './drift.ts';
@@ -128,7 +128,7 @@ checkAssets(packet);
 const tree = checkMockupTree(mockupDir, packet.mockup);
 const shots: PageShot[] = [];
 
-const browser = await chromium.launch(MODE);
+const browser = await launchChromium(MODE);
 const sides: Side[] = [];
 try {
   checkRenderer(packet, liveRenderer(browser, MODE));

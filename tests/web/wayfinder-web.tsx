@@ -9,6 +9,7 @@ import { act } from 'react';
 import type { Hono } from 'hono';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { tokenFor } from '../api/fixture.ts';
+import { asBrowser } from '../support/sign-in.ts';
 import type { Member } from '../commands/fixture.ts';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
 import { MapScreen } from '../../apps/web/src/screens/Map.tsx';
@@ -24,9 +25,11 @@ export async function browserFor(
   return new OperationsClient({
     origin: 'http://api.test',
     businessKey,
-    token: await tokenFor(member.presented.subject),
-    fetch: (async (url: string | URL | Request, init?: RequestInit) =>
-      await api.fetch(new Request(url, init))) as typeof fetch,
+    signedIn: true,
+    fetch: asBrowser(
+      await tokenFor(member.presented.subject),
+      async (url, init) => await api.fetch(new Request(url, init)),
+    ),
   });
 }
 

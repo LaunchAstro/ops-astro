@@ -13,11 +13,19 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { Shell } from '@launchastro/ui';
 import { gateOf, matchRoute, pathTo } from './routes.ts';
 import { NO_CLIENT_GRANTS, canonicalOf, pageAt, type ClientAccess } from './manifest.ts';
-import { ClientRefused, NotFound, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
+import {
+  ClientRefused,
+  NotFound,
+  PagePlaceholder,
+  RouteTabs,
+  SignedInAlready,
+  railFor,
+} from './route-views.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
-import { PANELS } from './panels.ts';
+import { dockTabs, dockTarget } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
+import { signOut } from './session/sign-in.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { drawScreen } from './screen-registry.tsx';
 import { AssistantView } from './views/assistant.tsx';
@@ -108,6 +116,12 @@ export function App(props: AppProps): ReactElement {
   );
 
   const onSignOut = useCallback(() => {
+    const sessionId = props.sessions.session?.sessionId;
+    void signOut({
+      apiOrigin: props.apiOrigin,
+      fetch: props.fetch,
+      ...(sessionId === undefined ? {} : { sessionId }),
+    });
     props.sessions.clear();
     setSession(null);
     setNotice(null);
@@ -151,7 +165,8 @@ export function App(props: AppProps): ReactElement {
       new OperationsClient({
         origin: props.apiOrigin,
         businessKey: session?.businessKey ?? 'alpha',
-        token: session?.token ?? null,
+        signedIn: session !== null,
+        ...(session?.sessionId === undefined ? {} : { sessionId: session.sessionId }),
         fetch: props.fetch,
         onSessionEnded: (refusal) => {
           // `session` here is this client's own generation, captured when it
@@ -185,6 +200,7 @@ export function App(props: AppProps): ReactElement {
   const signIn = (
     <SignIn
       gotrueUrl={props.gotrueUrl}
+      apiOrigin={props.apiOrigin}
       fetch={props.fetch}
       onSignedIn={onSignedIn}
       ended={props.sessions.interruption}
@@ -228,9 +244,16 @@ export function App(props: AppProps): ReactElement {
     }
   })();
 
+  // Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a
+  // bundler that did not stamp, and the rail then says the build is unstamped.
+  // Read by name, never by index: an indexed read inlines every VITE_ setting
+  // of the build's environment into the bundle (G3).
+  const build = import.meta.env.VITE_OPS_ASTRO_BUILD ?? '';
+
   return (
     <Shell
       face={at?.page.namespace === 'portal' ? 'client' : 'agency'}
+      build={build === '' ? null : build}
       rail={rail}
       here={bare}
       title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
@@ -251,22 +274,11 @@ export function App(props: AppProps): ReactElement {
       // An open tab is announced as "Close", so pressing it leaves the address
       // for the board rather than pushing the same address again.
       // The client face has no dock (R17).
-      dock={
-        session === null || at?.page.namespace === 'portal'
-          ? []
-          : PANELS.map((panel) => ({
-              id: panel.id,
-              label: panel.label,
-              icon: panel.icon,
-              open: panel.route === null ? agentOpen : here === pathTo(panel.route),
-            }))
-      }
+      dock={session === null || at?.page.namespace === 'portal' ? [] : dockTabs(here, agentOpen)}
       onDockTab={(id) => {
-        const panel = PANELS.find((entry) => entry.id === id);
-        if (panel === undefined) return;
-        const target = panel.route === null ? null : pathTo(panel.route);
-        if (target === null) setAgentOpen((open) => !open);
-        else props.navigate(here === target ? pathTo('agency:projects-board') : target);
+        const target = dockTarget(id, here);
+        if (target === 'agent') setAgentOpen((open) => !open);
+        else if (target !== null) props.navigate(target);
       }}
       seated={false}
       panel={
@@ -284,16 +296,5 @@ export function App(props: AppProps): ReactElement {
       {at === null || refused || session === null ? null : <RouteTabs at={at} />}
       {content}
     </Shell>
-  );
-}
-
-function SignedInAlready(props: { readonly onGo: () => void }): ReactElement {
-  return (
-    <div className="readstate" data-outcome="ready">
-      <p className="empty__title">You are already signed in.</p>
-      <button className="btn btn--primary" type="button" onClick={props.onGo}>
-        Go to Projects
-      </button>
-    </div>
   );
 }

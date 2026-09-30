@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// MP-6-2's run state (0052): each revision of a run's knowledge and unknowns
+// MP-6-2's run state (0201): each revision of a run's knowledge and unknowns
 // is a version, kept with its actor and never rewritten. The table holds a
 // run on its own task only, one row per version, in its own business, and the
 // application may insert and read it, never update or delete it.

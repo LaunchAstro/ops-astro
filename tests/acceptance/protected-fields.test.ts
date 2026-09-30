@@ -55,6 +55,7 @@ import { submitEdit } from '../../apps/web/src/records/submit.ts';
 import { statusOf, type RefusalCode } from '../../packages/core-records/src/register.ts';
 import { bearer, call, createWorld, personPath, serverUrl } from './world.ts';
 import type { Answer, World } from './world.ts';
+import { asBrowser } from '../support/sign-in.ts';
 
 if (serverUrl === undefined) {
   console.warn('acceptance/protected-fields: DATABASE_URL is unset, so nothing below ran.');
@@ -239,8 +240,11 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
     web = new OperationsClient({
       origin: 'http://api.test',
       businessKey: 'alpha',
-      token: world.ada.token,
-      fetch: async (url, init) => await world.api.fetch(new Request(url as string, init)),
+      signedIn: true,
+      fetch: asBrowser(
+        world.ada.token,
+        async (url, init) => await world.api.fetch(new Request(url, init)),
+      ),
     });
     const made = await createTask('the record no refusal may move');
     subjectId = made.id;

@@ -12,7 +12,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { launchChromium } from '../support/chromium.ts';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
@@ -242,6 +242,7 @@ describe('MP-1-1 tokens', () => {
     const html = renderToStaticMarkup(
       <Shell
         face="agency"
+        build={null}
         rail={[]}
         here="/"
         title="Board"
@@ -268,7 +269,7 @@ describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
     const widths = [1480, 900, 390];
     await fetchAssets(readAssets(), packet);
     // No browser, no capture: the launch fails the test, never skips it.
-    const browser = await chromium.launch(MODE);
+    const browser = await launchChromium(MODE);
     const { app, close } = await serveApp();
     try {
       const out = join(scratch, 'captures');

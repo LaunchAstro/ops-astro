@@ -13,7 +13,8 @@ import type { Transport } from '../../apps/cli/client.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/index.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
-import { ISSUER, SECRET, tokenFor } from '../api/fixture.ts';
+import { ISSUER, tokenFor } from '../api/fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import { wayfinderWorld, type WayfinderWorld } from '../wayfinder/world.ts';
 import type { Member } from '../commands/fixture.ts';
 
@@ -71,8 +72,7 @@ export async function cliWorld(part: string, key: string): Promise<CliWorld> {
     keys: runtimeKeys({ ...process.env }),
     database: world.db.app,
     admin: world.db.admin,
-    secret: SECRET,
-    issuer: ISSUER,
+    signIn: testSignIn(ISSUER),
     executeRead,
   }).app;
 

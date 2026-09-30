@@ -10,6 +10,7 @@ import {
   catalogueColumnGrants,
   columnUpdatesAt,
   describeOutcome,
+  roleColumnGrantsAt,
 } from './restricted-calls-cases.ts';
 import {
   APPLICATION_CALLERS,
@@ -33,7 +34,10 @@ export async function columnUpdateFindings(
 ): Promise<string[]> {
   const pairs = columnUpdatesAt(at);
   const held = await catalogueColumnGrants(admin);
-  const wanted = pairs.map((pair) => `${APPLICATION_ROLE} UPDATE ${pair}`);
+  const wanted = [
+    ...pairs.map((pair) => `${APPLICATION_ROLE} UPDATE ${pair}`),
+    ...roleColumnGrantsAt(at),
+  ];
   const wrong = held.join(', ') === wanted.join(', ') ? [] : [`column grants: ${held.join(', ')}`];
   for (const pair of pairs) {
     // One table at a time: the callers share their connections.

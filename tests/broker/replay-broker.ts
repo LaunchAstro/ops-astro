@@ -9,7 +9,10 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { brokerSettings, startModelBroker } from '../../apps/api/model-broker.ts';
-import type { ModelCallExecutor } from '../../packages/core-commands/src/index.ts';
+import type {
+  ConversationExchange,
+  ModelCallExecutor,
+} from '../../packages/core-commands/src/index.ts';
 import {
   startReplayProvider,
   type ReplayProvider,
@@ -17,6 +20,8 @@ import {
 
 export interface ReplayBroker {
   readonly executor: ModelCallExecutor;
+  /** The conversation exchange the server mounts on the person path (AW-03). */
+  readonly exchange: ConversationExchange;
   readonly provider: ReplayProvider;
   close(): Promise<void>;
 }
@@ -61,6 +66,7 @@ export async function openReplayBroker(): Promise<ReplayBroker> {
     const started = await startModelBroker(settings);
     return {
       executor: started.executor,
+      exchange: started.answerConversation,
       provider,
       close: async () => {
         await started.stop();

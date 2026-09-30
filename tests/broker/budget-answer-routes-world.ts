@@ -16,7 +16,8 @@ import {
   executeCommand,
   executeRead,
 } from '../../packages/core-commands/src/index.ts';
-import { ISSUER, SECRET, tokenFor } from '../api/fixture.ts';
+import { ISSUER, tokenFor } from '../api/fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
 import { seedSchedules, type Schedules } from '../runtime/schedules-harness.ts';
 import { noDatabase, s } from './broker-world.ts';
@@ -41,7 +42,7 @@ export function useAnswerRoutes(part: string): void {
     if (noDatabase) return;
     api = createApi({
       database: s.db.app,
-      verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
+      verify: createSupabaseVerifier(testSignIn(ISSUER)),
       resolveBusiness: createBusinessResolver(s.db.admin),
       executeRead,
       executeCommand,

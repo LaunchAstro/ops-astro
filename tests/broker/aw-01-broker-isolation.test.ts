@@ -95,11 +95,13 @@ it('AW-01 copy register: every sent prompt was registered first, and a registrat
     expect(await promptCopyRegistered(tx, randomUUID())).toBe(false);
   });
   await expect(
-    s.db.app.withBusiness(s.business, async (tx) =>
-      tx.query(
-        `update public.copy_registrations set retention_class = 'record' where business_id = $1`,
-        [tx.businessId],
-      ),
+    s.db.app.withBusiness(
+      s.business,
+      async (tx) =>
+        await tx.query(
+          `update public.copy_registrations set retention_class = 'record' where business_id = $1`,
+          [tx.businessId],
+        ),
     ),
   ).rejects.toThrow(/permission denied/u);
   // Past the grant, the table itself refuses: even the owner cannot rewrite one.

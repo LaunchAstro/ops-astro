@@ -58,8 +58,12 @@ export const REVISION_FIXES: readonly string[] = [
   'A write against a stale revision is refused, never merged.',
 ];
 
-/** The one write an external party (R4) may reach, and then only in the client audience. */
-const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment']);
+/**
+ * The writes an external party (R4) may reach: a comment, only in the client
+ * audience, and opening their own inbox item (`inbox.seen`, a `self` row whose
+ * handler stamps the caller's own item on a task they can read, and nothing else).
+ */
+const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment', 'inbox.seen']);
 
 const EXTERNAL_FIXES: readonly string[] = [
   'A person without a membership may read what was shared with them and nothing more.',
@@ -469,7 +473,7 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
  */
 const SCOPE_OF: Readonly<
   Record<
-    CommandDeclaration['authorisedOn'],
+    Exclude<CommandDeclaration['authorisedOn'], 'self'>,
     (tx: TenantQuery, request: UncheckedRequest, declaration: CommandDeclaration) => Promise<Scope>
   >
 > = {
@@ -539,31 +543,34 @@ export async function prepareCommand(
   const recordId = typeof request['recordId'] === 'string' ? request['recordId'] : undefined;
   // R4 before any grant row. A session with no membership stands on a read
   // share, and whatever else a row may say it holds, it writes nothing but a
-  // client-audience comment (minimum contract 8.1 R4; the audience is
-  // `tasks-comment.ts`'s to narrow).
+  // client-audience comment and the seen stamp on its own inbox item (minimum
+  // contract 8.1 R4; the audience is `tasks-comment.ts`'s to narrow).
   if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
-  const asked = {
-    // From the declaration, never written in here: see `CommandDeclaration`.
-    collection: declaration.collection,
-    action: declaration.action,
-    scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
-  };
-  let authorised = await checkAuthority(tx, subjectsOf(session), asked);
-  // A grant scoped to a map covers the map and its tickets (W12): asked again
-  // at the map's scope, and the first refusal stands when that fails too.
-  if (!authorised.ok) {
-    const map = await coveringMap(tx, request, declaration);
-    if (map !== undefined) {
-      const again = await checkAuthority(tx, subjectsOf(session), {
-        ...asked,
-        scope: { kind: 'record', id: map },
-      });
-      if (again.ok) authorised = again;
+  // A `self` row asks no grant: its handler reaches the caller's own rows only.
+  if (declaration.authorisedOn !== 'self') {
+    const asked = {
+      // From the declaration, never written in here: see `CommandDeclaration`.
+      collection: declaration.collection,
+      action: declaration.action,
+      scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
+    };
+    let authorised = await checkAuthority(tx, subjectsOf(session), asked);
+    // A grant scoped to a map covers the map and its tickets (W12): asked again
+    // at the map's scope, and the first refusal stands when that fails too.
+    if (!authorised.ok) {
+      const map = await coveringMap(tx, request, declaration);
+      if (map !== undefined) {
+        const again = await checkAuthority(tx, subjectsOf(session), {
+          ...asked,
+          scope: { kind: 'record', id: map },
+        });
+        if (again.ok) authorised = again;
+      }
     }
+    if (!authorised.ok) return refused(authorised.refusal);
   }
-  if (!authorised.ok) return refused(authorised.refusal);
   // A field the row does not describe, after authority as on the agent prefix:
   // a caller without the right is told that first (R4, `external-party`).
   // Against the row itself: a replay prepares with the target left out, and

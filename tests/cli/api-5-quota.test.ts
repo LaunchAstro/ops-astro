@@ -15,7 +15,8 @@ import type { Transport } from '../../apps/cli/client.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { QUOTAS, type QuotaLimits } from '../../packages/core-records/src/index.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
-import { ISSUER, SECRET, tokenFor } from '../api/fixture.ts';
+import { ISSUER, tokenFor } from '../api/fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { wayfinderWorld, type WayfinderWorld } from '../wayfinder/world.ts';
 import type { Member } from '../commands/fixture.ts';
@@ -98,8 +99,7 @@ describe.skipIf(serverUrl === undefined)('API-5 quota', () => {
       keys: runtimeKeys({ ...process.env }),
       database: w.db.app,
       admin: w.db.admin,
-      secret: SECRET,
-      issuer: ISSUER,
+      signIn: testSignIn(ISSUER),
       executeRead: async (...args) => {
         const answer = await executeRead(...args);
         if (hold !== undefined) await hold();

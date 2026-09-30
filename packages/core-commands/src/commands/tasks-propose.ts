@@ -5,6 +5,7 @@
 import {
   checkAuthority,
   checkDelegatedAuthority,
+  raiseDecision,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import type { Delegation, Subject, TenantQuery } from '../../../core-records/src/index.ts';
@@ -225,6 +226,7 @@ export async function proposeFor(
     research && !isSet(current.data['assignee'])
       ? await claimFor(tx, target.id, starter)
       : current.revision;
+  await raiseDecision(tx, { taskId: target.id, gateId: result.value.gateId });
 
   // The revision is the task's own and is unchanged: a proposal is a record
   // beside the task, not an edit to it, so a caller may keep writing against

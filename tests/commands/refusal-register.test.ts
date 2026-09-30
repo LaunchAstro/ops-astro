@@ -69,53 +69,65 @@ describe('the refusal register', () => {
   });
 });
 
+/**
+ * The codes nothing produces yet: registered because the contract registers
+ * them, unreachable because the command or the table that would produce them
+ * lands in a later part.
+ */
+const STILL_UNPRODUCED: readonly string[] = [
+  // AW-02's four wait for AW-04's plan accept, their one entry point;
+  // AW-01 J's four for C52-A's dispatch, the occurrence run's one caller.
+  'ACTIVATION_MODE_NOT_PERMITTED',
+  'APPROVAL_NOT_STANDING',
+  'DEFINITION_DIGEST_MISMATCH',
+  'DEFINITION_REVOKED',
+  'DEFINITION_UNAVAILABLE',
+  'DELEGATION_EXCLUDES_ACTIVATION',
+  // `AUDIENCE_NOT_PERMITTED` came off when a delegated agent's own-task
+  // comment was wired: the agent writes `internal` only, and a `client`
+  // comment is refused with it (`agent-envelope.ts`, role-case matrix).
+  // `DELEGATION_NARROWED` came off with `grant.revoke`: the matrix's case
+  // (i) revokes the delegating person's read through the route, and the
+  // agent's next call is refused with it.
+  // The agent codes came off this list when L3 part B built the agent's
+  // own API path: `AUTH_NO_AGENT_IDENTITY`, `AUTH_SESSION_EXPIRED`,
+  // `DELEGATION_NOT_LIVE`, `DELEGATION_OUT_OF_PURPOSE` and
+  // `DELEGATION_EXCLUDES_DECISION` are all produced by an operation a
+  // caller can reach now. The three `DELEGATION_*` codes below still are not,
+  // and `register.ts` says of each what it waits for. The three `PRESET_*`
+  // codes are deliberately absent too — `preset.plan` produces them. So
+  // are L4's three review-fix codes: `LINEAGE_NOT_ON_TASK`,
+  // `CAP_BINDING_MISMATCH` and `ACTUAL_EXPENDITURE_UNSUPPORTED` are each
+  // reached from a field a caller fills in on `task.propose` or
+  // `task.handback`, so none of them joins this list.
+  // `DELEGATION_ALREADY_LIVE` came off this list with its emitter:
+  // `authority/delegations.ts` refuses a second live mint under one
+  // purpose, and `task.pickup` reaches it (`tests/api/task-runtime-routes.test.ts`).
+  // `DELEGATION_EXCLUDES_OPERATION`, `GATE_EXPIRED` and
+  // `CHANGE_ROUNDS_EXHAUSTED` came off together, each reached through the
+  // command envelope in `tests/commands/unproduced-reach.test.ts`.
+  // `LEASE_HELD` came off when two lineages on one task, under an envelope
+  // an earlier handback left open, reached it (`tests/commands/lease-held-reach.test.ts`).
+  'DELEGATION_EXCLUDES_INTAKE',
+  'DELEGATION_EXPIRED',
+  'DELEGATION_REVOKED',
+  // `DELEGATION_WIDENS` came off when the approver's task write was revoked
+  // between approval and pickup (`tests/commands/delegation-widens.test.ts`).
+  'EVIDENCE_MISMATCH',
+  'LEASE_EXPIRED',
+  'OCCURRENCE_UNKNOWN',
+  // `PROPOSAL_SCOPE_EXCEEDED` and `PROPOSAL_SUPERSEDED` came off with T3a,
+  // which moved `propose` and `decide` onto them (`t3a-escalate.test.ts`).
+  'TASK_NOT_PICKABLE',
+  'WORKER_REQUIRED',
+  'WRONG_BUSINESS',
+];
+
 describe('the refusal register', () => {
   it('names the codes nothing produces yet, so closing one is a visible diff', () => {
     // Registered because the contract registers them; unreachable because the
     // command or the table that would produce them lands in a later part.
-    expect([...UNPRODUCED_CODES].toSorted()).toStrictEqual([
-      // AW-02's four wait for AW-04's plan accept, their one entry point.
-      'ACTIVATION_MODE_NOT_PERMITTED',
-      'DEFINITION_DIGEST_MISMATCH',
-      'DEFINITION_UNAVAILABLE',
-      'DELEGATION_EXCLUDES_ACTIVATION',
-      // `AUDIENCE_NOT_PERMITTED` came off when a delegated agent's own-task
-      // comment was wired: the agent writes `internal` only, and a `client`
-      // comment is refused with it (`agent-envelope.ts`, role-case matrix).
-      // `DELEGATION_NARROWED` came off with `grant.revoke`: the matrix's case
-      // (i) revokes the delegating person's read through the route, and the
-      // agent's next call is refused with it.
-      // The agent codes came off this list when L3 part B built the agent's
-      // own API path: `AUTH_NO_AGENT_IDENTITY`, `AUTH_SESSION_EXPIRED`,
-      // `DELEGATION_NOT_LIVE`, `DELEGATION_OUT_OF_PURPOSE` and
-      // `DELEGATION_EXCLUDES_DECISION` are all produced by an operation a
-      // caller can reach now. The three `DELEGATION_*` codes below still are not,
-      // and `register.ts` says of each what it waits for. The three `PRESET_*`
-      // codes are deliberately absent too — `preset.plan` produces them. So
-      // are L4's three review-fix codes: `LINEAGE_NOT_ON_TASK`,
-      // `CAP_BINDING_MISMATCH` and `ACTUAL_EXPENDITURE_UNSUPPORTED` are each
-      // reached from a field a caller fills in on `task.propose` or
-      // `task.handback`, so none of them joins this list.
-      // `DELEGATION_ALREADY_LIVE` came off this list with its emitter:
-      // `authority/delegations.ts` refuses a second live mint under one
-      // purpose, and `task.pickup` reaches it (`tests/api/task-runtime-routes.test.ts`).
-      // `DELEGATION_EXCLUDES_OPERATION`, `GATE_EXPIRED` and
-      // `CHANGE_ROUNDS_EXHAUSTED` came off together, each reached through the
-      // command envelope in `tests/commands/unproduced-reach.test.ts`.
-      // `LEASE_HELD` came off when two lineages on one task, under an envelope
-      // an earlier handback left open, reached it (`tests/commands/lease-held-reach.test.ts`).
-      'DELEGATION_EXCLUDES_INTAKE',
-      'DELEGATION_EXPIRED',
-      'DELEGATION_REVOKED',
-      // `DELEGATION_WIDENS` came off when the approver's task write was revoked
-      // between approval and pickup (`tests/commands/delegation-widens.test.ts`).
-      'EVIDENCE_MISMATCH',
-      'LEASE_EXPIRED',
-      // `PROPOSAL_SCOPE_EXCEEDED` and `PROPOSAL_SUPERSEDED` came off with T3a,
-      // which moved `propose` and `decide` onto them (`t3a-escalate.test.ts`).
-      'TASK_NOT_PICKABLE',
-      'WRONG_BUSINESS',
-    ]);
+    expect([...UNPRODUCED_CODES].toSorted()).toStrictEqual(STILL_UNPRODUCED);
   });
 });
 

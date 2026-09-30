@@ -25,6 +25,14 @@ export interface RunGate {
   readonly payloadDigest: string;
 }
 
+/** The run's pinned definition reference: a skill file by path, or a definition version. */
+export interface RunPin {
+  readonly kind: string;
+  readonly path: string | null;
+  readonly digest: string;
+  readonly definitionVersionId: string | null;
+}
+
 export interface RunVersion {
   readonly versionId: string;
   readonly version: number;
@@ -35,6 +43,13 @@ export interface RunVersion {
   readonly payload: unknown;
   readonly supersededAt: string | null;
   readonly runId: string | null;
+  /** The run's first claim and a hand-back with none after it (MP-6-2); absent on an older read. */
+  readonly startedAt?: string | null;
+  readonly endedAt?: string | null;
+  /** The token units the run's model calls recorded (MP-6-2); absent on an older read. */
+  readonly tokenUnits?: number | null;
+  /** What the run was given at its start (MP-6-2, TA-09); absent on an older read. */
+  readonly pins?: readonly RunPin[];
   readonly evidence: { readonly digest: string; readonly body: unknown } | null;
   readonly gate: RunGate | null;
   readonly checks: readonly RunCheck[];

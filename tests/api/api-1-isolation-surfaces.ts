@@ -12,6 +12,7 @@ import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { tokenFor } from './fixture.ts';
 import type { Member } from '../commands/fixture.ts';
 import { agentToken, delegation, label, through, type Name } from './api-1-isolation-world.ts';
+import { asBrowser } from '../support/sign-in.ts';
 
 export interface Heard {
   readonly status: number;
@@ -67,7 +68,13 @@ export async function threeWays(
     heard.push({ status: response.status, code: parsed?.code, body: label(parsed) });
     return response;
   }) as typeof fetch;
-  const app = new OperationsClient({ origin: '', businessKey, token, fetch: recording });
+  // The app's client signs in as a browser does, on the session cookie (S0-6c).
+  const app = new OperationsClient({
+    origin: '',
+    businessKey,
+    signedIn: true,
+    fetch: asBrowser(token, async (url, init) => await recording(url, init)),
+  });
   const operationId = randomUUID();
   await (row.kind === 'read'
     ? app.read(row.command as never, body)

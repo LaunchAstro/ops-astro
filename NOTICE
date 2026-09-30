@@ -88,7 +88,6 @@ its licence and the path it sits at, in the same commit that adds it.
    Source: https://lucide.dev
    Note: replaces the mockup's icon font, whose licence does not pass on.
          Recorded in packages/ui/assets/licences.json.
-
 6. Langfuse self-hosting files, version 4.33.0
    Path: scripts/local/trace-target/docker-compose.yml
    Copyright: 2023-2026 ClickHouse, Inc.

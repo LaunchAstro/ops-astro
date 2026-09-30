@@ -10,17 +10,31 @@
 
 export { type AgentRequest } from './commands/agent-call.ts';
 export { agentAnswer, executeAgentCommand } from './commands/agent-envelope.ts';
+export {
+  conversationExchange,
+  type Asked,
+  type ConversationExchange,
+  type ConversationReply,
+} from './commands/conversation-exchange.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
 export {
   modelCallExecutor,
   type ModelBroker,
   type ModelCallExecutor,
 } from './commands/model-call.ts';
+// AW-01 J: the worker's occurrence path, never a command (no API route, no CLI).
+export {
+  startOccurrenceRun,
+  type OccurrenceAuthority,
+  type OccurrenceRun,
+  type ReadOccurrenceAuthority,
+} from './commands/occurrence-run.ts';
 export { isCommandRefusal, refuseCommand, type CommandRefusal } from './commands/refusal.ts';
 export { type CommandRequest } from './commands/requests.ts';
 // T3d1: the pass asks the register whether an unknown step's effect happened.
 export { lookupEffect } from './commands/register-store.ts';
 export { executeRead } from './reads/execute.ts';
+export { joinLiveBoard, shownInbox } from './reads/live-join.ts';
 export { isReadName } from './reads/catalogue.ts';
 export { type ReadRequest } from './reads/requests.ts';
 export {

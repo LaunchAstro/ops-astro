@@ -4,19 +4,22 @@
 // MP-1-1: the theme is applied before first paint, from a preference handed to
 // the page, and follows the system when none is given.
 //
-// The step is the classic inline script in `apps/web/index.html`'s head. It
-// runs while the head is parsed, before any stylesheet or module, so the first
-// frame already carries `data-theme`. The preference is handed to it as
+// The step is `apps/web/theme-before-paint.js`, a same-origin classic script
+// first in `apps/web/index.html`'s head (the content policy runs no inline
+// script). It runs while the head is parsed, before any stylesheet or module,
+// so the first frame already carries `data-theme`. The preference is handed to it as
 // `data-theme-preference` on the root element: light, dark or system. No store
 // is read here; MP-2-11 owns the stored preference and hands it over that way.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const html = readFileSync(join(import.meta.dirname, '../../apps/web/index.html'), 'utf8');
+const web = join(import.meta.dirname, '../../apps/web');
+const html = readFileSync(join(web, 'index.html'), 'utf8');
 const head = new DOMParser().parseFromString(html, 'text/html').head;
-const step = head.querySelector('script')?.textContent ?? '';
+const stepFile = join(web, 'theme-before-paint.js');
+const step = existsSync(stepFile) ? readFileSync(stepFile, 'utf8') : '';
 
 interface System {
   dark: boolean;
@@ -54,12 +57,15 @@ const tick = (): Promise<void> =>
 
 describe('MP-1-1 theme before paint', () => {
   it('MP-1-1 theme before paint', async () => {
-    // Before any stylesheet or module: the first script in the head, inline
-    // and classic, so the parser runs it before anything paints.
+    // Before any stylesheet or module: the first script in the head, a classic
+    // same-origin file, neither async nor deferred, so the parser runs it
+    // before anything paints.
     const first = head.querySelector('script, link[rel="stylesheet"], style');
     expect(first?.tagName).toBe('SCRIPT');
     expect(first?.getAttribute('type')).toBeNull();
-    expect(first?.hasAttribute('src')).toBe(false);
+    expect(first?.getAttribute('src')).toBe('/theme-before-paint.js');
+    expect(first?.hasAttribute('async') || first?.hasAttribute('defer')).toBe(false);
+    expect(first?.textContent).toBe('');
     expect(step).not.toBe('');
 
     // No preference: the system decides, both ways.

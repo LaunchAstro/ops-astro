@@ -42,7 +42,6 @@ export const SCREENS: {
       <Projects client={context.client} grantKey={context.grantKey} />
     </>
   ),
-  'agency:gallery': () => <Gallery />,
   'agency:agent-conversation': (context) => (
     <ConversationScreen
       client={context.client}
@@ -50,6 +49,7 @@ export const SCREENS: {
       conversationId={context.params.conversation}
     />
   ),
+  'agency:gallery': () => <Gallery />,
   'agency:settings': (context) => (
     <SettingsScreen client={context.client} grantKey={context.grantKey} storage={context.storage} />
   ),

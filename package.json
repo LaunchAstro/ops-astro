@@ -58,6 +58,7 @@
     "deps:cruise": "node scripts/deps-cruise.mjs",
     "deps:cases": "node --test tests/ci/deps-cruise-cases.mjs tests/ci/db-shard-declaration-cruise.test.mjs",
     "db:conformance": "node scripts/db-conformance.mjs",
+    "local:cases": "node --test tests/ci/s0-7-auth-up-replaces-18.test.mjs tests/ci/s0-7-auth-up-cases.mjs tests/ci/s0-7-auth-up-restarts-gotrue.test.mjs tests/ci/s0-7-db-up-then-auth-up-remigrates.test.mjs",
     "db:cases": "node --test tests/ci/db-conformance-cases.mjs tests/ci/docker-leak-cases.mjs",
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
     "db:up": "bash scripts/local/db-up.sh",
@@ -77,11 +78,13 @@
     "verify:browser": "node tests/browser/slice-acceptance.mjs",
     "verify:d06-mounted": "node tests/browser/d06-mounted.mjs",
     "verify:restart": "bash scripts/local/restart-proof.sh",
+    "verify:upgrade-drill": "node scripts/local/upgrade-drill.mjs",
     "verify:restart-legs": "node tests/browser/restart-legs.mjs",
     "verify:journey": "node scripts/local/journey.mjs",
     "verify:runtime-proofs": "bash scripts/local/runtime-proofs.sh",
     "cli": "node apps/cli/main.ts",
     "worker": "node apps/worker/main.ts",
+    "forwarder": "node scripts/ops/forwarder.mjs",
     "verify:identity": "node scripts/local/identity-check.mjs"
   },
   "dependencies": {

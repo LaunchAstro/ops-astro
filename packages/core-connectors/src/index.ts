@@ -29,6 +29,7 @@ export {
   type RouteReach,
 } from './data-class.ts';
 export {
+  CONVERSATION_ANSWER,
   readReplayAnswer,
   replayAdapter,
   replayCostMinor,

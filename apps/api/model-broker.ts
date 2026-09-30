@@ -14,6 +14,7 @@
 
 import {
   catalogue,
+  CONVERSATION_ANSWER,
   REPLAY_COMPOSE,
   replayAdapter,
   replayCostMinor,
@@ -27,7 +28,9 @@ import {
   type Destination,
 } from '../../packages/core-custody/src/index.ts';
 import {
+  conversationExchange,
   modelCallExecutor,
+  type ConversationExchange,
   type ModelCallExecutor,
 } from '../../packages/core-commands/src/index.ts';
 
@@ -48,7 +51,7 @@ export type BrokerSettings =
     }
   | { readonly kind: 'invalid'; readonly problem: string };
 
-const OPERATIONS = catalogue([REPLAY_COMPOSE]);
+const OPERATIONS = catalogue([REPLAY_COMPOSE, CONVERSATION_ANSWER]);
 const PROVIDERS = new Map([['replay', { build: replayAdapter, price: replayCostMinor }]]);
 
 const REACHES: ReadonlySet<string> = new Set(['local', 'cloud']);
@@ -135,17 +138,25 @@ export function brokerSettings(
   };
 }
 
-/** Custody's own process, started, and the executor over it. */
+/** Custody's own process, started, and the executor and the conversation exchange over it. */
 export async function startModelBroker(
   settings: Extract<BrokerSettings, { kind: 'configured' }>,
-): Promise<{ readonly executor: ModelCallExecutor; readonly stop: () => Promise<void> }> {
+): Promise<{
+  readonly executor: ModelCallExecutor;
+  readonly answerConversation: ConversationExchange;
+  readonly stop: () => Promise<void>;
+}> {
   const custody = await startCustody(settings.custody);
-  const executor = modelCallExecutor({
+  const broker = {
     custody,
     operations: OPERATIONS,
     providers: PROVIDERS,
     routes: settings.routes,
     installation: settings.installation,
-  });
-  return { executor, stop: async () => await custody.stop() };
+  };
+  return {
+    executor: modelCallExecutor(broker),
+    answerConversation: conversationExchange(broker),
+    stop: async () => await custody.stop(),
+  };
 }
