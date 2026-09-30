@@ -61,6 +61,14 @@ export async function firstClientGate(
 ): Promise<CommandRefusal | undefined> {
   const effects = COMMAND_EFFECTS[name];
   if (classOf(effects) === 'made-up-safe') return undefined;
+  // A database from before 0056 has neither the function nor the table, and
+  // 0056 provisions it made-up. Either one alone is not that: the call below
+  // then fails, and the command with it.
+  const [schema] = await tx.query<{ readonly before_gate: boolean }>(
+    `select to_regprocedure('public.first_client_readiness()') is null
+        and to_regclass('ops.installation') is null as before_gate`,
+  );
+  if (schema?.before_gate === true) return undefined;
   const [readiness] = await tx.query<Readiness>(
     'select mode, open_items from public.first_client_readiness()',
   );

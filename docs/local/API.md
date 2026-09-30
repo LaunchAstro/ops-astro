@@ -1782,7 +1782,9 @@ authority and before the handler, on the person and agent routes. On a
 real-data installation with any gate item open it is refused `GATE_SHUT` 409,
 naming the open items, and writes nothing. A made-up-data installation, the
 test harness and staging included, runs them. An installation with no mode
-row refuses them too, naming `installation`.
+row refuses them too, naming `installation`, and one whose readiness function
+is gone fails them. Only a database from before 0056, with neither the
+function nor `ops.installation`, runs them, as 0056 provisions it made-up.
 
 The eight items are `ops.gate_items` rows, each with an `https` evidence link:
 `tested-backups`, `second-factor`, `legal-basics`, `privacy-act-statement`,
