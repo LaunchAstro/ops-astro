@@ -118,8 +118,8 @@ export type UnattendedEntry = Omit<UnattendedItem, 'raisedAt'> & { readonly rais
 
 /**
  * The business's unattended items whose task the caller can read: the list
- * the operations view (C55) will show, on the API and the command line until
- * then. It names each recipient, so it is `operations:read`'s and nobody's own.
+ * the operations view (C55) shows, and `inbox.unattended` on the API and the
+ * command line. It names each recipient, so it is `operations:read`'s and nobody's own.
  */
 export async function readUnattendedInbox(
   tx: TenantQuery,

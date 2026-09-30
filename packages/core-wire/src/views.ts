@@ -604,12 +604,15 @@ export interface ServiceHealthSection {
  * `operations.read`'s answer (C55). The privacy incidents are this business's
  * own records. The service-health section (C34) is the installation's
  * watcher, error sink and optional tracing, read by the API after the grant
- * check and outside the serving transaction. Unattended items (INB-1), security
- * alerts (S0-2) and the last tested restore (S0-3) join it as those parts
- * land; each is its owner's read, placed here, never a second copy.
+ * check and outside the serving transaction. The unattended items are INB-1's
+ * own read (`inbox.unattended`'s answer). Security alerts (S0-2) and the last
+ * tested restore (S0-3) join it as those parts land; each is its owner's
+ * read, placed here, never a second copy.
  */
 export interface OperationsReadResult {
   readonly ok: true;
+  /** INB-1's unattended items whose task the caller reads: every path to a person broken. */
+  readonly unattended: readonly UnattendedView[];
   readonly privacyIncidents: readonly PrivacyIncidentView[];
   /** What every incident record links to; `null` until a breach runbook is published. */
   readonly breachRunbook: BreachRunbookLink | null;
@@ -669,6 +672,17 @@ export interface InboxEntry {
    * page and the queue read show (INB-1, the alert's third and last place).
    */
   readonly alert?: InboxAlert;
+}
+
+/** An item no path reaches (INB-1e): its recipient, reason and task, never the task's words. */
+export interface UnattendedView {
+  readonly id: string;
+  readonly recipientPersonId: string;
+  readonly subjectRecordId: string;
+  readonly reason: InboxReason;
+  readonly factKind: InboxFactKind;
+  readonly factId: string;
+  readonly raisedAt: string;
 }
 
 /** `inbox.read`'s answer: the caller's open items and newest page of closed ones, oldest raised first. */

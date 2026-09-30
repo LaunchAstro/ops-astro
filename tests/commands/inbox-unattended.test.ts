@@ -11,9 +11,9 @@
 // everyone raised an item on it, anything else is its recipient's own. In-app
 // is the only channel on this head and is always on, so a person who can sign
 // in and read is reachable. Nothing is inferred from time or from silence: an
-// old unseen item with one live path stays attended. Until the operations view
-// (C55) lands, the list is `inbox.unattended` on the API and the command line,
-// behind `operations:read`, and it writes nothing.
+// old unseen item with one live path stays attended. The list is
+// `inbox.unattended` on the API and the command line, and the operations view's
+// (C55) `unattended`, both behind `operations:read`; it writes nothing.
 //
 // Separations, each exercised below: business to business (an operator of
 // another business lists none of this business's items, and this business's

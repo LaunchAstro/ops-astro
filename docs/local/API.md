@@ -1616,7 +1616,7 @@ local end stands, and asking again is safe. The provider's words go nowhere.
 
 ## The operations view and privacy incidents (C55)
 
-`operations.read` answers `{ ok, privacyIncidents, serviceHealth }` to a holder of
+`operations.read` answers `{ ok, unattended, privacyIncidents, serviceHealth }` to a holder of
 `operations:read` (install default: the owner and administrators). It is
 never an agent's: on the agent prefix it is `DELEGATION_EXCLUDES_OPERATION` 403. Each incident carries its day-0 facts, its status and `assessBy`, 30 days
 after `foundAt` (the breach runbook's assessment limit), most recently found
@@ -1625,6 +1625,8 @@ was made. `overdue` is true while an incident is open past `assessBy`, judged
 on the database's clock (C81 breach drill). `breachRunbook` is what every
 incident record links to: the breach runbook published most recently, as
 `{ version, digest, publishedAt, body }`, or `null` until one is published.
+`unattended` is INB-1's list, read for the same caller: exactly what
+`inbox.unattended` answers them, built by the same read (no second list).
 
 `privacy.record_incident` is the tracked action `privacy incident recorded`,
 under `privacy:manage` and never an agent's. Its body is
@@ -1682,7 +1684,7 @@ and the error sink (GlitchTip, C29-3) are their adapters, filled in at the same
 port when they land.
 
 Held until their parts land (each placed here as its owner's read, never a
-second list): unattended items (INB-1), security alerts (S0-2), the last tested
+second list): security alerts (S0-2), the last tested
 restore (S0-3) and the error-sink link.
 
 ## Legal documents (C81)

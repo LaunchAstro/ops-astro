@@ -65,6 +65,7 @@ export type {
   InboxCountResult,
   InboxEntry,
   InboxReadResult,
+  UnattendedView,
   InternalCommentView,
   InternalTaskDetail,
   InternalTaskRead,

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The operations view (C55), as the holder of `operations:read` is shown it.
-// It places other parts' reads rather than keeping lists of its own; the
-// privacy incidents are the part that is this view's own record, and each
+// It places other parts' reads rather than keeping lists of its own (the
+// unattended items are INB-1's `readUnattendedInbox`, as the caller reads
+// them); the privacy incidents are the part that is this view's own record, and each
 // links the breach runbook published most recently (C81).
 //
 // Beside it, the breach drill's notices (C81): drafted from that runbook for
@@ -18,12 +19,18 @@ import {
 import type { NoticeRecipient, TenantQuery } from '../../../core-records/src/index.ts';
 import type { BreachNoticesResult, OperationsReadResult } from '../../../core-wire/src/index.ts';
 import { invalid } from '../commands/operands.ts';
+import { readUnattendedInbox } from './inbox.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 
-export async function readOperations(tx: TenantQuery): Promise<Omit<OperationsReadResult, 'ok'>> {
+export async function readOperations(
+  tx: TenantQuery,
+  viewerPersonId: string,
+): Promise<Omit<OperationsReadResult, 'ok'>> {
+  const unattended = await readUnattendedInbox(tx, viewerPersonId);
   const incidents = await readPrivacyIncidents(tx);
   const runbook = await readPublishedLegal(tx, 'breach-runbook');
   return {
+    unattended,
     privacyIncidents: incidents.map((incident) => ({
       id: incident.id,
       whatHappened: incident.whatHappened,
