@@ -1622,7 +1622,9 @@ and codes, never a sentence, to a trace target an operator reads.
   `target_forbidden`) and the cursor stays. No run reads either table and no
   run waits on the exporter.
 - `trace_export_cursors`: one row per business, the last delivered event by
-  `(created_at, id)`. `trace_export_gaps`: append only (a trigger refuses
+  `(created_at, id)`. It moves forward only: two exports at once may read the
+  same batch, and the slower one never moves it back (the upsert's row lock
+  orders them, the comparison under it keeps the later). `trace_export_gaps`: append only (a trigger refuses
   update and delete). Both under tenancy; the application group may select and
   insert, and update the cursor.
 - The port is meant to be custody's egress (the target's origin on custody's

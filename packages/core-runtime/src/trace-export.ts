@@ -172,12 +172,20 @@ async function registerTraceCopy(tx: TenantQuery, runId: string): Promise<void> 
   );
 }
 
+/**
+ * Forward only: two exports at once may read the same batch, and the slower
+ * one must not move the cursor back past what the faster one delivered. The
+ * upsert's row lock orders them; the comparison under it keeps the later.
+ */
 async function advance(tx: TenantQuery, last: Row): Promise<void> {
   await tx.query(
     `insert into public.trace_export_cursors (business_id, after_at, after_id)
      select $1, created_at, id from public.run_events where business_id = $1 and id = $2
      on conflict (business_id) do update
-       set after_at = excluded.after_at, after_id = excluded.after_id, updated_at = now()`,
+       set after_at = excluded.after_at, after_id = excluded.after_id, updated_at = now()
+       where trace_export_cursors.after_at is null
+          or (trace_export_cursors.after_at, trace_export_cursors.after_id)
+             < (excluded.after_at, excluded.after_id)`,
     [tx.businessId, last.id],
   );
 }
