@@ -92,6 +92,7 @@ import type { ReadState } from '../data/authorised-read.ts';
 import { hubOf } from '../data/live.ts';
 import { usePresence } from '../data/presence.ts';
 import { TaskPresence, useShowOnPage } from '../views/presence.tsx';
+import { useFreshOnPage } from '../views/freshness.tsx';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
 import {
   ConflictNotice,
@@ -152,16 +153,18 @@ interface SaveAttempt {
 
 export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const client = props.client;
+  const hub = hubOf(client);
   const [draft, setDraft] = useState<Draft | null>(null);
   const { state, reload } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
     deps: [props.taskKey],
     live: {
-      hub: hubOf(client),
+      hub,
       topic: (read) => ('task' in read ? `task:${read.task.id}` : undefined),
     },
   });
+  useFreshOnPage(state, hub);
 
   // **The draft lives above the read.** A re-read under a draft keeps `Loaded`
   // mounted (C4 live-sync 4: the rest of the page stays live and the edit is

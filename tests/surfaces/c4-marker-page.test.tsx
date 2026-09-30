@@ -41,7 +41,7 @@ function server() {
     reads: 0,
     send: (_event: string) => {},
   };
-  const fetch = (async (url: string | URL) => {
+  const answer = (url: string | URL): Response => {
     const path = new URL(String(url), 'http://api.test').pathname;
     if (path.endsWith('/task/read')) {
       api.reads += 1;
@@ -59,7 +59,10 @@ function server() {
       return new Response(body, { status: 200 });
     }
     return json(refusal, 404);
-  }) as unknown as typeof globalThis.fetch;
+  };
+  // A throw becomes a rejected fetch, as a network failure does.
+  const fetch = ((url: string | URL) =>
+    Promise.resolve().then(() => answer(url))) as unknown as typeof globalThis.fetch;
   const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 't', fetch });
   return { api, client };
 }
@@ -71,12 +74,12 @@ afterEach(async () => {
   Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
 });
 
-const header = (client: OperationsClient, open = true) => (
+const header = (client: OperationsClient, open = true, grantKey = 't:g') => (
   <PageFreshnessProvider>
     <header className="topbar">
       <StripFreshness />
     </header>
-    {open ? <TaskDetailScreen client={client} grantKey="t:g" taskKey="TSK-2" /> : null}
+    {open ? <TaskDetailScreen client={client} grantKey={grantKey} taskKey="TSK-2" /> : null}
   </PageFreshnessProvider>
 );
 
@@ -139,8 +142,9 @@ it('C4 marker: a refused page claims nothing, and a closed page takes its marker
   expect(shown.find('.topbar .freshrow')).toBeNull();
 
   const again = server();
-  await shown.render(header(again.client));
+  // Another reader: a new grant is a new read.
+  await shown.render(header(again.client, true, 't2:g'));
   await until('a fresh page is live', () => marker(shown!) === 'Updated just now');
-  await shown.render(header(again.client, false));
+  await shown.render(header(again.client, false, 't2:g'));
   expect(shown.find('.topbar .freshrow')).toBeNull();
 });

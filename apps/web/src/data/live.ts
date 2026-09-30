@@ -42,6 +42,8 @@ export interface LiveHub {
   presence(topic: string, onSeat: OnSeat): () => void;
   /** When the stream went down, or null while it is open or none is needed (`LiveStatus`). */
   readonly downSince: number | null;
+  /** Hear `downSince` change until the returned function is called. */
+  watch(onStatus: () => void): () => void;
 }
 
 const wait = (ms: number, signal: AbortSignal): Promise<void> =>
@@ -80,6 +82,7 @@ class TabStream implements LiveHub {
   readonly #followers = new Map<string, Set<OnChange>>();
   readonly #closed = new Set<string>();
   readonly #seated = new Map<string, Set<OnSeat>>();
+  readonly #watchers = new Set<() => void>();
   #seat: string | null = null;
   #joined: { readonly topics: string; readonly abort: AbortController } | null = null;
   #floor: ReturnType<typeof setInterval> | undefined;
@@ -97,6 +100,17 @@ class TabStream implements LiveHub {
 
   get downSince(): number | null {
     return this.#downSince;
+  }
+
+  watch(onStatus: () => void): () => void {
+    this.#watchers.add(onStatus);
+    return () => this.#watchers.delete(onStatus);
+  }
+
+  #status(downSince: number | null): void {
+    if (this.#downSince === downSince) return;
+    this.#downSince = downSince;
+    for (const onStatus of this.#watchers) onStatus();
   }
 
   follow(topic: string, onChange: OnChange): () => void {
@@ -167,11 +181,11 @@ class TabStream implements LiveHub {
   #up(): void {
     clearInterval(this.#floor);
     this.#floor = undefined;
-    this.#downSince = null;
+    this.#status(null);
   }
 
   #down(refused: boolean): void {
-    this.#downSince ??= this.#now();
+    this.#status(this.#downSince ?? this.#now());
     if (refused) this.#floor ??= setInterval(this.#refresh, FLOOR_MS);
   }
 
