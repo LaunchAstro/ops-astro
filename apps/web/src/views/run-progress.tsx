@@ -11,7 +11,7 @@
 // (`drawRunState`'s fallback), never dropped.
 
 import type { ReactElement } from 'react';
-import { drawRunState, Empty, PaneEmpty, Spill } from '@launchastro/ui';
+import { drawRunState, Empty, Spill } from '@launchastro/ui';
 import {
   isRefusal,
   isUnavailable,
@@ -58,7 +58,7 @@ export function RunProgress(props: RunProgressProps): ReactElement {
         <span className="sb__k">The run</span>
       </div>
       {state.outcome === 'loading' ? (
-        <PaneEmpty say="Reading the run…" />
+        <Empty look="inline" title="Reading the run…" />
       ) : state.outcome === 'denied' ? (
         <p className="card__sub" data-run="denied">
           The server refused this read ({state.refusal.code}), so nothing about the run is shown.

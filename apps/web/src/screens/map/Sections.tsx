@@ -8,7 +8,7 @@
 // handed up as a `map.revise` body; this file sends nothing itself.
 
 import { useState, type ReactElement } from 'react';
-import { PaneEmpty } from '@launchastro/ui';
+import { Empty } from '@launchastro/ui';
 import type { MapView } from '../../../../../packages/core-wire/src/index.ts';
 import { Decisions, PreAnswers, Section, ticketLink, Versions } from './ReadSections.tsx';
 
@@ -72,7 +72,11 @@ function EditableText(props: EditableProps): ReactElement {
     <Section name={props.kind} label={props.label}>
       {draft === null ? (
         <>
-          {props.text === null ? <PaneEmpty say="Not written yet." /> : <p>{props.text}</p>}
+          {props.text === null ? (
+            <Empty look="inline" title="Not written yet." />
+          ) : (
+            <p>{props.text}</p>
+          )}
           <div className="btnrow">
             <button
               className="btn"
@@ -173,7 +177,7 @@ function Fog(props: SectionsListProps): ReactElement {
   const fog = props.map.fog;
   return (
     <Section name="fog" label="Not yet specified">
-      {fog.length === 0 ? <PaneEmpty say="Nothing is foggy." /> : null}
+      {fog.length === 0 ? <Empty look="inline" title="Nothing is foggy." /> : null}
       <ul>
         {fog.map((patch) => (
           <li key={patch.id} data-component={patch.id}>
@@ -215,7 +219,7 @@ function OutOfScope(props: SectionsListProps): ReactElement {
   const keyOf = (id: string | null) => props.map.tickets.find((t) => t.id === id)?.key ?? null;
   return (
     <Section name="out-of-scope" label="Out of scope">
-      {items.length === 0 ? <PaneEmpty say="Nothing has been ruled out." /> : null}
+      {items.length === 0 ? <Empty look="inline" title="Nothing has been ruled out." /> : null}
       <ul>
         {items.map((item) => (
           <li key={item.id} data-component={item.id}>

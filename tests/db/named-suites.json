@@ -111,7 +111,10 @@
     "API-3 quota (SL14) adds api-3-quota: requests and calls at once per credential, person and business over the composed API with small limits and a moved clock, the refusal recorded, an outsider charged nothing, the page size from the one table.",
     "WF-6 (SL14) adds tests/wayfinder/wf-6.test.ts (every charting pre-answer cites its source and an uncited one is refused; a pre-answer cites only a closed ticket the charter can read; charting resolves nothing; the agent never resolves a grilling ticket it filed; the audit readback and chain; the task:write refusal) wf-6-isolation.test.ts (the three crossings, a cited source withheld from a reader who may not read it) and wf-6-cli.test.ts (map.chart with pre-answers through the generated client, the same result and refusal as the envelope). wf-6-held.test.ts and wf-7-held.test.ts hold todos only and open no database, so they are neither named nor listed.",
     "API-5 (SL14, U30) adds api-5 (one case per tracker verb through the verb CLI, the owner check flow, the write budget), api-5-audit (each tracker change recorded in the writing transaction and the audit chain; a refusal per key), api-5-isolation (the three crossings over every tracker operation), api-5-quota (burst and calls at once over the tracker operations) and api-5-conformance (the scripted wayfinder run against the local-Markdown tracker and Ops Astro). api-5-contract.test.ts is a pure unit suite (the tracker file against the upstream contract, the spec table and the pinned digests) and must not be named; api-5-tracker.ts and tracker-backends.ts are harnesses.",
-    "WF-3 pre-answers (SL14) adds tests/web/wf-3-pre-answers.test.tsx beside wf-3: the map view draws charting's cited pre-answers (WF-6) in their own section with question, answer and source (a cited record by its key as a link, a reference as written, decided veto open marked), never among Decisions so far; a source the reader may not read shows as withheld, never by id or key; a map without pre-answers says so. Pages over the composed API and the database."
+    "WF-3 pre-answers (SL14) adds tests/web/wf-3-pre-answers.test.tsx beside wf-3: the map view draws charting's cited pre-answers (WF-6) in their own section with question, answer and source (a cited record by its key as a link, a reference as written, decided veto open marked), never among Decisions so far; a source the reader may not read shows as withheld, never by id or key; a map without pre-answers says so. Pages over the composed API and the database.",
+    "MP-2-1 adds mp-2-1-isolation-api (the held-address switch against the real boundary: a business is named only to a person holding a live grant there; two businesses, four people). Its address-layer twin, mp-2-1-isolation.test.tsx, is a jsdom suite with no database and must not be named.",
+    "API-1 adds api-1-isolation (every catalogue command through the app's client, the CLI and the API answers one refusal alike: business to business, and two record-scoped grants in one business); its world, surfaces and delegation crossing are api-1-isolation-world.ts, api-1-isolation-surfaces.ts and api-1-isolation-delegation.ts. api-1-catalogue.test.ts and api-1-catalogue-authority.test.ts are pure unit suites and must not be named.",
+    "T4e REV185B2: role-case-matrix-fixture-clients proves T4-N2's matrix world holds T4a's two clients with one record grant each in both businesses, and role-case-matrix gains the client-to-client case (another client's task, in either business, answers as an id never issued). t2g-decide-parity's crossing now also finds the undecided gate holding its task open (GATE_PENDING on both surfaces) before the grant holder decides; t3f-expired-lease's business crossing settles its own expired lease marked expired."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -168,6 +171,7 @@
     "tests/runtime/decision-abort.test.ts",
     "tests/acceptance/surface-inventory.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
+    "tests/acceptance/role-case-matrix-fixture-clients.test.ts",
     "tests/acceptance/protected-fields.test.ts",
     "tests/acceptance/predicate-rls.test.ts",
     "tests/api/settings-revision-routes.test.ts",
@@ -321,7 +325,10 @@
     "tests/runtime/aw-06-isolation.test.ts",
     "tests/runtime/aw-13-export.test.ts",
     "tests/runtime/aw-13-isolation.test.ts",
-    "tests/runtime/aw-13-late-event.test.ts"
+    "tests/runtime/aw-13-late-event.test.ts",
+    "tests/fixture/snapshot/snapshot-clone-and-privileges.test.ts",
+    "tests/web/mp-2-1-isolation-api.test.tsx",
+    "tests/api/api-1-isolation.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

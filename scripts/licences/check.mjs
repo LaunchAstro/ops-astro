@@ -78,6 +78,26 @@ const REFUSED_WITH_REASON = new Map([
   ['BUSL-1.1', 'source available, not open source'],
 ]);
 
+// The font licence, allowed for the named font packages and nothing else.
+//
+// The SIL Open Font License 1.1 lets a font be bundled with any software,
+// whatever that software's licence, so the interface's three families can ship
+// inside this AGPL-3.0-only work (TICKET-PLAN R52: Funnel Display, Funnel Sans
+// and Chivo Mono ship with their licence files). It is not a software licence,
+// so it is not on ALLOWED: a code package under it is refused. A package is
+// allowed here only when its name is one of these exactly and its expression
+// is the bare identifier, with no OR, AND or WITH beside it. A new font is a
+// new entry, with its reason, in the same change as the record in
+// packages/ui/assets/licences.json. Funnel Sans and Chivo Mono are their
+// variable packages: the one face each the mockup draws, where the static
+// instances drew it differently.
+const FONT_LICENCE = 'OFL-1.1';
+const FONT_PACKAGES = new Set([
+  '@fontsource/funnel-display',
+  '@fontsource-variable/funnel-sans',
+  '@fontsource-variable/chivo-mono',
+]);
+
 const args = process.argv.slice(2);
 const reportFlag = args.indexOf('--report');
 const reportFile = reportFlag === -1 ? undefined : args[reportFlag + 1];
@@ -147,7 +167,9 @@ if (assetsFlag !== -1) {
 const hasVersion = (pkg) => {
   if (nonEmpty(pkg['version'])) return true;
   const versions = pkg['versions'];
-  return Array.isArray(versions) && versions.length > 0 && versions.every(nonEmpty);
+  return (
+    Array.isArray(versions) && versions.length > 0 && versions.every((version) => nonEmpty(version))
+  );
 };
 
 const describeVersion = (pkg) => {
@@ -368,11 +390,15 @@ for (const [licence, packages] of Object.entries(report)) {
   const bad = pieces.filter((p) => !ALLOWED.has(p));
   if (bad.length === 0) continue;
   const reasons = bad.map((p) => {
+    if (p === FONT_LICENCE) {
+      return `${p}: a font licence, allowed only as the whole expression of a named font package`;
+    }
     const why = REFUSED_WITH_REASON.get(p);
     return why === undefined ? `${p}: not on the compatibility allowlist` : `${p}: ${why}`;
   });
   for (const pkg of packages) {
     const name = nonEmpty(pkg?.['name']) ? pkg['name'] : '(unnamed)';
+    if (licence === FONT_LICENCE && FONT_PACKAGES.has(name)) continue;
     const version = pkg === null || typeof pkg !== 'object' ? '?' : describeVersion(pkg);
     offenders.push({ name, version, licence, reasons });
   }

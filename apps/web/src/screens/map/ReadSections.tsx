@@ -6,7 +6,7 @@
 // the sections a person edits.
 
 import type { ReactElement, ReactNode } from 'react';
-import { PaneEmpty } from '@launchastro/ui';
+import { Empty } from '@launchastro/ui';
 import type { MapPreAnswerView, MapView } from '../../../../../packages/core-wire/src/index.ts';
 import { pathTo } from '../../routes.ts';
 
@@ -35,7 +35,7 @@ export function Decisions(props: { readonly map: MapView }): ReactElement {
   return (
     <Section name="decisions" label="Decisions so far">
       {lines.length === 0 ? (
-        <PaneEmpty say="No ticket has been resolved yet." />
+        <Empty look="inline" title="No ticket has been resolved yet." />
       ) : (
         <ol>
           {lines.map((line) => (
@@ -60,7 +60,7 @@ export function PreAnswers(props: { readonly map: MapView }): ReactElement {
   return (
     <Section name="pre-answers" label="Pre-answered">
       {answers.length === 0 ? (
-        <PaneEmpty say="No question was pre-answered when the map was charted." />
+        <Empty look="inline" title="No question was pre-answered when the map was charted." />
       ) : (
         <ul>
           {answers.map((answer) => (
@@ -96,7 +96,7 @@ export function Versions(props: { readonly map: MapView }): ReactElement {
   return (
     <Section name="history" label="History">
       {versions.length === 0 ? (
-        <PaneEmpty say="No version has been written yet." />
+        <Empty look="inline" title="No version has been written yet." />
       ) : (
         <ol className="sbact">
           {versions.toReversed().map((entry) => (
