@@ -7,6 +7,7 @@
 // is the one place its look is asserted, so two screens never share a list.
 
 import { BOARD } from './board.ts';
+import { FRAME } from './frame.ts';
 import { INBOX } from './inbox.ts';
 import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
@@ -47,4 +48,5 @@ export const LOOK_SCREENS: readonly LookScreen[] = [
   INBOX,
   TEAM,
   WORKLOG,
+  FRAME,
 ];

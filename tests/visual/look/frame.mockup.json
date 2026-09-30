@@ -1,0 +1,68 @@
+{
+  "about": "Mockup values for tests/visual/look/frame.ts, from look.ts --measure.",
+  "mockup": "7066bad7402c97b8a039447ad87f387cd719208c",
+  "probes": {
+    "frame.freshness": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "10.88px",
+        "letter-spacing": "0.2176px",
+        "text-transform": "uppercase",
+        "padding-top": "4px",
+        "padding-left": "8px",
+        "border-top-width": "1px",
+        "column-gap": "5.6px"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "10.88px",
+        "letter-spacing": "0.2176px",
+        "text-transform": "uppercase",
+        "padding-top": "4px",
+        "padding-left": "8px",
+        "border-top-width": "1px",
+        "column-gap": "5.6px"
+      },
+      "900-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "10.88px",
+        "letter-spacing": "0.2176px",
+        "text-transform": "uppercase",
+        "padding-top": "4px",
+        "padding-left": "8px",
+        "border-top-width": "1px",
+        "column-gap": "5.6px"
+      },
+      "900-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "10.88px",
+        "letter-spacing": "0.2176px",
+        "text-transform": "uppercase",
+        "padding-top": "4px",
+        "padding-left": "8px",
+        "border-top-width": "1px",
+        "column-gap": "5.6px"
+      },
+      "390-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "10.88px",
+        "letter-spacing": "0.2176px",
+        "text-transform": "uppercase",
+        "padding-top": "4px",
+        "padding-left": "8px",
+        "border-top-width": "1px",
+        "column-gap": "5.6px"
+      },
+      "390-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "10.88px",
+        "letter-spacing": "0.2176px",
+        "text-transform": "uppercase",
+        "padding-top": "4px",
+        "padding-left": "8px",
+        "border-top-width": "1px",
+        "column-gap": "5.6px"
+      }
+    }
+  }
+}
