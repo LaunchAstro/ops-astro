@@ -261,7 +261,10 @@ describe.skipIf(url === undefined)(
       expect(codeOf(crossed)).toBe('LEASE_NOT_OWNED');
       expect(JSON.stringify(crossed)).not.toContain(theirs.taskId);
 
-      appliedDetail(await h.observeOf(mine, { usage: PRICED }), 'task.observe');
+      // Our own expired lease settles our money, marked as T3f marks it, and
+      // theirs does not move: the crossing beside its positive control.
+      const ours = appliedDetail(await h.observeOf(mine, { usage: PRICED }), 'task.observe');
+      expect(ours).toMatchObject({ lease: 'expired', settlement: { state: 'settled' } });
       expect(await o.money(theirs)).toStrictEqual(theirMoney);
       expect(await workState(other, theirs)).toStrictEqual(theirWork);
     });
