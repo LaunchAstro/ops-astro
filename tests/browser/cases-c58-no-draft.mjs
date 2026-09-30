@@ -19,14 +19,12 @@
 //   - ND2 the 12-hour limit. From the moment the session ends, the page's
 //     calls carry its own token re-signed with its first sign-in 12 hours and
 //     one second ago, so the API's absolute-limit check answers 401
-//     `AUTH_SESSION_EXPIRED`. Nothing waits twelve hours; the answer is the
-//     server's.
+//     `AUTH_SESSION_EXPIRED` (the server's answer; nothing waits 12 hours).
 //   - ND3 signing out, from the top bar.
 //
 // Each ends on the sign-in page, which says the edit was not saved, with the
 // title and comment canaries and the token in no store. ND2 and ND3 then sign
 // in again and find the server's title and an empty comment box.
-//
 // ND1 issues grants and ends them, so like S it runs well behind N6.
 //
 // Run: node tests/browser/cases-c58-no-draft.mjs  (or through slice-acceptance)
@@ -34,6 +32,7 @@
 import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
+import { SESSION_COOKIE } from '../../packages/core-wire/src/index.ts';
 import {
   VIEWPORT,
   WEB,
@@ -143,14 +142,18 @@ async function signedOut(page, task) {
 
 // ------------------------------------------------------------------ the steps
 
-/** Open the task, type the two canaries, and return the tab's token. */
+// Open the task, type the canaries, return the tab's token: its sign-in's HttpOnly cookie (S0-6c).
 async function openAndType(page, task) {
   await page.goto(`${WEB}/task/${task.recordId}`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#task-title', { timeout: 15_000 });
   await page.fill('#task-title', TITLE_CANARY);
   await page.fill('#comment-body', COMMENT_CANARY);
   await page.waitForSelector('button[data-draft-resolve="save"]', { timeout: 15_000 });
-  return await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)).token, SESSION_KEY);
+  const read = (key) => JSON.parse(sessionStorage.getItem(key)).sessionId;
+  const name = `${SESSION_COOKIE}-${await page.evaluate(read, SESSION_KEY)}`;
+  const token = (await page.context().cookies()).find((cookie) => cookie.name === name)?.value;
+  if (token === undefined) throw new Error('the tab names no sign-in cookie');
+  return token;
 }
 
 /**
