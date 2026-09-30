@@ -20,6 +20,12 @@ The private half is the broker's (ADR 0028), which AW-01 builds. With no public
 key configured, `secret.set` refuses `DEPENDENCY_NOT_LANDED` and stores
 nothing.
 
+A consumer chat product's browser session (a Claude.ai or ChatGPT session
+token, bare, in a cookie pair or percent-encoded) is never stored:
+`secret.set` asks custody's own load check (`parseCredentials` in
+`packages/core-custody/src/credentials.ts`, AW-01 and C60) and refuses it
+`FIELD_VALUE_INVALID` on `value`, never echoing it (`C31 no session token`).
+
 The application role is refused the three sealed columns by column grants, so
 a read that names them fails in the server, whatever the code asks.
 

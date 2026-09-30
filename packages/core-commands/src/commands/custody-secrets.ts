@@ -5,7 +5,8 @@
 // One command family serves both secret screens. The envelope has already
 // checked `custody:manage` business-wide and refused every agent (the row is
 // `agent: never`), so what is left here is the value itself: checked by kind
-// and size, sealed to the broker's key, and never repeated back. A refusal
+// and size, refused if it is a chat product's browser session (custody's own
+// load check), sealed to the broker's key, and never repeated back. A refusal
 // names the field, never what arrived in it, and the audit event and the
 // repeat-request register hold only the body's digest (0007).
 
@@ -19,6 +20,7 @@ import {
   type SecretStale,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
+import { parseCredentials } from '../../../core-custody/src/index.ts';
 import { custodySealingKey } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
@@ -30,6 +32,9 @@ const VALUE_LIMIT = 8_192;
 
 const NAME_FIXES = ['Name a secret in lower case: letters, digits, dot, dash or underscore.'];
 const VALUE_FIXES = [`Send the value as text of 1 to ${VALUE_LIMIT} characters.`];
+const SESSION_FIXES = [
+  "A chat product's browser session is never stored. Send an API key or a cloud provider credential.",
+];
 const REVISION_FIXES = [
   'Send expectedRevision as the whole number secret.list showed, or leave it out.',
 ];
@@ -60,6 +65,16 @@ function stale(found: SecretStale): HandlerOutcome {
   );
 }
 
+/**
+ * Whether a value is, or carries, a consumer chat product's session (AW-01,
+ * C60): custody refuses one at load before any other check, so its answer on
+ * a one-entry list is the product's one rule.
+ */
+function isChatSession(value: string): boolean {
+  const read = parseCredentials([{ kind: 'api_key', value }]);
+  return !read.ok && read.code === 'SESSION_TOKEN_REFUSED';
+}
+
 /** Seal and store one secret, business-wide or for one client. */
 export async function setCustodySecret(
   tx: TenantQuery,
@@ -77,6 +92,9 @@ export async function setCustodySecret(
   const { value } = request;
   if (typeof value !== 'string' || value.length === 0 || value.length > VALUE_LIMIT) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], VALUE_FIXES));
+  }
+  if (isChatSession(value)) {
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], SESSION_FIXES));
   }
   const revision = revisionOf(request.expectedRevision);
   if (!revision.ok) {
