@@ -333,10 +333,6 @@ function importsOf(file: string, text: string, packages: ReadonlyMap<string, str
  */
 const NO_PRODUCT_IMPORTER_YET = new Map([
   [
-    'apps/web/src/screens/task/Ticks.tsx',
-    "MP-4-10's Ad hoc and Client access ticks, built and tested; the dock task panel (MP-4-8) mounts them",
-  ],
-  [
     'packages/core-commands/src/reads/conversation.ts',
     "MP-4-5's three detail levels of a task conversation, for the agent bundles (API-4) that call it",
   ],

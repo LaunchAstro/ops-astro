@@ -15,7 +15,7 @@
 // Who is the person's name the read carries for a person's actor, and "An
 // agent" or "The system" for the other two kinds (`whoOf`).
 
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
 
@@ -77,10 +77,19 @@ const whoOf = (entry: Entry): string => {
   return entry.actorName ?? 'Someone';
 };
 
-export function History(props: { readonly history: Task['history'] }): ReactElement {
+export function History(props: {
+  readonly history: Task['history'];
+  /**
+   * The dock task panel folds the trail behind "Show all N changes" (MP-4-16).
+   * Unfolding lasts while the panel shows this task; keeping it as the
+   * person's preference waits on a preference model.
+   */
+  readonly folded?: boolean;
+}): ReactElement {
   const now = Date.now();
   const changes = props.history.filter((entry) => !NOT_TRANSITIONS.has(entry.operation));
   const latest = changes.at(-1);
+  const [open, setOpen] = useState(props.folded !== true);
   return (
     <section className="sb__sect" data-history>
       <div className="sb__sh">
@@ -95,7 +104,11 @@ export function History(props: { readonly history: Task['history'] }): ReactElem
         <div data-history="empty">
           <PaneEmpty say="Nothing has changed on this one yet." />
         </div>
-      ) : (
+      ) : null}
+      {changes.length === 0 || props.folded !== true ? null : (
+        <TrailFold open={open} count={changes.length} onToggle={setOpen} />
+      )}
+      {changes.length === 0 || !open ? null : (
         <div className="sbact" data-history="trail">
           {changes.map((entry, index) => (
             <div className="sbact__row" key={`${entry.at}-${String(index)}`}>
@@ -108,5 +121,26 @@ export function History(props: { readonly history: Task['history'] }): ReactElem
         </div>
       )}
     </section>
+  );
+}
+
+/** The panel's fold: "Show all N changes" while folded, "Hide the trail" while open. */
+function TrailFold(props: {
+  readonly open: boolean;
+  readonly count: number;
+  readonly onToggle: (open: boolean) => void;
+}): ReactElement {
+  return (
+    <button
+      className="tt__more"
+      type="button"
+      data-history-fold={props.open ? 'open' : 'folded'}
+      aria-expanded={props.open}
+      onClick={() => {
+        props.onToggle(!props.open);
+      }}
+    >
+      {props.open ? 'Hide the trail' : `Show all ${String(props.count)} changes`}
+    </button>
   );
 }

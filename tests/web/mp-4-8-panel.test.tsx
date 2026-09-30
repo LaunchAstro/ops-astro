@@ -18,6 +18,10 @@ afterEach(unmountAll);
 
 const KEY = 'Proj-Verity-Pacing';
 
+const ignore = (): void => {
+  /* The case reads nothing from this call. */
+};
+
 const at = (minutesAgo: number): string => new Date(Date.now() - minutesAgo * 60_000).toISOString();
 const change = (minutesAgo: number, operation: string) => ({
   at: at(minutesAgo),
@@ -67,8 +71,8 @@ const panel = async (
       client={client}
       grantKey="alpha:member"
       opening={{ taskKey: KEY, door: 'open', tab: null, ...opening }}
-      onChanged={on.changed ?? (() => undefined)}
-      onClose={on.close ?? (() => undefined)}
+      onChanged={on.changed ?? ignore}
+      onClose={on.close ?? ignore}
     />,
   );
   await tick();
@@ -92,8 +96,8 @@ describe('MP-4-8 panel conversation', () => {
           client={client}
           grantKey="alpha:member"
           opening={{ taskKey: KEY, door: 'reply', tab: 'internal' }}
-          onChanged={() => undefined}
-          onClose={() => undefined}
+          onChanged={ignore}
+          onClose={ignore}
         />
       </>,
     );
@@ -165,10 +169,10 @@ describe('MP-4-8 trail folded', () => {
     const view = await panel(serving({ history }).client);
     expect(view.find('[data-task-panel] [data-history="trail"]')).toBeNull();
     const fold = '[data-task-panel] [data-history-fold]';
-    expect(view.find(fold)?.textContent).toBe('Show all 3 changes');
+    expect(view.host.querySelector(fold)?.textContent).toBe('Show all 3 changes');
     await view.click(fold);
     expect(view.all('[data-task-panel] [data-history="trail"] .sbact__row')).toHaveLength(3);
-    expect(view.find(fold)?.textContent).toBe('Hide the trail');
+    expect(view.host.querySelector(fold)?.textContent).toBe('Hide the trail');
     await view.click(fold);
     expect(view.find('[data-task-panel] [data-history="trail"]')).toBeNull();
     await view.unmount();
@@ -213,6 +217,18 @@ describe('MP-4-8 escape closes only the control', () => {
     );
     await press(view, '#panel-comment-body', 'Escape');
     expect(closed).toBe(0);
+    await view.unmount();
+  });
+
+  it('Escape in the subtask box or the time box closes nothing; on a button it closes', async () => {
+    let closed = 0;
+    const time = { entries: [], running: null, totalMinutes: 0 };
+    const view = await panel(serving({ time }).client, {}, { close: () => (closed += 1) });
+    await press(view, '[data-task-panel] [data-step-add]', 'Escape');
+    await press(view, '[data-task-panel] [data-time-log]', 'Escape');
+    expect(closed).toBe(0);
+    await press(view, '[data-task-panel] [data-panel-head="close"]', 'Escape');
+    expect(closed).toBe(1);
     await view.unmount();
   });
 });

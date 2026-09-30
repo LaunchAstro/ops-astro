@@ -106,7 +106,7 @@ import {
   perspectiveCounts,
   Perspectives,
   stepMarks,
-  type PanelDoor,
+  type PanelOpener,
   type Perspective,
 } from './task/Perspectives.tsx';
 import { TeamSubtasks } from './task/Subtasks.tsx';
@@ -130,7 +130,9 @@ export interface TaskDetailProps {
   readonly grantKey: string;
   readonly taskKey: string;
   /** The dock task panel's opener, where edits happen (MP-4-8). Absent, a door cannot be pressed. */
-  readonly onOpenPanel?: (door: PanelDoor) => void;
+  readonly onOpenPanel?: PanelOpener;
+  /** The host's count of changes made in the panel: a new count reads the task again (MP-4-8). */
+  readonly changes?: number;
 }
 
 /** Where an unsaved edit began: the revision, and the values as they stood. */
@@ -167,7 +169,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const { state, reload } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
-    deps: [props.taskKey],
+    deps: [props.taskKey, props.changes ?? 0],
     live: (signal) => client.openLive(props.taskKey, signal),
     paused: draft !== null,
   });
@@ -544,7 +546,7 @@ interface LoadedProps {
   /** Whether every time entry shows, not only the latest three, held above the read (MP-4-6). */
   readonly showAllTime: boolean;
   readonly onShowAllTime: (next: boolean) => void;
-  readonly onOpenPanel: ((door: PanelDoor) => void) | undefined;
+  readonly onOpenPanel: PanelOpener | undefined;
   /** Record, or forget, the draft save whose outcome is unknown. */
   readonly onAttempt: (attempt: SaveAttempt | null) => void;
   readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;

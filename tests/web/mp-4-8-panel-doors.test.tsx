@@ -62,7 +62,9 @@ const app = async (fetch: typeof globalThis.fetch) => {
   const view = await mount(
     <App
       path={`/task/${KEY}`}
-      navigate={() => undefined}
+      navigate={() => {
+        /* The test holds the address. */
+      }}
       sessions={new SessionStore(storage({ 'ops-astro.session': JSON.stringify(SESSION) }))}
       gotrueUrl="http://identity.invalid"
       apiOrigin=""
@@ -75,6 +77,10 @@ const app = async (fetch: typeof globalThis.fetch) => {
 };
 
 const PAGE = 'main .content';
+
+/** The page's Ad hoc mark, as the facts band draws it. */
+const pageAdHoc = (view: Awaited<ReturnType<typeof app>>): string | undefined =>
+  view.host.querySelector<HTMLElement>(`${PAGE} .tpr__facts [data-mark="adhoc"]`)?.dataset['on'];
 
 describe('MP-4-8 task page doors open the panel', () => {
   it('no panel until a door is pressed; then the panel opens on Team', async () => {
@@ -104,15 +110,11 @@ describe('MP-4-8 task page doors open the panel', () => {
     await view.click('[data-panel-door="open"]');
     await tick();
     const before = reads();
-    expect(view.find(`${PAGE} .tpr__facts [data-mark="adhoc"]`)?.getAttribute('data-on')).toBe(
-      'no',
-    );
+    expect(pageAdHoc(view)).toBe('no');
     await view.click('[data-task-panel] [data-tick="adhoc"]');
     await tick();
     expect(reads()).toBeGreaterThan(before + 1);
-    expect(view.find(`${PAGE} .tpr__facts [data-mark="adhoc"]`)?.getAttribute('data-on')).toBe(
-      'yes',
-    );
+    expect(pageAdHoc(view)).toBe('yes');
     await view.unmount();
   });
 
@@ -124,7 +126,7 @@ describe('MP-4-8 task page doors open the panel', () => {
     await view.click('[data-panel-head="close"]');
     await tick();
     expect(view.find('[data-task-panel]')).toBeNull();
-    expect(document.activeElement).toBe(view.find(door));
+    expect(document.activeElement).toBe(view.host.querySelector(door));
     await view.unmount();
   });
 });

@@ -53,7 +53,7 @@ import { CountBadge, TabPanel, TabStrip } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommand } from '../../records/use-command.ts';
-import { PanelDoorButton, type PanelDoor } from './Perspectives.tsx';
+import { PanelDoorButton, type ConversationTab, type PanelOpener } from './Perspectives.tsx';
 import { CommentThread, type RowActions } from './Thread.tsx';
 
 export interface CommentsProps {
@@ -70,8 +70,13 @@ export interface CommentsProps {
   readonly refusal: string | null;
   readonly onRefused: (because: string) => void;
   readonly onPosted: () => void;
-  /** The dock task panel's opener, for the reply door (MP-4-8 wires it). */
-  readonly onOpenPanel?: ((door: PanelDoor) => void) | undefined;
+  /** The dock task panel's opener, for the reply door, which hands it the tab showing (MP-4-8). */
+  readonly onOpenPanel?: PanelOpener | undefined;
+  /**
+   * Where this copy is drawn, carried by its ids: the dock task panel's is
+   * `panel`, beside the page's in the same document. Absent on the page.
+   */
+  readonly scope?: string;
   /** The unsent comment, held above the read so a reread keeps it. Null is an empty box. */
   readonly draft: CommentDraft | null;
   readonly onDraft: (next: CommentDraft | null) => void;
@@ -97,7 +102,7 @@ const EMPTY: CommentDraft = {
   stale: null,
 };
 
-export type ConversationTab = 'internal' | 'client' | 'all';
+export type { ConversationTab } from './Perspectives.tsx';
 
 /** What a post from each writable tab is: who may read it, and what it is. */
 const POSTS: Readonly<Record<'internal' | 'client', { audience: string; kind: string }>> = {
@@ -117,6 +122,7 @@ export interface PendingComment {
 }
 
 export function Comments(props: CommentsProps): ReactElement {
+  const scoped = (id: string): string => (props.scope === undefined ? id : `${props.scope}-${id}`);
   const current = props.draft ?? EMPTY;
   const { body, tab, pending } = current;
   // A reply names a message still on the task; one deleted since is dropped.
@@ -205,12 +211,10 @@ export function Comments(props: CommentsProps): ReactElement {
 
   return (
     <section className="sb__sect" data-comments="section">
-      <div className="sb__sh">
-        <span className="sb__k">Comments</span>
-        <span className="sbact__meta">{props.comments.length} on this task</span>
-      </div>
+      <CommentsHead count={props.comments.length} />
 
       <Conversation
+        name={scoped('conversation')}
         comments={props.comments}
         tab={tab}
         actions={rows.actions}
@@ -218,16 +222,12 @@ export function Comments(props: CommentsProps): ReactElement {
           put({ tab: next });
         }}
       />
-      {rows.because === null ? null : (
-        <p className="field__error" role="alert" data-comment="row-refusal">
-          {rows.because}
-        </p>
-      )}
+      <RowRefusal because={rows.because} />
 
       <PostNotices because={because} stale={current.stale} unresolved={!busy && same(pending)} />
 
       <form
-        id="task-comment"
+        id={scoped('task-comment')}
         className="taskform"
         ref={form}
         onSubmit={(event) => {
@@ -243,7 +243,13 @@ export function Comments(props: CommentsProps): ReactElement {
             }}
           />
         )}
-        <CommentBody body={body} locked={locked} onPut={put} onSend={post} />
+        <CommentBody
+          id={scoped('comment-body')}
+          body={body}
+          locked={locked}
+          onPut={put}
+          onSend={post}
+        />
         {picking ? (
           <p className="card__sub" data-comment="pick">
             Pick Internal or Client to post, so it is clear who may read it.
@@ -258,7 +264,7 @@ export function Comments(props: CommentsProps): ReactElement {
           </p>
         )}
       </form>
-      <PanelDoorButton door="reply" onOpenPanel={props.onOpenPanel} />
+      <PanelDoorButton door="reply" tab={tab} onOpenPanel={props.onOpenPanel} />
     </section>
   );
 }
@@ -315,6 +321,24 @@ const TAB_WORDS: Readonly<Record<ConversationTab, { label: string; empty: string
 
 const TABS: readonly ConversationTab[] = ['internal', 'client', 'all'];
 
+function CommentsHead(props: { readonly count: number }): ReactElement {
+  return (
+    <div className="sb__sh">
+      <span className="sb__k">Comments</span>
+      <span className="sbact__meta">{props.count} on this task</span>
+    </div>
+  );
+}
+
+/** An edit or delete on a message, refused: the server's words. */
+function RowRefusal(props: { readonly because: string | null }): ReactElement | null {
+  return props.because === null ? null : (
+    <p className="field__error" role="alert" data-comment="row-refusal">
+      {props.because}
+    </p>
+  );
+}
+
 /** The comments a tab shows, oldest first whatever order they arrived in. */
 function shownOn(
   tab: ConversationTab,
@@ -326,6 +350,7 @@ function shownOn(
 
 /** The three tabs, and the chosen tab's thread. */
 function Conversation(props: {
+  readonly name: string;
   readonly comments: CommentsProps['comments'];
   readonly tab: ConversationTab;
   readonly actions: RowActions;
@@ -336,7 +361,7 @@ function Conversation(props: {
   return (
     <>
       <TabStrip
-        name="conversation"
+        name={props.name}
         label="Who each part of the conversation is with"
         selected={props.tab}
         onSelect={(next) => {
@@ -352,7 +377,7 @@ function Conversation(props: {
         }))}
       />
       {TABS.map((tab) => (
-        <TabPanel name="conversation" tab={tab} selected={props.tab} key={tab}>
+        <TabPanel name={props.name} tab={tab} selected={props.tab} key={tab}>
           {/* Only the chosen tab draws its thread: a comment on both Internal
               and All would otherwise be in the page twice. */}
           {tab === props.tab ? (
@@ -370,6 +395,7 @@ function Conversation(props: {
 
 /** What a comment says. Enter sends it; Shift and Enter starts a new line. */
 function CommentBody(props: {
+  readonly id: string;
   readonly body: string;
   readonly locked: boolean;
   readonly onPut: (next: Partial<CommentDraft>) => void;
@@ -382,11 +408,11 @@ function CommentBody(props: {
   };
   return (
     <div className="field">
-      <label className="tf__k" htmlFor="comment-body">
+      <label className="tf__k" htmlFor={props.id}>
         Say something
       </label>
       <textarea
-        id="comment-body"
+        id={props.id}
         className="input"
         rows={3}
         required

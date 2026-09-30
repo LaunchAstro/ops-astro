@@ -149,21 +149,41 @@ subtasks, Agent counts open gates (the live version's pending gate), else one
 for unshipped staged output; zero draws no badge. Subtasks and staged output
 are not on the read yet, so Team counts nothing until MP-4-4. The doors ("Open
 this task in the panel", "Add the first one in the task panel", "Log time in
-the task panel", "Start the timer in the task panel") call the screen's
-`onOpenPanel`; with none given they are drawn disabled.
+the task panel", "Start the timer in the task panel", and the conversation's
+"Reply in the task panel") call the screen's `onOpenPanel`, the reply door with
+the conversation tab showing; with none given they are drawn disabled.
 
 History (`History.tsx`, MP-4-16) is the transitions on the task's own address
 from `task.read`, with comments left out (they are the conversation's). Its head
 reads the latest change as how long ago, who and what; the page shows the whole
 trail open, and with no change says "Nothing has changed on this one yet." Who
-is the actor's identifier until the read carries a name. The dock task panel's
-folded trail and its saved preference are MP-4-8's.
+is the actor's identifier until the read carries a name. The dock task panel
+folds the trail behind "Show all N changes" and "Hide the trail"; keeping that
+choice as the person's preference waits on a preference model.
 
 The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
 goes to `/settings`. An open dock tab is announced as "Close Settings"
 (`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
 leaves its address for the board when pressed (`onDockTab` in
 `apps/web/src/App.tsx`).
+
+The dock task panel (`screens/task/Panel.tsx`, MP-4-8) is where a task is
+changed beside its page. A page door opens it (`useTaskPanel` in
+`screens/task/panel-host.ts`, held by `App`) in the shell's panel slot, since
+the dock frame that seats, floats and closes panels (MP-3-1) is not on main.
+It reads the task through `task.read` as the page does and draws the same
+facts, rank, calc line and Team and Agent counts; the live Ad hoc and Client
+access ticks; the description on Team and the agent brief on Agent as
+editable fields; the subtasks and time without their doors; the conversation
+on the tab the reply door named; and the folded trail. The Agent tab says it
+is not connected until the assistant is. Its head names the task, links to
+its page and draws New task unavailable (MP-4-13 builds it). A write in the
+panel counts a change, and the page and the panel each read the task again on
+the new count, so the page shows it without a reload. Escape closes the panel
+unless it began in a field, select or text box; Close returns focus to the
+door that opened it. Its ids carry a `panel-` prefix, so none repeats the
+page's. The field edits (assignee, client, due, estimate, board, category,
+stage, state) and "Duplicate without contents" are MP-4-8's later steps.
 
 The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`
 looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an

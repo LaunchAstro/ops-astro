@@ -37,6 +37,12 @@ export {
 
 export type PanelDoor = 'open' | 'tick' | 'add-first' | 'log' | 'timer' | 'reply';
 
+/** The conversation's three tabs (MP-4-5); the reply door hands the one showing to the panel. */
+export type ConversationTab = 'internal' | 'client' | 'all';
+
+/** Opens the dock task panel through a door, on the conversation tab it was pressed from. */
+export type PanelOpener = (door: PanelDoor, tab?: ConversationTab) => void;
+
 const DOOR_WORDS: Readonly<Record<PanelDoor, string>> = {
   open: 'Open this task in the panel',
   tick: 'Tick these off in the task panel',
@@ -48,7 +54,9 @@ const DOOR_WORDS: Readonly<Record<PanelDoor, string>> = {
 
 export function PanelDoorButton(props: {
   readonly door: PanelDoor;
-  readonly onOpenPanel: ((door: PanelDoor) => void) | undefined;
+  /** The conversation tab showing, for the reply door. */
+  readonly tab?: ConversationTab;
+  readonly onOpenPanel: PanelOpener | undefined;
 }): ReactElement {
   const open = props.onOpenPanel;
   return (
@@ -58,7 +66,7 @@ export function PanelDoorButton(props: {
       data-panel-door={props.door}
       disabled={open === undefined}
       onClick={() => {
-        open?.(props.door);
+        open?.(props.door, props.tab);
       }}
     >
       {DOOR_WORDS[props.door]}
@@ -67,6 +75,8 @@ export function PanelDoorButton(props: {
 }
 
 export function Perspectives(props: {
+  /** The tab strip's name, which its ids carry: the dock task panel's is its own. */
+  readonly name?: string;
   readonly counts: PerspectiveCounts;
   readonly selected: Perspective;
   readonly onSelect: (next: Perspective) => void;
@@ -74,11 +84,12 @@ export function Perspectives(props: {
   readonly agent: ReactNode;
 }): ReactElement {
   const { counts } = props;
+  const name = props.name ?? 'perspective';
   const teamTitle = `${counts.team} unfinished ${counts.team === 1 ? 'subtask' : 'subtasks'}`;
   return (
     <div className="tpr__perspectives" data-perspectives>
       <TabStrip
-        name="perspective"
+        name={name}
         label="Team and agent views of this task"
         selected={props.selected}
         onSelect={(next) => {
@@ -97,10 +108,10 @@ export function Perspectives(props: {
           },
         ]}
       />
-      <TabPanel name="perspective" tab="team" selected={props.selected}>
+      <TabPanel name={name} tab="team" selected={props.selected}>
         {props.team}
       </TabPanel>
-      <TabPanel name="perspective" tab="agent" selected={props.selected}>
+      <TabPanel name={name} tab="agent" selected={props.selected}>
         {props.agent}
       </TabPanel>
     </div>
@@ -117,9 +128,12 @@ export function TeamWork(props: {
   readonly steps: readonly StepMark[];
   readonly list?: ReactNode;
   readonly time?: ReactNode;
-  readonly onOpenPanel: ((door: PanelDoor) => void) | undefined;
+  readonly onOpenPanel: PanelOpener | undefined;
+  /** False inside the panel itself, where the edit already happens. */
+  readonly doors?: boolean;
 }): ReactElement {
   const live = props.steps.filter((step) => !step.retired);
+  const doors = props.doors ?? true;
   return (
     <>
       <section className="sb__sect" data-steps>
@@ -128,18 +142,20 @@ export function TeamWork(props: {
         </div>
         {props.list}
         {live.length === 0 ? <p className="card__sub">No subtasks on this one yet.</p> : null}
-        <PanelDoorButton
-          door={live.length === 0 ? 'add-first' : 'tick'}
-          onOpenPanel={props.onOpenPanel}
-        />
+        {doors ? (
+          <PanelDoorButton
+            door={live.length === 0 ? 'add-first' : 'tick'}
+            onOpenPanel={props.onOpenPanel}
+          />
+        ) : null}
       </section>
       <section className="sb__sect" data-time>
         <div className="sb__sh">
           <span className="sb__k">Time</span>
         </div>
         {props.time ?? <p className="card__sub">No time logged yet.</p>}
-        <PanelDoorButton door="log" onOpenPanel={props.onOpenPanel} />
-        <PanelDoorButton door="timer" onOpenPanel={props.onOpenPanel} />
+        {doors ? <PanelDoorButton door="log" onOpenPanel={props.onOpenPanel} /> : null}
+        {doors ? <PanelDoorButton door="timer" onOpenPanel={props.onOpenPanel} /> : null}
       </section>
     </>
   );

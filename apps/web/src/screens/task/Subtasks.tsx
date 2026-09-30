@@ -22,7 +22,7 @@ import type { StepView, TaskTimeView } from '../../../../../packages/core-wire/s
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { stepMarks } from './perspective-counts.ts';
-import { TeamWork, type PanelDoor } from './Perspectives.tsx';
+import { TeamWork, type PanelOpener } from './Perspectives.tsx';
 import { TimeLog } from './Time.tsx';
 
 const REOPEN_REASON = 'Unticked on the parent task’s subtask list.';
@@ -225,7 +225,9 @@ export function TeamSubtasks(props: {
   readonly showAllTime: boolean;
   readonly onShowAllTime: (value: boolean) => void;
   readonly onChanged: () => void;
-  readonly onOpenPanel: ((door: PanelDoor) => void) | undefined;
+  readonly onOpenPanel: PanelOpener | undefined;
+  /** False inside the dock task panel, where the edit already happens. */
+  readonly doors?: boolean;
 }): ReactElement {
   const { task } = props;
   return (
@@ -256,6 +258,7 @@ export function TeamSubtasks(props: {
         )
       }
       onOpenPanel={props.onOpenPanel}
+      doors={props.doors ?? true}
     />
   );
 }
