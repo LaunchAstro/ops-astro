@@ -114,9 +114,15 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
 
 export async function tokenFor(
   subject: string,
-  options: { readonly expiresIn?: number; readonly secondFactor?: boolean } = {},
+  options: {
+    readonly expiresIn?: number;
+    readonly secondFactor?: boolean;
+    /** When the factors were given; now by default (S0-5's step-up sweep backdates it). */
+    readonly signedInAt?: number;
+  } = {},
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
+  const at = options.signedInAt ?? now;
   return await sign(
     {
       sub: subject,
@@ -131,11 +137,11 @@ export async function tokenFor(
         ? {
             aal: 'aal2',
             amr: [
-              { method: 'password', timestamp: now },
-              { method: 'totp', timestamp: now },
+              { method: 'password', timestamp: at },
+              { method: 'totp', timestamp: at },
             ],
           }
-        : { amr: [{ method: 'password', timestamp: now }] }),
+        : { amr: [{ method: 'password', timestamp: at }] }),
     },
     ACCEPTANCE_SECRET,
     'HS256',
