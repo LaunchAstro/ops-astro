@@ -129,7 +129,6 @@ async function openTab(api: Hono, path: string, headers: Record<string, string>)
 }
 
 const moves = (tab: Tab): number => tab.heard.filter((one) => one.event === 'resync').length;
-const inboxSignals = (tab: Tab): number => tab.heard.filter((one) => one.event === 'inbox').length;
 
 describe.skipIf(serverUrl === undefined)(
   'INB-1f the board moves live on one stream per tab',
@@ -176,6 +175,18 @@ describe.skipIf(serverUrl === undefined)(
       });
       await within(2_000, () => moves(tab) > before, 'the barrier');
       await sleep(200);
+    };
+
+    /** An inbox item for `recipient` about `subject`, raised as the inbox raises one. */
+    const raiseFor = async (recipient: Member, subject: string): Promise<void> => {
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await raiseInboxItem(tx, {
+          recipientPersonId: recipient.personId,
+          subjectRecordId: subject,
+          reason: 'mention',
+          fact: { kind: 'record', id: randomUUID() },
+        });
+      });
     };
 
     beforeAll(async () => {
@@ -425,12 +436,10 @@ describe.skipIf(serverUrl === undefined)(
 
       // Raised: the proposal gives the reviewer a decision item.
       const proposal = await propose(s, taskId, { maximumMinor: 1_000, purpose: freshPurpose() });
-      await within(2_000, () => inboxSignals(tab) > 0, 'the raised item');
-      // One stream carries both topics: the task's own change arrived too.
-      await within(2_000, () => moves(tab) > joinedAt, 'the task’s own change');
+      await within(2_000, () => moves(tab) > joinedAt, 'the raised item');
 
       // A deciding transaction that rolls back sends nothing; the commit does.
-      const raised = inboxSignals(tab);
+      const raised = await still(tab);
       await expect(
         pool.withBusiness(s.business, async (tx) => {
           await tx.query(
@@ -442,18 +451,20 @@ describe.skipIf(serverUrl === undefined)(
           throw new Error('roll the decision back');
         }),
       ).rejects.toThrow('roll the decision back');
-      await settled(tab, taskId);
-      expect(inboxSignals(tab)).toBe(raised);
+      expect(await still(tab)).toBe(raised);
 
       await approve(s, proposal);
-      await within(2_000, () => inboxSignals(tab) > raised, 'the cleared item');
+      await within(2_000, () => moves(tab) > raised, 'the cleared item');
 
-      // The bystander holds no item: their tab heard the task, never an inbox signal.
-      await settled(quiet, taskId);
-      expect(inboxSignals(quiet)).toBe(0);
+      // An item raised for the reviewer alone moves their tab, never the bystander's.
+      const cleared = await still(tab);
+      const bystanderSaw = await still(quiet);
+      await raiseFor(reviewer, taskId);
+      await within(2_000, () => moves(tab) > cleared, 'the reviewer’s own item');
+      expect(await still(quiet)).toBe(bystanderSaw);
     });
 
-    it('a withheld other-client item emits no inbox signal', async () => {
+    it('a withheld other-client item moves nothing on the board stream', async () => {
       const clientA = randomUUID();
       const clientB = randomUUID();
       const mine = await createTask(s, `sol-client-a-${randomUUID()}`);
@@ -474,7 +485,7 @@ describe.skipIf(serverUrl === undefined)(
       });
       const tab = await tabOf(recipient);
       await joined(tab);
-      const before = inboxSignals(tab);
+      const before = await still(tab);
       const itemId = await s.db.app.withBusiness(
         s.business,
         async (tx) =>
@@ -489,11 +500,11 @@ describe.skipIf(serverUrl === undefined)(
         (await readInboxItems(tx, recipient.personId)).filter((entry) => entry.id === itemId),
       );
       expect(item?.access).toBe('withheld');
-      await settled(tab, mine);
-      expect(inboxSignals(tab)).toBe(before);
+      expect(await still(tab)).toBe(before);
     });
 
-    it('a remapped login stops hearing the previous person’s inbox', async () => {
+    /** Two people, each reading one task, and a tab opened as the first whose login then maps to the second. */
+    const remapped = async () => {
       const first = await enrol(s.db.app, s.business, `sol-first-${randomUUID()}`);
       const second = await enrol(s.db.app, s.business, `sol-second-${randomUUID()}`);
       const firstTask = await createTask(s, `sol-first-task-${randomUUID()}`);
@@ -502,10 +513,8 @@ describe.skipIf(serverUrl === undefined)(
         await grantTo(tx, first, 'read', { kind: 'record', id: firstTask });
         await grantTo(tx, second, 'read', { kind: 'record', id: secondTask });
       });
-      const firstToken = await tokenFor(first.presented.subject);
-      const tab = await tabOf(first, firstToken);
+      const tab = await tabOf(first, await tokenFor(first.presented.subject));
       await joined(tab);
-      const before = inboxSignals(tab);
       await s.db.admin.execute(
         `update public.person_logins set person_id = $2
           where business_id = $1 and person_id = $3 and active`,
@@ -514,17 +523,31 @@ describe.skipIf(serverUrl === undefined)(
       expect(await joinLiveBoard(pool, s.business, first.presented)).toEqual({
         personId: second.personId,
       });
-      await s.db.app.withBusiness(s.business, async (tx) => {
-        await raiseInboxItem(tx, {
-          recipientPersonId: first.personId,
-          subjectRecordId: firstTask,
-          reason: 'mention',
-          fact: { kind: 'record', id: randomUUID() },
-        });
-      });
-      await settled(tab, secondTask);
+      return { first, second, firstTask, secondTask, tab };
+    };
+
+    it('a remapped login stops hearing the previous person’s inbox', async () => {
+      const { first, firstTask, tab } = await remapped();
+      // The rebind's own resync, from the stream's recheck, is said before this settles.
+      const rebound = await still(tab);
+      await raiseFor(first, firstTask);
+      expect(await still(tab)).toBe(rebound);
+    });
+
+    it('a remapped login stops hearing the previous person and hears the new person’s reads', async () => {
+      const { second, firstTask, secondTask, tab } = await remapped();
       await still(tab);
-      expect(inboxSignals(tab)).toBe(before);
+      // The new person's task and inbox are heard on their topic and read as them.
+      await settled(tab, secondTask);
+      const heard = await still(tab);
+      await raiseFor(second, secondTask);
+      await within(2_000, () => moves(tab) > heard, 'the new person’s own item');
+      // The previous person's task moves nothing the new person reads.
+      const own = await still(tab);
+      await pool.withBusiness(s.business, async (tx) => {
+        await tx.query('update public.records set data = data where id = $1', [firstTask]);
+      });
+      expect(await still(tab)).toBe(own);
     });
   },
 );
