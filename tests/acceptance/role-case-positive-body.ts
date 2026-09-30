@@ -26,8 +26,8 @@ import { timeRecipes } from './time-recipes.ts';
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration, author?: unknown) => Promise<Prepared> {
-  // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
   const time = timeRecipes(context);
+  // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
   return async function positiveBody(
     declaration: CommandDeclaration,
     author?: unknown,

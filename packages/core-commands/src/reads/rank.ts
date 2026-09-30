@@ -210,7 +210,10 @@ export async function readTaskRank(
   const own = rows.find((row) => row.id === recordId);
   if (own === undefined) return { number: null, score: null, calc: '' };
   const now = own.now;
-  const numbers = numberPool(rows.filter((row) => row.open).map(inputOf), now);
+  const numbers = numberPool(
+    rows.filter((row) => row.open).map((row) => inputOf(row)),
+    now,
+  );
   const scored = scoreTask(inputOf(own), now);
   return {
     number: numbers.get(recordId) ?? null,

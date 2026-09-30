@@ -24,7 +24,6 @@ import {
   type CommandName,
 } from '../../packages/core-wire/src/surface.ts';
 import { issueGrant, type Action } from '../../packages/core-records/src/authority/grants.ts';
-import { insertActor, insertPerson } from '../identity/fixture.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import {
@@ -38,6 +37,7 @@ import {
 } from './world.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
+import { ownTaskRecipes } from './role-case-own-tasks.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
 export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
@@ -140,36 +140,6 @@ export async function createHarness(part: string): Promise<Harness> {
   }
 
   /**
-   * A task on a fresh client, with one person outside the membership standing
-   * on that client through a party-scoped `task:read`: the client's existing
-   * people `task.share_with_client` shares with (MP-4-10).
-   */
-  async function clientTask(title: string): Promise<Task> {
-    const task = await freshTask(title);
-    const client = randomUUID();
-    const set = await asPerson('task.set_party', {
-      recordId: task.id,
-      expectedRevision: task.revision,
-      fields: { client },
-    });
-    if (set.code !== 'ok') throw new Error(`matrix: task.set_party refused ${set.code}`);
-    await world.db.app.withBusiness(world.alpha, async (tx) => {
-      const personId = await insertPerson(tx, 'client person');
-      await insertActor(tx, personId);
-      const issued = await issueGrant(tx, [], {
-        subject: { kind: 'person', id: personId },
-        scope: { kind: 'party', id: client },
-        collection: 'task',
-        action: 'read',
-        parentGrantId: null,
-        grantedByActorId: world.ada.actorId as string,
-      });
-      if (!issued.ok) throw new Error(`matrix: party grant refused ${issued.refusal.code}`);
-    });
-    return { id: task.id, revision: Number(set.body['revision']) };
-  }
-
-  /**
    * The revision a record is actually at, read on the administrative
    * connection.
    *
@@ -185,6 +155,8 @@ export async function createHarness(part: string): Promise<Harness> {
     );
     return Number(rows[0]?.revision ?? '0');
   }
+
+  const { clientTask, ownComment } = ownTaskRecipes({ world, freshTask, asPerson, revisionOf });
 
   const alphaTask = await freshTask('a task every case can name');
   const inBravo = await asPerson('task.create', { fields: { title: 'a bravo task' } }, 'bravo', {
@@ -268,22 +240,6 @@ export async function createHarness(part: string): Promise<Harness> {
       );
       return rows.map((row) => row.role_key);
     });
-  }
-
-  /** A note `author` writes on a fresh task, for the author-only commands (MP-4-5). */
-  async function ownComment(
-    author: { readonly token: string } = world.ada,
-  ): Promise<Task & { readonly commentId: string }> {
-    const task = await freshTask('a task with a note to change');
-    const written = await asPerson(
-      'task.comment',
-      { recordId: task.id, expectedRevision: task.revision, body: 'a note', audience: 'internal' },
-      'alpha',
-      author,
-    );
-    if (written.code !== 'ok') throw new Error(`matrix: task.comment refused ${written.code}`);
-    const detail = written.body['detail'] as Record<string, unknown>;
-    return { ...task, revision: await revisionOf(task.id), commentId: String(detail['commentId']) };
   }
 
   /** One internal note and one addressed to the client, on the same task. */

@@ -42,11 +42,7 @@
 // from the other side answers it (`comment answered`): the signal is derived
 // at read (`commentSignals`), and the reply's audit event is the record of it.
 
-import {
-  audienceNotPermitted,
-  lockComment,
-  writeComment,
-} from '../../../core-records/src/index.ts';
+import { audienceNotPermitted, writeComment } from '../../../core-records/src/index.ts';
 import { acquire } from '../../../core-runtime/src/index.ts';
 import type {
   TenantQuery,
@@ -59,6 +55,7 @@ import { effectAttemptOf, type CommandDeclaration } from '../../../core-wire/src
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnstorable, storableText } from './values.ts';
+import { replyParent } from './tasks-comment-reply.ts';
 
 const AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['internal', 'client']);
 const EXTERNAL_AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['client']);
@@ -77,15 +74,6 @@ const TYPE_FIXES: readonly string[] = [
 ];
 
 const BODY_FIXES: readonly string[] = ['Send a body with something in it.'];
-
-const PARENT_FIXES: readonly string[] = [
-  'Send parentId as the id of a message on this task, or leave it out for a new message.',
-  'Replies are one level deep: reply to the message, not to a reply.',
-];
-
-const REPLY_AUDIENCE_FIXES: readonly string[] = [
-  'A reply goes to the audience of the message it answers.',
-];
 
 export const NO_COMMENT_TYPE_FIXES: readonly string[] = [
   'This business has no comment record type installed, so it cannot hold a comment.',
@@ -122,34 +110,6 @@ export async function commentOnTask(
     commentType,
     parentId,
   );
-}
-
-/**
- * The message a reply sits under, locked through its task: its id, null for a
- * new message, or the refusal. One level deep, and in the message's audience.
- */
-async function replyParent(
-  tx: TenantQuery,
-  on: CommentTarget,
-  commentTypeId: string,
-  parentId: unknown,
-  audience: string,
-): Promise<string | null | HandlerOutcome> {
-  if (parentId === undefined || parentId === null) return null;
-  const message =
-    typeof parentId === 'string'
-      ? await lockComment(tx, commentTypeId, on.target.id, parentId)
-      : undefined;
-  // A message in an audience this caller may not write in (an internal note,
-  // to a client's person or an agent) is answered as one that is not there,
-  // so a reply cannot reveal that a note it cannot see exists.
-  if (message === undefined || message.parentId !== null || !on.audiences.has(message.audience)) {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', ['parentId'], PARENT_FIXES));
-  }
-  if (message.audience !== audience) {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', ['audience'], REPLY_AUDIENCE_FIXES));
-  }
-  return message.id;
 }
 
 /** What a comment is written against, from whichever envelope reached it. */
@@ -284,7 +244,7 @@ export async function writeTaskComment(
 
   const effect = await effectRefusal(tx, on, audience);
   if (effect !== undefined) return refused(effect);
-  const parent = await replyParent(tx, on, commentTypeId, parentId, audience);
+  const parent = await replyParent(tx, { ...on, commentTypeId }, parentId, audience);
   if (typeof parent === 'object' && parent !== null) return parent;
 
   const commentId = await writeComment(tx, commentTypeId, {

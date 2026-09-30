@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The positive control recipes for the five `time.*` commands (MP-4-6), kept
-// beside `role-case-bodies.ts`, which places them in its table.
+// beside `role-case-positive-body.ts`, which places them in its table.
 //
 // A harness, not a suite: nothing here runs on its own.
 

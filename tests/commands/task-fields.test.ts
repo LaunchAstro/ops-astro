@@ -27,6 +27,7 @@ import { isCommandRefusal } from '../../packages/core-commands/src/commands/refu
 import { readAuditEvents } from '../../packages/core-commands/src/commands/audit.ts';
 import { revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { PROTECTED_TASK_FIELDS } from '../../packages/core-records/src/tasks/spine.ts';
+import { PROTECTED_FIELD_CODES } from './task-field-codes.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -93,33 +94,6 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
   });
 
   describe('the generic editor cannot perform a transition', () => {
-    // The code each of the seventeen earns, asserted by name rather than by rule,
-    // so relaxing one is a visible diff (minimum contract 5.3 assertion 2).
-    // Three kinds, and the difference between them is the point: a field an
-    // operation owns names that operation, a derived field names nobody
-    // because no operation takes it as an input, and `source` is a claim of
-    // authority rather than a write. `intake_state` on update names
-    // `task.triage` (the root's D03 ruling; it is `SOURCE_SPOOFED` on create).
-    const EXPECTED: Readonly<Record<string, string>> = {
-      ad_hoc: 'TRANSITION_PROTECTED',
-      archived_at: 'FIELD_NOT_WRITABLE',
-      archived_why: 'FIELD_NOT_WRITABLE',
-      assignee: 'TRANSITION_PROTECTED',
-      client: 'TRANSITION_PROTECTED',
-      client_visible: 'TRANSITION_PROTECTED',
-      completed_at: 'FIELD_NOT_WRITABLE',
-      confidence: 'TRANSITION_PROTECTED',
-      delegate: 'TRANSITION_PROTECTED',
-      ease: 'TRANSITION_PROTECTED',
-      impact: 'TRANSITION_PROTECTED',
-      intake_state: 'TRANSITION_PROTECTED',
-      key: 'FIELD_NOT_WRITABLE',
-      parent: 'TRANSITION_PROTECTED',
-      source: 'SOURCE_SPOOFED',
-      stage: 'TRANSITION_PROTECTED',
-      state: 'TRANSITION_PROTECTED',
-    };
-
     it('refuses each protected field by name, with the code the field earns', async () => {
       const made = await create({ title: 'protected' });
       const refusals: Record<string, string> = {};
@@ -134,10 +108,13 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
         });
         refusals[field] = isCommandRefusal(refusal) ? refusal.code : 'APPLIED';
       }
-      expect(refusals).toStrictEqual(EXPECTED);
-      // Every field the spine calls protected has a case above. A sixteenth
-      // field added to that list with no entry here fails this line.
-      expect(Object.keys(EXPECTED).toSorted()).toStrictEqual([...PROTECTED_TASK_FIELDS].toSorted());
+      expect(refusals).toStrictEqual(PROTECTED_FIELD_CODES);
+      // Every field the spine calls protected has a code in
+      // `task-field-codes.ts`. A nineteenth field added to that list with no
+      // entry there fails this line.
+      expect(Object.keys(PROTECTED_FIELD_CODES).toSorted()).toStrictEqual(
+        [...PROTECTED_TASK_FIELDS].toSorted(),
+      );
     });
 
     it('names the owning operation, so the caller knows what to call instead', async () => {

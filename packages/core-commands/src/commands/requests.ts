@@ -24,6 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { TimeRequest } from './requests-time.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -280,22 +281,8 @@ export type CommandRequest =
       readonly amountMinor: unknown;
       readonly reason: unknown;
     } & Envelope)
-  // Time tracking (MP-4-6). The person is the session's; a body names only
-  // the task, or the entry, and what to write.
-  | ({ readonly command: 'time.start' | 'time.stop'; readonly taskId: string } & Envelope)
-  | ({
-      readonly command: 'time.log';
-      readonly taskId: string;
-      /** What a person types: "1h 30m", "90m" or "90". */
-      readonly duration: string;
-      readonly note?: string;
-    } & Envelope)
-  | ({
-      readonly command: 'time.set_note';
-      readonly entryId: string;
-      readonly note: string;
-    } & Envelope)
-  | ({ readonly command: 'time.delete'; readonly entryId: string } & Envelope);
+  // Time tracking (MP-4-6), in `requests-time.ts`.
+  | TimeRequest<Envelope>;
 
 /**
  * The part of a request the register compares, which is everything except the
