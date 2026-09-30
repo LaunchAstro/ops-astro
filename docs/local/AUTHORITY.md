@@ -712,7 +712,12 @@ WF-7's `run started (research)` is `task.propose` on a task of type
 under the task lock (`tasks-propose.ts`), refused `SCOPE_NOT_GRANTED`. An
 agent proposes one only under a delegation that reaches `run`; otherwise
 `DELEGATION_OUT_OF_PURPOSE`, whatever its person now holds. Other task types
-are unchanged.
+are unchanged. The start claims the ticket first (ORCH36 ruling P): in the
+same transaction, under the same lock, an unclaimed ticket's assignee becomes
+the starter (an agent's delegating person), and the task's revision moves; a
+ticket someone else holds is refused `TRANSITION_NOT_PERMITTED` ['claimed']
+with nothing planned. The starter is then the assignee, so T2g's four eyes
+leave the run's gate to another person.
 
 ## The restricted worker role
 

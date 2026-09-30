@@ -198,22 +198,35 @@ export async function proposeFor(
   if (current === undefined || current.deleted_at !== null) {
     return refused(refuseNotFound());
   }
+  const research = current.data['type'] === 'research';
+  // WF-7 claim first (ORCH36 ruling P): the starter is the person the
+  // proposal is asked as, an agent's delegating person included. Asked
+  // before the revision, so a starter who lost the race is told it is claimed.
+  const starter = subjects.find((subject) => subject.kind === 'person')?.id ?? actorId;
+  if (research) {
+    const refusal = await researchRunRefusal(tx, target.id, subjects, delegation);
+    if (refusal !== undefined) return refused(refusal);
+    if (claimedByAnother(current, starter)) {
+      return refused(refuseCommand('TRANSITION_NOT_PERMITTED', ['claimed'], [CLAIMED_FIX]));
+    }
+  }
   if (fields.expectedRevision !== current.revision) {
     return refused(
       refuseCommand('VERSION_STALE', [`revision=${current.revision}`], REVISION_FIXES),
     );
   }
-  if (current.data['type'] === 'research') {
-    const refusal = await researchRunRefusal(tx, target.id, subjects, delegation);
-    if (refusal !== undefined) return refused(refusal);
-  }
   const result = await proposeUnderLocks(tx, proposal, held);
   if (!result.ok) return refused(result.refusal);
+  const revision =
+    research && !isSet(current.data['assignee'])
+      ? await claimFor(tx, target.id, starter)
+      : current.revision;
 
   // The revision is the task's own and is unchanged: a proposal is a record
   // beside the task, not an edit to it, so a caller may keep writing against
-  // the revision they hold. `task.comment` answers the same way.
-  return applied(target.id, current.revision, {
+  // the revision they hold. `task.comment` answers the same way. The one
+  // exception is a research run's claim above, which writes the ticket.
+  return applied(target.id, revision, {
     lineageId: result.value.lineageId,
     versionId: result.value.versionId,
     version: result.value.version,
@@ -251,3 +264,22 @@ async function researchRunRefusal(
 }
 
 const RUN_WRITE_FIX = 'Starting a research run needs run:write on the ticket; ask for it.';
+const CLAIMED_FIX = 'Someone else has claimed this ticket; its run is theirs to start.';
+
+const isSet = (value: unknown): boolean => value !== undefined && value !== null;
+
+/** Held by a person other than the starter, or by an agent. */
+function claimedByAnother(ticket: TaskRow, starter: string): boolean {
+  const assignee = ticket.data['assignee'];
+  return (isSet(assignee) && assignee !== starter) || isSet(ticket.data['delegate']);
+}
+
+/** The claim `task.claim` writes, in the proposal's transaction under its lock. */
+async function claimFor(tx: TenantQuery, taskId: string, starter: string): Promise<number> {
+  const rows = await tx.query<{ readonly revision: string }>(
+    `update records set data = data || jsonb_build_object('assignee', $3::uuid), updated_at = now()
+      where business_id = $1 and id = $2 returning revision::text as revision`,
+    [tx.businessId, taskId, starter],
+  );
+  return Number(rows[0]?.revision);
+}

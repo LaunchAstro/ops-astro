@@ -14,11 +14,12 @@
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
-import { grantTo } from '../commands/fixture.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
   appliedDetail,
+  approveBody,
   asPerson,
-  approve,
   freshPurpose,
   pickup,
   propose,
@@ -78,15 +79,40 @@ const researchTicket = async (map: string, title: string): Promise<string> => {
 };
 
 /**
- * The run on the ticket: started by a person holding `run:write` on it
- * (wf-7-run), approved and picked up by the agent.
+ * A second person who decides: the starter claims the ticket, and T2g refuses
+ * an assignee its own gate. The approver holds the decider's delegable grants,
+ * because pickup mints the agent's delegation from the approver's.
+ */
+let approver: Member | undefined;
+const approve = async (proposal: Record<string, unknown>): Promise<Record<string, unknown>> => {
+  if (approver === undefined) {
+    const member = await enrol(s.db.app, s.business, 'wf7-approver');
+    await s.db.app.withBusiness(s.business, async (tx) => {
+      for (const action of ['read', 'write', 'decide', 'assign', 'comment'] as const) {
+        // oxlint-disable-next-line no-await-in-loop
+        await grantTo(tx, member, action, undefined, true);
+      }
+    });
+    approver = member;
+  }
+  const body = approveBody(proposal);
+  return appliedDetail(
+    await executeCommand(s.db.app, s.business, approver.presented, 'api', body as never),
+    'task.decide',
+  );
+};
+
+/**
+ * The run on the ticket: started (and so claimed, wf-7-claim) by a person
+ * holding `run:write` on it (wf-7-run), approved by another, and picked up by
+ * the agent.
  */
 const runOn = async (ticket: string): Promise<Work> => {
   await s.db.app.withBusiness(s.business, async (tx) => {
     await grantTo(tx, s.decider, 'write', { kind: 'record', id: ticket }, false, 'run');
   });
   const proposal = await propose(s, ticket, { maximumMinor: 2_000, purpose: freshPurpose() });
-  const decision = await approve(s, proposal);
+  const decision = await approve(proposal);
   const picked = await pickup(s, decision['reservationId']);
   return { taskId: ticket, proposal, decision, picked };
 };
