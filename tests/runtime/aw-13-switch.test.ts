@@ -6,7 +6,7 @@
 // run's events through custody's egress to the target's trace path.
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it as vitestIt } from 'vitest';
@@ -32,6 +32,13 @@ function keyFile(name: string, text: string, mode = 0o600): string {
   writeFileSync(file, text);
   chmodSync(file, mode);
   return file;
+}
+
+/** A private-looking name that links to another file. */
+function linkTo(file: string): string {
+  const link = join(folder, `link-${randomBytes(4).toString('hex')}`);
+  symlinkSync(file, link);
+  return link;
 }
 
 function staged(origin = 'http://127.0.0.1:9'): Record<string, string> {
@@ -82,6 +89,11 @@ describe('AW-13 off until one change', () => {
           TRACE_EXPORT_KEY_FILE: keyFile('text', `${canary}`.repeat(4)),
         },
         { ...staged(), TRACE_EXPORT: 'on', TRACE_EXPORT_KEY_FILE: join(folder, canary) },
+        {
+          ...staged(),
+          TRACE_EXPORT: 'on',
+          TRACE_EXPORT_KEY_FILE: linkTo(keyFile('shared', KEY_HEX, 0o644)),
+        },
       ];
       for (const environment of cases) {
         const settings = traceExportSettings(environment);

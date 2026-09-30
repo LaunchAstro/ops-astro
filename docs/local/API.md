@@ -306,6 +306,19 @@ provider is the only one until the real-provider run. Each route in
 the calls in flight on that route across every business of the installation,
 at most (the fair share, "The model call" below).
 
+`main()` starts the diagnostic trace export (AW-13, `apps/api/trace-exporter.ts`)
+only when `TRACE_EXPORT=on`, the one change an operator makes once
+`TRACE_EXPORT_ORIGIN` (the target's bare origin), `TRACE_EXPORT_CREDENTIALS_FILE`
+(custody's file for the target's key pair) and `TRACE_EXPORT_KEY_FILE` (the
+trace key, at least 32 bytes as hex, in a file no group or other may read)
+are staged. Unset or `off`, none of the three is read and the log says
+`api: trace export off`. `on` with any of them missing or malformed, or any
+other value, stops the server before it listens with a problem naming the
+setting, never its value. The exporter's custody starts before the port is
+bound; the export then runs every 30 seconds over the recovered businesses
+(`RECOVERY_BUSINESS_KEYS`), beside the sweep, and nothing on the wire reaches it
+([RUNTIME.md](RUNTIME.md#the-diagnostic-trace-export)).
+
 ## Task, board and people operations
 
 The everyday task writes, and the two reads the web's board and task page

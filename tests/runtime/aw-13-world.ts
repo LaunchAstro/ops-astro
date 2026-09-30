@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll } from 'vitest';
+import { deliverThrough } from '../../apps/api/trace-exporter.ts';
 import { startCustody, type Custody } from '../../packages/core-custody/src/index.ts';
 import {
   exportOnce,
@@ -113,22 +114,6 @@ async function custodyFor(folder: string, port: number, canary: string): Promise
   });
 }
 
-/** Delivery through custody's egress, as the composition root wires it. */
-function deliverThrough(custody: Custody): Deliver {
-  return async (body) => {
-    const outcome = await custody.dispatch('trace_key', {
-      destination: 'trace_target',
-      path: '/v1/traces',
-      method: 'POST',
-      body,
-      timeoutMs: 500,
-      maxResponseBytes: 4_096,
-    });
-    if (outcome.kind === 'answered') return outcome.outbound;
-    return { ok: false, fault: outcome.kind === 'refused' ? 'forbidden' : 'network', status: null };
-  };
-}
-
 export async function openTraceTarget(): Promise<TraceTarget> {
   const folder = mkdtempSync(join(tmpdir(), 'aw13-target-'));
   const canary = `canary-${randomBytes(18).toString('hex')}`;
@@ -142,7 +127,8 @@ export async function openTraceTarget(): Promise<TraceTarget> {
     origin: `http://127.0.0.1:${String(port)}`,
     custody,
     canary,
-    deliver: deliverThrough(custody),
+    // The composition root's delivery; 500 ms so the slow case is quick.
+    deliver: deliverThrough(custody, 500),
     close: async () => {
       await custody.stop();
       await new Promise<void>((resolve) => {

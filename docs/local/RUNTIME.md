@@ -1632,11 +1632,16 @@ and codes, never a sentence, to a trace target an operator reads.
   orders them, the comparison under it keeps the later). `trace_export_gaps`: append only (a trigger refuses
   update and delete). Both under tenancy; the application group may select and
   insert, and update the cursor.
-- The port is meant to be custody's egress (the target's origin on custody's
-  list, redirects refused, replies bounded by time and bytes, the target's key
-  in custody's credential file); the tests wire it that way against a loopback
-  stand-in. Nothing starts the exporter yet: the configuration switch, the
-  pinned local Langfuse profile and retention are AW-13's remaining lines.
+- The port is custody's egress (`apps/api/trace-exporter.ts`): a custody
+  process of the exporter's own with the target as its one destination,
+  redirects refused, replies bounded by time and bytes. The target's project
+  key pair sits in custody's credential file as `user:secret` under
+  `scheme: "basic"` and leaves as HTTP Basic (the pinned target's OpenTelemetry
+  route refuses a Bearer key); the trace key is read by the exporter from its
+  own file. `TRACE_EXPORT=on` is the one change that starts it
+  ([API.md](API.md#the-composition-root)); the server then exports every
+  recovered business on an interval, and a failure is logged by kind only.
+  The pinned local Langfuse profile and retention are AW-13's remaining lines.
 
 ## What is not here
 
