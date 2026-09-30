@@ -6,10 +6,16 @@
 // BYPASSRLS, superuser or database-owner membership; the writer tag readable in
 // another session's SQL. A clean staging passes.
 
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { markMadeUp, productionSigns, SEED_TAG } from '../../scripts/ops/made-up-only.ts';
+import { deploy } from '../../scripts/ops/deploy.ts';
+import { artefactName } from '../../scripts/ops/promotion.ts';
+import { outputDigest } from '../../scripts/ops/build-output.ts';
 import { serverUrl } from './staging-no-production-data.fixture.ts';
 
 let db: FreshDatabase;
@@ -28,6 +34,52 @@ describe.skipIf(serverUrl === undefined)('S0-1 staging special objects', () => {
 
   it('a clean staging passes', async () => {
     expect(await productionSigns(db.admin)).toStrictEqual([]);
+  });
+
+  it('two clean preflights on separate sessions both pass', async () => {
+    const url = new URL(serverUrl ?? '');
+    url.pathname = `/${db.name}`;
+    const other = connectAsAdmin(url.toString(), { source: 'second-clean-preflight' });
+    try {
+      expect(await productionSigns(db.admin)).toStrictEqual([]);
+      expect(await productionSigns(other)).toStrictEqual([]);
+    } finally {
+      await other.close();
+    }
+  });
+
+  it('staging deploy refuses a special view before starting services', async () => {
+    await db.admin.execute('create view public.planted_people as select * from public.people');
+    const version = '0123456789ab';
+    const store = mkdtempSync(join(tmpdir(), 'staging-special-start-'));
+    const artefact = join(store, artefactName(version));
+    mkdirSync(artefact);
+    const stamp = join(artefact, 'build.json');
+    writeFileSync(stamp, JSON.stringify({ build: version }));
+    writeFileSync(stamp, JSON.stringify({ build: version, digest: outputDigest(artefact) }));
+    let started = false;
+    try {
+      expect(await productionSigns(db.admin)).toContain(
+        'a view over a private table runs as a role other than the app role',
+      );
+      deploy(
+        { version, store },
+        {
+          snapshot: () => '{}',
+          compare: () => ({ unchanged: true, report: '' }),
+          buildImage: () => `sha256:${'a'.repeat(64)}`,
+          up: () => {
+            started = true;
+          },
+          imageId: () => `sha256:${'a'.repeat(64)}`,
+          runningImages: () => ({}),
+        },
+      );
+      expect(started).toBe(false);
+    } finally {
+      await db.admin.execute('drop view public.planted_people');
+      rmSync(store, { recursive: true, force: true });
+    }
   });
 
   plantedCases();
