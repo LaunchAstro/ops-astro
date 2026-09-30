@@ -30,6 +30,20 @@
         "max-lines-per-function": "off",
         "no-promise-executor-return": "off"
       }
+    },
+    {
+      "files": [
+        "tests/api/hosted-expired-lease-recovery.test.ts",
+        "tests/ci/restore-includes-sign-in-tables.test.ts",
+        "tests/ci/restore-includes-staging-guards.test.ts"
+      ],
+      "rules": {
+        "no-await-in-loop": "off",
+        "no-inline-comments": "off",
+        "no-promise-executor-return": "off",
+        "max-lines-per-function": "off",
+        "require-await": "off"
+      }
     }
   ]
 }
