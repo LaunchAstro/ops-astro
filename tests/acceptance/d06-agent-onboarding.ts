@@ -2,16 +2,18 @@
 //
 // D06's agent prefix meets `onboarding.step_result` (C41-A) on a step the agent
 // holds. Split from `d06-agent.test.ts` so that file stays under the per-file
-// cap: this lays out a fresh onboarding and approves its first ready step.
+// cap: this lays out a fresh onboarding, approves its first ready step and
+// has the agent pick it up.
 
 import { expect } from 'vitest';
 import type { Harness } from './role-case-harness.ts';
+import type { Answer } from './world.ts';
 
 /**
  * A fresh client's onboarding, its first ready step, and the reservation a
  * person approved for it. A result closes its step, so each body gets its own.
  */
-export async function approvedStep(
+async function approvedStep(
   harness: Harness,
 ): Promise<{ readonly taskId: string; readonly reservationId: string }> {
   const made = await harness.asPerson('record.create', {
@@ -37,4 +39,25 @@ export async function approvedStep(
     (decided.body['detail'] as Record<string, unknown>)['reservationId'],
   );
   return { taskId, reservationId };
+}
+
+/**
+ * A result on a fresh onboarding step the agent has just picked up. The held
+ * delegation is given back first and the new pickup is tracked, so the matrix
+ * releases it like any other.
+ */
+export async function onStep(
+  harness: Harness,
+  operationId: string,
+  release: () => Promise<void>,
+  track: (answer: Answer) => void,
+): Promise<{ body: Record<string, unknown>; credential?: string }> {
+  await release();
+  const { taskId, reservationId } = await approvedStep(harness);
+  const pickup = await harness.asAgent('task.pickup', { reservationId });
+  track(pickup);
+  if (pickup.code !== 'ok') throw new Error('d06-agent: the agent could not pick up the step');
+  const credential = String((pickup.body['detail'] as Record<string, unknown>)['credential']);
+  const body = { operationId, recordId: taskId, outcome: 'done', result: 'the agent closed it' };
+  return { body, credential };
 }

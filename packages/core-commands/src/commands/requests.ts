@@ -24,9 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
-import type { AutomationRequest } from './automation-requests.ts';
-import type { ConnectionsRequest } from './requests-connections.ts';
-import type { OnboardingRequest } from './requests-onboarding.ts';
+import type { SetupRequest } from './requests-setup.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -209,10 +207,8 @@ export type CommandRequest =
       readonly value: boolean;
       readonly expectedRevision?: number;
     } & Envelope)
-  // Custody, the connector fleet and graduation (C31, MP-14-7a, MP-14-10a).
-  | ConnectionsRequest<Envelope>
-  // Settings ▸ Workflow triggers (C33) and standing approvals (C52-A).
-  | (AutomationRequest & Envelope)
+  // Custody and connections, workflow triggers and onboarding (U33, U36, U38).
+  | SetupRequest<Envelope>
   // The support controls. Revocation names the row it revokes; the time is the
   // server's. Cancel and restart name the task and the lineage on it, so the
   // task is where the work-control authority is asked and the lineage is
@@ -272,7 +268,6 @@ export type CommandRequest =
       readonly amountMinor: unknown;
       readonly reason: unknown;
     } & Envelope)
-  | OnboardingRequest<Envelope>
   // Read by its own parser (`model-call.ts`), never by a person handler.
   | ({ readonly command: 'model.call' } & Envelope)
   // The answers at the budget stop name the task and the run on it, like the

@@ -38,7 +38,7 @@ import {
   probeValue,
   type Durable,
 } from './d06-cases.ts';
-import { approvedStep } from './d06-agent-onboarding.ts';
+import { onStep } from './d06-agent-onboarding.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import type { Answer } from './world.ts';
 import { serverUrl } from './world.ts';
@@ -141,22 +141,6 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     return live;
   }
 
-  /**
-   * A result on a fresh onboarding step the agent has just picked up (C41-A):
-   * a result closes its step, so each body gets its own onboarding.
-   */
-  async function onStep(
-    operationId: string,
-  ): Promise<{ body: Record<string, unknown>; credential?: string }> {
-    await release();
-    const { taskId, reservationId } = await approvedStep(harness);
-    track(await harness.asAgent('task.pickup', { reservationId }));
-    const held = live;
-    if (held === undefined) throw new Error('d06-agent: the agent could not pick up the step');
-    const body = { operationId, recordId: taskId, outcome: 'done', result: 'the agent closed it' };
-    return { body, credential: held.credential };
-  }
-
   /** A valid body for one agent operation, and the credential it travels with. */
   async function positive(
     name: CommandName,
@@ -171,7 +155,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     // A call holds 500 and spends 100 of the reservation's 3,000, so each gets
     // a lease of its own rather than draining one.
     if (name === 'model.call') await release();
-    if (name === 'onboarding.step_result') return await onStep(operationId);
+    if (name === 'onboarding.step_result') return onStep(harness, operationId, release, track);
     const held = await ensureLive();
     const credential = held.credential;
     if (name === 'session.capabilities') return { body: { operationId }, credential };
