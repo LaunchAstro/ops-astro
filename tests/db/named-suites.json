@@ -314,7 +314,8 @@
     "tests/surfaces/inbox-three-surfaces.test.tsx",
     "tests/cli/inbox-readback.test.ts",
     "tests/commands/inbox-unattended.test.ts",
-    "tests/commands/inbox-escalation-settings.test.ts"
+    "tests/commands/inbox-escalation-settings.test.ts",
+    "tests/ci/staging-no-production-data-guard.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
