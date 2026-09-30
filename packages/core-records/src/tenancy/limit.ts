@@ -15,8 +15,10 @@ export interface DurableLimit {
 
 /**
  * Whether one more fits under every limit. Each count is read after its lock,
- * so it sees what a transaction that held the lock before committed, and the
- * lock is held to commit: the caller writes the thing counted before it ends.
+ * so under read committed (every tenant transaction's level; a snapshot taken
+ * before the lock would miss rows) it sees what the lock's last holder
+ * committed. The lock is held to commit: the caller writes the thing counted
+ * before it ends.
  * Limits lock in the order given. The key names the business, so a business
  * at its limit never delays another. A limit that is not a whole number of at
  * least 1 has no room.
