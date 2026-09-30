@@ -19,6 +19,7 @@
 // **No admin login (G2).** The business key, the one read before tenancy, is
 // read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (0046) that
 // reads business ids and keys and nothing else; `/api/health` runs on it too.
+// Unset, the runtime login stands in and every business key is refused.
 // The entry refuses to start with `DATABASE_ADMIN_URL` in its environment, so
 // a breach of the function's settings never holds a login that reads every
 // business.
@@ -51,7 +52,9 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   const servedHost = required('SERVED_HOST').toLowerCase();
   if (!HOST.test(servedHost)) throw new Error('SERVED_HOST is not a bare host name.');
   const databaseUrl = required('DATABASE_URL');
-  const lookupUrl = required('DATABASE_LOOKUP_URL');
+  // Without a lookup login the runtime one stands in: it may not take the
+  // lookup identity, so every key read is refused, and health still measures.
+  const lookupUrl = settings['DATABASE_LOOKUP_URL'] || databaseUrl;
   const issuer = required('GOTRUE_URL');
   const keySetUrl = keySetUrlFor(settings['SUPABASE_KEY_SET_URL'] ?? '', issuer);
   if (keySetUrl === undefined) {

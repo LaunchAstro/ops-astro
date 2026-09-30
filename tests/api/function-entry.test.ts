@@ -97,7 +97,7 @@ function hostCase() {
 
 function settingsCase() {
   it('refuses to start without each setting, naming it and never a value', () => {
-    const names = ['DATABASE_URL', 'DATABASE_LOOKUP_URL', 'GOTRUE_URL', 'SERVED_HOST'];
+    const names = ['DATABASE_URL', 'GOTRUE_URL', 'SERVED_HOST'];
     for (const name of [...names, ...Object.keys(KEYRING)]) {
       for (const value of [undefined, '']) {
         const start = () => createFunctionHandler({ ...unreachable, [name]: value });
@@ -197,5 +197,32 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
       const elsewhere = await handle(request('ops-a1b2c3d4e.vercel.app', board, init));
       expect(elsewhere.status).toBe(421);
     });
+
+    noLookupCase();
   },
 );
+
+function noLookupCase() {
+  it('without a lookup login, health measures and no business key resolves', async () => {
+    const world = fixture as ApiFixture;
+    const handle = createFunctionHandler({
+      ...world.environment,
+      ...KEYRING,
+      DATABASE_URL: world.db.appUrl,
+      GOTRUE_URL: ISSUER,
+      SUPABASE_KEY_SET_URL: (keySet as ServedKeySet).url,
+      SERVED_HOST: HOST,
+    });
+    const token = await tokenFor(world.member.presented.subject);
+    const board = `${PREFIX.person}${BUSINESS_KEY}/task/board`;
+    const read = await handle(
+      request(HOST, board, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...authorised(token) },
+        body: '{"board":null}',
+      }),
+    );
+    expect((await handle(request(HOST))).status).toBe(200);
+    expect(read.status).not.toBe(200);
+  });
+}

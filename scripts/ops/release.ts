@@ -11,10 +11,12 @@
 // - `functions/api.func/`: `apps/api/function.ts` bundled into one module, a
 //   Node.js function pinned to Sydney (`syd1`), nothing on the edge runtime.
 // - `config.json`: every `/api` answer sent `private, no-store`; `/api` goes to
-//   the function and every other path to a static file, so no page response
-//   is made from records. No middleware, nothing prerendered.
+//   the function before any static file is looked for, so none can shadow it,
+//   and every other path to a static file, so no page response is made from
+//   records. No middleware, nothing prerendered.
 // - `build.json` at the root: the web build's stamp and the output's digest,
-//   so a deploy and a promotion can check they hold the same bytes.
+//   so a deploy and a promotion can check they hold the same bytes. The
+//   digest covers every file, `build.json` included without its own digest.
 //
 // No environment value is read into the output: the function reads its
 // settings when it runs. The output is checked with `buildOutputProblems`
@@ -48,8 +50,8 @@ const CONFIG = {
   version: 3,
   routes: [
     { src: '^/api(?:/.*)?$', headers: NO_STORE, continue: true },
-    { handle: 'filesystem' },
     { src: '^/api(?:/.*)?$', dest: '/api' },
+    { handle: 'filesystem' },
     { src: '^/.*$', dest: '/index.html' },
   ],
 };
@@ -67,17 +69,24 @@ function filesUnder(directory: string): string[] {
   });
 }
 
+/** A file as digested: `build.json` without the digest it records. */
+function digested(out: string, path: string): Buffer {
+  const bytes = readFileSync(join(out, path));
+  if (path !== 'build.json') return bytes;
+  const { digest: _digest, ...record } = JSON.parse(bytes.toString('utf8')) as Record<
+    string,
+    unknown
+  >;
+  return Buffer.from(JSON.stringify(record));
+}
+
 /** One digest over every file's path and bytes, in path order. */
 export function outputDigest(out: string): string {
   const hash = createHash('sha256');
   for (const path of filesUnder(out)
     .map((file) => relative(out, file))
     .toSorted()) {
-    if (path === 'build.json') continue;
-    hash
-      .update(`${path}\0`)
-      .update(readFileSync(join(out, path)))
-      .update('\0');
+    hash.update(`${path}\0`).update(digested(out, path)).update('\0');
   }
   return `sha256:${hash.digest('hex')}`;
 }
@@ -109,6 +118,7 @@ export async function release({ dist, out }: { dist: string; out: string }): Pro
   writeFileSync(join(out, 'config.json'), JSON.stringify(CONFIG, null, 2));
   const problems = buildOutputProblems(out);
   if (problems.length > 0) throw new Error(problems.join('\n'));
+  writeFileSync(join(out, 'build.json'), JSON.stringify({ build: stamp }));
   const record: Release = { build: stamp, digest: outputDigest(out) };
   writeFileSync(join(out, 'build.json'), JSON.stringify(record, null, 2));
   return record;
