@@ -39,6 +39,37 @@ if (serverUrl === undefined) {
   console.warn('command surface: DATABASE_URL is unset, so nothing below ran, nothing is proved.');
 }
 
+// Every path is a collection and an operation. `person.list` was the first
+// row whose collection is not `task` and there are now five prefixes, so
+// the shape is what is asserted rather than the one prefix that happened
+// to be true of the writes. `session` is the fifth and the odd one: it is
+// the only collection nothing is stored in, because the read under it is
+// about the caller rather than about the business's records. `grant` and
+// `delegation` are the revocation controls': the path names the row a
+// revocation writes, and the authority it asks is still on tasks.
+// `secret` is custody's (C31): the path names the row, the grant is
+// `custody:manage`. `record` and `onboarding` are C41-A's: the client
+// record and the onboarding laid out on it.
+const PATH_SHAPE =
+  /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret|connection|connector|mandate|graduation|automation|activation|definition|approval|record|onboarding)\/[a-z_]+$/u;
+
+/** Every read the surface declares, sorted. */
+const DECLARED_READS = [
+  'automation.registry',
+  'connection.fleet',
+  'connection.graduation',
+  'connection.signal',
+  'person.list',
+  'preset.plan',
+  'secret.list',
+  'session.capabilities',
+  'settings.read',
+  'task.board',
+  'task.execution',
+  'task.queue',
+  'task.read',
+  'task.receipt',
+];
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
     expect([...CONTRACT_NINE].toSorted()).toStrictEqual([
@@ -67,45 +98,13 @@ describe('the surface as a table', () => {
   it('gives every command a path nothing else has', () => {
     const paths = COMMAND_SURFACE.map((command) => pathOf(command.name));
     expect(new Set(paths).size).toBe(paths.length);
-    // Every path is a collection and an operation. `person.list` was the first
-    // row whose collection is not `task` and there are now five prefixes, so
-    // the shape is what is asserted rather than the one prefix that happened
-    // to be true of the writes. `session` is the fifth and the odd one: it is
-    // the only collection nothing is stored in, because the read under it is
-    // about the caller rather than about the business's records. `grant` and
-    // `delegation` are the revocation controls': the path names the row a
-    // revocation writes, and the authority it asks is still on tasks.
-    // `secret` is custody's (C31): the path names the row, the grant is
-    // `custody:manage`. `record` and `onboarding` are C41-A's: the client
-    // record and the onboarding laid out on it.
-    expect(
-      paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret|connection|connector|mandate|graduation|automation|activation|definition|approval|record|onboarding)\/[a-z_]+$/u.test(
-          path,
-        ),
-      ),
-    ).toBe(true);
+    expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
 
 describe('the surface as a table', () => {
   it('declares the fourteen reads as reads, and everything else as a write', () => {
-    expect([...READS].toSorted()).toStrictEqual([
-      'automation.registry',
-      'connection.fleet',
-      'connection.graduation',
-      'connection.signal',
-      'person.list',
-      'preset.plan',
-      'secret.list',
-      'session.capabilities',
-      'settings.read',
-      'task.board',
-      'task.execution',
-      'task.queue',
-      'task.read',
-      'task.receipt',
-    ]);
+    expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
       // A read has nothing to be stale against. It does not always take the

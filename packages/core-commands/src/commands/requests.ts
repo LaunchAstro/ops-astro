@@ -25,6 +25,7 @@
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
 import type { AutomationRequest } from './automation-requests.ts';
+import type { ConnectionsRequest } from './requests-connections.ts';
 import type { OnboardingRequest } from './requests-onboarding.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
@@ -208,61 +209,15 @@ export type CommandRequest =
       readonly value: boolean;
       readonly expectedRevision?: number;
     } & Envelope)
+  // Custody, the connector fleet and graduation (C31, MP-14-7a, MP-14-10a).
+  | ConnectionsRequest<Envelope>
+  // Settings ▸ Workflow triggers (C33) and standing approvals (C52-A).
+  | (AutomationRequest & Envelope)
   // The support controls. Revocation names the row it revokes; the time is the
   // server's. Cancel and restart name the task and the lineage on it, so the
   // task is where the work-control authority is asked and the lineage is
   // checked against it. A restart carries no proposal of its own: it is the
   // terminal lineage's last version, proposed again under a new lineage.
-  // Custody (C31). `value` and `expectedRevision` are checked by value in the
-  // handler, which names the field and never echoes what was sent.
-  | ({
-      readonly command: 'secret.set';
-      readonly name: string;
-      readonly value: unknown;
-      readonly clientId?: string | null;
-      readonly expectedRevision?: unknown;
-    } & Envelope)
-  | ({
-      readonly command: 'secret.clear';
-      readonly secretId: string;
-      readonly expectedRevision?: unknown;
-    } & Envelope)
-  // The connector fleet (MP-14-7a): start a repair of one broken connection.
-  | ({
-      readonly command: 'connector.repair';
-      readonly connectionId: string;
-      readonly expectedRevision?: unknown;
-    } & Envelope)
-  // Graduation and standing mandates (MP-14-10a): each value is checked in the
-  // command, which names the field it refuses.
-  | ({
-      readonly command: 'mandate.file';
-      readonly clientId: string;
-      readonly classes?: unknown;
-      readonly refuses?: unknown;
-      readonly ceiling?: unknown;
-      readonly expiresAt?: unknown;
-      readonly label?: unknown;
-    } & Envelope)
-  | ({
-      readonly command: 'mandate.revoke';
-      readonly mandateId: string;
-      readonly expectedRevision?: unknown;
-    } & Envelope)
-  | ({
-      readonly command: 'graduation.promote';
-      readonly classId: string;
-      readonly ceiling?: unknown;
-      readonly expiresAt?: unknown;
-      readonly expectedRevision?: unknown;
-    } & Envelope)
-  | ({
-      readonly command: 'graduation.demote';
-      readonly classId: string;
-      readonly expectedRevision?: unknown;
-    } & Envelope)
-  // Settings ▸ Workflow triggers (C33) and standing approvals (C52-A).
-  | (AutomationRequest & Envelope)
   | ({ readonly command: 'grant.revoke'; readonly grantId: string } & Envelope)
   | ({ readonly command: 'delegation.revoke'; readonly delegationId: string } & Envelope)
   | ({

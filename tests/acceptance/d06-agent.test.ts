@@ -38,6 +38,7 @@ import {
   probeValue,
   type Durable,
 } from './d06-cases.ts';
+import { approvedStep } from './d06-agent-onboarding.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import type { Answer } from './world.ts';
 import { serverUrl } from './world.ts';
@@ -142,28 +143,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     operationId: string,
   ): Promise<{ body: Record<string, unknown>; credential?: string }> {
     await release();
-    const made = await harness.asPerson('record.create', {
-      type: 'client',
-      fields: { name: 'a client the agent works' },
-    });
-    const clientId = (made.body['detail'] as Record<string, unknown>)['recordId'];
-    const started = await harness.asPerson('onboarding.start', {
-      clientId,
-      templateKey: 'standard',
-    });
-    const steps = (started.body['detail'] as Record<string, unknown>)['steps'] as readonly {
-      readonly taskId: string;
-      readonly state: string;
-    }[];
-    const taskId = String(steps.find((one) => one.state === 'ready')?.taskId);
-    const decided = await harness.reserve(
-      { id: taskId } as Parameters<Harness['reserve']>[0],
-      'onboarding_step',
-    );
-    expect(decided.code, 'the decision a step pickup needs').toBe('ok');
-    const reservationId = String(
-      (decided.body['detail'] as Record<string, unknown>)['reservationId'],
-    );
+    const { taskId, reservationId } = await approvedStep(harness);
     track(await harness.asAgent('task.pickup', { reservationId }));
     const held = live;
     if (held === undefined) throw new Error('d06-agent: the agent could not pick up the step');

@@ -16,8 +16,8 @@
 // Nothing below the boundary is substituted. Fixture grants go through
 // `issueGrant` via `grantTo`; every probe goes through `callRaw`.
 
-import { seedBrokenConnection, seedMandate, seedReadyClass } from '../connections/fixture.ts';
 import { seedAutomation, type SeededAutomation } from '../automations/seed.ts';
+import { seedForeignRows, type ForeignRows } from './ident-audit-foreign.ts';
 import { randomUUID } from 'node:crypto';
 import { grantTo } from '../commands/fixture.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
@@ -79,20 +79,8 @@ export interface IdentWorld {
     picked: Picked;
     batchId: string;
     grantId: string;
-    /** A key bravo's admin set in custody (C31). */
-    secretId: string;
-    /** A broken connection of bravo's, owner-written (MP-14-7a). */
-    connectionId: string;
-    /** A ready graduation row of bravo's, its client and a mandate on it (MP-14-10a). */
-    classId: string;
-    clientId: string;
-    mandateId: string;
-    /** An automation of bravo's: definition, version, activation (C33). */
-    automation: SeededAutomation;
-    /** A client of bravo's and a step of its onboarding (C41-A). */
-    onboardingClientId: string;
-    stepTaskId: string;
-  }>;
+  }> &
+    Readonly<ForeignRows>;
   /** An automation of alpha's own, so a foreign activation is aimed past its version (C33). */
   readonly ownAutomation: SeededAutomation;
   /** The second alpha agent's live pickup. */
@@ -237,15 +225,6 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
   const trashable = await taskOf(bravoAdmin, 'a bravo task in the trash', 'bravo');
   const trashBody = { recordId: trashable.id, expectedRevision: trashable.revision };
   const trashed = need(await person(bravoAdmin, 'task.trash', trashBody, 'bravo'), 'task.trash');
-  const bravoSecret = need(
-    await person(
-      bravoAdmin,
-      'secret.set',
-      { name: 'bravo.key', value: `bravo-${randomUUID()}` },
-      'bravo',
-    ),
-    'secret.set',
-  );
   const bravoGrants = await world.db.admin.execute<{ readonly id: string }>(
     `select id from public.grants
       where business_id = $1 and subject_kind = 'person' and subject_id = $2
@@ -273,37 +252,12 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
     }
   });
 
-  const bravoClass = await seedReadyClass(world.db.admin, world.bravo);
-  const bravoGraduation = {
-    ...bravoClass,
-    mandateId: await seedMandate(
-      world.db.admin,
-      world.bravo,
-      bravoClass.clientId,
-      bravoAdmin.actorId as string,
-    ),
-  };
-
-  // New client onboarding (C41-A): a bravo client, and a step of its onboarding.
-  const bravoClient = need(
-    await person(
-      bravoAdmin,
-      'record.create',
-      { type: 'client', fields: { name: 'a bravo client' } },
-      'bravo',
-    ),
-    'record.create',
+  const foreignRows = await seedForeignRows(
+    world.db.admin,
+    world.bravo,
+    bravoAdmin.actorId as string,
+    async (name, body) => need(await person(bravoAdmin, name, body, 'bravo'), name),
   );
-  const bravoOnboarding = need(
-    await person(
-      bravoAdmin,
-      'onboarding.start',
-      { clientId: String(bravoClient['recordId']), templateKey: 'standard' },
-      'bravo',
-    ),
-    'onboarding.start',
-  );
-  const bravoSteps = bravoOnboarding['steps'] as readonly { readonly taskId: string }[];
 
   return {
     h,
@@ -314,12 +268,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       picked: bravoPicked,
       batchId: String(trashed['batchId']),
       grantId: String(bravoGrants[0]?.id),
-      secretId: String(bravoSecret['secretId']),
-      connectionId: await seedBrokenConnection(world.db.admin, world.bravo, 'a bravo source'),
-      ...bravoGraduation,
-      automation: await seedAutomation(world.db.admin, world.bravo, bravoAdmin.actorId as string),
-      onboardingClientId: String(bravoClient['recordId']),
-      stepTaskId: String(bravoSteps[0]?.taskId),
+      ...foreignRows,
     },
     ownAutomation: await seedAutomation(world.db.admin, world.alpha, world.ada.actorId as string),
     otherPicked,
