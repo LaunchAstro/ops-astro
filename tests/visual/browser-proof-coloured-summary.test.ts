@@ -28,8 +28,8 @@ function endings(report: string, file: string): (readonly [string, string])[] | 
 it('MP-1-1 the browser-dependency proof accepts a coloured test summary', () => {
   const directory = mkdtempSync(join(tmpdir(), 'sol-pr155-colour-'));
   try {
-    // The capture run is real, with colour forced, so its summary is coloured
-    // and the named capture test must exist for the count to read 1.
+    // The capture run is real, with colour forced: the wrapper must still find
+    // the named capture failing only for want of a browser.
     // The child's result is read from its JSON report, not its printed
     // summary: a passing run's compact summary does not name the file.
     const report = join(directory, 'report.json');
