@@ -25,6 +25,7 @@ import {
 } from '../../packages/core-wire/src/surface.ts';
 import { issueGrant, type Action } from '../../packages/core-records/src/authority/grants.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
+import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import {
   agentPath,
@@ -37,9 +38,19 @@ import {
 } from './world.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
+import { seedFixtureClients } from './role-case-clients.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
 export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
+
+function plainRows(admin: AdminConnection): AdminConnection {
+  return {
+    ...admin,
+    execute: async <Row>(text: string, parameters?: readonly unknown[]) => [
+      ...(await admin.execute<Row>(text, parameters)),
+    ],
+  };
+}
 
 /**
  * Build the world and everything the cases ask it.
@@ -60,6 +71,7 @@ export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts
 export async function createHarness(part: string): Promise<Harness> {
   const world = await createWorld(part);
   await world.db.app.withBusiness(world.alpha, installBusinessSettings);
+  const clients = await seedFixtureClients(world);
 
   const needed = new Map(COMMAND_SURFACE.map((one) => [pairFor(one), one]));
   const heldBy = new Map<string, ReadonlySet<string>>();
@@ -260,11 +272,14 @@ export async function createHarness(part: string): Promise<Harness> {
   }
 
   return {
-    world,
+    // The admin handle's rows as a plain array: postgres.js answers with its
+    // own `Result` subclass, which never strictly equals an array of rows.
+    world: { ...world, db: { ...world.db, admin: plainRows(world.db.admin) } },
     alphaTask,
     bravoRecordId,
     heldBy,
     otherCallers: [world.noah, world.mia, world.orphan, world.bea],
+    clients,
     pairFor,
     asPerson,
     asAgent,
