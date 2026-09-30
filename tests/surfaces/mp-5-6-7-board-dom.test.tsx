@@ -350,6 +350,9 @@ describe('MP-5-7 on the gallery fixture', () => {
       const board = await open();
       const root = board.find('.cbd') as HTMLElement;
       expect(root.style.getPropertyValue('--catbar-h')).toBe('44px');
+      // Every head is a sticky head: the kit's table head, marked as the board's.
+      expect(board.all('thead th').length).toBeGreaterThan(0);
+      expect(board.all('thead th.cbd__hd')).toHaveLength(board.all('thead th').length);
     } finally {
       spy.mockRestore();
     }
@@ -357,7 +360,7 @@ describe('MP-5-7 on the gallery fixture', () => {
       /\.cbd__filters\s*\{[^}]*position:\s*sticky;[^}]*top:\s*var\(--chrome-h, 0px\)/u,
     );
     expect(SHEET).toMatch(
-      /\.cbd__tbl thead th\s*\{[^}]*position:\s*sticky;[^}]*top:\s*calc\(var\(--chrome-h, 0px\) \+ var\(--catbar-h, 0px\)\)/u,
+      /\.cbd__tbl \.cbd__hd\s*\{[^}]*position:\s*sticky;[^}]*top:\s*calc\(var\(--chrome-h, 0px\) \+ var\(--catbar-h, 0px\)\)/u,
     );
     // A scroll container would pin the heads to itself, not the page.
     expect(SHEET).toMatch(/\.cbd__wrap\s*\{[^}]*overflow-x:\s*clip/u);

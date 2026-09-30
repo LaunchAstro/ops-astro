@@ -12,6 +12,7 @@
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { ProjectRow, RowActions } from '../board/projects.ts';
+import { Icon } from '../primitives/Icon.tsx';
 
 const OPEN_DELAY_MS = 260;
 
@@ -168,7 +169,7 @@ function Routes(props: {
             actions.onStartTimer?.(row);
           }}
         >
-          ▶
+          <Icon name="play" size="xs" />
         </button>
       )}
       <a
@@ -188,7 +189,7 @@ function Routes(props: {
         aria-label={`Go to the work on ${row.name}, in the app`}
         title="Go to the work (in the app)"
       >
-        ↗
+        <Icon name="arrow-up-right-from-square" size="xs" />
       </a>
     </span>
   );

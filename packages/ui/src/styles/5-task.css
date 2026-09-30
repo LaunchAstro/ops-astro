@@ -64,7 +64,9 @@
 }
 .tpr__calc {
   margin: 0;
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   color: var(--ink-faint);
 }
 /* Inert on the task page: they say what the record says and do nothing, so
@@ -110,9 +112,9 @@
   padding: 0 0.5rem;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  text-transform: uppercase;
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
   cursor: default;
 }
 .taskform {
@@ -240,10 +242,14 @@
   padding: var(--s-2) 0;
   border-bottom: 1px solid var(--border);
 }
-.sbact__meta {
+/* A task key prints as typed (MP-4-14): the data style's case is none. */
+.sbact__meta,
+.tt__more {
   font: var(--type-data);
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
+}
+.sbact__meta {
   color: var(--ink-faint);
 }
 .sout__box {
@@ -417,8 +423,6 @@
   padding: var(--s-2) 0;
   border: 0;
   background: none;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
   color: var(--ink-muted);
   text-align: center;
   cursor: pointer;
@@ -438,9 +442,9 @@
    One font rule (R60): the description is sans on every surface, and so is
    the rendered brief; mono is kept for the brief's markdown field alone. --- */
 .tt__prose {
-  font-family: var(--font-sans);
-  font-size: 0.875rem;
-  line-height: 1.6;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
   color: var(--text-2);
 }
 .md p,
@@ -449,8 +453,9 @@
   margin: 0 0 var(--s-2);
 }
 .tf__ta {
-  font-family: var(--font-sans);
-  font-size: 0.875rem;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
   width: 100%;
   padding: var(--s-2) var(--s-3);
   border: 1px solid var(--rule-faint);
@@ -463,8 +468,9 @@
   outline: none;
 }
 .tf__ta--md {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 
 /* MP-4-5 thread: replies one level under their message (R42); the pencil and

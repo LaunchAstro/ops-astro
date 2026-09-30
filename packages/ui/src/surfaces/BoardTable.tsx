@@ -39,7 +39,7 @@ export function Table<Row>(
   return (
     <div className="cbd__wrap">
       <table
-        className="cbd__tbl"
+        className="table cbd__tbl"
         style={
           width === null
             ? undefined
@@ -124,6 +124,7 @@ function HeadCell<Row>(props: {
   const sorted = props.sort?.key === column.key ? props.sort.dir : undefined;
   return (
     <th
+      className="cbd__hd"
       data-key={column.key}
       data-align={column.align}
       data-tight={column.tight ? '' : undefined}

@@ -10,6 +10,7 @@
 // After each, the page rereads rather than guessing the next state.
 
 import { useState, type KeyboardEvent, type ReactElement } from 'react';
+import { Icon } from '@launchastro/ui';
 import type { TaskTimeView, TimeEntryView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
@@ -217,7 +218,8 @@ function TimerButton(props: {
       disabled={props.busy}
       onClick={props.onPress}
     >
-      {props.running ? '■ Stop' : '▶ Start timer'}
+      {props.running ? null : <Icon name="play" size="sm" />}
+      {props.running ? '■ Stop' : 'Start timer'}
     </button>
   );
 }
