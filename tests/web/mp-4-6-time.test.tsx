@@ -9,13 +9,15 @@
 // through `time.delete`; the burn bar turns danger over the estimate. Every
 // entry drawn is one the server sent: the reader's own (RS-VAULT-9).
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { act, useState, type ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { TaskTimeView, TimeEntryView } from '../../packages/core-wire/src/index.ts';
 import { burnOf, minutesText, TimeLog } from '../../apps/web/src/screens/task/Time.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import type { Mounted } from '../surfaces/mount.tsx';
-import { TASK_ID, tick } from './task-page-stub.tsx';
+import { TASK_ID, found as foundTask, page, tick } from './task-page-stub.tsx';
 import { json, mount, press, unmountAll } from './perspective-support.tsx';
 
 afterEach(unmountAll);
@@ -233,5 +235,43 @@ describe('MP-4-6 the burn bar turns danger over the estimate', () => {
       '1h 30m',
       '2h 5m',
     ]);
+  });
+});
+
+describe('MP-4-6 the burn bar on the task page', () => {
+  it('measures the logged time against the estimate the read sends, danger past it', async () => {
+    const over = await page(
+      'Proj-Verity-Pacing',
+      foundTask({ estimateMinutes: 60, time: timeWith([entry('a', 90)]) }),
+    );
+    expect(find(over, '[data-time-burn]').dataset['danger']).toBe('true');
+    const under = await page(
+      'Proj-Verity-Pacing',
+      foundTask({ estimateMinutes: 120, time: timeWith([entry('a', 30)]) }),
+    );
+    const fill = find(under, '[data-time-burn] > span');
+    expect([find(under, '[data-time-burn]').dataset['danger'], fill.style.width]).toStrictEqual([
+      'false',
+      '25%',
+    ]);
+    const unset = await page(
+      'Proj-Verity-Pacing',
+      foundTask({ estimateMinutes: null, time: timeWith([entry('a', 30)]) }),
+    );
+    expect(unset.host.querySelector('[data-time-burn]')).toBeNull();
+  });
+
+  it('draws a 4px track with an accent fill that turns danger over the estimate', () => {
+    const css = readFileSync(
+      join(import.meta.dirname, '../../packages/ui/src/styles/5-task.css'),
+      'utf8',
+    );
+    const rule = (selector: string) => {
+      const at = css.indexOf(`${selector} {`);
+      return at === -1 ? '' : css.slice(at, css.indexOf('}', at));
+    };
+    expect(rule('.sb__burn')).toMatch(/height:\s*4px/u);
+    expect(rule('.sb__burn > span')).toMatch(/background:\s*var\(--accent\)/u);
+    expect(rule("[data-danger='true'] > span")).toMatch(/background:\s*var\(--danger\)/u);
   });
 });
