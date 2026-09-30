@@ -66,6 +66,7 @@ export {
   INBOX_HISTORY_SCAN,
 } from './inbox/read.ts';
 export {
+  INBOX_REASONS,
   owes,
   raiseInboxItem,
   stampSeen,

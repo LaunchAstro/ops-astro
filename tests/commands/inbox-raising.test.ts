@@ -24,8 +24,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Hono } from 'hono';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   readInboxItems,
   type InboxItem,
@@ -33,44 +32,19 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { replayRecordedTransitions } from '../../packages/core-runtime/src/index.ts';
-import { pathOf } from '../../packages/core-wire/src/surface.ts';
-import {
-  insertActor,
-  insertBusiness,
-  insertLogin,
-  insertMapping,
-  insertPerson,
-} from '../identity/fixture.ts';
+import { insertActor, insertLogin, insertMapping, insertPerson } from '../identity/fixture.ts';
 import { enrol, grantTo, type Member } from './fixture.ts';
-import { detailOf, ok, readable } from './inbox-clearing-world.ts';
-import {
-  authorised,
-  BUSINESS_KEY,
-  createApiFixture,
-  post,
-  tokenFor,
-  type Answer,
-  type ApiFixture,
-} from '../api/fixture.ts';
+import { clearingWorld, detailOf, ok, proposal, readable } from './inbox-clearing-world.ts';
+import type { Answer, ApiFixture } from '../api/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
-const proposal = (task: { id: string; rev: number }, lineageId?: string) => ({
-  recordId: task.id,
-  expectedRevision: task.rev,
-  purpose: 'draft_reply',
-  maximumMinor: 1_000,
-  currency: 'AUD',
-  payload: { instruction: 'draft' },
-  step: { kind: 'compose', payload: {} },
-  ...(lineageId === undefined ? {} : { lineageId }),
-});
-
 // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
+  const w = clearingWorld('inb1b');
+  const call = w.call.bind(w);
+  const newTask = w.task;
   let fixture: ApiFixture;
-  let api: Hono;
-  let deciderToken: string;
   let reviewer: Member;
   let writer: Member;
   let writerToken: string;
@@ -79,18 +53,6 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
   let clientA: string;
   let bravo: string;
   let bravoDecider: string;
-
-  const call = async (
-    name: Parameters<typeof pathOf>[0],
-    body: Readonly<Record<string, unknown>>,
-    token: string = deciderToken,
-  ): Promise<Answer> =>
-    await post(
-      api,
-      `/api/b/${BUSINESS_KEY}${pathOf(name)}`,
-      { operationId: randomUUID(), ...body },
-      authorised(token),
-    );
 
   const itemsOf = async (person: string): Promise<readonly InboxItem[]> =>
     await fixture.db.app.withBusiness(
@@ -110,36 +72,14 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       )[0]?.n,
     );
 
-  const newTask = async (title: string, client?: string): Promise<{ id: string; rev: number }> => {
-    const created = ok(await call('task.create', { fields: { title } })).body;
-    const id = String(created['recordId']);
-    if (client === undefined) return { id, rev: Number(created['revision']) };
-    const [set] = await fixture.db.admin.execute<{ revision: string }>(
-      `update public.records set data = data || jsonb_build_object('client', $2::text)
-        where id = $1 returning revision::text as revision`,
-      [id, client],
-    );
-    return { id, rev: Number(set?.revision) };
-  };
-
+  // The clearing world's, with a client's staff member and an outside party
+  // on client A, and a decider in the second business.
   beforeAll(async () => {
-    fixture = await createApiFixture('inb1b');
-    api = fixture.compose();
-    deciderToken = await tokenFor(fixture.member.presented.subject);
-    reviewer = await enrol(fixture.db.app, fixture.business, 'Rhea Reviewer');
-    writer = await enrol(fixture.db.app, fixture.business, 'Wes Writer');
+    ({ fixture, reviewer, writer, writerToken, bravo } = w);
+    bravoDecider = w.bravoPerson;
     clientStaff = await enrol(fixture.db.app, fixture.business, 'Cleo Clientside');
     clientA = randomUUID();
     await fixture.db.app.withBusiness(fixture.business, async (tx) => {
-      // Sequential: `issueGrant` reads the granter's own rows.
-      for (const action of ['read', 'decide'] as const) {
-        // oxlint-disable-next-line no-await-in-loop
-        await grantTo(tx, reviewer, action);
-      }
-      for (const action of ['read', 'write', 'comment'] as const) {
-        // oxlint-disable-next-line no-await-in-loop
-        await grantTo(tx, writer, action);
-      }
       await grantTo(tx, clientStaff, 'read', { kind: 'party', id: clientA });
       // An outside party: a person with no membership, reading client A's work.
       outsider = await insertPerson(tx, 'Olga Outside');
@@ -149,22 +89,14 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
         id: clientA,
       });
     });
-    writerToken = await tokenFor(writer.presented.subject);
-    bravo = await insertBusiness(fixture.db.app, 'bravo');
     await fixture.db.app.withBusiness(bravo, async (tx) => {
-      bravoDecider = await insertPerson(tx, 'Bruno Bravo');
-      const actor = await insertActor(tx, bravoDecider);
       await grantTo(
         tx,
-        { personId: bravoDecider, actorId: actor, presented: fixture.agent },
+        { personId: bravoDecider, actorId: w.bravoActor, presented: fixture.agent },
         'decide',
       );
     });
   }, 120_000);
-
-  afterAll(async () => {
-    await fixture?.drop();
-  });
 
   it('raises one decision item per decide holder on a proposal, and none for anyone else', async () => {
     const task = await newTask('decide me');

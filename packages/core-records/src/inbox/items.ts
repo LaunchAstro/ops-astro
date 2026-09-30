@@ -14,14 +14,17 @@ import { taskAccess } from './access.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 /** Why the item is owed to the recipient: CS-16.8's reasons, one each. */
-export type InboxReason =
-  | 'decision'
-  | 'waiting_run'
-  | 'run_finished'
-  | 'assignment'
-  | 'mention'
-  | 'incident'
-  | 'client_comment';
+export const INBOX_REASONS = [
+  'decision',
+  'waiting_run',
+  'run_finished',
+  'assignment',
+  'mention',
+  'incident',
+  'client_comment',
+] as const;
+
+export type InboxReason = (typeof INBOX_REASONS)[number];
 
 /** Where the fact lives. The item holds its identifier and nothing of it. */
 export type InboxFactKind = 'gate' | 'planned_run' | 'record' | 'operation';

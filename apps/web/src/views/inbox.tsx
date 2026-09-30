@@ -134,7 +134,7 @@ function Owed(props: {
       </h2>
       {owed === null ? null : (
         <p className="card__sub" data-inbox-count={owed}>
-          {owed === 1 ? '1 waiting for you' : `${String(owed)} waiting for you`}
+          {`${String(owed)} waiting for you`}
         </p>
       )}
     </>

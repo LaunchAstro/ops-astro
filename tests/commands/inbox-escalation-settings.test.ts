@@ -17,14 +17,12 @@ import { randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { raiseInboxItem, readUnattended } from '../../packages/core-records/src/index.ts';
-import { COMMAND_SURFACE, pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
+import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { enrol, grantTo, WHOLE_BUSINESS, type Member } from './fixture.ts';
-import { authorised, BUSINESS_KEY, post, tokenFor, type Answer } from '../api/fixture.ts';
+import { tokenFor, type Answer } from '../api/fixture.ts';
 import { clearingWorld, ok } from './inbox-clearing-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-
-const route = (name: string): string => pathOf(name as CommandName);
 
 // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1e escalation parked and settings', () => {
@@ -34,12 +32,7 @@ describe.skipIf(serverUrl === undefined)('INB-1e escalation parked and settings'
   let pim: Member;
   let pimToken = '';
 
-  const call = async (
-    name: string,
-    token: string,
-    body: Readonly<Record<string, unknown>> = {},
-  ): Promise<Answer> =>
-    await post(w.api, `/api/b/${BUSINESS_KEY}${route(name)}`, body, authorised(token));
+  const call = w.send;
   const listed = async (): Promise<readonly string[]> =>
     (
       ok(await call('inbox.unattended', opalToken)).body['unattended'] as Record<string, unknown>[]
@@ -49,11 +42,7 @@ describe.skipIf(serverUrl === undefined)('INB-1e escalation parked and settings'
     body: Readonly<Record<string, unknown>>,
   ): Promise<Answer> =>
     await call('notifications.set_channel', token, { operationId: randomUUID(), ...body });
-  const task = async (title: string): Promise<string> =>
-    String(
-      ok(await call('task.create', w.memberToken, { operationId: randomUUID(), fields: { title } }))
-        .body['recordId'],
-    );
+  const task = async (title: string): Promise<string> => (await w.task(title)).id;
   const raise = async (recipient: string, subject: string): Promise<string> =>
     await w.fixture.db.app.withBusiness(
       w.fixture.business,

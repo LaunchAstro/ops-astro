@@ -34,7 +34,11 @@
 // name these settings predate the column, so a caller that has not learnt to
 // send one still writes and is still handed the revision the row is now at.
 
-import { isSettingRevisionStale, writeBusinessSetting } from '../../../core-records/src/index.ts';
+import {
+  INBOX_REASONS,
+  isSettingRevisionStale,
+  writeBusinessSetting,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand } from './refusal.ts';
@@ -162,15 +166,7 @@ const CHANNEL_MODES: Readonly<Record<string, readonly string[]>> = {
   email: ['instant', 'daily_batch', 'off'],
 };
 
-const CATEGORIES: ReadonlySet<string> = new Set([
-  'decision',
-  'waiting_run',
-  'run_finished',
-  'assignment',
-  'mention',
-  'incident',
-  'client_comment',
-]);
+const CATEGORIES: ReadonlySet<string> = new Set(INBOX_REASONS);
 
 /** Told at once on every channel it reaches (owner answer 10). */
 const NEVER_QUIETED: ReadonlySet<string> = new Set(['decision', 'incident']);

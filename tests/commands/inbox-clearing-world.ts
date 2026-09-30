@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect } from 'vitest';
 import type { Hono } from 'hono';
 import type { InboxItem } from '../../packages/core-records/src/index.ts';
-import { pathOf } from '../../packages/core-wire/src/surface.ts';
+import { pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { insertActor, insertBusiness, insertPerson } from '../identity/fixture.ts';
 import { enrol, grantTo, type Member } from './fixture.ts';
 import {
@@ -31,7 +31,11 @@ export const ok = (answer: Answer): Answer => {
   return answer;
 };
 
-const proposal = (task: { id: string; rev: number }) => ({
+/** A proposal on the task; with a lineage, a superseding version of it. */
+export const proposal = (
+  task: { id: string; rev: number },
+  lineageId?: string,
+): Readonly<Record<string, unknown>> => ({
   recordId: task.id,
   expectedRevision: task.rev,
   purpose: 'draft_reply',
@@ -39,6 +43,7 @@ const proposal = (task: { id: string; rev: number }) => ({
   currency: 'AUD',
   payload: { instruction: 'draft' },
   step: { kind: 'compose', payload: {} },
+  ...(lineageId === undefined ? {} : { lineageId }),
 });
 
 /** Only a readable item carries its pointers; a withheld or gone one names nothing (INB-1a). */
@@ -81,6 +86,16 @@ export class ClearingWorld {
   writerToken = '';
   bravo = '';
   bravoPerson = '';
+  bravoActor = '';
+
+  /** The body as sent, as `token`, to the business at `key`: no operation identity added. */
+  send = async (
+    name: string,
+    token: string,
+    body: Readonly<Record<string, unknown>> = {},
+    key: string = BUSINESS_KEY,
+  ): Promise<Answer> =>
+    await post(this.api, `/api/b/${key}${pathOf(name as CommandName)}`, body, authorised(token));
 
   async call(
     name: Parameters<typeof pathOf>[0],
@@ -171,7 +186,7 @@ export function clearingWorld(part: string): ClearingWorld {
     w.bravo = await insertBusiness(w.fixture.db.app, 'bravo');
     await w.fixture.db.app.withBusiness(w.bravo, async (tx) => {
       w.bravoPerson = await insertPerson(tx, 'Bruno Bravo');
-      await insertActor(tx, w.bravoPerson);
+      w.bravoActor = await insertActor(tx, w.bravoPerson);
     });
   }, 120_000);
   afterAll(async () => {

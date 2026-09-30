@@ -51,18 +51,13 @@ describe.skipIf(serverUrl === undefined)('INB-1d the inbox read and count', () =
   let brunoToken = '';
 
   const read = async (name: string, token: string, key = BUSINESS_KEY): Promise<Answer> =>
-    await post(w.api, `/api/b/${key}${route(name)}`, {}, authorised(token));
+    await w.send(name, token, {}, key);
   const inbox = async (token: string): Promise<readonly Entry[]> =>
     ok(await read('inbox.read', token)).body['inbox'] as Entry[];
   const owed = async (token: string): Promise<number> =>
     Number(ok(await read('inbox.count', token)).body['owed']);
   const seen = async (itemId: string, token: string, key = BUSINESS_KEY): Promise<Answer> =>
-    await post(
-      w.api,
-      `/api/b/${key}${route('inbox.seen')}`,
-      { operationId: randomUUID(), itemId },
-      authorised(token),
-    );
+    await w.send('inbox.seen', token, { operationId: randomUUID(), itemId }, key);
   const entry = async (token: string, id: string): Promise<Entry | undefined> =>
     (await inbox(token)).find((e) => e['id'] === id);
 
