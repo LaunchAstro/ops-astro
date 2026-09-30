@@ -13,9 +13,11 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { agentPath, bearer, call, serverUrl } from '../acceptance/world.ts';
+import { OPT_IN_REGISTER, OWNER_LINES } from '../acceptance/role-case-gate-bodies.ts';
 import {
   admin,
   CHANGE,
+  closingLine,
   directWrites,
   evidence,
   malformedRecords,
@@ -29,6 +31,7 @@ import {
   send,
   type Attempt,
   type GateWorld,
+  type Try,
 } from './s0-5-gate-world.ts';
 
 if (serverUrl === undefined) {
@@ -98,6 +101,62 @@ async function noOperatorRefused(w: GateWorld): Promise<string[]> {
   }
 }
 
+const line = (item: string): string => OWNER_LINES[item]!;
+
+/** A lodged form or a receipt keeps it shut; only the register entry, with the owner's line. */
+const OPT_IN_TRIES: readonly Try[] = [
+  ['no evidence', { statement: line('privacy-opt-in') }, 'evidence'],
+  [
+    'a receipt',
+    { evidence: 'https://mail.example/oaic/receipt-1', statement: line('privacy-opt-in') },
+    'evidence',
+  ],
+  [
+    'an OAIC page past the register',
+    { evidence: `${OPT_IN_REGISTER}/lodge`, statement: line('privacy-opt-in') },
+    'evidence',
+  ],
+  [
+    'a look-alike host',
+    {
+      evidence: OPT_IN_REGISTER.replace('oaic.gov.au', 'oaic.gov.au.example'),
+      statement: line('privacy-opt-in'),
+    },
+    'evidence',
+  ],
+  ["the register entry, no owner's line", { evidence: OPT_IN_REGISTER }, 'statement'],
+  ["an empty owner's line", { evidence: OPT_IN_REGISTER, statement: '' }, 'statement'],
+];
+
+const CLOUDFLARE_TRIES: readonly Try[] = [
+  ['no evidence', {}, 'evidence'],
+  [
+    'the new in custody, the old not shown refused',
+    { statement: line('cloudflare-rolled') },
+    'evidence',
+  ],
+  ['the old refused, no custody line', { evidence: evidence('cf') }, 'statement'],
+  [
+    'a custody note of two lines',
+    { evidence: evidence('cf'), statement: 'In custody.\nDone.' },
+    'statement',
+  ],
+];
+
+const TRAINING_TRIES: readonly Try[] = [
+  ['the dated line, no evidence link', { statement: line('training-line') }, 'evidence'],
+  [
+    'an undated line',
+    { evidence: evidence('t'), statement: 'Training is off on both.' },
+    'statement',
+  ],
+  [
+    'an impossible date',
+    { evidence: evidence('t'), statement: 'Off since 2026-02-30.' },
+    'statement',
+  ],
+];
+
 describe.skipIf(serverUrl === undefined)('S0-5 gate commands', () => {
   beforeAll(async () => {
     gate = await openGateWorld();
@@ -115,9 +174,56 @@ describe.skipIf(serverUrl === undefined)('S0-5 gate commands', () => {
     await recordedOnce(gate, 'phone-alerts');
   });
 
+  it("S0-5 privacy opt-in: no evidence, a receipt only and a register entry each tried; only the register entry, with the owner's line that the published policy matches it, closes it", async () => {
+    const good = {
+      evidence: `${OPT_IN_REGISTER}?keys=Agency+Astro`,
+      statement: line('privacy-opt-in'),
+    };
+    expect(await closingLine(gate, 'privacy-opt-in', OPT_IN_TRIES, good)).toStrictEqual([]);
+  });
+
+  it('S0-5 Cloudflare credential rolled: with no evidence, with the new credential in custody but the old not shown refused, and with the old refused but no custody line, the gate stays shut; with both it may close', async () => {
+    const good = { evidence: evidence('cf'), statement: line('cloudflare-rolled') };
+    expect(await closingLine(gate, 'cloudflare-rolled', CLOUDFLARE_TRIES, good)).toStrictEqual([]);
+  });
+
+  it('S0-5 training line evidence: the gate refuses to close while the dated model-training line has no evidence link, or no real date', async () => {
+    const good = { evidence: evidence('t'), statement: line('training-line') };
+    expect(await closingLine(gate, 'training-line', TRAINING_TRIES, good)).toStrictEqual([]);
+  });
+
+  it('S0-5 closing lines, held by the table too: a receipt for the opt-in, or any line with no owner line, is refused by the database itself', async () => {
+    const insert = async (item: string, link: string, statement: string | null) =>
+      await admin(
+        gate,
+        'insert into ops.gate_items (item, evidence, statement) values ($1, $2, $3)',
+        [`${item}`, link, statement],
+      ).then(
+        () => 'stored',
+        (error: unknown) =>
+          /violates check constraint/u.test(String(error)) ? 'refused' : String(error),
+      );
+    await admin(
+      gate,
+      `delete from ops.gate_items where item in ('privacy-opt-in', 'training-line')`,
+    );
+    expect([
+      await insert('privacy-opt-in', 'https://mail.example/receipt', line('privacy-opt-in')),
+      await insert('training-line', evidence('t'), null),
+      await insert('training-line', evidence('t'), 'Training is off.'),
+      await insert('phone-alerts', evidence('p'), 'a line on one of the eight'),
+    ]).toStrictEqual(['refused', 'refused', 'refused', 'refused']);
+    await admin(
+      gate,
+      `insert into ops.gate_items (item, evidence, statement) values
+      ('privacy-opt-in', $1, $2), ('training-line', $3, $4)`,
+      [OPT_IN_REGISTER, line('privacy-opt-in'), evidence('t'), line('training-line')],
+    );
+  });
+
   it('S0-5 installation mode changed: made-up to real by the operator only while every item is done; never back; the app role writes nothing else directly', async () => {
     expect(await modeRefusedWhileOpen(gate)).toStrictEqual([]);
-    expect(await modeToReal(gate, 'phone-alerts')).toStrictEqual([]);
+    expect(await modeToReal(gate)).toStrictEqual([]);
     const answered = await directWrites(gate);
     expect(answered).toStrictEqual(answered.map(([sql]) => [sql, 'denied']));
   });

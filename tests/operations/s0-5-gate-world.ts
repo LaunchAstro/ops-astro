@@ -6,7 +6,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
-import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
+import { gateRecordBody } from '../acceptance/role-case-gate-bodies.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { bearer, call, personPath, type Answer } from '../acceptance/world.ts';
 import { grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
@@ -126,6 +126,7 @@ const BAD_LINKS: readonly (readonly [string, object])[] = [
   ['too long', { evidence: `https://e.example/${'a'.repeat(2000)}` }],
   ['upper-case scheme', { evidence: 'HTTPS://evidence.example/a' }],
   ['bare scheme', { evidence: 'https://' }],
+  ["an owner's line on one of the eight", { evidence: 'https://e.example/a', statement: 'a line' }],
 ];
 
 /** A malformed item or evidence link: FIELD_VALUE_INVALID, nothing written. */
@@ -204,11 +205,11 @@ export async function modeRefusedWhileOpen(w: GateWorld): Promise<string[]> {
   ];
 }
 
-/** Every other item recorded, the mode moves to real with its time stamped, and never back. */
-export async function modeToReal(w: GateWorld, recorded: string): Promise<string[]> {
-  for (const item of GATE_ITEMS.filter((one) => one !== recorded)) {
+/** Every open item recorded, the mode moves to real with its time stamped, and never back. */
+export async function modeToReal(w: GateWorld): Promise<string[]> {
+  for (const item of (await readiness(w)).open_items) {
     // oxlint-disable-next-line no-await-in-loop
-    const answer = await send(w, RECORD, { item, evidence: evidence(item) });
+    const answer = await send(w, RECORD, gateRecordBody(item));
     expect(outcome(answer), item).toStrictEqual({ status: 200, code: 'ok' });
   }
   const changedAt = async () =>
@@ -225,6 +226,38 @@ export async function modeToReal(w: GateWorld, recorded: string): Promise<string
     status: 409,
     code: 'INSTALLATION_MODE_ONE_WAY',
   });
+}
+
+export type Try = readonly [label: string, body: object, field: string];
+
+/**
+ * A closing line (S0-5): each try refused on its named field, writing nothing
+ * and leaving the line open; then the right record closes it.
+ */
+export async function closingLine(
+  w: GateWorld,
+  item: string,
+  tries: readonly Try[],
+  good: object,
+): Promise<string[]> {
+  const wrong: string[] = [];
+  for (const [label, body, field] of tries) {
+    // oxlint-disable-next-line no-await-in-loop
+    const before = await fingerprint(w);
+    // oxlint-disable-next-line no-await-in-loop
+    const answer = await send(w, RECORD, { item, ...body });
+    // oxlint-disable-next-line no-await-in-loop
+    const after = await fingerprint(w);
+    const got = `${String(answer.status)} ${String(answer.code)} ${JSON.stringify(names(answer))}`;
+    if (got !== `422 FIELD_VALUE_INVALID ["${field}"]`) wrong.push(`${label}: ${got}`);
+    if (before !== after) wrong.push(`${label}: wrote`);
+    // oxlint-disable-next-line no-await-in-loop
+    if (!(await readiness(w)).open_items.includes(item)) wrong.push(`${label}: closed it`);
+  }
+  const answer = await send(w, RECORD, { item, ...good });
+  if (answer.code !== 'ok') wrong.push(`the record: ${String(answer.code)}`);
+  if ((await readiness(w)).open_items.includes(item)) wrong.push('the record left it open');
+  return wrong;
 }
 
 /** Only through the command: every other direct write by the app's role, and how it was answered. */

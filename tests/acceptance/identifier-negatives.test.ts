@@ -22,6 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { READS } from '../../packages/core-wire/src/surface.ts';
 import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
+import { gateRecordBody } from './role-case-gate-bodies.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
@@ -61,10 +62,7 @@ const pair = (
 async function gateReady(w: IdentWorld, caller: Caller): Promise<void> {
   for (const item of GATE_ITEMS) {
     // eslint-disable-next-line no-await-in-loop
-    const answer = await w.person(caller, 'operations.record_gate_item', {
-      item,
-      evidence: `https://evidence.example/${item}`,
-    });
+    const answer = await w.person(caller, 'operations.record_gate_item', gateRecordBody(item));
     expect(['ok', 'GATE_ITEM_ALREADY_RECORDED'], item).toContain(answer.code);
   }
 }
