@@ -45,6 +45,7 @@ import { shareRecord } from '../../packages/core-records/src/authority/shares.ts
 import { bearer, call, enrolExternal, personPath, serverUrl } from './world.ts';
 import { SUCCESS, except, failures, observe, refusal, writeMatrix } from './role-case-ledger.ts';
 import { createHarness, targetKeyOf, type Harness } from './role-case-harness.ts';
+import type { FixtureClient } from './role-case-clients.ts';
 import { alternativeFor } from './cd-alternatives.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 
@@ -170,9 +171,10 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       'bravo-client-1',
       'bravo-client-2',
     ]);
+    const readAs = async (reader: FixtureClient, recordId: string, businessKey?: string) =>
+      await harness.asPerson('task.read', { recordId }, businessKey ?? reader.businessKey, reader);
     for (const reader of clients) {
-      const read = async (recordId: string, businessKey = reader.businessKey) =>
-        await harness.asPerson('task.read', { recordId }, businessKey, reader);
+      const read = readAs.bind(undefined, reader);
       // eslint-disable-next-line no-await-in-loop
       const own = await read(reader.task);
       expect(own.status, `${reader.name} reads its own task`).toBe(200);

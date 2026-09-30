@@ -107,9 +107,11 @@ export function control(name: string, ran: Ran): CaseLine {
  * stands in for no other.
  */
 function missingLines(lines: readonly CaseLine[], parts: readonly Part[]): string[] {
-  const named = [...CONTROL_LINES, ...parts.map(controlOf), ...MUTATION_LINES].filter(
-    (name) => !lines.some((line) => line.case === name),
-  );
+  const named = [
+    ...CONTROL_LINES,
+    ...parts.map((part) => controlOf(part)),
+    ...MUTATION_LINES,
+  ].filter((name) => !lines.some((line) => line.case === name));
   const held = parts
     .filter((part) => !lines.some((line) => partOf(line.case)?.id === part.id))
     .map((part) => lineOf(part));

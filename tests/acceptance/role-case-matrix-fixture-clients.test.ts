@@ -5,7 +5,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { createHarness } from './role-case-harness.ts';
 import type { Harness } from './role-case-harness-shape.ts';
 
-describe.skipIf(databaseUrlFromEnvironment() === undefined)('T4e N2 fixture proof', () => {
+describe.skipIf(databaseUrlFromEnvironment() === undefined)('the T4-N2 matrix world', () => {
   let harness: Harness;
 
   beforeAll(async () => {
@@ -16,7 +16,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('T4e N2 fixture proo
     await harness?.close();
   });
 
-  it('Sol proof, criterion 3: the N2 matrix has T4a’s two clients and one record grant each in both businesses', async () => {
+  it('the N2 matrix has T4a’s two clients and one record grant each in both businesses', async () => {
     const rows = await harness.world.db.admin.execute<{
       business: string;
       clients: string;

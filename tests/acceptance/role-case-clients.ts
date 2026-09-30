@@ -8,6 +8,7 @@
 
 import { enrol, grantTo } from '../commands/fixture.ts';
 import { ROLE_GRANTS, client, create, type Tenant } from '../fixture/cast.ts';
+import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { tokenFor } from './cast.ts';
 import type { World } from './world.ts';
 
@@ -39,4 +40,14 @@ export async function seedFixtureClients(world: World): Promise<readonly Fixture
     }
   }
   return clients;
+}
+
+/** Rows as a plain array: postgres.js's `Result` never strictly equals an array of rows. */
+export function plainRows(admin: AdminConnection): AdminConnection {
+  return {
+    ...admin,
+    execute: async <Row>(text: string, parameters?: readonly unknown[]) => [
+      ...(await admin.execute<Row>(text, parameters)),
+    ],
+  };
 }

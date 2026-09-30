@@ -25,8 +25,8 @@ const complete = (): CaseLine[] => [
   ]),
 ];
 
-describe('T4e range re-review proofs', () => {
-  it('Sol proof, criterion 2: three copies of one T4-N3 result do not replace its other mutations', () => {
+describe('every_invariant_bites: no copy or missing control passes, and a green crossing fails by name', () => {
+  it('three copies of one T4-N3 result do not replace its other mutations', () => {
     const lines = complete();
     const first = lines.find((line) => line.case.startsWith('T4-N3'));
     if (first === undefined) throw new Error('missing T4-N3 setup');
@@ -34,12 +34,12 @@ describe('T4e range re-review proofs', () => {
     expect(everyInvariantBites(duplicated).status).toBe('fail');
   });
 
-  it('Sol proof, criterion 2: missing unmutated controls fail the whole verdict', () => {
+  it('missing unmutated controls fail the whole verdict', () => {
     const withoutControls = complete().filter((line) => !line.case.startsWith('control:'));
     expect(everyInvariantBites(withoutControls).status).toBe('fail');
   });
 
-  it('Sol proof, criterion 3: a green client and person crossing fails the T3b revert by name', () => {
+  it('a green client and person crossing fails the T3b revert by name', () => {
     const verdict = classify('T4-N4 T3b reverted: unknown_stays_unknown', {
       applied: true,
       executed: 2,
