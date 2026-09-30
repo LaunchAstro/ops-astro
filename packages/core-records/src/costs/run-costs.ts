@@ -7,7 +7,9 @@
 // with any such call is unpriced rather than cheaper than it was. A call's
 // currency is its reservation's envelope's. A run's client is its task's
 // party link; its skill is the definition its `definition_version` pin names,
-// when that definition is a skill.
+// when that definition is a skill. Its units and model ids are what the
+// priced settle recorded on each settled call (0055): summed, and the calls
+// that recorded none counted, so a gap is never a zero.
 //
 // `listRunCosts` filters by the scopes the caller holds `finance:read` at,
 // inside the statement, in the serving transaction: a business-wide holder
@@ -27,6 +29,14 @@ export interface RunCostRow {
   readonly settledMinor: string;
   /** Started calls with no settled cost: in flight or liability unknown. */
   readonly openCalls: number;
+  /** The settled calls' input and output units, as text: bigint sums. */
+  readonly inputUnits: string;
+  readonly outputUnits: string;
+  /** Settled calls that recorded no units. */
+  readonly unmeasuredCalls: number;
+  /** The exact model ids the settled calls named, and how many named none. */
+  readonly modelIds: readonly string[];
+  readonly unnamedCalls: number;
   readonly startedAt: Date;
   readonly finished: boolean;
   readonly clientId: string | null;
@@ -42,6 +52,11 @@ interface Row {
   readonly currency: string;
   readonly settled_minor: string;
   readonly open_calls: number;
+  readonly input_units: string;
+  readonly output_units: string;
+  readonly unmeasured_calls: number;
+  readonly model_ids: readonly string[];
+  readonly unnamed_calls: number;
   readonly started_at: Date;
   readonly finished: boolean;
   readonly client_id: string | null;
@@ -55,6 +70,14 @@ const RUN_COSTS = `with spent as (
      select c.business_id, c.run_id, d.agent_actor_id, e.currency,
             coalesce(sum(c.actual_minor), 0)::text as settled_minor,
             (count(*) filter (where c.state <> 'settled'))::int as open_calls,
+            coalesce(sum(c.input_units), 0)::text as input_units,
+            coalesce(sum(c.output_units), 0)::text as output_units,
+            (count(*) filter (where c.state = 'settled' and c.input_units is null))::int
+              as unmeasured_calls,
+            coalesce(array_agg(distinct c.model_id) filter (where c.model_id is not null),
+                     '{}') as model_ids,
+            (count(*) filter (where c.state = 'settled' and c.model_id is null))::int
+              as unnamed_calls,
             min(c.started_at) as started_at
        from public.model_calls c
        join public.reservations r
@@ -67,6 +90,7 @@ const RUN_COSTS = `with spent as (
       group by c.business_id, c.run_id, d.agent_actor_id, e.currency
    )
    select s.run_id, p.task_id, s.agent_actor_id, s.currency, s.settled_minor, s.open_calls,
+          s.input_units, s.output_units, s.unmeasured_calls, s.model_ids, s.unnamed_calls,
           s.started_at,
           exists (select 1 from public.handback_reports h
                    where h.business_id = p.business_id and h.run_id = p.id
@@ -100,6 +124,11 @@ const rowOf = (row: Row): RunCostRow => ({
   currency: row.currency,
   settledMinor: row.settled_minor,
   openCalls: row.open_calls,
+  inputUnits: row.input_units,
+  outputUnits: row.output_units,
+  unmeasuredCalls: row.unmeasured_calls,
+  modelIds: row.model_ids,
+  unnamedCalls: row.unnamed_calls,
   startedAt: row.started_at,
   finished: row.finished,
   clientId: row.client_id,

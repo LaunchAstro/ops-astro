@@ -25,7 +25,7 @@
 // the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
-import type { CostPeriodOperands } from './costs.ts';
+import type { CostPeriodOperands } from './agent-costs.ts';
 import type {
   CapabilitiesResult,
   PersonListResult,

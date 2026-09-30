@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // What agent runs cost (U39), in money minor units per run (ORCH37):
-// `finance.skill_costs`, skill costing on Connections & signal (MP-14-9), and
-// `finance.agent_costs`, what our agents cost us for a period (MP-14-6).
+// `finance.skill_costs`, skill costing on Connections & signal (MP-14-9);
+// `finance.agent_costs`, what our agents cost us for a period (MP-14-6), is
+// in `agent-costs.ts` over the same helpers.
 //
 // Both are asked by the scopes the caller holds `finance:read` at, and both
 // are shapes of one statement (`listRunCosts`), filtered inside it: a
@@ -15,37 +16,40 @@
 // A skill's figure follows the mockup's attribution rule: its mean only from
 // runs that used it alone and only from more than one priced run, with the
 // spread beside it; one priced run is that run, never an average. A run names
-// at most one definition (its pin's one slot), so no run is shared yet.
+// at most one definition (its pin's one slot), so no run is shared yet. In and
+// out units take the same rule over runs whose every call recorded them; model
+// ids are every exact id called, with the calls that named none counted.
 
 import {
   grantedScopes,
   listRunCosts,
   subjectsOf,
   type RunCostRow,
+  type Scope,
   type Session,
   type TenantQuery,
 } from '../../../core-records/src/index.ts';
 import type {
-  AgentCostRowView,
-  AgentCostsResult,
   AttributionSplitView,
-  CostAttachment,
+  ModelsView,
   SkillCostsResult,
   SkillCostView,
   SkillFigure,
+  SkillUsageView,
   Unavailable,
 } from '../../../core-wire/src/index.ts';
-import { invalid } from '../commands/operands.ts';
 import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
 
-const unavailable = (reason: string): Unavailable => ({ available: false, reason });
-const USAGE = { measuredRuns: 0, meanIn: null, meanOut: null };
-const MODELS = { ids: [], unnamedCalls: 0 };
-const DOCUMENT = unavailable('Process documents open at their Docs address once Docs exists.');
-const UNPRICED = 'A call’s cost is not known yet: it is still running or its liability is unknown.';
+const DOCUMENT: Unavailable = {
+  available: false,
+  reason: 'Process documents open at their Docs address once Docs exists.',
+};
 
 /** The scopes the caller reads costs at, or the refusal for holding them nowhere. */
-async function financeScopes(tx: TenantQuery, session: Session) {
+export async function financeScopes(
+  tx: TenantQuery,
+  session: Session,
+): Promise<readonly Scope[] | CommandRefusal> {
   const scopes = await grantedScopes(tx, subjectsOf(session), 'finance', 'read');
   return scopes.length > 0
     ? scopes
@@ -65,36 +69,50 @@ interface Run {
   readonly finished: boolean;
   /** Its spend, or null when a call's cost is not known yet. */
   readonly cost: bigint | null;
+  /** Its input and output units, or null unless priced and every call recorded them. */
+  readonly units: { readonly input: bigint; readonly output: bigint } | null;
+  readonly models: ModelsView;
 }
 
-function runsOf(rows: readonly RunCostRow[]): readonly Run[] {
-  const runs = new Map<string, Run>();
-  for (const row of rows) {
-    const key = `${row.runId}:${row.currency}`;
-    const known = runs.get(key);
-    const cost = row.openCalls > 0 ? null : BigInt(row.settledMinor);
-    runs.set(key, {
-      runId: row.runId,
-      taskId: row.taskId,
-      currency: row.currency,
-      skill: row.skillId === null ? null : { id: row.skillId, name: String(row.skillName) },
-      finished: row.finished,
-      cost:
-        known === undefined
-          ? cost
-          : known.cost === null || cost === null
-            ? null
-            : known.cost + cost,
-    });
-  }
-  return [...runs.values()];
-}
+const modelsOf = (all: readonly ModelsView[]): ModelsView => ({
+  ids: [...new Set(all.flatMap((one) => one.ids))].toSorted(),
+  unnamedCalls: all.reduce((count, one) => count + one.unnamedCalls, 0),
+});
 
-const sum = (amounts: readonly bigint[]): bigint => amounts.reduce((all, one) => all + one, 0n);
+export const rowModels = (row: RunCostRow): ModelsView => ({
+  ids: row.modelIds.toSorted(),
+  unnamedCalls: row.unnamedCalls,
+});
+
+export const sum = (amounts: readonly bigint[]): bigint =>
+  amounts.reduce((all, one) => all + one, 0n);
 
 /** The mean of whole minor units, rounded half up. */
 const mean = (amounts: readonly bigint[]): string =>
   ((sum(amounts) * 2n + BigInt(amounts.length)) / (2n * BigInt(amounts.length))).toString();
+
+/** One run in one currency from its agents' rows: known only when every row is. */
+function runOf(rows: readonly RunCostRow[]): Run {
+  const [row] = rows as readonly [RunCostRow, ...RunCostRow[]];
+  const total = (pick: (one: RunCostRow) => string) => sum(rows.map((one) => BigInt(pick(one))));
+  const priced = rows.every((one) => one.openCalls === 0);
+  const measured = priced && rows.every((one) => one.unmeasuredCalls === 0);
+  return {
+    runId: row.runId,
+    taskId: row.taskId,
+    currency: row.currency,
+    skill: row.skillId === null ? null : { id: row.skillId, name: String(row.skillName) },
+    finished: row.finished,
+    cost: priced ? total((one) => one.settledMinor) : null,
+    units: measured
+      ? { input: total((one) => one.inputUnits), output: total((one) => one.outputUnits) }
+      : null,
+    models: modelsOf(rows.map((one) => rowModels(one))),
+  };
+}
+
+const runsOf = (rows: readonly RunCostRow[]): readonly Run[] =>
+  groupBy(rows, (row) => `${row.runId}:${row.currency}`).map((group) => runOf(group));
 
 const priced = (runs: readonly Run[]): readonly bigint[] =>
   runs.flatMap((run) => (run.cost === null ? [] : [run.cost]));
@@ -114,6 +132,16 @@ function figureOf(runs: readonly Run[]): SkillFigure {
   };
 }
 
+function usageOf(runs: readonly Run[]): SkillUsageView {
+  const measured = runs.flatMap((run) => (run.units === null ? [] : [run.units]));
+  const many = measured.length > 1;
+  return {
+    measuredRuns: measured.length,
+    meanIn: many ? mean(measured.map((one) => one.input)) : null,
+    meanOut: many ? mean(measured.map((one) => one.output)) : null,
+  };
+}
+
 function skillRow(runs: readonly Run[]): SkillCostView {
   const [first] = runs;
   if (first?.skill === null || first === undefined) throw new Error('a skill row needs a run');
@@ -128,8 +156,8 @@ function skillRow(runs: readonly Run[]): SkillCostView {
     tasks: new Set(runs.map((run) => run.taskId)).size,
     figure: figureOf(runs),
     soloTotal: String(sum(priced(runs))),
-    usage: USAGE,
-    models: MODELS,
+    usage: usageOf(runs),
+    models: modelsOf(runs.map((run) => run.models)),
     document: DOCUMENT,
   };
 }
@@ -154,7 +182,10 @@ function byObservation(a: SkillCostView, b: SkillCostView): number {
   );
 }
 
-function groupBy<T>(items: readonly T[], key: (item: T) => string): readonly (readonly T[])[] {
+export function groupBy<T>(
+  items: readonly T[],
+  key: (item: T) => string,
+): readonly (readonly T[])[] {
   const groups = new Map<string, T[]>();
   for (const item of items) groups.set(key(item), [...(groups.get(key(item)) ?? []), item]);
   return [...groups.values()];
@@ -195,88 +226,5 @@ export async function readSkillCosts(
         .map((group) => splitOf(group))
         .toSorted((a, b) => a.currency.localeCompare(b.currency)),
     },
-  };
-}
-
-/** The window a cost log reads: an ISO start before an ISO end. */
-export interface CostPeriodOperands {
-  readonly from: string;
-  readonly to: string;
-}
-
-/** An ISO date-time's instant, or NaN for anything else. */
-const instant = (value: unknown): number =>
-  typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/u.test(value) ? Date.parse(value) : Number.NaN;
-
-const PERIOD_FIX = 'Send from and to as ISO date-times, from before to.';
-
-export function parseCostPeriod(
-  body: Readonly<Record<string, unknown>>,
-):
-  | { readonly ok: true; readonly operands: CostPeriodOperands }
-  | { readonly ok: false; readonly refusal: CommandRefusal } {
-  const { from, to } = body;
-  if (Number.isNaN(instant(from))) return { ok: false, refusal: invalid('from', PERIOD_FIX) };
-  if (Number.isNaN(instant(to)) || instant(to) <= instant(from)) {
-    return { ok: false, refusal: invalid('to', PERIOD_FIX) };
-  }
-  return { ok: true, operands: { from: String(from), to: String(to) } };
-}
-
-function attachmentOf(row: RunCostRow): CostAttachment {
-  return row.clientId === null
-    ? { kind: 'agency' }
-    : { kind: 'client', id: row.clientId, name: row.clientName };
-}
-
-function logRow(row: RunCostRow): AgentCostRowView {
-  const unpriced = row.openCalls > 0;
-  return {
-    runId: row.runId,
-    taskId: row.taskId,
-    agentActorId: row.agentActorId,
-    attachment: attachmentOf(row),
-    currency: row.currency,
-    cost: unpriced ? null : row.settledMinor,
-    unpriced: unpriced ? UNPRICED : null,
-    startedAt: row.startedAt.toISOString(),
-    models: MODELS,
-  };
-}
-
-const attachmentKey = (row: AgentCostRowView): string =>
-  row.attachment.kind === 'client' ? row.attachment.id : 'agency';
-
-/** What one group of log rows adds up to, beside the key it was grouped by. */
-function totalOf<K extends object>(key: K, rows: readonly AgentCostRowView[]) {
-  const costs = rows.flatMap((row) => (row.cost === null ? [] : [BigInt(row.cost)]));
-  return {
-    ...key,
-    currency: String(rows[0]?.currency),
-    runs: new Set(rows.map((row) => row.runId)).size,
-    unpricedRuns: new Set(rows.filter((row) => row.cost === null).map((row) => row.runId)).size,
-    total: String(sum(costs)),
-  };
-}
-
-export async function readAgentCosts(
-  tx: TenantQuery,
-  session: Session,
-  period: CostPeriodOperands,
-): Promise<AgentCostsResult | CommandRefusal> {
-  const scopes = await financeScopes(tx, session);
-  if (!Array.isArray(scopes)) return scopes as CommandRefusal;
-  const window = { from: new Date(period.from), to: new Date(period.to) };
-  const runs = (await listRunCosts(tx, scopes, window)).map((row) => logRow(row));
-  return {
-    ok: true,
-    period: { from: window.from.toISOString(), to: window.to.toISOString() },
-    runs,
-    byAgent: groupBy(runs, (row) => `${row.agentActorId}:${row.currency}`).map((rows) =>
-      totalOf({ agentActorId: rows[0]?.agentActorId ?? null }, rows),
-    ),
-    byAttachment: groupBy(runs, (row) => `${attachmentKey(row)}:${row.currency}`).map((rows) =>
-      totalOf({ attachment: rows[0]?.attachment ?? ({ kind: 'agency' } as const) }, rows),
-    ),
   };
 }
