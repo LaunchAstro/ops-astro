@@ -21,8 +21,10 @@ import {
   rows,
 } from './schedules-harness.ts';
 import {
+  awaitDue,
   cursorOf,
   drain,
+  exportDue,
   exportFor,
   noDatabase,
   spanIds,
@@ -70,7 +72,7 @@ it('a_dead_exporter_corrupts_nothing: with the target dead a run settles, the ex
   const work = await liveWork(s, `aw13-dead-${randomUUID()}`, 1_000);
   const before = await cursorOf(s);
   const [dead, handed] = await Promise.all([
-    exportFor(s),
+    exportDue(s),
     asAgent(s, handbackBody(work.picked), String(work.picked['credential'])),
   ]);
   appliedDetail(handed, 'task.handback');
@@ -103,7 +105,7 @@ it.each([
     const cursor = await cursorOf(s);
     const committed = await capCommitted(s);
     t.target.mode = mode as TargetMode;
-    expect(await exportFor(s)).toMatchObject({ kind: 'gap', code });
+    expect(await exportDue(s)).toMatchObject({ kind: 'gap', code });
     expect(await cursorOf(s)).toBe(cursor);
     expect(await capCommitted(s)).toBe(committed);
     expect(await runState(work.picked['runId'])).toBe('claimed');
@@ -150,6 +152,7 @@ it('AW-13 two exporters at once: a slower export that read an older batch never 
   const s = t.alpha;
   await drain(s);
   await liveWork(s, `aw13-race-a-${randomUUID()}`, 1_000);
+  await awaitDue(s);
   // The slow export reads its batch, then waits at the target while another
   // export delivers the same batch and a newer one.
   let release!: () => void;

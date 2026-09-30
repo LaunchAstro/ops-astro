@@ -1598,7 +1598,7 @@ or delete.
 
 ## The diagnostic trace export
 
-AW-13, `0046_trace_export`. A run's durable events leave as timings, counts
+AW-13, `0046_trace_export` and `0047_trace_export_horizon`. A run's durable events leave as timings, counts
 and codes, never a sentence, to a trace target an operator reads.
 
 - `core-runtime/src/trace-span.ts`: the span is a typed allowlist
@@ -1622,7 +1622,12 @@ and codes, never a sentence, to a trace target an operator reads.
   `target_forbidden`) and the cursor stays. No run reads either table and no
   run waits on the exporter.
 - `trace_export_cursors`: one row per business, the last delivered event by
-  `(created_at, id)`. It moves forward only: two exports at once may read the
+  its writing transaction's id and its own, `(tx, id)` (`run_events.tx`,
+  `xid8`, 0047). The read takes only events below its snapshot's horizon
+  (`pg_snapshot_xmin`): every transaction below it has finished and any later
+  write has a higher id, so an event that commits late never lands behind
+  the cursor. A long transaction anywhere on the cluster holds the export
+  back until it ends; it never loses an event. The cursor moves forward only: two exports at once may read the
   same batch, and the slower one never moves it back (the upsert's row lock
   orders them, the comparison under it keeps the later). `trace_export_gaps`: append only (a trigger refuses
   update and delete). Both under tenancy; the application group may select and

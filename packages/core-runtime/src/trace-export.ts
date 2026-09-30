@@ -70,6 +70,12 @@ export interface TraceDatabase {
  * run's copy, deliver, then advance the cursor or record the gap. The read
  * and the advance are separate transactions and delivery is between them, so
  * no transaction is open while the target is asked.
+ *
+ * The read takes only events whose writing transaction is below its
+ * snapshot's horizon, in transaction order (0047): every transaction below
+ * the horizon has finished and any later write has a higher id, so an event
+ * that commits late never lands behind the cursor. A long transaction
+ * anywhere holds the export back until it ends; it never loses an event.
  */
 export async function exportOnce(
   database: TraceDatabase,
@@ -112,8 +118,9 @@ async function pending(tx: TenantQuery): Promise<readonly Row[]> {
        from public.run_events ev
        left join public.trace_export_cursors c on c.business_id = ev.business_id
       where ev.business_id = $1
-        and (c.after_at is null or (ev.created_at, ev.id) > (c.after_at, c.after_id))
-      order by ev.created_at, ev.id
+        and ev.tx < pg_snapshot_xmin(pg_current_snapshot())
+        and (c.after_tx is null or (ev.tx, ev.id) > (c.after_tx, c.after_id))
+      order by ev.tx, ev.id
       limit $2`,
     [tx.businessId, TRACE_BATCH],
   );
@@ -179,21 +186,21 @@ async function registerTraceCopy(tx: TenantQuery, runId: string): Promise<void> 
  */
 async function advance(tx: TenantQuery, last: Row): Promise<void> {
   await tx.query(
-    `insert into public.trace_export_cursors (business_id, after_at, after_id)
-     select $1, created_at, id from public.run_events where business_id = $1 and id = $2
+    `insert into public.trace_export_cursors (business_id, after_tx, after_id)
+     select $1, tx, id from public.run_events where business_id = $1 and id = $2
      on conflict (business_id) do update
-       set after_at = excluded.after_at, after_id = excluded.after_id, updated_at = now()
-       where trace_export_cursors.after_at is null
-          or (trace_export_cursors.after_at, trace_export_cursors.after_id)
-             < (excluded.after_at, excluded.after_id)`,
+       set after_tx = excluded.after_tx, after_id = excluded.after_id, updated_at = now()
+       where trace_export_cursors.after_tx is null
+          or (trace_export_cursors.after_tx, trace_export_cursors.after_id)
+             < (excluded.after_tx, excluded.after_id)`,
     [tx.businessId, last.id],
   );
 }
 
 async function recordGap(tx: TenantQuery, code: GapCode, events: number): Promise<void> {
   await tx.query(
-    `insert into public.trace_export_gaps (business_id, id, code, from_at, from_id, events)
-     select $1, $2, $3, c.after_at, c.after_id, $4
+    `insert into public.trace_export_gaps (business_id, id, code, from_tx, from_id, events)
+     select $1, $2, $3, c.after_tx, c.after_id, $4
        from (select 1) one
        left join public.trace_export_cursors c on c.business_id = $1`,
     [tx.businessId, randomUUID(), code, events],

@@ -178,7 +178,8 @@ delegation migrations, and [RUNTIME.md](RUNTIME.md) covers the proposal, gate,
 decision, budget, lease and attempt migrations, and the model-call ledger and
 copy register (`0042_model_calls`), and the pinned instruction files
 (`0043_bootstrap_pins`), the budget wait (`0044_budget_wait`), its answers
-(`0045_budget_answers`) and the diagnostic trace export (`0046_trace_export`).
+(`0045_budget_answers`) and the diagnostic trace export (`0046_trace_export`, and `0047_trace_export_horizon`,
+which stamps each run event with its writing transaction's id).
 Read `ls migrations/` for the current set.
 
 There is no `tasks` table. A task is a record of the built-in `task` record

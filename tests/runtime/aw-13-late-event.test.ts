@@ -94,3 +94,33 @@ it('AW-13 late commit: an event committed after a newer one was exported still l
     await database.close();
   }
 });
+
+it('AW-13 late commit: a supplied transaction stamp is replaced by the writer’s own', async () => {
+  const s = t.alpha;
+  const [event] = await rows<EventRow & { id: string }>(
+    s,
+    `select id, run_id as "runId", task_id as "taskId", position::text as position,
+            lease_id as "leaseId", attempt_id as "attemptId", actor_id as "actorId"
+       from public.run_events where business_id = $1 order by position desc limit 1`,
+    [s.business],
+  );
+  if (event === undefined) throw new Error('no event to follow');
+  const forgedId = randomUUID();
+  const stamped = await t.alpha.db.app.withBusiness(s.business, async (tx) => {
+    await tx.query(
+      `insert into public.run_events
+         (business_id, id, run_id, task_id, position, kind, lease_id, attempt_id, actor_id, detail, tx)
+       select $1, $2, run_id, task_id, (select max(position) + 1 from public.run_events
+                                          where business_id = $1 and task_id = $4),
+              'claimed', lease_id, attempt_id, actor_id, '{}'::jsonb, '1'::xid8
+         from public.run_events where business_id = $1 and id = $3`,
+      [s.business, forgedId, event.id, event.taskId],
+    );
+    return await tx.query<{ own: boolean }>(
+      `select tx = pg_current_xact_id() as own from public.run_events
+        where business_id = $1 and id = $2`,
+      [s.business, forgedId],
+    );
+  });
+  expect(stamped[0]?.own).toBe(true);
+});

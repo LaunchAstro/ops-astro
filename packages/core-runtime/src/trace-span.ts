@@ -96,10 +96,10 @@ export function derivedId(key: Buffer, parts: readonly string[], hex: 32 | 16): 
   return createHmac('sha256', key).update(parts.join('\n')).digest('hex').slice(0, hex);
 }
 
-/** OTLP/HTTP JSON: one resource, one scope, a span per event, attributes from the allowlist only. */
 /** Milliseconds as OTLP's nanoseconds, as a string. */
 const nanos = (ms: number): string => `${String(ms)}000000`;
 
+/** OTLP/HTTP JSON: one resource, one scope, a span per event, attributes from the allowlist only. */
 export function otlp(spans: readonly TraceSpan[]): string {
   return JSON.stringify({
     resourceSpans: [

@@ -171,21 +171,69 @@ export async function exportFor(s: Schedules): Promise<ExportOutcome> {
   return await exportOnce(t.alpha.db.app, s.business, TRACE_KEY, t.target.deliver);
 }
 
-/** Export until the business is caught up, so each case starts from a clean cursor. */
+/**
+ * One export once there is something to send: the events a case just wrote
+ * wait below the horizon until every older transaction on the cluster ends.
+ */
+export async function exportDue(s: Schedules): Promise<ExportOutcome> {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    // eslint-disable-next-line no-await-in-loop -- until the events are due
+    const outcome = await exportFor(s);
+    if (outcome.kind !== 'idle') return outcome;
+    // eslint-disable-next-line no-await-in-loop -- waiting out the horizon
+    await sleep(50);
+  }
+  throw new Error('no event became due');
+}
+
+/** Wait until an event ahead of the cursor is below the horizon; once due it stays due. */
+export async function awaitDue(s: Schedules): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    // eslint-disable-next-line no-await-in-loop -- until the events are due
+    if ((await ahead(s, 'and ev.tx < pg_snapshot_xmin(pg_current_snapshot())')) > 0) return;
+    // eslint-disable-next-line no-await-in-loop -- waiting out the horizon
+    await sleep(50);
+  }
+  throw new Error('no event became due');
+}
+
+/**
+ * Export until every event of the business is behind the cursor, so each
+ * case starts from a clean one. An idle export with events still ahead is
+ * the horizon held back by a transaction still open elsewhere on the
+ * cluster: wait for it rather than call the business caught up.
+ */
 export async function drain(s: Schedules): Promise<void> {
   t.target.mode = 'ok';
-  for (let n = 0; n < 20; n += 1) {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
     // eslint-disable-next-line no-await-in-loop -- one batch after another
-    if ((await exportFor(s)).kind === 'idle') return;
+    if ((await exportFor(s)).kind === 'idle' && (await ahead(s)) === 0) return;
+    // eslint-disable-next-line no-await-in-loop -- waiting out the horizon
+    await sleep(50);
   }
   throw new Error('the export did not catch up');
+}
+
+async function ahead(s: Schedules, due = ''): Promise<number> {
+  const found = await rows<{ n: string }>(
+    t.alpha,
+    `select count(*)::text as n from public.run_events ev
+       left join public.trace_export_cursors c on c.business_id = ev.business_id
+      where ev.business_id = $1
+        and (c.after_tx is null or (ev.tx, ev.id) > (c.after_tx, c.after_id)) ${due}`,
+    [s.business],
+  );
+  return Number(found[0]?.n);
 }
 
 export async function cursorOf(s: Schedules): Promise<string> {
   return JSON.stringify(
     await rows(
       t.alpha,
-      'select after_at, after_id from public.trace_export_cursors where business_id = $1',
+      'select after_tx::text, after_id from public.trace_export_cursors where business_id = $1',
       [s.business],
     ),
   );
