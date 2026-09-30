@@ -15,13 +15,20 @@
 // sets fresh passwords and writes one owner-only file per setting, named after
 // it and holding its whole address, for `vercel env add <NAME> production <
 // file` and the M5's settings files; the owner then deletes the folder. It
-// refuses a folder that exists, so no earlier address is overwritten. Exit 0
+// refuses a folder that exists, so no earlier address is overwritten, and a
+// login already there holding more than its one group. Each address requires TLS. Exit 0
 // when done, 1 when refused or stopped; nothing printed carries a value.
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
-import { loginAddresses, loginsRefusal, statementsFor } from './staging-logins.ts';
+import {
+  EXISTING_LOGINS,
+  loginAddresses,
+  loginsBeyondTheirGroup,
+  loginsRefusal,
+  statementsFor,
+} from './staging-logins.ts';
 
 const env = process.env;
 const args = process.argv.slice(2);
@@ -55,17 +62,33 @@ try {
     }
   }
   if (process.exitCode !== 1) {
+    const beyond = loginsBeyondTheirGroup(
+      await admin.execute(EXISTING_LOGINS, [addresses.map(({ login }) => login.role)]),
+    );
+    if (beyond !== undefined) {
+      console.error(`staging-logins: refused: ${beyond}. Nothing was done.`);
+      process.exitCode = 1;
+    }
+  }
+  if (process.exitCode !== 1) {
     // Made before the database is touched: an existing folder refuses the run.
     stage = 'making the folder';
     mkdirSync(env.OPS_LOGINS_DIR, { mode: 0o700 });
-    stage = 'making the logins';
-    await admin.transaction(async (execute) => {
-      // oxlint-disable-next-line no-await-in-loop -- in order: a grant needs its role
-      for (const statement of statementsFor(step, addresses)) await execute(statement);
-    });
+    // Written before the passwords change, so no password is set that nobody holds.
     stage = 'writing the addresses';
     for (const { login, address } of addresses) {
       writeFileSync(join(env.OPS_LOGINS_DIR, login.setting), address, { mode: 0o600, flag: 'wx' });
+    }
+    stage = 'making the logins';
+    try {
+      await admin.transaction(async (execute) => {
+        // oxlint-disable-next-line no-await-in-loop -- in order: a grant needs its role
+        for (const statement of statementsFor(step, addresses)) await execute(statement);
+      });
+    } catch (error) {
+      // Rolled back: the addresses name passwords the database never took.
+      rmSync(env.OPS_LOGINS_DIR, { recursive: true, force: true });
+      throw error;
     }
     const names = addresses.map(({ login }) => login.setting).join(', ');
     console.log(`staging-logins: ${step}: ${String(addresses.length)} login(s) set: ${names}`);

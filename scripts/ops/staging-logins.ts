@@ -128,6 +128,8 @@ export function loginAddresses(
     address.password = secret;
     address.port = String(login.port);
     address.pathname = admin.pathname;
+    // postgres.js and libpq turn TLS on only when the address asks for it.
+    address.search = '?sslmode=require';
     return { login, password: secret, address: address.toString() };
   });
 }
@@ -164,9 +166,12 @@ export function statementsFor(step: Step, addresses: readonly LoginAddress[]): s
       `do $$ begin if not exists (select 1 from pg_roles where rolname = '${login.role}') ` +
         `then create role ${login.role} login nosuperuser nocreatedb nocreaterole nobypassrls ` +
         `noreplication ${inherit}; end if; end $$`,
-      `alter role ${login.role} with login nosuperuser nocreatedb nocreaterole nobypassrls ` +
-        `noreplication ${inherit} password '${scramVerifier(password)}'`,
-      `grant ${login.group} to ${login.role}`,
+      // Hosted Supabase's admin is no superuser: an alter may not name SUPERUSER,
+      // REPLICATION or BYPASSRLS at all, so a login already there is judged
+      // before this runs (`loginsBeyondTheirGroup`) rather than stripped here.
+      `alter role ${login.role} with login ${inherit} password '${scramVerifier(password)}'`,
+      // Since Postgres 16 the membership's own option decides inheriting; set every run.
+      `grant ${login.group} to ${login.role} with inherit ${String(login.inherit)}`,
     );
   }
   if (step === 'before-reset') {
@@ -186,7 +191,28 @@ export interface ExistingLogin {
   readonly groups: readonly string[];
 }
 
-/** Not judged yet (review 56da29b, finding 2): the next commit decides it. */
-export function loginsBeyondTheirGroup(_existing: readonly ExistingLogin[]): string | undefined {
+/** What the step's logins already hold, read before anything changes. */
+export const EXISTING_LOGINS = `
+  select r.rolname,
+         (r.rolsuper or r.rolcreaterole or r.rolcreatedb or r.rolbypassrls or r.rolreplication)
+           as powers,
+         coalesce((select bool_or(m.admin_option) from pg_auth_members m
+                    where m.member = r.oid), false) as admin,
+         coalesce((select array_agg(g.rolname order by g.rolname) from pg_auth_members m
+                    join pg_roles g on g.oid = m.roleid where m.member = r.oid), '{}') as groups
+    from pg_roles r where r.rolname = any($1)`;
+
+/**
+ * A login already there must hold exactly its one group, no admin option and
+ * no power, or the run is refused before anything changes: the admin cannot
+ * take a power away on hosted Supabase, so it never hands such a login on.
+ */
+export function loginsBeyondTheirGroup(existing: readonly ExistingLogin[]): string | undefined {
+  for (const row of existing) {
+    const own = LOGINS.find((login) => login.role === row.rolname)?.group;
+    if (row.powers || row.admin || row.groups.length !== 1 || row.groups[0] !== own) {
+      return `${row.rolname} already holds more than its one group: drop it by hand, then run this again`;
+    }
+  }
   return undefined;
 }
