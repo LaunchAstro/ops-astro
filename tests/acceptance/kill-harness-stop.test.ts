@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // T3d2's kill harness, check 1 (the stopped process reads `T`), under load
-// (T4e, REV185B2 item 6). The two seconds bound how long the process may take
-// to stop, not how long one `ps` takes to start: on a loaded host a single
-// start of the setuid `ps` can take longer than the stop, and a stopped
-// process read late is still stopped. A process that never reads stopped
-// still fails, naming each reading.
+// (T4e, REV185C). "Stopped within 2 s" is a `T` read before one monotonic
+// two-second deadline that each `ps` reading spends too; a reading past it,
+// or with no state, leaves the stop unproven. A process that never reads
+// stopped fails, naming each reading.
 
 import { spawn } from 'node:child_process';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -41,10 +40,12 @@ describe('the kill harness waits for the stop, not for ps', () => {
     expect(processState(child.pid as number)).toMatch(/^T/u);
   });
 
-  it('a stop read after one slow ps start is still a stop', async () => {
-    const seen = await awaitStopped(1, 2_000, slowFirst(2_100, ['S', 'T']));
-    expect(seen.stopped, seen.probes.join(', ')).toBe(true);
-    expect(seen.probes).toHaveLength(2);
+  it('a stop first read after the deadline, or with no state, is unproven at once', async () => {
+    const late = await awaitStopped(1, 2_000, slowFirst(2_100, ['T']));
+    expect(late.probes.at(-1)).toBe('unproven: read after the 2000 ms deadline');
+    const blank = await awaitStopped(1, 2_000, () => '');
+    expect(blank.probes).toEqual([expect.stringMatching(/^- in /u), 'unproven: ps gave no state']);
+    expect([late.stopped, blank.stopped]).toEqual([false, false]);
   });
 
   it('a process that never reads stopped fails once the wait is spent, naming each reading', async () => {
@@ -53,6 +54,6 @@ describe('the kill harness waits for the stop, not for ps', () => {
     expect(seen.stopped).toBe(false);
     expect(Date.now() - started).toBeGreaterThanOrEqual(300);
     expect(seen.probes.length).toBeGreaterThan(1);
-    expect(seen.probes.every((one) => one.startsWith('S in '))).toBe(true);
+    expect(seen.probes.slice(0, -1).every((one) => one.startsWith('S in '))).toBe(true);
   });
 });

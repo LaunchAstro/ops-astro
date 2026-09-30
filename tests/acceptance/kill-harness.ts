@@ -49,10 +49,13 @@ const sleep = async (ms: number): Promise<void> => {
   });
 };
 
-/** `ps`'s state letter for `pid`, the same column on macOS and Linux. */
-export function processState(pid: number): string {
+/** `ps`'s state letter for `pid` (macOS and Linux), or `''` if `ps` fails or runs past `ms`. */
+export function processState(pid: number, ms?: number): string {
   try {
-    return execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).trim();
+    return execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], {
+      encoding: 'utf8',
+      ...(ms === undefined ? {} : { timeout: Math.max(1, Math.ceil(ms)), killSignal: 'SIGKILL' }),
+    }).trim();
   } catch {
     return '';
   }
@@ -90,29 +93,34 @@ export async function until(probe: () => Promise<boolean> | boolean, ms: number)
 }
 
 /**
- * Probes `pid` until it reads stopped (`T`), waiting up to `ms` between
- * readings. The bound is on the process, not on `ps`: each reading's own run
- * time is left out, since on a loaded host one start of the setuid `ps` can
- * take longer than the stop, and a stop read late is still a stop. Each
- * reading is kept, with how long its `ps` took, for the kill record.
+ * Probes `pid` until it reads stopped (`T`) before one monotonic deadline `ms`
+ * away, which the readings spend too: each `ps` gets only the time left. A
+ * reading that ends past the deadline, or gives no state, leaves the stop
+ * unproven at once, never passed. Each reading is kept for the kill record.
  */
 export async function awaitStopped(
   pid: number,
   ms: number,
-  probe: (pid: number) => string = processState,
+  probe: (pid: number, left: number) => string = processState,
 ): Promise<{ readonly stopped: boolean; readonly probes: readonly string[] }> {
   const probes: string[] = [];
-  let waited = 0;
+  const deadline = performance.now() + ms;
   for (;;) {
-    const at = Date.now();
-    const seen = probe(pid);
-    probes.push(`${seen || '-'} in ${String(Date.now() - at)} ms`);
+    const at = performance.now();
+    const seen = probe(pid, deadline - at);
+    const done = performance.now();
+    probes.push(`${seen || '-'} in ${String(Math.round(done - at))} ms`);
+    if (done > deadline) {
+      probes.push(`unproven: read after the ${String(ms)} ms deadline`);
+      return { stopped: false, probes };
+    }
+    if (seen === '') {
+      probes.push('unproven: ps gave no state');
+      return { stopped: false, probes };
+    }
     if (seen.startsWith('T')) return { stopped: true, probes };
-    if (waited >= ms) return { stopped: false, probes };
-    const slept = Date.now();
     // eslint-disable-next-line no-await-in-loop
-    await sleep(10);
-    waited += Date.now() - slept;
+    await sleep(Math.min(10, deadline - performance.now()));
   }
 }
 
