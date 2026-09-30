@@ -38,18 +38,20 @@ afterEach(async () => {
 
 const text = (page: Mounted, selector: string): string => page.all(selector)[0]?.textContent ?? '';
 
+/** An element's data attributes, read through the DOM's own map. */
+const data = (element: Element | null | undefined): DOMStringMap =>
+  element instanceof HTMLElement ? element.dataset : {};
+
 describe('C41-A onboarding look', () => {
   it('C41-A phases and dependencies: each step in its phase, marked agent-run, needs a person or waits on the client, with what it waits for', async () => {
     const { page } = await open();
     const phases = page
       .all('[data-onboarding-phase]')
-      .map((phase) => phase.getAttribute('data-onboarding-phase'));
+      .map((phase) => data(phase)['onboardingPhase']);
     expect(phases).toEqual([...new Set(MADE_UP_ONBOARDING.steps.map((step) => step.phase))]);
     for (const step of MADE_UP_ONBOARDING.steps) {
       const row = page.find(`[data-step="${step.key}"]`);
-      expect(row?.closest('[data-onboarding-phase]')?.getAttribute('data-onboarding-phase')).toBe(
-        step.phase,
-      );
+      expect(data(row?.closest('[data-onboarding-phase]'))['onboardingPhase']).toBe(step.phase);
       expect(row?.querySelector('[data-step-kind]')?.textContent).toBe(
         { agent: 'Agent runs it', person: 'Needs a person', client: 'Waits on the client' }[
           step.kind

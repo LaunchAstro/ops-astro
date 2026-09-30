@@ -111,6 +111,14 @@ afterEach(async () => {
 
 const text = (page: Mounted, selector: string): string => page.all(selector)[0]?.textContent ?? '';
 
+/** An element's data attributes, read through the DOM's own map. */
+const data = (element: Element | null | undefined): DOMStringMap =>
+  element instanceof HTMLElement ? element.dataset : {};
+
+/** A cost log row: the kit's table marks its first cell, so the row is that cell's own. */
+const logRow = (page: Mounted, runId: string): Element | null =>
+  page.find(`[data-cost-run="${runId}"]`)?.closest('tr') ?? null;
+
 // eslint-disable-next-line max-lines-per-function -- one stub server, the cases that share it
 describe('MP-14-6 What our agents cost us', () => {
   it('MP-14-6 owner check: spend per agent and per client shows for the period', async () => {
@@ -121,7 +129,7 @@ describe('MP-14-6 What our agents cost us', () => {
     expect(sent[0]).toContain('"from":"2026-08-31T12:00:00.000Z"');
     expect(sent[0]).toContain('"to":"2026-09-30T12:00:00.000Z"');
     expect(text(page, '[data-section="005"] h2')).toContain('What our agents cost us');
-    expect(text(page, '[data-cost-period]')).toBe('31 Aug 2026 to 30 Sep 2026');
+    expect(text(page, '[data-cost-period]')).toBe('31 Aug 2026 to 30 Sept 2026');
     expect(text(page, '[data-cost-agent="a-1111aaaa-0000"]')).toContain('AUD 12.34');
     expect(text(page, '[data-cost-agent="a-2222bbbb-0000"]')).toContain('AUD 9.00');
     expect(text(page, '[data-cost-attached="c-1"]')).toContain('Meridian Dental');
@@ -132,7 +140,7 @@ describe('MP-14-6 What our agents cost us', () => {
 
   it('MP-14-6 exact model ids wrap and never truncate', async () => {
     const { page } = await open(COSTS);
-    const id = page.find('[data-cost-run="r-1"] .skc__model');
+    const id = logRow(page, 'r-1')?.querySelector('.skc__model');
     expect(id?.textContent).toBe(LONG_ID);
     expect(page.text()).not.toContain('…');
     const css = readFileSync('apps/web/src/styles/6-slice.css', 'utf8');
@@ -143,18 +151,20 @@ describe('MP-14-6 What our agents cost us', () => {
 
   it('MP-14-6 unpriced runs say so', async () => {
     const { page } = await open(COSTS);
-    const cell = page.find('[data-cost-run="r-2"] [data-cost-unpriced]');
+    const cell = logRow(page, 'r-2')?.querySelector('[data-cost-unpriced]');
     expect(cell?.textContent).toBe('no price yet');
     expect(cell?.getAttribute('title')).toBe(UNPRICED);
-    expect(text(page, '[data-cost-run="r-2"]')).not.toMatch(/AUD 0\.00/u);
+    expect(logRow(page, 'r-2')?.textContent).not.toMatch(/AUD 0\.00/u);
     expect(text(page, '[data-cost-kpi="unpriced"]')).toContain('1');
   });
 
   it('MP-14-6 attachment falls back to "the agency"', async () => {
     const { page } = await open(COSTS);
-    expect(text(page, '[data-cost-run="r-2"] [data-cost-who]')).toBe('the agency');
+    expect(logRow(page, 'r-2')?.querySelector('[data-cost-who]')?.textContent).toBe('the agency');
     expect(text(page, '[data-cost-attached="agency"]')).toContain('the agency');
-    expect(text(page, '[data-cost-run="r-1"] [data-cost-who]')).toBe('Meridian Dental');
+    expect(logRow(page, 'r-1')?.querySelector('[data-cost-who]')?.textContent).toBe(
+      'Meridian Dental',
+    );
   });
 
   it('MP-14-6 the cost log folds at 8 rows with "Show n more", as the book does', async () => {
@@ -168,7 +178,7 @@ describe('MP-14-6 What our agents cost us', () => {
 
   it('MP-14-6 internal face only', async () => {
     const { page } = await open(COSTS);
-    expect(page.find('[data-section="005"]')?.getAttribute('data-view')).toBe('agency');
+    expect(data(page.find('[data-section="005"]'))['view']).toBe('agency');
     expect(matchRoute('/dashboard/executive/')?.id).toBe('agency:executive');
     expect(namespaceOf('/dashboard/executive/')).toBe('agency');
     // Cost to us, never billable: no invoice words anywhere in the section.
