@@ -387,3 +387,6 @@ jobs:
       - run: node scripts/db-conformance.mjs --manifest tests/db/isolation-suites.json
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          # The T4a fixture suites are named here too; their clone past a
+          # reader dumps and restores inside this job's own service container.
+          FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
