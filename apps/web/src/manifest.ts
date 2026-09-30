@@ -63,7 +63,7 @@ agency | Dashboard
   ~portfolio | Portfolio | dashboard/portfolio/ | MP-14-1
   executive | Executive | dashboard/executive/ | MP-14-3 | /agency/executive/
 agency | Inbox
-  inbox | Inbox | inbox/ | MP-7-3
+  inbox | Inbox | @agency:inbox | MP-7-3
 agency | Projects
   projects | Projects | @agency:projects-board | MP-5-8 | /agency/projects/
   reviews | Reviews | projects/reviews/ | MP-8-1

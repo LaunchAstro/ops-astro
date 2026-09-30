@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { ReactElement } from 'react';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { issueGrant, revokeGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { raiseInboxItem } from '../../packages/core-records/src/index.ts';
@@ -52,11 +52,15 @@ describe.skipIf(serverUrl === undefined)('MP-7-3 the inbox screen over INB-1', (
         navigate: () => {},
       }),
     );
-    for (let turn = 0; turn < 20 && view.find('.nt, .readstate') === null; turn += 1) {
-      // eslint-disable-next-line no-await-in-loop -- until the reads have landed
-      await settle();
-    }
-    await settle();
+    // Until both reads have landed: the page shows an answer, not the loading state.
+    await vi.waitFor(
+      async () => {
+        await settle();
+        const shown = (view.find('.readstate') as HTMLElement | null)?.dataset['outcome'];
+        if (shown === undefined || shown === 'loading') throw new Error('the inbox is loading');
+      },
+      { timeout: 10_000 },
+    );
     const drawn = {
       rows: view.all('a.nt__row').map((row) => row.textContent ?? ''),
       owed: Number(view.find('.nt__sum b')?.textContent ?? 0),
