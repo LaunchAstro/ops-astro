@@ -12,7 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Hono } from 'hono';
+import { Hono } from 'hono';
 import {
   connect,
   connectListener,
@@ -376,6 +376,14 @@ describe.skipIf(serverUrl === undefined)(
       const body = (await response.json()) as Record<string, unknown>;
       expect(body['live']).toBe('listening');
       expect(typeof body['notificationQueue']).toBe('number');
+    });
+
+    it('Sol proof, criterion 2: a plain-text server error cannot count as a foreign join refusal', async () => {
+      const broken = new Hono();
+      broken.get('*', (context) => context.text('server failure', 500));
+      await expect(
+        join(broken, key, randomUUID(), await tokenFor(s.decider.presented.subject)),
+      ).rejects.toThrow();
     });
 
     it('T2f listen only: the listener connection can only listen, and sends nothing but LISTEN', () => {
