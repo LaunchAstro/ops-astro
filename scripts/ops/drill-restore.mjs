@@ -110,12 +110,8 @@ export async function restoreDrill({
       record.sourceMajor = Number(/Dumped from database version: (\d+)/u.exec(listed)?.[1]);
       // The archive makes its own public schema; the empty one would collide.
       await psql('drop schema public');
-      // Staging's made-up guard triggers call functions in a schema the archive
-      // does not carry; the seed installs them again (made-up-only.ts).
-      const kept = listed.replaceAll(/^.* TRIGGER \S+ \S+ ops_astro_made_up_guard .*$/gmu, '');
-      await must(exec(['sh', '-c', 'cat > /tmp/restore.list'], kept));
       const flags = ['--exit-on-error', '--single-transaction', '--no-owner', '--no-privileges'];
-      await must(exec(['pg_restore', ...flags, '--use-list=/tmp/restore.list', ...AS], dump()));
+      await must(exec(['pg_restore', ...flags, ...AS], dump()));
       return [...listed.matchAll(/^\d+; \d+ \d+ TABLE DATA (\S+) (\S+) /gmu)].map(
         ([, schema, table]) => `${schema}.${table}`,
       );
