@@ -29,6 +29,22 @@ export {
   type RouteReach,
 } from './data-class.ts';
 export {
+  EMAIL_NOTHING_HAPPENED,
+  EMAIL_PATH,
+  EMAIL_SEND,
+  EMAIL_SUBJECT,
+  emailAdapter,
+  emailText,
+  readEmailAnswer,
+  RESEND_DESTINATION,
+} from './email.ts';
+export {
+  startFakeEmailProvider,
+  type FakeEmailMode,
+  type FakeEmailProvider,
+  type OutboxMessage,
+} from './email-fake.ts';
+export {
   CONVERSATION_ANSWER,
   readReplayAnswer,
   replayAdapter,

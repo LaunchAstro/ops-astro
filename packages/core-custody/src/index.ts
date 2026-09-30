@@ -30,6 +30,13 @@ export {
   type ConversationScope,
 } from './broker-conversation.ts';
 export {
+  EMAIL_OPERATION,
+  sendInboxEmail,
+  type EmailRefusal,
+  type EmailResult,
+  type MailSettings,
+} from './broker-email.ts';
+export {
   callModel,
   promptCopyRegistered,
   registerPromptCopy,
