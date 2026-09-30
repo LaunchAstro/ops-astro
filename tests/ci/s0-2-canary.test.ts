@@ -77,7 +77,7 @@ describe('S0-2 canary', () => {
 });
 
 function canaryCasesSolNarrow() {
-  it('Sol narrow proof: subclass and proxy codes stay within the fixed list', () => {
+  it('subclass and proxy codes stay within the fixed list', () => {
     class Forged extends postgres.PostgresError {}
     for (const code of ['K7QXZ', 'P0001', '22p02', '22P02 ', '💥💥💥💥💥']) {
       const fault = new Forged({ code, message: 'private text' } as never);
@@ -89,7 +89,7 @@ function canaryCasesSolNarrow() {
     );
   });
 
-  it('Sol narrow proof: a proxy fault cannot make the API error path throw its planted message', async () => {
+  it('a proxy fault cannot make the API error path throw its planted message', async () => {
     const plant = 'SOL_PROXY_PLANT';
     const hostile = new Proxy(
       new postgres.PostgresError({ code: 'K7QXZ', message: plant } as never),
@@ -119,7 +119,7 @@ function canaryCasesSolNarrow() {
 }
 
 function canaryCases1() {
-  it('Sol proof, criterion 4: a manufactured database error cannot log a planted code', async () => {
+  it('a manufactured database error cannot log a planted code', async () => {
     const logged: string[] = [];
     vi.spyOn(console, 'error').mockImplementation(
       (...parts: unknown[]) => void logged.push(parts.join(' ')),

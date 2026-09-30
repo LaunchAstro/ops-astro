@@ -197,7 +197,7 @@ function noProductionDataCases7() {
 }
 
 function noProductionDataCasesSolNarrow() {
-  it('Sol narrow proof: a restored task row cannot claim the seed tag as provenance', async () => {
+  it('a restored task row cannot claim the seed tag as provenance', async () => {
     await reset();
     const businessId = await business('alpha');
     await markMadeUp(db.admin, [businessId]);
@@ -247,7 +247,7 @@ function noProductionDataCases8() {
     expect(await productionSigns(db.admin, MADE_UP)).not.toEqual([]);
   });
 
-  it('Sol proof, criterion 9: a marked task type rejects restored private record content', async () => {
+  it('a marked task type rejects restored private record content', async () => {
     await reset();
     const businessId = await business('alpha');
     await markMadeUp(db.admin, [businessId]);
