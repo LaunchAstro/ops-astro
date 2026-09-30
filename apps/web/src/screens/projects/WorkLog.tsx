@@ -31,10 +31,19 @@ import {
 import { useRead } from '../../data/use-read.ts';
 import { describeFailure } from '../../records/submit.ts';
 import { RecordState } from '../../views/record-state.tsx';
+import { PageTip } from '../../views/page-tip.tsx';
 import { pathTo } from '../../routes.ts';
 import { passing, queryOf, readingLine, readSearch, type LedgerSearch } from './ledger-search.ts';
 
 const UTC = 'UTC';
+
+/** The Work log's section tip (MP-9-1): a tab of the Projects page, named by that route. */
+export const WORK_LOG_TIP = {
+  page: 'agency:projects-board',
+  id: 'work-log',
+  version: 1,
+  text: 'Every change to a task you can see, newest day first. Search by a name, a kind of change or any words.',
+} as const;
 
 /** The first page, the zone it was read in, and the search words it was read for. */
 interface LedgerRead {
@@ -131,6 +140,7 @@ export function WorkLog(props: WorkLogProps): ReactElement {
   };
   return (
     <div className="act__page">
+      <PageTip client={client} grantKey={grantKey} tip={WORK_LOG_TIP} />
       <div className="fieldrow act__find">
         <SearchBox
           label="Search the work log"

@@ -51,13 +51,17 @@ const dismissedAt = (version: number) => ({
   'tips.dismissed': { [`${WORK_LOG_TIP.page}#${WORK_LOG_TIP.id}`]: version },
 });
 
+// eslint-disable-next-line max-lines-per-function -- one stand-in store, and the cases that share it
 describe('MP-9-1 section tip on a built page', () => {
   it('the Work log shows its tip from the preference store, as the kit draws it', async () => {
     const api = server({});
     const view = await mount(projects(api.fetch));
     await openWorkLog(view);
     expect(view.find(`${TIP} .banner.banner--info .banner__body`)?.textContent).toMatch(/\S/u);
-    expect(api.asked.map((call) => call.path)).toEqual(['/api/b/alpha/preference/read']);
+    // The one preference call the tip makes is the store's own read.
+    expect(
+      api.asked.map((call) => call.path).filter((path) => path.includes('/preference/')),
+    ).toEqual(['/api/b/alpha/preference/read']);
     await view.unmount();
   });
 
@@ -67,7 +71,7 @@ describe('MP-9-1 section tip on a built page', () => {
     await openWorkLog(view);
     await view.click(DISMISS);
     await tick();
-    expect(view.find(TIP)).toBeNull();
+    expect(view.find('.sectip')).toBeNull();
     const sent = api.asked.filter((call) => call.path.endsWith('/preference/dismiss_tip'));
     expect(sent).toHaveLength(1);
     const { operationId, ...operands } = sent[0]?.body ?? {};
@@ -80,25 +84,25 @@ describe('MP-9-1 section tip on a built page', () => {
     const same = await mount(projects(server(dismissedAt(WORK_LOG_TIP.version)).fetch));
     await openWorkLog(same);
     expect(same.find('.act__row')).not.toBeNull();
-    expect(same.find(TIP)).toBeNull();
+    expect(same.find('.sectip')).toBeNull();
     await same.unmount();
 
     const older = await mount(projects(server(dismissedAt(WORK_LOG_TIP.version - 1)).fetch));
     await openWorkLog(older);
-    expect(older.find(TIP)).not.toBeNull();
+    expect(older.find('.sectip')).not.toBeNull();
     await older.unmount();
   });
 
   it('tips off draws no tip, and a store that cannot be read draws none either', async () => {
     const off = await mount(projects(server({ 'tips.enabled': false }).fetch));
     await openWorkLog(off);
-    expect(off.find(TIP)).toBeNull();
+    expect(off.find('.sectip')).toBeNull();
     await off.unmount();
 
     const down = await mount(projects(server(null).fetch));
     await openWorkLog(down);
     expect(down.find('.act__row')).not.toBeNull();
-    expect(down.find(TIP)).toBeNull();
+    expect(down.find('.sectip')).toBeNull();
     await down.unmount();
   });
 
@@ -109,7 +113,7 @@ describe('MP-9-1 section tip on a built page', () => {
     await view.click(DISMISS);
     await tick();
     await tick();
-    expect(view.find(TIP)).toBeNull();
+    expect(view.find('.sectip')).toBeNull();
     expect(api.asked.filter((call) => call.path.endsWith('/preference/dismiss_tip'))).toHaveLength(
       1,
     );
