@@ -28,12 +28,6 @@ it.todo(
   'S0-5 mode one way: the mode changes only from made-up data to real data, by the owner, while the readiness check is true, and never back (NEXT: the readiness check)',
 );
 it.todo(
-  'S0-5 client change refused once the task has content: through the app, the API, the command line and an agent credential, for every task-content kind in the catalogue, and in both interleavings (LEANS-ON SL01 S0-6)',
-);
-it.todo(
-  'S0-5 content marker and lock order: a command that changes the revision without the marker, or writes before the lock, fails the build (NEXT: the readiness check)',
-);
-it.todo(
   'MP-4-10 gate refusal: with the gate forced open, the share grant is refused in plain words and writes nothing (LEANS-ON SL08 MP-4-10)',
 );
 it.todo(

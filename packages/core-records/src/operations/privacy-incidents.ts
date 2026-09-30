@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The privacy incident record (C55, SP-24, migration 0043): what the breach
+// The privacy incident record (C55, SP-24, migration 0048): what the breach
 // runbook opens on day 0. The words describe people and what happened to
 // their information, so this module is their only reader and writer, and the
 // command that records one audits a digest of the act, never the words.

@@ -115,7 +115,15 @@ the tables it writes with their scope, its intake, outside effects and
 whether it admits an outside person. Its class (`invitation`, `client-data`
 or `made-up-safe`) is derived from them, never set by hand. A command with
 no entry does not compile, and each entry is proved against the rows its
-fixture changes. The readiness check that reads the class is not built yet.
+fixture changes. The readiness check reads the class (S0-5, its second
+part): a real-data installation refuses every `client-data` and `invitation`
+command `GATE_SHUT` 409 while any of the eight gate items is open, on the
+person and agent routes, after authority and before the handler. The mode
+and the items live in `ops` (migration 0056); the mode moves one way, from
+made-up to real, only while every item is done. The commands that record an
+item, accept a finding or change the mode are not built yet.
+`task.set_party` refuses `CLIENT_LOCKED` 409 once the task has content (its
+history or a row naming it), under the task's row lock.
 
 No external engineer review, legal opinion, security assessment, hosted enforcement,
 mailbox delivery, or service deployment is certified here. A public technical

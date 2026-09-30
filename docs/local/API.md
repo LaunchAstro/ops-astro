@@ -249,7 +249,7 @@ a UUID (`VerifiedSubject.sessionId`), and kept by every refresh. A session the
 person has ended (signed out of, ended from another session, or ended by a
 factor change) is refused at login resolution from that commit,
 `AUTH_SESSION_EXPIRED` 401, before the second-factor check, whatever the
-token's own `exp` says (`ended_sessions`, 0050). The provider's sign-out, which
+token's own `exp` says (`ended_sessions`, 0055). The provider's sign-out, which
 revokes the refresh tokens, comes after and cannot undo it.
 
 The business is named by the path and verified by login resolution. A business
@@ -1831,3 +1831,33 @@ and never an agent's (an agent is refused `DELEGATION_EXCLUDES_OPERATION`):
 A bad field is `FIELD_VALUE_INVALID` 422 naming the field alone; no refusal,
 detail or audit event carries the purpose or the secret. Using a credential on
 the agent route waits on S0-6's bearer scheme.
+
+## The first-client gate (S0-5)
+
+An installation is made-up or real (`ops.installation`, migration 0056).
+Every command the catalogue classes `client-data` or `invitation` reads
+`public.first_client_readiness()` inside its own transaction, after
+authority and before the handler, on the person and agent routes. On a
+real-data installation with any gate item open it is refused `GATE_SHUT` 409,
+naming the open items, and writes nothing. A made-up-data installation, the
+test harness and staging included, runs them. An installation with no mode
+row refuses them too, naming `installation`.
+
+The eight items are `ops.gate_items` rows, each with an `https` evidence link:
+`tested-backups`, `second-factor`, `legal-basics`, `privacy-act-statement`,
+`overseas-register`, `breach-runbook`, `security-pass`, `phone-alerts`. The
+application's role reads neither table. The mode moves from made-up to real
+only while every item is done, and never back; the row cannot be deleted.
+Recording an item and changing the mode by command are not built yet.
+
+## A task's client is locked once it has content (S0-5)
+
+`task.set_party` changes a task's client only while the task is empty: its
+history (applied audit events about it) holds nothing beyond its creation and
+earlier client changes, and no row names it (a subtask naming it as its parent, a
+proposal, a planned run, an envelope, a lease, an alert). Otherwise it is
+refused `CLIENT_LOCKED` 409 and writes nothing, on the API and the command
+line alike. The check runs under the task's row lock, so a content write
+holding that lock lands wholly before it (the change is refused) or wholly
+after it (the write is stale against the change's revision and retried). A
+trashed task still answers `NOT_FOUND`.

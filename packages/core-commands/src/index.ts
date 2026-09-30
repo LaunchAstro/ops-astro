@@ -13,6 +13,12 @@ export { agentAnswer, executeAgentCommand } from './commands/agent-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
 export { setOwnAvailability } from './commands/availability.ts';
 export {
+  GATE_ITEMS,
+  gateDecision,
+  type GateItem,
+  type Readiness,
+} from './commands/first-client-gate.ts';
+export {
   isCommandRefusal,
   refuseCommand,
   refuseNotFound,

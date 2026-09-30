@@ -31,7 +31,7 @@ if (serverUrl === undefined) {
 /**
  * Written for every call as the record of the act, never a record kind of its
  * own: the audit event, the operation row, the bearer's verification, and the
- * live change record (0051, C4), stamped by a task write's own triggers with
+ * live change record (0057, C4), stamped by a task write's own triggers with
  * only which task and the writing transaction.
  */
 const BOOKKEEPING: ReadonlySet<string> = new Set([

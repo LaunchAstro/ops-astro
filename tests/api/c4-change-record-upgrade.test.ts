@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C4, migration 0051 on the stacked chain. The live change record was written
+// C4, migration 0057 on the stacked chain. The live change record was written
 // as 0036, straight after T2f's 0035, then renumbered 0042 after main's 0036 to
-// 0041, and 0051 after SL09's 0042 to 0050 (ORCH36-8B); it runs after them all.
-// On a database seeded at 0050 and then
+// 0041, and 0057 after the stacked 0042 to 0056 (batch 1's reserved 0042 to
+// 0046 and SL09's 0047 to 0056, ORCH37 8e); it runs after them all.
+// On a database seeded at 0056 and then
 // upgraded, and on a fresh one: the seeded rows are unchanged and nothing is
 // stamped by the upgrade itself, the two live functions are the ones a fresh
 // chain has, and on the upgraded database a write to a task still reaches
@@ -31,7 +32,7 @@ if (serverUrl === undefined) {
 }
 
 const onDisk = readMigrations('migrations');
-const THROUGH_0050 = (version: string): boolean => version.slice(0, 4) <= '0050';
+const THROUGH_0056 = (version: string): boolean => version.slice(0, 4) <= '0056';
 
 /** The rows a seeded database holds before the upgrade. */
 async function dump(db: EmptyDatabase): Promise<unknown> {
@@ -77,7 +78,7 @@ async function writeReachesTopic(db: EmptyDatabase, seed: RuntimeFixture): Promi
   }
 }
 
-describe.skipIf(serverUrl === undefined)('0051 the live change record on the stacked chain', () => {
+describe.skipIf(serverUrl === undefined)('0057 the live change record on the stacked chain', () => {
   let fresh: EmptyDatabase;
   let upgraded: EmptyDatabase;
   let seed: RuntimeFixture;
@@ -90,7 +91,7 @@ describe.skipIf(serverUrl === undefined)('0051 the live change record on the sta
     upgraded = await createEmptyDatabase({ part: 'c4upup' });
     await applyMigrations(
       upgraded.admin,
-      onDisk.filter((m) => THROUGH_0050(m.version)),
+      onDisk.filter((m) => THROUGH_0056(m.version)),
     );
     seed = await buildFixture(upgraded.app, 'c4-up-seed');
     seededBefore = await dump(upgraded);
@@ -103,7 +104,7 @@ describe.skipIf(serverUrl === undefined)('0051 the live change record on the sta
     await upgraded?.drop();
   });
 
-  it('C4 upgrade: a database at 0050 upgrades with its rows unchanged, nothing stamped, and the live functions a fresh chain has', async () => {
+  it('C4 upgrade: a database at 0056 upgrades with its rows unchanged, nothing stamped, and the live functions a fresh chain has', async () => {
     expect(await dump(upgraded)).toStrictEqual(seededBefore);
     expect(
       await upgraded.admin.execute('select count(*)::int as n from public.live_changes'),
