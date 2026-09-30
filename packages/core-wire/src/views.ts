@@ -465,6 +465,8 @@ export interface SearchHit {
 export interface TaskSearchResult {
   readonly ok: true;
   readonly hits: readonly SearchHit[];
+  /** Only for a server caller that passed a limit: its own matches go past it. */
+  readonly more?: boolean;
 }
 
 export interface SettingsReadResult {

@@ -1530,7 +1530,12 @@ refused `SCOPE_NOT_GRANTED` 403, never answered with an empty list. An external
 party is refused `SCOPE_NOT_GRANTED` too, before anything is read: the portal
 has no search until a client search is designed. `searchTasks`
 (`reads/search.ts`) is the one function every caller of the index uses.
-`tests/reads/search.test.ts` holds it.
+`tests/reads/search.test.ts` holds it. A server caller (the ledger's search,
+MP-8-4) may pass `limit`, a whole number from 1 to 500, refused
+`FIELD_VALUE_INVALID` naming `limit` otherwise before anything is read; its
+answer adds `more`, whether the caller's own matches go past the limit, taken
+from the same scoped statement. The `task.search` read passes none and stays
+at 20 (`tests/reads/c1-search-past-cap.test.ts`).
 
 One set is the exception: a person's own preferences are saved, read and
 dismissed without an audit event (CS-2.8, MP-2-11a, MP-2-11). A successful

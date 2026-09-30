@@ -114,8 +114,12 @@ beforeAll(async () => {
 
 afterAll(async () => await db?.drop());
 
-describe.skipIf(serverUrl === undefined)('C1 search past the cap', () => {
-  it('C1 search past the cap: a server caller with a limit reads past twenty, and is told when there is more', async () => {
+/** The database-bound cases: skipped, and named so, where no database is set. */
+const live = it.skipIf(serverUrl === undefined);
+
+live(
+  'C1 search past the cap: a server caller with a limit reads past twenty, and is told when there is more',
+  async () => {
     const all = await serverSearch(mia, 100);
     expect(hitsOf(all)).toHaveLength(30);
     expect(all).not.toHaveProperty('more', true);
@@ -126,9 +130,12 @@ describe.skipIf(serverUrl === undefined)('C1 search past the cap', () => {
     const plain = await serverSearch(mia);
     expect(hitsOf(plain)).toHaveLength(20);
     expect(plain).not.toHaveProperty('more');
-  });
+  },
+);
 
-  it('C1 search past the cap: the task.search read is unchanged at twenty and never honours a limit', async () => {
+live(
+  'C1 search past the cap: the task.search read is unchanged at twenty and never honours a limit',
+  async () => {
     const plain = await executeRead(db.app, alpha, mia.presented, {
       read: 'task.search',
       query: WORD,
@@ -143,9 +150,12 @@ describe.skipIf(serverUrl === undefined)('C1 search past the cap', () => {
     } as unknown as ReadRequest);
     expect(hitsOf(asked)).toHaveLength(20);
     expect(asked).not.toHaveProperty('more');
-  });
+  },
+);
 
-  it('C1 search past the cap: another client’s tasks never enter the answer, not by id, title or count', async () => {
+live(
+  'C1 search past the cap: another client’s tasks never enter the answer, not by id, title or count',
+  async () => {
     const answer = await serverSearch(ann, 500);
     expect(hitsOf(answer).toSorted()).toEqual(annTasks.toSorted());
     // Five foreign matches lie past nothing: `more` is about her scope alone.
@@ -158,18 +168,24 @@ describe.skipIf(serverUrl === undefined)('C1 search past the cap', () => {
     const small = await serverSearch(ann, 24);
     expect(small).toHaveProperty('more', true);
     for (const id of otherClientTasks) expect(JSON.stringify(small)).not.toContain(id);
-  });
+  },
+);
 
-  it('C1 search past the cap: another business never enters it, and a stranger to the business is refused', async () => {
+live(
+  'C1 search past the cap: another business never enters it, and a stranger to the business is refused',
+  async () => {
     const answer = JSON.stringify(await serverSearch(mia, 500));
     for (const id of betaTasks) expect(answer).not.toContain(id);
     expect(answer).not.toContain('Beta');
     const crossed = await serverSearch(bea, 500, alpha);
     expect(isCommandRefusal(crossed) ? crossed.code : 'answered').toBe('AUTH_NO_MEMBERSHIP');
     expect(JSON.stringify(crossed)).not.toMatch(/"hits"|Acme|Boreal/u);
-  });
+  },
+);
 
-  it('C1 search past the cap: a limit that is not a whole number from 1 to 500 is refused naming limit, with nothing read', async () => {
+live(
+  'C1 search past the cap: a limit that is not a whole number from 1 to 500 is refused naming limit, with nothing read',
+  async () => {
     const limits = [0, -1, 501, 2.5, Number.NaN, '50', null];
     const answers = await inTurn(limits.length, (n) => serverSearch(mia, limits[n]));
     answers.forEach((answer, n) => {
@@ -178,8 +194,8 @@ describe.skipIf(serverUrl === undefined)('C1 search past the cap', () => {
       expect(isCommandRefusal(answer) ? answer.names : [], said).toEqual(['limit']);
       expect(JSON.stringify(answer), said).not.toMatch(/"hits"|Acme|Boreal/u);
     });
-  });
-});
+  },
+);
 
 describe.skipIf(serverUrl === undefined)('C1 search past the cap, over the real HTTP route', () => {
   let harness: Harness;
