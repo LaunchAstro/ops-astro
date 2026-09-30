@@ -52,14 +52,7 @@ export const SCREENS: {
       <Projects
         client={context.client}
         grantKey={context.grantKey}
-        {...(context.taskPanel === undefined
-          ? {}
-          : {
-              onOpen: (key: string) => {
-                context.taskPanel?.open(key, 'open');
-              },
-              changes: context.taskPanel.changes,
-            })}
+        {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
       />
     </>
   ),
