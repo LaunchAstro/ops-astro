@@ -71,6 +71,7 @@
     "tests/commands/task-assign-ai-isolation.test.ts",
     "tests/commands/task-complete-agent.test.ts",
     "tests/reads/board-agents.test.ts",
+    "tests/reads/board-comments.test.ts",
     "tests/web/mp-2-1-isolation-api.test.tsx",
     "tests/api/api-1-isolation.test.ts",
     "tests/db/inbox-records.test.ts",
