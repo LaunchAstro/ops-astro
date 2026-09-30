@@ -4,8 +4,9 @@
 // checked, never to a name. The host name is kept for TLS (SNI and the
 // certificate check) and the Host header, but the lookup is answered with the
 // pinned address, so a DNS answer that changes after the check is never
-// consulted. The socket's remote address is compared with the pin
-// before a byte is sent. Size and time are capped while reading, not after.
+// consulted. The socket's remote address is compared with the pin at
+// connect, before a byte of the request is sent (only the TLS hello precedes
+// it). Size and time are capped while reading, not after.
 
 import { BlockList, isIP } from 'node:net';
 import { lookup as systemLookup } from 'node:dns/promises';
@@ -163,10 +164,14 @@ function send(
     settle(answer);
   };
   const { url } = presented;
+  // An address literal is connected to as written, with no lookup, so the pin
+  // cannot steer it: the remote-address check below is what refuses one that
+  // is not the pin. A TLS server name may not be an address, so none is sent.
+  const literal = isIP(url.hostname) !== 0;
   const outgoing = request(
     {
       host: url.hostname,
-      servername: url.hostname,
+      ...(literal ? {} : { servername: url.hostname }),
       port: url.port === '' ? 443 : Number(url.port),
       path: `${url.pathname}${url.search}`,
       method: presented.method ?? 'GET',
@@ -193,6 +198,13 @@ function send(
 export function pinnedTransport(options: PinnedTransportOptions = {}): Transport {
   return (presented) =>
     new Promise<TransportAnswer>((settle) => {
-      send(presented, options, settle);
+      // A request the platform will not send (a header value with a line
+      // break, say) throws before any socket; its text can carry what was
+      // planted, so it is an answer like any other transport error.
+      try {
+        send(presented, options, settle);
+      } catch {
+        settle({ kind: 'failed' });
+      }
     });
 }
