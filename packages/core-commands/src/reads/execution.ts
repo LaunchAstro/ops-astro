@@ -11,6 +11,7 @@
 // and `unavailable` are refusals and faults, and `loading` is the client's.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { PLAN_CANDIDATES, projectedPlan } from '../../../core-runtime/src/index.ts';
 import { projectGraph, type ExecutionGraph } from './execution-graph.ts';
 
 /** The most events one read returns. `next` is the handle for the rest. */
@@ -59,7 +60,7 @@ export async function readTaskExecution(
   taskId: string,
   cursor: number,
 ): Promise<TaskExecution> {
-  const { runs, sourceRevision, events, facts } = await snapshot(tx, taskId, cursor);
+  const { runs, sourceRevision, events, facts, plans } = await snapshot(tx, taskId, cursor);
   const last = events.at(-1)?.position ?? cursor;
   const complete = last >= sourceRevision;
   return {
@@ -70,7 +71,7 @@ export async function readTaskExecution(
     next: complete ? null : last,
     runs,
     events,
-    graph: projectGraph(facts, sourceRevision, complete),
+    graph: projectGraph(facts, projectedPlan(plans), sourceRevision, complete),
   };
 }
 
@@ -84,8 +85,10 @@ const ISO = `'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`;
  * statement's own event head.
  */
 const RUN_FACTS = `coalesce((select json_agg(json_build_object(
-    'runId', run.id, 'state', run.state,
+    'runId', run.id, 'lineageId', run.lineage_id, 'state', run.state,
     'superseded', ver.superseded_at is not null,
+    'planStepKey', (select st.plan_step_key from public.planned_steps st
+      where st.business_id = $1 and st.run_id = run.id and st.ordinal = 1),
     'currency', ver.currency, 'gateState', gate.state,
     'lease', (select json_build_object(
         'state', l.state,
@@ -121,8 +124,10 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
  where run.business_id = $1 and run.task_id = $2), '[]')`;
 
 /**
- * The runs, the event head, one page of events and each run's facts for the
- * graph, read by one statement so all four come from one snapshot: separate
+ * The runs, the event head, one page of events, each run's facts for the
+ * graph and the task's plan records (`PLAN_CANDIDATES`, bound or not, checked
+ * by `projectedPlan`), read by one statement so all five come from one
+ * snapshot: separate
  * reads could see a successor's events without its run, or a hand-back's
  * event without its settled attempt. The facts read the whole run, never the
  * page, so a condition does not depend on the cursor; `lastKind` stops at the
@@ -138,12 +143,14 @@ async function snapshot(
   readonly sourceRevision: number;
   readonly events: readonly ExecutionEvent[];
   readonly facts: unknown;
+  readonly plans: unknown;
 }> {
   const rows = await tx.query<{
     readonly runs: readonly ExecutionRun[];
     readonly sourceRevision: number;
     readonly events: readonly ExecutionEvent[];
     readonly facts: unknown;
+    readonly plans: unknown;
   }>(
     `with head as (
        select coalesce(max(position), 0) as n
@@ -167,7 +174,8 @@ async function snapshot(
                 'detail', detail, 'at', to_char(created_at at time zone 'UTC', ${ISO}))
               order by position)
               from page), '[]') as events,
-            ${RUN_FACTS} as facts`,
+            ${RUN_FACTS} as facts,
+            ${PLAN_CANDIDATES} as plans`,
     [tx.businessId, taskId, cursor, EXECUTION_PAGE],
   );
   const [row] = rows;

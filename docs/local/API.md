@@ -536,11 +536,20 @@ only; an agent's queue carries none. Nothing delivers them. Each is
 kind (`migrations/0036_alerts.sql`). `tests/runtime/t2h-alerts.test.ts` holds it.
 
 **The execution graph (AW-06).** `task.execution` carries `graph` beside its
-runs and page of events: `{ plan, sourceRevision, complete, nodes }`, one node
-per run, `{ nodeId, condition, planned, observed }`. The planned layer is the
-structured plan record the plan decision bound (AW-04), which this code does
-not read yet, so `plan` is `unbound`, every `planned` is null, and no node is
-called unplanned. The observed layer is the run's own record, read in the same
+runs and page of events: `{ plan, planRecordId, planRunId, steps,
+sourceRevision, complete, nodes }`, one node per run, `{ nodeId, condition,
+planned, observed }`. The planned layer is the structured plan record the plan
+decision bound (AW-04), and only that one (`core-runtime/src/plan-binding.ts`):
+its decision approves its own gate, its gate is its run's, it was written in
+the decision's transaction, and the digests of its words and record recompute
+to the row's. A record failing any of these is never projected, however new or
+well formed; the newest that holds is the plan, and with none `plan` is
+`unbound`, `steps` empty and every `planned` null. With one, `plan` is `bound`,
+`steps` lists the plan's `{ key, title, after, runIds }`, and a run proposed
+under a step (`step.planStep`, below) has `planned: { key, title }`. A run
+naming no step, or a key the bound plan lacks, has the condition `unplanned`
+(its observed layer unchanged); the plan's own run and its lineage are the
+plan, not work outside it. The observed layer is the run's own record, read in the same
 statement as the events and never from the page, so a cursor never changes a
 condition: `not_started`; `in_progress` with `attemptId` and `whoseMove`
 (`{ kind: 'agent' | 'person', actorId }`, the lease's holder, or null actor
@@ -570,7 +579,12 @@ the task page draws the report naming its task (`tests/runtime/t3e2-outage.test.
 constrain, before the write rather than at it: a `purpose` outside
 `^[a-z][a-z0-9_]{0,62}$` names `purpose`, and a `step` that is not
 `{ kind, payload }` with a non-empty `kind` and an object `payload` names
-`step`. Both used to reach the database and arrive as `SERVICE_UNAVAILABLE`
+`step`. `step.planStep` is optional (AW-06, ORCH41 decision (a)): a step key of
+the task's bound plan record, checked under the task lock; a key the plan
+lacks, a key on a task with no bound plan, or a `planStep` that is not a
+string is `FIELD_VALUE_INVALID` naming `step`, and nothing is written. The key
+is stored on the run's step (`0061`) and shown in the evidence pack the
+approver signs. Both used to reach the database and arrive as `SERVICE_UNAVAILABLE`
 503, which tells a caller their server is broken when their request was.
 
 `task.propose` writes a proposal beside the task and leaves the task's own

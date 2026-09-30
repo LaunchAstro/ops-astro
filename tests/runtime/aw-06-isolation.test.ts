@@ -49,11 +49,11 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 useAw06World('aw06iso');
 
 /** The three crossings, each beside its own positive control. */
-async function crossings(crossed: Work, own: Work) {
+async function crossings(crossed: Work, own: Work, key = 'aw06') {
   const world = cq8World(w.s);
 
   // 1. Another business: its member reads its own task, and names this one.
-  const other = await world.party('aw06-other');
+  const other = await world.party(`${key}-other`);
   const otherTask = other.tasks[0]!;
   const otherOwn = await readIn(other.id, other.member, otherTask.id);
   expect(isCommandRefusal(otherOwn), 'other business, own task').toBe(false);
@@ -65,8 +65,8 @@ async function crossings(crossed: Work, own: Work) {
     w.s.business,
     async (tx) => await grantTo(tx, w.s.decider, 'share'),
   );
-  const first = await world.client(w.s.business, w.s.decider, 'aw06-c1', own.taskId);
-  const second = await world.client(w.s.business, w.s.decider, 'aw06-c2', crossed.taskId);
+  const first = await world.client(w.s.business, w.s.decider, `${key}-c1`, own.taskId);
+  const second = await world.client(w.s.business, w.s.decider, `${key}-c2`, crossed.taskId);
   const clientOwn = await executeRead(w.s.db.app, w.s.business, first.presented, {
     read: 'task.read',
     recordId: own.taskId,
@@ -138,7 +138,7 @@ it('AW-06 planned isolation: a bound plan is projected to its own readers only; 
   expect(JSON.stringify(control)).toContain(canary);
 
   const crossed = { taskId, picked: { runId: plan.runId } } as unknown as Work;
-  const { otherOwn, cases } = await crossings(crossed, own);
+  const { otherOwn, cases } = await crossings(crossed, own, 'aw06plan');
   const hidden = [canary, taskId, plan.runId, plan.planRecordId, plan.decisionId];
   for (const [name, answer, code] of cases) {
     expect(codeOf(answer as never), name).toBe(code);

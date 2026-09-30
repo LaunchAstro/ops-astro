@@ -15,7 +15,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { payloadDigest } from '../../packages/core-digest/src/index.ts';
-import { appliedDetail, approve, codeOf, createTask, rows } from './schedules-harness.ts';
+import {
+  appliedDetail,
+  approveBody,
+  asPerson,
+  codeOf,
+  createTask,
+  rows,
+} from './schedules-harness.ts';
 import {
   acceptPlanOn,
   graphAs,
@@ -52,9 +59,10 @@ function expectProjects(graph: Graph, plan: AcceptedPlan, what: string): void {
   expect(JSON.stringify(graph), what).not.toContain('forged');
 }
 
-/** Another plan version on the task, approved by `task.decide`: no record bound to it. */
-async function approvedWithoutRecord(
+/** Another plan version on the task, decided by `task.decide`: no record bound to it. */
+async function decidedWithoutRecord(
   taskId: string,
+  decision: 'approve' | 'reject' = 'approve',
 ): Promise<{ gateId: string; decisionId: string; runId: string }> {
   const proposal = appliedDetail(
     await proposeStep(taskId, { kind: 'synthetic_comment', payload: {} }),
@@ -66,7 +74,10 @@ async function approvedWithoutRecord(
     [proposal['gateId']],
   );
   expect(decided).toHaveLength(0);
-  await approve(w.s, proposal);
+  appliedDetail(
+    await asPerson(w.s, { ...approveBody(proposal), decision }),
+    `task.decide ${decision}`,
+  );
   const [row] = await rows<{ decision_id: string }>(
     w.s,
     `select id::text as decision_id from public.gate_decisions where gate_id = $1`,
@@ -85,6 +96,8 @@ interface Forged {
   readonly runId: string;
   readonly record: unknown;
   readonly recordDigest: string;
+  /** The words' digest as written; the words' own when absent. */
+  readonly textDigest?: string;
   /** Written as the decision's own instant, or left to the insert's clock. */
   readonly withDecision: boolean;
 }
@@ -106,7 +119,7 @@ async function forge(row: Forged): Promise<void> {
         row.decisionId,
         row.runId,
         PLAN_TEXT,
-        sha256(PLAN_TEXT),
+        row.textDigest ?? sha256(PLAN_TEXT),
         row.record,
         row.recordDigest,
         w.s.decider.actorId,
@@ -116,14 +129,14 @@ async function forge(row: Forged): Promise<void> {
   });
 }
 
-it('projection_refuses_unbound_record: a record the plan decision did not bind is never projected, and the bound record still is', async () => {
+it('projection_refuses_unbound_record: a record not written with its decision, or with words or a record its decision did not bind, is never projected', async () => {
   const taskId = await createTask(w.s, `aw06-bound-${randomUUID()}`);
   const plan = await acceptPlanOn(taskId);
   expectProjects(await graphAs(w.s.decider, taskId), plan, 'the accepted plan');
 
   // Each forged record is newer than the bound one and structurally valid, so
   // neither recency nor shape is what refuses it.
-  const late = await approvedWithoutRecord(taskId);
+  const late = await decidedWithoutRecord(taskId);
   await forge({
     ...late,
     record: FORGED,
@@ -132,31 +145,19 @@ it('projection_refuses_unbound_record: a record the plan decision did not bind i
   });
   expectProjects(await graphAs(w.s.decider, taskId), plan, 'written after its decision');
 
-  const digest = await approvedWithoutRecord(taskId);
+  const digest = await decidedWithoutRecord(taskId);
   await forge({ ...digest, record: FORGED, recordDigest: payloadDigest(PLAN), withDecision: true });
-  expectProjects(await graphAs(w.s.decider, taskId), plan, 'a digest its decision did not bind');
+  expectProjects(await graphAs(w.s.decider, taskId), plan, 'a record its decision did not bind');
 
-  const gate = await approvedWithoutRecord(taskId);
-  const decision = await approvedWithoutRecord(taskId);
+  const words = await decidedWithoutRecord(taskId);
   await forge({
-    gateId: gate.gateId,
-    runId: gate.runId,
-    decisionId: decision.decisionId,
+    ...words,
     record: FORGED,
     recordDigest: payloadDigest(FORGED),
+    textDigest: sha256('other words'),
     withDecision: true,
   });
-  expectProjects(await graphAs(w.s.decider, taskId), plan, 'another gate’s decision');
-
-  const run = await approvedWithoutRecord(taskId);
-  await forge({
-    ...run,
-    runId: gate.runId,
-    record: FORGED,
-    recordDigest: payloadDigest(FORGED),
-    withDecision: true,
-  });
-  expectProjects(await graphAs(w.s.decider, taskId), plan, 'another run');
+  expectProjects(await graphAs(w.s.decider, taskId), plan, 'words its decision did not bind');
 
   // Control: a record bound as the accept binds it is projected, and the newest wins.
   const replaced = { steps: [{ key: 'outline', title: 'Outline the brief', after: [] }] };
@@ -166,9 +167,28 @@ it('projection_refuses_unbound_record: a record the plan decision did not bind i
   expect(graph.steps?.map((step) => step.key)).toEqual(['outline']);
 });
 
+it('projection_refuses_unbound_record: a record naming another gate’s decision, another run or a rejection is never projected', async () => {
+  const taskId = await createTask(w.s, `aw06-linked-${randomUUID()}`);
+  const plan = await acceptPlanOn(taskId);
+  const forged = { record: FORGED, recordDigest: payloadDigest(FORGED), withDecision: true };
+
+  const gate = await decidedWithoutRecord(taskId);
+  const decision = await decidedWithoutRecord(taskId);
+  await forge({ ...forged, ...gate, decisionId: decision.decisionId });
+  expectProjects(await graphAs(w.s.decider, taskId), plan, 'another gate’s decision');
+
+  const run = await decidedWithoutRecord(taskId);
+  await forge({ ...forged, ...run, runId: gate.runId });
+  expectProjects(await graphAs(w.s.decider, taskId), plan, 'another run');
+
+  const rejected = await decidedWithoutRecord(taskId, 'reject');
+  await forge({ ...forged, ...rejected });
+  expectProjects(await graphAs(w.s.decider, taskId), plan, 'a rejection');
+});
+
 it('projection_refuses_unbound_record: a task with no bound record says unbound, never an empty plan', async () => {
   const taskId = await createTask(w.s, `aw06-unbound-${randomUUID()}`);
-  const late = await approvedWithoutRecord(taskId);
+  const late = await decidedWithoutRecord(taskId);
   await forge({
     ...late,
     record: FORGED,
@@ -177,7 +197,10 @@ it('projection_refuses_unbound_record: a task with no bound record says unbound,
   });
   const graph = await graphAs(w.s.decider, taskId);
   expect(graph).toMatchObject({ plan: 'unbound', planRecordId: null, planRunId: null, steps: [] });
-  expect(nodeOf(graph, late.runId)).toMatchObject({ planned: null, condition: 'not_started' });
+  // With no plan bound, no run is unplanned: its reading is its observed condition.
+  const node = nodeOf(graph, late.runId);
+  expect(node.planned).toBeNull();
+  expect(node.condition).toBe(node.observed['condition']);
 });
 
 /** The plan step key a run's step stores, and the one its evidence pack shows the approver. */
