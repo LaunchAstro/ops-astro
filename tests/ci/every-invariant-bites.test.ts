@@ -95,7 +95,8 @@ describe('every_invariant_bites: the catalogue', () => {
       }
       expect(removed.size, `${part.id} reverts nothing`).toBeGreaterThan(0);
     }
-  });
+    // Two git calls per commit: on a loaded host they outrun vitest's five seconds.
+  }, 60_000);
 });
 
 describe('every_invariant_bites: the verdict', () => {
