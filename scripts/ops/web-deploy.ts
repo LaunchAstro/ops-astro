@@ -17,8 +17,12 @@
 // `regions` must be `syd1` alone (`S0-6 functions in Sydney`). The CLI gets only
 // PATH, HOME, TMPDIR and the two project ids, so no sign-in value or database
 // login reaches it. The folder, `.vercel` and all, is removed whatever happens.
-// Only a deploy read back in Sydney returns its record: the version, the
-// artefact, the digest, the deployment, the region and the function runtime.
+// Before Vercel is asked, the sign-in server reports its version (`/health`
+// under GOTRUE_URL, staging's own sign-in address, with the publishable key
+// when set); no answer, no deploy. Only a deploy read back in Sydney returns
+// its record: the version, the artefact, the digest, the deployment, the
+// region, the function runtime and the sign-in server's version (`S0-6 image
+// pins`).
 //
 // The maintenance page (`deployMaintenance`, `maintenance.ts`) goes out the
 // same prebuilt way, with no database asked, so a broken database never keeps
@@ -43,6 +47,7 @@ export interface WebDeployRecord {
   readonly deployment: string;
   readonly region: 'syd1';
   readonly runtime: string;
+  readonly authVersion: string;
 }
 
 type Unrecorded = { kind: 'refused' | 'failed'; reason: string };
@@ -97,6 +102,34 @@ function runtimeOf(output: string): string | undefined {
   }
 }
 
+/** Staging's sign-in address; a loopback stand-in in tests. */
+const SIGN_IN =
+  /^(?:https:\/\/[a-z]{20}\.supabase\.co|http:\/\/127\.0\.0\.1:[0-9]{1,5})\/auth\/v1$/u;
+const AUTH_VERSION = /^v?[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}[0-9A-Za-z.+-]{0,40}$/u;
+const HEALTH_MAX_BYTES = 4096;
+
+/** The version the sign-in server reports: no redirect, a time limit, a size cap, its shape checked. */
+async function authVersionOf(env: Environment): Promise<string | undefined> {
+  const address = env['GOTRUE_URL'] ?? '';
+  if (!SIGN_IN.test(address)) return undefined;
+  const key = env['SUPABASE_PUBLISHABLE_KEY'] ?? '';
+  try {
+    const response = await fetch(`${address}/health`, {
+      redirect: 'error',
+      signal: AbortSignal.timeout(5000),
+      headers: key === '' ? {} : { apikey: key },
+    });
+    if (!response.ok || Number(response.headers.get('content-length') ?? 0) > HEALTH_MAX_BYTES)
+      return undefined;
+    const body = await response.arrayBuffer();
+    if (body.byteLength > HEALTH_MAX_BYTES) return undefined;
+    const { version } = JSON.parse(new TextDecoder().decode(body)) as { version?: unknown };
+    return typeof version === 'string' && AUTH_VERSION.test(version) ? version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Why the settings cannot deploy, naming each setting, never its value. */
 function settingProblems(env: Environment): string[] {
   const problems = Object.entries(IDS)
@@ -141,6 +174,7 @@ function deployCopy(
   env: Environment,
   version: string,
   selected: { path: string; name: string },
+  authVersion: string,
 ): WebDeployOutcome {
   const { digest } = JSON.parse(readFileSync(join(selected.path, 'build.json'), 'utf8')) as {
     digest: string;
@@ -164,7 +198,10 @@ function deployCopy(
     };
   }
   const record = { action: 'deploy recorded', version, artefact: selected.name, digest } as const;
-  return { kind: 'deployed', record: { ...record, deployment, region: 'syd1', runtime } };
+  return {
+    kind: 'deployed',
+    record: { ...record, deployment, region: 'syd1', runtime, authVersion },
+  };
 }
 
 export async function deployWeb(
@@ -179,7 +216,13 @@ export async function deployWeb(
   if (signs.length > 0) {
     return refused(`staging's database failed the preflight: ${signs.join('; ')}`);
   }
-  return inFolder((folder) => deployCopy(folder, options.env, request.version, selected));
+  const authVersion = await authVersionOf(options.env);
+  if (authVersion === undefined) {
+    return refused('the sign-in server at GOTRUE_URL did not report its version');
+  }
+  return inFolder((folder) =>
+    deployCopy(folder, options.env, request.version, selected, authVersion),
+  );
 }
 
 /** The maintenance page to the main address: its deployment, recorded; no database is asked. */

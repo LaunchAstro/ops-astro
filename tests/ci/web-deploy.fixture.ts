@@ -3,10 +3,12 @@
 // Shared by the S0-6 web deploy and maintenance page cases: a stored build
 // output, the settings a person's deploy runs with (canaries included), and a
 // `vercel` on PATH that logs its arguments, working folder and environment and
-// answers as told: no real deploy, no network.
+// answers as told, and the sign-in server's `/health` as a loopback stand-in:
+// no real deploy, no network.
 
 import { randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll } from 'vitest';
@@ -18,11 +20,36 @@ export const CANARY = 'canary-5d19e0-web-deploy-secret';
 export const URL_MADE = 'https://ops-astro-staging-a1b2c3d4e.vercel.app';
 export const ORG = 'team_madeUpOrg0123';
 export const PROJECT = 'prj_madeUpProject0123';
+export const AUTH_VERSION = 'v2.180.0';
 
 // Made by the file's first hook, so a file whose tests all skip leaves no folder (temp guard).
 export const scratch: string = join(tmpdir(), `s0-6-web-${randomBytes(6).toString('hex')}`);
 beforeAll(() => mkdirSync(scratch, { mode: 0o700 }));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+
+/** The sign-in server's health answer, as Supabase's Auth gives it. */
+const auth = createServer((request, response) => {
+  const health = request.url === '/auth/v1/health';
+  response.writeHead(health ? 200 : 404, { 'content-type': 'application/json' });
+  response.end(health ? JSON.stringify({ version: AUTH_VERSION, name: 'GoTrue' }) : '{}');
+});
+let authUrl = '';
+beforeAll(
+  () =>
+    new Promise<void>((resolve) => {
+      auth.listen(0, '127.0.0.1', () => {
+        const address = auth.address();
+        authUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}/auth/v1`;
+        resolve();
+      });
+    }),
+);
+afterAll(
+  () =>
+    new Promise<void>((resolve) => {
+      auth.close(() => resolve());
+    }),
+);
 
 let made = 0;
 export const folder = (name: string): string => {
@@ -117,6 +144,7 @@ export const settings = (path: string): Record<string, string> => ({
   HOME: process.env['HOME'] ?? '',
   VERCEL_ORG_ID: ORG,
   VERCEL_PROJECT_ID: PROJECT,
+  GOTRUE_URL: authUrl,
   OPS_ASTRO_TOKEN: CANARY,
   DATABASE_URL: `postgres://app:${CANARY}@127.0.0.1:1/never`,
   DATABASE_ADMIN_URL: `postgres://owner:${CANARY}@127.0.0.1:1/never`,

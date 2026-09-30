@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { artefactName } from '../../scripts/ops/promotion.ts';
 import { deployWeb } from '../../scripts/ops/web-deploy.ts';
 import {
+  AUTH_VERSION,
   CANARY,
   clean,
   fakeVercel,
@@ -39,7 +40,7 @@ describe('S0-6 functions in Sydney, read back from Vercel', () => {
 });
 
 function recordedCase() {
-  it('deploys the stored output prebuilt to the main address and records version, digest, deployment and region', async () => {
+  it('deploys the stored output prebuilt to the main address and records version, digest, deployment, region and sign-in server version', async () => {
     const at = store();
     const vercel = fakeVercel();
     const outcome = await deployWeb(
@@ -59,6 +60,7 @@ function recordedCase() {
         deployment: URL_MADE,
         region: 'syd1',
         runtime: 'nodejs24.x',
+        authVersion: AUTH_VERSION,
       },
     });
     expect(vercel.lines('argv')).toStrictEqual([
@@ -92,7 +94,7 @@ function cleanUpCase() {
 }
 
 function refusedCases() {
-  it('refuses before Vercel is asked: bytes not the digest, a dirty build, edge code, a sign, a bad setting', async () => {
+  it('refuses before Vercel is asked: bytes not the digest, a dirty build, edge code, a sign, a bad setting, no sign-in server version', async () => {
     const tampered = store();
     writeFileSync(join(tampered, artefactName(STAGED), 'static/index.html'), 'changed');
     const edge = store({
@@ -107,6 +109,14 @@ function refusedCases() {
       ['token', { version: STAGED, store: store() }, { VERCEL_TOKEN: CANARY }, false],
       ['org', { version: STAGED, store: store() }, { VERCEL_ORG_ID: `x${CANARY}` }, false],
       ['project', { version: STAGED, store: store() }, { VERCEL_PROJECT_ID: '' }, false],
+      ['no auth', { version: STAGED, store: store() }, { GOTRUE_URL: '' }, false],
+      ['foreign auth', { version: STAGED, store: store() }, { GOTRUE_URL: URL_MADE }, false],
+      [
+        'auth silent',
+        { version: STAGED, store: store() },
+        { GOTRUE_URL: 'http://127.0.0.1:1/auth/v1' },
+        false,
+      ],
     ];
     for (const [name, request, over, signs] of cases) {
       const vercel = fakeVercel();

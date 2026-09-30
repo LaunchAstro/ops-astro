@@ -178,11 +178,13 @@ checked, and the output is copied into a folder of its own and checked again
 there. It runs `vercel deploy --prebuilt --prod` under the person's own Vercel
 sign-in (`VERCEL_TOKEN` set refuses it) into the project `VERCEL_ORG_ID` and
 `VERCEL_PROJECT_ID` name, handing the CLI nothing else from the environment,
-then reads the deployment's region back with `vercel inspect`. Only a
-deployment Vercel reports in `syd1` alone writes `deploy recorded`: the
-version, the artefact, the digest, the deployment's own address, the region
-and the function runtime. The folder, `.vercel` included, is removed either
-way.
+then reads the deployment's region back with `vercel inspect`. Before Vercel
+is asked, the sign-in server at `GOTRUE_URL` reports its version on `/health`
+(with `SUPABASE_PUBLISHABLE_KEY` as its key when set); no version, no deploy.
+Only a deployment Vercel reports in `syd1` alone writes `deploy recorded`: the
+version, the artefact, the digest, the deployment's own address, the region,
+the function runtime and the sign-in server's version. The folder, `.vercel`
+included, is removed either way.
 
 `scripts/ops/web-deploy.mjs --maintenance`, behind the same gate, puts the
 maintenance page on the main address the same way (`maintenance recorded`)
