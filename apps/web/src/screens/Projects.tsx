@@ -7,19 +7,27 @@
 // the business's unboarded tasks — the acceptance case creates a task
 // **without a board** and expects to find it (B1).
 //
-// The board component is the ported one and it draws nine columns the slice
-// does not yet store. Those cells draw a dash, which is the ported behaviour
-// for "not set": the gap between what the mockup draws and what this build
-// stores is recorded rather than papered over by dropping the columns.
+// The board is the board machine with the Projects board's nine columns
+// (MP-5-8). Each row is the read's task mapped onto the board's row: the rank
+// and its calc line, the stage, the due and the estimate (MP-4-8) come from
+// stored records, and the hover door goes to the task's page link (MP-4-12).
+// What the product does not store yet draws a dash or nothing and is recorded
+// as such: the client's name (the client model), the comment counts (INB-1)
+// and starring (P-20). The actual is the time logged (MP-4-6).
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { Board, Empty, type BoardRow } from '@launchastro/ui';
+import { Empty, ProjectsBoard, type BoardRow, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
+import { rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
-import type { TaskBoardResult, TaskSummary } from '../../../../packages/core-wire/src/index.ts';
+import type {
+  BoardTask,
+  PersonListResult,
+  TaskBoardResult,
+} from '../../../../packages/core-wire/src/index.ts';
+import { isInProductLink } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
-import { drawTaskState } from '../views/task-state.ts';
 import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
 
@@ -32,6 +40,8 @@ interface PendingCreate {
 export interface ProjectsProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
+  /** The dock task panel (MP-4-8): rows open beside the board through it. Absent, they open the task page. */
+  readonly taskPanel?: BoardPanelHost;
 }
 
 export function Projects(props: ProjectsProps): ReactElement {
@@ -52,13 +62,28 @@ export function Projects(props: ProjectsProps): ReactElement {
   // a fresh id instead would make the server's replay register unreachable and
   // the retry would create a second task.
   const [pending, setPending] = useState<PendingCreate | null>(null);
+  // The row open beside the board and the door it was opened by (MP-5-8).
+  const [opened, setOpened] = useState<RowOpened | null>(null);
+  const panel = props.taskPanel;
 
   const { state, reload } = useRead<TaskBoardResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskBoardResult>('task.board', { board: null }),
     isEmpty: (value) => value.tasks.length === 0,
+    // A change made in the panel is the board's next read, as it is the task page's.
+    deps: [panel?.changes ?? 0],
+  });
+
+  // The people the assignee editor offers (MP-5-10); until they answer, the
+  // assignee cell draws no editor.
+  const people = useRead<PersonListResult>({
+    grantKey: props.grantKey,
+    run: () => client.read<PersonListResult>('person.list', {}),
+    // An answer without its list offers nobody, rather than breaking the board.
+    isEmpty: (value) => !Array.isArray(value.persons) || value.persons.length === 0,
     deps: [],
   });
+  const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
 
   // The same attempt while the asked-for task is the same one, a new attempt
   // when the person has changed what they are asking for. Retrying an unknown
@@ -177,10 +202,29 @@ export function Projects(props: ProjectsProps): ReactElement {
         }
       >
         {(value) => (
-          <Board
+          <ProjectsBoard
             rows={value.tasks.map((task) => rowOf(task))}
-            groups={groupsOf(value.tasks)}
-            filters={[{ kind: 'board', label: 'none' }]}
+            withheld={value.withheld ?? 0}
+            changedAt={value.changedAt ?? null}
+            stages={[]}
+            viewer={value.viewer ?? null}
+            href={(row) => pathTo('agency:task-detail', { key: row.key })}
+            actions={rowActions({
+              client,
+              tasks: value.tasks,
+              people: persons,
+              href: (key) => pathTo('agency:task-detail', { key }),
+              reload,
+              ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
+            })}
+            address={window.location.search}
+            onAddress={(query) => {
+              window.history.replaceState(
+                window.history.state,
+                '',
+                `${window.location.pathname}${query === '' ? '' : `?${query}`}`,
+              );
+            }}
           />
         )}
       </RecordState>
@@ -188,33 +232,44 @@ export function Projects(props: ProjectsProps): ReactElement {
   );
 }
 
-/** One stored task as a board row. Everything the slice does not store is null. */
-function rowOf(task: TaskSummary): BoardRow {
+/** One task from the read as a Projects board row (MP-5-8). */
+function rowOf(task: BoardTask): ProjectRow {
   return {
     id: task.id,
-    rank: null,
+    key: task.key,
     name: titleOf(task.title),
+    rank: { number: task.rank.number, calc: task.rank.calc },
+    // No ticket builds starring yet, so the starred tier is empty (P-20).
+    starred: false,
+    // The client's name waits on the client model; `clientSet` says only
+    // that there is one.
     client: null,
-    assignee: task.assignee?.name ?? null,
-    dueLabel: task.due === null ? null : dayOf(task.due),
-    due: dueTone(task.due),
-    stage: null,
-    state: drawTaskState(task.state),
-    estimate: null,
-    actual: null,
-    group: groupOf(task),
-    href: pathTo('agency:task-detail', { key: task.key }),
+    assignee:
+      task.assignee === null
+        ? null
+        : { id: task.assignee.personId, name: task.assignee.name, agent: false },
+    due: task.due,
+    completed: task.completedAt !== null,
+    stage: task.stage,
+    status: task.state?.label ?? 'No state',
+    statusPosition: task.statePosition,
+    // A run awaiting approval is the one wait the read carries; the banner
+    // prints the mockup's word for it (B-21).
+    waitReason: task.waitReason === 'needs_approval' ? 'approval' : null,
+    // No task category is stored yet (it arrives with named board sections,
+    // LEANS-ON), so no category chip draws.
+    category: null,
+    awaitingDecision: task.awaitingDecision,
+    estimate:
+      task.estimateMinutes === null ? null : { kind: 'time', minutes: task.estimateMinutes },
+    // The time logged on the task (MP-4-6); none logged draws a dash.
+    actual: task.actualMinutes > 0 ? { kind: 'time', minutes: task.actualMinutes } : null,
+    // A stored link that is not an address inside the product is never a
+    // door (MP-4-12); the door is then the task's own page.
+    ...(isInProductLink(task.pageLink) ? { page: task.pageLink } : {}),
+    comments: { client: 0, mentions: 0, latest: null },
   };
 }
-
-const groupsOf = (tasks: readonly TaskSummary[]): readonly string[] => [
-  ...new Set(tasks.map((task) => groupOf(task))),
-];
-
-/** The heading a task sits under. A stateless one gets its own, not somebody else's. */
-const groupOf = (task: TaskSummary): string => task.state?.label ?? 'No state';
-
-const dayOf = (iso: string): string => iso.slice(0, 10);
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 

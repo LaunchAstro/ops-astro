@@ -32,6 +32,7 @@ export {
   type Subject,
   type SubjectKind,
 } from './grants.ts';
+export { readableScope, type ReadableScope } from './readable-scope.ts';
 
 export {
   checkDelegatedAuthority,

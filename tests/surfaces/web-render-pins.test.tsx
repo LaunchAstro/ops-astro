@@ -231,37 +231,48 @@ describe('the task page, pinned whole', () => {
   });
 });
 
+/** A task in every machine category and one with no state, as task.board answers them. */
+const CATEGORIES = ['unstarted', 'started', 'backlog', 'completed', 'cancelled', 'invented'];
+const BOARD_TASKS = [
+  ...CATEGORIES.map((category, index) => ({
+    id: `t-${String(index)}`,
+    key: `TSK-${String(index)}`,
+    title: `A ${category} task`,
+    state: {
+      id: `s-${category}`,
+      key: category,
+      label: `L-${category}`,
+      machineCategory: category,
+    },
+    assignee: null,
+    due: null,
+    // The wire always carries it; left out, the row would read as completed.
+    completedAt: null,
+    revision: 1,
+    rank: { number: null, score: null, calc: '' },
+    stage: null,
+    clientSet: false,
+  })),
+  {
+    id: 't-none',
+    key: 'TSK-none',
+    title: 'A task with no state',
+    state: null,
+    assignee: { personId: 'p-1', name: 'Ada' },
+    due: '2020-01-01T00:00:00.000Z',
+    completedAt: null,
+    revision: 1,
+    rank: { number: null, score: null, calc: '' },
+    stage: null,
+    clientSet: false,
+  },
+];
+
 describe('the board, pinned whole', () => {
   it('draws a task in every machine category and one with no state', async () => {
-    const categories = ['unstarted', 'started', 'backlog', 'completed', 'cancelled', 'invented'];
-    const tasks = [
-      ...categories.map((category, index) => ({
-        id: `t-${String(index)}`,
-        key: `TSK-${String(index)}`,
-        title: `A ${category} task`,
-        state: {
-          id: `s-${category}`,
-          key: category,
-          label: `L-${category}`,
-          machineCategory: category,
-        },
-        assignee: null,
-        due: null,
-        revision: 1,
-      })),
-      {
-        id: 't-none',
-        key: 'TSK-none',
-        title: 'A task with no state',
-        state: null,
-        assignee: { personId: 'p-1', name: 'Ada' },
-        due: '2020-01-01T00:00:00.000Z',
-        revision: 1,
-      },
-    ];
     const fetch = (async (url: string | URL) =>
       String(url).endsWith('/task/board')
-        ? json({ ok: true, tasks })
+        ? json({ ok: true, tasks: BOARD_TASKS })
         : refused('NOT_FOUND', 404)) as unknown as typeof globalThis.fetch;
     const client = new OperationsClient({
       origin: '',

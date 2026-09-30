@@ -31,19 +31,27 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
-import type { InternalCommentView } from '../../../core-wire/src/index.ts';
+import type { BoardTask, InternalCommentView } from '../../../core-wire/src/index.ts';
 import { openEnvelopeOf } from '../../../core-runtime/src/index.ts';
 import { READS } from '../../../core-wire/src/index.ts';
 import { readAlerts } from '../../../core-runtime/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
+import { awaitingApproval } from './awaiting.ts';
+import { readRanks } from './board-rank.ts';
+import { readActualMinutes } from './board-time.ts';
 import { readTaskRank, type RankPool } from './rank.ts';
 import { readBoardCrumb } from './board-crumb.ts';
 import { readTaskSteps } from './steps.ts';
 
+// A served row is always in its reader's pool; this is only the type's answer.
+const UNRANKED = { number: null, score: null, calc: '' } as const;
+
 interface TaskRowRead {
   readonly id: string;
   readonly revision: string;
+  /** When the task last changed; the board's freshness stamp (MP-5-7). */
+  readonly updated_at: Date;
   readonly key: string | null;
   readonly title: string | null;
   readonly due: Date | null;
@@ -57,6 +65,7 @@ interface TaskRowRead {
   readonly state_key: string | null;
   readonly state_label: string | null;
   readonly state_machine_category: string | null;
+  readonly state_position: string | null;
   readonly assignee_id: string | null;
   readonly assignee_name: string | null;
   readonly ad_hoc: boolean | null;
@@ -78,6 +87,7 @@ const STATE_JOIN = `
 const SELECT = `
   select r.id,
          r.revision::text as revision,
+         r.updated_at,
          r.txt_1 as key,
          r.txt_4 as title,
          r.ts_1  as due,
@@ -91,6 +101,7 @@ const SELECT = `
          s.data ->> 'key' as state_key,
          s.data ->> 'label' as state_label,
          s.data ->> 'machine_category' as state_machine_category,
+         s.data ->> 'position' as state_position,
          p.id as assignee_id,
          p.display_name as assignee_name,
          r.bool_2 as ad_hoc,
@@ -378,7 +389,8 @@ export async function readSharedTask(
 }
 
 /**
- * The live tasks on one board, or the unboarded ones when the board is null.
+ * The live tasks on one board, or the unboarded ones when the board is null,
+ * that the caller's grants reach.
  *
  * Unboarded is a real answer and not a missing filter: `task.create` takes no
  * board (acceptance B1), so every task starts here and a board read that
@@ -387,20 +399,75 @@ export async function readSharedTask(
  * A named board is already a live task by the time it gets here: `task.board`
  * refuses anything else, a malformed identifier included, through
  * `boardExists` before it calls this.
+ *
+ * `readable` is null under a collection-wide grant; otherwise it is the
+ * records the caller's record-scoped grants reach, and the filter is in the
+ * query.
  */
 export async function readBoard(
   tx: TenantQuery,
   taskTypeId: string,
   board: string | null,
+  readable: readonly string[] | null,
 ): Promise<readonly TaskSummary[]> {
+  return (await readBoardStamped(tx, taskTypeId, board, readable)).tasks;
+}
+
+/**
+ * The board's tasks, each with what its cells draw (MP-5-8), and when the
+ * newest of them last changed (MP-5-7, P-07). The tasks and the stamp come
+ * from one query, so the stamp is of exactly the rows served and a newer task
+ * the caller cannot read never moves it; null when no task is served. The
+ * ranks are read over the same `readable` scope. A row whose task has an open
+ * gate waits for approval, whoever may decide it (MP-5-11). `decidable` is the
+ * caller's decide reach (null for business-wide); such a row waits on the
+ * caller when the gate is inside it (MP-5-12). None when not given.
+ */
+export async function readBoardStamped(
+  tx: TenantQuery,
+  taskTypeId: string,
+  board: string | null,
+  readable: readonly string[] | null,
+  decidable: readonly string[] | null = [],
+): Promise<{ readonly tasks: readonly BoardTask[]; readonly changedAt: string | null }> {
   const rows = await tx.query<TaskRowRead>(
     `${SELECT}
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
         and (($3::uuid is null and r.uuid_5 is null) or r.uuid_5 = $3::uuid)
+        and ($4::uuid[] is null or r.id = any($4::uuid[]))
       order by r.num_2 nulls last, r.created_at`,
-    [tx.businessId, taskTypeId, board],
+    [tx.businessId, taskTypeId, board, readable],
   );
-  return rows.map(summaryOf);
+  let newest: Date | null = null;
+  for (const row of rows) {
+    if (newest === null || row.updated_at > newest) newest = row.updated_at;
+  }
+  // Asked only of the rows served, so a gate on a task outside the reader's
+  // scope is never read (MP-5-11, MP-5-12).
+  const gated = await awaitingApproval(
+    tx,
+    rows.map((row) => row.id),
+  );
+  const ranks = await readRanks(tx, taskTypeId, readable);
+  const actuals = await readActualMinutes(
+    tx,
+    rows.map((row) => row.id),
+  );
+  const decides = decidable === null ? null : new Set(decidable);
+  const tasks = rows.map((row): BoardTask =>
+    Object.assign(summaryOf(row), {
+      rank: ranks.get(row.id) ?? UNRANKED,
+      stage: row.stage,
+      clientSet: row.client_set,
+      actualMinutes: actuals.get(row.id) ?? 0,
+      estimateMinutes: row.estimated_minutes === null ? null : Number(row.estimated_minutes),
+      pageLink: row.page_link,
+      statePosition: row.state_position === null ? null : Number(row.state_position),
+      waitReason: gated.has(row.id) ? ('needs_approval' as const) : null,
+      awaitingDecision: gated.has(row.id) && (decides === null || decides.has(row.id)),
+    }),
+  );
+  return { tasks, changedAt: newest?.toISOString() ?? null };
 }
 
 /**

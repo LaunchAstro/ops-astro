@@ -471,9 +471,61 @@ export interface SharedTaskRead {
 /** Which of the two arrived is decided by the key, never by the reader's role. */
 export type TaskReadResult = InternalTaskRead | SharedTaskRead;
 
+/**
+ * One row of a board (MP-5-8): the summary and what the Projects board's
+ * cells draw from stored records, each the value `task.read` answers for the
+ * same task. The rank is worked out at read in the reader's own pool.
+ */
+export interface BoardTask extends TaskSummary {
+  readonly rank: RankView;
+  /** The stage as `task.set_stage` stored it; null for none. */
+  readonly stage: string | null;
+  /** True when the task is put under a client (`task.set_party`). */
+  readonly clientSet: boolean;
+  /**
+   * Every finished minute logged on the task (MP-4-6), the total `task.read`'s
+   * time answers: one number, no names. Derived at read; 0 for none.
+   */
+  readonly actualMinutes: number;
+  /** The task's estimate in whole minutes (MP-4-8), as `task.read` answers it; null when not set. */
+  readonly estimateMinutes: number | null;
+  /** The in-product address the task is about (MP-4-12), as `task.read` answers it; null when unlinked. */
+  readonly pageLink: string | null;
+  /**
+   * Where the task's state stands in the workflow (MP-5-11): the state
+   * record's `position`, read with the state, so the board groups in the
+   * workflow's order. Null when the task has no state.
+   */
+  readonly statePosition: number | null;
+  /**
+   * Why the task waits (MP-5-11), from the run lifecycle: `needs_approval`
+   * while a gate on its live version is pending and not expired, whoever may
+   * decide it. Null when nothing the board reads holds it.
+   */
+  readonly waitReason: 'needs_approval' | null;
+  /**
+   * True when the task waits at an open gate for the caller's decision
+   * (MP-5-12): a pending gate, not expired, on its live version, inside the
+   * caller's decide grant. The Review mode's rows and its live count.
+   */
+  readonly awaitingDecision: boolean;
+}
+
 export interface TaskBoardResult {
   readonly ok: true;
-  readonly tasks: readonly TaskSummary[];
+  /** The board's tasks the caller's grants reach. */
+  readonly tasks: readonly BoardTask[];
+  /**
+   * How many of this board's tasks in the caller's business their grants do
+   * not reach: a count, never which (B-22). Only for a member holding
+   * task:read on the whole collection; absent for a member reading through
+   * record grants, a client login under owner answer 22.
+   */
+  readonly withheld?: number;
+  /** When the newest task served last changed (MP-5-7); null when none is served. */
+  readonly changedAt: string | null;
+  /** The caller's own person id, which the viewer preset narrows to (MP-5-12). */
+  readonly viewer: string;
 }
 
 export interface PersonListResult {

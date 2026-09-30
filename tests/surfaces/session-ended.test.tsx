@@ -42,6 +42,7 @@ const TASK = {
   completedAt: null,
   revision: 3,
   history: [],
+  // The board row's fields (MP-5-8): this stub answers task.board too.
   board: null,
   rank: { number: null, score: null, calc: '' },
   adHoc: false,

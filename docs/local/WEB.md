@@ -735,8 +735,8 @@ attribute the screen owns ambiguous.
 Recorded rather than closed. The mockup is the visual source; these are the
 places this build does not yet reach it.
 
-- The board draws nine pinned columns; this build stores five of them. Rank,
-  client, stage, estimate and actual draw the ported "not set" dash.
+- The board draws nine pinned columns. The client's name and the comment
+  counts are not stored yet and draw the ported "not set" dash.
 - No facet menu, presets, undo/redo, typeahead or column drag-resize.
 - No Agent panel, gate or run surfaces, and no dock tab for them. The records
   behind them are stored and read: `task.read` carries every proposal on the

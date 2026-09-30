@@ -47,6 +47,7 @@ export {
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { readableScope, type ReadableScope } from './authority/readable-scope.ts';
 export { issueShare, withdrawShares } from './authority/shares.ts';
 export {
   EXPIRED_FIXES,

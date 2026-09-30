@@ -350,7 +350,7 @@ and the agent's one-task check (`namedTaskId`), and `task.rank` its
 | `task.move`                                                                           | `/task/move`                                           | `operationId`, `recordId`, `expectedRevision`, `board`, `boardSection?`      | `PLACEMENT_IS_DERIVED` 422 (a section on a subtask; naming `board` for a subtask, whose board is its parent's), `FIELD_VALUE_INVALID` 422, `SCOPE_NOT_GRANTED` 403 when the caller may not write the destination board (asked on the board's record, before the board is looked up; a business grant covers every board) or a live descendant, `NOT_FOUND` 404 naming `board`. The task's live descendants move with it; a task moved to another board ranks after that board's last task, and a section change within its board keeps its rank. `board` compares case-insensitively on both sides, the sent one and the stored one: a move to the task's own board in any case keeps the stored spelling and makes no re-rank and no carry, even for a board stored in upper case before sent boards were lower-cased; a move to another board stores it lower-case |
 | `task.rank`                                                                           | `/task/rank`                                           | `operationId`, `recordId`, `expectedRevision`, `afterId?`, `beforeId?`       | `FIELD_VALUE_INVALID` 422 naming `afterId` or `beforeId` when present and neither a string nor `null`, `SCOPE_NOT_GRANTED` 403 when the caller may not write a neighbour (asked before it is looked up), `PLACEMENT_IS_DERIVED` 422 when neither neighbour is sent (naming `board_rank`) and naming `neighbour` when a neighbour is the task itself, both name one task, they are out of order, they are not adjacent (another live sibling sits between them: read the list again) or there is no rank left between them, `NOT_FOUND` 404 naming `neighbour` when one is not a live sibling (same parent, or top level on the same board). With only `afterId` the task goes directly after it, and likewise before `beforeId`; `afterId` and `beforeId` compare case-insensitively, so a uuid in either case names one task                                        |
 | `task.trash`                                                                          | `/task/trash`                                          | `operationId`, `recordId`, `expectedRevision`                                | `SCOPE_NOT_GRANTED` 403 when a live descendant is not covered (below); the answer's `detail` carries `batchId`, which `task.restore` takes, and `trashed`, the count                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `task.board`                                                                          | `/task/board`                                          | `board`, required: a board id, or `null` for the unboarded tasks             | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 for a board not live here and for an external party, `FIELD_VALUE_INVALID` 422, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, tasks }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `task.board`                                                                          | `/task/board`                                          | `board`, required: a board id, or `null` for the unboarded tasks             | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 for a board not live here and for an external party, `FIELD_VALUE_INVALID` 422, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, tasks, changedAt }`, with `withheld` for a collection-wide reader                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `person.list`                                                                         | `/person/list`                                         | `{}`; it takes no fields                                                     | `SCOPE_NOT_GRANTED` 403 without `read` on `person`, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, persons: [{ personId, name }] }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `tag.list`                                                                            | `/tag/list`                                            | `{}`; it takes no fields                                                     | `SCOPE_NOT_GRANTED` 403 without `read` on `task` across the business (a reader held to one client's records included); answers `{ ok: true, tags: [{ id, name }] }`, by name (MP-4-11)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
@@ -403,6 +403,80 @@ row and `boardExists`, `reads/catalogue.ts`; minimum contract 8.2 cases 1 and
 registered and unproducible (minimum contract 4.4, as corrected 14 September
 2026): a cross-business probe is `NOT_FOUND` to the caller and `NOT_FOUND` in
 the prober's own audit (`UNPRODUCED_CODES`, `core-records/src/register.ts`).
+
+**`task.board` answers what the caller's grants reach.** A member holding
+`task:read` on the whole collection gets every task and `withheld`, how many
+of the board's tasks their grants do not reach, never which (B-22, the
+withheld count of 14 September 2026); that grant reaches every task, so it is
+0 today. A member holding `task:read` only on some tasks is admitted too (the
+row's `declared-within` authority, `reads/dispatch.ts`) and gets those tasks,
+filtered inside the query by `readableScope`
+(`core-records/src/authority/grants.ts`), and no `withheld` at all: such a
+member is a client login under owner answer 22, and other clients' tasks are
+never counted for them. An external party is never admitted this way: its
+share opens the shared task, and the board stays `NOT_FOUND` with no count.
+Another business's tasks are neither listed nor counted. Every admitted
+answer carries `changedAt`, when the newest task served last changed (the
+board's freshness stamp, MP-5-7), or `null` when none is served. It comes
+from the same query as the tasks, so a newer task the caller cannot read, on
+another client's work or in another business, never moves it; no refusal
+carries it. `tests/reads/mp-5-board-isolation.test.ts` holds it, across three
+crossings.
+
+Each row `task.board` answers is the task's summary with what the Projects
+board's cells draw (MP-5-8): `rank`, `stage` and `clientSet`. The stage and
+the client mark are the stored slots. The rank is worked out at read
+(`reads/board-rank.ts`, with MP-4-9's derivation) over the open tasks in the
+caller's scope, the same scope the one grant read admitted the board with, so
+a task's #N on the board is its #N on its page; a step archived by its
+parent's completion is not open (MP-4-15). `tests/reads/mp-5-8-board-columns.test.ts`
+reads each row's rank, stage and client mark back against `task.read` and
+holds the crossings; `mp-5-8-board-rank-steps.test.ts` reads an archived
+step back.
+
+Each row also carries `actualMinutes` (MP-5-8's Actual column): every
+finished minute logged on the task (MP-4-6), summed at read over the rows
+served (`reads/board-time.ts`), the total `task.read`'s `time` answers: one
+number, no names. It is 0 for a task with no time; a running timer adds
+nothing until it stops. `tests/reads/mp-5-8-board-actual.test.ts` reads it
+back and holds the crossings.
+
+Each row also carries `estimateMinutes` (MP-4-8, the Estimates column and the
+burn bar's measure) and `pageLink` (MP-4-12, where the row's hover door goes),
+each the task's own stored value as `task.read` answers it, null when not set.
+`tests/reads/mp-5-8-board-estimate.test.ts` reads both back and holds the
+crossings.
+
+Each row also carries `statePosition` (MP-5-11): the `position` of the
+task's state record, read in the same join as the state, so the Projects
+board groups its rows in the workflow's order and a reordered workflow is the
+next read's order. It is null for a task with no state. It is the row's own
+business's state, so another business's workflow never moves it, and a
+caller is shown the positions of only the states their readable rows are in,
+never the whole vocabulary. `tests/reads/mp-5-11-board-status-order.test.ts`
+holds the order and the three crossings.
+
+Each row also carries `waitReason` (MP-5-11): why the task waits, from the
+run lifecycle. It is `needs_approval` while the task has a gate that is
+pending, not expired, on a version not superseded, whoever may decide it, and
+null otherwise; the Projects board prints "approval" after that group's
+heading. `tests/reads/mp-5-11-board-wait-reason.test.ts` holds the reasons
+and the three crossings.
+
+Each row also carries `awaitingDecision` (MP-5-12): true when the task waits
+at such a gate and the caller's decide grant reaches the task, the grant
+`task.decide` checks. The decide reach comes from `readableScope` with action
+`decide`, and the gates are read only for the rows already served
+(`awaitingApproval`, `reads/awaiting.ts`), so a gate on a task the caller
+cannot read is never read or counted. The Projects board's Review mode draws these rows and counts
+them. `tests/reads/mp-5-12-board-review.test.ts` holds the count and the three
+crossings.
+
+Every admitted answer also carries `viewer` (MP-5-12): the caller's own person
+id, taken from the session, which the Projects board's viewer preset narrows
+to. It is never another person's identifier, and no refusal carries it. The
+same suite holds it for a collection reader, a record-scoped reader and
+another business's member.
 
 ## The operations L2 made possible
 

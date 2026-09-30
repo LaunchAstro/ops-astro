@@ -88,6 +88,9 @@ function server(options: { readonly drop?: boolean } = {}) {
           priority: null,
           completedAt: null,
           revision: 1,
+          rank: { number: null, score: null, calc: '' },
+          stage: null,
+          clientSet: false,
         })),
       });
     }

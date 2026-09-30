@@ -1,0 +1,134 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// T4a's clone past a reader dumps and restores inside FIXTURE_PG_CONTAINER.
+// Pointed at a container that runs another server, the clone refuses, names
+// the container and the variable, and creates nothing on either server. The
+// case needs a second throwaway server: FIXTURE_PROOF_OTHER_URL, with
+// FIXTURE_PG_CONTAINER naming that server's container. Run it one file at a
+// time (--no-file-parallelism) beside the other suites that hold a reader on
+// the template: they share its one name, and each makes and drops it.
+//
+// The second case holds the template on the second server as
+// DATABASE_ADMIN_URL, with FIXTURE_PROOF_URL_CONTAINER naming DATABASE_URL's
+// own container: the container passes, and the admin server does not.
+
+import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
+import postgres from 'postgres';
+import { expect, it, vi } from 'vitest';
+
+const serverUrl = process.env['DATABASE_URL'];
+const otherUrl = process.env['FIXTURE_PROOF_OTHER_URL'];
+const container = process.env['FIXTURE_PG_CONTAINER'];
+const urlContainer = process.env['FIXTURE_PROOF_URL_CONTAINER'];
+
+/** The template name `snapshot.ts` derives from the migrations and the generator. */
+function snapshotTemplate(): string {
+  const hash = createHash('sha256');
+  const sources = [
+    ...readdirSync('migrations')
+      .filter((name) => name.endsWith('.sql'))
+      .toSorted()
+      .map((name) => `migrations/${name}`),
+    ...['shape', 'cast', 'generate'].map((name) => `tests/fixture/${name}.ts`),
+  ];
+  for (const source of sources) hash.update(source).update(readFileSync(source));
+  return `fixture_${hash.digest('hex').slice(0, 16)}`;
+}
+
+it.skipIf(serverUrl === undefined || otherUrl === undefined || container === undefined)(
+  'the clone fallback refuses a container running another server, by name, creating nothing',
+  async () => {
+    const hash = createHash('sha256');
+    const sources = [
+      ...readdirSync('migrations')
+        .filter((name) => name.endsWith('.sql'))
+        .toSorted()
+        .map((name) => `migrations/${name}`),
+      ...['shape', 'cast', 'generate'].map((name) => `tests/fixture/${name}.ts`),
+    ];
+    for (const source of sources) hash.update(source).update(readFileSync(source));
+    const template = `fixture_${hash.digest('hex').slice(0, 16)}`;
+    const target = `fixture_refused_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const server = postgres(serverUrl ?? '');
+    const other = postgres(otherUrl ?? '');
+    const templateUrl = new URL(serverUrl ?? '');
+    templateUrl.pathname = `/${template}`;
+    const reader = postgres(templateUrl.toString(), { max: 1, idle_timeout: 0 });
+    const originalArgv = process.argv;
+    let createdTemplate = false;
+    try {
+      const existing = await server`select datname from pg_database where datname = ${template}`;
+      if (existing.length === 0) {
+        await server.unsafe(`create database "${template}"`);
+        createdTemplate = true;
+      }
+      await reader`select 1`;
+      process.argv = ['node', 'tests/fixture/snapshot/snapshot.ts', 'clone', target];
+      vi.resetModules();
+      await expect(import('../fixture/snapshot/snapshot.ts')).rejects.toThrow(
+        `fixture: container ${container ?? ''} is not the DATABASE_URL server;` +
+          ' set FIXTURE_PG_CONTAINER to its container. Nothing was created.',
+      );
+      const made = async (sql: postgres.Sql) =>
+        await sql`select datname from pg_database where datname = ${target}`;
+      expect([...(await made(server)), ...(await made(other))]).toHaveLength(0);
+    } finally {
+      process.argv = originalArgv;
+      await reader.end();
+      await server.unsafe(`drop database if exists "${target}" with (force)`);
+      if (createdTemplate) await server.unsafe(`drop database "${template}" with (force)`);
+      await other.unsafe(`drop database if exists "${target}" with (force)`);
+      await server.end();
+      await other.end();
+    }
+  },
+  120_000,
+);
+
+it.skipIf(serverUrl === undefined || otherUrl === undefined || urlContainer === undefined)(
+  "the clone fallback refuses an admin server that is not DATABASE_URL's, in DATABASE_URL's own container",
+  async () => {
+    const template = snapshotTemplate();
+    const target = `fixture_refused_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const server = postgres(serverUrl ?? '');
+    const admin = postgres(otherUrl ?? '');
+    const templateUrl = new URL(otherUrl ?? '');
+    templateUrl.pathname = `/${template}`;
+    const reader = postgres(templateUrl.toString(), { max: 1, idle_timeout: 0 });
+    const originalAdminUrl = process.env['DATABASE_ADMIN_URL'];
+    const originalArgv = process.argv;
+    let createdTemplate = false;
+    try {
+      const existing = await admin`select datname from pg_database where datname = ${template}`;
+      if (existing.length === 0) {
+        await admin.unsafe(`create database "${template}"`);
+        createdTemplate = true;
+      }
+      await reader`select 1`;
+      process.env['DATABASE_ADMIN_URL'] = otherUrl ?? '';
+      process.env['FIXTURE_PG_CONTAINER'] = urlContainer ?? '';
+      process.argv = ['node', 'tests/fixture/snapshot/snapshot.ts', 'clone', target];
+      vi.resetModules();
+      await expect(import('../fixture/snapshot/snapshot.ts')).rejects.toThrow(
+        'fixture: DATABASE_ADMIN_URL is not the DATABASE_URL server. Nothing was created.',
+      );
+      const made = async (sql: postgres.Sql) =>
+        await sql`select datname from pg_database where datname = ${target}`;
+      expect([...(await made(server)), ...(await made(admin))]).toHaveLength(0);
+    } finally {
+      if (originalAdminUrl === undefined) delete process.env['DATABASE_ADMIN_URL'];
+      else process.env['DATABASE_ADMIN_URL'] = originalAdminUrl;
+      if (container === undefined) delete process.env['FIXTURE_PG_CONTAINER'];
+      else process.env['FIXTURE_PG_CONTAINER'] = container;
+      process.argv = originalArgv;
+      await reader.end();
+      await server.unsafe(`drop database if exists "${target}" with (force)`);
+      await admin.unsafe(`drop database if exists "${target}" with (force)`);
+      if (createdTemplate) await admin.unsafe(`drop database "${template}" with (force)`);
+      await server.end();
+      await admin.end();
+    }
+  },
+  120_000,
+);

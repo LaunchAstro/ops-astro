@@ -47,7 +47,11 @@ export const SCREENS: {
           {context.notice}
         </p>
       )}
-      <Projects client={context.client} grantKey={context.grantKey} />
+      <Projects
+        client={context.client}
+        grantKey={context.grantKey}
+        {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
+      />
     </>
   ),
   'agency:settings': (context) => (

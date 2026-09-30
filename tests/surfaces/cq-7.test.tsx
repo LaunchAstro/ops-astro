@@ -26,6 +26,7 @@ function task(fields: { readonly title: string | null; readonly capCurrency?: st
     revision: 3,
     description: null,
     history: [],
+    // The board row's fields (MP-5-8): this stub answers task.board too.
     board: null,
     rank: { number: null, score: null, calc: '' },
     adHoc: false,

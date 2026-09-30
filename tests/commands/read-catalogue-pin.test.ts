@@ -30,7 +30,7 @@ const PINNED_SHAPE = {
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
   'settings.read': { spine: false, subject: false, authority: 'declared' },
   'tag.list': { spine: false, subject: false, authority: 'declared' },
-  'task.board': { spine: true, subject: false, authority: 'declared' },
+  'task.board': { spine: true, subject: false, authority: 'declared-within' },
   'task.execution': { spine: true, subject: true, authority: 'declared' },
   'task.queue': { spine: false, subject: false, authority: 'declared' },
   'task.read': { spine: true, subject: true, authority: 'declared' },
