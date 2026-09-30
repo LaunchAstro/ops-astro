@@ -11,6 +11,7 @@
     "tests/fixture/snapshot/snapshot-clone-and-privileges.test.ts",
     "tests/web/mp-2-1-isolation-api.test.tsx",
     "tests/api/api-1-isolation.test.ts",
-    "tests/db/inbox-records.test.ts"
+    "tests/db/inbox-records.test.ts",
+    "tests/commands/inbox-clearing-client-isolation.test.ts"
   ]
 }

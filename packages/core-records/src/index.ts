@@ -80,6 +80,14 @@ export {
   type RaiseInboxItem,
 } from './inbox/items.ts';
 export {
+  raiseAssignment,
+  raiseDecision,
+  raiseEscalation,
+  raiseIncident,
+  raiseRunSettled,
+} from './inbox/raise.ts';
+export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
+export {
   isSettingRevisionStale,
   readBusinessSetting,
   readBusinessSettings,
