@@ -1431,13 +1431,13 @@ legacy row as derivable, and 0022's trigger forbids it.
 
 ## The model call's ledger
 
-`0042_model_calls` (AW-01; numbered after main's 0041 at the rebase) adds two tables,
+`0191_model_calls` (AW-01; numbered after main's 0041 at the rebase) adds two tables,
 both tenancy-scoped with row security forced, and the fair share's count
 (`model_route_room`, with its role `ops_astro_broker`; [DATA.md](DATA.md)).
 
 - `model_calls`: one row per priced model call or recorded refusal, bound to
   its run, step, lease, approved version, reservation and delegation.
-- A conversation call (`0053_model_call_conversation`, AW-01's conversation
+- A conversation call (`0202_model_call_conversation`, AW-01's conversation
   seam): a person's call from their own conversation, through
   `callModelInConversation` (`core-custody/src/broker-conversation.ts`). The
   row names the conversation and none of the five task facts, no delegation,
@@ -1459,7 +1459,7 @@ both tenancy-scoped with row security forced, and the fair share's count
   past what its operation declares. The route, its reach, the credential kind
   and the account that carried it are recorded; a replay call records no
   account. The application group may select, insert and update.
-- Usage (`0055_model_call_usage`, ORCH37): a settled call records the model
+- Usage (`0204_model_call_usage`, ORCH37): a settled call records the model
   the provider says answered (`model_id`, null when the answer named none)
   and the units its answer says it used (`input_units`, `output_units`, both
   or neither), written by the priced settle in the transaction that settles
@@ -1505,7 +1505,7 @@ sends the values read there. Client persons and guests do not exist yet
 
 ## Instruction files pinned by digest
 
-`0043_bootstrap_pins` (AW-02; numbered after main's 0041 at the rebase) adds three
+`0192_bootstrap_pins` (AW-02; numbered after main's 0041 at the rebase) adds three
 tables, each tenancy-scoped with row security forced. A file's identity is its
 digest and its size; the path is provenance only.
 
@@ -1523,7 +1523,7 @@ digest and its size; the path is provenance only.
 The application group may select and insert a pin and a ledger row, and never
 update or delete one; it may insert an audit copy and never read, update or
 delete it. The worker and broker roles hold nothing on any of them. The run
-itself is never rewritten either: 0043 takes back the application's update on
+itself is never rewritten either: 0192 takes back the application's update on
 `planned_runs` (granted whole by 0010) and grants it on `state` alone, so a
 run keeps its version, task and lineage. Restricted calls pin the column grant
 at the full schema and every prefix.
@@ -1555,7 +1555,7 @@ nothing. `setDigest` is the path-sorted set digest over a run's reads.
 
 ## The budget wait
 
-The approved ceiling is the stop (AW-05; `0044_budget_wait`, numbered after
+The approved ceiling is the stop (AW-05; `0193_budget_wait`, numbered after
 main's 0041 at the rebase). A model call whose priced maximum does not fit in what the
 run's reservation has left is refused `BUDGET_UNAVAILABLE`, and in the same
 transaction the run stops and asks (`raiseBudgetWait`,
@@ -1590,7 +1590,7 @@ calls on one run reaching the ceiling at once stop it once.
 ## The answers at the budget stop
 
 A waiting run leaves the wait only by a person's answer to its latest ask
-(AW-05; `0045_budget_answers`, numbered after main's 0041 at the rebase;
+(AW-05; `0194_budget_answers`, numbered after main's 0041 at the rebase;
 `core-runtime/src/budget-answer.ts`). The trigger lets it become `planned`
 only when that ask has a `top_up` answer, and `cancelled` only when it has an
 `end`. `budget_answers` (one per ask) and `budget_approvals` (one per person
@@ -1640,7 +1640,7 @@ or delete.
 
 ## The diagnostic trace export
 
-AW-13, `0046_trace_export` and `0047_trace_export_horizon`. A run's durable events leave as timings, counts
+AW-13, `0195_trace_export` and `0196_trace_export_horizon`. A run's durable events leave as timings, counts
 and codes, never a sentence, to a trace target an operator reads.
 
 - `core-runtime/src/trace-span.ts`: the span is a typed allowlist
@@ -1665,7 +1665,7 @@ and codes, never a sentence, to a trace target an operator reads.
   run waits on the exporter.
 - `trace_export_cursors`: one row per business, the last delivered event by
   its writing transaction's id and its own, `(tx, id)` (`run_events.tx`,
-  `xid8`, 0047). The read takes only events below its snapshot's horizon
+  `xid8`, 0196). The read takes only events below its snapshot's horizon
   (`pg_snapshot_xmin`): every transaction below it has finished and any later
   write has a higher id, so an event that commits late never lands behind
   the cursor. A long transaction anywhere on the cluster holds the export
@@ -1698,7 +1698,7 @@ and codes, never a sentence, to a trace target an operator reads.
 
 ## An automation occurrence's run
 
-AW-01 J, `core-commands/src/commands/occurrence-run.ts` and migration 0054
+AW-01 J, `core-commands/src/commands/occurrence-run.ts` and migration 0203
 (ORCH36's ruling, option B). C33 records an occurrence, C52-A's dispatch
 rechecks the activation and its standing approval under the activation's lock,
 and then asks `startOccurrenceRun` for the run. It is never a command: no API
@@ -1716,7 +1716,7 @@ route, command-line verb or agent operation reaches it.
 - **Who writes it.** An active worker of the business, never a person or an
   agent (`WORKER_REQUIRED`). The run row goes in through
   `ops_astro_occurrence`, taken for the one insert with
-  `set_config('role', ..., true)`; 0054's trigger refuses an origin written by
+  `set_config('role', ..., true)`; 0203's trigger refuses an origin written by
   any other role, and any change to an origin after the insert.
 - **What refuses it.** An unknown or malformed occurrence
   (`OCCURRENCE_UNKNOWN`); a revoked, ended or superseded approval, or one that
@@ -1725,11 +1725,11 @@ route, command-line verb or agent operation reaches it.
   (`DEFINITION_UNAVAILABLE`). Each writes nothing. A newer release of the
   definition does not refuse it: the activation pins its version (automations
   contract 4.3).
-- **What it writes.** The task, the run, its definition pin (0043, kind
+- **What it writes.** The task, the run, its definition pin (0192, kind
   `definition_version`, pinned by the worker) and one `occurrence.run_start`
   audit event by the worker, whose payload digest covers the occurrence, run,
   task, definition, version, approval and approver.
-- **Pickup.** Pickup claims reservations on approved plan versions, and 0054
+- **Pickup.** Pickup claims reservations on approved plan versions, and 0203
   binds a reservation's run and version together, so no reservation can name
   an occurrence's run. AW-04 builds its claim.
 

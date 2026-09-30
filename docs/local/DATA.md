@@ -179,9 +179,9 @@ identity, grant, record and command-envelope spine ported from
 [AUTHORITY.md](AUTHORITY.md) covers the agent-authority, settings and
 delegation migrations, and [RUNTIME.md](RUNTIME.md) covers the proposal, gate,
 decision, budget, lease and attempt migrations, and the model-call ledger and
-copy register (`0042_model_calls`), and the pinned instruction files
-(`0043_bootstrap_pins`), the budget wait (`0044_budget_wait`), its answers
-(`0045_budget_answers`) and the diagnostic trace export (`0046_trace_export`, and `0047_trace_export_horizon`,
+copy register (`0191_model_calls`), and the pinned instruction files
+(`0192_bootstrap_pins`), the budget wait (`0193_budget_wait`), its answers
+(`0194_budget_answers`) and the diagnostic trace export (`0195_trace_export`, and `0196_trace_export_horizon`,
 which stamps each run event with its writing transaction's id).
 Read `ls migrations/` for the current set.
 
@@ -268,7 +268,7 @@ foreign insert into `delegations` is refused with `check_violation`
 (migration 0018), but no application role reaches it: the group holds only
 `select` and `insert` on `handback_reports`, so the privilege check refuses
 `update` and `delete` before the trigger runs. Its only live caller is the owner,
-whom it refuses. `model_route_room` (migration 0042, AW-01's fair share) is
+whom it refuses. `model_route_room` (migration 0191, AW-01's fair share) is
 the second, and the one read across businesses: a route's ceiling is the
 installation's, which a tenant transaction cannot count under row security.
 It answers one whole number, 1 when the transaction's own business may hold
@@ -283,7 +283,7 @@ not inherit it, so the broker takes it for the one statement with
 into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
 proves the separation and the grants.
 
-`ops_astro_occurrence` (migration 0054, AW-01 J) follows the same pattern
+`ops_astro_occurrence` (migration 0203, AW-01 J) follows the same pattern
 without a function: it holds `insert` on `planned_runs`, `select` on a task's
 `business_id`, `id` and `revision` (for 0032's trigger) and execute on
 `app_business_id()`, and nothing else. The worker's occurrence path takes it

@@ -336,9 +336,9 @@ export interface ProposalVersionView {
   readonly endedAt: string | null;
   /** The token units the run's model calls recorded, or null for none (MP-6-2's hero tokens). */
   readonly tokenUnits: number | null;
-  /** What the run was given at its start (AW-02's pin slot, 0043); empty with no pin (MP-6-2). */
+  /** What the run was given at its start (AW-02's pin slot, 0192); empty with no pin (MP-6-2). */
   readonly pins: readonly RunPinView[];
-  /** Each instruction file the run read, in its order (the read ledger, 0043). */
+  /** Each instruction file the run read, in its order (the read ledger, 0192). */
   readonly reads: readonly RunReadView[];
   readonly evidence: EvidenceView | null;
   readonly gate: GateView | null;

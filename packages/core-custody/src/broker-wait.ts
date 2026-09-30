@@ -21,8 +21,8 @@
 //   the run waits. The reservation stays held: the approved ceiling is
 //   reserved for the person's answer, and restart recovery leaves a waiting
 //   run's hold alone (`core-runtime/src/recovery/classifier.ts`).
-// - The run is `waiting_budget`. Migration 0044 lets nothing take it out of
-//   the wait; 0045 lets only a person's answer to the latest ask do so
+// - The run is `waiting_budget`. Migration 0193 lets nothing take it out of
+//   the wait; 0194 lets only a person's answer to the latest ask do so
 //   (`core-runtime/src/budget-answer.ts`).
 
 import { randomUUID } from 'node:crypto';
@@ -78,7 +78,7 @@ export async function raiseBudgetWait(tx: TenantQuery, stop: BudgetStop): Promis
 /**
  * The ask, in the terms approved. The spend is what the reservation has
  * committed, never clamped: one past the ceiling is a defect the row's own
- * check refuses (0044), and the transaction goes back.
+ * check refuses (0193), and the transaction goes back.
  */
 async function insertAsk(
   tx: TenantQuery,

@@ -110,7 +110,7 @@ const VERSIONS = `select row_number() over (order by lin.created_at desc, lin.id
                                  where l.business_id = e.business_id and l.run_id = e.run_id
                                    and l.kind = 'claimed' and l.position > e.position))
                                   as run_ended_at,
-            -- The token units this run's model calls recorded (0055); null for none.
+            -- The token units this run's model calls recorded (0204); null for none.
             (select sum(mc.input_units + mc.output_units)::text from public.model_calls mc
               where mc.business_id = run.business_id and mc.run_id = run.id)
                                   as run_token_units,

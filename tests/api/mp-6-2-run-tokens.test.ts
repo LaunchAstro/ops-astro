@@ -2,7 +2,7 @@
 //
 // MP-6-2's hero tokens cell, its read half: `task.read`'s proposal versions
 // carry the token units their run's model calls recorded (input and output,
-// 0055), summed in this business and on this run, through the real boundary,
+// 0204), summed in this business and on this run, through the real boundary,
 // the replay broker and a fresh Postgres. The agent makes real `model.call`s
 // under its lease; the model_calls rows, read as admin, are the oracle. The
 // crossings: another business, an external party of this business, and the

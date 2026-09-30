@@ -85,7 +85,7 @@ it('AW-01 occurrence run: the application role cannot write an occurrence run it
     ),
   ).rejects.toThrow(/OCCURRENCE_RUN_ROLE/u);
   // Nor move an existing run off, or onto, an occurrence: the application may
-  // update a run's state alone (0043), and past that, the trigger refuses
+  // update a run's state alone (0192), and past that, the trigger refuses
   // even the owner.
   const moveOff = `update public.planned_runs set origin_occurrence_id = null,
       origin_definition_id = null, origin_approved_by_actor_id = null
