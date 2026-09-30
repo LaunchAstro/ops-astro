@@ -108,13 +108,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   'public.inbox_attention': { item_id: randomUUID(), person_id: randomUUID() },
   'public.inbox_delivery_attempts': { item_id: randomUUID(), channel: 'in_app', state: 'asked' },
-  // 0047 (C59): no journey enrols a second factor.
+  // 0049 (C59): no journey enrols a second factor.
   'public.second_factors': {
     person_id: randomUUID(),
     provider: 'supabase',
     provider_factor_id: 'restricted-calls-seed',
   },
-  // 0048 (C55): no journey records a privacy incident.
+  // 0050 (C55): no journey records a privacy incident.
   'public.privacy_incidents': {
     what_happened: 'restricted calls seed',
     found_at: new Date(),
@@ -123,7 +123,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     information_kinds: ['other'],
     recorded_by_actor: randomUUID(),
   },
-  // 0049 (C81): no journey drafts a legal document version.
+  // 0051 (C81): no journey drafts a legal document version.
   'public.legal_document_versions': {
     document: 'breach-runbook',
     version: '0.1',
@@ -131,7 +131,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     body_digest: '',
     drafted_by_actor: randomUUID(),
   },
-  // 0050 (C81): no journey sets a register row.
+  // 0052 (C81): no journey sets a register row.
   'public.overseas_services': {
     service: 'restricted calls seed',
     receives: 'nothing',
@@ -142,7 +142,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     in_use: true,
     updated_by_actor: randomUUID(),
   },
-  // 0051 (C81): no journey sets a data class.
+  // 0053 (C81): no journey sets a data class.
   'public.data_classes': {
     data_class: 'restricted calls seed',
     purpose: 'nothing',
@@ -152,7 +152,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     in_use: true,
     updated_by_actor: randomUUID(),
   },
-  // 0052 (API-2): no journey issues an agent credential.
+  // 0054 (API-2): no journey issues an agent credential.
   'public.agent_credentials': {
     agent_actor_id: randomUUID(),
     issued_by_person_id: randomUUID(),
@@ -164,18 +164,18 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     credential_key_id: 'seed',
     expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
   },
-  // 0053 (C32): no journey makes a client.
+  // 0055 (C32): no journey makes a client.
   'public.clients': {
     name: `restricted calls seed ${randomUUID()}`,
     created_by_actor_id: randomUUID(),
   },
-  // 0054 (C58): no journey ends a person's access.
+  // 0056 (C58): no journey ends a person's access.
   'public.access_endings': {
     person_id: randomUUID(),
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
   },
-  // 0055 (C58): no journey here signs out.
+  // 0057 (C58): no journey here signs out.
   'public.ended_sessions': {
     person_id: randomUUID(),
     session_id: randomUUID(),

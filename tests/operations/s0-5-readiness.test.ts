@@ -278,8 +278,8 @@ describe.skipIf(serverUrl === undefined)('S0-5 readiness check', () => {
     expect(task.revision).toBeGreaterThan(0);
   }, 600_000);
 
-  // Last, as it drops the function. Only a database from before 0056 (neither
-  // the function nor `ops.installation`) runs, as 0056 provisions it made-up.
+  // Last, as it drops the function. Only a database from before 0058 (neither
+  // the function nor `ops.installation`) runs, as 0058 provisions it made-up.
   it('S0-5 fails closed: the readiness function gone while the installation remains, every gated command is refused and writes nothing', async () => {
     await admin('drop function public.first_client_readiness()');
     const before = await fingerprint();

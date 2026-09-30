@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// S0-5, the gate's own commands (migration 0060), each a person's under
+// S0-5, the gate's own commands (migration 0062), each a person's under
 // `operations:manage` in the business that operates the installation:
 // `operations.record_gate_item` ticks one item with its https evidence link
-// (`gate item recorded`), a closing line with the owner's one line too (0062),
+// (`gate item recorded`), a closing line with the owner's one line too (0064),
 // and `operations.change_installation_mode` moves the
 // installation from made-up to real data while every item is done
 // (`installation mode changed`).
@@ -25,12 +25,12 @@ type RecordRequest = CommandRequest & { readonly command: 'operations.record_gat
 type ChangeRequest = CommandRequest & { readonly command: 'operations.change_installation_mode' };
 
 const ITEMS: ReadonlySet<string> = new Set(GATE_ITEMS);
-/** As 0056's `gate_items_evidence_link` reads it. */
+/** As 0058's `gate_items_evidence_link` reads it. */
 const EVIDENCE = /^https:\/\/[^\s]+$/u;
-/** The OAIC's public Privacy Opt-In Register lists its entries on this one page (0062). */
+/** The OAIC's public Privacy Opt-In Register lists its entries on this one page (0064). */
 const OPT_IN_REGISTER =
   /^https:\/\/www\.oaic\.gov\.au\/privacy\/privacy-registers\/privacy-opt-in-register\/?([?#]\S*)?$/u;
-/** The owner's one line on a closing line, as 0062's `gate_items_statement` reads it. */
+/** The owner's one line on a closing line, as 0064's `gate_items_statement` reads it. */
 const LINE = /^[^\p{Cc}]{1,500}$/u;
 const CLOSING_LINES: ReadonlySet<string> = new Set([
   'privacy-opt-in',

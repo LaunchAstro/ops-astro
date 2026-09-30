@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0060 S0-5: the gate's own commands (ORCH38). A gate item is ticked with its
+-- 0062 S0-5: the gate's own commands (ORCH38). A gate item is ticked with its
 -- evidence link (`operations.record_gate_item`) and the installation moves
 -- from made-up to real data (`operations.change_installation_mode`), each a
 -- person's act under `operations:manage` in the business that operates the
@@ -9,7 +9,7 @@
 -- The application writes through those commands with the narrowest grants
 -- that let it: insert on `ops.gate_items` (no update or delete, so an item
 -- once done stays done) and update of `mode` alone on `ops.installation`.
--- The one-way trigger from 0056 still refuses a move back, and a move to real
+-- The one-way trigger from 0058 still refuses a move back, and a move to real
 -- while any item is open, whoever asks.
 --
 -- `operator_business_id` names the business that operates the installation.

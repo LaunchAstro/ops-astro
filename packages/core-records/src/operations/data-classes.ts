@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The data-class register (C81, migration 0051): one row per class of personal
+// The data-class register (C81, migration 0053): one row per class of personal
 // information, with its purpose, normal disclosures, retention and deletion.
 // The privacy policy reads it: a policy version is drafted with the classes in
 // use and their digest, and approving or publishing it checks the classes

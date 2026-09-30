@@ -107,7 +107,7 @@ export async function createWorld(part: string): Promise<World> {
   const db = await createFreshDatabase({ part });
   const alpha = (await insertBusiness(db.app, 'alpha')) as BusinessId;
   const bravo = (await insertBusiness(db.app, 'bravo')) as BusinessId;
-  // S0-5 (0060): alpha operates the installation, as provisioning sets it.
+  // S0-5 (0062): alpha operates the installation, as provisioning sets it.
   await db.admin.execute('update ops.installation set operator_business_id = $1', [alpha]);
   const spineAlpha = await installSpine(db.app, alpha);
   const spineBravo = await installSpine(db.app, bravo);

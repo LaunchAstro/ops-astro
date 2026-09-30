@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0056 S0-5: the gate before the first real client data and the first client
+-- 0058 S0-5: the gate before the first real client data and the first client
 -- invite.
 --
 -- Both tables are about the installation, not a business, so they live in

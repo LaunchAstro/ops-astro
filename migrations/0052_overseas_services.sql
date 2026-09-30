@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0050 C81: the overseas-services register (SP-25), and the privacy policy's
+-- 0052 C81: the overseas-services register (SP-25), and the privacy policy's
 -- versions reading it.
 --
 -- One row per outside service that receives personal information: what it

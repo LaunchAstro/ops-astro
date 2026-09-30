@@ -263,7 +263,7 @@ a UUID (`VerifiedSubject.sessionId`), and kept by every refresh. A session the
 person has ended (signed out of, ended from another session, or ended by a
 factor change) is refused at login resolution from that commit,
 `AUTH_SESSION_EXPIRED` 401, before the second-factor check, whatever the
-token's own `exp` says (`ended_sessions`, 0055). The provider's sign-out, which
+token's own `exp` says (`ended_sessions`, 0057). The provider's sign-out, which
 revokes the refresh tokens, comes after and cannot undo it.
 
 The business is named by the path and verified by login resolution. A business
@@ -1848,7 +1848,7 @@ the agent route waits on S0-6's bearer scheme.
 
 ## The first-client gate (S0-5)
 
-An installation is made-up or real (`ops.installation`, migration 0056).
+An installation is made-up or real (`ops.installation`, migration 0058).
 Every command the catalogue classes `client-data` or `invitation` reads
 `public.first_client_readiness()` inside its own transaction, after
 authority and before the handler, on the person and agent routes. On a
@@ -1856,13 +1856,13 @@ real-data installation with any gate item open it is refused `GATE_SHUT` 409,
 naming the open items, and writes nothing. A made-up-data installation, the
 test harness and staging included, runs them. An installation with no mode
 row refuses them too, naming `installation`, and one whose readiness function
-is gone fails them. Only a database from before 0056, with neither the
-function nor `ops.installation`, runs them, as 0056 provisions it made-up.
+is gone fails them. Only a database from before 0058, with neither the
+function nor `ops.installation`, runs them, as 0058 provisions it made-up.
 
 The eight items are `ops.gate_items` rows, each with an `https` evidence link:
 `tested-backups`, `second-factor`, `legal-basics`, `privacy-act-statement`,
 `overseas-register`, `breach-runbook`, `security-pass`, `phone-alerts`. Three
-closing lines are rows too (migration 0062), each with the owner's one line
+closing lines are rows too (migration 0064), each with the owner's one line
 (`statement`, at most 500 characters, no line breaks) as well as its link, and
 open until recorded like any item: `privacy-opt-in` (the link is the OAIC's
 public Privacy Opt-In Register page, where the entry is listed; a lodged form
@@ -1874,7 +1874,7 @@ date, with its evidence link). The eight items carry no line. The table holds
 the same rules. The mode moves from made-up to real only while every item and
 line is done, and never back; the row cannot be deleted.
 
-Two commands move the gate (migration 0060), each a person's under
+Two commands move the gate (migration 0062), each a person's under
 `operations:manage` in the business that operates the installation
 (`ops.installation.operator_business_id`, set at provisioning), never an
 agent's or a delegation's; any other caller, and every caller while no business

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A person's own sessions (C58, 0055): the ones this business has served them
+// A person's own sessions (C58, 0057): the ones this business has served them
 // lately, and the ones they have ended.
 //
 // The sign-in provider gives a person no list of their sessions, so the list

@@ -489,7 +489,7 @@ Identity comes from `.local/synthetic-users.json`, which `auth:seed`
 mint. Until that file exists the seed writes a placeholder with random subjects
 and says on every run that those identities cannot sign in.
 
-## Second factors (0047, C59)
+## Second factors (0049, C59)
 
 `second_factors` records that a person has a second factor at the sign-in
 provider, which one (the provider's factor id, a bounded identifier, never a
@@ -502,10 +502,10 @@ never written here. Whether a person has a verified factor is mirrored onto
 `people.second_factor_verified` by the same writers in the same transaction
 (`identity/second-factor.ts`), so login resolution reads it inside the one
 query it already makes and refuses a sign-in without the second factor. It
-reads the column through the row's json, so on a database from before 0047,
+reads the column through the row's json, so on a database from before 0049,
 which has no such column, the answer is no factor.
 
-## Privacy incidents (0048, C55)
+## Privacy incidents (0050, C55)
 
 `privacy_incidents` holds the breach runbook's day-0 record: what happened,
 when it was found (`found_at`, day 0), who found it, which clients and people
@@ -517,7 +517,7 @@ with the restrictive policy like every business table, and it is not a
 `records` row, so no share, search or export reaches it. The audit chain and
 the operation register hold a digest and the new row's id, never the words.
 
-## Legal documents (0049, C81)
+## Legal documents (0051, C81)
 
 `legal_document_versions` holds every version of a business's legal documents:
 the document, its `major.minor` label (one per document), the words, and
@@ -530,7 +530,7 @@ The application may select, insert and update; nothing deletes a row. The
 table is tenancy-keyed with the restrictive policy. The audit chain and the
 operation register hold a digest and the version's id, never the words.
 
-## Clients (0053, C32)
+## Clients (0055, C32)
 
 `clients` holds one row per client of the business: its `name` (1 to 200
 characters, trimmed, one per business in any letter case, `clients_one_name`)
@@ -541,7 +541,7 @@ check a client is of this business before writing its id. The application may
 select and insert; nothing updates or deletes a row. Tenancy-keyed with the
 restrictive policy.
 
-## Access endings (0054, C58)
+## Access endings (0056, C58)
 
 `access_endings` holds one row per login of a person whose access was ended
 (`access.end`): who ended it and when, and the two provider steps it owed,
@@ -552,7 +552,7 @@ record the retries. The application may select, insert and update; nothing
 deletes a row. Tenancy-keyed with the restrictive policy. The partial index
 `access_endings_owed` is what the server's retry looks for.
 
-## Ended sessions (0055, C58)
+## Ended sessions (0057, C58)
 
 `authentication_attempts.session_id` is the provider session a resolved
 attempt came in on (null on a refusal, and for a token that names none); a
@@ -564,7 +564,7 @@ resolution refuses a session named here for that person. The application may
 select and insert; nothing changes or deletes a row. Tenancy-keyed with the
 restrictive policy.
 
-## Overseas-services register (0050, C81)
+## Overseas-services register (0052, C81)
 
 `overseas_services` holds one row per outside service that receives personal
 information (SP-25): the service, what it receives, where it is stored
@@ -573,13 +573,13 @@ information (SP-25): the service, what it receives, where it is stored
 case (`overseas_services_one_service`). The application may select, insert and
 update; nothing deletes a row. Tenancy-keyed with the restrictive policy.
 
-0050 also gives `legal_document_versions` two columns, `register` (the rows in
+0052 also gives `legal_document_versions` two columns, `register` (the rows in
 use as a JSON array) and `register_digest` (SHA-256 over those rows and their
 `to_confirm` marks, in order). A privacy-policy version has both, and no other
 document has either (`legal_document_versions_register_policy_only`). The
 written-once guard now covers them with the rest of the draft.
 
-## Data-class register (0051, C81)
+## Data-class register (0053, C81)
 
 `data_classes` holds one row per class of personal information: the class
 (`data_class`), its purpose, its normal disclosures, its retention and its
@@ -588,13 +588,13 @@ when. One row per class in any letter case (`data_classes_one_class`). The
 application may select, insert and update; nothing deletes a row.
 Tenancy-keyed with the restrictive policy.
 
-0051 also gives `legal_document_versions` `data_classes` (the classes in use
+0053 also gives `legal_document_versions` `data_classes` (the classes in use
 as a JSON array) and `data_classes_digest` (SHA-256 over their words, in
 order). A privacy-policy version has both, and no other document has either
 (`legal_document_versions_data_classes_policy_only`). The written-once guard
 covers them with the rest of the draft.
 
-## Agent credentials (0052, API-2)
+## Agent credentials (0054, API-2)
 
 `agent_credentials` holds one row per agent credential: the fresh agent actor
 it is for (`agent_actor_id`, one credential per agent actor), the person and

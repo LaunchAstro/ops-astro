@@ -110,7 +110,7 @@ const GRANTS_BY_ROLE = {
     // `inbox.unattended` asks `operations:read` too (INB-1e), and it names
     // other people's items.
     ['operations', 'read'],
-    // S0-5 (0060): the first-client gate's own commands; only the operating
+    // S0-5 (0062): the first-client gate's own commands; only the operating
     // business's grant moves it.
     ['operations', 'manage'],
     ['privacy', 'manage'],
@@ -746,7 +746,7 @@ try {
     businessIds[tag] = await businessIdFor(admin, key);
     console.log(`local-seed: business ${key} ${businessIds[tag]}`);
   }
-  // S0-5 (0060): business A operates this installation, as provisioning sets it.
+  // S0-5 (0062): business A operates this installation, as provisioning sets it.
   await admin.execute(
     'update ops.installation set operator_business_id = $1 where operator_business_id is null',
     [businessIds.A],

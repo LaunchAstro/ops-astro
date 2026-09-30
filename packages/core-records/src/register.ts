@@ -417,7 +417,7 @@ const ROWS = [
       'This installation takes no real client data or client invitation until every gate item is done',
     source: 'S0-5 TR-SEC5-1',
   },
-  // S0-5: the gate's own commands (0060).
+  // S0-5: the gate's own commands (0062).
   {
     code: 'GATE_ITEM_ALREADY_RECORDED',
     status: 409,

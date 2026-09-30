@@ -29,9 +29,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0048: the forwarder's kept alerts; the application holds nothing on them.
   ['', 'ops.api_alerts'],
   ['s', 'ops.slots'],
-  // 0056 (S0-5): the installation's mode and the gate items are read by the
+  // 0058 (S0-5): the installation's mode and the gate items are read by the
   // application through first_client_readiness().
-  // 0060 (S0-5, ORCH38): the gate's own commands write through the app, so it
+  // 0062 (S0-5, ORCH38): the gate's own commands write through the app, so it
   // may insert a gate item, and update `mode` alone on the installation. A
   // column grant is not a table letter: this suite's update sets the first
   // column, which stays refused; s0-5-gate-commands proves the column.
@@ -45,27 +45,27 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
-  // 0047 (C59): a factor is written and moved on, never deleted.
+  // 0049 (C59): a factor is written and moved on, never deleted.
   ['siu', 'second_factors'],
-  // 0048 (C55): a privacy incident is recorded and moved on, never deleted.
+  // 0050 (C55): a privacy incident is recorded and moved on, never deleted.
   ['siu', 'privacy_incidents'],
-  // 0049 (C81): a legal document version is drafted, then approved and
+  // 0051 (C81): a legal document version is drafted, then approved and
   // published by update; never deleted.
   ['siu', 'legal_document_versions'],
-  // 0050 (C81): a row of the overseas-services register is set by insert or
+  // 0052 (C81): a row of the overseas-services register is set by insert or
   // update; never deleted.
   ['siu', 'overseas_services'],
-  // 0051 (C81): a data class is set by insert or update; never deleted.
+  // 0053 (C81): a data class is set by insert or update; never deleted.
   ['siu', 'data_classes'],
-  // 0052 (API-2): an agent credential is issued by insert and revoked by
+  // 0054 (API-2): an agent credential is issued by insert and revoked by
   // update; never deleted.
   ['siu', 'agent_credentials'],
-  // 0053 (C32): a client is written once; never updated or deleted.
+  // 0055 (C32): a client is written once; never updated or deleted.
   ['si', 'clients'],
-  // 0054 (C58): an access ending is written, then its provider steps are
+  // 0056 (C58): an access ending is written, then its provider steps are
   // stamped by update; never deleted.
   ['siu', 'access_endings'],
-  // 0055 (C58): an ended session is written once; never changed or deleted.
+  // 0057 (C58): an ended session is written once; never changed or deleted.
   ['si', 'ended_sessions'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
@@ -92,10 +92,10 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
 
 /**
  * Grants a later migration added, so a prefix before it does not hold them yet.
- * 0060 grants the gate's own insert (S0-5, ORCH38).
+ * 0062 grants the gate's own insert (S0-5, ORCH38).
  */
 const ADDED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
-  'ops.gate_items': { from: '0060', letters: 'i' },
+  'ops.gate_items': { from: '0062', letters: 'i' },
 };
 
 /**
@@ -117,7 +117,7 @@ export function applicationGrantsAt(qualified: string, at?: string): string | un
 export const APPLICATION_EXECUTES: readonly string[] = [
   'public.app_business_id',
   'public.audit_event_hash',
-  // 0056 (S0-5): security invoker, so it reads no more than the caller may.
+  // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
 ];
 

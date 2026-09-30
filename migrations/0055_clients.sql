@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0053 clients (C32, CS-2.15). The client record: one row per client of the
+-- 0055 clients (C32, CS-2.15). The client record: one row per client of the
 -- business, the party a party-scoped grant names in `grants.scope_id` and a
 -- task names in its `client` link (`records.uuid_7`, written only by
 -- `task.set_party`). A client is an organisation the business works for, not

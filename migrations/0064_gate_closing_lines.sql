@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0062 S0-5: the gate's three closing lines, each shut until the owner's
+-- 0064 S0-5: the gate's three closing lines, each shut until the owner's
 -- evidence is recorded (`docs/build-safeguards.md`, the gate before the first
 -- real client data):
 --
