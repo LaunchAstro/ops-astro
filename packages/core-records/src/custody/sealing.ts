@@ -39,6 +39,8 @@ export interface Sealed {
 
 const INFO = Buffer.from('ops-astro custody v1');
 const KEY_ID_SHAPE = /^[A-Za-z0-9._@/-]{1,64}$/u;
+/** AES-GCM's full tag, in bytes, fixed on both sides. */
+const TAG_LENGTH = 16;
 
 /** The raw 32-byte X25519 public key, as the environment carries it (base64url). */
 function importPublic(raw: string): KeyObject {
@@ -91,6 +93,7 @@ export function seal(value: string, key: SealingKey): Sealed {
     'aes-256-gcm',
     wrappingKey(shared, ephemeralPublic, key.keyId),
     nonce,
+    { authTagLength: TAG_LENGTH },
   );
   cipher.setAAD(Buffer.from(key.keyId));
   const body = Buffer.concat([cipher.update(value, 'utf8'), cipher.final(), cipher.getAuthTag()]);
@@ -105,11 +108,13 @@ export function seal(value: string, key: SealingKey): Sealed {
 export function open(sealed: Sealed, privateKey: KeyObject): string {
   const publicKey = importPublic(sealed.ephemeralPublic.toString('base64url'));
   const shared = diffieHellman({ privateKey, publicKey });
-  const tagAt = sealed.sealed.length - 16;
+  const tagAt = sealed.sealed.length - TAG_LENGTH;
+  // The tag length is fixed, so a shortened tag is refused, never checked short.
   const decipher = createDecipheriv(
     'aes-256-gcm',
     wrappingKey(shared, sealed.ephemeralPublic, sealed.keyId),
     sealed.nonce,
+    { authTagLength: TAG_LENGTH },
   );
   decipher.setAAD(Buffer.from(sealed.keyId));
   decipher.setAuthTag(sealed.sealed.subarray(tagAt));
