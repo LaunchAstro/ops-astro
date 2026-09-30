@@ -344,7 +344,8 @@ const LOOPBACK_ISSUER = /^http:\/\/127\.0\.0\.1:\d+(?:\/|$)/u;
 
 /**
  * C58's admin key (ORCH44 21:13Z): `SUPABASE_SERVICE_KEY`, batch 1's admin
- * credential (hosted, the project's service key). On a local stack with none
+ * credential (hosted, the project's service key), for an `https` or loopback
+ * issuer only. On a local stack with none
  * set, a five-minute `service_role` bearer signed with the local auth key in
  * `localDirectory`, minted per call, as the seed tools make it. Otherwise none.
  */
@@ -352,10 +353,14 @@ export function providerAdminKey(
   environment: Readonly<Record<string, string | undefined>>,
   localDirectory: string,
 ): (() => Promise<string>) | undefined {
+  const issuer = environment['GOTRUE_URL'] ?? '';
+  const loopback = LOOPBACK_ISSUER.test(issuer);
   const key = environment['SUPABASE_SERVICE_KEY'] ?? '';
-  if (key !== '') return async () => await Promise.resolve(key);
+  // Never in clear text: a hosted issuer is reached over TLS or not at all.
+  if (key !== '')
+    return loopback || issuer.startsWith('https://') ? () => Promise.resolve(key) : undefined;
   const file = join(localDirectory, 'auth-signing-key.json');
-  if (!LOOPBACK_ISSUER.test(environment['GOTRUE_URL'] ?? '') || !existsSync(file)) return undefined;
+  if (!loopback || !existsSync(file)) return undefined;
   return async () => {
     const [jwk, ...others] = JSON.parse(readFileSync(file, 'utf8')) as JsonWebKey[];
     if (jwk === undefined || others.length > 0) throw new Error('the local key is not one key');

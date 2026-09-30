@@ -11,7 +11,8 @@
 // needs a bearer naming the user. A banned user's every refresh and sign-in is
 // refused, so the ban is the session end (ORCH46); what access token is left
 // runs out within the hour, and the API refuses it from the ending's commit.
-// An unban never restores those sessions: restoring access is a new login.
+// GoTrue keeps a banned user's sessions and refresh tokens, so an unban would
+// revive them: restoring access is a new login, never an unban (ORCH46).
 //
 // Every answer is distrusted as C59's are (TR-SEC4R-5): one
 // fixed destination, no redirect followed, a time limit the provider cannot

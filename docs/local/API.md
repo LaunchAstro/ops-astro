@@ -1782,8 +1782,9 @@ the login. Both are a 100-year ban through GoTrue's admin API
 (`PUT /admin/users/<id>`), each done once the ban holds: GoTrue has no admin
 call that ends a user's sessions, and it refuses a banned user's every refresh
 and sign-in, so the ban is the session end (ORCH46). What access token is left
-runs out within the hour and is refused here from the commit. An unban never
-restores those sessions: restoring access is a new login. The calls carry the
+runs out within the hour and is refused here from the commit. GoTrue keeps a
+banned user's sessions and refresh tokens, so an unban would revive them:
+restoring access is a new login, never an unban (ORCH46). The calls carry the
 admin key, `SUPABASE_SERVICE_KEY` (hosted, the project's service key; with none
 set on a local stack, a five-minute `service_role` bearer signed with the local
 auth key, minted per call); with neither, nothing is sent and both steps stay
