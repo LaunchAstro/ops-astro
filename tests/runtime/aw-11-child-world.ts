@@ -91,8 +91,9 @@ export function useChildWorld(label: string): void {
 export async function parentWork(
   on: Schedules,
   title = `aw-11 ${randomUUID()}`,
+  maximumMinor = 2_000,
 ): Promise<{ readonly work: Work; readonly parent: Delegation; readonly credential: string }> {
-  const work = await liveWork(on, title, 2_000);
+  const work = await liveWork(on, title, maximumMinor);
   const credential = String(work.picked['credential']);
   const parent = await on.db.app.withBusiness(
     on.business,
