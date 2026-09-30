@@ -90,8 +90,11 @@ export async function until(probe: () => Promise<boolean> | boolean, ms: number)
 }
 
 /**
- * Probes `pid` until it reads stopped (`T`), for up to `ms`. Each reading is
- * kept, with how long its `ps` took, for the kill record.
+ * Probes `pid` until it reads stopped (`T`), waiting up to `ms` between
+ * readings. The bound is on the process, not on `ps`: each reading's own run
+ * time is left out, since on a loaded host one start of the setuid `ps` can
+ * take longer than the stop, and a stop read late is still a stop. Each
+ * reading is kept, with how long its `ps` took, for the kill record.
  */
 export async function awaitStopped(
   pid: number,
@@ -99,16 +102,18 @@ export async function awaitStopped(
   probe: (pid: number) => string = processState,
 ): Promise<{ readonly stopped: boolean; readonly probes: readonly string[] }> {
   const probes: string[] = [];
-  const stopped = await until(() => {
+  let waited = 0;
+  for (;;) {
     const at = Date.now();
     const seen = probe(pid);
     probes.push(`${seen || '-'} in ${String(Date.now() - at)} ms`);
-    return seen.startsWith('T');
-  }, ms).then(
-    () => true,
-    () => false,
-  );
-  return { stopped, probes };
+    if (seen.startsWith('T')) return { stopped: true, probes };
+    if (waited >= ms) return { stopped: false, probes };
+    const slept = Date.now();
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(10);
+    waited += Date.now() - slept;
+  }
 }
 
 /**
