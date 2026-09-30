@@ -72,16 +72,17 @@ export async function raiseEscalation(
   tx: TenantQuery,
   escalated: { readonly gateId: string; readonly recipientPersonId: string },
 ): Promise<void> {
-  const gates = await tx.query<{ readonly taskId: string }>(
-    `select l.task_id as "taskId"
+  const gates = await tx.query<{ readonly taskId: string; readonly assignee?: string | null }>(
+    `select l.task_id as "taskId", r.uuid_2 as assignee
        from public.gates g
        join public.proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
+       left join public.records r on r.business_id = l.business_id and r.id = l.task_id
       where g.business_id = $1 and g.id = $2`,
     [tx.businessId, escalated.gateId],
   );
   const taskId = gates[0]?.taskId;
   if (taskId === undefined) throw new Error('raiseEscalation: the escalated gate is not here');
-  const assignee = await assigneeOf(tx, taskId);
+  const assignee = gates[0]?.assignee ?? null;
   const deciders = await grantHolders(tx, {
     collection: 'task',
     action: 'decide',
