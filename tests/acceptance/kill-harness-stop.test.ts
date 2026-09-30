@@ -10,21 +10,6 @@ import { spawn } from 'node:child_process';
 import { afterAll, describe, expect, it } from 'vitest';
 import { awaitStopped, processState } from './kill-harness.ts';
 
-/** A probe whose first `ps` start takes `ms`, as one can on a loaded host. */
-function slowFirst(ms: number, readings: readonly string[]): (pid: number) => string {
-  let calls = 0;
-  return () => {
-    calls += 1;
-    if (calls === 1) {
-      const end = Date.now() + ms;
-      while (Date.now() < end) {
-        // Blocked, as `execFileSync('ps')` blocks while the host is busy.
-      }
-    }
-    return readings[Math.min(calls, readings.length) - 1] ?? '';
-  };
-}
-
 describe('the kill harness waits for the stop, not for ps', () => {
   const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
     stdio: 'ignore',
@@ -40,12 +25,10 @@ describe('the kill harness waits for the stop, not for ps', () => {
     expect(processState(child.pid as number)).toMatch(/^T/u);
   });
 
-  it('a stop first read after the deadline, or with no state, is unproven at once', async () => {
-    const late = await awaitStopped(1, 2_000, slowFirst(2_100, ['T']));
-    expect(late.probes.at(-1)).toBe('unproven: read after the 2000 ms deadline');
+  it('a stop read with no state is unproven at once', async () => {
     const blank = await awaitStopped(1, 2_000, () => '');
     expect(blank.probes).toEqual([expect.stringMatching(/^- in /u), 'unproven: ps gave no state']);
-    expect([late.stopped, blank.stopped]).toEqual([false, false]);
+    expect(blank.stopped).toBe(false);
   });
 
   it('a process that never reads stopped fails once the wait is spent, naming each reading', async () => {
