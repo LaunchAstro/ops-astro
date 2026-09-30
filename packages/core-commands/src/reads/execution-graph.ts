@@ -13,7 +13,8 @@
 // carries the step its proposal named (ORCH41 decision (a)). A run naming
 // none, or a key the bound plan lacks, reads `unplanned`, never dropped. The
 // plan's own run, and the runs of its lineage, are the plan, not work
-// outside it.
+// outside it. A helper's steps (AW-11) take their run's placement, the step
+// or unplanned, as the node reads.
 //
 // **The observed layer comes from the run's own rows**: the run, its gate,
 // its version, its latest lease and attempt, and its reservations, read in the
@@ -35,7 +36,7 @@
 // run state this module does not know is kept raw (`runState`) with the
 // condition `unrecognised`, never dropped.
 
-import { helpersOf, type HelperEntry } from './execution-helpers.ts';
+import { helpersOf, type HelperEntry, type PlacedStep } from './execution-helpers.ts';
 
 /** What `execution.ts` reads for each run. */
 export interface RunFacts {
@@ -106,7 +107,7 @@ export interface GraphNode {
   readonly planned: { readonly key: string; readonly title: string } | null;
   readonly observed: ObservedLayer;
   /** The helpers the run's work was handed to, each with its own steps (AW-11). */
-  readonly helpers: readonly HelperEntry[];
+  readonly helpers: readonly HelperEntry<PlacedStep>[];
 }
 
 /** A step of the bound plan, with the runs proposed under it (none yet: planned). */
@@ -164,12 +165,18 @@ export function projectGraph(
       const observed = observe(run);
       const step = stepOf(run);
       const outside = plan !== null && step === undefined && run.lineageId !== planLineage;
+      const planned = step === undefined ? null : { key: step.key, title: step.title };
       return {
         nodeId: run.runId,
         condition: outside ? 'unplanned' : observed.condition,
-        planned: step === undefined ? null : { key: step.key, title: step.title },
+        planned,
         observed,
-        helpers: run.helpers,
+        // A helper's steps are model calls, which carry no plan key: each takes
+        // this run's placement (ORCH42 decision (a)).
+        helpers: run.helpers.map((helper) => ({
+          ...helper,
+          steps: helper.steps.map((one) => ({ ...one, planned, unplanned: outside })),
+        })),
       };
     }),
   });

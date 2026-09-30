@@ -578,9 +578,12 @@ replacement parent's new helper sits beside the old one. Each is
 the fault (`DELEGATION_EXPIRED` first, then `DELEGATION_REVOKED` or
 `DELEGATION_NARROWED`), by the rule the parent's merged result uses. `steps` are
 the helper's own model calls on the parent's lease,
-`{ callId, operation, state, reservedMinor, spentMinor }`, found by the caller's
-delegation the broker records (`0060`); they spend the parent's one
-reservation, so the node's `heldMinor` and `spentMinor` already carry them.
+`{ callId, operation, state, reservedMinor, spentMinor, planned, unplanned }`,
+found by the caller's delegation the broker records (`0060`); they spend the
+parent's one reservation, so the node's `heldMinor` and `spentMinor` already
+carry them. A call carries no plan key, so each step takes its run's
+placement: `planned` is the node's, and `unplanned` is true exactly when the
+node reads `unplanned` (`tests/reads/aw-11-child-placement.test.ts`).
 `tests/broker/aw-11-child-graph.test.ts` and its isolation suite hold it.
 A drop raises no alert (T3e2): `task.queue` carries the team's `outages`
 beside the alerts, newest first, each

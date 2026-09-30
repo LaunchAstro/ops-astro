@@ -25,18 +25,25 @@ export interface HelperStep {
   readonly reservedMinor: number;
   /** What the call settled at; null until it settles. */
   readonly spentMinor: number | null;
-  /** The parent run's plan step: a step takes its parent node's placement (ORCH42 (a)). */
+}
+
+/** A step on the graph: it takes its parent run's placement (ORCH42 decision (a)). */
+export interface PlacedStep extends HelperStep {
+  /** The parent run's plan step, or null. */
   readonly planned: { readonly key: string; readonly title: string } | null;
   /** Whether the parent run's node reads `unplanned`. */
   readonly unplanned: boolean;
 }
 
-export interface HelperEntry extends Pick<ChildResult, 'state' | 'outcome' | 'refusal' | 'fault'> {
+export interface HelperEntry<S extends HelperStep = HelperStep> extends Pick<
+  ChildResult,
+  'state' | 'outcome' | 'refusal' | 'fault'
+> {
   readonly childDelegationId: string;
   readonly helperActorId: string;
   /** The helper's settled spend on the parent's reservation; null for none. */
   readonly spentMinor: number | null;
-  readonly steps: readonly HelperStep[];
+  readonly steps: readonly S[];
 }
 
 /**
