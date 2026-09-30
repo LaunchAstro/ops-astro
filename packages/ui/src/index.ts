@@ -41,6 +41,7 @@ export * from './state/project.ts';
 export * from './kit/blocks.tsx';
 export * from './kit/controls.tsx';
 export * from './kit/marks.tsx';
+export * from './kit/treatments.tsx';
 export * from './primitives/Absence.tsx';
 export * from './primitives/BrandMark.tsx';
 export * from './primitives/Icon.tsx';

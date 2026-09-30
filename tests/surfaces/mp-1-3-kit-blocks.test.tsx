@@ -14,6 +14,11 @@ import * as ui from '../../packages/ui/src/index.ts';
 import {
   Banner,
   Card,
+  DoorCard,
+  FormLayout,
+  Kpi,
+  ListRow,
+  Meter,
   MockRegion,
   Skeleton,
   Table,
@@ -78,6 +83,16 @@ it('MP-1-3 table, card, banner, meter and stat', () => {
   expect(html(<Banner>Heads up.</Banner>)).toContain('class="banner banner--warn" role="status"');
   expect(rule('.banner')).toMatch(/border-left:\s*2px solid var\(--warning\)/u);
   expect(rule('.banner')).not.toMatch(/background/u);
+  // The fill is worked out from the number, and clamped: it can never disagree with it.
+  expect(html(<Meter label="Hours" value={12} max={20} />)).toContain('style="width:60%"');
+  expect(html(<Meter label="Hours" value={5} max={4} />)).toContain('style="width:100%"');
+  expect(html(<Meter label="Hours" value={Number.NaN} max={4} />)).toContain('style="width:0%"');
+  expect(html(<Meter label="Hours" value={3} max={0} />)).toContain('style="width:0%"');
+  expect(html(<Meter label="Hours" value={12} max={20} />)).toContain('role="meter"');
+  const kpi = html(<Kpi label="Done" explain="Tasks closed" value="9" of="14" />);
+  expect(kpi).toMatch(/<span class="stat__of"> of (<!-- -->)?14<\/span>/u);
+  expect(kpi).toContain('role="tooltip"');
+  expect(rule('.stat__num')).toMatch(/font-variant-numeric:\s*tabular-nums/u);
 });
 
 it('MP-1-3 one table header style', () => {
@@ -175,4 +190,23 @@ it('MP-1-3 mock mark, locate flash, door card, list row and form layout', async 
   expect(sheet).toMatch(
     /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.flash-target\s*\{\s*animation:\s*none/u,
   );
+  const door = html(<DoorCard href="https://example.org" title="Search Console" external />);
+  expect(door).toContain('rel="noopener noreferrer"');
+  expect(door).toContain('class="doorcard doorcard--card"');
+  expect(html(<ListRow title="Old brief" state="archived" />)).toContain('data-state="archived"');
+  let submitted = 0;
+  mounted = await mount(
+    <FormLayout
+      label="New task"
+      actions={<button type="submit">Create</button>}
+      onSubmit={() => {
+        submitted += 1;
+      }}
+    >
+      <input aria-label="Title" />
+    </FormLayout>,
+  );
+  await mounted.click('button[type="submit"]');
+  expect(submitted).toBe(1);
+  expect(rule('.form')).toMatch(/background:\s*var\(--surface-2\)/u);
 });

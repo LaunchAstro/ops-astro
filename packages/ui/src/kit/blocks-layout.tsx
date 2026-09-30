@@ -5,6 +5,7 @@
 // layout). The rest of the blocks are in blocks.tsx, which exports these too.
 
 import { type ReactElement, type ReactNode } from 'react';
+import { DoorMark } from './marks.tsx';
 
 /** DS-PRIM-20. One head style for every table (the mockup's two dialects become this one). */
 export interface Column {
@@ -104,5 +105,77 @@ export function Card(props: CardProps): ReactElement {
       )}
       {props.children}
     </section>
+  );
+}
+
+/** DS-COMP-8: a card, row or strip that is itself a link. The arrow says it goes somewhere. */
+export interface DoorCardProps {
+  readonly href: string;
+  readonly title: string;
+  readonly sub?: string | undefined;
+  readonly look?: 'card' | 'row' | 'cta' | undefined;
+  readonly external?: boolean | undefined;
+}
+
+export function DoorCard(props: DoorCardProps): ReactElement {
+  const look = props.look ?? 'card';
+  return (
+    <a
+      className={`doorcard doorcard--${look}`}
+      href={props.href}
+      target={props.external === true ? '_blank' : undefined}
+      rel={props.external === true ? 'noopener noreferrer' : undefined}
+    >
+      <span className="doorcard__title">
+        {props.title}
+        <DoorMark to={props.external === true ? 'external' : 'page'} />
+      </span>
+      {props.sub === undefined ? null : <span className="doorcard__sub">{props.sub}</span>}
+    </a>
+  );
+}
+
+/** DS-COMP-13: one row in a list that is not a board. */
+export interface ListRowProps {
+  readonly title: ReactNode;
+  readonly meta?: ReactNode;
+  readonly lead?: ReactNode;
+  readonly trail?: ReactNode;
+  readonly look?: 'page' | 'panel' | 'notice' | 'record' | undefined;
+  readonly state?: 'selected' | 'done' | 'archived' | 'gate' | undefined;
+}
+
+export function ListRow(props: ListRowProps): ReactElement {
+  return (
+    <li className={`lrow lrow--${props.look ?? 'page'}`} data-state={props.state}>
+      {props.lead === undefined ? null : <span className="lrow__lead">{props.lead}</span>}
+      <span className="lrow__main">
+        <span className="lrow__title">{props.title}</span>
+        {props.meta === undefined ? null : <span className="lrow__meta">{props.meta}</span>}
+      </span>
+      {props.trail === undefined ? null : <span className="lrow__trail">{props.trail}</span>}
+    </li>
+  );
+}
+
+/** DS-COMP-26: a tinted block of labelled fields in a grid, with its actions at the foot. */
+export function FormLayout(props: {
+  readonly label: string;
+  readonly children: ReactNode;
+  readonly actions: ReactNode;
+  readonly onSubmit?: (() => void) | undefined;
+}): ReactElement {
+  return (
+    <form
+      className="form"
+      aria-label={props.label}
+      onSubmit={(event) => {
+        event.preventDefault();
+        props.onSubmit?.();
+      }}
+    >
+      <div className="form__grid">{props.children}</div>
+      <div className="form__actions">{props.actions}</div>
+    </form>
   );
 }
