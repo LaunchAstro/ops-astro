@@ -84,6 +84,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     database: connect(databaseUrl, { source: 'runtime' }),
     admin: connectAsAdmin(lookupUrl, { source: 'lookup' }),
     signIn: { issuer, keySetUrl },
+    providerKey: settings['SUPABASE_PUBLISHABLE_KEY'] ?? '',
     keys,
     ...(alerts === undefined ? {} : { alerts }),
   });

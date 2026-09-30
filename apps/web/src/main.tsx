@@ -20,6 +20,7 @@ import { createRoot } from 'react-dom/client';
 import '@launchastro/ui';
 import './styles/6-slice.css';
 import { App } from './App.tsx';
+import { withProviderKey } from './session/provider-key.ts';
 import { SessionStore, tabStorage } from './session/token.ts';
 
 /**
@@ -30,7 +31,13 @@ import { SessionStore, tabStorage } from './session/token.ts';
  * the application resolves through, and a hard reload of a task address has to
  * land on that address (B5) — which is a server rewrite, not a router feature.
  */
-function Root({ gotrueUrl }: { readonly gotrueUrl: string }): React.ReactElement {
+function Root({
+  gotrueUrl,
+  fetcher,
+}: {
+  readonly gotrueUrl: string;
+  readonly fetcher: typeof fetch;
+}): React.ReactElement {
   const [path, setPath] = useState(addressOf(window.location));
   useEffect(() => {
     const onPop = (): void => {
@@ -52,7 +59,7 @@ function Root({ gotrueUrl }: { readonly gotrueUrl: string }): React.ReactElement
       sessions={sessions}
       gotrueUrl={gotrueUrl}
       apiOrigin=""
-      fetch={window.fetch.bind(window)}
+      fetch={fetcher}
       storage={storage}
     />
   );
@@ -61,12 +68,12 @@ function Root({ gotrueUrl }: { readonly gotrueUrl: string }): React.ReactElement
 /** The whole address: a legacy one carries its client and tab in the query and hash. */
 const addressOf = (at: Location): string => `${at.pathname}${at.search}${at.hash}`;
 
-/** The identity provider's address, as the API that checks sign-ins names it. */
-async function signInAddress(): Promise<string> {
+/** The identity provider's address and publishable key, as the API that checks sign-ins names them. */
+async function signInAddress(): Promise<{ issuer: string; key: string | undefined }> {
   const answer = await window.fetch('/api/sign-in');
-  const body = (await answer.json()) as { issuer?: unknown };
+  const body = (await answer.json()) as { issuer?: unknown; key?: unknown };
   if (!answer.ok || typeof body.issuer !== 'string') throw new Error('no sign-in address');
-  return body.issuer;
+  return { issuer: body.issuer, key: typeof body.key === 'string' ? body.key : undefined };
 }
 
 // Read once, through the one guarded accessor: blocked site data makes the
@@ -78,10 +85,11 @@ const host = document.getElementById('app');
 if (host !== null) {
   const root = createRoot(host);
   try {
-    const gotrueUrl = await signInAddress();
+    const { issuer, key } = await signInAddress();
+    const fetcher = withProviderKey(window.fetch.bind(window), issuer, key);
     root.render(
       <StrictMode>
-        <Root gotrueUrl={gotrueUrl} />
+        <Root gotrueUrl={issuer} fetcher={fetcher} />
       </StrictMode>,
     );
   } catch {

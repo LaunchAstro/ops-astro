@@ -48,6 +48,8 @@ const SETTINGS = [
   'OPS_RELEASE',
   'SERVED_HOST',
   'SUPABASE_KEY_SET_URL',
+  // S0-6: the provider's publishable key, public, for the page's sign-in.
+  'SUPABASE_PUBLISHABLE_KEY',
 ];
 
 it("G4: every route the API serves is a person's or an agent's command, or one of the named few", () => {
