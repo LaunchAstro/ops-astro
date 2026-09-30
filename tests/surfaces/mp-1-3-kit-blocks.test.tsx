@@ -24,6 +24,7 @@ import {
   Table,
   locate,
 } from '../../packages/ui/src/kit/blocks.tsx';
+import { GALLERY, Gallery } from '../../packages/ui/src/kit/gallery.tsx';
 import { Empty } from '../../packages/ui/src/primitives/Absence.tsx';
 import { Assignee } from '../../apps/web/src/screens/task/Lifecycle.tsx';
 import { mount, type Mounted } from './mount.tsx';
@@ -53,6 +54,33 @@ let mounted: Mounted | undefined;
 afterEach(async () => {
   await mounted?.unmount();
   mounted = undefined;
+});
+
+it('MP-1-3 every catalogue primitive and the four composites are on the gallery with their states', async () => {
+  const catalogue = JSON.parse(read(`${root}tests/surfaces/fixtures/mp-1-3-catalogue.json`)) as {
+    primitives: readonly string[];
+    composites: readonly string[];
+    retired: readonly string[];
+  };
+  const shown = GALLERY.map((e) => e.id).filter((id) => id.startsWith('DS-'));
+  // A catalogue primitive missing from the gallery fails, and so does one shown that the catalogue retired.
+  expect(shown.toSorted()).toEqual([...catalogue.primitives, ...catalogue.composites].toSorted());
+  for (const id of catalogue.retired) expect(shown).not.toContain(id);
+  mounted = await mount(<Gallery />);
+  for (const entry of GALLERY) {
+    const section = mounted.find(`[data-catalogue-id="${entry.id}"]`);
+    expect(section, entry.id).not.toBeNull();
+    expect(section?.querySelectorAll('[data-gallery-state]').length, entry.id).toBe(
+      entry.states.length,
+    );
+    for (const figure of section?.querySelectorAll('[data-gallery-state]') ?? []) {
+      // Every state draws something beside its caption.
+      expect(
+        figure.children.length,
+        `${entry.id} ${String((figure as HTMLElement).dataset['galleryState'])}`,
+      ).toBeGreaterThan(1);
+    }
+  }
 });
 
 it('MP-1-3 table, card, banner, meter and stat', () => {
