@@ -2,9 +2,11 @@
 //
 // The Team panel's group forms (C71-G): starting a group with a name and two
 // or more of the strip's teammates, and renaming one. Both send trimmed words
-// and nothing when the words are empty.
+// and nothing when the words are empty. Each teammate is picked with the kit's
+// checkbox, its label the teammate's name.
 
 import { useState, type ReactElement } from 'react';
+import { Checkbox } from '../kit/controls-toggles.tsx';
 import type { GroupAction, GroupThread, Teammate } from '../state/team.ts';
 
 type Act = (action: GroupAction) => void;
@@ -36,11 +38,9 @@ export function StartGroup(props: {
       <fieldset className="tmc__pick">
         <legend>With</legend>
         {props.teammates.map((person) => (
-          <label key={person.personId}>
-            <input
-              type="checkbox"
-              name="member"
-              value={person.personId}
+          <label key={person.personId} data-pick={person.personId}>
+            <Checkbox
+              label={person.name}
               checked={chosen.includes(person.personId)}
               onChange={() => {
                 toggle(person.personId);

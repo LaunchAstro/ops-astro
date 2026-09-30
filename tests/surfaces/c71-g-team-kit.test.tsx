@@ -6,10 +6,12 @@
 // the checkbox (DS-PRIM-8) and the select (DS-PRIM-5). The page draws no
 // native checkbox or select of its own.
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { TeamPanel } from '../../packages/ui/src/index.ts';
 import { mount, type Mounted } from './mount.tsx';
-import { ME, LAUNCH, props } from './team-fixture.tsx';
+import { ME, LAUNCH, STUDIO, props } from './team-fixture.tsx';
 
 let mounted: Mounted | undefined;
 afterEach(async () => {
@@ -18,17 +20,15 @@ afterEach(async () => {
 });
 
 it('C71-G the group list is the kit’s panel rows, the open one selected, unread at the trail', async () => {
-  mounted = await mount(<TeamPanel {...props()} />);
+  mounted = await mount(<TeamPanel {...props({ groups: [LAUNCH, STUDIO] })} />);
   const rows = mounted.all('.tmc__glist > li');
   expect(rows.map((row) => row.className)).toEqual(['lrow lrow--panel', 'lrow lrow--panel']);
-  const launch = mounted.find('.tmc__g[data-group="g-launch"]')?.closest('li');
-  expect(launch?.querySelector('.lrow__trail .cbadge')?.textContent).toBe('1');
+  const row = (id: string) => mounted?.find(`.tmc__g[data-group="${id}"]`)?.closest('li');
+  expect(row('g-launch')?.querySelector('.lrow__trail .cbadge')?.textContent).toBe('1');
 
-  await mounted.click('.tmc__g[data-group="g-launch"]');
-  expect(launch?.getAttribute('data-state')).toBe('selected');
-  expect(
-    mounted.find('.tmc__g[data-group="g-studio"]')?.closest('li')?.hasAttribute('data-state'),
-  ).toBe(false);
+  await mounted.click('.tmc__g[data-group="g-studio"]');
+  expect(row('g-studio')?.getAttribute('data-state')).toBe('selected');
+  expect(row('g-launch')?.hasAttribute('data-state')).toBe(false);
 });
 
 it('C71-G the member picker is the kit’s checkboxes, each named for its teammate', async () => {
@@ -58,4 +58,9 @@ it('C71-G adding a member is the kit’s select, labelled for the group', async 
   expect(field?.querySelector('.field__label')?.textContent).toBe(`Add to ${LAUNCH.name}`);
   expect(field?.querySelector('.sel .sel__btn')).not.toBeNull();
   expect(mounted.find('form.tmc__adding select')).toBeNull();
+});
+
+it('C71-G the Team sheet lays out no kit row of its own', () => {
+  const sheet = readFileSync(join(process.cwd(), 'packages/ui/src/styles/10-team.css'), 'utf8');
+  expect(sheet).not.toMatch(/\.tmc__glist li\b|\.tmc__pick input\b/u);
 });

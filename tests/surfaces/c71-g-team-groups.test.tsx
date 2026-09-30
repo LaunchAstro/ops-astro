@@ -27,18 +27,31 @@ afterEach(async () => {
   mounted = undefined;
 });
 
-const group = (m: Mounted, id: string): Element | null => m.find(`[data-group="${id}"]`);
+const group = (m: Mounted, id: string): Element | null =>
+  m.find(`.tmc__g[data-group="${id}"]`)?.closest('li') ?? null;
 const ids = (m: Mounted, selector: string): readonly (string | undefined)[] =>
   m.all(selector).map((el) => (el as HTMLElement).dataset['message']);
 const picker = (m: Mounted): readonly string[] =>
-  m.all('form.tmc__new input[name="member"]').map((el) => (el as HTMLInputElement).value);
+  m.all('form.tmc__new [data-pick]').map((el) => (el as HTMLElement).dataset['pick'] ?? '');
+
+/** Choose a teammate in the kit's select, as a person does: open it, press the name. */
+async function addPick(m: Mounted, name: string): Promise<void> {
+  if (m.find('form.tmc__adding [role="listbox"]') === null)
+    await m.click('form.tmc__adding .sel__btn');
+  const option = m.all('form.tmc__adding [role="option"]').find((o) => o.textContent === name);
+  if (option === undefined) throw new Error(`no option ${name}`);
+  await act(async () => {
+    (option as HTMLElement).click();
+  });
+}
 
 async function startForm(m: Mounted, name: string, members: readonly string[]): Promise<void> {
   await m.click('.tmc__start');
   await m.type('form.tmc__new input[name="name"]', name);
   // One after another, as a person ticks them.
   await members.reduce(
-    (before, id) => before.then(() => m.click(`form.tmc__new input[name="member"][value="${id}"]`)),
+    (before, id) =>
+      before.then(() => m.click(`form.tmc__new [data-pick="${id}"] [role="checkbox"]`)),
     Promise.resolve(),
   );
 }
@@ -70,7 +83,7 @@ describe('C71-G CS-7.41 start a group conversation with chosen teammates and nam
     const submit = 'form.tmc__new button[type="submit"]';
     expect((mounted.host.querySelector(submit) as HTMLButtonElement).disabled).toBe(true);
     await mounted.type('form.tmc__new input[name="name"]', 'Pair');
-    await mounted.click('form.tmc__new input[name="member"][value="p-cath"]');
+    await mounted.click('form.tmc__new [data-pick="p-cath"] [role="checkbox"]');
     expect((mounted.host.querySelector(submit) as HTMLButtonElement).disabled).toBe(true);
     await mounted.click(submit);
     // Enter in the name field submits the form past the disabled button.
@@ -99,7 +112,7 @@ describe('C71-G CS-7.41 a group opens in the same thread and composer as a direc
   it('selecting a group draws its messages, reads it, and its composer sends to the group', async () => {
     const p = props({ groups: [LAUNCH, STUDIO] });
     mounted = await mount(<TeamPanel {...p} />);
-    await mounted.click('[data-group="g-launch"] .tmc__g');
+    await mounted.click('.tmc__g[data-group="g-launch"]');
     expect(ids(mounted, '.tmc__conv .thread .msg')).toEqual(['g1', 'g2']);
     expect(p.calls.groups).toEqual([{ do: 'read', id: 'g-launch', upTo: '2026-09-28T10:20:00Z' }]);
     const field = '.tmc__conv .composer input';
@@ -116,7 +129,7 @@ describe('C71-G CS-7.41 a group opens in the same thread and composer as a direc
   it('a group with nothing unread reads nothing on selection', async () => {
     const p = props({ groups: [LAUNCH, STUDIO] });
     mounted = await mount(<TeamPanel {...p} />);
-    await mounted.click('[data-group="g-studio"] .tmc__g');
+    await mounted.click('.tmc__g[data-group="g-studio"]');
     expect(ids(mounted, '.tmc__conv .msg')).toEqual(['s1']);
     expect(p.calls.groups).toEqual([]);
   });
@@ -126,7 +139,7 @@ describe('C71-G CS-7.41 its creator, the owner or an administrator renames it an
   it('a manager renames it, trimmed', async () => {
     const p = props({ groups: [LAUNCH] });
     mounted = await mount(<TeamPanel {...p} />);
-    await mounted.click('[data-group="g-launch"] .tmc__g');
+    await mounted.click('.tmc__g[data-group="g-launch"]');
     await mounted.click('.tmc__ghead .tmc__rename');
     await mounted.type('form.tmc__renaming input[name="name"]', '   ');
     await act(() => {
@@ -143,7 +156,7 @@ describe('C71-G CS-7.41 its creator, the owner or an administrator renames it an
   it('a manager removes a member and adds a teammate who is not already one', async () => {
     const p = props({ groups: [LAUNCH] });
     mounted = await mount(<TeamPanel {...p} />);
-    await mounted.click('[data-group="g-launch"] .tmc__g');
+    await mounted.click('.tmc__g[data-group="g-launch"]');
     expect(mounted.find(`.tmc__ghead [data-member="${ME}"] .tmc__remove`)).toBeNull();
     await mounted.click('.tmc__ghead [data-member="p-cath"] .tmc__remove');
     expect(p.calls.groups.at(-1)).toEqual({
@@ -152,11 +165,10 @@ describe('C71-G CS-7.41 its creator, the owner or an administrator renames it an
       add: [],
       remove: ['p-cath'],
     });
-    const offered = mounted
-      .all('form.tmc__adding select[name="person"] option')
-      .map((o) => (o as HTMLOptionElement).value);
-    expect(offered).toEqual(['p-len']);
-    await mounted.choose('form.tmc__adding select[name="person"]', 'p-len');
+    await mounted.click('form.tmc__adding .sel__btn');
+    const offered = mounted.all('form.tmc__adding [role="option"]').map((o) => o.textContent);
+    expect(offered).toEqual(['Len Ortiz']);
+    await addPick(mounted, 'Len Ortiz');
     await mounted.click('form.tmc__adding button[type="submit"]');
     expect(p.calls.groups.at(-1)).toEqual({
       do: 'members',
@@ -172,7 +184,7 @@ describe('C71-G CS-7.41 a manager adds only teammates who are not yet members', 
     const pair: GroupThread = { ...LAUNCH, members: [ME, 'p-remy'] };
     const p = props({ groups: [pair] });
     mounted = await mount(<TeamPanel {...p} />);
-    await mounted.click('[data-group="g-launch"] .tmc__g');
+    await mounted.click('.tmc__g[data-group="g-launch"]');
     await mounted.click('form.tmc__adding button[type="submit"]');
     expect(p.calls.groups.at(-1)).toEqual({
       do: 'members',
@@ -180,7 +192,7 @@ describe('C71-G CS-7.41 a manager adds only teammates who are not yet members', 
       add: ['p-len'],
       remove: [],
     });
-    await mounted.choose('form.tmc__adding select[name="person"]', 'p-cath');
+    await addPick(mounted, 'Cath Lea');
     await mounted.click('form.tmc__adding button[type="submit"]');
     expect(p.calls.groups.at(-1)).toEqual({
       do: 'members',
@@ -195,7 +207,7 @@ describe('C71-G CS-7.41 a member who may not manage it only reads, writes and le
   it('a member who may not manage it sees no rename, remove or add, and can still leave', async () => {
     const p = props({ groups: [STUDIO] });
     mounted = await mount(<TeamPanel {...p} />);
-    await mounted.click('[data-group="g-studio"] .tmc__g');
+    await mounted.click('.tmc__g[data-group="g-studio"]');
     expect(mounted.find('.tmc__ghead')).not.toBeNull();
     expect(mounted.find('.tmc__rename')).toBeNull();
     expect(mounted.find('.tmc__remove')).toBeNull();
@@ -207,7 +219,7 @@ describe('C71-G CS-7.41 a member who may not manage it only reads, writes and le
   it('with every teammate already a member there is nobody to add', async () => {
     const all: GroupThread = { ...LAUNCH, members: ['p-remy', ME, 'p-cath', 'p-len'] };
     mounted = await mount(<TeamPanel {...props({ groups: [all] })} />);
-    await mounted.click('[data-group="g-launch"] .tmc__g');
+    await mounted.click('.tmc__g[data-group="g-launch"]');
     expect(mounted.find('.tmc__rename')).not.toBeNull();
     expect(mounted.find('form.tmc__adding')).toBeNull();
   });
@@ -221,7 +233,7 @@ describe('C71-G a member added later reads from the moment they joined', () => {
       messages: [message('j1', 'p-remy', '2026-09-28T12:00:00Z', 'Welcome aboard')],
     };
     mounted = await mount(<TeamPanel {...props({ groups: [joined] })} />);
-    await mounted.click('[data-group="g-launch"] .tmc__g');
+    await mounted.click('.tmc__g[data-group="g-launch"]');
     expect(ids(mounted, '.tmc__conv .msg')).toEqual(['j1']);
     expect(mounted.find('.tmc__conv')?.textContent).not.toMatch(/earlier|Message g[12]/u);
   });
@@ -231,7 +243,7 @@ describe('C71-G a removed member reads nothing written after removal', () => {
   it('when the read stops returning the group, its thread, composer, list entry and unread go', async () => {
     const p = props({ groups: [LAUNCH, STUDIO] });
     mounted = await mount(<TeamPanel {...p} />);
-    await mounted.click('[data-group="g-launch"] .tmc__g');
+    await mounted.click('.tmc__g[data-group="g-launch"]');
     expect(ids(mounted, '.tmc__conv .msg')).toEqual(['g1', 'g2']);
     await mounted.render(<TeamPanel {...next(p, { groups: [STUDIO] })} />);
     expect(group(mounted, 'g-launch')).toBeNull();
@@ -246,7 +258,7 @@ describe('C71-G group messages arrive live and count as unread (CS-7.42)', () =>
   it('a new message shows in the open group and its unread moves with no refresh', async () => {
     const p = props({ groups: [LAUNCH, STUDIO] });
     mounted = await mount(<TeamPanel {...p} />);
-    await mounted.click('[data-group="g-launch"] .tmc__g');
+    await mounted.click('.tmc__g[data-group="g-launch"]');
     const later: GroupThread = {
       ...STUDIO,
       messages: [...STUDIO.messages, message('s2', 'p-len', '2026-09-28T12:05:00Z')],

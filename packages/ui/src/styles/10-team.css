@@ -113,7 +113,10 @@ a.tmc__n:hover {
   padding: var(--s-3) 0;
   border-bottom: 1px solid var(--border);
 }
-.tmc__glist,
+.tmc__glist {
+  margin: 0;
+  padding: 0;
+}
 .tmc__members {
   display: flex;
   flex-wrap: wrap;
@@ -122,7 +125,6 @@ a.tmc__n:hover {
   padding: 0;
   list-style: none;
 }
-.tmc__glist li,
 .tmc__members li {
   display: flex;
   align-items: center;

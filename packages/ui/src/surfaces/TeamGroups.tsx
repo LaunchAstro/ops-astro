@@ -9,8 +9,12 @@
 // `chat:manage` on the group (its creator, the owner or an administrator);
 // leave is every member's own. The command still checks every one of them:
 // a control left out here is the UI half of the refusal, never the refusal.
+// No mockup surface draws the list or the add control, so both are the kit's:
+// the panel list row and the select.
 
 import { useState, type ReactElement } from 'react';
+import { ListRow } from '../kit/blocks-layout.tsx';
+import { Select } from '../kit/controls-fields.tsx';
 import type { GroupAction, GroupThread, Teammate } from '../state/team.ts';
 import { Rename, StartGroup } from './TeamGroupForms.tsx';
 
@@ -24,23 +28,30 @@ function GroupItem(props: {
 }): ReactElement {
   const { group, unread } = props;
   return (
-    <li data-group={group.id}>
-      <button
-        type="button"
-        className="tmc__g"
-        aria-pressed={props.on}
-        onClick={() => {
-          props.onSelect(group.id);
-        }}
-      >
-        {group.name}
-      </button>
-      {unread > 0 ? (
-        <span className="cbadge" aria-label={`${String(unread)} unread`}>
-          {unread}
-        </span>
-      ) : null}
-    </li>
+    <ListRow
+      look="panel"
+      state={props.on ? 'selected' : undefined}
+      title={
+        <button
+          type="button"
+          className="tmc__g"
+          data-group={group.id}
+          aria-pressed={props.on}
+          onClick={() => {
+            props.onSelect(group.id);
+          }}
+        >
+          {group.name}
+        </button>
+      }
+      trail={
+        unread > 0 ? (
+          <span className="cbadge" aria-label={`${String(unread)} unread`}>
+            {unread}
+          </span>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -109,20 +120,12 @@ function AddMember(props: {
         if (pick !== '') props.onAdd(pick);
       }}
     >
-      <select
-        name="person"
-        aria-label={`Add to ${group.name}`}
+      <Select
+        label={`Add to ${group.name}`}
         value={pick}
-        onChange={(event) => {
-          setAdding(event.target.value);
-        }}
-      >
-        {outside.map((person) => (
-          <option key={person.personId} value={person.personId}>
-            {person.name}
-          </option>
-        ))}
-      </select>
+        options={outside.map((person) => ({ value: person.personId, label: person.name }))}
+        onChange={setAdding}
+      />
       <button type="submit" className="btn btn--sm">
         Add
       </button>
