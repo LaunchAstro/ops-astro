@@ -123,12 +123,13 @@ export const tokenFor = async (
   subject: string,
   sessionId: unknown,
   assurance?: { readonly aal: 'aal1' | 'aal2'; readonly totp?: number },
+  expiresAt: number = now() + 600,
 ): Promise<string> =>
   await signBearer({
     sub: subject,
     aud: 'authenticated',
     iss: ACCEPTANCE_ISSUER,
-    exp: now() + 600,
+    exp: expiresAt,
     aal: assurance?.aal ?? 'aal1',
     session_id: sessionId,
     amr: [
