@@ -204,8 +204,12 @@
           "crosses": ["person"]
         },
         {
-          "case": "T2 isolation (T2f): interleaved writes on a pooled connection reach only their own business, and join refuses another business, another client and a person without the grant",
-          "crosses": ["business", "client", "person"]
+          "case": "T2 isolation (T2f): interleaved writes on a pooled connection reach only their own business, and join refuses another business under either key",
+          "crosses": ["business"]
+        },
+        {
+          "case": "T2 isolation (T2f): join refuses another client and a person without the grant",
+          "crosses": ["client", "person"]
         }
       ]
     },

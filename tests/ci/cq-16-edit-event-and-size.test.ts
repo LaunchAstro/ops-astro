@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { script, step, top } from './workflow-text.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -17,11 +18,6 @@ const CI = '.github/workflows/ci.yml';
 // FU-93 moved the check here from ci.yml; it runs on code events and on an edit.
 const REVIEW = '.github/workflows/review-evidence.yml';
 const CHECK = 'review evidence for this revision';
-
-/** A top-level key's block, from `key:` to the next line that starts in column one. */
-function top(text: string, key: string): string {
-  return new RegExp(`^${key}:.*\\n(?:(?: .*)?\\n)*`, 'mu').exec(text)?.[0] ?? '';
-}
 
 /** Every job under `jobs:`, keyed by its id. */
 function jobs(text: string): Map<string, string> {
@@ -34,22 +30,6 @@ function jobs(text: string): Map<string, string> {
 /** The job whose check name is `name`. */
 function job(text: string, name: string): string {
   return [...jobs(text).values()].find((b) => b.includes(`\n    name: ${name}\n`)) ?? '';
-}
-
-/** One step of a job, from its `- name:` line to the next step. */
-function step(block: string, name: string): string {
-  const start = block.indexOf(`      - name: ${name}\n`);
-  if (start === -1) return '';
-  const next = block.slice(start + 1).search(/^ {6}- /mu);
-  return block.slice(start, next === -1 ? undefined : start + 1 + next);
-}
-
-/** A step's `run: |` script, unindented. */
-function script(block: string): string {
-  const lines = block.split('\n');
-  const at = lines.findIndex((l) => /^ {8}run: \|$/u.test(l));
-  const body = lines.slice(at + 1).filter((l) => l === '' || l.startsWith('          '));
-  return at === -1 ? '' : body.map((l) => l.slice(10)).join('\n');
 }
 
 const FETCH = 'Read the description as it stands now';
