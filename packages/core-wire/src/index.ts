@@ -25,6 +25,14 @@ export {
 } from './surface.ts';
 // The keys a grant may carry (C32).
 export { GRANTABLE_KEYS, isGrantableKey, SELF_SCOPED_COLLECTIONS } from './permission-keys.ts';
+export {
+  dismissedTipCount,
+  isTipRef,
+  tipKey,
+  tipShown,
+  TIPS_HELD_MAX,
+  type TipRef,
+} from './tips.ts';
 // The one refusal shape, for the clients that parse it off the wire. Type-only,
 // so no records code reaches a bundle.
 export type { CommandRefusal } from '../../core-records/src/index.ts';

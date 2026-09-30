@@ -23,6 +23,9 @@ export const WORKER_ROLE = 'ops_astro_worker';
 const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
   ['s', 'ops.slots'],
+  // 0056 (S0-5): the installation's mode and the gate items are read by the
+  // application through first_client_readiness(); only the owner writes them.
+  ['s', 'ops.installation ops.gate_items'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
@@ -57,7 +60,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'live_changes'],
   // 0058: a person's own availability, set by them alone (MP-7-10).
   ['siu', 'person_availability'],
-  // 0053: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
+  // 0059: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
   ['siu', 'person_preferences'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
@@ -97,6 +100,8 @@ export function applicationGrantsAt(qualified: string, at?: string): string | un
 export const APPLICATION_EXECUTES: readonly string[] = [
   'public.app_business_id',
   'public.audit_event_hash',
+  // 0056 (S0-5): security invoker, so it reads no more than the caller may.
+  'public.first_client_readiness',
 ];
 
 export interface CatalogueTable {

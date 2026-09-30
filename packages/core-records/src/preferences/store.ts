@@ -5,7 +5,9 @@
 // the command passes the caller, so there is no way to name someone else.
 //
 // The keys are closed: a key not in `PREFERENCE_KEYS` is refused, and each key
-// admits one value shape. The widths are reserved here for the parts that
+// admits one value shape. The guided tips (MP-2-11) are two keys: a save of
+// `tips.dismissed` takes only `{}`, which is the reset, and a dismissal is
+// merged into it by `dismissTip` alone. The widths are reserved here for the parts that
 // draw them (MP-2-3 the rail, MP-3-2 the dock, MP-5-6 the columns), which may
 // narrow their bounds; none of them adds a table.
 
@@ -22,7 +24,13 @@ const isColumnWidths = (value: unknown): boolean =>
   Object.values(value).every((width) => isLength(width));
 
 export type PreferenceKey =
-  'appearance' | 'rail.width' | 'dock.width' | 'dock.sheetHeight' | 'columns.widths';
+  | 'appearance'
+  | 'rail.width'
+  | 'dock.width'
+  | 'dock.sheetHeight'
+  | 'columns.widths'
+  | 'tips.enabled'
+  | 'tips.dismissed';
 
 export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) => boolean } = {
   /** Light, Dark or System; the default, System, is the absence of a row. */
@@ -32,6 +40,14 @@ export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) 
   'dock.sheetHeight': isLength,
   /** One width per column id. */
   'columns.widths': isColumnWidths,
+  /** Guided tips on or off; on, the default, is the absence of a row. */
+  'tips.enabled': (value) => typeof value === 'boolean',
+  /** Only the reset: every dismissal is brought back at once. */
+  'tips.dismissed': (value) =>
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 0,
 };
 
 export function isPreferenceKey(key: string): key is PreferenceKey {
@@ -57,6 +73,33 @@ export async function savePreference(
        do update set value = excluded.value, saved_at = now()`,
     [tx.businessId, personId, key, JSON.stringify(value)],
   );
+}
+
+/**
+ * Merge one dismissal into `personId`'s own `tips.dismissed`, in one statement:
+ * the upsert takes the row's lock and merges into the value it finds there, so
+ * a dismissal made at the same moment on another device is kept, never
+ * overwritten. A tip not already held is refused past `limit` tips. Whether it
+ * was written.
+ */
+export async function dismissTip(
+  tx: TenantQuery,
+  personId: string,
+  entry: string,
+  version: number,
+  limit: number,
+): Promise<boolean> {
+  const rows = await tx.query(
+    `insert into public.person_preferences as p (business_id, person_id, key, value)
+     values ($1, $2, 'tips.dismissed', jsonb_build_object($3::text, $4::int))
+     on conflict (business_id, person_id, key)
+       do update set value = p.value || excluded.value, saved_at = now()
+       where p.value ? $3::text
+          or (select count(*) from jsonb_object_keys(p.value)) < $5
+     returning 1`,
+    [tx.businessId, personId, entry, version, limit],
+  );
+  return rows.length === 1;
 }
 
 /** `personId`'s saved keys. A key never saved is absent, not defaulted. */

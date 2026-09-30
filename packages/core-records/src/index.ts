@@ -163,6 +163,7 @@ export {
 } from './operations/overseas-services.ts';
 export {
   admitsPreference,
+  dismissTip,
   isPreferenceKey,
   PREFERENCE_KEYS,
   readPreferences,

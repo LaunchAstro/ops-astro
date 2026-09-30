@@ -162,6 +162,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // The caller's own preferences (MP-2-11a), a row of their own in the business.
   'preference.read': READ,
   'preference.save': writing(business('person_preferences')),
+  'preference.dismiss_tip': writing(business('person_preferences')),
   'access.read': READ,
   'client.list': READ,
   'operations.read': READ,

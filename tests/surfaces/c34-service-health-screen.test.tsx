@@ -51,6 +51,9 @@ const json = (body: unknown, status = 200): Response =>
 function server(answer: () => Response) {
   const urls: string[] = [];
   const fetch = ((url: string | URL) => {
+    // The frame's person menu (C23) asks who is signed in; not this screen's call.
+    if (String(url).endsWith('/session/person'))
+      return Promise.resolve(json({ ok: true, person: {} }));
     urls.push(String(url));
     return Promise.resolve(answer());
   }) as unknown as typeof globalThis.fetch;

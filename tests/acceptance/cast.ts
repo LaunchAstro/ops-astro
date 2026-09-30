@@ -110,6 +110,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   // C32: the client record (`record:write`), whose install default is the
   // owner and administrators.
   'record',
+  // MP-2-11: the four-eyes threshold asks `spend:decide`, a money action.
+  'spend',
 ];
 
 export async function tokenFor(

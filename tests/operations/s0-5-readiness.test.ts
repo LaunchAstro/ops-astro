@@ -3,7 +3,7 @@
 // S0-5: the readiness check, through the real API on a throwaway database.
 //
 // The installation's mode and the eight gate items live in `ops`, which no
-// person or agent can reach; the command envelope reads them through one
+// person or agent can write; the command envelope reads them through one
 // function inside the refused command's own transaction. A made-up-data
 // installation (this harness, staging) runs every command. A real-data
 // installation refuses every command the catalogue classes `client-data` or
@@ -126,7 +126,7 @@ async function bodyFor(declaration: CommandDeclaration): Promise<Record<string, 
   return { ...prepared.body };
 }
 
-/** made-up to real only while every item is done; never back; the app's role reaches neither table. */
+/** made-up to real only while every item is done; never back; the app's role reads both tables and writes neither. */
 async function modeOneWay(): Promise<void> {
   const toReal = `update ops.installation set mode = 'real'`;
   await expect(admin(toReal)).rejects.toThrow(/INSTALLATION_NOT_READY/u);
@@ -139,20 +139,29 @@ async function modeOneWay(): Promise<void> {
   await expect(admin(`update ops.installation set mode = 'made-up'`)).rejects.toThrow(oneWay);
   await expect(admin('delete from ops.installation')).rejects.toThrow(oneWay);
   await expect(admin(`insert into ops.installation (mode) values ('made-up')`)).rejects.toThrow();
-  const reach = [
-    'select mode from ops.installation',
-    `update ops.installation set mode = 'made-up'`,
-    'select item from ops.gate_items',
-    'delete from ops.gate_items',
-  ].map((sql) =>
-    harness.world.db.app
+  const asApp = async (sql: string): Promise<string> =>
+    await harness.world.db.app
       .withBusiness(harness.world.alpha, async (tx) => await tx.query(sql))
       .then(
-        () => `${sql}: allowed`,
-        (error: unknown) => (/permission denied/u.test(String(error)) ? '' : `${sql}: ${error}`),
-      ),
-  );
-  expect((await Promise.all(reach)).filter(Boolean)).toStrictEqual([]);
+        () => 'allowed',
+        (error: unknown) => (/permission denied/u.test(String(error)) ? 'denied' : String(error)),
+      );
+  const reach: readonly (readonly [string, string])[] = [
+    ['select mode from ops.installation', 'allowed'],
+    ['select item from ops.gate_items', 'allowed'],
+    ['select mode from public.first_client_readiness()', 'allowed'],
+    [`update ops.installation set mode = 'made-up'`, 'denied'],
+    ['delete from ops.installation', 'denied'],
+    [`insert into ops.installation (mode) values ('made-up')`, 'denied'],
+    [
+      `insert into ops.gate_items (item, evidence) values ('phone-alerts', 'https://example.test/x')`,
+      'denied',
+    ],
+    [`update ops.gate_items set evidence = 'https://example.test/y'`, 'denied'],
+    ['delete from ops.gate_items', 'denied'],
+  ];
+  const answered = await Promise.all(reach.map(async ([sql]) => [sql, await asApp(sql)] as const));
+  expect(answered).toStrictEqual(reach);
   expect(await readiness()).toStrictEqual({ mode: 'real', open_items: [] });
 }
 

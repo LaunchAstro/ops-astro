@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0053 the one preference store (MP-2-11a, U07).
+-- 0059 the one preference store (MP-2-11a, U07).
 --
 -- One row per person and key. Appearance, the tips and the rail, dock and
 -- column widths are keys here, never tables of their own (FG-O-5). The key

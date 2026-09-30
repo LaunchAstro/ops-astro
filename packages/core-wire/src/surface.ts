@@ -167,7 +167,8 @@ export type CommandName =
   // Items no path reaches, for the operations view (INB-1e), and the caller's
   // own notification setting on one channel.
   | 'inbox.unattended'
-  | 'notifications.set_channel';
+  | 'notifications.set_channel'
+  | 'preference.dismiss_tip';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -349,6 +350,7 @@ const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const SPEND_COLLECTION = 'spend';
 const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
 const INBOX_COLLECTION = 'inbox';
@@ -518,6 +520,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'preference.save': { preference: 'text', value: 'any' },
   'inbox.seen': { itemId: 'id' },
   'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
+  'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -640,9 +643,11 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was
-  // honoured and it is refused rather than dropped.
-  declare('settings.set_four_eyes_threshold', 'manage', {
-    collection: SETTINGS_COLLECTION,
+  // honoured and it is refused rather than dropped. The four-eyes threshold is
+  // a money action (MP-2-11, owner line 71): `spend:decide`, so C59's step-up
+  // judges it, and `settings:manage` alone does not reach it.
+  declare('settings.set_four_eyes_threshold', 'decide', {
+    collection: SPEND_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),
@@ -872,6 +877,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'self',
     untargetedIdentifiers: [],
+  }),
+  // One guided tip dismissed (MP-2-11, CS-9.1), merged into the caller's own
+  // `tips.dismissed`; the reset is `preference.save` of that key as `{}`.
+  declare('preference.dismiss_tip', 'write', {
+    collection: PREFERENCE_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: [],
+    audited: false,
   }),
 ];
 

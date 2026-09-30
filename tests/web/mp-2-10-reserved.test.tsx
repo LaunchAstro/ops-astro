@@ -16,15 +16,16 @@ import { PAGES, SECTIONS, pageAt } from '../../apps/web/src/manifest.ts';
 import { matchRoute } from '../../apps/web/src/routes.ts';
 import { filled, hrefs, open } from './mp-2-1-support.tsx';
 
-/** The R2 list: the reserved addresses the mockup never designed. */
+/**
+ * The R2 list: the reserved addresses the mockup never designed. Access (C32)
+ * and Telemetry (C34) left it once built (ORCH37).
+ */
 const UNDESIGNED = [
   '/docs/',
   '/docs/snippets/',
   '/settings/keys/',
-  '/settings/access/',
   '/settings/emails/',
   '/settings/workflow-triggers/',
-  '/settings/telemetry/',
   '/settings/cal/',
 ];
 
@@ -56,7 +57,11 @@ describe('MP-2-10 each undesigned address stays out of the navigation, and a typ
 
   it('draws one plain empty state for an unbuilt page and a typed undesigned one alike', async () => {
     const drawn = new Set<string>();
-    for (const address of ['/settings/keys/', '/inbox/', '/clients/acme-dental/library/voice/']) {
+    for (const address of [
+      '/settings/keys/',
+      '/projects/reviews/',
+      '/clients/acme-dental/library/voice/',
+    ]) {
       const { view } = await open(address);
       const state = view.find('[data-outcome="placeholder"]');
       expect(state?.querySelector('.empty__title')?.textContent, address).toBe('Not here yet');
@@ -69,11 +74,11 @@ describe('MP-2-10 each undesigned address stays out of the navigation, and a typ
   });
 
   it('keeps the page and its ticket on the state for the record, not in its words', async () => {
-    const { view } = await open('/inbox/');
+    const { view } = await open('/projects/reviews/');
     const state = view.find('[data-outcome="placeholder"]') as HTMLElement | null;
-    expect(state?.dataset['page']).toBe('agency:inbox/inbox');
-    expect(state?.dataset['ticket']).toBe('MP-7-3');
-    expect(state?.textContent).not.toContain('MP-7-3');
+    expect(state?.dataset['page']).toBe('agency:projects/reviews');
+    expect(state?.dataset['ticket']).toBe('MP-8-1');
+    expect(state?.textContent).not.toContain('MP-8-1');
     await view.unmount();
   });
 
@@ -82,7 +87,7 @@ describe('MP-2-10 each undesigned address stays out of the navigation, and a typ
     expect(docs?.navigable).toBe(false);
     const settings = SECTIONS.find((each) => each.namespace === 'agency' && each.id === 'general');
     expect(settings?.navigable).toBe(true);
-    expect(settings?.tabs.map((page) => page.label)).toEqual(['General']);
+    expect(settings?.tabs.map((page) => page.label)).toEqual(['General', 'Access', 'Telemetry']);
   });
 });
 

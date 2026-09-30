@@ -45,7 +45,7 @@ import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
 import { endOwnSession } from './session-end.ts';
-import { saveOwnPreference } from './preference-save.ts';
+import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
 
 /**
@@ -150,6 +150,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
     saveOwnPreference(tx, context, request.preference, request.value),
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
   'notifications.set_channel': setNotificationChannel,
+  'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
 };
 
 function writeOwned(

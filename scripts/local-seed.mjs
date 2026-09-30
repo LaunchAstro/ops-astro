@@ -73,7 +73,7 @@ const GRANTS_BY_ROLE = {
     ['task', 'share'],
     ['task', 'manage'],
     ['person', 'read'],
-    // The two settings commands take `manage` on the `settings` collection
+    // The settings commands took `manage` on the `settings` collection
     // (`core-wire/src/surface.ts`), and the admin had six task actions and
     // `person:read`, so as seeded nobody could write either setting: WEB-COMMENTS
     // observed `POST /settings/set_four_eyes_threshold` as the admin answering
@@ -110,6 +110,10 @@ const GRANTS_BY_ROLE = {
     ['credential', 'write'],
     // The client record (C32): the owner and administrators make clients.
     ['record', 'write'],
+    // The four-eyes threshold is a money action (MP-2-11, owner line 71):
+    // `spend:decide`, so C59's step-up judges it. Client sign-off and the
+    // step-up switch stay `settings:manage` above.
+    ['spend', 'decide'],
   ],
   member: [
     ['task', 'read'],

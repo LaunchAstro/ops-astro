@@ -176,7 +176,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     state: 'away',
     reason: 'restricted calls seed',
   },
-  // 0053: nothing in the journey saves a preference yet.
+  // 0059: nothing in the journey saves a preference yet.
   'public.person_preferences': { person_id: randomUUID(), key: 'appearance', value: '"dark"' },
   // 0042: nothing in the journey raises an inbox item yet (INB-1b does).
   'public.inbox_items': {

@@ -432,7 +432,7 @@ no route written by hand.
 | ---------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `task.comment`                     | `/task/comment`                     | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?`, `mentions?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 (naming `body` when it is absent, blank or holds a NUL or an unpaired surrogate, or `audience`, `comment_type` or `mentions`), `AUDIENCE_NOT_PERMITTED` 422 (an external party writing `internal`; the agent prefix writing `client`), `MENTION_NOT_READABLE` 422 (naming each person mentioned who cannot read the comment; nothing saves), `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
 | `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                                       | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422                                                                                                                                                                                                                                                                                         |
-| `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                                 | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
+| `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                                 | `SCOPE_NOT_GRANTED` 403 (it asks `spend:decide`), `STEP_UP_REQUIRED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                               |
 | `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
 | `settings.set_money_step_up`       | `/settings/set_money_step_up`       | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
 
@@ -1509,7 +1509,7 @@ candidates** (ticket C1). The body is `{ query }`: up to 200 characters with at
 least one word of letters or digits in them, else `FIELD_VALUE_INVALID` 422
 naming `query`. The first eight words reach the index, each as a prefix, all of
 them required; nothing else of the query reaches `to_tsquery`. `heldScopes`
-(`authority/grants.ts`) asks the grant model's own live expression which
+(`authority/held-scopes.ts`) asks the grant model's own live expression which
 `task:read` scopes the caller holds. The statement is handed the whole business
 or the named records, and never reads a task outside them into the process.
 The answer is `{ ok: true, hits: [{ id, key, title }] }`, at most 20, with no
@@ -1520,10 +1520,22 @@ has no search until a client search is designed. `searchTasks`
 (`reads/search.ts`) is the one function every caller of the index uses.
 `tests/reads/search.test.ts` holds it.
 
-One pair is the exception: a person's own preferences are saved and read
-without an audit event (CS-2.8, MP-2-11a). A successful `preference.save` or
-`preference.read` writes none, and a refused one is audited like any other.
-The surface row's `audited: false` says so; nothing else skips the chain.
+One set is the exception: a person's own preferences are saved, read and
+dismissed without an audit event (CS-2.8, MP-2-11a, MP-2-11). A successful
+`preference.save`, `preference.read` or `preference.dismiss_tip` writes none,
+and a refused one is audited like any other. The surface row's `audited: false`
+says so; nothing else skips the chain.
+
+**Guided tips are two keys of the one store** (MP-2-11). `tips.enabled` takes
+`true` or `false` through `preference.save`. `tips.dismissed` holds one entry
+per dismissed tip, `"<page>#<tip>": <version>`; a save of it takes only `{}`,
+which is the reset. `preference.dismiss_tip` takes `{ page, tip, version }` (a
+route id, a tip id of lower-case words and `-`, each up to 64 characters, and a
+whole number from 1) and merges that one entry into the caller's own row in a
+single upsert, so a dismissal made at the same moment on another device is
+kept. A tip not already held is refused `FIELD_VALUE_INVALID` past 500. A tip
+shows unless tips are off or its entry holds its current text version
+(`tipShown`, `packages/core-wire/src/tips.ts`), so a rewritten tip comes back.
 
 ## Open items
 
@@ -1582,6 +1594,8 @@ factor verified in the last 60 minutes, a client a sign-in in the last 60
 minutes, or it is refused `STEP_UP_REQUIRED` 403. While the business setting
 `money_step_up_required` is `false` a live session is enough; only
 `settings:manage` switches it, through `settings.set_money_step_up`.
+The four-eyes threshold is one of these: `settings.set_four_eyes_threshold`
+asks `spend:decide`, not `settings:manage` (MP-2-11).
 
 A person's own factor has three routes on the person prefix only. Each is
 served only when the composition root passes a `factors` provider
@@ -1883,7 +1897,7 @@ row refuses them too, naming `installation`.
 The eight items are `ops.gate_items` rows, each with an `https` evidence link:
 `tested-backups`, `second-factor`, `legal-basics`, `privacy-act-statement`,
 `overseas-register`, `breach-runbook`, `security-pass`, `phone-alerts`. The
-application's role reads neither table. The mode moves from made-up to real
+application's role reads both tables and writes neither. The mode moves from made-up to real
 only while every item is done, and never back; the row cannot be deleted.
 Recording an item and changing the mode by command are not built yet.
 
