@@ -169,7 +169,12 @@ afterAll(async () => {
 describe.skipIf(serverUrl === undefined)('MP-4-1 crumb', () => {
   it('names the board the task sits on, from the board’s own record', async () => {
     const { board } = await boardOf(alpha, owner, ids['onWebsite'] ?? '');
-    expect(board).toStrictEqual({ readable: true, title: 'Website Projects' });
+    expect(board).toStrictEqual({ readable: true, id: ids['website'], title: 'Website Projects' });
+  });
+
+  it('names the board by its id beside its title, so the panel’s Project select marks it (MP-4-8)', async () => {
+    const { board } = await boardOf(alpha, owner, ids['onWebsite'] ?? '');
+    expect(board !== null && board.readable ? board.id : undefined).toBe(ids['website']);
   });
 
   it('a task on no board says so with null, not an empty title', async () => {
@@ -178,7 +183,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-1 crumb', () => {
 
   it('a record-scoped reader who may read the board is told its title too', async () => {
     const { board } = await boardOf(alpha, boardReader, ids['onWebsite'] ?? '');
-    expect(board).toStrictEqual({ readable: true, title: 'Website Projects' });
+    expect(board).toStrictEqual({ readable: true, id: ids['website'], title: 'Website Projects' });
   });
 
   it('a board renamed is the next read’s title: nothing is copied onto the task', async () => {
@@ -190,7 +195,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-1 crumb', () => {
       fields: { title: 'Websites' },
     });
     const { board } = await boardOf(alpha, owner, ids['onWebsite'] ?? '');
-    expect(board).toStrictEqual({ readable: true, title: 'Websites' });
+    expect(board).toStrictEqual({ readable: true, id: ids['website'], title: 'Websites' });
     await command(alpha, owner, {
       command: 'task.update',
       recordId: website,
@@ -224,7 +229,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-1 isolation', () => {
 
   it('a reader holding one board is told that one only, per board and not per reader', async () => {
     const { board } = await boardOf(alpha, boardReader, ids['onWebsite'] ?? '');
-    expect(board).toStrictEqual({ readable: true, title: 'Website Projects' });
+    expect(board).toStrictEqual({ readable: true, id: ids['website'], title: 'Website Projects' });
     const refused = await read(alpha, boardReader, ids['onSecret'] ?? '');
     expect(isCommandRefusal(refused) ? refused.code : 'answered').toBe('SCOPE_NOT_GRANTED');
     expect(JSON.stringify(refused)).not.toContain(CANARY);
