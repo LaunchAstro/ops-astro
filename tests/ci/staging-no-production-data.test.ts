@@ -78,6 +78,8 @@ const reset = async (): Promise<void> => {
   await db.admin.execute('drop event trigger if exists ops_astro_made_up_guard');
   await db.admin.execute('drop schema if exists ops_astro_made_up cascade');
   await db.admin.execute('delete from public.records');
+  // The live change record's stamps (C4, 0059) hold the business by a key.
+  await db.admin.execute('delete from public.live_changes');
   await db.admin.execute('delete from public.record_types');
   await db.admin.execute('delete from public.people');
   await db.admin.execute('delete from public.businesses');
