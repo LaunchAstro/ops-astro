@@ -2,11 +2,10 @@
 //
 // MP-4-8 isolation, the third crossing: another person's task under a live
 // delegation. An agent picks up one task from its decider; the panel's edits
-// sent with its credential reach that task's texts and nothing of another
-// task. On main an agent's `task.update` writes only the description and the
-// brief (MP-4-7), so its rename is refused on its own task too, naming the
-// field; the ticket's "yes, inside its delegation" for the name and the due
-// date is an open question in the SL08 handback, not widened here.
+// sent with its credential reach that task and nothing of another task. The
+// ticket's Permissions table gives an agent the name and the due date "inside
+// its delegation" (SL08-ANS-ORCH31: follow the roadmap), so on its own task
+// they apply as a person's would.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -66,12 +65,10 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 isolation', () => {
     for (const answer of foreign) expect(codeOf(answer)).not.toBe('not-a-refusal');
     expect(JSON.stringify(foreign)).not.toContain(CANARY);
     expect(await titleOf(otherId)).toBe(CANARY);
-    // Its own task's name stays the decider's: an agent renames nothing on main.
+    // Its own task: the name and the due date apply inside its delegation.
     const rename = await send(picked.taskId, { title: 'renamed by the agent' });
-    expect(isCommandRefusal(rename) ? [rename.code, rename.names] : 'applied').toStrictEqual([
-      'SCOPE_NOT_GRANTED',
-      ['title'],
-    ]);
-    expect(await titleOf(picked.taskId)).toBe('the agent’s task');
+    const due = await send(picked.taskId, { due: '2026-10-08' });
+    expect([codeOf(rename), codeOf(due)]).toStrictEqual(['not-a-refusal', 'not-a-refusal']);
+    expect(await titleOf(picked.taskId)).toBe('renamed by the agent');
   });
 });

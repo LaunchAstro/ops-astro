@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // MP-4-12 isolation, the third crossing: another person's task under a live
-// delegation. On main an agent's `task.update` writes only the description
-// and the brief (MP-4-7), so its page link is refused on its own task too,
-// naming the field, and another person's task gains nothing. The ticket's
-// "yes, inside its delegation" is the open question MP-4-8 names in the SL08
-// handback, not widened here.
+// delegation. The ticket's Permissions table gives an agent the page link
+// "inside its delegation" (SL08-ANS-ORCH31: follow the roadmap): it links its
+// own task, and another person's task gains nothing.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -36,7 +34,7 @@ const linkOf = async (recordId: string): Promise<unknown> =>
   )[0]?.link ?? null;
 
 describe.skipIf(serverUrl === undefined)('MP-4-12 isolation', () => {
-  it('another person under a live delegation: the agent links neither its task nor another’s', async () => {
+  it('another person under a live delegation: the agent links its own task and not another’s', async () => {
     const decider = await world.decider('decider');
     const other = await world.asPerson(decider, {
       command: 'task.create',
@@ -61,10 +59,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-12 isolation', () => {
     expect(JSON.stringify(foreign)).not.toContain(CANARY);
     expect(await linkOf(otherId)).toBeNull();
     const own = await link(picked.taskId);
-    expect(isCommandRefusal(own) ? [own.code, own.names] : 'applied').toStrictEqual([
-      'SCOPE_NOT_GRANTED',
-      ['page_link'],
-    ]);
-    expect(await linkOf(picked.taskId)).toBeNull();
+    expect(codeOf(own)).toBe('not-a-refusal');
+    expect(await linkOf(picked.taskId)).toBe('/clients/acme');
   });
 });
