@@ -76,6 +76,34 @@ export async function countOwed(tx: TenantQuery, personId: string): Promise<numb
   return await countOwedItems(tx, personId);
 }
 
+/** Each task's key, title and client link, read at the read. */
+async function taskNames(
+  tx: TenantQuery,
+  taskIds: readonly string[],
+): Promise<ReadonlyMap<string, { key: string; title: string | null; clientId: string | null }>> {
+  const rows = await tx.query<{
+    readonly id: string;
+    readonly key: string | null;
+    readonly title: string | null;
+    readonly clientId: string | null;
+  }>(
+    `select id, txt_1 as key, txt_4 as title, uuid_7 as "clientId" from public.records
+      where business_id = $1 and id = any($2::uuid[]) and deleted_at is null`,
+    [tx.businessId, taskIds],
+  );
+  return new Map(
+    rows.map((row) => [row.id, { key: row.key ?? '', title: row.title, clientId: row.clientId }]),
+  );
+}
+
+/** The clients these subjects reach, by C32's own rule: a grant over the business, or on one. */
+async function reachedClients(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+): Promise<ReadonlyMap<string, { readonly clientId: string; readonly name: string }>> {
+  return new Map(((await clientsReached(tx, subjects)) ?? []).map((row) => [row.clientId, row]));
+}
+
 async function named(
   tx: TenantQuery,
   entries: readonly InboxEntry[],
@@ -85,26 +113,8 @@ async function named(
   const taskIds = [...new Set(readable.map((entry) => entry.subjectRecordId ?? ''))];
   const deciderIds = [...new Set(readable.flatMap((entry) => entry.closedByPersonId ?? []))];
   if (taskIds.length === 0) return entries;
-  const tasks = new Map(
-    (
-      await tx.query<{
-        readonly id: string;
-        readonly key: string | null;
-        readonly title: string | null;
-        readonly clientId: string | null;
-      }>(
-        `select id, txt_1 as key, txt_4 as title, uuid_7 as "clientId" from public.records
-          where business_id = $1 and id = any($2::uuid[]) and deleted_at is null`,
-        [tx.businessId, taskIds],
-      )
-    ).map(
-      (row) => [row.id, { key: row.key ?? '', title: row.title, clientId: row.clientId }] as const,
-    ),
-  );
-  // C32's own rule, asked once: a grant over the business, or one on the client.
-  const reached = new Map(
-    ((await clientsReached(tx, subjects)) ?? []).map((row) => [row.clientId, row] as const),
-  );
+  const tasks = await taskNames(tx, taskIds);
+  const reached = await reachedClients(tx, subjects);
   const people = new Map<string, PersonView>(
     deciderIds.length === 0
       ? []
