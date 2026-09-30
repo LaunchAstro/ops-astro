@@ -3,9 +3,10 @@
 // INB-1 and four eyes (T2g), over a real database through the command entry.
 //
 // The person a task is assigned to never decides its gate, so the inbox owes
-// them no decision on it: a new gate raises the assignee none, and assigning
-// a decider withdraws the open decision item they held on the task. The
-// escalated gate's case is in `inbox-escalate.test.ts`.
+// them no decision on it: a new gate raises the assignee none, assigning a
+// decider withdraws the open decision item they held on the task, and
+// reassigning the task reopens it, so they are owed it again. The escalated
+// gate's case is in `inbox-escalate.test.ts`.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -113,6 +114,31 @@ describe.skipIf(serverUrl === undefined)('INB-1 four eyes and the inbox', () => 
     expect(await stateOn(v1['gateId'], approver.personId)).toBe('withdrawn');
     // Their assignment item alone: it is owed.
     expect(await owed(approver.personId)).toBe(1);
+  });
+
+  it('INB-1 four eyes: a reassignment racing a decision leaves no open decision item on the decided gate', async () => {
+    const taskId = await createTask(s, `inbox four eyes race ${randomUUID()}`);
+    const first = await approverOn(taskId);
+    const second = await approverOn(taskId);
+    const third = await approverOn(taskId);
+    const version = await propose(s, taskId);
+    await assign(taskId, first);
+    expect(await stateOn(version['gateId'], first.personId)).toBe('withdrawn');
+    // Both take the task's record row: whichever commits second sees the first.
+    const [, decided] = await Promise.all([
+      assign(taskId, second),
+      as(third, decideBody(version, 'approve')),
+    ]);
+    expect(codeOf(decided)).toBe('applied');
+    const open = await rows<{ readonly total: number }>(
+      s,
+      `select count(*)::int as total from public.inbox_items
+        where business_id = $1 and reason = 'decision' and fact_kind = 'gate'
+          and fact_id = $2 and work_state = 'open'`,
+      [s.business, version['gateId']],
+    );
+    expect(open[0]?.total).toBe(0);
+    expect(await owed(first.personId)).toBe(0);
   });
 
   it('a former assignee regains an open decision item when reassigned', async () => {

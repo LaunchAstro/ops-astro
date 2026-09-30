@@ -12,13 +12,12 @@
 // mention. A decision goes to every holder, the proposer included, because
 // authority and not authorship decides who owes it, and a decision a person is
 // responsible for is never switched off, but the task's assignee is owed none:
-// four eyes (T2g) refuses their decision.
+// four eyes (T2g) refuses their decision. Mentions are `mentions.ts`.
 
 import { grantHolders } from '../authority/grant-reach.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { withdrawEndedGates } from './clear.ts';
-import { taskAccess } from './access.ts';
-import { raiseInboxItem, type InboxReason } from './items.ts';
+import { raiseInboxItem } from './items.ts';
 
 /** The task's assignee, read in the raising transaction; null when unassigned. */
 async function assigneeOf(tx: TenantQuery, taskId: string): Promise<string | null> {
@@ -133,10 +132,25 @@ export async function raiseRunSettled(
   return lease.taskId;
 }
 
+const BUSINESS = { kind: 'business', id: null } as const;
+
+/** The person's newest decision item on the gate, reopened if it is withdrawn and none is open. */
+const REOPEN = `update public.inbox_items set work_state = 'open', closed_at = null
+  where business_id = $1 and work_state = 'withdrawn'
+    and id = (select w.id from public.inbox_items w
+               where w.business_id = $1 and w.recipient_person_id = $2
+                 and w.subject_record_id = $3 and w.reason = 'decision'
+                 and w.fact_kind = 'gate' and w.fact_id = $4
+               order by w.work_state = 'open' desc, w.closed_at desc limit 1)`;
+
 /**
  * An assignment written. Whoever held the open assignment item and is no
  * longer the assignee has it withdrawn; the new assignee is raised one,
- * unless they assigned themselves; their open decision items on it withdraw (four eyes).
+ * unless they assigned themselves. Four eyes: their open decision items on
+ * the task withdraw, and everyone else who decides a pending gate on it now
+ * (as `raiseDecision` and `raiseEscalation` ask) holds an open one, a former
+ * assignee's withdrawn one reopened. Under the task row this write holds,
+ * which a decision locks too.
  */
 export async function raiseAssignment(
   tx: TenantQuery,
@@ -149,6 +163,29 @@ export async function raiseAssignment(
           or (reason = 'decision' and recipient_person_id = $3::uuid))`,
     [tx.businessId, change.taskId, change.assignee],
   );
+  const gates = await tx.query<{ readonly id: string; readonly to: string | null }>(
+    `select g.id, g.escalated_to_person_id as "to" from public.gates g
+       join public.proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
+      where g.business_id = $1 and l.task_id = $2 and g.state = 'pending' and l.state = 'live'`,
+    [tx.businessId, change.taskId],
+  );
+  for (const gate of gates) {
+    const scope = gate.to === null ? { kind: 'record' as const, id: change.taskId } : BUSINESS;
+    // oxlint-disable-next-line no-await-in-loop
+    const holders = await grantHolders(tx, { collection: 'task', action: 'decide', scope });
+    for (const person of new Set([...holders, ...(gate.to === null ? [] : [gate.to])])) {
+      if (person === change.assignee) continue;
+      // oxlint-disable-next-line no-await-in-loop
+      await tx.query(REOPEN, [tx.businessId, person, change.taskId, gate.id]);
+      // oxlint-disable-next-line no-await-in-loop
+      await raiseInboxItem(tx, {
+        recipientPersonId: person,
+        subjectRecordId: change.taskId,
+        reason: 'decision',
+        fact: { kind: 'gate', id: gate.id },
+      });
+    }
+  }
   if (change.assignee === null || change.assignee === change.by) return;
   await raiseInboxItem(tx, {
     recipientPersonId: change.assignee,
@@ -196,102 +233,4 @@ export async function raiseIncident(
       });
     }
   }
-}
-
-/** A person a comment names, as this business knows them. */
-export interface Mentioned {
-  readonly personId: string;
-  /** Their name here, or the identifier as sent when no such person is here. */
-  readonly label: string;
-  readonly readable: boolean;
-  /** Staff, as opposed to an outside party with no membership. */
-  readonly member: boolean;
-  /**
-   * An outside party entitled to CS-16.8's client comment: a stored
-   * entitlement on the client's party, never a login. This head stores none,
-   * so `readMentions` answers false until the party model lands.
-   */
-  readonly paidClient: boolean;
-}
-
-/**
- * Who a comment names, and whether each can read it: the task, and for a
- * team-only comment a membership too, since an outside party never reads one.
- * A person of another business is not found here and is named back only by
- * the identifier the caller sent. An identifier matches in any letter case, as
- * the database compares it, and a found person comes back by their stored one.
- */
-export async function readMentions(
-  tx: TenantQuery,
-  comment: { readonly taskId: string; readonly audience: string },
-  personIds: readonly string[],
-): Promise<readonly Mentioned[]> {
-  const people = await tx.query<{ readonly id: string; name: string; member: boolean }>(
-    `select p.id, p.display_name as name,
-            exists (select 1 from public.memberships m
-                     where m.business_id = p.business_id and m.person_id = p.id and m.active)
-              as member
-       from public.people p where p.business_id = $1 and p.id = any($2::uuid[])`,
-    [tx.businessId, personIds],
-  );
-  const named: Mentioned[] = [];
-  const asked = new Map(personIds.map((sent) => [sent.toLowerCase(), sent] as const));
-  for (const [canonical, sent] of asked) {
-    const person = people.find((row) => row.id.toLowerCase() === canonical);
-    const readable =
-      person !== undefined &&
-      (person.member || comment.audience === 'client') &&
-      // oxlint-disable-next-line no-await-in-loop
-      (await taskAccess(tx, person.id, comment.taskId)) === 'readable';
-    named.push({
-      personId: person?.id ?? sent,
-      label: person?.name ?? sent,
-      readable,
-      member: person?.member ?? false,
-      paidClient: false,
-    });
-  }
-  return named;
-}
-
-/**
- * A comment saved: each staff member it names is raised a mention, never the
- * comment's own author. CS-16.8's client comment is owed only to a paid
- * client (`Mentioned.paidClient`, a stored entitlement on the client's party,
- * not a login): an outside party named in a client-visible comment they can
- * read is raised one when they are a paid client, and nothing otherwise.
- */
-export async function raiseMentions(
-  tx: TenantQuery,
-  comment: {
-    readonly taskId: string;
-    readonly commentId: string;
-    readonly authorActorId: string;
-    readonly audience: string;
-  },
-  named: readonly Mentioned[],
-): Promise<void> {
-  const authors = await tx.query<{ readonly person_id: string | null }>(
-    'select person_id from public.actors where business_id = $1 and id = $2',
-    [tx.businessId, comment.authorActorId],
-  );
-  const author = authors[0]?.person_id ?? null;
-  for (const person of named) {
-    const reason = mentionReason(person, comment.audience);
-    if (person.personId === author || reason === undefined) continue;
-    // oxlint-disable-next-line no-await-in-loop
-    await raiseInboxItem(tx, {
-      recipientPersonId: person.personId,
-      subjectRecordId: comment.taskId,
-      reason,
-      fact: { kind: 'record', id: comment.commentId },
-    });
-  }
-}
-
-/** Staff are owed a mention; a paid client reading a client-visible comment, a client comment. */
-function mentionReason(person: Mentioned, audience: string): InboxReason | undefined {
-  if (person.member) return 'mention';
-  if (person.paidClient && person.readable && audience === 'client') return 'client_comment';
-  return undefined;
 }

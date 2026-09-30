@@ -1026,8 +1026,12 @@ partly covered rather than proved.
   but the assignee, the recipient among them, holds an open one, raised if
   they had none (one granted the role after the gate was raised included).
   Four eyes rules the inbox everywhere: no gate raises the assignee a
-  decision item, and an assignment withdraws the new assignee's open ones on
-  the task.
+  decision item, and an assignment reconciles each pending gate on the task
+  against the new assignee: their open decision items withdraw, and every
+  other person who decides the gate now (a record-scope decider, or once it
+  is escalated a business-scope one and the person it was escalated to)
+  holds an open one. A former assignee's withdrawn item is reopened, so they
+  are owed it again; anyone else without one is raised one.
 - **Rejection is terminal** (G05): the rejected gate takes no second decision,
   a new version in the same lineage is refused `LINEAGE_TERMINAL` on the
   lineage rather than on the gate, and the authorised restart is a new lineage
