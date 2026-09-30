@@ -27,15 +27,17 @@ export async function taskAccess(
   );
   const task = rows[0];
   if (task === undefined) return 'gone';
-  const subjects = await recipientSubjects(tx, personId);
-  return await accessOf(tx, subjects, taskId, task.trashed, task.clientId);
+  // A business grant, a grant on this task, or a party grant on the task's
+  // own client: a party grant on another client reaches nothing here, which
+  // is the client separation.
+  if (!(await holdsOnTask(tx, personId, { id: taskId, clientId: task.clientId }, 'read'))) {
+    return 'withheld';
+  }
+  return task.trashed ? 'gone' : 'readable';
 }
 
 /** The person and their own acting identities: the two a grant may name. */
-export async function recipientSubjects(
-  tx: TenantQuery,
-  personId: string,
-): Promise<readonly Subject[]> {
+async function recipientSubjects(tx: TenantQuery, personId: string): Promise<readonly Subject[]> {
   const actors = await tx.query<{ readonly id: string }>(
     `select id from public.actors
       where business_id = $1 and person_id = $2 and kind = 'person' and active`,
@@ -45,22 +47,6 @@ export async function recipientSubjects(
     { kind: 'person', id: personId },
     ...actors.map((actor): Subject => ({ kind: 'actor', id: actor.id })),
   ];
-}
-
-/**
- * Read on the task through the one effective-grant walk: a business grant, a
- * grant on this task, or a party grant on the task's own client. A party grant
- * on another client reaches nothing here, which is the client separation.
- */
-export async function accessOf(
-  tx: TenantQuery,
-  subjects: readonly Subject[],
-  taskId: string,
-  trashed: boolean,
-  clientId: string | null,
-): Promise<InboxAccess> {
-  if (!(await holds(tx, subjects, taskId, clientId, 'read'))) return 'withheld';
-  return trashed ? 'gone' : 'readable';
 }
 
 /**
@@ -74,13 +60,21 @@ export async function holdsOnTask(
   task: { readonly id: string; readonly clientId: string | null },
   action: Action,
 ): Promise<boolean> {
-  return await holds(tx, await recipientSubjects(tx, personId), task.id, task.clientId, action);
+  const subjects = await recipientSubjects(tx, personId);
+  const scopes: Scope[] = [{ kind: 'record', id: task.id }];
+  if (task.clientId !== null) scopes.push({ kind: 'party', id: task.clientId });
+  for (const scope of scopes) {
+    // oxlint-disable-next-line no-await-in-loop
+    const grants = await effectiveGrants(tx, subjects, { collection: 'task', action, scope });
+    if (grants.length > 0) return true;
+  }
+  return false;
 }
 
 /**
  * Where a person reads tasks now, for a query that filters inside itself
  * (INB-1e): the whole business, these tasks, or these clients' tasks. The
- * same grants `accessOf` asks, listed once instead of asked per task.
+ * same grants `taskAccess` asks, listed once instead of asked per task.
  */
 export async function readScopes(
   tx: TenantQuery,
@@ -101,21 +95,4 @@ export async function readScopes(
     records: ids('record'),
     parties: ids('party'),
   };
-}
-
-async function holds(
-  tx: TenantQuery,
-  subjects: readonly Subject[],
-  taskId: string,
-  clientId: string | null,
-  action: Action,
-): Promise<boolean> {
-  const scopes: Scope[] = [{ kind: 'record', id: taskId }];
-  if (clientId !== null) scopes.push({ kind: 'party', id: clientId });
-  for (const scope of scopes) {
-    // oxlint-disable-next-line no-await-in-loop
-    const grants = await effectiveGrants(tx, subjects, { collection: 'task', action, scope });
-    if (grants.length > 0) return true;
-  }
-  return false;
 }

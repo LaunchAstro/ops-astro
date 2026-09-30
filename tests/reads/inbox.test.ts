@@ -101,17 +101,7 @@ describe.skipIf(serverUrl === undefined)('INB-1d the inbox read and count', () =
       if (!issued.ok) throw new Error(`grantRead: ${issued.refusal.code}`);
       return issued.value;
     });
-  const task = async (title: string, client?: string): Promise<{ id: string; rev: number }> => {
-    const created = ok(await w.call('task.create', { fields: { title } })).body;
-    const id = String(created['recordId']);
-    if (client === undefined) return { id, rev: Number(created['revision']) };
-    const [set] = await w.fixture.db.admin.execute<{ revision: string }>(
-      `update public.records set data = data || jsonb_build_object('client', $2::text)
-        where id = $1 returning revision::text as revision`,
-      [id, client],
-    );
-    return { id, rev: Number(set?.revision) };
-  };
+  const { task } = w;
   const attention = async (itemId: string): Promise<readonly string[]> =>
     (
       await w.fixture.db.admin.execute<{ person_id: string }>(

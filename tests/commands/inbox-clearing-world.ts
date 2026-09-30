@@ -95,20 +95,22 @@ export class ClearingWorld {
     );
   }
 
-  /** A task, on a client when one is named, with a proposal whose gate raised its items. */
-  async proposed(title: string, client?: string): Promise<Proposed> {
+  /** A task, on a client when one is named. */
+  task = async (title: string, client?: string): Promise<{ id: string; rev: number }> => {
     const created = ok(await this.call('task.create', { fields: { title } })).body;
     const id = String(created['recordId']);
-    let rev = Number(created['revision']);
-    if (client !== undefined) {
-      const [set] = await this.fixture.db.admin.execute<{ revision: string }>(
-        `update public.records set data = data || jsonb_build_object('client', $2::text)
-          where id = $1 returning revision::text as revision`,
-        [id, client],
-      );
-      rev = Number(set?.revision);
-    }
-    const task = { id, rev };
+    if (client === undefined) return { id, rev: Number(created['revision']) };
+    const [set] = await this.fixture.db.admin.execute<{ revision: string }>(
+      `update public.records set data = data || jsonb_build_object('client', $2::text)
+        where id = $1 returning revision::text as revision`,
+      [id, client],
+    );
+    return { id, rev: Number(set?.revision) };
+  };
+
+  /** A task, on a client when one is named, with a proposal whose gate raised its items. */
+  async proposed(title: string, client?: string): Promise<Proposed> {
+    const task = await this.task(title, client);
     const detail = detailOf(ok(await this.call('task.propose', proposal(task), this.writerToken)));
     return {
       task,

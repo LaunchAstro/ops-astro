@@ -42,7 +42,7 @@ import {
   insertPerson,
 } from '../identity/fixture.ts';
 import { enrol, grantTo, type Member } from './fixture.ts';
-import { readable } from './inbox-clearing-world.ts';
+import { detailOf, ok, readable } from './inbox-clearing-world.ts';
 import {
   authorised,
   BUSINESS_KEY,
@@ -54,14 +54,6 @@ import {
 } from '../api/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-
-const detailOf = (answer: Answer): Record<string, unknown> =>
-  (answer.body['detail'] as Record<string, unknown> | undefined) ?? {};
-
-const ok = (answer: Answer): Answer => {
-  expect(answer.status, JSON.stringify(answer.body)).toBe(200);
-  return answer;
-};
 
 const proposal = (task: { id: string; rev: number }, lineageId?: string) => ({
   recordId: task.id,
