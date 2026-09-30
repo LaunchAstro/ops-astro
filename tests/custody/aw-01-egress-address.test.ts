@@ -106,7 +106,7 @@ it('AW-01 egress 11: a listed name resolving to a metadata or link-local address
         await send(
           listed('http://rebind.test'),
           REQUEST,
-          { header: 'authorization', value: 'k' },
+          { header: 'authorization', scheme: 'bearer', value: 'k' },
           resolve,
         ),
     );

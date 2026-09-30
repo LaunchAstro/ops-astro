@@ -15,6 +15,7 @@ import { runStories, type RunStory } from '../state/agent-run.ts';
 import type { RunLineage } from '../state/run-projection.ts';
 import { Attempts } from './agent/attempts.tsx';
 import { Gate, type GateDecision, type GateRef } from './agent/gate.tsx';
+import { RunKnowledge } from './agent/knowledge.tsx';
 import { ProposalHeader, Summary, Workflow } from './agent/header.tsx';
 import { Scope } from './agent/scope.tsx';
 import { StagedOutput } from './agent/staged.tsx';
@@ -115,6 +116,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
         ledgerHref={props.ledgerHref}
       />
       <Summary story={shown} />
+      <RunKnowledge runId={shown.head.runId} states={props.ledger?.states} />
       <Unknown {...props} shown={shown} />
       <StopAnswers {...props} />
       <Workflow jobs={shown.jobs} open={props.jobListOpen} onToggle={props.onJobList} />

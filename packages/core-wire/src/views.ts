@@ -127,6 +127,19 @@ export interface TaskLedgerView {
   readonly envelopes: readonly EnvelopeView[];
   /** AW-05's stops on the task's runs, by run, oldest ask first. Empty before any stop. */
   readonly stops: readonly BudgetStopView[];
+  /** MP-6-2's state revision lists: each kept version of the task's runs, newest first. */
+  readonly states: readonly RunStateView[];
+}
+
+/** One kept version of a run's state (MP-6-2, CS-16.4): the writer's text, shown as text. */
+export interface RunStateView {
+  readonly runId: string;
+  readonly version: number;
+  readonly knowledge: readonly string[];
+  readonly unknowns: readonly string[];
+  /** The person, or the agent inside its delegation, who revised it. */
+  readonly revisedBy: { readonly actorId: string };
+  readonly revisedAt: string;
 }
 
 /** One stop at a run's approved ceiling: the ask a person answers (AW-05, MP-6-5, C54). */

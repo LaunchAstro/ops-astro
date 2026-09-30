@@ -147,3 +147,4 @@ export {
   type TenantQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
+export { hasRoom, type DurableLimit } from './tenancy/limit.ts';

@@ -46,6 +46,18 @@ export interface TaskLedger {
   readonly envelopes: readonly LedgerEnvelope[];
   /** Absent on a read from before AW-05's stops. */
   readonly stops?: readonly LedgerStop[];
+  /** MP-6-2's kept versions of each run's state, newest first; absent on an older read. */
+  readonly states?: readonly LedgerRunState[];
+}
+
+/** One kept version of a run's state: the writer's text, drawn as text. */
+export interface LedgerRunState {
+  readonly runId: string;
+  readonly version: number;
+  readonly knowledge: readonly string[];
+  readonly unknowns: readonly string[];
+  readonly revisedBy: { readonly actorId: string };
+  readonly revisedAt: string;
 }
 
 /** A run asks three times at most; the last is the one consolidated decision (AW-05). */

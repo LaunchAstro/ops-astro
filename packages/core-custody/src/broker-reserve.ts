@@ -5,6 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   advisoryLock,
+  hasRoom,
   refuseCommand,
   type CommandRefusal,
   type TenantQuery,
@@ -224,22 +225,25 @@ function routeFor(
 
 /**
  * The durable ceilings. A call is in flight from its hold until it ends, so a
- * hold not yet sent counts. First the business's own ceiling per operation,
- * under one lock per business and operation; then the route's, which is the
- * installation's, under one lock per route.
+ * hold not yet sent counts. First the business's own ceiling per operation, a
+ * durable limit (`hasRoom`); then the route's, which is the installation's,
+ * under one lock per route.
  */
 async function atCeiling(
   tx: TenantQuery,
   operation: ModelOperation,
   route: BrokerRoute,
 ): Promise<boolean> {
-  await advisoryLock(tx, `model_call:${tx.businessId}:${operation.key}`);
-  const [flight] = await tx.query<{ n: string }>(
-    `select count(*)::text as n from public.model_calls
-      where business_id = $1 and operation_key = $2 and state in ('reserved', 'dispatched')`,
-    [tx.businessId, operation.key],
-  );
-  if (Number(flight?.n ?? 0) >= operation.concurrency) return true;
+  const inFlight = async (q: TenantQuery): Promise<number> => {
+    const [flight] = await q.query<{ n: string }>(
+      `select count(*)::text as n from public.model_calls
+        where business_id = $1 and operation_key = $2 and state in ('reserved', 'dispatched')`,
+      [q.businessId, operation.key],
+    );
+    return Number(flight?.n ?? 0);
+  };
+  const name = `model_call:${operation.key}`;
+  if (!(await hasRoom(tx, [{ name, limit: operation.concurrency, count: inFlight }]))) return true;
   return !(await routeHasRoom(tx, route));
 }
 

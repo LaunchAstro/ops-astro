@@ -51,9 +51,18 @@ function load(): Loaded {
   return { credentials: credentials.credentials, destinations: destinations.destinations };
 }
 
-/** Remove every spelling of the credential a provider might echo back. */
-function redact(text: string, value: string): string {
-  const spellings = [value, encodeURIComponent(value), Buffer.from(value).toString('base64')];
+/**
+ * Remove every spelling of the credential a provider might echo back: the
+ * value, and a Basic pair's secret half alone.
+ */
+function redact(text: string, credential: StoredCredential): string {
+  const { value } = credential;
+  const secrets = credential.scheme === 'basic' ? [value, value.split(':')[1] ?? value] : [value];
+  const spellings = secrets.flatMap((secret) => [
+    secret,
+    encodeURIComponent(secret),
+    Buffer.from(secret).toString('base64'),
+  ]);
   return spellings.reduce((out, spelling) => out.split(spelling).join('[redacted]'), text);
 }
 
@@ -101,9 +110,7 @@ process.on('message', (message: unknown) => {
   reply({ type: 'started' });
   void (async (): Promise<void> => {
     const outcome = await send(loaded.destinations, request, credential);
-    const safe = outcome.ok
-      ? { ...outcome, body: redact(outcome.body, credential.value) }
-      : outcome;
+    const safe = outcome.ok ? { ...outcome, body: redact(outcome.body, credential) } : outcome;
     reply({
       type: 'answer',
       outcome: safe,

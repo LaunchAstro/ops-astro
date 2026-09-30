@@ -321,6 +321,20 @@ provider is the only one until the real-provider run. Each route in
 the calls in flight on that route across every business of the installation,
 at most (the fair share, "The model call" below).
 
+`main()` starts the diagnostic trace export (AW-13, `apps/api/trace-exporter.ts`)
+only when `TRACE_EXPORT=on`, the one change an operator makes once
+`TRACE_EXPORT_ORIGIN` (the target's bare origin, https unless it is
+`127.0.0.0/8` or `[::1]`: plain http would carry the key pair in clear), `TRACE_EXPORT_CREDENTIALS_FILE`
+(custody's file for the target's key pair) and `TRACE_EXPORT_KEY_FILE` (the
+trace key, at least 32 bytes as hex, in a file no group or other may read)
+are staged. Unset or `off`, none of the three is read and the log says
+`api: trace export off`. `on` with any of them missing or malformed, or any
+other value, stops the server before it listens with a problem naming the
+setting, never its value. The exporter's custody starts before the port is
+bound; the export then runs every 30 seconds over the recovered businesses
+(`RECOVERY_BUSINESS_KEYS`), beside the sweep, and nothing on the wire reaches it
+([RUNTIME.md](RUNTIME.md#the-diagnostic-trace-export)).
+
 ## Task, board and people operations
 
 The everyday task writes, and the two reads the web's board and task page
@@ -1003,6 +1017,10 @@ run stops and asks in the same transaction (AW-05, the budget wait in
 is refused as an ended lease is. `RATE_LIMITED` writes nothing and answers two ceilings,
 each counting a call from its hold until it ends: the business's own per
 operation, and its fair share of the route's, which is the installation's.
+The business's own is a durable limit (`hasRoom`, `core-records/src/tenancy/limit.ts`):
+a count read back from the records under a lock keyed by the business, against
+its maximum, held to commit. It is the one limiter: C33's occurrence rates and
+run ceiling reuse it with their own counts.
 A business with calls in flight on a route holds no more than the route's
 ceiling divided by the businesses in flight there, itself counted. The share
 is read through `model_route_room` ([DATA.md](DATA.md), "What the tenancy proofs are"),
@@ -1277,6 +1295,16 @@ ledger: {
     openedBy: { versionId } | null;    // the approval whose reservation opened it
     cap: { key; limitMinor; currency };// the cap it draws on
   }[];                                 // empty before any approval
+  stops: {                             // AW-05's asks on the task's runs, oldest first
+    askId; runId; number; kind: 'stop' | 'consolidated';
+    ceilingMinor; spentMinor; currency; raisedAt;
+    answer: 'top_up' | 'end' | null;
+    awaitingSecond: { amountMinor } | null;
+  }[];
+  states: {                            // MP-6-2: each run's kept versions, newest first
+    runId; version; knowledge: string[]; unknowns: string[];
+    revisedBy: { actorId }; revisedAt;
+  }[];
 }
 ```
 
@@ -1285,7 +1313,9 @@ the held reservations and the spent ones add up to its `heldMinor` and
 `actualMinor`. It is read only and adds no audit event beyond the read's own.
 It names the business's cap and its limit, so only an internal reader is shown
 it: an agent's `task.read` answers `ledger: null` (I09).
-AW-05's ceiling and its stops are not on it yet (SL11).
+The stops and the states are read through a run on this task in this
+business, so nothing of another task's runs is read; the states are the
+writer's text (`run.revise_state`), for a page to show as text.
 The task page's Agent pane draws it as the token panel (DS-TASK-9): the
 current envelope (the open one, else the newest closed), its reservations as
 the per-run rows by `runId`, and the skills and data source its opening

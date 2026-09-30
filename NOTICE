@@ -88,3 +88,15 @@ its licence and the path it sits at, in the same commit that adds it.
    Source: https://lucide.dev
    Note: replaces the mockup's icon font, whose licence does not pass on.
          Recorded in packages/ui/assets/licences.json.
+
+6. Langfuse self-hosting files, version 4.33.0
+   Path: scripts/local/trace-target/docker-compose.yml
+   Copyright: 2023-2026 ClickHouse, Inc.
+   Licence: MIT Expat, the full text at
+            scripts/local/trace-target/LICENSE-langfuse
+   Source: https://github.com/langfuse/langfuse, tag v4.33.0, commit
+           81bbfd169b72ea2ed53639699cc6632e8f908ce8
+   Note: byte-identical to the tag, the digest in
+         scripts/local/trace-target/pin.json. The vendor's environment
+         example is not included. The images the local profile runs are
+         pulled at run time and are not in this repository.

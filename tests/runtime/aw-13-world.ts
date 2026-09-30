@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll } from 'vitest';
+import { deliverThrough } from '../../apps/api/trace-exporter.ts';
 import { startCustody, type Custody } from '../../packages/core-custody/src/index.ts';
 import {
   exportOnce,
@@ -27,8 +28,11 @@ export type TargetMode =
 
 export interface TraceTarget {
   mode: TargetMode;
-  /** Every body the target received, in order. */
+  /** Every body the target received, in order, with its path and authorization. */
   readonly received: string[];
+  readonly paths: string[];
+  readonly authorizations: (string | undefined)[];
+  readonly origin: string;
   readonly custody: Custody;
   readonly canary: string;
   readonly deliver: Deliver;
@@ -68,6 +72,8 @@ async function listen(
     request.on('data', (chunk: Buffer) => parts.push(chunk));
     request.on('end', () => {
       received.push(Buffer.concat(parts).toString('utf8'));
+      target.paths.push(request.url ?? '');
+      target.authorizations.push(request.headers.authorization);
       if (target.mode === 'slow') {
         void sleep(2_000).then(() => answer(target, response));
         return;
@@ -108,33 +114,21 @@ async function custodyFor(folder: string, port: number, canary: string): Promise
   });
 }
 
-/** Delivery through custody's egress, as the composition root wires it. */
-function deliverThrough(custody: Custody): Deliver {
-  return async (body) => {
-    const outcome = await custody.dispatch('trace_key', {
-      destination: 'trace_target',
-      path: '/v1/traces',
-      method: 'POST',
-      body,
-      timeoutMs: 500,
-      maxResponseBytes: 4_096,
-    });
-    if (outcome.kind === 'answered') return outcome.outbound;
-    return { ok: false, fault: outcome.kind === 'refused' ? 'forbidden' : 'network', status: null };
-  };
-}
-
 export async function openTraceTarget(): Promise<TraceTarget> {
   const folder = mkdtempSync(join(tmpdir(), 'aw13-target-'));
   const canary = `canary-${randomBytes(18).toString('hex')}`;
   const received: string[] = [];
-  const target = { mode: 'ok', received } as TraceTarget;
+  const paths: string[] = [];
+  const authorizations: (string | undefined)[] = [];
+  const target = { mode: 'ok', received, paths, authorizations } as TraceTarget;
   const { server, port } = await listen(target, received);
   const custody = await custodyFor(folder, port, canary);
   return Object.assign(target, {
+    origin: `http://127.0.0.1:${String(port)}`,
     custody,
     canary,
-    deliver: deliverThrough(custody),
+    // The composition root's delivery; 500 ms so the slow case is quick.
+    deliver: deliverThrough(custody, 500),
     close: async () => {
       await custody.stop();
       await new Promise<void>((resolve) => {

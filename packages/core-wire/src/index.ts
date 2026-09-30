@@ -65,6 +65,7 @@ export type {
   ReservationView,
   EnvelopeView,
   BudgetStopView,
+  RunStateView,
   TaskLedgerView,
   SettingsReadResult,
   MapComponentView,
