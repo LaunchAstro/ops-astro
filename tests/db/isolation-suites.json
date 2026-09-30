@@ -45,6 +45,8 @@
     "tests/commands/task-corrections-isolation.test.ts",
     "tests/commands/task-corrections-agent.test.ts",
     "tests/commands/task-assign-agent.test.ts",
-    "tests/commands/task-estimate.test.ts"
+    "tests/commands/task-estimate.test.ts",
+    "tests/commands/task-tags.test.ts",
+    "tests/commands/task-tags-isolation.test.ts"
   ]
 }

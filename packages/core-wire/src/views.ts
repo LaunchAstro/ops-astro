@@ -134,6 +134,14 @@ export interface TaskDetail extends TaskSummary {
    * and the task's total. Null for an agent, which is sent no one's time.
    */
   readonly time: TaskTimeView | null;
+  /** The tags this task carries (MP-4-11), by name. */
+  readonly tags: readonly TagView[];
+}
+
+/** One name in the business's tag vocabulary (MP-4-11). */
+export interface TagView {
+  readonly id: string;
+  readonly name: string;
 }
 
 /**
@@ -523,6 +531,12 @@ export interface TaskBoardResult {
 export interface PersonListResult {
   readonly ok: true;
   readonly persons: readonly PersonView[];
+}
+
+/** `tag.list`'s answer: the business's tag vocabulary, by name (MP-4-11). */
+export interface TagListResult {
+  readonly ok: true;
+  readonly tags: readonly TagView[];
 }
 
 /**

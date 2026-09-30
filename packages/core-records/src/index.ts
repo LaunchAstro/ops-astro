@@ -129,6 +129,16 @@ export {
   type TaskTime,
   type TimeEntry,
 } from './tasks/time.ts';
+export {
+  addTaskTag,
+  createTag,
+  listTags,
+  removeTaskTag,
+  TAG_NAME_LIMIT,
+  tagNameOf,
+  tagsOfTask,
+  type Tag,
+} from './tasks/tags.ts';
 export { slotOf, TASK_SPINE, TASK_TYPE_KEY } from './tasks/spine.ts';
 export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.ts';
 export { TASK_STATE_TYPE_KEY, type MachineCategory } from './tasks/states.ts';

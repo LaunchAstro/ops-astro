@@ -23,7 +23,11 @@ export interface Sent {
 }
 
 /** A server answering one task and two people, recording every command by its path. */
-export function serving(over: Readonly<Record<string, unknown>> = {}): {
+export function serving(
+  over: Readonly<Record<string, unknown>> = {},
+  /** The business's tag vocabulary `tag.list` answers (MP-4-11). */
+  vocabulary: readonly { readonly id: string; readonly name: string }[] = [],
+): {
   readonly client: OperationsClient;
   readonly sent: Sent[];
 } {
@@ -39,9 +43,14 @@ export function serving(over: Readonly<Record<string, unknown>> = {}): {
     if (where.endsWith('/task/execution')) return Promise.resolve(json({ ok: false }));
     if (where.includes('/live/task/')) return Promise.resolve(new Response(null, { status: 404 }));
     if (where.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: task(over) }));
+    if (where.endsWith('/tag/list')) return Promise.resolve(json({ ok: true, tags: vocabulary }));
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
-    sent.push({ to: where.slice(where.lastIndexOf('/task/')), body });
-    return Promise.resolve(json({ recordId: 'r', revision: 5 }));
+    sent.push({ to: where.slice(where.search(/\/[a-z]+\/[a-z_]+$/u)), body });
+    // A new tag answers with its identifier, as `tag.create` does.
+    const detail = where.endsWith('/tag/create')
+      ? { tagId: 'g-new', name: body['name'] }
+      : undefined;
+    return Promise.resolve(json({ recordId: 'r', revision: 5, detail }));
   }) as unknown as typeof globalThis.fetch;
   return {
     client: new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch }),

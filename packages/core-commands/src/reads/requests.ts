@@ -28,6 +28,7 @@ import type { PresetField } from '../../../core-records/src/index.ts';
 import type {
   CapabilitiesResult,
   PersonListResult,
+  TagListResult,
   PresetPlanResult,
   QueueResult,
   SettingsReadResult,
@@ -61,6 +62,8 @@ export interface ReadOperands {
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
   readonly 'task.board': { readonly board: string | null };
   readonly 'person.list': NoOperands;
+  /** The business's tag vocabulary (MP-4-11). */
+  readonly 'tag.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
   /**
@@ -122,6 +125,7 @@ export type ReadResult =
   | SharedTaskRead
   | TaskBoardResult
   | PersonListResult
+  | TagListResult
   | QueueResult
   | PresetPlanResult
   | SettingsReadResult

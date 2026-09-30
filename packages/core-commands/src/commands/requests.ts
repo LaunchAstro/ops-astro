@@ -24,6 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { TagRequest } from './requests-tags.ts';
 import type { TimeRequest } from './requests-time.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
@@ -282,7 +283,9 @@ export type CommandRequest =
       readonly reason: unknown;
     } & Envelope)
   // Time tracking (MP-4-6), in `requests-time.ts`.
-  | TimeRequest<Envelope>;
+  | TimeRequest<Envelope>
+  // Tags (MP-4-11), in `requests-tags.ts`.
+  | TagRequest<Envelope>;
 
 /**
  * The part of a request the register compares, which is everything except the

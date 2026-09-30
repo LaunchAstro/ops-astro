@@ -40,6 +40,8 @@ export const READ_NAMES = [
   'task.execution',
   // What an observed effect came from (T2c2); the task page draws it in T2g.
   'task.receipt',
+  // The business's tag vocabulary, which the tag field suggests from (MP-4-11).
+  'tag.list',
 ] as const;
 
 /**

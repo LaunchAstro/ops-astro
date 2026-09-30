@@ -30,6 +30,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   // 0047: a time entry is deleted by a mark, never a row delete.
   ['siu', 'time_entries'],
+  // 0050: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
+  ['si', 'tags'],
+  ['sid', 'task_tags'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],

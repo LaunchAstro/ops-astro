@@ -39,6 +39,19 @@ if (serverUrl === undefined) {
   console.warn('command surface: DATABASE_URL is unset, so nothing below ran, nothing is proved.');
 }
 
+const PINNED_READS = [
+  'person.list',
+  'preset.plan',
+  'session.capabilities',
+  'settings.read',
+  'tag.list',
+  'task.board',
+  'task.execution',
+  'task.queue',
+  'task.read',
+  'task.receipt',
+];
+
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
     expect([...CONTRACT_NINE].toSorted()).toStrictEqual([
@@ -75,10 +88,11 @@ describe('the surface as a table', () => {
     // about the caller rather than about the business's records. `grant` and
     // `delegation` are the revocation controls': the path names the row a
     // revocation writes, and the authority it asks is still on tasks. `time`
-    // is MP-4-6's: a person's time entries, which are rows beside a task.
+    // is MP-4-6's: a person's time entries, which are rows beside a task. `tag`
+    // is MP-4-11's: the business's tag vocabulary.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|time)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|time|tag)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -87,18 +101,8 @@ describe('the surface as a table', () => {
 });
 
 describe('the surface as a table', () => {
-  it('declares the nine reads as reads, and everything else as a write', () => {
-    expect([...READS].toSorted()).toStrictEqual([
-      'person.list',
-      'preset.plan',
-      'session.capabilities',
-      'settings.read',
-      'task.board',
-      'task.execution',
-      'task.queue',
-      'task.read',
-      'task.receipt',
-    ]);
+  it('declares the ten reads as reads, and everything else as a write', () => {
+    expect([...READS].toSorted()).toStrictEqual(PINNED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
       // A read has nothing to be stale against. It does not always take the

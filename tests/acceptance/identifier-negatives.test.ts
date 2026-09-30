@@ -45,6 +45,8 @@ interface Cell {
 }
 
 const NOBODY = 'text nobody should find in an audit row';
+/** A tag no business has: the task is what these cells compare. */
+const TAG = randomUUID();
 
 /** A time command's body on a task, or on an entry (MP-4-6). */
 const onTask = (extra: Body) => (taskId: string) => ({ taskId, ...extra });
@@ -309,6 +311,21 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['time.delete', pair('entryId', f.entryId, onEntry({}))],
       ];
       for (const [op, { operand, forms }] of cells) {
+        // eslint-disable-next-line no-await-in-loop
+        await refuses(op, operand, ada, 'NOT_FOUND', forms);
+      }
+    },
+    120_000,
+  );
+
+  it(
+    CASE.tag,
+    async () => {
+      // MP-4-11: the task names what is tagged. Bravo's is foreign; each
+      // answers as a fabricated one does, whatever the tag.
+      const onTag = (recordId: string) => ({ recordId, tagId: TAG });
+      for (const op of ['task.add_tag', 'task.remove_tag'] as const) {
+        const { operand, forms } = pair('recordId', w.foreign.task.id, onTag);
         // eslint-disable-next-line no-await-in-loop
         await refuses(op, operand, ada, 'NOT_FOUND', forms);
       }
