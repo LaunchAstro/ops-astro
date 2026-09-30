@@ -119,6 +119,7 @@
     "SL11-24 names aw-04-missing-audit-copy (AW-04 missing audit copy: a copy the store refuses keeps the read, its ledger row and its audit event, and raises one outage row per business and digest on task.queue, cause audit_copy_missing, fault ours; its isolation case crosses another business, another client and another person's agent) as an invariant.",
     "SL11-24 names aw-04-planning-budget (AW-04 planning budget, U10: a priced planning reply holds its maximum on its conversation's planning envelope under the business's planning cap, read under the cap's lock; no cap, no spend; the allowance line and the planning spend read; a failed reply held against the envelope; two replies racing for the last of it; and aw-04-planning-budget-isolation (another business, another client, another person and an agent under a live delegation, each refused with nothing written or sent and reading nothing spent) as invariants.",
     "SL11-24 names aw-04-attribution (AW-04 attribution pre-review: definition.attribution by digest names the runs that read the file, entry and non-entry, and the operations they reached, every row labelled pre-review; the digest's shape refused otherwise; the team's only, each run filtered by the caller's task read grant; its isolation case crosses another business, another client and another person's agent) as an invariant.",
+    "SL11-25 names aw-04-hostile-provider (AW-04 hostile provider, the money half: an oversized, redirected, schema-invalid, bad-model, timed-out or over-priced planning reply is held within its own hold with no text, the cap and the envelope moving by the maximum, and the reply that no longer fits refused with nothing written or sent; a proven-nothing reply released whole; the AW-04 canary's planning leg) as an invariant.",
     "SL11-16 leaves aw-13-local-target.test.ts unnamed: it opens a database only against a running local trace target (TRACE_TARGET_ENV_FILE from scripts/local/trace-target.ts up), which the required checks never start; aw-13-switch.test.ts is named as an invariant.",
     "T4e REV185B2: role-case-matrix-fixture-clients proves T4-N2's matrix world holds T4a's two clients with one record grant each in both businesses, and role-case-matrix gains the client-to-client case (another client's task, in either business, answers as an id never issued). t2g-decide-parity's crossing now also finds the undecided gate holding its task open (GATE_PENDING on both surfaces) before the grant holder decides; t3f-expired-lease's business crossing settles its own expired lease marked expired."
   ],
@@ -350,6 +351,7 @@
     "tests/broker/aw-01-model-call.test.ts",
     "tests/broker/aw-04-planning-budget.test.ts",
     "tests/broker/aw-04-planning-budget-isolation.test.ts",
+    "tests/broker/aw-04-hostile-provider.test.ts",
     "tests/broker/aw-05-budget-wait-isolation.test.ts",
     "tests/broker/aw-05-budget-wait.test.ts",
     "tests/broker/aw-05-budget-top-up.test.ts",
