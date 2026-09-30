@@ -109,10 +109,9 @@ function holdRemoval(given: { path: string; keep: string }): void {
 }
 
 /**
- * Runs in the mockup page: draws the call with the page's own charts.js into
- * its host, shown if a pane or a closed layer (`details`) holds it; returns the
- * selector of the drawn SVG,
- * or '' when the page has no such host.
+ * Runs in the mockup page: draws the call into its host with the page's own
+ * charts.js, and shows the host if a pane or a closed `details` holds it.
+ * Returns the selector of the drawn SVG, or '' when the page has no such host.
  */
 async function drawMockup(given: { host: string; call: Call }): Promise<string> {
   const host = document.querySelector(given.host);

@@ -11,20 +11,19 @@
 //
 //   MOCKUP_DIR=<clone of the mockup> node tests/visual/gallery-mockup.ts --out DIR
 //
-// MP-1-2: the families each side draws its text in are the same three.
+// MP-1-2: both sides draw their text in the same three families.
 // MP-1-3 and MP-1-6: each component the ticket names is compared pixel by
-// pixel with its unit on the mockup page that draws it (the Invoices page and
-// the channel workbench, by their canonical addresses, for MP-1-6's
-// treatments). The gallery side is the component as the gallery renders it,
+// pixel with its unit on the mockup page that draws it (for MP-1-6's
+// treatments, the Invoices page and the channel workbench, by their canonical
+// addresses). The gallery side is the component as the gallery renders it,
 // photographed where it stands; nothing is drawn onto the gallery page. The
-// mockup side is that same markup drawn at one fixed place on the mockup page
-// by the mockup's stylesheet, in a host as wide as the gallery's picture, or,
-// for a treatment the ticket redraws, the mockup's own markup for the unit.
-// The two pictures are compared
-// (compare.ts): any difference beyond the harness tolerance fails, and so
-// does a component the mockup page or the gallery does not draw, or one that
-// cannot be photographed. Both pictures are written for a person to set side
-// by side.
+// mockup side is the same markup, drawn by the mockup's stylesheet at one
+// fixed place on the mockup page in a host as wide as the gallery's picture.
+// For a treatment the ticket redraws, it is the mockup's own markup instead.
+// compare.ts compares the two pictures. A difference beyond the harness
+// tolerance fails, and so does a component either side does not draw or that
+// cannot be photographed. Both pictures are written out for a person to set
+// side by side.
 
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';

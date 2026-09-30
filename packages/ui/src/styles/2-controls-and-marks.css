@@ -920,7 +920,7 @@
    class and only a surface with no voice of its own falls back to here. The
    token is --text-2 rather than --text-dim: --text-dim is documented as
    non-essential metadata only and measures about 2.07:1 on paper, which fails
-   WCAG 1.4.3 outright, and a low-vision reader would see a blank cell — the
+   WCAG 1.4.3 outright, and a low-vision reader would see a blank cell, the
    broken reading this voice exists to prevent. No colour, no decoration: it
    states a fact about the product, it is not a status. */
 :where(.in-dev) {
