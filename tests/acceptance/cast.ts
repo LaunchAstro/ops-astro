@@ -113,7 +113,7 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
 
 export async function tokenFor(
   subject: string,
-  options: { readonly expiresIn?: number } = {},
+  options: { readonly expiresIn?: number; readonly secondFactor?: boolean } = {},
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   return await sign(
@@ -124,8 +124,17 @@ export async function tokenFor(
       role: 'authenticated',
       exp: now + (options.expiresIn ?? 3600),
       // The first sign-in, as GoTrue stamps it: the session's 12-hour limit
-      // is measured from here (C58).
-      amr: [{ method: 'password', timestamp: now }],
+      // is measured from here (C58). With `secondFactor`, the code was given
+      // at the same moment, so a money action is inside C59's step-up window.
+      ...(options.secondFactor === true
+        ? {
+            aal: 'aal2',
+            amr: [
+              { method: 'password', timestamp: now },
+              { method: 'totp', timestamp: now },
+            ],
+          }
+        : { amr: [{ method: 'password', timestamp: now }] }),
     },
     ACCEPTANCE_SECRET,
     'HS256',
@@ -141,6 +150,8 @@ export async function enrolCaller(
     readonly membership: boolean;
     readonly actions: readonly Action[];
     readonly collections: readonly string[];
+    /** Signed in with the second factor just now (C59's money step-up). */
+    readonly secondFactor?: boolean;
   },
 ): Promise<Caller> {
   const subject = `${name}-${randomUUID()}`;
@@ -172,7 +183,7 @@ export async function enrolCaller(
     actorId: identity.actorId,
     subject,
     presented: member.presented,
-    token: await tokenFor(subject),
+    token: await tokenFor(subject, { secondFactor: options.secondFactor === true }),
   };
 }
 
