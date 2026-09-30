@@ -229,9 +229,10 @@ export interface TaskEnvelope {
   readonly actualMinor: number;
 }
 
-/** A task's board as the crumb draws it: its title, or that it is withheld. */
+/** A task's board as the crumb draws it: its id and title, or that it is withheld. */
 export type BoardCrumb =
-  { readonly readable: true; readonly title: string | null } | { readonly readable: false };
+  | { readonly readable: true; readonly id: string; readonly title: string | null }
+  | { readonly readable: false };
 
 /**
  * A task's derived rank as its reader is shown it (R70, MP-4-9).

@@ -1160,9 +1160,10 @@ carries no `clientAccess`.
 ## The board on a task
 
 `task.read` carries `board` (MP-4-1, CS-4.38), the board the task sits on as
-its page's crumb reads it: null when it sits on none, `{ readable: true,
+its page's crumb reads it: null when it sits on none, `{ readable: true, id,
 title }` when the reader may read that board, and `{ readable: false }`
-otherwise (`reads/board-crumb.ts`). A board is a task, so the check is the
+otherwise (`reads/board-crumb.ts`). The id goes only where the title goes;
+the dock panel's Project select marks the task's board by it (MP-4-8). A board is a task, so the check is the
 single-record `task:read` check `task.read` makes, asked of the id in the
 `board` slot before the board row is read; a reader refused it is told only
 that there is a board. The title is read from the board's own row at every
