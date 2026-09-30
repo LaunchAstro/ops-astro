@@ -29,7 +29,7 @@ import type {
   ResolvedField,
 } from './broker-types.ts';
 
-const WAIT_SECONDS = 5;
+export const WAIT_SECONDS = 5;
 
 async function recordRefusal(
   tx: TenantQuery,
@@ -229,7 +229,7 @@ function routeFor(
  * durable limit (`hasRoom`); then the route's, which is the installation's,
  * under one lock per route.
  */
-async function atCeiling(
+export async function atCeiling(
   tx: TenantQuery,
   operation: ModelOperation,
   route: BrokerRoute,

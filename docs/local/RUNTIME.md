@@ -1422,7 +1422,18 @@ both tenancy-scoped with row security forced, and the fair share's count
 (`model_route_room`, with its role `ops_astro_broker`; [DATA.md](DATA.md)).
 
 - `model_calls`: one row per priced model call or recorded refusal, bound to
-  its run, step, lease, approved version, reservation and delegation. Its
+  its run, step, lease, approved version, reservation and delegation.
+- A conversation call (`0048_model_call_conversation`, AW-01's conversation
+  seam): a person's call from their own conversation, through
+  `callModelInConversation` (`core-custody/src/broker-conversation.ts`). The
+  row names the conversation and none of the five task facts, no delegation,
+  a local route and nothing held (`model_calls_one_scope`); the conversation's
+  foreign key joins with its table at the batch 3 join. The broker refuses
+  before writing anything: another business's conversation, another person's,
+  or any delegation (`AUTHORITY_LOST`); a cloud route (`LOCAL_MODEL_REQUIRED`,
+  AW-03 egress off). AW-01's ceilings count it in flight. A priced answer is
+  above a hold of nothing and is held as unknown liability; the sweep holds a
+  call still started ten minutes on (five times custody's longest wait). Its
   state is `reserved`, `dispatched`, `settled`, `released`, `refused` or
   `liability_unknown`, and constraints tie each state to its amounts, facts
   and drop. A call holds its operation's priced maximum out of the run's
