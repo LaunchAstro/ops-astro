@@ -52,6 +52,7 @@ function serving(over: Readonly<Record<string, unknown>> = {}): {
     if (where.endsWith('/task/execution')) return Promise.resolve(json({ ok: false }));
     if (where.includes('/live/task/')) return Promise.resolve(new Response(null, { status: 404 }));
     if (where.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: task(over) }));
+    if (where.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [] }));
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
     sent.push({ to: where.slice(where.lastIndexOf('/task/')), body });
     return Promise.resolve(json({ recordId: 'r', revision: 5 }));

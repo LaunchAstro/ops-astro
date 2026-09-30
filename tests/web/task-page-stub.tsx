@@ -73,7 +73,7 @@ export const task = (over: Readonly<Record<string, unknown>> = {}) => ({
   rank: { number: 4, score: 504, calc: 'impact 7 × confidence 9 × ease 8 = 504 · derived' },
   adHoc: false,
   clientAccess: false,
-  board: { readable: true, title: 'Website Projects' },
+  board: { readable: true, id: '44444444-4444-4444-8444-444444444444', title: 'Website Projects' },
   stage: null,
   clientSet: false,
   steps: [],

@@ -27,6 +27,8 @@ export function serving(
   over: Readonly<Record<string, unknown>> = {},
   /** The business's tag vocabulary `tag.list` answers (MP-4-11). */
   vocabulary: readonly { readonly id: string; readonly name: string }[] = [],
+  /** The projects `task.board` answers for the Projects board (MP-4-8). */
+  projects: readonly { readonly id: string; readonly title: string | null }[] = [],
 ): {
   readonly client: OperationsClient;
   readonly sent: Sent[];
@@ -44,6 +46,9 @@ export function serving(
     if (where.includes('/live/task/')) return Promise.resolve(new Response(null, { status: 404 }));
     if (where.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: task(over) }));
     if (where.endsWith('/tag/list')) return Promise.resolve(json({ ok: true, tags: vocabulary }));
+    if (where.endsWith('/task/board')) {
+      return Promise.resolve(json({ ok: true, tasks: projects, changedAt: null, viewer: 'p-1' }));
+    }
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
     sent.push({ to: where.slice(where.search(/\/[a-z]+\/[a-z_]+$/u)), body });
     // A new tag answers with its identifier, as `tag.create` does.
