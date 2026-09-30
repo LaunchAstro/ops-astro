@@ -73,3 +73,9 @@ tests/ci/two-url-service-stop-required-ci.test.ts
 
 # Sol's REV258D proof, byte-for-byte as the review patch held it.
 tests/ci/two-url-service-stop-skip-fails-required-job.test.ts
+
+# Sol's batch-1-end proofs (REVB1ENDSL03B, REVB1ENDSL01A), byte-for-byte as the
+# review patches held them.
+tests/surfaces/receipt-read-refusal-does-not-claim-no-effect.test.tsx
+tests/surfaces/run-progress-malformed-answer.test.tsx
+tests/visual/coloured-browser-summary-recognises-named-capture.test.ts
