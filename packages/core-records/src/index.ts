@@ -36,19 +36,18 @@ export {
 export {
   checkAuthority,
   effectiveGrants,
-  readableScope,
   readableRecordIds,
   revokeGrant,
   subjectsOf,
   type Action,
   type Decision,
   type EffectiveGrant,
-  type ReadableScope,
   type Scope,
   type ScopeKind,
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { readableScope, type ReadableScope } from './authority/readable-scope.ts';
 export { issueShare, withdrawShares } from './authority/shares.ts';
 export {
   EXPIRED_FIXES,

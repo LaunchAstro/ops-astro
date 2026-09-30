@@ -460,22 +460,6 @@ export interface SharedTaskRead {
 export type TaskReadResult = InternalTaskRead | SharedTaskRead;
 
 /**
- * A task's derived rank as its reader is shown it (R70, MP-4-9).
- *
- * `number` is the task's place among the open tasks this reader may read, or
- * null when the task is not ranked; `score` is null exactly then. `calc` is the
- * line drawn under the rank, worked out on the server so every surface shows the
- * same words, and it names nothing but this task's own marks and modifiers.
- * The same shape as SL08's U15 declares for `task.read`; until that lands the
- * board answers every row unranked.
- */
-export interface RankView {
-  readonly number: number | null;
-  readonly score: number | null;
-  readonly calc: string;
-}
-
-/**
  * One row of a board (MP-5-8): the summary and what the Projects board's
  * cells draw from stored records, each the value `task.read` answers for the
  * same task. The rank is worked out at read in the reader's own pool.
