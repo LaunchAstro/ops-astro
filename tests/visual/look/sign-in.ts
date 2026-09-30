@@ -32,24 +32,38 @@ const probe = (
 export const SIGN_IN: LookScreen = {
   id: 'sign-in',
   probes: [
-    probe(
-      'brand',
-      { path: '/agency/projects/', selector: '.rail__logo' },
-      '.signin .brand--wordmark',
-      ['background-color', 'box.width', 'box.height'],
-    ),
+    // The rail's wordmark is 175 wide in its 1480 column (min(176px, 100%)): one fixed size here.
+    {
+      ...probe(
+        'brand',
+        { path: '/agency/projects/', selector: '.rail__logo' },
+        '.signin .brand--wordmark',
+        ['background-color', 'box.width', 'box.height'],
+      ),
+      widths: [1480],
+    },
     probe(
       'card',
       { path: '/clients/meridian-dental/account/settings/', selector: '.set__card' },
       '.signin__form',
       ['background-color', 'border-top-color', 'border-top-width', 'padding-top', 'padding-left'],
     ),
-    probe(
-      'title',
-      { path: '/clients/meridian-dental/account/settings/', selector: '.set__card > .card__title' },
-      '.signin__form .card__title',
-      ['font-family', 'font-size', 'font-weight', 'line-height', 'color'],
-    ),
+    // The canonical card title (DS-TOK-119) is 15/1.1; the mockup draws 15/1.2.
+    {
+      ...probe(
+        'title',
+        {
+          path: '/clients/meridian-dental/account/settings/',
+          selector: '.set__card > .card__title',
+        },
+        '.signin__form .card__title',
+        ['font-family', 'font-size', 'font-weight', 'line-height', 'color'],
+      ),
+      ruled: [
+        { at: 'line-height@light', want: '16.5px', why: 'DS-TOK-119 15/1.1' },
+        { at: 'line-height@dark', want: '16.5px', why: 'DS-TOK-119 15/1.1' },
+      ],
+    },
     {
       ...probe(
         'label',
