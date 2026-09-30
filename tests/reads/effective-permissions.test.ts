@@ -174,7 +174,7 @@ describe.skipIf(serverUrl === undefined)('C32 one people list', () => {
     ]);
   });
 
-  it('Sol proof, criterion 8: a former member with no standing has no effective permission preview', async () => {
+  it('a former member with no standing has no effective permission preview', async () => {
     const former = await enrol(db.app, alpha, 'Former');
     await db.app.withBusiness(alpha, async (tx) => {
       await grantTo(tx, former, 'read', WHOLE);
