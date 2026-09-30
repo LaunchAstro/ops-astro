@@ -103,6 +103,8 @@ export interface Delegation {
   /** The task this delegation is for. Every call is intersected with it. */
   readonly purposeScope: PurposeScope;
   readonly expiresAt: Date;
+  /** A child's parent (AW-11, depth one); null for a delegation minted at pickup. */
+  readonly parentDelegationId: string | null;
 }
 
 export interface MintRequest {
@@ -140,6 +142,7 @@ interface DelegationRow {
   readonly purpose_scope_kind: 'record';
   readonly purpose_scope_id: string;
   readonly expires_at: Date;
+  readonly parent_delegation_id: string | null;
 }
 
 /** The columns `delegationOf` reads, in one place for every query that returns a delegation. */
@@ -154,6 +157,7 @@ const DELEGATION_COLUMNS = [
   'purpose_scope_kind',
   'purpose_scope_id',
   'expires_at',
+  'parent_delegation_id',
 ] as const;
 
 /** `DELEGATION_COLUMNS` for a select list, qualified by `alias` when the query joins. */
@@ -188,6 +192,7 @@ function delegationOf(row: DelegationRow): Delegation {
     actions: row.actions,
     purposeScope: { kind: row.purpose_scope_kind, id: row.purpose_scope_id },
     expiresAt: row.expires_at,
+    parentDelegationId: row.parent_delegation_id,
   };
 }
 
@@ -350,6 +355,25 @@ export async function mintDelegation(
     );
   }
   return { ok: true, value: { delegation: delegationOf(written), credential } };
+}
+
+/** What a parent's holder asks for when it hands part of its work to a helper (AW-11). */
+export interface ChildMintRequest {
+  /** The helper: another agent of the business, signed in as itself. */
+  readonly agentActorId: string;
+  readonly purpose: string;
+  readonly collections: readonly string[];
+  readonly actions: readonly Action[];
+  readonly expiresAt: Date;
+}
+
+export async function mintChildDelegation(
+  _tx: TenantQuery,
+  _parent: Delegation,
+  _request: ChildMintRequest,
+  _keys: CredentialKeysDecision = configuredCredentialKeys(),
+): Promise<DelegationDecision<MintedDelegation>> {
+  return await Promise.reject(new Error('mintChildDelegation: not built'));
 }
 
 /**
