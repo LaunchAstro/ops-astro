@@ -7,7 +7,15 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { deploy } from '../../scripts/ops/deploy.ts';
-import { definition, STAGED, BUILT, CANARY, scratch, effects } from './staging-deploy.fixture.ts';
+import {
+  definition,
+  STAGED,
+  BUILT,
+  CANARY,
+  scratch,
+  effects,
+  clean,
+} from './staging-deploy.fixture.ts';
 import { outputDigest } from '../../scripts/ops/build-output.ts';
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -31,10 +39,10 @@ const store = (version = STAGED, stamp = version): string => {
 // ---- deploy recorded, and the artefact staging runs ------------------------
 
 describe('S0-6 deploy recorded', () => {
-  it('records the version, the artefact and the image id, and nothing from the environment', () => {
+  it('records the version, the artefact and the image id, and nothing from the environment', async () => {
     process.env['OPS_ASTRO_TOKEN'] = CANARY;
     try {
-      const outcome = deploy({ version: STAGED, store: store() }, effects());
+      const outcome = await deploy({ version: STAGED, store: store() }, effects(), clean);
       expect(outcome).toMatchObject({
         kind: 'deployed',
         record: {
@@ -51,7 +59,7 @@ describe('S0-6 deploy recorded', () => {
     }
   });
 
-  it('never another build: a different stamp, no artefact or a dirty build is refused before anything is asked', () => {
+  it('never another build: a different stamp, no artefact or a dirty build is refused before anything is asked', async () => {
     const cases = [
       { version: STAGED, store: store(STAGED, 'fedcba987654') },
       { version: STAGED, store: join(scratch, 'no-store') },
@@ -60,13 +68,18 @@ describe('S0-6 deploy recorded', () => {
     ];
     for (const request of cases) {
       const watched = effects();
-      const outcome = deploy(request, watched);
+      // oxlint-disable-next-line no-await-in-loop -- each request on its own
+      const outcome = await deploy(request, watched, clean);
       expect(outcome.kind, JSON.stringify(request)).toBe('refused');
       expect(watched.calls).toStrictEqual([]);
     }
   });
 
-  it('an image the build does not name by a full image id is refused before Compose is asked', () => {
+  imageIdCases();
+});
+
+function imageIdCases() {
+  it('an image the build does not name by a full image id is refused before Compose is asked', async () => {
     for (const id of [
       '',
       'ops-astro-staging-app:latest',
@@ -74,9 +87,10 @@ describe('S0-6 deploy recorded', () => {
       `sha256:${'a'.repeat(64)}\n`,
     ]) {
       const watched = effects({ buildImage: () => id });
-      const outcome = deploy({ version: STAGED, store: store() }, watched);
+      // oxlint-disable-next-line no-await-in-loop -- each id on its own
+      const outcome = await deploy({ version: STAGED, store: store() }, watched, clean);
       expect(outcome.kind, id).toBe('failed');
       expect(watched.calls).not.toContain('up');
     }
   });
-});
+}

@@ -20,6 +20,8 @@ export const record: string = readFileSync(
 );
 
 export const STAGED = '0123456789ab';
+/** The made-up-only preflight, answering clean: the deploy's own decisions are tested here. */
+export const clean = (): Promise<string[]> => Promise.resolve([]);
 
 export const BUILT: string = `sha256:${'a'.repeat(64)}`;
 

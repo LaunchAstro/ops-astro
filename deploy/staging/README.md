@@ -131,7 +131,8 @@ build to staging (ticket S0-6). It is a person's act under
 `operations:manage`, asked of the operator gate before anything else, like
 the preparation and the promotion. It takes the artefact the store holds for
 that version, checked as the promotion checks it, and never builds the
-product. It builds one image from that artefact on the pinned base (the
+product. Before anything starts, staging's database (`DATABASE_ADMIN_URL`)
+must pass the made-up-only preflight; a sign refuses the deploy. It builds one image from that artefact on the pinned base (the
 staging Dockerfile, which arrives with the release artefact in S0-6e; until
 then the deploy stops at its build and records nothing), with nothing from
 the machine mounted, and Compose runs the app services on that image by its

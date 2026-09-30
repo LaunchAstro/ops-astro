@@ -112,6 +112,8 @@ function roleCases() {
 // REVB1SL01RELC: what the role can do, not only what was granted to it by
 // name, so a grant to PUBLIC or through a membership counts. Invoker functions
 // run with the caller's rights and widen nothing, so only definer ones count.
+// Owner round 5 (B): PUBLIC EXECUTE on an invoker function is no extra reach; it runs as
+// the lookup login, which this pin holds to businesses(id, key). Definer ones stay pinned.
 const EFFECTIVE = `
   select format('%I.%I %s', n.nspname, c.relname, p) as held
     from pg_class c join pg_namespace n on n.oid = c.relnamespace,

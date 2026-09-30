@@ -78,9 +78,10 @@ const SPECIAL: Readonly<Record<string, string>> = {
        and not (n.nspname = 'ops_astro_made_up' and p.proname in ('note', 'protect', 'watch'))
        and r.oid <> ${OWNER}
        and (r.rolbypassrls or r.rolsuper or pg_has_role(r.oid, ${OWNER}, 'member')))`,
+  // The name is split in this text, so another preflight's last query is not a match.
   'the seed tag is readable in another session': `exists (select from pg_stat_activity
      where datname = current_database() and pid <> pg_backend_pid()
-       and query ilike '%ops_astro.writer%')`,
+       and query ilike '%ops_astro' || '.writer%')`,
 };
 
 async function specialSigns(admin: OwnerQuery): Promise<string[]> {

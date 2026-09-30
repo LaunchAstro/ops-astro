@@ -27,6 +27,7 @@ import {
   COMMANDS,
 } from './operator-only-commands.fixture.ts';
 import type { FreshDatabase } from '../support/fresh-database.ts';
+import { markMadeUp } from '../../scripts/ops/made-up-only.ts';
 
 let db: FreshDatabase;
 let operatorPerson = '';
@@ -38,37 +39,42 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
   operatorOnlyCases7();
 });
 
+/** A docker that answers the deploy's own calls: a build that prints `built`, Compose and inspects. */
+function fakeDocker(path: string, calls: string, built: string): void {
+  const pinned = `sha256:${'e'.repeat(64)}`;
+  const bin = join(path.split(':')[0]!);
+  writeFileSync(
+    join(bin, 'docker'),
+    [
+      '#!/bin/sh',
+      `echo "docker $*" >> '${calls}'`,
+      'case "$1 $2" in',
+      `  "build "*) echo ${built} ;;`,
+      '  "compose "*) ;;',
+      `  "image inspect") echo ${pinned} ;;`,
+      '  "inspect --format")',
+      '    shift 3',
+      '    for c in "$@"; do',
+      `      case "$c" in *-api|*-web) echo "/$c ${built}" ;; *) echo "/$c ${pinned}" ;; esac`,
+      '    done ;;',
+      '  "ps "*) echo api-id ;;',
+      `  "inspect "*) printf '%s\\n' '[{"Name":"/prod-api","State":{"Running":true,"StartedAt":"t1"},"HostConfig":{}}]' ;;`,
+      '  *) exit 2 ;;',
+      'esac',
+      '',
+    ].join('\n'),
+  );
+}
+
 // eslint-disable-next-line max-lines-per-function -- one test, its body kept byte for byte
 function operatorOnlyCases6() {
   it('the operator deploys a stored build to staging: one record names the version, the image and the operator', async () => {
     const fake = manager(false);
     const at = marks(fake);
-    // The deploy's own calls: a build that prints its image id, Compose, and
-    // inspects that answer each staging container on the image it should run.
     const built = `sha256:${'a'.repeat(64)}`;
-    const pinned = `sha256:${'e'.repeat(64)}`;
-    const bin = join(fake.path.split(':')[0]!);
-    writeFileSync(
-      join(bin, 'docker'),
-      [
-        '#!/bin/sh',
-        `echo "docker $*" >> '${at.calls}'`,
-        'case "$1 $2" in',
-        `  "build "*) echo ${built} ;;`,
-        '  "compose "*) ;;',
-        `  "image inspect") echo ${pinned} ;;`,
-        '  "inspect --format")',
-        '    shift 3',
-        '    for c in "$@"; do',
-        `      case "$c" in *-api|*-web) echo "/$c ${built}" ;; *) echo "/$c ${pinned}" ;; esac`,
-        '    done ;;',
-        '  "ps "*) echo api-id ;;',
-        `  "inspect "*) printf '%s\\n' '[{"Name":"/prod-api","State":{"Running":true,"StartedAt":"t1"},"HostConfig":{}}]' ;;`,
-        '  *) exit 2 ;;',
-        'esac',
-        '',
-      ].join('\n'),
-    );
+    fakeDocker(fake.path, at.calls, built);
+    // Staging's database, as its seed leaves it: marked made-up, so the preflight passes.
+    await markMadeUp(db.admin, []);
     const signIn = await token(subjects.operator);
     const result = COMMANDS['the staging deploy']!(
       environment(at, fake.path, { OPS_ASTRO_TOKEN: signIn }),

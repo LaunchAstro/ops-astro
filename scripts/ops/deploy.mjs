@@ -112,7 +112,7 @@ const effects = {
 
 let outcome;
 try {
-  outcome = deploy({ version, store }, effects);
+  outcome = await deploy({ version, store }, effects);
 } catch (error) {
   // A service manager that cannot be read, a build or a Compose run that
   // fails: say so plainly; no record is written.

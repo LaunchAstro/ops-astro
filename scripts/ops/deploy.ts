@@ -25,8 +25,14 @@
 //
 // Every act on the machine goes through `DeployEffects`, so the decisions are
 // tested with the effects watched and the command stays thin.
+//
+// Before anything is started, staging's database must pass the made-up-only
+// preflight (`productionSigns`, the owner's option A, NATHAN-GUARD-A): a sign,
+// or no `DATABASE_ADMIN_URL` to judge it by, refuses the deploy.
 
 import { readFileSync } from 'node:fs';
+import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
+import { productionSigns } from './made-up-only.ts';
 import { storedArtefact } from './promotion.ts';
 
 /** The staging definition, as the deploy reads it. */
@@ -114,10 +120,40 @@ export function imagePinProblems(def: StagingDefinition, record: string): string
   return problems;
 }
 
-export function deploy(
+/** The preflight on the database `DATABASE_ADMIN_URL` names: its signs, or why it could not judge. */
+async function stagingSigns(): Promise<string[]> {
+  const url = process.env['DATABASE_ADMIN_URL'] ?? '';
+  if (url === '') return ['DATABASE_ADMIN_URL is not set, so the preflight could not run'];
+  const admin = connectAsAdmin(url, { source: 'preflight' });
+  try {
+    return await productionSigns(admin);
+  } finally {
+    await admin.close();
+  }
+}
+
+/** Each staging container not on the image it was named by. */
+function imageProblems(effects: DeployEffects, image: string): string[] {
+  const problems: string[] = [];
+  const running = effects.runningImages();
+  const apps = definition['x-ops-astro'].appServices ?? [];
+  for (const [name, service] of Object.entries(definition.services)) {
+    const container = service.container_name ?? name;
+    const named = apps.includes(name) ? image : String(service.image);
+    const wanted = apps.includes(name) ? image : effects.imageId(named);
+    if (wanted === undefined) problems.push(`${named} is not there to inspect`);
+    else if (running[container] !== wanted) {
+      problems.push(`${container} runs ${running[container] ?? 'nothing'}, not ${named}`);
+    }
+  }
+  return problems;
+}
+
+export async function deploy(
   request: { version: string; store: string },
   effects: DeployEffects,
-): DeployOutcome {
+  preflight: () => Promise<string[]> = stagingSigns,
+): Promise<DeployOutcome> {
   const selected = storedArtefact(request.version, request.store);
   if (typeof selected === 'string') return { kind: 'refused', reason: selected };
   const pins = imagePinProblems(definition, pinRecord);
@@ -125,6 +161,14 @@ export function deploy(
     return {
       kind: 'refused',
       reason: `staging's images are not all pinned: ${pins.join('; ')}. Nothing was deployed.`,
+    };
+  }
+
+  const signs = await preflight();
+  if (signs.length > 0) {
+    return {
+      kind: 'refused',
+      reason: `staging's database failed the preflight: ${signs.join('; ')}. Nothing was started.`,
     };
   }
 
@@ -139,18 +183,7 @@ export function deploy(
   }
   effects.up(image);
 
-  const problems: string[] = [];
-  const running = effects.runningImages();
-  const apps = definition['x-ops-astro'].appServices ?? [];
-  for (const [name, service] of Object.entries(definition.services)) {
-    const container = service.container_name ?? name;
-    const named = apps.includes(name) ? image : String(service.image);
-    const wanted = apps.includes(name) ? image : effects.imageId(named);
-    if (wanted === undefined) problems.push(`${named} is not there to inspect`);
-    else if (running[container] !== wanted) {
-      problems.push(`${container} runs ${running[container] ?? 'nothing'}, not ${named}`);
-    }
-  }
+  const problems = imageProblems(effects, image);
   const compared = effects.compare(before, effects.snapshot());
   if (!compared.unchanged) problems.push(`a live service changed:\n${compared.report}`);
   if (problems.length > 0) {

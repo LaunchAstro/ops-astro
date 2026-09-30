@@ -21,6 +21,7 @@ import {
   definition,
   record,
   STAGED,
+  clean,
   PG,
   scratch,
   withImages,
@@ -60,9 +61,9 @@ describe('S0-6 image pins', () => {
 // ---- S0-6 services unchanged ----------------------------------------------
 
 describe('S0-6 services unchanged', () => {
-  it('snapshots the live services before and after, and deploys between them', () => {
+  it('snapshots the live services before and after, and deploys between them', async () => {
     const watched = effects();
-    const outcome = deploy({ version: STAGED, store: store() }, watched);
+    const outcome = await deploy({ version: STAGED, store: store() }, watched, clean);
     expect(outcome.kind, JSON.stringify(outcome)).toBe('deployed');
     const pinned =
       Object.keys(definition.services).length -
@@ -78,24 +79,34 @@ describe('S0-6 services unchanged', () => {
     ]);
   });
 
-  it('a live service that changed fails the deploy, names the report, and records nothing', () => {
+  it('a live service that changed fails the deploy, names the report, and records nothing', async () => {
     let taken = 0;
     const watched = effects({
       snapshot: () => snapshot([{ ...live, started: taken++ === 0 ? 't1' : 't2' }]),
       compare: () => ({ unchanged: false, report: 'service-report: RESTARTED docker prod-api' }),
     });
-    const outcome = deploy({ version: STAGED, store: store() }, watched);
+    const outcome = await deploy({ version: STAGED, store: store() }, watched, clean);
     expect(outcome.kind).toBe('failed');
     expect(outcome).toMatchObject({ reason: expect.stringContaining('RESTARTED docker prod-api') });
   });
 
-  it('a before snapshot that cannot be taken deploys nothing', () => {
+  it('a preflight sign refuses the deploy before anything is asked, naming the sign', async () => {
+    const watched = effects();
+    const sign = 'a view over a private table runs as a role other than the app role';
+    const outcome = await deploy({ version: STAGED, store: store() }, watched, () =>
+      Promise.resolve([sign]),
+    );
+    expect(outcome).toMatchObject({ kind: 'refused', reason: expect.stringContaining(sign) });
+    expect(watched.calls).toStrictEqual([]);
+  });
+
+  it('a before snapshot that cannot be taken deploys nothing', async () => {
     const watched = effects({
       snapshot: () => {
         throw new Error('docker is not answering');
       },
     });
-    expect(() => deploy({ version: STAGED, store: store() }, watched)).toThrow();
+    await expect(deploy({ version: STAGED, store: store() }, watched, clean)).rejects.toThrow();
     expect(watched.calls).toStrictEqual(['snapshot']);
   });
 });
@@ -175,23 +186,24 @@ function imagePinsCases3() {
     ).toHaveLength(1);
   });
 
-  it('a container found on another image fails the deploy, and nothing is recorded', () => {
+  it('a container found on another image fails the deploy, and nothing is recorded', async () => {
     const moved = effects({
       runningImages: () => ({
         ...expected(),
         'ops-astro-staging-db': `sha256:${'d'.repeat(64)}`,
       }),
     });
-    const outcome = deploy({ version: STAGED, store: store() }, moved);
+    const outcome = await deploy({ version: STAGED, store: store() }, moved, clean);
     expect(outcome.kind).toBe('failed');
     expect(outcome).toMatchObject({ reason: expect.stringContaining('ops-astro-staging-db') });
     expect(outcome).not.toHaveProperty('record');
   });
 
-  it('a pinned image that is not there to inspect fails the deploy', () => {
-    const outcome = deploy(
+  it('a pinned image that is not there to inspect fails the deploy', async () => {
+    const outcome = await deploy(
       { version: STAGED, store: store() },
       effects({ imageId: () => undefined }),
+      clean,
     );
     expect(outcome.kind).toBe('failed');
   });
