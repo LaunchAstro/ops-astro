@@ -20,7 +20,7 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../support/fresh-database.ts';
-import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+import { enrol, freshSubject, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
@@ -92,10 +92,7 @@ describe.skipIf(serverUrl === undefined)('a mistyped settings revision over HTTP
       verify: async (request) => {
         const header = request.header('authorization') ?? '';
         const subject = header.replace(/^Bearer /u, '');
-        // A fresh sign-in with its second factor: the threshold is a money action (C59).
-        const now = Math.floor(Date.now() / 1000);
-        const assurance = { level: 'aal2', signedInAt: now, factorAt: now } as const;
-        return subject === '' ? undefined : { provider: 'supabase', subject, assurance };
+        return subject === '' ? undefined : freshSubject(subject);
       },
       // eslint-disable-next-line @typescript-eslint/require-await -- the port is async
       resolveBusiness: async (key) => (key === BUSINESS_KEY ? alpha : undefined),
