@@ -96,12 +96,18 @@ async function taskNames(
   );
 }
 
-/** The clients these subjects reach, by C32's own rule: a grant over the business, or on one. */
+/**
+ * Which of these clients the subjects reach, by C32's own rule: a grant over
+ * the business, or on the client. Asked only of the listed tasks' clients.
+ */
 async function reachedClients(
   tx: TenantQuery,
   subjects: readonly Subject[],
+  clientIds: readonly string[],
 ): Promise<ReadonlyMap<string, { readonly clientId: string; readonly name: string }>> {
-  return new Map(((await clientsReached(tx, subjects)) ?? []).map((row) => [row.clientId, row]));
+  if (clientIds.length === 0) return new Map();
+  const reached = (await clientsReached(tx, subjects, clientIds)) ?? [];
+  return new Map(reached.map((row) => [row.clientId, row]));
 }
 
 async function named(
@@ -114,7 +120,8 @@ async function named(
   const deciderIds = [...new Set(readable.flatMap((entry) => entry.closedByPersonId ?? []))];
   if (taskIds.length === 0) return entries;
   const tasks = await taskNames(tx, taskIds);
-  const reached = await reachedClients(tx, subjects);
+  const clientIds = [...tasks.values()].flatMap((task) => task.clientId ?? []);
+  const reached = await reachedClients(tx, subjects, clientIds);
   const people = new Map<string, PersonView>(
     deciderIds.length === 0
       ? []

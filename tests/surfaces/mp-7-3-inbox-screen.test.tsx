@@ -124,13 +124,13 @@ describe('MP-7-3 inbox one list', () => {
 
 describe('MP-7-3 client group order', () => {
   it("/inbox/ groups rows under the client inbox.read names, most owed first, then the reader's own work", async () => {
-    const harbour = { clientId: 'c-harbour', name: 'Harbour Physio' };
+    const zenith = { clientId: 'c-zenith', name: 'Zenith Physio' };
     const summit = { clientId: 'c-summit', name: 'Summit Allied' };
     const { client } = served(3, [
-      entry('1', 'T-1', { client: harbour }),
+      entry('1', 'T-1', { client: zenith }),
       entry('2', 'T-2', { client: summit }),
       entry('3', 'T-3', { client: summit }),
-      // Owed like Harbour's one row, and older, so it follows it.
+      // Owed like Zenith's one row and older, so it follows it though its name sorts first.
       entry('4', 'T-4', { raisedAt: '2026-09-29T09:00:00.000Z' }),
     ]);
     view = await mount(
@@ -151,7 +151,7 @@ describe('MP-7-3 client group order', () => {
     }));
     expect(heads).toEqual([
       { name: 'Summit Allied', rows: ['/task/T-3', '/task/T-2'] },
-      { name: 'Harbour Physio', rows: ['/task/T-1'] },
+      { name: 'Zenith Physio', rows: ['/task/T-1'] },
       { name: 'Your work', rows: ['/task/T-4'] },
     ]);
     // The Clients panel is not built, so a client head is a name, not a link.
