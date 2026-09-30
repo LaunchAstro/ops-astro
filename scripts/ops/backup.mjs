@@ -13,8 +13,8 @@
 //                        held apart, never on this job's machine account
 //     OPS_BACKUP_HEARTBEAT_URL  the watcher's backup heartbeat, pinged once a
 //                        backup is recorded
-//     OPS_EGRESS_POOLER_HOST, OPS_EGRESS_POOLER_PORT  on staging, the pooler the
-//                        egress relay lists; a source elsewhere is refused
+//     OPS_EGRESS_POOLER_HOST, OPS_EGRESS_POOLER_PORT  required: the pooler the
+//                        egress relay lists; unset, or a source elsewhere, is refused
 //   node --env-file=<retention env> scripts/ops/backup.mjs expire
 //     BACKUP_RETENTION_URL  a login holding ops_astro_backup_retention on the
 //                        backup store
@@ -203,8 +203,9 @@ async function main(command) {
     const [source, storeUrl] = [env('BACKUP_SOURCE_URL'), env('BACKUP_STORE_URL')];
     const publicKey = readKey(env('BACKUP_PUBLIC_KEY_FILE'));
     // The dump leaves staging by the pooler the relay lists (OPS_EGRESS_POOLER_*), or not at all.
-    const port = env('OPS_EGRESS_POOLER_PORT');
-    const off = offEgress(process.env, [['BACKUP_SOURCE_URL', 'OPS_EGRESS_POOLER_HOST', port]]);
+    const off = offEgress(process.env, [
+      ['BACKUP_SOURCE_URL', 'OPS_EGRESS_POOLER_HOST', 'OPS_EGRESS_POOLER_PORT'],
+    ]);
     if (source === undefined || storeUrl === undefined || publicKey === undefined || off) {
       return failed('backup run', 'config');
     }

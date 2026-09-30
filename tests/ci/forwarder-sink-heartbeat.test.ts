@@ -44,6 +44,11 @@ async function once(): Promise<void> {
       OPS_ERROR_SINK_DSN: 'https://sinkkey@example.test/7',
       OPS_ENVIRONMENT: 'staging',
       OPS_SINK_HEARTBEAT_URL: 'https://example.test/sink-beat',
+      // The places it leaves by, as staging's relay lists them.
+      OPS_EGRESS_POOLER_HOST: '127.0.0.1',
+      OPS_EGRESS_POOLER_PORT: '1',
+      OPS_EGRESS_SINK_HOST: 'example.test',
+      OPS_EGRESS_HEARTBEAT_HOST: 'example.test',
     },
     timeout: 30_000,
   }).catch(() => null);

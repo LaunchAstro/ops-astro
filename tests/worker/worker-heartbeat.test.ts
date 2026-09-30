@@ -57,6 +57,7 @@ const settings = (url: string, heartbeat = HEARTBEAT) => ({
   OPS_ASTRO_TOKEN: 'made-up-worker-bearer',
   OPS_ASTRO_DELEGATION: 'made-up-delegation',
   OPS_WORKER_HEARTBEAT_URL: heartbeat,
+  OPS_EGRESS_HEARTBEAT_HOST: 'heartbeat.example.test',
 });
 
 const quiet = (): string[] => {

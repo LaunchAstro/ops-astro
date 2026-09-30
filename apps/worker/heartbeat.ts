@@ -31,17 +31,21 @@ export async function ping(
 /**
  * Staging's way out lists host names (`scripts/ops/egress.mjs`): each row is an
  * address setting, the egress host setting it must leave by, and that place's
- * port (443 unless named). The first address that leaves anywhere else, as a
- * message naming both settings, never a value; a row whose egress setting is
- * unset is off staging and not judged.
+ * port setting (443 when none is named). The first address that leaves anywhere
+ * else, or whose egress setting is unset, as a message naming the settings,
+ * never a value. An address that is unset leaves by nothing and is not judged.
  */
 export function offEgress(
   env: Readonly<Record<string, string | undefined>>,
-  rows: readonly (readonly [address: string, egress: string, port?: string])[],
+  rows: readonly (readonly [address: string, egress: string, portSetting?: string])[],
 ): string | undefined {
-  for (const [address, egress, port = '443'] of rows) {
+  for (const [address, egress, portSetting] of rows) {
+    if ((env[address] ?? '') === '') continue;
     const host = env[egress] ?? '';
-    if (host === '') continue;
+    const port = portSetting === undefined ? '443' : (env[portSetting] ?? '');
+    if (host === '' || port === '') {
+      return `${address} is set but ${host === '' ? egress : portSetting} is not`;
+    }
     const url = URL.parse(env[address] ?? '');
     const own = url?.port || (url?.protocol === 'https:' ? '443' : '5432');
     if (url?.hostname !== host.toLowerCase() || own !== port)
