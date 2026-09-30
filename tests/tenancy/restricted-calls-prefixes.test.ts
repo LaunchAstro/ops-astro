@@ -106,13 +106,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
-  // A cleared secret, whole with no sealed value (C31, 0056).
+  // A cleared secret, whole with no sealed value (C31, 0251).
   'public.custody_secrets': {
     name: 'restricted-calls.seed',
     scope_kind: 'business',
     scope_id: null,
   },
-  // The connector fleet (MP-14-7a, 0057): nothing the journey does writes one.
+  // The connector fleet (MP-14-7a, 0252): nothing the journey does writes one.
   'public.connections': {
     connector_key: 'restricted-calls',
     label: 'restricted calls',
@@ -128,7 +128,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     connection_revision: 1,
     started_by_actor_id: randomUUID(),
   },
-  // Grants, tripwires and the night round (MP-14-8, 0058): nothing the journey
+  // Grants, tripwires and the night round (MP-14-8, 0253): nothing the journey
   // does writes a tripwire or a step.
   'public.tripwires': {
     what: 'restricted calls',
@@ -144,7 +144,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     who: 'restricted calls',
     say: 'restricted calls',
   },
-  // Graduation and standing mandates (MP-14-10a, 0059): the journey files none.
+  // Graduation and standing mandates (MP-14-10a, 0254): the journey files none.
   'public.graduation_classes': {
     client_id: randomUUID(),
     client_label: 'restricted calls client',
@@ -160,7 +160,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     label: 'restricted calls',
     authored_by_actor_id: randomUUID(),
   },
-  // Automations (C33, 0060): the journey releases and fires none.
+  // Automations (C33, 0255): the journey releases and fires none.
   'public.automation_definitions': {
     kind: 'automation',
     name: 'restricted calls',
@@ -188,7 +188,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     due_at: '2026-09-29T00:00:00Z',
     outcome: 'activation_off',
   },
-  // Standing approvals (C52-A, 0061): the journey adopts, revokes and dispatches none.
+  // Standing approvals (C52-A, 0256): the journey adopts, revokes and dispatches none.
   'public.standing_approvals': {
     activation_id: randomUUID(),
     definition_id: randomUUID(),
@@ -206,7 +206,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     occurrence_id: randomUUID(),
     outcome: 'activation_off',
   },
-  // New client onboarding (C41-A, 0062): the journey starts none.
+  // New client onboarding (C41-A, 0257): the journey starts none.
   'public.onboardings': {
     client_id: randomUUID(),
     template_key: 'restricted-calls',
@@ -509,7 +509,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
       const functions = await catalogueFunctions(db.admin);
       const wrong: string[] = [...(await seedPrefix(db.admin, tables, reference, [alpha, bravo]))];
       // The seed's ids are fresh per row, so each activation is pointed at its
-      // own business's version: 0060's mode check runs on a column update.
+      // own business's version: 0255's mode check runs on a column update.
       if (tables.some((table) => table.qualified === 'public.activations')) {
         await asOwner(
           db.admin,

@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0058 the signal records: what is watching (tripwires) and what the night
+-- 0253 the signal records: what is watching (tripwires) and what the night
 -- round did, in order (MP-14-8, Connections & signal sections 007 and 008).
 --
 -- Grants (section 006) need no table: a grant is a delegation (0008), and its
@@ -9,7 +9,7 @@
 -- The application role only reads these. Tripwires are written by the checks
 -- that watch and the night round's steps by the round itself (the agent loops,
 -- not built); until then the tests seed them as the database owner, as they
--- do connections (0057).
+-- do connections (0252).
 
 -- A tripwire is a stated check. `cannot_be_armed` is not "off": the data the
 -- check needs does not exist, and `blocked_reason` names which. Such a check

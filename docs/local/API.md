@@ -1966,7 +1966,7 @@ A grant is a delegation. Its client is its purpose task's party link; its
 `redemptions` are the applied calls its agent made on that task while it held
 it, less the pickup that minted it. Nothing records what each call reached.
 Tripwires and night round steps are written by the checks and the round
-itself (`tripwires`, `night_round_steps`, migration 0058); the application
+itself (`tripwires`, `night_round_steps`, migration 0253); the application
 role only reads them.
 
 | Operation           | Route                | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -1987,7 +1987,7 @@ the client's scope list (`*`, a family such as `social.*`, or one class), one
 client, a ceiling in whole minor units of one currency, an expiry after now,
 and a sentence that is its label only. A refusal carries no ceiling and holds
 the classes it matches. A mandate is filed and revoked, never edited
-(`standing_mandates`, migration 0059). Graduation rows are written by the
+(`standing_mandates`, migration 0254). Graduation rows are written by the
 agent loops as decisions land (`graduation_classes`); the application role
 reads them and bumps their revision. A row's `state` is derived: a live
 matching refusal holds a ready or promoted class; a live mandate a promote
@@ -2021,7 +2021,7 @@ A person releases a definition version: the first release names a new
 definition by `name` and `kind`, a later one names it by `definitionId`. The
 version takes the next number, pins its bytes by digest and size, and lists
 its inputs, its operations and the activation modes it permits. It never
-changes after release (`definition_versions`, migration 0060). The digest and
+changes after release (`definition_versions`, migration 0255). The digest and
 size are the caller's until AW-02's pinned read computes them from the bytes.
 An activation is pinned to one version of its definition, in a mode that
 version permits (checked by the command and again by the database). Without
@@ -2071,7 +2071,7 @@ business's activation runs in flight (not handed back or cancelled) are at
 most 5: at the ceiling dispatch answers `{ kind: 'waiting' }` and writes
 nothing. Its event intake holds at most 1,000 approved events not yet
 dispatched: past that, the claim records the event `over_intake_bound`
-(migration 0063) and starts nothing. `waitingOccurrences` lists the approved
+(migration 0258) and starts nothing. `waitingOccurrences` lists the approved
 occurrences with no dispatch, oldest first: the queued events and the runs
 waiting, which the worker dispatches again as runs finish.
 
@@ -2115,7 +2115,7 @@ type is installed on first use, `installClientType`). `onboarding.start` lays
 a template version out as tasks on that client, one per step, each titled with
 its phase, linked to the client by its party slot, and recorded with its kind
 (agent-run, needs a person, or waits on the client) and the steps it waits for
-(`onboardings`, `onboarding_steps`, migration 0062; one onboarding per client).
+(`onboardings`, `onboarding_steps`, migration 0257; one onboarding per client).
 The templates are versions in code (`ONBOARDING_TEMPLATES`,
 `core-records/src/onboarding/template.ts`). `onboarding.step_result` writes a
 step's result onto its own task as an internal system comment, so reading the

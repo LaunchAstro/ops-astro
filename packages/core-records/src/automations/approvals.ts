@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Standing approvals (C52-A, U36; migration 0061). An adoption pins an exact
+// Standing approvals (C52-A, U36; migration 0256). An adoption pins an exact
 // released version on an activation and is the standing approval for every
 // later occurrence on that pin (C27-1, C27-2); a rollback is an adoption of
 // the version before. A revocation is written beside the approval, which stays

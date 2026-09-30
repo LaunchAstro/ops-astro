@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0061 standing approvals (C52-A, U36; CS-6.10, C27-1 and C27-2).
+-- 0256 standing approvals (C52-A, U36; CS-6.10, C27-1 and C27-2).
 --
 -- A person adopts an exact released version for an activation: the adoption
 -- pins it and is the standing approval for every later occurrence on that

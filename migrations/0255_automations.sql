@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0060 automations: definitions, released versions, activations and their
+-- 0255 automations: definitions, released versions, activations and their
 -- occurrences (C33, U36; roadmap#27's model, TR-API2-1).
 --
 -- `automation_definitions` is one skill or automation a business keeps.

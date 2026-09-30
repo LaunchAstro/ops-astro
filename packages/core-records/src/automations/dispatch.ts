@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Dispatch (C52-A, U36; migration 0061): the worker's step after the claim,
+// Dispatch (C52-A, U36; migration 0256): the worker's step after the claim,
 // under AW-01's lease (not on this branch). It rechecks, under the
 // activation's lock, that the activation is on and the approval the
 // occurrence recorded is still the one standing and unrevoked, and writes the
@@ -44,7 +44,7 @@ export interface OccurrenceFacts {
   readonly approverActorId: string;
   readonly definitionId: string;
   readonly definitionVersionId: string;
-  /** A released version is never withdrawn: it is immutable (0060). */
+  /** A released version is never withdrawn: it is immutable (0255). */
   readonly versionState: 'released';
   readonly contentDigest: string;
   readonly contentSize: number;
