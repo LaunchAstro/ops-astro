@@ -3,14 +3,13 @@
 // INB-1f: who may hold the board's live stream. It is the internal channel,
 // as the task's own stream is (T2f): a person inside the business, never an
 // external reader and never an agent, holding a live grant of some kind. It is
-// asked at the join and again on every recheck and inbox signal, each time in
+// asked at the join and again on every run of the board's rule, each time in
 // its own transaction through `withSession`, so an ended session or a revoked
 // grant closes the stream rather than leaving it open.
 //
-// The inbox topic is the person's own and says nothing of which item moved,
-// so the stream asks what `inbox.read` shows that person now (`shownInbox`)
-// and speaks only when that changed: an item about a task the caller cannot
-// read moves nothing they are shown, and says nothing.
+// Each run digests what the person reads now, the tasks (`boardReach`) and
+// the inbox (`shownInbox`), and the stream speaks only when that changed: a
+// change the caller cannot read moves nothing they are shown, and says nothing.
 
 import { createHash } from 'node:crypto';
 import { readScopes, withSession } from '../../../core-records/src/index.ts';
