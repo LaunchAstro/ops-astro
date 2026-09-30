@@ -184,6 +184,7 @@ export {
   type RefusalCode,
   type RuntimeRefusalCode,
 } from './register.ts';
+export { UNPRODUCED_CODES } from './register-unproduced.ts';
 export {
   COMMENT_TYPE_KEY,
   externalCommentProjection,
