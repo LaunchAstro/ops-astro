@@ -1,7 +1,7 @@
 {
   "networks": {
     "default": {
-      "name": "aw13-render_default"
+      "name": "aw13-trace-target_default"
     }
   },
   "services": {
@@ -116,7 +116,9 @@
       "networks": {
         "default": null
       },
-      "ports": ["127.0.0.1:${TRACE_TARGET_PORT:?}:3000"],
+      "ports": [
+        "127.0.0.1:${TRACE_TARGET_PORT:?}:3000"
+      ],
       "restart": "no"
     },
     "langfuse-worker": {
@@ -196,7 +198,12 @@
         "interval": "1s",
         "retries": 5,
         "start_period": "1s",
-        "test": ["CMD", "mc", "ready", "local"],
+        "test": [
+          "CMD",
+          "mc",
+          "ready",
+          "local"
+        ],
         "timeout": "5s"
       },
       "image": "cgr.dev/chainguard/minio@sha256:0322beaafcef0ee0d272195174279a3612f9a9b2a713fb4b3c399ab891ba0119",
@@ -224,7 +231,10 @@
       "healthcheck": {
         "interval": "3s",
         "retries": 10,
-        "test": ["CMD-SHELL", "pg_isready -U postgres"],
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -U postgres"
+        ],
         "timeout": "3s"
       },
       "image": "docker.io/postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675",
@@ -251,7 +261,11 @@
       "healthcheck": {
         "interval": "3s",
         "retries": 10,
-        "test": ["CMD", "redis-cli", "ping"],
+        "test": [
+          "CMD",
+          "redis-cli",
+          "ping"
+        ],
         "timeout": "10s"
       },
       "image": "docker.io/valkey/valkey:8@sha256:3fbd2e3e4b6e85e046c1e7c215e8f79087bc0357789184305806664e320996f3",
@@ -272,23 +286,23 @@
   "volumes": {
     "langfuse_clickhouse_data": {
       "driver": "local",
-      "name": "aw13-render_langfuse_clickhouse_data"
+      "name": "aw13-trace-target_langfuse_clickhouse_data"
     },
     "langfuse_clickhouse_logs": {
       "driver": "local",
-      "name": "aw13-render_langfuse_clickhouse_logs"
+      "name": "aw13-trace-target_langfuse_clickhouse_logs"
     },
     "langfuse_minio_data": {
       "driver": "local",
-      "name": "aw13-render_langfuse_minio_data"
+      "name": "aw13-trace-target_langfuse_minio_data"
     },
     "langfuse_postgres_data": {
       "driver": "local",
-      "name": "aw13-render_langfuse_postgres_data"
+      "name": "aw13-trace-target_langfuse_postgres_data"
     },
     "langfuse_redis_data": {
       "driver": "local",
-      "name": "aw13-render_langfuse_redis_data"
+      "name": "aw13-trace-target_langfuse_redis_data"
     }
   }
 }

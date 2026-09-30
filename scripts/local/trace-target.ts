@@ -176,15 +176,12 @@ const ENV_FILE = join(import.meta.dirname, '..', '..', '.local', 'trace-target.e
 function rendered(): unknown {
   const out = execFileSync(
     'docker',
-    [
-      'compose',
-      '-p',
-      'aw13-render',
-      '-f',
-      'docker-compose.yml',
-      '-f',
-      'profile.override.yml',
-    ].concat(['config', '--no-interpolate', '--format', 'json']),
+    ['compose', '-p', PROJECT, '-f', 'docker-compose.yml', '-f', 'profile.override.yml'].concat([
+      'config',
+      '--no-interpolate',
+      '--format',
+      'json',
+    ]),
     { cwd: HERE, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
   );
   const model = JSON.parse(out) as Record<string, unknown>;
