@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0053 wayfinder maps (WF-1). A map is a task of type `map` whose tickets are
+-- 0054 wayfinder maps (WF-1). A map is a task of type `map` whose tickets are
 -- its subtasks; there is no map record type and no maps table. What a map has
 -- that a task does not is its body: typed components (Destination, Notes, fog
 -- patches, Out of scope items), each with its own id, and a numbered version

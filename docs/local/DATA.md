@@ -221,7 +221,7 @@ operand and defaults to `task`. `map_owner` (the creator), `map_version` and
 fields existed gets them from `installTaskSpine`, which adds any unslotted
 spine field an installed task type is missing and touches nothing else.
 
-Migration `0053_wayfinder_maps.sql` holds what a map has that a task does not:
+Migration `0054_wayfinder_maps.sql` holds what a map has that a task does not:
 
 | Table            | What it holds                                                                                    | Application role       |
 | ---------------- | ------------------------------------------------------------------------------------------------ | ---------------------- |
@@ -233,7 +233,7 @@ Migration `0053_wayfinder_maps.sql` holds what a map has that a task does not:
 Decisions so far is not stored: `map.view` renders it from the map's completed
 tickets in closing order, so a decision lives once, on its ticket.
 
-Charting's pre-answers (WF-6, migration `0054_wayfinder_pre_answers.sql`) are
+Charting's pre-answers (WF-6, migration `0055_wayfinder_pre_answers.sql`) are
 `map_components` rows of kind `pre_answer`: the question, the answer (the
 body), `veto_open` for an obvious call ("decided, veto open"), and exactly one
 source, `source_record_id` (a closed ticket) or `source_reference` (one line).
@@ -241,9 +241,9 @@ source, `source_record_id` (a closed ticket) or `source_reference` (one line).
 not read answers NOT_FOUND like one that does not exist. `map.view` shows a
 cited record only to a reader who may read it; anyone else sees the source as
 withheld. A pre-answer resolves nothing, so it never joins Decisions so far.
-Renumber 0053 and 0054 at the batch integration if another slice took the numbers.
+Renumber 0054 and 0055 at the batch integration if another slice took the numbers.
 
-`map_summaries` has one writer, the security definer trigger functions in 0053. A write to a task recounts the map it is, and the map its parent was
+`map_summaries` has one writer, the security definer trigger functions in 0054. A write to a task recounts the map it is, and the map its parent was
 before and after; a write to a component or a version recounts its map. So the
 counts move in the transaction that changed them, whichever command did it.
 

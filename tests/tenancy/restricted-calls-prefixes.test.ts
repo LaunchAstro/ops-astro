@@ -106,7 +106,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
-  // 0053's map tables: the journey charts no map, so each gets one row here.
+  // 0054's map tables: the journey charts no map, so each gets one row here.
   'public.map_components': {
     map_id: randomUUID(),
     kind: 'fog',

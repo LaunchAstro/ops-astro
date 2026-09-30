@@ -155,7 +155,7 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // T3e2: the journey drops nothing, so one report and one of its runs.
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
-  // 0053: a map's body rows. Any record stands in for the map; the read-model
+  // 0054: a map's body rows. Any record stands in for the map; the read-model
   // triggers find it is not one and write nothing.
   'public.map_components': `insert into public.map_components
        (business_id, id, map_id, kind, body, position, created_version)
@@ -539,7 +539,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       definers().find((fn) => fn.signature === signature);
 
     // Each for a named reason. The append-only trigger refuses the owner
-    // itself. 0053 added the map read models' writers: security definer so
+    // itself. 0054 added the map read models' writers: security definer so
     // the summary and frontier tables have one writer and the application
     // only reads them. The fair share's count (AW-01, ORCH-DECISION SL11
     // AW-01) is the one read across businesses: a provider route's ceiling is
