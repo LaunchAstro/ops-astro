@@ -168,7 +168,7 @@ itself (`S0-1 gated stop`). The web app and sign-in are not on the machine.
 
 Nothing deploys before the alerts reach the owner (ticket S0-2). The watcher
 (UptimeRobot, off the machine) checks each environment's web page, API health,
-backup, restore, forwarder and worker heartbeats, and the error sink's health; the error sink (GlitchTip)
+backup, restore, forwarder, worker and error sink heartbeats; the error sink (GlitchTip)
 takes the API's errors and its security alerts. The API on Vercel keeps no
 count and reaches no sink: it appends each signal and error to its own
 database's outbox (`ops.api_events`), and the environment's forwarder
@@ -194,6 +194,7 @@ addresses are private, set in the environment at run time:
 | `DATABASE_FORWARDER_URL`                                   | `forwarder.mjs`                              | a login that is a member of `ops_astro_forwarder` alone                                                                                 |
 | `OPS_FORWARDER_HEARTBEAT_URL`                              | `forwarder.mjs`                              | the watcher's forwarder heartbeat, pinged after each pass that completed                                                                |
 | `OPS_WORKER_HEARTBEAT_URL`                                 | the worker                                   | the watcher's worker heartbeat, pinged after each pass the API answered                                                                 |
+| `OPS_SINK_HEARTBEAT_URL`                                   | `forwarder.mjs`                              | the watcher's error sink heartbeat, pinged while the sink's health page answers                                                         |
 | `OPS_BACKUP_HEARTBEAT_URL`                                 | `backup.mjs run`                             | the watcher's backup heartbeat, pinged once a backup is recorded                                                                        |
 | `OPS_RESTORE_HEARTBEAT_URL`                                | `backup.mjs expire`                          | the watcher's restore heartbeat, pinged only while a drill is fresh                                                                     |
 

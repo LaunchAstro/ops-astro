@@ -13,4 +13,5 @@ export const WORKER_UNIT: Readonly<Record<string, string>> = {
   STAGING_ERROR_SINK_DSN: 'https://unused@example.test/1',
   STAGING_RELEASE: '0123456789ab',
   STAGING_FORWARDER_HEARTBEAT_URL: 'https://heartbeat.example.test/f',
+  STAGING_SINK_HEARTBEAT_URL: 'https://heartbeat.example.test/s',
 };

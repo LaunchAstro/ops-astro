@@ -200,7 +200,8 @@
         "OPS_ERROR_SINK_DSN": "${STAGING_ERROR_SINK_DSN:?set from the staging runbook}",
         "OPS_ENVIRONMENT": "staging",
         "OPS_RELEASE": "${STAGING_RELEASE:?set from the staging runbook}",
-        "OPS_FORWARDER_HEARTBEAT_URL": "${STAGING_FORWARDER_HEARTBEAT_URL:?set from the staging runbook}"
+        "OPS_FORWARDER_HEARTBEAT_URL": "${STAGING_FORWARDER_HEARTBEAT_URL:?set from the staging runbook}",
+        "OPS_SINK_HEARTBEAT_URL": "${STAGING_SINK_HEARTBEAT_URL:?set from the staging runbook}"
       },
       "volumes": ["ops-astro-staging-app:/app:ro"],
       "networks": ["staging"],

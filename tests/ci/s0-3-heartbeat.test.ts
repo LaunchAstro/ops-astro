@@ -132,9 +132,7 @@ function sinkCases() {
       // oxlint-disable-next-line no-await-in-loop
       expect(await sinkAnswers(DSN, answering(status).get), String(status)).toBe(false);
     }
-    const thrown = (async () => {
-      throw new Error('connect ECONNREFUSED');
-    }) as typeof fetch;
+    const thrown = (() => Promise.reject(new Error('connect ECONNREFUSED'))) as typeof fetch;
     expect(await sinkAnswers(DSN, thrown)).toBe(false);
   });
 }

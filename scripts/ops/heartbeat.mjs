@@ -31,7 +31,18 @@ export async function ping(address, get = fetch) {
   }
 }
 
-/** Whether the error sink behind `dsn` answers its health page (stub). */
-export async function sinkAnswers() {
-  return false;
+/**
+ * Whether the error sink behind `dsn` answers its health page. The sink is on
+ * the machine, where the off-box watcher cannot see it, so its forwarder asks
+ * and pings the sink's heartbeat only on a yes. The key in the DSN is not sent.
+ */
+export async function sinkAnswers(dsn, get = fetch) {
+  try {
+    const health = new URL('/_health/', new URL(dsn).origin);
+    const answer = await get(health, { redirect: 'manual', signal: AbortSignal.timeout(10_000) });
+    await answer.body?.cancel();
+    return answer.status >= 200 && answer.status < 300;
+  } catch {
+    return false;
+  }
 }
