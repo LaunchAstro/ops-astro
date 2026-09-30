@@ -3,6 +3,7 @@
 // The Team panel tests' one team: four people, one of them the reader and one
 // away, their direct conversations, and the panel's props with every call kept.
 
+import { act } from 'react';
 import type {
   AvailabilityChange,
   DirectThread,
@@ -137,6 +138,17 @@ export function next(p: TeamPanelProps, read: Pick<Over, 'threads' | 'groups'>):
 
 export const chip = (m: Mounted, id: string): Element | null =>
   m.host.querySelector(`[data-person="${id}"]`);
+
+/** Choose a teammate in the kit's select, as a person does: open it, press the name. */
+export async function addPick(m: Mounted, name: string): Promise<void> {
+  if (m.find('form.tmc__adding [role="listbox"]') === null)
+    await m.click('form.tmc__adding .sel__btn');
+  const option = m.all('form.tmc__adding [role="option"]').find((o) => o.textContent === name);
+  if (option === undefined) throw new Error(`no option ${name}`);
+  act(() => {
+    (option as HTMLElement).click();
+  });
+}
 
 /** Launch: Remy, Cath and the reader; read to 10:00, one of Cath's after it. The reader started it. */
 export const LAUNCH: GroupThread = {

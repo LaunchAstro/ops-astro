@@ -27,8 +27,8 @@ it('C71-G the group list is the kit’s panel rows, the open one selected, unrea
   expect(row('g-launch')?.querySelector('.lrow__trail .cbadge')?.textContent).toBe('1');
 
   await mounted.click('.tmc__g[data-group="g-studio"]');
-  expect(row('g-studio')?.getAttribute('data-state')).toBe('selected');
-  expect(row('g-launch')?.hasAttribute('data-state')).toBe(false);
+  expect(row('g-studio')?.dataset['state']).toBe('selected');
+  expect(row('g-launch')?.dataset['state']).toBeUndefined();
 });
 
 it('C71-G the member picker is the kit’s checkboxes, each named for its teammate', async () => {

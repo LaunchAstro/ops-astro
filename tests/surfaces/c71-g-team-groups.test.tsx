@@ -19,7 +19,7 @@ import {
   type GroupThread,
 } from '../../packages/ui/src/index.ts';
 import { mount, type Mounted } from './mount.tsx';
-import { LAUNCH, ME, STUDIO, THREADS, message, props, next } from './team-fixture.tsx';
+import { LAUNCH, ME, STUDIO, THREADS, addPick, message, props, next } from './team-fixture.tsx';
 
 let mounted: Mounted | undefined;
 afterEach(async () => {
@@ -33,17 +33,6 @@ const ids = (m: Mounted, selector: string): readonly (string | undefined)[] =>
   m.all(selector).map((el) => (el as HTMLElement).dataset['message']);
 const picker = (m: Mounted): readonly string[] =>
   m.all('form.tmc__new [data-pick]').map((el) => (el as HTMLElement).dataset['pick'] ?? '');
-
-/** Choose a teammate in the kit's select, as a person does: open it, press the name. */
-async function addPick(m: Mounted, name: string): Promise<void> {
-  if (m.find('form.tmc__adding [role="listbox"]') === null)
-    await m.click('form.tmc__adding .sel__btn');
-  const option = m.all('form.tmc__adding [role="option"]').find((o) => o.textContent === name);
-  if (option === undefined) throw new Error(`no option ${name}`);
-  await act(async () => {
-    (option as HTMLElement).click();
-  });
-}
 
 async function startForm(m: Mounted, name: string, members: readonly string[]): Promise<void> {
   await m.click('.tmc__start');
