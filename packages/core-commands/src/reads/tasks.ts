@@ -36,12 +36,12 @@ import { readAlerts } from '../../../core-runtime/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
 import { awaitingApproval } from './awaiting.ts';
+import { readRanks } from './board-rank.ts';
 import { readTaskRank, type RankPool } from './rank.ts';
 import { readBoardCrumb } from './board-crumb.ts';
 import { readTaskSteps } from './steps.ts';
 
-// The rank's marks and pool are SL08's U15 (MP-4-9), not on main: until they
-// land every board row is unranked, which the board draws as a dash.
+// A served row is always in its reader's pool; this is only the type's answer.
 const UNRANKED = { number: null, score: null, calc: '' } as const;
 
 interface TaskRowRead {
@@ -438,10 +438,11 @@ export async function readBoardStamped(
     tx,
     rows.map((row) => row.id),
   );
+  const ranks = await readRanks(tx, taskTypeId, readable);
   const decides = decidable === null ? null : new Set(decidable);
   const tasks = rows.map((row): BoardTask =>
     Object.assign(summaryOf(row), {
-      rank: UNRANKED,
+      rank: ranks.get(row.id) ?? UNRANKED,
       stage: row.stage,
       clientSet: row.client_set,
       statePosition: row.state_position === null ? null : Number(row.state_position),

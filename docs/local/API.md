@@ -422,12 +422,14 @@ crossings.
 
 Each row `task.board` answers is the task's summary with what the Projects
 board's cells draw (MP-5-8): `rank`, `stage` and `clientSet`. The stage and
-the client mark are the stored slots. The rank is to be worked out at read
-over the open tasks in the caller's scope, the same scope the one grant read
-admitted the board with, so a task's #N on the board is its #N on its page;
-its marks and pool are SL08's U15 (MP-4-9), not on main yet, so every row is
-answered unranked until they land. `tests/reads/mp-5-8-board-columns.test.ts`
-reads the stage and client mark back and holds the crossings.
+the client mark are the stored slots. The rank is worked out at read
+(`reads/board-rank.ts`, with MP-4-9's derivation) over the open tasks in the
+caller's scope, the same scope the one grant read admitted the board with, so
+a task's #N on the board is its #N on its page; a step archived by its
+parent's completion is not open (MP-4-15). `tests/reads/mp-5-8-board-columns.test.ts`
+reads each row's rank, stage and client mark back against `task.read` and
+holds the crossings; `mp-5-8-board-rank-steps.test.ts` reads an archived
+step back.
 
 Each row also carries `statePosition` (MP-5-11): the `position` of the
 task's state record, read in the same join as the state, so the Projects
