@@ -23,6 +23,7 @@
 // honest: an operation added to the surface cannot be skipped here quietly,
 // because being skipped is a thrown error rather than an absent row.
 
+import { randomUUID } from 'node:crypto';
 import { effectOperationId, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 
@@ -40,6 +41,15 @@ export const PROPOSAL = {
 } as const;
 
 /** A proposal on `task`, answering with the lineage it opened. */
+/** A well-formed drill (C81), so a refusal is authority's and not the body's. */
+export const breachDrillBody = (): Record<string, unknown> => ({
+  incidentId: randomUUID(),
+  oaic: { name: 'A made-up regulator', address: 'regulator@example.test' },
+  people: [{ name: 'A made-up person', address: 'person@example.test' }],
+  containment: 'Nothing real happened.',
+  steps: 'Nothing to do.',
+});
+
 export async function lineageOn(context: BodyContext, task: Task): Promise<string> {
   const proposed = await context.asPerson('task.propose', {
     recordId: task.id,
