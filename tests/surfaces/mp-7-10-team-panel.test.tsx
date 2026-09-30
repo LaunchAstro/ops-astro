@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TeamPanel, teammatesOf } from '../../packages/ui/src/index.ts';
 import { press } from './inbox-fixture.tsx';
 import { mount, type Mounted } from './mount.tsx';
-import { ME, PEOPLE, chip, person, props } from './team-fixture.tsx';
+import { ME, PEOPLE, chip, person, props, unsaid } from './team-fixture.tsx';
 
 let mounted: Mounted | undefined;
 afterEach(async () => {
@@ -47,6 +47,19 @@ describe('MP-7-10 people strip with away state as a word', () => {
     expect(teammatesOf(PEOPLE, ME).map((p) => p.personId)).toEqual(['p-remy', 'p-len', 'p-cath']);
     expect(teammatesOf(PEOPLE, 'p-nobody')).toHaveLength(4);
   });
+
+  it('away with no reason given is the word Away, and no reason is made up for it', async () => {
+    const quiet = [PEOPLE[0], PEOPLE[1], unsaid('p-len', 'Len Ortiz'), PEOPLE[3]].filter(
+      (p) => p !== undefined,
+    );
+    mounted = await mount(<TeamPanel {...props({ people: quiet })} />);
+    expect(chip(mounted, 'p-len')?.querySelector('.tmc__away')?.textContent).toBe('Away');
+    expect(chip(mounted, 'p-len')?.querySelector('.tmc__face')?.getAttribute('aria-label')).toBe(
+      'Message Len Ortiz, away',
+    );
+    await mounted.render(<TeamPanel {...props({ people: [unsaid(ME, 'Sam Reid')] })} />);
+    expect(mounted.find('.tmc__me span')?.textContent).toBe('You are away');
+  });
 });
 
 describe("MP-7-10 a teammate's name opens their work", () => {
@@ -81,6 +94,15 @@ describe("MP-7-10 a teammate's name opens their work", () => {
     expect(p.calls.work).toEqual([]);
     expect(chip(mounted, 'p-remy')?.classList.contains('is-on')).toBe(true);
   });
+
+  it('with no view of their work to open, the name is plain text and no door is drawn', async () => {
+    const p = props({ work: null });
+    mounted = await mount(<TeamPanel {...p} />);
+    expect(mounted.find('.tmc__strip a')).toBeNull();
+    expect(mounted.find('[data-person="p-len"] .tmc__n')?.textContent).toBe('Len');
+    await mounted.click('[data-person="p-len"] .tmc__n');
+    expect(p.calls.work).toEqual([]);
+  });
 });
 
 describe('MP-7-10 the Team panel opens with the people strip and availability', () => {
@@ -90,6 +112,24 @@ describe('MP-7-10 the Team panel opens with the people strip and availability', 
     expect(mounted.find('.tmc__me')?.textContent).toContain('You are in');
     expect(mounted.find('.tmc__conv .dp__empty')?.textContent).toBe('Nobody selected.');
     expect(mounted.all('.tmc__strip .is-on')).toHaveLength(0);
+  });
+
+  it('with no conversations to draw, a face opens nothing and the room stays empty', async () => {
+    const p = props({ conversations: null });
+    mounted = await mount(<TeamPanel {...p} />);
+    expect(mounted.all('.tmc__strip [data-person]')).toHaveLength(3);
+    expect(mounted.find('.tmc__strip button')).toBeNull();
+    expect(mounted.find('[data-person="p-len"] .tmc__face')?.getAttribute('aria-label')).toBe(
+      'Len Ortiz, away: At the Meridian shoot until 2',
+    );
+    expect(mounted.find('.tmc__conv[data-team="conversations"]')?.childElementCount).toBe(0);
+    expect(mounted.find('.tmc__groups')).toBeNull();
+    expect(mounted.find('.composer')).toBeNull();
+    await mounted.click('[data-person="p-len"] .tmc__face');
+    expect(mounted.all('.tmc__strip .is-on')).toHaveLength(0);
+    expect(p.calls.marks).toEqual([]);
+    // The reader's own availability does not wait on the conversations.
+    expect(mounted.find('.tmc__me')?.textContent).toContain('You are in');
   });
 
   it('selecting a face marks that one teammate, pressed, and only that one', async () => {

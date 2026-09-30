@@ -26,6 +26,12 @@ export const person = (personId: string, name: string, away: string | null = nul
   away: away === null ? null : { reason: away },
 });
 
+/** Away with no reason: the command allows it (another client may set it), this panel never sends it. */
+export const unsaid = (personId: string, name: string): Teammate => ({
+  ...person(personId, name),
+  away: { reason: null },
+});
+
 export const ME = 'p-me';
 export const PEOPLE: readonly Teammate[] = [
   person('p-remy', 'Remy Hale'),
@@ -84,9 +90,13 @@ export interface Calls {
   readonly groups: GroupAction[];
 }
 
-export function props(
-  over: Partial<TeamPanelProps> = {},
-): TeamPanelProps & { readonly calls: Calls } {
+/** What a test may put in place of the fixture's own: any prop, or a whole capability left out. */
+export type Over = Partial<TeamPanelProps> & {
+  readonly work?: null;
+  readonly conversations?: null;
+};
+
+export function props(over: Over = {}): TeamPanelProps & { readonly calls: Calls } {
   const calls: Calls = { work: [], availability: [], marks: [], sends: [], groups: [] };
   return {
     people: PEOPLE,

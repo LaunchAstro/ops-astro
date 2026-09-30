@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// MP-7-10 (#470) on the page: the Team panel, reached from its dock tab, shows
-// the people strip with each teammate's availability as a word, and the person
-// sets their own with a reason. The server behind it is a stand-in holding one
-// business's staff; the real route and read are proven in
-// `tests/api/mp-7-10-availability.test.ts`.
+// MP-7-10 (#470) on the page: the Team panel, reached from its dock tab, is the
+// kit's one TeamPanel (`packages/ui`), fed by `team.list` and saving through
+// `account/availability`. The strip holds each teammate, never the reader, with
+// their availability as a word; the reader sets their own with a reason. The
+// server behind it is a stand-in holding one business's staff; the real route
+// and read are proven in `tests/api/mp-7-10-availability.test.ts`, and the
+// panel's own behaviour in `tests/surfaces/mp-7-10-team-panel.test.tsx`.
 
 import { act } from 'react';
 import { expect, it } from 'vitest';
@@ -76,41 +78,54 @@ const team = async () => {
   return { api, page };
 };
 
-const entry = (page: Awaited<ReturnType<typeof team>>['page'], id: string): string =>
-  page.find(`[data-person-id="${id}"]`)?.textContent ?? '';
+const chip = (page: Awaited<ReturnType<typeof team>>['page'], id: string): Element | null =>
+  page.find(`.tmc__strip [data-person="${id}"]`);
+const mine = (page: Awaited<ReturnType<typeof team>>['page']): string =>
+  page.find('.tmc__me')?.textContent ?? '';
 
 it('MP-7-10 the Team panel opens from its dock tab with the people strip and availability', async () => {
   const tab = PANELS.find((panel) => panel.id === 'team');
   expect(tab?.route === null ? null : pathTo(tab?.route ?? 'agency:settings')).toBe('/team');
   const { page } = await team();
-  expect(page.all('[data-team="people"] [data-person-id]')).toHaveLength(2);
-  expect(page.find('[data-availability="form"]')).not.toBeNull();
-  // Room for the conversations C71-D and C71-G draw next; none drawn yet.
-  expect(page.find('[data-team="conversations"]')).not.toBeNull();
+  // The kit's panel: the strip holds the reader's teammates, never the reader.
+  expect(
+    page.all('.tmc__strip [data-person]').map((el) => (el as HTMLElement).dataset['person']),
+  ).toEqual(['p-bo']);
+  expect(mine(page)).toContain('You are in');
+  // Room for the conversations C71-D and C71-G draw next; none drawn yet, so a
+  // face opens nothing and no group list or composer is drawn.
+  expect(page.find('[data-team="conversations"]')?.childElementCount).toBe(0);
+  expect(page.find('.tmc__strip button')).toBeNull();
+  expect(page.find('.composer')).toBeNull();
+  // No view of a person's work exists yet: the name is plain text, not a door.
+  expect(page.find('.tmc__strip a')).toBeNull();
+  expect(chip(page, 'p-bo')?.querySelector('.tmc__n')?.textContent).toBe('Bo');
   await page.unmount();
 });
 
 it('MP-7-10 people strip with away state as a word', async () => {
   const { page } = await team();
-  expect(entry(page, 'p-bo')).toContain('Away');
-  expect(entry(page, 'p-bo')).toContain('On a shoot');
-  expect(entry(page, 'p-me')).not.toContain('Away');
+  expect(chip(page, 'p-bo')?.querySelector('.tmc__away')?.textContent).toBe('Away');
+  expect(chip(page, 'p-bo')?.querySelector('.tmc__face')?.getAttribute('aria-label')).toBe(
+    'Bo Reyes, away: On a shoot',
+  );
+  expect(chip(page, 'p-me')).toBeNull();
+  expect(mine(page)).not.toContain('away');
   await page.unmount();
 });
 
 it('MP-7-10 CS-7.27: the person sets their own availability with a reason', async () => {
   const { api, page } = await team();
-  await page.choose('#availability-state', 'away');
-  await page.type('#availability-reason', 'At the dentist until 2');
-  await page.click('[data-availability="save"]');
-  await until('my entry says Away', () => entry(page, 'p-me').includes('Away'));
+  await page.click('.tmc__me button.tmc__set');
+  await page.type('.tmc__me input[name="reason"]', 'At the dentist until 2');
+  await page.click('.tmc__me button[type="submit"]');
+  await until('my line says away', () => mine(page).includes('You are away'));
   expect(api.sent).toEqual([{ state: 'away', reason: 'At the dentist until 2' }]);
-  expect(entry(page, 'p-me')).toContain('At the dentist until 2');
+  expect(mine(page)).toContain('You are away: At the dentist until 2');
 
-  // Back to available: no reason goes with it.
-  await page.choose('#availability-state', 'available');
-  await page.click('[data-availability="save"]');
-  await until('my entry is plain again', () => !entry(page, 'p-me').includes('Away'));
+  // Back in: no reason goes with it.
+  await page.click('.tmc__me button.tmc__back');
+  await until('my line is in again', () => mine(page).includes('You are in'));
   expect(api.sent.at(-1)).toEqual({ state: 'available' });
   await page.unmount();
 });

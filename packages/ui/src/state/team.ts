@@ -8,8 +8,8 @@
 // idle or offline state (CS-7.27, FA-DOCK-75).
 
 export interface Availability {
-  /** The person's own words for why they are not in. */
-  readonly reason: string;
+  /** The person's own words for why they are not in; null when they gave none. */
+  readonly reason: string | null;
 }
 
 export interface Teammate {
