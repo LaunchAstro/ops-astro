@@ -19,7 +19,7 @@ import { createApi } from '../../apps/api/app.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
-import { signBearer, testSignIn } from '../support/sign-in.ts';
+import { signBearer, TEST_ISSUER, testSignIn } from '../support/sign-in.ts';
 import {
   refuse as refuseRuntime,
   SUGGESTED_STATUS,
@@ -274,7 +274,7 @@ describe('one refusal from each road, byte for byte', () => {
   });
 });
 
-const ISSUER = 'http://127.0.0.1:54391';
+const ISSUER: string = TEST_ISSUER;
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const MIA = '22222222-2222-4222-8222-222222222222';
 

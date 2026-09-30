@@ -9,10 +9,10 @@ import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { SessionStore } from '../../apps/web/src/session/token.ts';
 import { SESSION_COOKIE } from '../../packages/core-wire/src/index.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
-import { signBearer, testSignIn } from '../support/sign-in.ts';
+import { signBearer, TEST_ISSUER, testSignIn } from '../support/sign-in.ts';
 import { mount, settle } from './mount.tsx';
 
-const ISSUER = 'http://127.0.0.1:54391';
+const ISSUER: string = TEST_ISSUER;
 const tokenFor = (subject: string) => {
   const now = Math.floor(Date.now() / 1000);
   return signBearer({

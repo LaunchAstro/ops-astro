@@ -28,7 +28,13 @@ import type { Context } from 'hono';
 import { createKeySetVerifier } from '../../apps/api/auth/jwks.ts';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
-import { signBearer, TEST_KEY_SET, TEST_KEY_SET_URL, testSignIn } from '../support/sign-in.ts';
+import {
+  signBearer,
+  TEST_ISSUER as ISSUER,
+  TEST_KEY_SET,
+  TEST_KEY_SET_URL,
+  testSignIn,
+} from '../support/sign-in.ts';
 // @ts-expect-error -- a local tool in plain JavaScript, with no declarations
 import { generateSigningKeys, serviceToken } from '../../scripts/local/signing-key.mjs';
 
@@ -37,8 +43,7 @@ const generate = generateSigningKeys as () => Promise<Jwk[]>;
 const mint = serviceToken as (keys: unknown) => Promise<string>;
 
 const ROOT = join(import.meta.dirname, '../..');
-const ISSUER = 'http://127.0.0.1:54391';
-const OLD_SECRET = 'the-shared-secret-the-api-used-to-hold';
+const OLD_SECRET = `${ISSUER}/the-shared-secret-the-api-used-to-hold`;
 const PRIVATE_MEMBERS = ['d', 'p', 'q', 'dp', 'dq', 'qi', 'k'];
 const now = () => Math.floor(Date.now() / 1000);
 const claims = () => ({ sub: 'mia', aud: 'authenticated', iss: ISSUER, exp: now() + 600 });

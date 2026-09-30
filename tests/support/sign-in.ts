@@ -29,6 +29,9 @@ const made = (): string => `${TEST_ONLY_MARKER}-${randomBytes(6).toString('hex')
 
 export const TEST_KID: string = made();
 
+/** The issuer tokens carry: loopback, as a static key set requires, under a marked path. */
+export const TEST_ISSUER: string = `http://127.0.0.1:54391/${made()}`;
+
 /** Where an in-process verifier believes the set lives. Never fetched. */
 export const TEST_KEY_SET_URL: string = `https://${made()}.example.test/auth/v1/.well-known/jwks.json`;
 

@@ -16,13 +16,14 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createFunctionHandler } from '../../apps/api/function.ts';
+import { TEST_ISSUER } from '../support/sign-in.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const scratch = mkdtempSync(join(tmpdir(), 's0-6-one-build-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 const HOST = 'ops.example.test';
-const ISSUER = 'https://project.example.test/auth/v1';
+const ISSUER: string = TEST_ISSUER;
 const KEY_ID = 'test/one-build@1';
 
 describe('S0-6 one build serves every environment', () => {

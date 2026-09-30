@@ -26,12 +26,13 @@ import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore, tabStorage, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { SESSION_PATH } from '../../packages/core-wire/src/index.ts';
 import { mount, settle, type Mounted } from './mount.tsx';
+import { TEST_ONLY_MARKER } from '../support/marker.ts';
 
 const SESSION = { businessKey: 'alpha', email: 'mia@alpha.local' };
 /** The token the tab's session cookie held when the test starts: an hour old. */
-const OLD_TOKEN = 'the-hour-old-token';
+const OLD_TOKEN = `${TEST_ONLY_MARKER}-the-hour-old-token`;
 /** What the stand-in identity provider hands back on a fresh sign-in. */
-const FRESH_TOKEN = 'a-fresh-token';
+const FRESH_TOKEN = `${TEST_ONLY_MARKER}-a-fresh-token`;
 
 const TASK = {
   id: '11111111-1111-4111-8111-111111111111',

@@ -17,7 +17,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect } from 'vitest';
-import { signBearer, signForged } from '../support/sign-in.ts';
+import { signBearer, signForged, TEST_ISSUER } from '../support/sign-in.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -41,7 +41,7 @@ export const definition = JSON.parse(
 /** The one call the stop may make: both named services, nothing else. */
 export const THE_STOP = 'docker stop ops-astro-api ops-astro-auth';
 
-export const ISSUER = 'http://127.0.0.1:54391';
+export const ISSUER: string = TEST_ISSUER;
 
 export const CANARY = 'canary-3e91d0-stop-secret';
 

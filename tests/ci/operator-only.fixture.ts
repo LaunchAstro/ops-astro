@@ -13,6 +13,7 @@ import {
   serveTestKeySetApart,
   signBearer,
   signForged,
+  TEST_ISSUER,
   type ServedKeySet,
 } from '../support/sign-in.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
@@ -34,7 +35,7 @@ import {
 } from '../identity/fixture.ts';
 import { CANARY, scratch, type Marks } from './operator-only-commands.fixture.ts';
 
-export const ISSUER = 'http://127.0.0.1:54391';
+export const ISSUER: string = TEST_ISSUER;
 
 export const serverUrl: string | undefined = databaseUrlFromEnvironment();
 

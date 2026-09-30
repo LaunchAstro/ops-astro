@@ -9,14 +9,14 @@ import { createAlerts, type SinkEvent } from '../../apps/api/alerts/sink.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { COMMAND_SURFACE, PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
-import { signBearer, testSignIn } from '../support/sign-in.ts';
+import { signBearer, TEST_ISSUER, testSignIn } from '../support/sign-in.ts';
 import { times } from './s0-2-plain.ts';
 
 const CANARY_SECRET = 'canary-S02CANARY-4e8a1c-alert-secret';
 
 const RECORD_CONTENT = 'Private note: client Juniper Vale owes 4,210';
 
-const ISSUER = 'http://127.0.0.1:54391';
+const ISSUER: string = TEST_ISSUER;
 
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 

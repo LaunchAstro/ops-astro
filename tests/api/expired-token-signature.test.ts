@@ -20,13 +20,13 @@ import type { Database } from '../../packages/core-records/src/tenancy/database.
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
-import { signBearer, signForged, TEST_KID, testSignIn } from '../support/sign-in.ts';
+import { signBearer, signForged, TEST_ISSUER, TEST_KID, testSignIn } from '../support/sign-in.ts';
 import { createBusinessResolver } from '../../apps/api/server.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 
-const GOTRUE = { aud: 'authenticated', iss: 'http://127.0.0.1:54391' };
+const GOTRUE = { aud: 'authenticated', iss: TEST_ISSUER };
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const BRAVO = '33333333-3333-4333-8333-333333333333';
 const MIA = '22222222-2222-4222-8222-222222222222';

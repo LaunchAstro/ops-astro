@@ -10,11 +10,11 @@ import { cookieNameFor, sessionIdOf } from '../../apps/api/auth/session.ts';
 import { type StorageLike } from '../../apps/web/src/session/token.ts';
 import { CSRF_HEADER, pathOf } from '../../packages/core-wire/src/index.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
-import { signBearer } from '../support/sign-in.ts';
+import { signBearer, TEST_ISSUER } from '../support/sign-in.ts';
 
 export const ROOT: string = join(import.meta.dirname, '../..');
 
-export const ISSUER = 'http://127.0.0.1:54391';
+export const ISSUER: string = TEST_ISSUER;
 
 export const BOARD: string = `/api/b/alpha${pathOf('task.board')}`;
 

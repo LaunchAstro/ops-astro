@@ -24,7 +24,7 @@ import { grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
 import type { BusinessId, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
-import { signBearer } from '../support/sign-in.ts';
+import { signBearer, TEST_ISSUER } from '../support/sign-in.ts';
 
 /**
  * What a seeded person is, and what a seeded agent is.
@@ -54,7 +54,7 @@ export interface AgentIdentity {
 }
 
 /** The issuer the acceptance tokens carry, as GoTrue stamps its own URL. */
-export const ACCEPTANCE_ISSUER = 'http://127.0.0.1:54391';
+export const ACCEPTANCE_ISSUER: string = TEST_ISSUER;
 
 /**
  * The grants the fixture gives each role. They are not a copy of

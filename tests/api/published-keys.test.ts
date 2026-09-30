@@ -33,6 +33,7 @@ import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import {
   serveTestKeySet,
   signBearer,
+  TEST_ISSUER as ISSUER,
   TEST_KEY_SET,
   TEST_KEY_SET_URL,
   testSignIn,
@@ -40,8 +41,7 @@ import {
 } from '../support/sign-in.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
-const ISSUER = 'http://127.0.0.1:54391';
-const OLD_SECRET = 'the-shared-secret-the-api-used-to-hold';
+const OLD_SECRET = `${ISSUER}/the-shared-secret-the-api-used-to-hold`;
 const CREATE = `/api/b/alpha${pathOf('task.create')}`;
 // The runtime role's own address: LISTEN needs no more.
 const LISTEN_URL = process.env['DATABASE_URL'] || undefined;

@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
-import { asBrowser, signBearer, testSignIn } from '../support/sign-in.ts';
+import { asBrowser, signBearer, TEST_ISSUER, testSignIn } from '../support/sign-in.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import {
@@ -29,7 +29,7 @@ import {
 } from '../../apps/web/src/operations/client.ts';
 import { describeRefusal } from '../../apps/web/src/records/submit.ts';
 
-const ISSUER = 'http://127.0.0.1:54391';
+const ISSUER: string = TEST_ISSUER;
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const MIA = '22222222-2222-4222-8222-222222222222';
 

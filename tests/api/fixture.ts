@@ -28,7 +28,7 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import type { ServedIdentity } from '../../apps/api/identity.ts';
 import { runtimeKeys, type RuntimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
-import { signBearer, testSignIn } from '../support/sign-in.ts';
+import { signBearer, TEST_ISSUER, testSignIn } from '../support/sign-in.ts';
 
 /**
  * The business key to its identifier, on the administrative connection: the
@@ -37,7 +37,7 @@ import { signBearer, testSignIn } from '../support/sign-in.ts';
  */
 export { createBusinessResolver } from '../../apps/api/server.ts';
 
-export const ISSUER = 'http://127.0.0.1:54391';
+export const ISSUER: string = TEST_ISSUER;
 
 /** The key the path names the business by, which the server resolves itself. */
 export const BUSINESS_KEY = 'alpha';

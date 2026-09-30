@@ -23,11 +23,11 @@ import type { VerifiedSubject } from '../../packages/core-records/src/identity/l
 import { COMMAND_SURFACE, pathOf } from '../../packages/core-wire/src/surface.ts';
 import { createApi, type ReadExecutor } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
-import { signBearer, signForged, testSignIn } from '../support/sign-in.ts';
+import { signBearer, signForged, TEST_ISSUER, testSignIn } from '../support/sign-in.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 
-const ISSUER = 'http://127.0.0.1:54391';
+const ISSUER: string = TEST_ISSUER;
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const MIA = '22222222-2222-4222-8222-222222222222';
 
