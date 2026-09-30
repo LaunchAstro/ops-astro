@@ -394,6 +394,11 @@ export interface TaskLedgerResult {
   readonly ok: true;
   readonly days: readonly LedgerDayView[];
   readonly earlier: boolean;
+  /**
+   * Only with `query`: the reader's own matching tasks go past the most the
+   * ledger's search reads (C1's bound, 500), so some are not listed.
+   */
+  readonly more?: boolean;
 }
 
 /** A teammate on the Team panel's people strip (MP-7-10): no row is available. */
