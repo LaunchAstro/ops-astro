@@ -366,7 +366,15 @@ derives the child's credential again under its pinned key; a handback's
 replay is released only to the same helper presenting the same credential.
 A person is refused both `SCOPE_NOT_GRANTED`.
 
-Not built yet: the graph rows (with AW-06's planned layer).
+A person sees the helpers under the parent's run on `task.execution` (API.md,
+the execution graph): each helper's standing by the same rule, and its steps,
+the calls the broker records with the caller's own delegation beside the
+lease's (`model_calls.caller_delegation_id`, `0062`). When the parent's lease
+runs out, the child it was capped at runs out with it and its credential is
+`DELEGATION_NOT_LIVE`; the sweep brings the work back, and a replacement parent
+picks it up and hands a new helper the work. The old child is never resumed.
+
+Not built yet: an unplanned helper step against AW-06's planned layer.
 
 ## The expired session
 

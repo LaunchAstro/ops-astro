@@ -40,22 +40,10 @@ async function recordRefusal(
 ): Promise<string> {
   const id = randomUUID();
   await tx.query(
-    `insert into public.model_calls
-       (business_id, id, run_id, step_id, lease_id, version_id, reservation_id, delegation_id,
-        operation_key, state, reserved_minor, refusal_code, ended_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'refused', 0, $10, clock_timestamp())`,
-    [
-      tx.businessId,
-      id,
-      facts.runId,
-      facts.stepId,
-      facts.leaseId,
-      facts.versionId,
-      facts.reservationId,
-      facts.delegationId,
-      operationKey,
-      code,
-    ],
+    `insert into public.model_calls (${CALL_COLUMNS}, operation_key, state, reserved_minor,
+        refusal_code, ended_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'refused', 0, $11, clock_timestamp())`,
+    [tx.businessId, id, ...callFacts(facts), operationKey, code],
   );
   await broker.audit(tx, {
     action: 'model.call_refused',
@@ -275,19 +263,13 @@ async function insertHold(
 ): Promise<string> {
   const callId = randomUUID();
   await tx.query(
-    `insert into public.model_calls
-       (business_id, id, run_id, step_id, lease_id, version_id, reservation_id, delegation_id,
-        operation_key, state, reserved_minor, route_key, route_reach, credential_kind)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'reserved', $10, $11, $12, $13)`,
+    `insert into public.model_calls (${CALL_COLUMNS}, operation_key, state, reserved_minor,
+        route_key, route_reach, credential_kind)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'reserved', $11, $12, $13, $14)`,
     [
       tx.businessId,
       callId,
-      facts.runId,
-      facts.stepId,
-      facts.leaseId,
-      facts.versionId,
-      facts.reservationId,
-      facts.delegationId,
+      ...callFacts(facts),
       operation.key,
       operation.maximumMinor,
       route.key,
@@ -296,4 +278,21 @@ async function insertHold(
     ],
   );
   return callId;
+}
+
+/** A call row's leading columns: the business, its id, then `callFacts`' order. */
+const CALL_COLUMNS = `business_id, id, run_id, step_id, lease_id, version_id, reservation_id,
+       delegation_id, caller_delegation_id`;
+
+/** The call's facts in `CALL_COLUMNS`' order: the lease's delegation, then the caller's (0062). */
+function callFacts(facts: Facts): readonly (string | null)[] {
+  return [
+    facts.runId,
+    facts.stepId,
+    facts.leaseId,
+    facts.versionId,
+    facts.reservationId,
+    facts.delegationId,
+    facts.callerDelegationId,
+  ];
 }

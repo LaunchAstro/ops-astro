@@ -12,6 +12,7 @@
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { projectGraph, type ExecutionGraph } from './execution-graph.ts';
+import { HELPER_FACTS } from './execution-helpers.ts';
 
 /** The most events one read returns. `next` is the handle for the rest. */
 export const EXECUTION_PAGE = 200;
@@ -79,9 +80,9 @@ const ISO = `'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`;
 
 /**
  * Each run's facts for the graph (AW-06, `execution-graph.ts`): its gate, its
- * version, its latest lease and attempt, its reservations and its last event
- * at or before the head. `$1` is the business, `$2` the task; `head` is the
- * statement's own event head.
+ * version, its latest lease and attempt, its reservations, its last event at
+ * or before the head, and its helpers (AW-11). `$1` is the business, `$2`
+ * the task; `head` is the statement's own event head.
  */
 const RUN_FACTS = `coalesce((select json_agg(json_build_object(
     'runId', run.id, 'state', run.state,
@@ -104,7 +105,9 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
       where res.business_id = $1 and res.run_id = run.id and res.state = 'held'),
     'spentMinor', (select sum(res.actual_minor)::float8 from public.reservations res
       where res.business_id = $1 and res.run_id = run.id and res.state = 'actual'),
-    'lastKind', last.kind, 'lastFault', last.detail ->> 'fault')
+    'lastKind', last.kind, 'lastFault', last.detail ->> 'fault',
+    -- The helpers the run's work was handed to (AW-11, execution-helpers.ts).
+    'helpers', ${HELPER_FACTS})
   order by run.created_at, run.id)
   from public.planned_runs run
   join public.proposal_versions ver

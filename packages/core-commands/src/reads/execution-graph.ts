@@ -30,6 +30,8 @@
 // run state this module does not know is kept raw (`runState`) with the
 // condition `unrecognised`, never dropped.
 
+import { helpersOf, type HelperEntry } from './execution-helpers.ts';
+
 /** What `execution.ts` reads for each run. */
 export interface RunFacts {
   readonly runId: string;
@@ -54,6 +56,8 @@ export interface RunFacts {
   readonly spentMinor: number | null;
   readonly lastKind: string | null;
   readonly lastFault: string | null;
+  /** AW-11's helpers, as `execution-helpers.ts` reads them. */
+  readonly helpers: readonly HelperEntry[];
 }
 
 export type ObservedCondition =
@@ -90,6 +94,8 @@ export interface GraphNode {
   /** AW-04's bound plan record; null until it is read. */
   readonly planned: null;
   readonly observed: ObservedLayer;
+  /** The helpers the run's work was handed to, each with its own steps (AW-11). */
+  readonly helpers: readonly HelperEntry[];
 }
 
 export interface ExecutionGraph {
@@ -111,7 +117,13 @@ export function projectGraph(
     complete,
     nodes: runs.map((run) => {
       const observed = observe(run);
-      return { nodeId: run.runId, condition: observed.condition, planned: null, observed };
+      return {
+        nodeId: run.runId,
+        condition: observed.condition,
+        planned: null,
+        observed,
+        helpers: run.helpers,
+      };
     }),
   });
 }
@@ -217,7 +229,7 @@ function validateFacts(facts: unknown): readonly RunFacts[] {
       )
     )
       throw new Error(`${where}: the attempt is malformed`);
-    return fact as unknown as RunFacts;
+    return { ...(fact as unknown as RunFacts), helpers: helpersOf(fact['helpers'], where) };
   });
 }
 
