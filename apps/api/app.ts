@@ -45,6 +45,8 @@ import {
   agentAnswer,
   isCommandRefusal,
   isReadName,
+  joinLiveBoard,
+  shownInbox,
   refuseCommand,
 } from '../../packages/core-commands/src/index.ts';
 import {
@@ -63,6 +65,7 @@ import type {
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
 import type { LiveSignal, LiveTopics } from './live.ts';
+import { followBoard } from './live-board.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -295,6 +298,37 @@ export function createApi(options: ApiOptions): Hono {
         await follow(stream, live, admitted.businessId, taskId, may);
       });
     });
+    // INB-1f: the board's one stream per tab, through the same door. Each task
+    // it names is asked as the task's own stream asks it; the inbox topic is
+    // the caller's own person, which the join resolves, asked again each batch.
+    api.get(`${PREFIX.person}:businessKey/live`, async (context) => {
+      const admitted = await admit(options, context, PERSON, false);
+      if (admitted instanceof Response) return admitted;
+      const join = async () => await mayJoinBoard(options, context, admitted.businessId);
+      const joined = await join();
+      if (isCommandRefusal(joined)) return refuse(context, joined);
+      return streamSSE(context, async (stream) => {
+        await followBoard(
+          stream,
+          live.topics,
+          {
+            businessId: admitted.businessId,
+            personId: joined.personId,
+            recheckMs: live.recheckMs ?? RECHECK_MS,
+          },
+          {
+            joinedAs: async () => {
+              const again = await join();
+              return isCommandRefusal(again) ? undefined : again.personId;
+            },
+            reads: async (taskId) =>
+              typeof (await mayWatch(options, context, admitted.businessId, taskId)) === 'string',
+            shown: async (personId) =>
+              await mayShowInbox(options, context, admitted.businessId, personId),
+          },
+        );
+      });
+    });
   }
 
   return api;
@@ -310,6 +344,7 @@ async function mayWatch(
   options: ApiOptions,
   context: Context,
   businessId: string,
+  recordId: string | undefined = context.req.param('recordId'),
 ): Promise<string | CommandRefusal> {
   const presented = await options.verify(context.req);
   if (presented === undefined || presented === 'expired') {
@@ -317,11 +352,36 @@ async function mayWatch(
   }
   const read = await options.executeRead(options.database, businessId, presented, {
     read: 'task.execution',
-    recordId: context.req.param('recordId'),
+    recordId,
   });
   if (isCommandRefusal(read)) return read;
   if ('execution' in read) return read.execution.taskId;
   throw new Error('task.execution answered something other than an execution');
+}
+
+/** Whether this caller may hold the board's stream (INB-1f), with the bearer verified again. */
+async function mayJoinBoard(
+  options: ApiOptions,
+  context: Context,
+  businessId: string,
+): Promise<{ readonly personId: string } | CommandRefusal> {
+  const presented = await options.verify(context.req);
+  if (presented === undefined || presented === 'expired') {
+    return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
+  }
+  return await joinLiveBoard(options.database, businessId, presented);
+}
+
+/** What `inbox.read` shows the stream's own person now, asked with the bearer verified again. */
+async function mayShowInbox(
+  options: ApiOptions,
+  context: Context,
+  businessId: string,
+  personId: string,
+): Promise<string | undefined> {
+  const presented = await options.verify(context.req);
+  if (presented === undefined || presented === 'expired') return undefined;
+  return await shownInbox(options.database, businessId, presented, personId);
 }
 
 const RECHECK_MS = 30_000;

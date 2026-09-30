@@ -114,6 +114,7 @@
     "tests/runtime/run-progress-read.test.ts",
     "tests/api/t2b-worker.test.ts",
     "tests/api/t2f-live-channel.test.ts",
+    "tests/api/inb1f-live-board.test.ts",
     "tests/runtime/t2c1-dispatch.test.ts",
     "tests/runtime/t2c1-dispatch-migration.test.ts",
     "tests/runtime/t2c2-effect.test.ts",
@@ -305,6 +306,7 @@
     "tests/commands/inbox-alert.test.ts",
     "tests/reads/inbox-named.test.ts",
     "tests/cli/inbox-process.test.ts",
+    "tests/surfaces/inbox-three-surfaces.test.tsx",
     "tests/cli/inbox-readback.test.ts",
     "tests/commands/inbox-unattended.test.ts",
     "tests/commands/inbox-escalation-settings.test.ts"
