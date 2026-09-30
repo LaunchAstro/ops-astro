@@ -28,8 +28,6 @@ export const SHELL: LookScreen = {
         'text-transform',
         'color',
       ],
-      // DR-10 folded the dark muted ink to 55 percent; the mockup drew 46.
-      ruled: [{ at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' }],
     },
     {
       id: 'shell.rail-item',
