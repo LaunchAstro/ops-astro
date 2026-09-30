@@ -132,6 +132,7 @@ describe('the spine declaration', () => {
     expect(TASK_SPINE.find((field) => field.key === 'state')?.owningOperations).toStrictEqual([
       'task.complete',
       'task.reopen',
+      'task.set_state',
       'task.start',
     ]);
   });

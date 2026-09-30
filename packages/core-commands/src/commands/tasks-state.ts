@@ -249,6 +249,64 @@ export async function setState(
   });
 }
 
+/**
+ * Point the task at one of the business's own states, by its record id.
+ *
+ * The status select's Waiting on client and On hold: the first shares
+ * `started` with Active, so no move by category reaches it. The id is looked
+ * up in this business's states only, so another business's state and an id
+ * that was never real are one answer. Completion is not reached this way,
+ * because `task.complete` is the one transition that asks about open gates
+ * and archives the steps, and a completed task is left only by `task.reopen`,
+ * which takes a reason; so no step moves and no stamp changes here.
+ */
+export async function setStateById(
+  tx: TenantQuery,
+  context: CommandContext,
+  stateId: string,
+): Promise<HandlerOutcome> {
+  const target = context.target;
+  if (target === undefined) throw new Error('setStateById: the envelope read no target');
+
+  const wanted = stateId.toLowerCase();
+  const state = context.spine.states.find((candidate) => candidate.id === wanted);
+  if (state === undefined) {
+    return refuse(
+      'NOT_FOUND',
+      ['stateId'],
+      ['No task state of this business carries that identifier.', 'task.read names the states.'],
+    );
+  }
+  if (state.machineCategory === 'completed') {
+    return notPermitted(state.key, [
+      'A task is completed by task.complete, which checks its open approvals first.',
+    ]);
+  }
+  const current = context.spine.states.find((candidate) => candidate.id === target.data['state']);
+  if (current?.machineCategory === 'completed') {
+    return notPermitted(current.key, [
+      'A completed task is reopened first.',
+      'Call task.reopen with a reason.',
+    ]);
+  }
+  if (current?.id === state.id) {
+    return notPermitted(state.key, ['The task is already in this state.']);
+  }
+
+  const moved = await setTaskState(tx, {
+    taskId: target.id,
+    stateId: state.id,
+    taskStateTypeId: context.spine.taskStateTypeId,
+  });
+  if (isRecordsRefusal(moved)) return refused(moved);
+  const rows = await tx.query<{ readonly revision: string }>(
+    `select revision::text as revision from records where business_id = $1 and id = $2`,
+    [tx.businessId, target.id],
+  );
+  const revision = rows[0]?.revision;
+  return applied(target.id, revision === undefined ? null : Number(revision), { state: state.key });
+}
+
 /** Write the fields this command's name owns, and refuse the ones it does not. */
 export async function writeOwnedFields(
   tx: TenantQuery,

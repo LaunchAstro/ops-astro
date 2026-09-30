@@ -79,6 +79,7 @@ export type CommandRequest =
   | ({ readonly command: 'task.complete' } & Targeted)
   | ({ readonly command: 'task.reopen'; readonly reason: string } & Targeted)
   | ({ readonly command: 'task.start' } & Targeted)
+  | ({ readonly command: 'task.set_state'; readonly stateId: string } & Targeted)
   | ({
       readonly command: 'task.comment';
       readonly body: string;

@@ -194,7 +194,7 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
     expect(missing).toStrictEqual([]);
   });
 
-  it('finds twelve of them, which is what makes nine commands too few', () => {
+  it('finds thirteen of them, which is what makes nine commands too few', () => {
     expect(named).toStrictEqual([
       'task.assign',
       'task.complete',
@@ -206,12 +206,13 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
       'task.set_party',
       'task.set_scores',
       'task.set_stage',
+      'task.set_state',
       'task.start',
       'task.triage',
     ]);
-    // Twelve names, and only two of them — complete and reopen — are among the
-    // contract's nine commands. The other ten are why this part declares
-    // more than nine, and `task.rank` is a thirteenth operation the mechanics
+    // Thirteen names, and only two of them — complete and reopen — are among
+    // the contract's nine commands. The other eleven are why this part declares
+    // more than nine, and `task.rank` is a fourteenth operation the mechanics
     // need that neither list carries.
     expect(named.filter((name) => CONTRACT_NINE.includes(name as CommandName))).toStrictEqual([
       'task.complete',

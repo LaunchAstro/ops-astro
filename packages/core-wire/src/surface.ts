@@ -45,6 +45,7 @@ export type CommandName =
   | 'task.handback'
   // The owning operations the task type's field definitions name.
   | 'task.start'
+  | 'task.set_state'
   | 'task.assign'
   | 'task.triage'
   | 'task.set_stage'
@@ -340,6 +341,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.complete': TARGET,
   'task.reopen': { ...TARGET, reason: 'any' },
   'task.start': TARGET,
+  'task.set_state': { ...TARGET, stateId: 'id' },
   'task.comment': {
     ...TARGET,
     body: 'any',
@@ -477,6 +479,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
 
   declare('task.start', 'write'),
+  // Any state of the business's own workflow but a completed one, by its
+  // record id (the status select: Waiting on client, On hold). A person's
+  // call: an agent's lifecycle stays pickup and handback.
+  declare('task.set_state', 'write'),
   // An agent sets the assignee of its own task when its delegation holds
   // `task:assign` (MP-4-8), and not the delegate: `assignTaskAsAgent`.
   declare('task.assign', 'assign', { agent: 'delegated' }),

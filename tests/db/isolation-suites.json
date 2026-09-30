@@ -13,6 +13,8 @@
     "tests/reads/mp-5-8-board-columns.test.ts",
     "tests/reads/mp-5-8-board-actual.test.ts",
     "tests/reads/mp-5-8-board-estimate.test.ts",
+    "tests/commands/task-set-state.test.ts",
+    "tests/commands/task-set-state-agent.test.ts",
     "tests/reads/mp-5-8-board-agent.test.ts",
     "tests/reads/mp-5-11-board-status-order.test.ts",
     "tests/reads/mp-5-11-board-agent.test.ts",

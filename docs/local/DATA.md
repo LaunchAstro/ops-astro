@@ -182,26 +182,26 @@ There is no `tasks` table. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field
 table exactly:
 
-| Field               | Slot                 | Written by                                   |
-| ------------------- | -------------------- | -------------------------------------------- |
-| `state`             | `uuid_1`             | `task.start`, `task.complete`, `task.reopen` |
-| `assignee`          | `uuid_2`             | `task.assign`                                |
-| `title`             | `txt_4`              | `task.update`                                |
-| `description`       | unslotted, in `data` | `task.update`                                |
-| `agent_brief`       | unslotted, in `data` | `task.update` (0045, MP-4-7)                 |
-| `page_link`         | unslotted, in `data` | `task.update` (0048, MP-4-12)                |
-| `estimated_minutes` | unslotted, in `data` | `task.update` (0049, MP-4-8)                 |
-| `due`               | `ts_1`               | `task.update`                                |
-| `priority`          | `num_1`              | `task.update`                                |
-| `completed_at`      | `ts_2`               | derived on complete, cleared on reopen       |
-| `stage`             | `txt_5`              | `task.set_stage`                             |
-| `impact`            | `num_3`              | `task.set_scores`                            |
-| `confidence`        | `num_4`              | `task.set_scores`                            |
-| `ease`              | `num_5`              | `task.set_scores`                            |
-| `ad_hoc`            | `bool_2`             | `task.set_adhoc`                             |
-| `archived_at`       | unslotted, in `data` | derived on complete, cleared on reopen       |
-| `archived_why`      | unslotted, in `data` | derived on complete, cleared on reopen       |
-| `key`, `source`     | `txt_1`, `txt_2`     | system                                       |
+| Field               | Slot                 | Written by                                                     |
+| ------------------- | -------------------- | -------------------------------------------------------------- |
+| `state`             | `uuid_1`             | `task.start`, `task.complete`, `task.reopen`, `task.set_state` |
+| `assignee`          | `uuid_2`             | `task.assign`                                                  |
+| `title`             | `txt_4`              | `task.update`                                                  |
+| `description`       | unslotted, in `data` | `task.update`                                                  |
+| `agent_brief`       | unslotted, in `data` | `task.update` (0045, MP-4-7)                                   |
+| `page_link`         | unslotted, in `data` | `task.update` (0048, MP-4-12)                                  |
+| `estimated_minutes` | unslotted, in `data` | `task.update` (0049, MP-4-8)                                   |
+| `due`               | `ts_1`               | `task.update`                                                  |
+| `priority`          | `num_1`              | `task.update`                                                  |
+| `completed_at`      | `ts_2`               | derived on complete, cleared on reopen                         |
+| `stage`             | `txt_5`              | `task.set_stage`                                               |
+| `impact`            | `num_3`              | `task.set_scores`                                              |
+| `confidence`        | `num_4`              | `task.set_scores`                                              |
+| `ease`              | `num_5`              | `task.set_scores`                                              |
+| `ad_hoc`            | `bool_2`             | `task.set_adhoc`                                               |
+| `archived_at`       | unslotted, in `data` | derived on complete, cleared on reopen                         |
+| `archived_why`      | unslotted, in `data` | derived on complete, cleared on reopen                         |
+| `key`, `source`     | `txt_1`, `txt_2`     | system                                                         |
 
 There is no `status` column and no second coarse field. Whether a task is done
 is the machine category of the state record the task points at.

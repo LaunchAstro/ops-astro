@@ -64,6 +64,24 @@ export function createPositiveBody(
           },
         };
       }
+      case 'task.set_state': {
+        // A state id is the business's own, so it is read off a fresh task
+        // (its first state), which is then started and set back to it.
+        const task = await context.freshTask('a task to start and set back');
+        const read = await context.asPerson('task.read', { recordId: task.id });
+        const state = (read.body['task'] as { state: { id: string } | null }).state;
+        const started = await context.asPerson('task.start', {
+          recordId: task.id,
+          expectedRevision: task.revision,
+        });
+        return {
+          body: {
+            recordId: task.id,
+            expectedRevision: Number(started.body['revision']),
+            stateId: state?.id,
+          },
+        };
+      }
       case 'task.comment':
         return { body: { ...(await target()), body: 'a note', audience: 'internal' } };
       case 'task.edit_comment':

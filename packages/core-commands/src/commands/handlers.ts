@@ -15,7 +15,7 @@ import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import type { HandlerOutcome } from './outcome.ts';
 import { createTask, updateTask } from './tasks-write.ts';
-import { setState, writeOwnedFields } from './tasks-state.ts';
+import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
 import { setScores } from './tasks-scores.ts';
 import { setAdHoc } from './tasks-adhoc.ts';
 import { setParty } from './tasks-party.ts';
@@ -60,6 +60,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.complete': (tx, context) => setState(tx, context, 'completed'),
   'task.reopen': (tx, context, request) => setState(tx, context, 'unstarted', request.reason),
   'task.start': (tx, context) => setState(tx, context, 'started'),
+  'task.set_state': (tx, context, request) => setStateById(tx, context, request.stateId),
 
   'task.assign': writeOwned,
   'task.triage': writeOwned,

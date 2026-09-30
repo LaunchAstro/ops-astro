@@ -38,6 +38,9 @@
 // `task.remove_tag`, untargeted writes an agent never reaches, and the
 // `tag.list` read, one row each in the tables that list every write, every
 // untargeted one or every operation with no expected revision.
+// The ninth is the status select's `task.set_state`: a targeted write an
+// agent never reaches, to `setStateById` with its state id, one row each in
+// the tables that list every write.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -75,6 +78,7 @@ vi.mock('../../packages/core-commands/src/commands/tasks-write.ts', async (origi
 vi.mock('../../packages/core-commands/src/commands/tasks-state.ts', async (original) => ({
   ...(await original<object>()),
   setState: recorder('setState'),
+  setStateById: recorder('setStateById'),
   writeOwnedFields: recorder('writeOwnedFields'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-scores.ts', async (original) => ({
@@ -328,6 +332,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.pickup', operationId: 'op', reservationId: 'res' },
   { command: 'task.handback', operationId: 'op', leaseId: 'l', fence: 2, outcome: 'done' },
   { command: 'task.start', operationId: 'op', recordId: 'r' },
+  { command: 'task.set_state', operationId: 'op', recordId: 'r', stateId: 'state' },
   { command: 'task.assign', operationId: 'op', recordId: 'r', fields: { assignee: 'f-assign' } },
   { command: 'task.triage', operationId: 'op', recordId: 'r', fields: { intake: 'f-triage' } },
   { command: 'task.set_stage', operationId: 'op', recordId: 'r', fields: { stage: 'f-stage' } },
@@ -408,6 +413,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.pickup': ['pickupAsPerson', 'request'],
   'task.handback': ['handbackOwnLease', 'request'],
   'task.start': ['setState', 'started'],
+  'task.set_state': ['setStateById', 'state'],
   'task.assign': ['writeOwnedFields', 'task.assign', { assignee: 'f-assign' }],
   'task.triage': ['writeOwnedFields', 'task.triage', { intake: 'f-triage' }],
   'task.set_stage': ['writeOwnedFields', 'task.set_stage', { stage: 'f-stage' }],

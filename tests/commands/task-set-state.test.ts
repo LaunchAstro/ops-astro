@@ -234,16 +234,18 @@ describe.skipIf(serverUrl === undefined)('Stage 1 adds: task.set_state refusals'
     expect(await stored(task.recordId)).toStrictEqual(before);
   });
 
+  // A string that is no uuid names nothing, and is answered as every such
+  // identifier is (root ruling 2); a value that is no string is mistyped.
   it.each([
-    ['a key, not an id', 'on_hold'],
-    ['a number', 7],
-    ['null', null],
-    ['nothing', undefined],
-  ])('refuses %s as the state and writes nothing', async (_label, value) => {
+    ['a key, not an id', 'on_hold', { code: 'NOT_FOUND', names: [] }],
+    ['a number', 7, { code: 'FIELD_VALUE_INVALID', names: ['stateId'] }],
+    ['null', null, { code: 'FIELD_VALUE_INVALID', names: ['stateId'] }],
+    ['nothing', undefined, { code: 'FIELD_VALUE_INVALID', names: ['stateId'] }],
+  ])('refuses %s as the state and writes nothing', async (_label, value, refusal) => {
     const task = await fresh(alpha, writer, 'hostile');
     const before = await stored(task.recordId);
     const answer = await setState(alpha, writer, task, value);
-    expect(outcomeOf(answer)).toStrictEqual({ code: 'FIELD_VALUE_INVALID', names: ['stateId'] });
+    expect(outcomeOf(answer)).toStrictEqual(refusal);
     expect(await stored(task.recordId)).toStrictEqual(before);
   });
 });

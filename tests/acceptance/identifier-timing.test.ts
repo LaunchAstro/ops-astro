@@ -203,6 +203,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     const onRecord: Readonly<Partial<Record<CommandName, Body>>> = {
       'task.update': { fields: { title: NOBODY } },
       'task.reopen': { reason: NOBODY },
+      'task.set_state': { stateId: randomUUID() },
       'task.comment': { body: NOBODY, audience: 'internal' },
       'task.edit_comment': { commentId: randomUUID(), body: NOBODY },
       'task.delete_comment': { commentId: randomUUID() },
@@ -335,11 +336,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 46 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 47 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(46);
-    expect(names).toHaveLength(46);
+    expect(new Set(names).size, 'distinct operations').toBe(47);
+    expect(names).toHaveLength(47);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

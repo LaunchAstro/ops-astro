@@ -32,8 +32,9 @@ export interface SpineField {
   readonly writeMode: WriteMode;
   /**
    * The operations that own a protected field; empty for one no operation
-   * owns. More than one for `state`: completing, reopening and starting are
-   * three commands over one field (minimum contract, 5.2). A list rather than
+   * owns. More than one for `state`: completing, reopening, starting and
+   * setting a named state are four commands over one field (minimum contract,
+   * 5.2). A list rather than
    * a string holding a list since 0009, because a reader who forgets to split
    * sees one operation named `task.complete task.reopen task.start`.
    */
@@ -68,10 +69,11 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'uuid',
     slot: 'uuid_1',
     writeMode: 'operation',
-    // Three commands over one field. The refusal names all three, because a
-    // caller told only "call task.complete" would be told the wrong thing
-    // two-thirds of the time.
-    owningOperations: ['task.complete', 'task.reopen', 'task.start'],
+    // Four commands over one field: the lifecycle three by machine category,
+    // and `task.set_state` by the state's id. The refusal names all four,
+    // because a caller told only "call task.complete" would be told the
+    // wrong thing most of the time.
+    owningOperations: ['task.complete', 'task.reopen', 'task.set_state', 'task.start'],
     escalatingOperation: null,
     // A shared task shows the client its status (I09 ruling), as the label.
     visibilityClass: 'shared',
