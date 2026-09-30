@@ -17,6 +17,7 @@ import { Attempts } from './agent/attempts.tsx';
 import { Gate, type GateDecision, type GateRef } from './agent/gate.tsx';
 import { RunKnowledge } from './agent/knowledge.tsx';
 import { ProposalHeader, Summary, Workflow } from './agent/header.tsx';
+import { Evidence } from './agent/evidence.tsx';
 import { Given } from './agent/given.tsx';
 import { Scope } from './agent/scope.tsx';
 import { StagedOutput } from './agent/staged.tsx';
@@ -126,6 +127,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
           decisions={lineage?.decisions ?? []}
           onDecide={props.onDecide}
         />
+        <Evidence story={shown} />
       </div>
       <RunSide {...props} shown={shown} />
     </div>
