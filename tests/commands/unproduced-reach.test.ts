@@ -279,7 +279,7 @@ describe.skipIf(serverUrl === undefined)(
       );
       for (const body of [
         { command: 'task.create', fields: { title: 'an agent making its own work' } },
-        { command: 'task.assign', recordId: subject, assigneeActorId: agentActorId },
+        { command: 'task.set_stage', recordId: subject, fields: { stage: 'review' } },
       ]) {
         // eslint-disable-next-line no-await-in-loop
         const outcome = await asAgent({ ...body, operationId: randomUUID() }, credential);
@@ -301,7 +301,7 @@ describe.skipIf(serverUrl === undefined)(
             event.refusal_code === 'DELEGATION_EXCLUDES_OPERATION',
         );
       });
-      expect(events.map((event) => event.command)).toStrictEqual(['task.create', 'task.assign']);
+      expect(events.map((event) => event.command)).toStrictEqual(['task.create', 'task.set_stage']);
       expect(events.every((event) => event.outcome === 'refused')).toBe(true);
       expect(events.every((event) => event.operation_id === null)).toBe(true);
 

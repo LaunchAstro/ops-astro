@@ -61,9 +61,12 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   // sets on its own task inside its delegation.
   'task.set_scores',
   'task.set_adhoc',
-  // The description and the brief (MP-4-7), the two texts an agent writes
-  // through `task.update` on its own task.
+  // The description and the brief (MP-4-7), the name, the due date and the
+  // page link (MP-4-8, MP-4-12): the fields an agent writes through
+  // `task.update` on its own task.
   'task.update',
+  // The assignee (MP-4-8), under a delegation that also holds assign.
+  'task.assign',
   'task.heartbeat',
   'task.dispatch',
   'task.observe',
@@ -164,7 +167,8 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       return { body: { operationId, ...body }, credential };
     }
     const own = await ownWriteBody(harness, name, held);
-    if (own !== undefined) return { body: { operationId, ...own }, credential };
+    if (own !== undefined)
+      return { body: { operationId, ...own.body }, credential: own.credential };
     if (name === 'task.propose') {
       // The picked-up task's envelope holds its approved work to the minor
       // unit; room is widened here as `roomToApprove` widens the cap, so the

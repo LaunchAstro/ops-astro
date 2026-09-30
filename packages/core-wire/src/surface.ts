@@ -426,8 +426,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['parentId', 'board', 'boardSection'],
   }),
-  // An agent writes the description and its brief on its own task inside its
-  // delegation (MP-4-7), and no other field: `updateTaskText` refuses the rest.
+  // An agent writes the description, its brief, the name, the due date and
+  // the page link on its own task inside its delegation (MP-4-7, MP-4-8,
+  // MP-4-12), and no other field: `updateTaskAsAgent` refuses the rest.
   declare('task.update', 'write', { agent: 'delegated' }),
   declare('task.complete', 'write'),
   declare('task.reopen', 'write'),
@@ -465,7 +466,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
 
   declare('task.start', 'write'),
-  declare('task.assign', 'assign'),
+  // An agent sets the assignee of its own task when its delegation holds
+  // `task:assign` (MP-4-8), and not the delegate: `assignTaskAsAgent`.
+  declare('task.assign', 'assign', { agent: 'delegated' }),
   declare('task.triage', 'write'),
   declare('task.set_stage', 'write'),
   declare('task.set_party', 'share'),

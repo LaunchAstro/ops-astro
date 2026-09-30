@@ -45,6 +45,7 @@ import { isInProductLink } from '../../../core-wire/src/index.ts';
 import { refuseCreateOperands, refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { clientOf } from './tasks-party.ts';
+import { writeOwnedFields } from './tasks-state.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
 
@@ -298,31 +299,60 @@ function refuseLinkOutside(fields: FieldValues): CommandRefusal | undefined {
   );
 }
 
-/** The two task texts an agent writes through `task.update` (MP-4-7). */
-export const AGENT_TEXT_FIELDS: readonly string[] = ['agent_brief', 'description'];
+/**
+ * The fields an agent writes through `task.update`: the two texts (MP-4-7),
+ * and the name, the due date and the page link, which MP-4-8's and MP-4-12's
+ * Permissions tables give it "inside its delegation". Each is still held to
+ * the delegation's `task:write` and to the task's own field rules.
+ */
+export const AGENT_UPDATE_FIELDS: readonly string[] = [
+  'agent_brief',
+  'description',
+  'due',
+  'page_link',
+  'title',
+];
+
+/** What an agent's `task.assign` sets: the assignee (MP-4-8), not the delegate. */
+export const AGENT_ASSIGN_FIELDS: readonly string[] = ['assignee'];
 
 /**
- * `task.update` as an agent makes it: the description and the brief on its
- * own delegated task, and nothing else. A body naming any other field is
- * refused whole, naming those fields, before anything is written: the agent's
- * reach is the two texts, not the fields a person may edit.
+ * `task.update` as an agent makes it, on its own delegated task: the fields
+ * above and nothing else. A body naming any other field is refused whole,
+ * naming those fields, before anything is written.
  */
-export async function updateTaskText(
+export async function updateTaskAsAgent(
   tx: TenantQuery,
   context: Pick<CommandContext, 'spine' | 'target'>,
   fields: FieldValues,
 ): Promise<HandlerOutcome> {
-  const outside = Object.keys(fields)
-    .filter((key) => !AGENT_TEXT_FIELDS.includes(key))
-    .toSorted();
-  if (outside.length > 0) {
-    return refused(
-      refuseCommand('SCOPE_NOT_GRANTED', outside, [
-        'An agent writes only the description and the agent brief through task.update.',
-      ]),
-    );
-  }
+  const outside = outsideAgentReach(fields, AGENT_UPDATE_FIELDS);
+  if (outside !== undefined) return refused(outside);
   return await updateTask(tx, context, { fields });
+}
+
+/** `task.assign` as an agent makes it: the assignee of its own delegated task. */
+export async function assignTaskAsAgent(
+  tx: TenantQuery,
+  context: Pick<CommandContext, 'spine' | 'target'>,
+  fields: FieldValues,
+): Promise<HandlerOutcome> {
+  const outside = outsideAgentReach(fields, AGENT_ASSIGN_FIELDS);
+  if (outside !== undefined) return refused(outside);
+  return await writeOwnedFields(tx, context, 'task.assign', fields);
+}
+
+function outsideAgentReach(
+  fields: FieldValues,
+  reach: readonly string[],
+): CommandRefusal | undefined {
+  const outside = Object.keys(fields)
+    .filter((key) => !reach.includes(key))
+    .toSorted();
+  if (outside.length === 0) return undefined;
+  return refuseCommand('SCOPE_NOT_GRANTED', outside, [
+    `An agent writes only ${reach.join(', ')} through this command.`,
+  ]);
 }
 
 /**
