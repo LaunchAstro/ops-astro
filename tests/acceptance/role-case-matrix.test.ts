@@ -226,19 +226,24 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           );
           continue;
         }
-        if (declaration.name === 'preference.read' && grants !== undefined) {
-          // The caller's own preferences (MP-2-11a): self-scoped, but asking a
-          // live grant of any kind, as `session.capabilities` does. `noah`,
-          // holding nothing, is refused; a member holding any grant is served
-          // their own row, which names nobody else.
+        if (declaration.collection === 'preference' && grants !== undefined) {
+          // The caller's own preferences (MP-2-11a). A save is every signed-in
+          // person's, on their own row only. The read is self-scoped too but
+          // asks a live grant of any kind, as `session.capabilities` does:
+          // `noah`, holding nothing, is refused it; a member holding any grant
+          // is served their own row, which names nobody else.
+          const save = declaration.name === 'preference.save';
           // eslint-disable-next-line no-await-in-loop
           const own = await call(
             harness.world.api,
             personPath('alpha', pathOf(declaration.name)),
-            harness.probeBody(declaration),
+            {
+              ...harness.probeBody(declaration),
+              ...(save ? { preference: 'appearance', value: 'dark' } : {}),
+            },
             bearer(caller.token),
           );
-          const expected = grants.size === 0 ? refusal('SCOPE_NOT_GRANTED') : SUCCESS;
+          const expected = save || grants.size > 0 ? SUCCESS : refusal('SCOPE_NOT_GRANTED');
           observe(caller.name, 'e-no-grant', declaration.name, own, expected);
           expect(JSON.stringify(own.body), caller.name).not.toContain(
             String(harness.world.ada.personId),
