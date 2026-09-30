@@ -60,8 +60,12 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.handback',
 ];
 
-/** In `AGENT_SURFACE` and still not the agent's: a person decides (case (j) of the matrix). */
-const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide']);
+/**
+ * In `AGENT_SURFACE` and still not the pickup agent's: a person decides (case (j)
+ * of the matrix), and a create is outside a one-task purpose (an agent
+ * credential's to make, API-2).
+ */
+const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide', 'task.create']);
 
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
   TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),
@@ -261,7 +265,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       const answer = await harness.asAgent(cell.operation, body, held.credential);
       const after = await durable();
       const reason = AGENT_EXCLUDED_BY_DESIGN.has(cell.operation)
-        ? `a person decides; answered ${String(answer.body['code'])}`
+        ? `${cell.operation === 'task.decide' ? 'a person decides' : 'outside the purpose'}; answered ${String(answer.body['code'])}`
         : `not in AGENT_SURFACE; answered ${String(answer.body['code'])}`;
       tally.count(cell.operation, 'agent', answer.body['refused'] === true, reason);
       expect(answer.body['refused']).toBe(true);
