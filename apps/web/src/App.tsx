@@ -20,7 +20,7 @@ import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { signOut } from './session/sign-in.ts';
 import { SignIn } from './screens/SignIn.tsx';
-import { drawScreen } from './screen-registry.tsx';
+import { drawOpenScreen, drawScreen } from './screen-registry.tsx';
 
 export interface AppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
@@ -208,6 +208,8 @@ export function App(props: AppProps): ReactElement {
         return <NotFound path={here} />;
       case 'sign-in':
         return signIn;
+      case 'open':
+        return drawOpenScreen(gate.match, props);
       case 'signed-in-already':
         return (
           <SignedInAlready
@@ -233,10 +235,9 @@ export function App(props: AppProps): ReactElement {
     }
   })();
 
-  // Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a
-  // bundler that did not stamp, and the rail then says the build is unstamped.
-  // Read by name, never by index: an indexed read inlines every VITE_ setting
-  // of the build's environment into the bundle (G3).
+  // Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a bundler that did
+  // not stamp, and the rail then says the build is unstamped. Read by name, never by index: an
+  // indexed read inlines every VITE_ setting of the build's environment into the bundle (G3).
   const build = import.meta.env.VITE_OPS_ASTRO_BUILD ?? '';
 
   return (

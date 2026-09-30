@@ -110,7 +110,11 @@ async function notPublishedAt(path: string): Promise<string> {
   expect(state, path).not.toBeNull();
   expect(state?.textContent, path).toContain('This document is not published.');
   expect(view.find('[data-paragraph]'), path).toBeNull();
-  return state?.textContent ?? '';
+  const said = state?.textContent ?? '';
+  // Unmounted here, one at a time: two `act`s at once in `afterEach` spoil the next case.
+  live.splice(live.indexOf(view), 1);
+  await view.unmount();
+  return said;
 }
 
 describe('C81 public legal page, not published', () => {

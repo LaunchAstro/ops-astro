@@ -100,11 +100,12 @@ async function capturePages(
   const shots: PageShot[] = [];
   for (const id of builtPages()) {
     const name = `${id}@${width}-${theme}`;
-    const address = addressOf(id, { key: 'T-1' }) ?? '/';
+    const address =
+      addressOf(id, { key: 'T-1', business: 'alpha', document: 'privacy-policy' }) ?? '/';
     const side = needsSession(id) ? sides.signedIn : sides.signedOut;
     const page = await load(side, packet, new URL(address, app).href);
     // The intended screen is checked before the picture counts.
-    const intended = needsSession(id) ? 'the page' : 'the sign-in form';
+    const intended = id === 'agency:sign-in' ? 'the sign-in form' : 'the page';
     const drew = await page.evaluate(screenOf);
     const [shot] = await shoot(page, name, { page: 'viewport' }, mask);
     const overflow = overflowOf(await page.evaluate(scrollMetrics));

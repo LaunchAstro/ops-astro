@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The screen each authenticated route draws.
+// The screen each authenticated route draws, and each open one (a public
+// route other than sign-in, drawn from public reads with or without a session).
 //
 // The route registry is the router, so the screens are looked up by route id
 // rather than chosen by comparing strings. Keyed by `AuthenticatedRouteId`, a
@@ -10,9 +11,10 @@
 
 import type { ReactElement, ReactNode } from 'react';
 import { Gallery } from '@launchastro/ui';
-import type { AuthenticatedRouteId, ParamsOf, RouteMatch } from './routes.ts';
+import type { AuthenticatedRouteId, OpenRouteId, ParamsOf, RouteMatch } from './routes.ts';
 import type { OperationsClient } from './operations/client.ts';
 import { AccessScreen } from './screens/Access.tsx';
+import { LegalScreen } from './screens/Legal.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
@@ -71,4 +73,29 @@ export function drawScreen<Id extends AuthenticatedRouteId>(
   context: Omit<ScreenContext<Id>, 'params'>,
 ): ReactElement {
   return SCREENS[match.id]({ ...context, params: match.params });
+}
+
+/** What an open route's screen is handed: the public reads only, never the session's client. */
+export interface OpenContext {
+  readonly apiOrigin: string;
+  readonly fetch: typeof globalThis.fetch;
+}
+
+/** The screen each open route draws, with or without a session; keyed so none is missed. */
+const OPEN_SCREENS: {
+  readonly [Id in OpenRouteId]: (params: ParamsOf<Id>, context: OpenContext) => ReactElement;
+} = {
+  'agency:legal': (params, context) => (
+    <LegalScreen
+      key={`${params.business}/${params.document}`}
+      business={params.business}
+      document={params.document}
+      apiOrigin={context.apiOrigin}
+      fetch={context.fetch}
+    />
+  ),
+};
+
+export function drawOpenScreen(match: RouteMatch<OpenRouteId>, context: OpenContext): ReactElement {
+  return OPEN_SCREENS[match.id](match.params, context);
 }
