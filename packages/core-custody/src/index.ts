@@ -30,6 +30,11 @@ export {
   type ConversationScope,
 } from './broker-conversation.ts';
 export {
+  callModelForPlanning,
+  readPlanningAllowance,
+  type PlanningAllowance,
+} from './broker-planning.ts';
+export {
   callModel,
   promptCopyRegistered,
   registerPromptCopy,

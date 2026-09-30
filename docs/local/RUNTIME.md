@@ -1575,9 +1575,39 @@ directory named by `OPS_ASTRO_INSTRUCTION_ROOT`; a symlink at any segment, a
 name outside the root, a directory or a missing file reads as nothing, and no
 root configured refuses the accept. C33's `definition_version` replaces the
 directory when it is built. Not here yet: the task and its components created
-in the same transaction (the gate's task exists from the plan's proposal), the
-run's own origin column (the bound plan and the audit event carry the origin),
-and the planning run's own budget (U10).
+in the same transaction (the gate's task exists from the plan's proposal), and
+the run's own origin column (the bound plan and the audit event carry the origin).
+
+## The planning budget
+
+Every planning reply before the accept is priced (U10), against a small budget
+of its own (`0063_planning_envelopes`, `core-custody/src/broker-planning.ts`).
+The business's planning cap is the `budget_caps` row keyed `planning`; with none
+set a planning reply is refused `BUDGET_UNAVAILABLE` before anything is written
+or sent. Each conversation spends through one planning envelope, which names
+the conversation and its owner and carries no totals.
+
+- **The hold.** `callModelForPlanning` runs the conversation seam's checks (the
+  owner in their own session, the catalogue, a local route under AW-03's rule),
+  then takes the cap row `for update` and adds up every planning call under it:
+  a settled call's actual, a held or sent call's hold. A reply whose priced
+  maximum does not fit is refused `BUDGET_UNAVAILABLE` with nothing written;
+  one that fits is written as its own row, sent, at its maximum on the envelope.
+  Two replies at once meet on the cap's lock, so the second counts the first.
+- **The end.** Priced within its hold, the reply settles at its price and the
+  rest is released; positive proof nothing happened releases it; no answer, or
+  a price above the hold, leaves it held at its maximum as unknown liability
+  against the envelope until a person records an outcome, as a task call is.
+- **The allowance line and the spend.** `readPlanningAllowance` answers whether
+  a cap is set, its limit, what is left of it across the business, and the
+  person's own conversation's settled spend and held amount. The conversation
+  part is filtered by its owner inside the query: another person's
+  conversation, or a made-up one, reads as nothing spent. The surface that
+  shows it (the drawer's allowance line, the spend beside the plan) is not here
+  yet; it is the team's and the conversation owner's to see.
+
+Not here yet: the cap's default value (none is set by any migration: an owner
+sets the cap), a command to set it, and the surface above.
 
 ## The budget wait
 
