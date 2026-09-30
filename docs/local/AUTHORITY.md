@@ -325,9 +325,18 @@ call: handed back or withdrawn is `DELEGATION_REVOKED`, run out is
 `DELEGATION_EXPIRED`, its person's authority lost is `DELEGATION_NARROWED`.
 The child's own credential, once not live, stays `DELEGATION_NOT_LIVE`.
 
-Not built yet: the child's pickup and reservation against the parent's
-envelope, the merged result, the graph rows, and a command surface for the
-mint.
+A child spends on its parent's work, never on a lease of its own: its
+`model.call` names the parent's lease and fence, and the broker admits the
+lease's holder under its delegation or a helper holding a live child of that
+delegation (`holdsWork`, `core-custody/src/broker-facts.ts`), so the call is
+held on the parent's reservation under the parent's locks and one ceiling
+covers both. An exhausted envelope stops the child as it stops the parent
+(`BUDGET_UNAVAILABLE` with the budget wait); a pickup by the helper mints no
+second delegation; a parent that runs out ends the child's calls with
+`DELEGATION_EXPIRED` and its settled calls stay on the ledger.
+
+Not built yet: the merged result, the graph rows, and a command surface for
+the mint.
 
 ## The expired session
 
