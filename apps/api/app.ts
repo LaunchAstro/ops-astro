@@ -406,7 +406,8 @@ export function createApi(options: ApiOptions): Hono {
               const again = await join();
               return isCommandRefusal(again) ? undefined : again.personId;
             },
-            reads: async (taskId) => await mayHear(options, context, admitted.businessId, taskId),
+            reads: async (id, personId) =>
+              await mayHear(options, context, admitted.businessId, { id, personId }),
             reach: async () => await mayReach(options, context, admitted.businessId),
             shown: async (personId) =>
               await mayShowInbox(options, context, admitted.businessId, personId),
@@ -461,11 +462,11 @@ async function mayHear(
   options: ApiOptions,
   context: Context,
   businessId: string,
-  taskId: string,
-): Promise<boolean | 'gone'> {
+  task: { readonly id: string; readonly personId: string },
+): Promise<boolean> {
   const presented = await options.verify(context.req);
   if (typeof presented !== 'object') return false;
-  return await boardHears(options.database, businessId, presented, taskId);
+  return await boardHears(options.database, businessId, presented, task);
 }
 
 /** A digest of the board reader's grants now, with the bearer verified again. */
@@ -542,7 +543,8 @@ export async function follow(
   const unsubscribe = live.topics.subscribe(businessId, taskId, want, stop);
   const timer = setInterval(() => want('check'), live.recheckMs ?? RECHECK_MS);
   try {
-    await stream.writeSSE({ event: 'resync', data: taskId });
+    // Topics closing stop a stream as it subscribes: nothing is written after.
+    if (!stream.aborted) await stream.writeSSE({ event: 'resync', data: taskId });
     await ended;
   } finally {
     clearInterval(timer);

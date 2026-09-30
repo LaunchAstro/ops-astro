@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // INB-1f: the board screen's one stream per tab, on T2f's content-free
-// channel. `resync` on connect and after the listener reconnects, and when a
-// task the caller holds read on is trashed or their grants move (a revoked
-// read), so the board refetches and is never sent the task; `invalidate`
-// naming a task the caller may read now, by the grants `inbox.read` asks;
+// channel. `resync` on connect and after the listener reconnects, and when the
+// tasks the caller sees change (one revoked, trashed or moved to another
+// client), found by the recheck, so the board refetches and is never sent the
+// task; `invalidate` naming a task the caller may read now, by the grants
+// `inbox.read` asks, and nothing for a task they cannot;
 // `inbox` when what `inbox.read` shows the caller changed (their topic names
 // no item, so a change to an item about a task they cannot read says nothing);
 // `closed` the first time the caller may no longer hold the stream. Signals that arrive while one batch is being asked
@@ -27,12 +28,9 @@ import type { BoardSignal, LiveTopics } from './live.ts';
 export interface BoardQuestions {
   /** The person the bearer resolves to now, if they may still hold the stream. */
   readonly joinedAs: () => Promise<string | undefined>;
-  /**
-   * Whether the caller may read this task now; `'gone'` when it is trashed and
-   * they still hold read on it: told to refetch, never sent the task.
-   */
-  readonly reads: (taskId: string) => Promise<boolean | 'gone'>;
-  /** A digest of the grants the caller holds now; when it moves, the board refetches. */
+  /** Whether the caller, still `personId`, may read this task now. */
+  readonly reads: (taskId: string, personId: string) => Promise<boolean>;
+  /** A digest of the tasks the caller sees now; when it moves, the board refetches. */
   readonly reach?: () => Promise<string | undefined>;
   /** A digest of what `inbox.read` shows `personId` now; undefined when it may not be read. */
   readonly shown: (personId: string) => Promise<string | undefined>;
@@ -46,7 +44,7 @@ const noop = (): void => {};
 interface Bound {
   personId: string;
   shown: string | undefined;
-  /** The caller's grants when last resynced: a revoked read changes nothing else it hears. */
+  /** The tasks the caller saw when last resynced: one lost says nothing else it hears. */
   reach: string | undefined;
   /** Rebound and not yet told: every signal waits for the recheck's `resync`, which it follows. */
   owed: boolean;
@@ -123,7 +121,7 @@ function batch(
       // eslint-disable-next-line no-await-in-loop -- one batch is asked before the next.
       if ((await rejoin(stream, ask, bound, bind)) === 'closed') return;
       if (bound.owed && !check) continue;
-      // A rebind owes the recheck's resync; a revoked read moves only the reach.
+      // A rebind owes the recheck's resync; a lost task moves only the reach.
       // eslint-disable-next-line no-await-in-loop
       pending.resync ||= bound.owed || (check && (await ask.reach?.()) !== bound.reach);
       bound.owed = false;
@@ -191,10 +189,10 @@ async function resyncs(stream: SSEStreamingApi, ask: BoardQuestions, bound: Boun
 }
 
 /**
- * Each named task the caller reads now, by its identifier only, the join asked
- * again after the read so an answer that finished after the bearer moved is
- * dropped; then the inbox, if what it shows moved, the join asked again the
- * same way before the digest is kept or said.
+ * Each named task the caller reads now, by its identifier only: read, the join
+ * asked again (an answer that finished after the bearer moved is dropped), then
+ * read again last, so the answer the frame relies on is the newest; then the inbox, if what it shows moved, the join asked again after it
+ * so a digest that finished after the bearer moved is dropped.
  */
 async function say(
   stream: SSEStreamingApi,
@@ -206,15 +204,13 @@ async function say(
 ): Promise<'closed' | 'rebound' | 'same'> {
   for (const taskId of named) {
     // eslint-disable-next-line no-await-in-loop -- in the order they were heard.
-    const access = await ask.reads(taskId);
-    if (access === false) continue;
+    if (!(await ask.reads(taskId, bound.personId))) continue;
     // eslint-disable-next-line no-await-in-loop
     const joined = await rejoin(stream, ask, bound, bind);
     if (joined !== 'same') return joined;
+    // Asked again last, so a read revoked while the join was asked names nothing.
     // eslint-disable-next-line no-await-in-loop
-    if (access === 'gone') await resyncs(stream, ask, bound);
-    // eslint-disable-next-line no-await-in-loop
-    else await send(stream, 'invalidate', taskId);
+    if (await ask.reads(taskId, bound.personId)) await send(stream, 'invalidate', taskId);
   }
   if (!inbox) return 'same';
   const now = await ask.shown(bound.personId);
