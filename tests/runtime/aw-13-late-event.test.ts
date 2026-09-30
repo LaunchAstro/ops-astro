@@ -33,6 +33,54 @@ interface EventRow {
   readonly actorId: string;
 }
 
+/** A writer whose transaction starts first and commits last: open until `commit`. */
+async function holdLateEvent(
+  event: EventRow,
+): Promise<{ readonly id: string; readonly commit: () => Promise<void> }> {
+  const s = t.alpha;
+  const id = randomUUID();
+  const database = racer(s);
+  let wrote!: () => void;
+  const written = new Promise<void>((resolve) => {
+    wrote = resolve;
+  });
+  let release!: () => void;
+  const committing = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const done = database.withBusiness(s.business, async (tx) => {
+    await tx.query(
+      `insert into public.run_events
+         (business_id, id, run_id, task_id, position, kind, lease_id, attempt_id, actor_id, detail)
+       values ($1, $2, $3, $4, $5, 'claimed', $6, $7, $8, '{}'::jsonb)`,
+      [
+        s.business,
+        id,
+        event.runId,
+        event.taskId,
+        Number(event.position) + 1,
+        event.leaseId,
+        event.attemptId,
+        event.actorId,
+      ],
+    );
+    wrote();
+    await committing;
+  });
+  await Promise.race([written, done]);
+  let closed = false;
+  return {
+    id,
+    commit: async () => {
+      release();
+      if (closed) return;
+      closed = true;
+      await Promise.allSettled([done]);
+      await database.close();
+    },
+  };
+}
+
 it('AW-13 late commit: an event committed after a newer one was exported still leaves', async () => {
   const s = t.alpha;
   await drain(s);
@@ -47,51 +95,18 @@ it('AW-13 late commit: an event committed after a newer one was exported still l
   );
   if (event === undefined) throw new Error('no event to follow');
 
-  // A writer whose transaction starts first and commits last.
-  const lateId = randomUUID();
-  const database = racer(s);
-  let wrote!: () => void;
-  const written = new Promise<void>((resolve) => {
-    wrote = resolve;
-  });
-  let commit!: () => void;
-  const committing = new Promise<void>((resolve) => {
-    commit = resolve;
-  });
-  const late = database.withBusiness(s.business, async (tx) => {
-    await tx.query(
-      `insert into public.run_events
-         (business_id, id, run_id, task_id, position, kind, lease_id, attempt_id, actor_id, detail)
-       values ($1, $2, $3, $4, $5, 'claimed', $6, $7, $8, '{}'::jsonb)`,
-      [
-        s.business,
-        lateId,
-        event.runId,
-        event.taskId,
-        Number(event.position) + 1,
-        event.leaseId,
-        event.attemptId,
-        event.actorId,
-      ],
-    );
-    wrote();
-    await committing;
-  });
+  const late = await holdLateEvent(event);
   try {
-    await written;
     // A newer event commits and an export runs while the late one is open.
     await liveWork(s, `aw13-late-b-${randomUUID()}`, 1_000);
     const from = t.target.received.length;
     await exportFor(s);
-    commit();
-    await late;
+    await late.commit();
     await drain(s);
     const sent = spanIds(t.target.received.slice(from));
-    expect(sent).toContain(derivedId(TRACE_KEY, ['span', s.business, lateId], 16));
+    expect(sent).toContain(derivedId(TRACE_KEY, ['span', s.business, late.id], 16));
   } finally {
-    commit();
-    await late.catch(() => undefined);
-    await database.close();
+    await late.commit();
   }
 });
 
