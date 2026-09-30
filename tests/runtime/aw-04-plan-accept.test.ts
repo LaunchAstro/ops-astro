@@ -36,7 +36,7 @@ import {
   useAw04World,
   w,
 } from './aw-04-world.ts';
-import { asAgent, pickup, type Schedules } from './schedules-harness.ts';
+import { asAgent, pickup, racer, type Schedules } from './schedules-harness.ts';
 
 /** Every case needs the database; without one the file is skipped. */
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -122,8 +122,7 @@ it('accept_time_manifest: every file the run may read is captured at the accept,
 
 it('pinned_read_refuses_a_moved_file: an entry file changed after the accept is refused, and nothing is recorded', async () => {
   const { runId, read } = await acceptedAndPicked(w.alpha, 'aw04 moved');
-  const moved = new Map(FILES);
-  moved.set(ENTRY, encode('# Brief\nWrite something else.\n'));
+  const moved = new Map([...FILES, [ENTRY, encode('# Brief\nWrite something else.\n')]]);
   const notes: ReadAuditNote[] = [];
   const answer = await readAs(w.alpha, read(ENTRY), notes, sourceOf(moved));
   expect(answer).toContain('DEFINITION_DIGEST_MISMATCH');
@@ -178,8 +177,7 @@ describe('AW-04 unreadable file', () => {
 
 it("AW-04 manifest divergence: a non-entry read whose bytes are not the manifest's refuses like an entry mismatch", async () => {
   const { runId, read } = await acceptedAndPicked(w.alpha, 'aw04 divergence');
-  const diverged = new Map(FILES);
-  diverged.set(FRAGMENT, encode('Other words.\n'));
+  const diverged = new Map([...FILES, [FRAGMENT, encode('Other words.\n')]]);
   const answer = await readAs(w.alpha, read(FRAGMENT), [], sourceOf(diverged));
   expect(answer).toContain('DEFINITION_DIGEST_MISMATCH');
   expect(await ledgerOf(w.alpha, runId)).toEqual([]);
@@ -239,6 +237,29 @@ describe('AW-04 accept once', () => {
     expect(second.ok).toBe(false);
     expect(await pinsOf(w.alpha, plan.proposal['runId'])).toHaveLength(1);
     expect((await gateOf(w.alpha, plan.proposal['gateId'])).decisions).toBe('1');
+  });
+});
+
+describe('AW-04 accept once, raced and rolled back', () => {
+  it('two accepts of one gate at once: one approval, one pin, the other refused', async () => {
+    const [left, right] = [racer(w.alpha), racer(w.alpha)];
+    for (let round = 0; round < 5; round += 1) {
+      // Sequential: each round is its own race.
+      // eslint-disable-next-line no-await-in-loop
+      const plan = await proposed(w.alpha, `aw04 race ${String(round)}`);
+      const request = acceptRequest(w.alpha, plan);
+      // eslint-disable-next-line no-await-in-loop
+      const answers = await Promise.all([
+        acceptAs(w.alpha, request, sourceOf(FILES), left),
+        acceptAs(w.alpha, request, sourceOf(FILES), right),
+      ]);
+      expect(answers.filter((answer) => answer.ok)).toHaveLength(1);
+      // eslint-disable-next-line no-await-in-loop
+      expect(await pinsOf(w.alpha, plan.proposal['runId'])).toHaveLength(1);
+      // eslint-disable-next-line no-await-in-loop
+      expect((await gateOf(w.alpha, plan.proposal['gateId'])).decisions).toBe('1');
+    }
+    await Promise.all([left.close(), right.close()]);
   });
 
   it('a rolled-back accept commits nothing, and a second click is a new decision', async () => {

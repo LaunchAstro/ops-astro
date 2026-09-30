@@ -13,6 +13,7 @@ import {
   type PlanAcceptRequest,
   type PlanAcceptResult,
 } from '../../packages/core-runtime/src/index.ts';
+import type { Database } from '../../packages/core-records/src/index.ts';
 import type { Member } from '../commands/fixture.ts';
 import { ENTRY, FILES, FRAGMENT, sourceOf } from './aw-02-world.ts';
 import {
@@ -62,13 +63,14 @@ export function acceptRequest(
   };
 }
 
-/** The real accept, in `owner`'s business, one transaction. */
+/** The real accept, in `owner`'s business, one transaction on `database`. */
 export async function acceptAs(
   owner: Schedules,
   request: PlanAcceptRequest,
   source: InstructionSource = sourceOf(FILES),
+  database: Database = owner.db.app,
 ): Promise<PlanAcceptResult> {
-  return await owner.db.app.withBusiness(
+  return await database.withBusiness(
     owner.business,
     async (tx) => await acceptPlan(tx, request, source),
   );
