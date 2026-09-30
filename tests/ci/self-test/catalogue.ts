@@ -50,20 +50,23 @@ export const PARTS: readonly Part[] = (
 ).parts;
 
 /** T4-N1 to T4-N3, each one line by its own name (`run.ts`): one never stands in for another. */
-export const MUTATION_LINES: readonly string[] = [
-  'T4-N1 a deleted migration fails the migration check',
-  'T4-N2 an operation with no isolation case fails the isolation matrix',
-  'T4-N3 a registry entry with no screen fails the route registry check',
-  'T4-N3 a duplicate route id fails the typecheck',
-  'T4-N3 a changed pinned-mockup byte fails the mockup pin',
-];
+export const MUTATIONS: Readonly<Record<'n1' | 'n2' | 'screen' | 'duplicate' | 'mockup', string>> =
+  {
+    n1: 'T4-N1 a deleted migration fails the migration check',
+    n2: 'T4-N2 an operation with no isolation case fails the isolation matrix',
+    screen: 'T4-N3 a registry entry with no screen fails the route registry check',
+    duplicate: 'T4-N3 a duplicate route id fails the typecheck',
+    mockup: 'T4-N3 a changed pinned-mockup byte fails the mockup pin',
+  };
+export const MUTATION_LINES: readonly string[] = Object.values(MUTATIONS);
 
 /** The unmutated controls a red means nothing without: the shared checks, then one per part. */
-export const CONTROL_LINES: readonly string[] = [
-  'control: the isolation matrix',
-  'control: the route registry check',
-  'control: the typecheck',
-];
+export const CONTROLS: Readonly<Record<'matrix' | 'routes' | 'typecheck', string>> = {
+  matrix: 'control: the isolation matrix',
+  routes: 'control: the route registry check',
+  typecheck: 'control: the typecheck',
+};
+export const CONTROL_LINES: readonly string[] = Object.values(CONTROLS);
 export const controlOf = (part: Part): string =>
   `control: ${part.id} ${part.invariants.join(', ')}`;
 

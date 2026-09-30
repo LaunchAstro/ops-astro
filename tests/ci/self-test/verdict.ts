@@ -5,13 +5,22 @@
 // reverts every T2 and T3 part (split section 3.2, row T4e); T4a to T4d are
 // test tooling, each proven by its own planted-mutation cases (`T4-P`).
 
-import { PARTS, type CaseLine, type Part, type Ran } from './catalogue.ts';
+import {
+  CONTROL_LINES,
+  MUTATION_LINES,
+  PARTS,
+  controlOf,
+  type CaseLine,
+  type Part,
+  type Ran,
+} from './catalogue.ts';
 
 /**
  * For a part's revert (`T4-N4 <part>`), red means the part's own named
  * invariant failed: a sibling case, a file that no longer loads or a hook
- * does not stand in for it. An isolation case that stays green under the
- * revert fails the line by name, since it then proves nothing about the part.
+ * does not stand in for it. A crossing the part declares (`crossings` in
+ * parts.json) that stays green under the revert fails the line by name and
+ * kind, whatever its title says, since it then proves nothing about the part.
  */
 function partVerdict(part: Part, ran: Ran): string | undefined {
   const cases = ran.cases ?? [];
@@ -19,10 +28,13 @@ function partVerdict(part: Part, ran: Ran): string | undefined {
     (name) => !cases.some((one) => !one.passed && one.name.includes(name)),
   );
   if (silent.length > 0) return `its named invariant did not fail: ${silent.join(', ')}`;
-  const green = cases.filter((one) => one.passed && /isolation/iu.test(one.name));
-  if (green.length > 0) {
-    return `an isolation case stayed green: ${green.map((one) => one.name).join('; ')}`;
-  }
+  const green = cases.flatMap((one) => {
+    const crossing = part.crossings?.find((declared) => one.name.includes(declared.case));
+    return one.passed && crossing !== undefined
+      ? [`${one.name} (${crossing.crosses.join(', ')})`]
+      : [];
+  });
+  if (green.length > 0) return `a declared crossing stayed green: ${green.join('; ')}`;
   return undefined;
 }
 
@@ -89,18 +101,19 @@ export function control(name: string, ran: Ran): CaseLine {
 }
 
 /**
- * Every mutation the run must hold a line for: T4-N1, T4-N2, three T4-N3,
- * each T2 and T3 part's T4-N4 and each T4 part's T4-P.
+ * Every line the run must hold, each by its own name: the unmutated controls
+ * (the shared checks and one per part), T4-N1, T4-N2 and the three T4-N3,
+ * each T2 and T3 part's T4-N4 and each T4 part's T4-P. A copy of one line
+ * stands in for no other.
  */
 function missingLines(lines: readonly CaseLine[], parts: readonly Part[]): string[] {
-  const count = (prefix: RegExp): number => lines.filter((line) => prefix.test(line.case)).length;
-  const missing = parts
+  const named = [...CONTROL_LINES, ...parts.map(controlOf), ...MUTATION_LINES].filter(
+    (name) => !lines.some((line) => line.case === name),
+  );
+  const held = parts
     .filter((part) => !lines.some((line) => partOf(line.case)?.id === part.id))
     .map((part) => lineOf(part));
-  if (count(/^T4-N1\b/u) === 0) missing.unshift('T4-N1');
-  if (count(/^T4-N2\b/u) === 0) missing.unshift('T4-N2');
-  if (count(/^T4-N3\b/u) < 3) missing.unshift('T4-N3 (three checks)');
-  return missing;
+  return [...named, ...held];
 }
 
 export function everyInvariantBites(
@@ -115,7 +128,7 @@ export function everyInvariantBites(
   if (short.length > 0) said.push(`not proven: ${short.join('; ')}`);
   const detail =
     status === 'pass'
-      ? `${String(lines.length)} checks: each control green, each mutation red under its own check, each T4 part's planted mutation caught`
+      ? `${String(lines.length)} checks: each control green, each mutation red under its own check with no declared crossing green, each T4 part's planted mutation caught`
       : said.join('; ');
   return { case: 'every_invariant_bites', status, detail };
 }

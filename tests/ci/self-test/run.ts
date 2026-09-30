@@ -26,10 +26,13 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  CONTROLS,
+  MUTATIONS,
   PARTS,
   changePinnedMockup,
   classify,
   control,
+  controlOf,
   deleteOneMigration,
   edit,
   everyInvariantBites,
@@ -149,12 +152,10 @@ function mutate(scratch: Scratch, name: string, apply: () => boolean, check: () 
 }
 
 function negatives(scratch: Scratch): void {
-  report(
-    classify('T4-N1 a deleted migration fails the migration check', deleteOneMigration(scratch)),
-  );
+  report(classify(MUTATIONS.n1, deleteOneMigration(scratch)));
   mutate(
     scratch,
-    'T4-N2 an operation with no isolation case fails the isolation matrix',
+    MUTATIONS.n2,
     () =>
       edit(
         scratch,
@@ -168,22 +169,17 @@ function negatives(scratch: Scratch): void {
   const head = 'export const ROUTES = {\n';
   mutate(
     scratch,
-    'T4-N3 a registry entry with no screen fails the route registry check',
+    MUTATIONS.screen,
     () => edit(scratch, routes, head, `${head}${ROUTE('agency:self-test')}`),
     () => vitest(scratch, [ROUTES], DB, SCREENLESS),
   );
   mutate(
     scratch,
-    'T4-N3 a duplicate route id fails the typecheck',
+    MUTATIONS.duplicate,
     () => edit(scratch, routes, head, `${head}${ROUTE('agency:settings')}`),
     () => typecheck(scratch, true),
   );
-  report(
-    classify(
-      'T4-N3 a changed pinned-mockup byte fails the mockup pin',
-      changePinnedMockup(scratch),
-    ),
-  );
+  report(classify(MUTATIONS.mockup, changePinnedMockup(scratch)));
 }
 
 /** One revert of the part and its invariant rerun; see `revertPart` for `keepAdded`. */
@@ -216,12 +212,12 @@ function controls(scratch: Scratch, parts: readonly Part[]): void {
     ]),
   ];
   const all = vitestReport(scratch, files, DB);
-  report(control('control: the isolation matrix', summarise(scratch, all, [ISOLATION])));
-  report(control('control: the route registry check', summarise(scratch, all, [ROUTES])));
-  report(control('control: the typecheck', typecheck(scratch, false)));
+  report(control(CONTROLS.matrix, summarise(scratch, all, [ISOLATION])));
+  report(control(CONTROLS.routes, summarise(scratch, all, [ROUTES])));
+  report(control(CONTROLS.typecheck, typecheck(scratch, false)));
   for (const part of parts) {
     const ran = part.id === 'T3d2' ? proofs(scratch) : summarise(scratch, all, part.files);
-    report(control(`control: ${part.id} ${part.invariants.join(', ')}`, ran));
+    report(control(controlOf(part), ran));
     if (part.planted !== undefined) {
       report(classify(`T4-P ${part.id} planted: ${part.planted.join('; ')}`, ran));
     }
