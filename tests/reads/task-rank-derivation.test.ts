@@ -58,7 +58,9 @@ describe('MP-4-9 derivation fixtures', () => {
     expect(scoreTask(task({ open: false, startedAt: daysAgo(30) }), NOW).score).toBe(504);
     expect(scoreTask(task({ startedAt: new Date(NOW.getTime() + 30 * DAY) }), NOW).score).toBe(504);
   });
+});
 
+describe('MP-4-9 derivation fixtures', () => {
   it('marks 5, 7 and absent give "not ranked", never 0', () => {
     const scored = scoreTask(task({ marks: { impact: 5, confidence: 7, ease: null } }), NOW);
     expect([scored.score, scored.missing]).toStrictEqual([null, ['ease']]);
