@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 import { crossingDeclared } from '../../apps/web/src/manifest.ts';
 import { open } from './mp-2-1-support.tsx';
 
-it('Sol proof, criterion 9: no legacy address appears in the interface', async () => {
+it('no legacy address appears in the interface', async () => {
   const { view } = await open('/agency/unknown-page/');
   try {
     expect(view.text()).not.toContain('/agency/unknown-page/');
@@ -14,6 +14,6 @@ it('Sol proof, criterion 9: no legacy address appears in the interface', async (
   }
 });
 
-it('Sol proof, criterion 10: an undeclared Hub-to-portal link fails the manifest check', () => {
+it('an undeclared Hub-to-portal link fails the manifest check', () => {
   expect(crossingDeclared('agency', '/portal/acme-dental/unknown-page/')).toBe(false);
 });

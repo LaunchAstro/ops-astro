@@ -136,7 +136,7 @@ describe('MP-2-2 railmark slides over 220ms on in-app navigation and snaps on lo
 });
 
 describe('MP-2-2 hover as specified', () => {
-  it('fills with surface-2 and inks the label on hover', () => {
+  it('fills with the second surface and inks the label on hover', () => {
     const hover = rule('.rail__item:hover');
     expect(hover).toMatch(/background:\s*var\(--surface-2\)/u);
     expect(hover).toMatch(/color:\s*var\(--text\)/u);

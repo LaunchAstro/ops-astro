@@ -9,7 +9,7 @@ import { expect, it } from 'vitest';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
-it('Sol proof, criterion 6: a dark-only colour token fails the pairing check', () => {
+it('a dark-only colour token fails the pairing check', () => {
   const original = readFileSync(`${root}packages/ui/src/styles/1-tokens.css`, 'utf8');
   const darkOnly = original.replace(
     "[data-theme='dark'] {",
