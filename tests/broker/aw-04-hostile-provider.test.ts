@@ -7,7 +7,8 @@
 // offers no text, the business's planning cap commits at most the operation's
 // priced maximum, the conversation's envelope reads the same amount, and the
 // reply that no longer fits is refused with nothing written or sent. Composing
-// a plan version from a reply is SL12's panel (MP-7-11), a todo below.
+// a plan version from a reply is SL12's panel: `AW-04 hostile provider: a
+// hostile planning reply composes no plan version` (LEANS-ON SL12 MP-7-11).
 //
 // `AW-04 canary` gains its planning leg here: the planted chat content and the
 // planted provider answer reach no row, audit payload or custody log.
@@ -114,10 +115,6 @@ it('AW-04 hostile provider: a reply the provider proves never began is released 
     { state: 'released', reserved_minor: String(MAXIMUM), actual_minor: null },
   ]);
 });
-
-it.todo(
-  'AW-04 hostile provider: a hostile planning reply composes no plan version (LEANS-ON SL12 MP-7-11, the panel that composes a plan from a reply)',
-);
 
 it('AW-04 canary: planted chat content and a planted provider answer on a planning reply reach no row, audit payload or custody log', async () => {
   await s.db.admin.execute(
