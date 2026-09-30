@@ -62,32 +62,32 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'person_logins person_merges'],
   ['siud', 'record_links record_types record_unique_values'],
   ['siud', 'records'],
-  // 0053: custody's select is a column grant that leaves out the sealed
+  // 0056: custody's select is a column grant that leaves out the sealed
   // columns. A count is admitted and a sealed column is refused, which
   // `tests/custody/c31-credentials.test.ts` proves by name (C31).
   ['siu', 'custody_secrets'],
-  // 0054: the fleet is read here and written by MP-13-5 and the broker, and a
+  // 0057: the fleet is read here and written by MP-13-5 and the broker, and a
   // repair is recorded once and never changed (MP-14-7a).
   ['s', 'connection_clients connections'],
   ['si', 'connection_repairs'],
-  // 0055: tripwires and night round steps are written by the checks and the
+  // 0058: tripwires and night round steps are written by the checks and the
   // round itself and only read here (MP-14-8).
   ['s', 'night_round_steps tripwires'],
-  // 0056: a graduation row is written by the agent loops and only has its
+  // 0059: a graduation row is written by the agent loops and only has its
   // revision bumped here; a mandate is filed and revoked, never deleted
   // (MP-14-10a). Both updates are column grants.
   ['su', 'graduation_classes'],
   ['siu', 'standing_mandates'],
-  // 0057: a definition, a released version and an occurrence are written once
+  // 0060: a definition, a released version and an occurrence are written once
   // and never changed; an activation's setting is a column-granted update
   // (C33).
   ['si', 'activation_occurrences automation_definitions definition_versions'],
   ['siu', 'activations'],
-  // 0058: an adoption, a revocation and a dispatch are written once and never
+  // 0061: an adoption, a revocation and a dispatch are written once and never
   // changed; the activation names its standing adoption through a column
   // grant (C52-A).
   ['si', 'occurrence_dispatches standing_approval_revocations standing_approvals'],
-  // 0059: an onboarding and its steps are laid out once and moved on by
+  // 0062: an onboarding and its steps are laid out once and moved on by
   // column grants, never deleted (C41-A).
   ['siu', 'onboarding_steps onboardings'],
 ];

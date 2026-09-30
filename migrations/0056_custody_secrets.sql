@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0053 custody: the business's secrets, sealed (C31, U33).
+-- 0056 custody: the business's secrets, sealed (C31, U33).
 --
 -- One row per named secret at one scope: the business as a whole, or one
 -- client (a `party`, the scope a party-scoped grant names). A row says whether

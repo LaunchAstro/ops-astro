@@ -222,7 +222,7 @@ export async function promoteClass(
     refuses: false,
     ceiling,
     expiresAt,
-    // Both labels are at most 200 characters (0056), so this fits the 500.
+    // Both labels are at most 200 characters (0059), so this fits the 500.
     label: `Run ${row.classLabel} unattended for ${row.clientLabel}`,
     graduationClass: row.actionClass,
     actorId: context.session.actorId,
