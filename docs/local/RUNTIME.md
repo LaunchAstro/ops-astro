@@ -155,8 +155,11 @@ that expires while the decision waits on the chain or the cap does not count
 The runtime's other person checks under the locks are judged the same way. In
 pickup, heartbeat and handback, a person's write on the task, and for an agent
 pickup the delegating person's read, comment and write, are judged at the locked
-instant (`checkAuthorityAt`, `lockedAt`). A grant that expires while the call
-waits on its locks does not count. An agent pickup refused this way answers
+instant (`checkAuthorityAt`, `lockedAt`). An agent's delegation reaches the
+task's collection, and `run` too where the delegating person holds `run:write`
+at that instant, held to `write` alone (MP-6-2, `delegatedCollections`). A
+grant that expires while the call waits on its locks does not count. An agent
+pickup refused this way answers
 `DELEGATION_WIDENS`, in `mintDelegation`'s own words, before anything is minted
 (`pickup`, `pickup.ts`; `heartbeat.ts`; `handback.ts`;
 `tests/runtime/grants-at-locked-instant.test.ts`).

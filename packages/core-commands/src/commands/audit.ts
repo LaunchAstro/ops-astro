@@ -31,6 +31,11 @@ export interface AuditEvent {
   /** Only the keys a spoof attempt carried. Never the whole payload. */
   readonly attempted?: Readonly<Record<string, unknown>> | null;
   /**
+   * The conversation that created the task, on the task's creation event
+   * (AW-03). The command that creates a task from a conversation sets it.
+   */
+  readonly originConversationId?: string | null;
+  /**
    * Offered by a caller and ignored by the server. They are here so a test can
    * present them and watch them not persist; nothing in the product supplies
    * them, and the trigger overwrites all three.
@@ -112,11 +117,16 @@ export async function writeAuditEvent(
   // reach the server on purpose: the trigger overwrites all three, and a
   // column the insert never mentioned could not have been shown to be
   // overwritten.
+  //
+  // The origin conversation (0050) is named only when there is one: without
+  // it the insert is the one every earlier schema takes, and the column's
+  // null is its default.
+  const origin = event.originConversationId ?? null;
   const rows = await tx.query<WrittenAuditEvent>(
     `insert into audit_events
        (business_id, id, actor_id, command, operation_id, outcome, refusal_code,
-        subject_record_id, payload_digest, attempted, seq, prev_hash, hash)
-     values ($1, $2, $3, $4, $5, $6, $7, $8::uuid, $9, $10, $11, $12, $13)
+        subject_record_id, payload_digest, attempted, seq, prev_hash, hash${origin === null ? '' : ', origin_conversation_id'})
+     values ($1, $2, $3, $4, $5, $6, $7, $8::uuid, $9, $10, $11, $12, $13${origin === null ? '' : ', $14::uuid'})
      returning id, seq::text as seq, hash`,
     [
       tx.businessId,
@@ -132,6 +142,7 @@ export async function writeAuditEvent(
       event.seq ?? '1',
       event.prevHash ?? null,
       event.hash ?? PLACEHOLDER_HASH,
+      ...(origin === null ? [] : [origin]),
     ],
   );
   const written = rows[0];
@@ -198,7 +209,7 @@ export async function verifyAuditChain(tx: TenantQuery): Promise<ChainReport> {
             a.hash,
             public.audit_event_hash(a.prev_hash, a.business_id, a.seq, a.occurred_at, a.actor_id,
               a.command, a.operation_id, a.outcome, a.refusal_code, a.subject_record_id,
-              a.payload_digest, a.attempted) as recomputed,
+              a.payload_digest, a.attempted, a.origin_conversation_id) as recomputed,
             a.prev_hash,
             lag(a.hash) over (order by a.seq) as previous_hash
        from audit_events a

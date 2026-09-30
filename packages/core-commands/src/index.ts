@@ -23,3 +23,18 @@ export { lookupEffect } from './commands/register-store.ts';
 export { executeRead } from './reads/execute.ts';
 export { isReadName } from './reads/catalogue.ts';
 export { type ReadRequest } from './reads/requests.ts';
+export {
+  purgeConversation,
+  writeWrapUp,
+  type PurgeOutcome,
+  type PurgeRefusalCode,
+  type PurgeRequest,
+  type WrapUpOutcome,
+  type WrapUpRequest,
+} from './commands/conversation-lifecycle.ts';
+export {
+  sweepConversations,
+  sweepPurgeOperationId,
+  type SweepReport,
+  type SweepRequest,
+} from './commands/conversation-sweep.ts';

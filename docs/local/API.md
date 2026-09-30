@@ -824,6 +824,7 @@ None is a new actor power. Each asks for authority the caller already holds.
 | `task.cancel`       | `/task/cancel`       | `operationId`, `recordId`, `lineageId`, `reason`                                                                                                                                                          | `decide` on the task named in `recordId` (T3a; never an agent), asked again with the grants held, and `write` under the runtime's locks; a record-scoped grant is enough          | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `LINEAGE_NOT_ON_TASK` 409, `LINEAGE_TERMINAL` 409, `FIELD_VALUE_INVALID` 422 (naming `reason` when it is absent, blank, longer than 500 characters or holds a NUL or an unpaired surrogate), `COMMAND_BODY_INVALID` 400                                                                                                                                                                                                                                                         |
 | `task.restart`      | `/task/restart`      | `operationId`, `recordId`, `lineageId`, `expiresInSeconds?`                                                                                                                                               | `decide` on the task named in `recordId` (T3a; never an agent), plus `propose`'s own read and write checks; closes the task's open envelope, so the next approval opens a new one | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `LINEAGE_NOT_ON_TASK` 409, `TRANSITION_NOT_PERMITTED` 409 (live, completed or already restarted), `FIELD_VALUE_INVALID` 422, `PROPOSAL_SCOPE_EXCEEDED` 422 (the restarted lineage's last `currency` other than the task's cap's, which is its open envelope's cap or else the business cap, or its last ceiling past the cap's remaining room; a restart draws on a new envelope, so the old one's room does not bind it, and it supersedes no version, so no hold is released) |
 | `task.heartbeat`    | `/task/heartbeat`    | `operationId`, `leaseId`, `fence`, `leaseSeconds?`, `providerStarting?` (T3e1: `true` records the provider start on the lease's marked attempt, else `TRANSITION_NOT_PERMITTED` 409 with nothing written) | the lease's holder: an agent presenting the delegation minted with it, or a person on their own delegation-free lease under current `write`                                       | `DELEGATION_NOT_LIVE` 401 (agent), `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `FIELD_VALUE_INVALID` 422                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `task.check`        | `/task/check`        | `operationId`, `leaseId`, `fence`, `name`, `outcome`, `note?`                                                                                                                                             | the lease's holder, as `task.heartbeat`: the row names that holder as the actor that performed the check, and the run and version the lease works (MP-6-1)                        | `DELEGATION_NOT_LIVE` 401 (agent), `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `FIELD_VALUE_INVALID` 422 (name 1 to 120 characters, outcome `passed`, `failed` or `inconclusive`, note up to 500)                                                                                                                                                                                                                                                                                                                         |
 
 What each one does:
 
@@ -849,7 +850,7 @@ What each one does:
   in `tests/api/controls-revoke.test.ts` and the role-case matrix's case (f).
 - **Cancellation** reaches `cancelAndClassify`. The lineage becomes
   `cancelled` with the reason as its terminal reason, the live lease is
-  released, and the lineage's holds are classified. The canceller's write on
+  released, and the lineage's holds are classified. The canceller's decide on
   the task is held and checked again under the runtime locks, so a revocation
   that commits first makes the cancel `SCOPE_NOT_GRANTED` 403 with nothing
   written (`cancelAndClassify`, `core-runtime/src/recovery.ts`). The answer is
@@ -877,6 +878,86 @@ What each one does:
   not revived. No timer runs. Bounded unstarted recovery stays with the owning
   operations' classifier ([RUNTIME.md](RUNTIME.md)). Both bounds are open items
   below.
+
+## A person's conversation with the agent
+
+AW-03. A conversation is minted by its first message, so opening the drawer
+and closing it without sending anything writes no row. It is its owner's
+alone, and its address (`/agent/<id>`) keeps answering after the body purges.
+
+| Operation              | Route                   | Body                                                                                  | Authority                                                                                                                                                                               | Refusals                                                                                                                                                     |
+| ---------------------- | ----------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `conversation.start`   | `/conversation/start`   | `operationId`, `body`, `title?`, `subject?`, `scope?` (`{"kind":"task","id":<task>}`) | `conversation:write`; a cited task must be one the caller may read                                                                                                                      | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 (scope), `FIELD_VALUE_INVALID` 422 (body 1 to 20000, title up to 120, subject up to 200)                            |
+| `conversation.message` | `/conversation/message` | `operationId`, `conversationId`, `body`                                               | `conversation:write`, and the caller is the owner: anyone else is `SCOPE_NOT_GRANTED` whatever they hold                                                                                | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` (body purged), `FIELD_VALUE_INVALID` 422                                                |
+| `conversation.read`    | `/conversation/read`    | `conversationId`                                                                      | the owner while they hold `conversation:write`; anyone else needs `conversation:read` (the read-any grant, held by nobody on install) covering the conversation's scope; a client never | `NOT_FOUND` 404 (another business, a made-up id, any client), `SCOPE_NOT_GRANTED` 403 with the reason and nothing of the conversation, `FIELD_VALUE_INVALID` |
+
+MP-7-11 adds the assistant panel's tab row, under the same rule
+(`commands/conversation-tabs.ts`, `listConversations` in `reads/conversation.ts`):
+
+| Operation                | Route                     | Body                                                                                     | Authority                                                                                                             | Refusals                                                                                                                       |
+| ------------------------ | ------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `conversation.list`      | `/conversation/list`      | nothing                                                                                  | `conversation:write`; the caller's own conversations only, newest activity first, at most 50, whatever else they hold | `SCOPE_NOT_GRANTED` 403 (no `conversation:write`, or no membership)                                                            |
+| `conversation.rename`    | `/conversation/rename`    | `operationId`, `conversationId`, `title`                                                 | `conversation:write`, and the caller is the owner                                                                     | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` (body purged), `FIELD_VALUE_INVALID` 422 (title 1 to 120) |
+| `conversation.set_scope` | `/conversation/set_scope` | `operationId`, `conversationId`, `page` (`{"address":<path>,"shows":<label>}` or `null`) | `conversation:write`, and the caller is the owner                                                                     | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` (body purged), `FIELD_VALUE_INVALID` 422 (page)           |
+
+`conversation.set_scope` is "Add page to context" (CS-7.31): one slot, so a
+second page replaces the first, and `null` clears it. The address is a page of
+this product: one leading slash, never two and never a slash then a
+backslash, printable ASCII with no backslash, at most 300 characters; what it
+shows is 1 to 200 characters with no control character. Migration 0051
+refuses the same rows as the backstop. Neither write moves the last activity,
+which measures the exchange. Both answer the conversation's id and address
+only, so the title and the page are stored on the conversation and nowhere
+else. Each attempt writes the command's own one audit event (with the
+payload's digest) and no other: this is what the ticket's "not audited" means
+here, as for MP-6-2.
+
+The answer to `conversation.read` is the conversation (id, address, title,
+subject, scope, page, created, last activity, body purged at), its `messages` or
+`null` once purged, the current `wrapUp` and `wrapUpHistory`, newest first.
+No agent entry reaches any of them: the agent's side of an exchange is
+written by the product's exchange, never by an agent calling in. The message
+text is stored in `conversation_messages` and nowhere else: the answer and the
+operation register carry ids and the address, and the audit event the
+payload's digest.
+
+Two system operations, the worker's and no person's command
+(`commands/conversation-lifecycle.ts`), each take the conversation's row lock
+first, the lock `conversation.message` takes:
+
+- `writeWrapUp` after 24 hours quiet writes the next wrap-up version from
+  records: the first message as a marked quotation, seven pointer-and-fact
+  items (opened, scope, exchange, tasks created, runs started, gates raised,
+  cost) and item 8, what was left open, as pointers or "nothing left open". It
+  is idempotent on the conversation and its last activity.
+- `purgeConversation` removes the body and keeps the conversation and every
+  wrap-up. It answers `WRAP_UP_ABSENT` without a wrap-up covering the last
+  activity (the database refuses the delete too), `WORK_OPEN` while cited or
+  started work is open, `NOT_DUE` before the window has passed since the later
+  of the last activity and the work's end, and `WINDOW_UNREADABLE` when
+  `conversation_window_days` is missing, not a whole number, under seven, or
+  over `retention_window_days`. A purged conversation answers `replayed`, with
+  no second audit event (`conversation.purge`, actor the business's worker).
+
+Both compare a wrap-up's `activity_through` with the conversation's
+`last_activity_at` in SQL, so the covering check holds to the microsecond.
+`sweepConversations` (`commands/conversation-sweep.ts`) is one pass over one
+business: the wrap-up for each quiet conversation without one, then the purge
+for each whose covering wrap-up existed before the pass, never both in one
+pass. Each conversation is its own transaction under a lock timeout, so a
+failure is that conversation's alone, reported with its body kept; an
+unreadable window stops the purge for the business and the report says so.
+The purge's operation identity is derived from the conversation and its last
+activity, so a retried pass asks for the same purge. Nothing schedules the
+pass yet, and raising a failure as an inbox item is INB-1's.
+
+Which conversation created a task is a fact of the task's creation audit
+event: `audit_events.origin_conversation_id` (0050), a same-business
+reference to `conversations`, in the chain's one hash formula
+(`audit_event_hash`, thirteen arguments). A null adds nothing to the hashed
+text, so events without one hash as they did before 0050. The command that
+creates a task from a conversation sets it; until that command exists, the
+wrap-up's "tasks created" item says no task records the conversation.
 
 ## The model call
 
@@ -962,6 +1043,21 @@ writes the task record, so neither takes an `expectedRevision`.
 | `run.top_up`             | `/api/b/:key/run/top_up`             | `operationId`, `recordId`, `runId`, `amountMinor`, `currency` | `decide` on `billing`, asked of the task named in `recordId`; the runtime asks it again of the run's task under the run's locks |
 | `run.end_at_budget_stop` | `/api/b/:key/run/end_at_budget_stop` | `operationId`, `recordId`, `runId`                            | `decide` on `gate`, asked the same way                                                                                          |
 
+A run's state revised (MP-6-2) is the agent page's one write. It names the
+task and the run on it too, and carries the version it read (0 before the
+first) instead of an `expectedRevision`. It is also on the agent prefix, under
+a delegation minted with `run` (the agent is the recorded actor).
+
+| Operation          | Route                          | Body                                                                           | Authority                                                                                              |
+| ------------------ | ------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `run.revise_state` | `/api/b/:key/run/revise_state` | `operationId`, `recordId`, `runId`, `expectedVersion`, `knowledge`, `unknowns` | `write` on `run`, asked of the task named in `recordId`; an agent's, of its delegation on its own task |
+
+It answers `detail: { runId, version }`. `knowledge` and `unknowns` are lists of
+up to 50 non-empty texts of at most 2,000 characters; anything else is
+`COMMAND_BODY_INVALID` naming the field. A version other than the newest is
+`VERSION_STALE`, and a run not on the named task answers as a made-up one
+(`reviseStateOnRun`, `commands/run-state.ts`).
+
 The handlers are `topUpOnRun` and `endOnRun` (`commands/run-answers.ts`), over
 `topUpAtBudgetStop` and `endAtBudgetStop` (`core-runtime/src/budget-answer.ts`).
 
@@ -1022,13 +1118,20 @@ case calls.
 
 The five support controls, with their owning functions:
 
-| Operation           | Person route                            | Agent route                             | Handler                                                                                                                                                                               | Owning function                                                                                             |
-| ------------------- | --------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `grant.revoke`      | `/api/b/:key/grant/revoke`              | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeGrantAsManager` (`commands/authority-controls.ts`)                                                                                                                             | `revokeGrant` (`authority/grants.ts`)                                                                       |
-| `delegation.revoke` | `/api/b/:key/delegation/revoke`         | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeDelegationAsManager` (`commands/authority-controls.ts`)                                                                                                                        | `revokeDelegation` (`authority/delegations.ts`)                                                             |
-| `task.cancel`       | `/api/b/:key/task/cancel`               | refused `DELEGATION_EXCLUDES_OPERATION` | `cancelOnTask` (`commands/tasks-controls.ts`)                                                                                                                                         | `cancelAndClassify` (`core-runtime/src/recovery.ts`)                                                        |
-| `task.restart`      | `/api/b/:key/task/restart`              | refused `DELEGATION_EXCLUDES_OPERATION` | `restartOnTask` (`commands/tasks-controls.ts`)                                                                                                                                        | `restart` (`core-runtime/src/restart.ts`) → `propose`, with `refuseRestart` (`core-runtime/src/propose.ts`) |
-| `task.heartbeat`    | `/api/b/:key/task/heartbeat`, own lease | `/api/a/b/:key/task/heartbeat`          | person: `heartbeatOwnLease` (`commands/tasks-lease.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`, `commands/agent-operations.ts`) → `heartbeatLease` (`commands/tasks-lease.ts`) | `heartbeat` (`core-runtime/src/heartbeat.ts`)                                                               |
+| Operation                | Person route                            | Agent route                             | Handler                                                                                                                                                                               | Owning function                                                                                             |
+| ------------------------ | --------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `grant.revoke`           | `/api/b/:key/grant/revoke`              | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeGrantAsManager` (`commands/authority-controls.ts`)                                                                                                                             | `revokeGrant` (`authority/grants.ts`)                                                                       |
+| `delegation.revoke`      | `/api/b/:key/delegation/revoke`         | refused `DELEGATION_EXCLUDES_OPERATION` | `revokeDelegationAsManager` (`commands/authority-controls.ts`)                                                                                                                        | `revokeDelegation` (`authority/delegations.ts`)                                                             |
+| `task.cancel`            | `/api/b/:key/task/cancel`               | refused `DELEGATION_EXCLUDES_OPERATION` | `cancelOnTask` (`commands/tasks-controls.ts`)                                                                                                                                         | `cancelAndClassify` (`core-runtime/src/recovery.ts`)                                                        |
+| `task.restart`           | `/api/b/:key/task/restart`              | refused `DELEGATION_EXCLUDES_OPERATION` | `restartOnTask` (`commands/tasks-controls.ts`)                                                                                                                                        | `restart` (`core-runtime/src/restart.ts`) → `propose`, with `refuseRestart` (`core-runtime/src/propose.ts`) |
+| `task.heartbeat`         | `/api/b/:key/task/heartbeat`, own lease | `/api/a/b/:key/task/heartbeat`          | person: `heartbeatOwnLease` (`commands/tasks-lease.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`, `commands/agent-operations.ts`) → `heartbeatLease` (`commands/tasks-lease.ts`) | `heartbeat` (`core-runtime/src/heartbeat.ts`)                                                               |
+| `task.check`             | `/api/b/:key/task/check`, own lease     | `/api/a/b/:key/task/check`              | person: `checkOwnLease` (`commands/tasks-check.ts`); agent: the row's `serve` (`AGENT_OPERATIONS`) → `checkLease` (same file)                                                         | `recordCheck` (`core-runtime/src/checks.ts`)                                                                |
+| `conversation.start`     | `/api/b/:key/conversation/start`        | refused `DELEGATION_EXCLUDES_OPERATION` | `startConversation` (`commands/conversations.ts`)                                                                                                                                     | `conversations`, `conversation_messages`                                                                    |
+| `conversation.message`   | `/api/b/:key/conversation/message`      | refused `DELEGATION_EXCLUDES_OPERATION` | `messageConversation` (`commands/conversations.ts`)                                                                                                                                   | `conversation_messages`                                                                                     |
+| `conversation.read`      | `/api/b/:key/conversation/read`         | refused `DELEGATION_EXCLUDES_OPERATION` | `readConversation` (`reads/conversation.ts`)                                                                                                                                          | `conversations`, `conversation_messages`, `conversation_wrap_ups`                                           |
+| `conversation.list`      | `/api/b/:key/conversation/list`         | refused `DELEGATION_EXCLUDES_OPERATION` | `listConversations` (`reads/conversation.ts`)                                                                                                                                         |
+| `conversation.rename`    | `/api/b/:key/conversation/rename`       | refused `DELEGATION_EXCLUDES_OPERATION` | `renameConversation` (`commands/conversation-tabs.ts`)                                                                                                                                |
+| `conversation.set_scope` | `/api/b/:key/conversation/set_scope`    | refused `DELEGATION_EXCLUDES_OPERATION` | `setConversationScope` (`commands/conversation-tabs.ts`)                                                                                                                              |
 
 The others. `runAgentCommand` (`commands/agent-envelope.ts`) refuses a
 name outside `AGENT_SURFACE` before it reads anything else. Each name the agent
@@ -1093,6 +1196,31 @@ a page that showed the evidence and then fetched the version separately could
 offer a decision on a version it never displayed, and the exact version is the
 whole of what `decide` compares.
 
+Each version carries `checks`: the checks its run recorded through
+`task.check` under the run's lease, oldest first, each with its `outcome` and
+the lease holder as `performedByActorId` (MP-6-1, CS-16.3; `run_checks`,
+migration 0048). They are read in the same snapshot as the rest.
+
+Each lineage carries `scopes`: what each lease its runs took was allowed to
+touch, oldest first (MP-6-4, CS-6.1). A scope is the lease's own delegation,
+the one the broker set at pickup (R71), so nothing a person edits on the task
+reaches it (R76): its `purpose`, the one resource it was minted for (`scope`),
+its `collections` and `actions`, `grantedAt`, `expiresAt`, a `state` of
+`live`, `expired`, `revoked` or `settled`, the `delegatePersonId` whose grants
+are its ceiling, and `grants`, the live grants of that person it draws on now:
+business-wide ones and ones on this task's record, never a grant on another
+record. A lease a person holds has `delegation: null`. It is read in the same
+snapshot as the rest (`reads/run-scopes.ts`).
+
+`gate.pending` is the one awaiting-review read (MP-6-1, TR-P-14): every gate
+still waiting on a person, on a live lineage's current version, on a task not
+in the trash, before its deadline on the database's clock. It is filtered by
+the caller's `decide` on tasks (`gate:decide`) inside the statement that reads
+the gates (`coveredScopes`, `authority/grants.ts`), so a record-scoped decider
+sees only its own records' gates, and a caller holding no `decide` anywhere is
+refused `SCOPE_NOT_GRANTED` 403 rather than answered with an empty list
+(`reads/awaiting-review.ts`; `tests/api/mp-6-1-isolation.test.ts`).
+
 A `task.read` answer's gate states, decisions and reservations come from one
 database snapshot. `readTaskProposals` (`reads/proposals.ts`) takes the
 versions, gates and reservations in the same statement that reads the decision
@@ -1126,12 +1254,42 @@ proposals: {
     signedFields: string[];            // the item fields the signature covers
   }[];
   reservations: {
-    id; state; heldMinor; actualMinor; classifiedCause; leaseId;
+    id; envelopeId;                    // the envelope it holds against (MP-6-5)
+    runId;                             // the run it holds for: one per-run row
+    state; heldMinor; actualMinor; classifiedCause; leaseId;
     lease: { id; fence; state; expiresAt; holderActorId } | null;
     attempt: { id; state; dispatchMarker; observed } | null;
   }[];
 }[]
 ```
+
+`task.read` also carries `ledger`, the task's token ledger (MP-6-5), taken in
+the same statement as the proposals so an envelope and the reservations
+beside it are one snapshot:
+
+```
+ledger: {
+  envelopes: {                         // the open one first, then closed, newest first
+    id; state: 'open' | 'closed';
+    maximumMinor;                      // the allowance
+    heldMinor; actualMinor;            // held and spent against it
+    currency; openedAt; closedAt;
+    openedBy: { versionId } | null;    // the approval whose reservation opened it
+    cap: { key; limitMinor; currency };// the cap it draws on
+  }[];                                 // empty before any approval
+}
+```
+
+The per-run rows are the proposals' reservations: each names its envelope, and
+the held reservations and the spent ones add up to its `heldMinor` and
+`actualMinor`. It is read only and adds no audit event beyond the read's own.
+It names the business's cap and its limit, so only an internal reader is shown
+it: an agent's `task.read` answers `ledger: null` (I09).
+AW-05's ceiling and its stops are not on it yet (SL11).
+The task page's Agent pane draws it as the token panel (DS-TASK-9): the
+current envelope (the open one, else the newest closed), its reservations as
+the per-run rows by `runId`, and the skills and data source its opening
+version's stored evidence names (`skills`, `dataSource { label, href }`).
 
 Three things about the shape matter. First, `gate.expired` is the
 server's answer, so a client with a skewed clock cannot disagree with the
@@ -1381,6 +1539,13 @@ whole hold and resumes the work on a new hold; it happened spends the whole
 hold; it happened differently spends it and reopens the work. A retry under the
 same `operationId` replays the stored answer.
 
+The task page's Agent pane offers the three outcomes, and the write-off below,
+on the newest attempt of the run it shows when that attempt is held
+`liability_unknown` (C54): it sends the attempt id the read showed and reads
+the task again after every answer. It offers no fourth outcome; an effect not
+yet known keeps its stop. The top-up on the same page is `budget.top_up`'s own
+control (T2e).
+
 ### `budget.write_off` (T3c)
 
 `POST /api/b/<key>/budget/write_off` with `recordId` (the task), `attemptId`,
@@ -1400,8 +1565,8 @@ it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
 
 ## Reads
 
-`task.read`, `task.board`, `task.queue`, `person.list`, `preset.plan`,
-`settings.read` and `session.capabilities` are declared in `COMMAND_SURFACE`
+`task.read`, `task.board`, `task.queue`, `gate.pending`, `person.list`,
+`preset.plan`, `settings.read`, `session.capabilities`, `conversation.read` and `conversation.list` are declared in `COMMAND_SURFACE`
 with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 

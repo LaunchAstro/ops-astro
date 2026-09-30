@@ -99,19 +99,21 @@ browser.
 
 ## Addresses
 
-| Address      | What it draws                                                                                      |
-| ------------ | -------------------------------------------------------------------------------------------------- |
-| `/sign-in`   | Credentials and the business selector                                                              |
-| `/projects/` | `task.board` for the unboarded tasks (`board: null`), and the create form                          |
-| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision   |
-| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`    |
-| `/map/:key`  | `map.view`: a Wayfinder map's sections, each edited in place through `map.revise`, and its history |
+| Address                | What it draws                                                                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/sign-in`             | Credentials and the business selector                                                                                                                           |
+| `/projects/`           | `task.board` for the unboarded tasks (`board: null`), and the create form                                                                                       |
+| `/task/:key`           | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                |
+| `/settings`            | The two operation-classified business settings, from `settings.read` and `session.capabilities`                                                                 |
+| `/agent/:conversation` | `conversation.read` by the id the address carries: the transcript while the body lives, only the wrap-up after it purges (C36); a started drawer tab links here |
+| `/map/:key`            | `map.view`: a Wayfinder map's sections, each edited in place through `map.revise`, and its history                                                              |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
 
-The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
-goes to `/settings`. An open dock tab is announced as "Close Settings"
+The dock has two tabs (`PANELS` in `apps/web/src/panels.ts`): Settings, which
+goes to `/settings`, and Agent, which opens the assistant drawer in place
+(MP-7-11; its route is null). An open dock tab is announced as "Close Settings"
 (`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
 leaves its address for the board when pressed (`onDockTab` in
 `apps/web/src/App.tsx`).
@@ -685,12 +687,11 @@ places this build does not yet reach it.
 - The board draws nine pinned columns; this build stores five of them. Rank,
   client, stage, estimate and actual draw the ported "not set" dash.
 - No facet menu, presets, undo/redo, typeahead or column drag-resize.
-- No Agent panel, gate or run surfaces, and no dock tab for them. The records
-  behind them are stored and read: `task.read` carries every proposal on the
-  task with its gate's state and expiry (`docs/local/API.md`'s "Proposal
-  projection", served by `packages/core-commands/src/reads/proposals.ts`). So this
-  is the web not drawing them yet and not the database failing to hold them, and
-  the panel registry stays empty until there is a screen for a tab to open.
+- The task page draws the Agent pane (MP-6-1 to MP-6-5): the run, its gate,
+  checks, scope and token panel from `task.read`, and a person's word on an
+  unknown effect (C54: the three outcomes and the write-off). It has no dock
+  tab yet, because the dock is not built; the pane sits in the task page's
+  own column.
 - Subtasks are not built. Comments are, and the task page draws them. The
   mockup's tabbed Internal / Client / All activity conversation is not built:
   the comments are one list with each row's audience on it, and history stays

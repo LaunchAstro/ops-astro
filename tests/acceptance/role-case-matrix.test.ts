@@ -302,6 +302,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       'task.heartbeat',
       'task.dispatch',
       'task.observe',
+      'task.check',
       'task.handback',
     ]);
     const drivenFor = new Set<string>();
@@ -356,6 +357,15 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         );
         const seen = await harness.asPerson('task.observe', { ...own, attemptId }, 'alpha', caller);
         observe(caller.name, 'e-member-positive', 'task.observe', seen, SUCCESS);
+      }
+      if (grants.has(pairOf('task.check'))) {
+        const checked = await harness.asPerson(
+          'task.check',
+          { ...own, name: 'the member checks', outcome: 'passed' },
+          'alpha',
+          caller,
+        );
+        observe(caller.name, 'e-member-positive', 'task.check', checked, SUCCESS);
       }
       if (grants.has(pairOf('task.handback'))) {
         const settled = await harness.asPerson(
@@ -550,11 +560,14 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         // EX-35 (root ruling 5): the current intersection of the pickup's
         // purpose and the delegating person's effective grants on the task,
         // never the pre-pickup pair and never a pair outside the purpose. The
-        // person here holds what the purpose carries, so it is all of it.
+        // person here holds what the purpose carries, so it is all of it:
+        // the harness admin holds run:write, so the mint reached run, and
+        // write alone on it (MP-6-2, ORCH34).
         const reported = (after['grants'] as readonly { collection: string; action: string }[])
           .map((one) => `${one.collection}:${one.action}`)
           .toSorted();
         expect(reported, declaration.name).toStrictEqual([
+          'run:write',
           'task:comment',
           'task:read',
           'task:write',
@@ -601,12 +614,17 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(
         declaration.name,
-        ['task.heartbeat', 'task.dispatch', 'task.observe', 'model.call'].includes(declaration.name)
-          ? // A heartbeat, a dispatch, an observe or a model call, like a handback, names its task
+        ['task.heartbeat', 'task.dispatch', 'task.observe', 'task.check', 'model.call'].includes(
+          declaration.name,
+        )
+          ? // A heartbeat, a dispatch, an observe, a check or a model call, like a handback, names its task
             // through the lease and never through a stray `recordId` (final review R1 #23), so
             // the sibling is reached by its own lease.
             {
               ...harness.probeBody(declaration),
+              ...(declaration.name === 'task.check'
+                ? { name: 'a check on the sibling', outcome: 'passed' }
+                : {}),
               leaseId: siblingLease['leaseId'],
               fence: siblingLease['fence'],
               ...(declaration.name === 'task.observe'
@@ -738,6 +756,19 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       stale,
       refusal('LEASE_NOT_OWNED'),
     );
+    // A check recorded under its own lease (MP-6-1): the system write the
+    // lease authorises, naming the agent as the actor that performed it.
+    const checked = await harness.asAgent(
+      'task.check',
+      {
+        leaseId: picked['leaseId'],
+        fence: picked['fence'],
+        name: 'the agent checks',
+        outcome: 'passed',
+      },
+      credential,
+    );
+    observe('agent-after-pickup', table, 'task.check (own lease)', checked, SUCCESS);
 
     // (j) I07, on one live gate. The decision is excluded from every
     // delegation and checked first in the order, so it is never reported as

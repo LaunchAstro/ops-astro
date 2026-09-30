@@ -39,6 +39,26 @@ if (serverUrl === undefined) {
   console.warn('command surface: DATABASE_URL is unset, so nothing below ran, nothing is proved.');
 }
 
+/** The surface's reads, sorted: every other declaration is a write. */
+const DECLARED_READS = [
+  'conversation.list',
+  'conversation.read',
+  'gate.pending',
+  'map.frontier',
+  'map.status',
+  'map.view',
+  'person.list',
+  'preset.plan',
+  'session.capabilities',
+  'settings.read',
+  'task.board',
+  'task.context',
+  'task.execution',
+  'task.queue',
+  'task.read',
+  'task.receipt',
+];
+
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
     expect([...CONTRACT_NINE].toSorted()).toStrictEqual([
@@ -74,14 +94,13 @@ describe('the surface as a table', () => {
     // the only collection nothing is stored in, because the read under it is
     // about the caller rather than about the business's records. `grant` and
     // `delegation` are the revocation controls': the path names the row a
-    // revocation writes, and the authority it asks is still on tasks. `map`
-    // is wayfinder's (WF-1, WF-2): a map is a task, and its path says which
-    // view of the task the operation is about. `model` is AW-01's call through
-    // the broker, asked of the lease's task. `run` is AW-05's two answers at
-    // the budget stop, asked of the run's task.
+    // revocation writes, and the authority it asks is still on tasks. `gate`
+    // is MP-6-1's awaiting-review read, `conversation` AW-03's writes and read,
+    // `map` wayfinder's (WF-1, WF-2; a map is a task), `model` AW-01's call
+    // through the broker, and `run` AW-05's answers at the budget stop.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|map|model|run)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate|conversation|map|model|run)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -89,25 +108,8 @@ describe('the surface as a table', () => {
   });
 });
 
-/** The thirteen reads the surface declares, sorted. */
-const DECLARED_READS = [
-  'map.frontier',
-  'map.status',
-  'map.view',
-  'person.list',
-  'preset.plan',
-  'session.capabilities',
-  'settings.read',
-  'task.board',
-  'task.context',
-  'task.execution',
-  'task.queue',
-  'task.read',
-  'task.receipt',
-];
-
 describe('the surface as a table', () => {
-  it('declares the thirteen reads as reads, and everything else as a write', () => {
+  it('declares the sixteen reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
@@ -154,6 +156,20 @@ describe("AW-05's answers at the budget stop", () => {
     expect(declarationOf('run.end_at_budget_stop').collection).toBe('gate');
     expect(declarationOf('run.top_up').action).toBe('decide');
     expect(declarationOf('run.end_at_budget_stop').action).toBe('decide');
+  });
+});
+
+describe("MP-6-2's state revised", () => {
+  it('asks write on run of the named task, and an agent reaches it only under its delegation', () => {
+    // run:write alone (ORCH33): no read, decide, share or manage on run.
+    const row = declarationOf('run.revise_state');
+    expect([row.collection, row.action, row.authorisedOn, row.agent]).toStrictEqual([
+      'run',
+      'write',
+      'record',
+      'delegated',
+    ]);
+    expect(row.targetsExistingRecord).toBe(false);
   });
 });
 

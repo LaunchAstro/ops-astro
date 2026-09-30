@@ -113,6 +113,7 @@ four-eyes threshold a second person sends the same body to complete it.
 ```sh
 pnpm cli run.top_up --json '{"recordId":"<taskId>","runId":"<runId>","amountMinor":1000,"currency":"AUD"}'
 pnpm cli run.end_at_budget_stop --json '{"recordId":"<taskId>","runId":"<runId>"}'
+pnpm cli run.revise_state --json '{"recordId":"<taskId>","runId":"<runId>","expectedVersion":0,"knowledge":["the brief is agreed"],"unknowns":["the launch date"]}'
 ```
 
 `reservationId` comes from the queue; `leaseId` and `fence` from the pickup's

@@ -110,6 +110,15 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
+  // C36: a conversation's own address (CS-7.38), reached from the drawer's
+  // tab rather than the rail; after its body purges it draws the wrap-up.
+  'agency:agent-conversation': {
+    namespace: 'agency',
+    path: '/agent/:conversation',
+    title: 'Agent conversation',
+    surface: 'none',
+    authenticated: true,
+  },
 } as const satisfies Readonly<Record<`${Namespace}:${string}`, RouteDescriptor>>;
 
 export type RouteId = keyof typeof ROUTES;

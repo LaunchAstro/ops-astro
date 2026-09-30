@@ -71,21 +71,31 @@ export function leaseReason(cause: LeaseCause): string {
 export const NOT_OWNED_FIX = {
   handback: 'Hand back the lease your own pickup was issued.',
   heartbeat: 'Renew the lease this pickup issued, at the fence it handed back.',
+  check: 'Record a check under the lease this pickup issued, at the fence it handed back.',
 } as const;
+
+/** The next steps of an operation that needs the caller to hold a live lease. */
+export interface OwnerFixes {
+  readonly notOwned: string;
+  readonly lost: string;
+  readonly expired: string;
+}
 
 /** Each operation's next step per cause: fixed text, as the reason is. */
 export const LEASE_FIXES: {
-  readonly heartbeat: {
-    readonly notOwned: string;
-    readonly lost: string;
-    readonly expired: string;
-  };
+  readonly heartbeat: OwnerFixes;
+  readonly check: OwnerFixes;
   readonly handback: Readonly<Record<LeaseCause, string>>;
 } = {
   heartbeat: {
     notOwned: NOT_OWNED_FIX.heartbeat,
     lost: 'A lease is renewed under current rights. Ask a manager for write on this task.',
     expired: 'Pick the work up again if it is still claimable.',
+  },
+  check: {
+    notOwned: NOT_OWNED_FIX.check,
+    lost: 'A check is recorded under current rights. Ask a manager for write on this task.',
+    expired: 'A check is recorded only while the lease is live. Pick the work up again.',
   },
   handback: {
     not_owned: NOT_OWNED_FIX.handback,
@@ -106,13 +116,14 @@ export const LEASE_FIXES: {
 };
 
 /**
- * Every text a heartbeat or handback lease refusal can carry: the reasons and
+ * Every text a heartbeat, check or handback lease refusal can carry: the reasons and
  * the next steps. A refusal holding anything else has echoed something, and
  * `tests/runtime/cq-8-support.ts` (`unsent`) checks against this list.
  */
 export const LEASE_WORDING: readonly string[] = [
   ...Object.values(REASONS).map((row) => row.reason),
   ...Object.values(LEASE_FIXES.heartbeat),
+  ...Object.values(LEASE_FIXES.check),
   ...Object.values(LEASE_FIXES.handback),
 ];
 

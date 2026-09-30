@@ -36,6 +36,8 @@ export interface VersionRow {
 export interface ReservationRow {
   readonly lineage_id: string;
   readonly id: string;
+  readonly envelope_id: string;
+  readonly run_id: string;
   readonly state: string;
   readonly held_minor: string;
   readonly actual_minor: string | null;
@@ -52,7 +54,17 @@ export interface ReservationRow {
   readonly attempt_drop_cause: string | null;
 }
 
-export function asVersion(row: VersionRow): ProposalVersionView {
+export interface CheckRow {
+  readonly version_id: string;
+  readonly id: string;
+  readonly name: string;
+  readonly outcome: string;
+  readonly note: string | null;
+  readonly actor_id: string;
+  readonly created_at: string;
+}
+
+export function asVersion(row: VersionRow, checks: readonly CheckRow[]): ProposalVersionView {
   return {
     versionId: row.version_id,
     version: Number(row.version),
@@ -83,6 +95,16 @@ export function asVersion(row: VersionRow): ProposalVersionView {
             expired: row.gate_expired ?? false,
             payloadDigest: row.payload_digest,
           },
+    checks: checks
+      .filter((check) => check.version_id === row.version_id)
+      .map((check) => ({
+        id: check.id,
+        name: check.name,
+        outcome: check.outcome,
+        note: check.note,
+        performedByActorId: check.actor_id,
+        recordedAt: isoTime(check.created_at),
+      })),
   };
 }
 
@@ -90,6 +112,8 @@ export function asVersion(row: VersionRow): ProposalVersionView {
 export function asReservation(row: ReservationRow): ReservationView {
   return {
     id: row.id,
+    envelopeId: row.envelope_id,
+    runId: row.run_id,
     state: row.state,
     heldMinor: Number(row.held_minor),
     actualMinor: row.actual_minor === null ? null : Number(row.actual_minor),

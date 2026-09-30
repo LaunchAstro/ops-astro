@@ -32,6 +32,15 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'map_versions'],
   ['s', 'map_frontier map_summaries'],
   ['siu', 'map_components'],
+  // A run's checks, append only as handback_reports is (MP-6-1).
+  ['si', 'run_checks'],
+  // 0052 (MP-6-2): a run's state, each revision a version, never rewritten.
+  ['si', 'run_states'],
+  // 0049 (AW-03): a conversation, its body (deleted only by the purge, never
+  // edited) and its wrap-ups (append only, never purged).
+  ['siu', 'conversations'],
+  ['sid', 'conversation_messages'],
+  ['si', 'conversation_wrap_ups'],
   // AW-01: the model-call ledger, and the copy register, which is append only.
   ['siu', 'model_calls'],
   ['si', 'copy_registrations'],

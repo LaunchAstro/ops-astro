@@ -20,6 +20,7 @@ import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { drawScreen } from './screen-registry.tsx';
+import { AssistantView } from './views/assistant.tsx';
 
 export interface AppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
@@ -63,6 +64,8 @@ export function App(props: AppProps): ReactElement {
     readonly held: Interruption;
     readonly offer: HeldOffer | null;
   } | null>(null);
+  // The Agent drawer (MP-7-11): open over the page, never an address.
+  const [agentOpen, setAgentOpen] = useState(false);
 
   const onSignedIn = useCallback(
     (next: Session) => {
@@ -255,16 +258,28 @@ export function App(props: AppProps): ReactElement {
               id: panel.id,
               label: panel.label,
               icon: panel.icon,
-              open: panel.route !== null && here === pathTo(panel.route),
+              open: panel.route === null ? agentOpen : here === pathTo(panel.route),
             }))
       }
       onDockTab={(id) => {
         const panel = PANELS.find((entry) => entry.id === id);
-        if (panel === undefined || panel.route === null) return;
-        const target = pathTo(panel.route);
-        props.navigate(here === target ? pathTo('agency:projects-board') : target);
+        if (panel === undefined) return;
+        if (panel.route === null) setAgentOpen((open) => !open);
+        else if (here === pathTo(panel.route)) props.navigate(pathTo('agency:projects-board'));
+        else props.navigate(pathTo(panel.route));
       }}
       seated={false}
+      panel={
+        agentOpen && session !== null && match !== null ? (
+          <AssistantView
+            client={client}
+            route={match.id}
+            here={here}
+            entry={null}
+            onClose={() => setAgentOpen(false)}
+          />
+        ) : undefined
+      }
     >
       {at === null || refused || session === null ? null : <RouteTabs at={at} />}
       {content}

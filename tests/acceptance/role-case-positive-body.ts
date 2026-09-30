@@ -21,6 +21,7 @@ import {
   ownUnknownAttempt,
 } from './role-case-bodies.ts';
 import { WAYFINDER_BODIES } from './role-case-wayfinder.ts';
+import { ownConversation } from './foreign-conversation.ts';
 import { answerAtTheStop } from './stopped-run.ts';
 
 export function createPositiveBody(
@@ -127,6 +128,9 @@ export function createPositiveBody(
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
         return { body: { board: null } };
+      // The pending gates the admin may decide: the admin holds `decide` on
+      // the whole business, so the list answers.
+      case 'gate.pending':
       case 'task.queue':
       case 'person.list':
       // Both take an empty body and neither carries an `expectedRevision`:
@@ -217,6 +221,27 @@ export function createPositiveBody(
       case 'run.end_at_budget_stop':
         // A run the broker stopped at its approved ceiling (`stopped-run.ts`).
         return await answerAtTheStop(context, declaration.name, PROPOSAL);
+      case 'run.revise_state': {
+        // MP-6-2: the planned run a proposal made, its state revised by a
+        // holder of run:write on its task (the harness tops the admin up).
+        const task = await context.freshTask('a run whose state is revised');
+        const proposed = await context.asPerson('task.propose', {
+          recordId: task.id,
+          expectedRevision: task.revision,
+          ...PROPOSAL,
+        });
+        if (proposed.code !== 'ok') return { exception: `propose refused ${proposed.code}` };
+        const detail = proposed.body['detail'] as Record<string, unknown>;
+        return {
+          body: {
+            recordId: task.id,
+            runId: String(detail['runId']),
+            expectedVersion: 0,
+            knowledge: ['the brief is agreed'],
+            unknowns: ['the launch date'],
+          },
+        };
+      }
       case 'task.heartbeat':
         // The person renews their own lease (ledger line 38, "current lease
         // owner"). The agent's renewal is in the agent journey.
@@ -224,6 +249,12 @@ export function createPositiveBody(
       case 'task.dispatch':
         // The person marks their own lease's step dispatched (T2c1).
         return { body: await ownLease(context) };
+      case 'task.check':
+        // A check recorded under the person's own lease (MP-6-1). The agent's
+        // check under its delegation is in the agent journey.
+        return {
+          body: { ...(await ownLease(context)), name: 'the admin checks', outcome: 'passed' },
+        };
       case 'task.observe':
         // The person observes the effect they applied on their own lease (T2c2).
         return { body: await ownAppliedEffect(context) };
@@ -234,6 +265,27 @@ export function createPositiveBody(
         if (observed.code !== 'ok') throw new Error(`matrix: observe refused ${observed.code}`);
         return { body: { attemptId: applied.attemptId } };
       }
+      // AW-03. The admin holds `conversation:write`, so starts one of their own;
+      // the message and the read name a conversation the admin just started.
+      case 'conversation.start':
+        return { body: { body: 'the admin asks the agent', subject: 'acceptance' } };
+      case 'conversation.message':
+        return { body: { conversationId: await ownConversation(context), body: 'and again' } };
+      case 'conversation.read':
+        return { body: { conversationId: await ownConversation(context) } };
+      // MP-7-11. The tab row: the admin's own list, and a title and a page
+      // on the conversation the admin just started.
+      case 'conversation.list':
+        return { body: {} };
+      case 'conversation.rename':
+        return { body: { conversationId: await ownConversation(context), title: 'Renamed' } };
+      case 'conversation.set_scope':
+        return {
+          body: {
+            conversationId: await ownConversation(context),
+            page: { address: '/settings', shows: 'Settings' },
+          },
+        };
       default: {
         // Wayfinder (WF-1, WF-2) keeps its recipes beside this table.
         const wayfinder = WAYFINDER_BODIES[declaration.name];
