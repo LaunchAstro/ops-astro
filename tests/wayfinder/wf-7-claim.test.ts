@@ -128,3 +128,35 @@ it('WF-7 claim first: two starters racing on one ticket, exactly one wins and ho
   const winner = codeOf(answers[0]!) === 'applied' ? s.decider : other;
   expect(await facts(ticket)).toStrictEqual({ assignee: winner.personId, runs: 1 });
 }, 60_000);
+
+it('WF-7 claim first: a starter who may not assign cannot write the claim, refused with nothing planned or claimed; one already holding the claim starts', async () => {
+  const noAssign = await enrol(s.db.app, s.business, 'wf7-no-assign');
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    for (const action of ['read', 'write'] as const) {
+      // oxlint-disable-next-line no-await-in-loop
+      await grantTo(tx, noAssign, action);
+    }
+  });
+  const ticket = await researchTicket('wf7 claim no assign');
+  const held = await researchTicket('wf7 claim no assign, held');
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    for (const id of [ticket, held]) {
+      // oxlint-disable-next-line no-await-in-loop
+      await grantTo(tx, noAssign, 'write', { kind: 'record', id }, false, 'run');
+    }
+  });
+  expect(await start(noAssign, ticket)).toMatchObject({
+    code: 'SCOPE_NOT_GRANTED',
+    names: ['task:assign'],
+  });
+  expect(await facts(ticket)).toStrictEqual({ assignee: null, runs: 0 });
+  // Assigned by someone who may (set here as the admin role would), so the
+  // start writes no claim and asks no assign.
+  await s.db.admin.execute(
+    `update public.records set data = data || jsonb_build_object('assignee', $3::uuid)
+      where business_id = $1 and id = $2`,
+    [s.business, held, noAssign.personId],
+  );
+  appliedDetail(await start(noAssign, held), 'task.propose');
+  expect(await facts(held)).toStrictEqual({ assignee: noAssign.personId, runs: 1 });
+}, 60_000);
