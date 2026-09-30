@@ -114,4 +114,44 @@ describe.skipIf(serverUrl === undefined)('INB-1 four eyes and the inbox', () => 
     // Their assignment item alone: it is owed.
     expect(await owed(approver.personId)).toBe(1);
   });
+
+  it('a former assignee regains an open decision item when reassigned', async () => {
+    const taskId = await createTask(s, `inbox four eyes released ${randomUUID()}`);
+    const first = await approverOn(taskId);
+    const second = await approverOn(taskId);
+    const version = await propose(s, taskId);
+    expect(await stateOn(version['gateId'], first.personId)).toBe('open');
+    await assign(taskId, first);
+    expect(await stateOn(version['gateId'], first.personId)).toBe('withdrawn');
+    await assign(taskId, second);
+    const restored = await stateOn(version['gateId'], first.personId);
+    const count = await owed(first.personId);
+    expect(codeOf(await as(first, decideBody(version, 'approve')))).toBe('applied');
+    expect(restored).toBe('open');
+    expect(count).toBe(1);
+  });
+
+  it("reassignment restores an eligible decider's gate item", async () => {
+    const taskId = await createTask(s, `inbox four eyes reassigned ${randomUUID()}`);
+    const approver = await approverOn(taskId);
+    const replacement = await enrol(s.db.app, s.business, `replacement-${randomUUID()}`);
+    const version = await propose(s, taskId);
+    expect(await stateOn(version['gateId'], approver.personId)).toBe('open');
+
+    await assign(taskId, approver);
+    expect(await stateOn(version['gateId'], approver.personId)).toBe('withdrawn');
+    await assign(taskId, replacement);
+
+    const open = await rows<{ readonly total: number }>(
+      s,
+      `select count(*)::int as total from public.inbox_items
+        where business_id = $1 and reason = 'decision' and fact_kind = 'gate'
+          and fact_id = $2 and recipient_person_id = $3 and work_state = 'open'`,
+      [s.business, version['gateId'], approver.personId],
+    );
+    const countBeforeDecision = await owed(approver.personId);
+    appliedDetail(await as(approver, decideBody(version, 'approve')), 'eligible former assignee');
+    expect(open[0]?.total).toBe(1);
+    expect(countBeforeDecision).toBe(1);
+  });
 });

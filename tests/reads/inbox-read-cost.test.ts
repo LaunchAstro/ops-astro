@@ -219,4 +219,41 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
     expect(bounded.recordLookups).toBeLessThanOrEqual(1 + SCAN + 1);
     expect(JSON.stringify(await listed())).not.toContain(onB);
   }, 60_000);
+
+  it('another client’s closed item cannot remove a readable inbox entry', async () => {
+    const recipient = await enrol(w.fixture.db.app, w.fixture.business, 'Sol bounded reader');
+    await inAlpha(async (tx) => {
+      const grant = await issueGrant(tx, [], {
+        subject: { kind: 'person', id: recipient.personId },
+        scope: { kind: 'party', id: clientA },
+        collection: 'task',
+        action: 'read',
+        canDelegate: false,
+        parentGrantId: null,
+        grantedByActorId: w.fixture.member.actorId,
+      });
+      if (!grant.ok) throw new Error(grant.refusal.code);
+    });
+    const closed = async (taskId: string, count: number, offset: number): Promise<void> => {
+      await w.fixture.db.admin.execute(
+        `insert into public.inbox_items
+           (business_id, id, recipient_person_id, subject_record_id, reason, fact_kind, fact_id,
+            work_state, raised_at, closed_at)
+         select $1, gen_random_uuid(), $2, $3, 'mention', 'record', gen_random_uuid(),
+                'withdrawn', now() - make_interval(secs => $5 + g),
+                now() - make_interval(secs => $5 + g)
+           from generate_series(1, $4) as g`,
+        [w.fixture.business, recipient.personId, taskId, count, offset],
+      );
+    };
+    await closed(onA, PAGE, 1_000);
+    await closed(onB, SCAN - PAGE, 0);
+    const read = async () => await inAlpha(async (tx) => await readInbox(tx, recipient.personId));
+    const before = await read();
+    expect(before).toHaveLength(PAGE);
+    expect(before.every((entry) => entry.access === 'readable')).toBe(true);
+    await closed(onB, 1, 0);
+    const after = await read();
+    expect(after.map((entry) => entry.id)).toStrictEqual(before.map((entry) => entry.id));
+  });
 });
