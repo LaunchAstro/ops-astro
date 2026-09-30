@@ -77,7 +77,7 @@ export function settlementOf(
 }
 
 /** Above the hold, or no answer: the maximum stays held as unknown liability until a person records an outcome. */
-async function hold(
+export async function hold(
   tx: TenantQuery,
   reserved: ReservedCall,
   observed: number | null,
@@ -114,7 +114,7 @@ async function hold(
 }
 
 /** Positive proof that nothing happened: the whole hold is released. */
-async function release(
+export async function release(
   tx: TenantQuery,
   reserved: ReservedCall,
   reason: string,
@@ -136,7 +136,7 @@ async function release(
 }
 
 /** Priced within the hold: settled at the price, the rest released. */
-async function settlePriced(
+export async function settlePriced(
   tx: TenantQuery,
   reserved: ReservedCall,
   settlement: Settlement & { kind: 'priced' },

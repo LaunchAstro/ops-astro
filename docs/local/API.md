@@ -1010,7 +1010,10 @@ A business with calls in flight on a route holds no more than the route's
 ceiling divided by the businesses in flight there, itself counted. The share
 is read through `model_route_room` ([DATA.md](DATA.md), "What the tenancy proofs are"),
 under one lock per route. A malformed operand is `FIELD_VALUE_INVALID` by name, and
-its value is never echoed into the audit. Where no broker is configured the
+its value is never echoed into the audit.
+A person's call from their own conversation takes no lease and holds no money:
+local routes only, and nothing reaches it from the wire yet (the conversation
+exchange that calls it is SL12's; [RUNTIME.md](RUNTIME.md), "The model call's ledger"). Where no broker is configured the
 agent envelope's own `model.call` row answers `DEPENDENCY_NOT_LANDED` 501 after
 the delegation check (`AGENT_OPERATIONS`).
 

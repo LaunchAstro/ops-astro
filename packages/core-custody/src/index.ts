@@ -25,6 +25,11 @@ export {
 } from './egress.ts';
 export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } from './custody.ts';
 export {
+  callModelInConversation,
+  type ConversationCallRequest,
+  type ConversationScope,
+} from './broker-conversation.ts';
+export {
   callModel,
   promptCopyRegistered,
   registerPromptCopy,

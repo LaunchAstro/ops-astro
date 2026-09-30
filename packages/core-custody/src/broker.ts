@@ -193,7 +193,11 @@ export async function sendReservedCall(
   return await settle(database, businessId, caller, request, reserved, settlement, broker);
 }
 
-/** The lease-expiry sweep's half: a started call with no answer is held, never released; one never started is released. */
+/**
+ * The lease-expiry sweep's half: a started call with no answer is held, never
+ * released; one never started is released. A conversation call's lease is its
+ * age.
+ */
 export async function sweepModelCalls(
   tx: TenantQuery,
 ): Promise<{ readonly held: number; readonly released: number }> {
@@ -206,6 +210,17 @@ export async function sweepModelCalls(
       returning c.id`,
     [tx.businessId],
   );
+  // A conversation call has no lease: started, it is dropped once it has
+  // outlived five times the longest wait custody allows (120 s) and held,
+  // so a lost process never leaves it counting as in flight.
+  const conversations = await tx.query(
+    `update public.model_calls
+        set state = 'liability_unknown', fault = 'ours', drop_state = 'dropped_no_answer'
+      where business_id = $1 and conversation_id is not null and state = 'dispatched'
+        and started_at <= clock_timestamp() - interval '10 minutes'
+      returning id`,
+    [tx.businessId],
+  );
   const released = await tx.query(
     `update public.model_calls c
         set state = 'released', ended_at = clock_timestamp()
@@ -215,5 +230,5 @@ export async function sweepModelCalls(
       returning c.id`,
     [tx.businessId],
   );
-  return { held: held.length, released: released.length };
+  return { held: held.length + conversations.length, released: released.length };
 }
