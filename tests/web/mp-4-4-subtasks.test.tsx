@@ -8,6 +8,8 @@
 // are the steps the server sent, redrawn from the reread, and the page's Team
 // badge counts the same steps (MP-4-3's one rule).
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { act, useState, type ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { StepView } from '../../packages/core-wire/src/index.ts';
@@ -18,6 +20,9 @@ import { found, TASK_ID, tick } from './task-page-stub.tsx';
 import { badge, json, mount, page, press, unmountAll } from './perspective-support.tsx';
 
 afterEach(unmountAll);
+
+const cssText = (): string =>
+  readFileSync(join(import.meta.dirname, '../../packages/ui/src/styles/5-task.css'), 'utf8');
 
 interface Sent {
   readonly command: string;
@@ -31,6 +36,7 @@ const step = (id: string, title: string, over: Partial<StepView> = {}): StepView
   state: { id: `s-${id}`, key: 'active', label: 'Active', machineCategory: 'started' },
   done: false,
   archived: null,
+  awaitingApproval: false,
   assignee: null,
   revision: 3,
   ...over,
@@ -39,6 +45,7 @@ const step = (id: string, title: string, over: Partial<StepView> = {}): StepView
 const COPY = step('41', 'Write the copy');
 const FORMS = step('42', 'Check the forms');
 const DONE = step('43', 'Book the shoot', { done: true });
+const GATED = step('45', 'Send the draft', { awaitingApproval: true });
 const ARCHIVED = step('44', 'Old plan', {
   archived: { at: '2026-09-30T02:00:00.000Z', why: 'The parent task was completed' },
 });
@@ -214,7 +221,23 @@ describe('MP-4-4 archived shows why', () => {
 });
 
 describe('MP-4-4 gate step no checkbox', () => {
-  it.todo('a step waiting at a gate carries no tick (no gate-step marker on the read yet)');
+  it('a step waiting at a gate carries no tick, only a note, and still counts as open', async () => {
+    const { client } = commands();
+    const { view } = await list(client, [COPY, GATED]);
+    expect(view.find('[data-step-tick="45"]')).toBeNull();
+    expect(view.find('[data-step="45"] [role="checkbox"]')).toBeNull();
+    expect(view.find('[data-step="45"] [data-step-gate]')?.textContent).toBe('Waiting on a gate');
+    expect(view.find('[data-step-tick="41"]')).not.toBeNull();
+    expect(view.find('[data-step-count]')?.textContent).toBe('0 of 2 done · 0%');
+  });
+
+  it('the note keeps to one line beside the title, and wraps to its own at 640 and below', () => {
+    const rules = cssText();
+    expect(rules).toMatch(/\.sb__gate-note\s*\{[^}]*white-space:\s*nowrap/u);
+    expect(rules).toMatch(
+      /@media\s*\(width\s*<=\s*640px\)\s*\{[^@]*\.sb__gate-note\s*\{[^}]*white-space:\s*normal/u,
+    );
+  });
 });
 
 describe('MP-4-4 note wraps at 640', () => {

@@ -40,6 +40,7 @@ export async function readTaskSteps(
       state: child.state,
       done: child.state?.machineCategory === 'completed',
       archived: child.archived,
+      awaitingApproval: false,
       assignee: child.assignee,
       revision: child.revision,
     }));

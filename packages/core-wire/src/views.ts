@@ -196,7 +196,9 @@ export interface TimeEntryView {
 /**
  * One subtask as its parent's page lists it (MP-4-4). `done` is the completed
  * category; `archived` says when and why a step left the count without being
- * done (MP-4-15), and is null for a live one.
+ * done (MP-4-15), and is null for a live one. `awaitingApproval` is true while
+ * a gate on the step's live proposal waits for a decision (MP-5-11's
+ * question): the page draws that step with a note and no tick.
  */
 export interface StepView {
   readonly id: string;
@@ -205,6 +207,7 @@ export interface StepView {
   readonly state: TaskStateView | null;
   readonly done: boolean;
   readonly archived: { readonly at: string; readonly why: string } | null;
+  readonly awaitingApproval: boolean;
   readonly assignee: PersonView | null;
   readonly revision: number;
 }
