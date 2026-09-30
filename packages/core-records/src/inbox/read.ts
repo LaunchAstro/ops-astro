@@ -35,7 +35,7 @@ type ItemRow = InboxItemAxes &
 
 /**
  * Where the recipient reads tasks now, as the three parameters a query filters
- * on itself: the same grants `accessOf` asks, listed once for every row.
+ * on itself: the same grants `taskAccess` asks, listed once for every row.
  */
 const HELD = `($3::boolean or i.subject_record_id = any($4::uuid[]) or r.uuid_7 = any($5::uuid[]))`;
 

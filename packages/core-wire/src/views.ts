@@ -17,6 +17,7 @@ import type {
   Action,
   DeliveryState,
   InboxAccess,
+  InboxAlert,
   InboxFactKind,
   InboxReason,
   InboxWorkState,
@@ -505,12 +506,7 @@ export interface InboxEntry {
    * T2h's alert on the run a readable item points at: the same record the task
    * page and the queue read show (INB-1, the alert's third and last place).
    */
-  readonly alert?: {
-    readonly id: string;
-    readonly kind: 'settled' | 'failed' | 'cancelled' | 'awaiting_person';
-    readonly waitingReason: 'needs_approval' | 'liability_unknown' | 'quarantined' | null;
-    readonly raisedAt: string;
-  };
+  readonly alert?: InboxAlert;
 }
 
 /** `inbox.read`'s answer: the caller's open items and newest page of closed ones, oldest raised first. */

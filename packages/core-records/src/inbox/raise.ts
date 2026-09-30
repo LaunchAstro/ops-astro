@@ -28,6 +28,21 @@ async function assigneeOf(tx: TenantQuery, taskId: string): Promise<string | nul
   return rows[0]?.assignee ?? null;
 }
 
+/** One person's decision item on a gate of the task. */
+async function raiseGateItem(
+  tx: TenantQuery,
+  person: string,
+  taskId: string,
+  gateId: string,
+): Promise<void> {
+  await raiseInboxItem(tx, {
+    recipientPersonId: person,
+    subjectRecordId: taskId,
+    reason: 'decision',
+    fact: { kind: 'gate', id: gateId },
+  });
+}
+
 /**
  * A new pending gate. The task's superseded or ended gates have their open
  * items withdrawn (`clear.ts`), then every person holding `task:decide` on the
@@ -47,12 +62,7 @@ export async function raiseDecision(
   const assignee = await assigneeOf(tx, gate.taskId);
   for (const person of holders.filter((holder) => holder !== assignee)) {
     // oxlint-disable-next-line no-await-in-loop
-    await raiseInboxItem(tx, {
-      recipientPersonId: person,
-      subjectRecordId: gate.taskId,
-      reason: 'decision',
-      fact: { kind: 'gate', id: gate.gateId },
-    });
+    await raiseGateItem(tx, person, gate.taskId, gate.gateId);
   }
 }
 
@@ -71,7 +81,7 @@ export async function raiseEscalation(
   tx: TenantQuery,
   escalated: { readonly gateId: string; readonly recipientPersonId: string },
 ): Promise<void> {
-  const gates = await tx.query<{ readonly taskId: string; readonly assignee?: string | null }>(
+  const gates = await tx.query<{ readonly taskId: string; readonly assignee: string | null }>(
     `select l.task_id as "taskId", r.uuid_2 as assignee
        from public.gates g
        join public.proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
@@ -98,12 +108,7 @@ export async function raiseEscalation(
   owed.delete(assignee ?? '');
   for (const person of owed) {
     // oxlint-disable-next-line no-await-in-loop
-    await raiseInboxItem(tx, {
-      recipientPersonId: person,
-      subjectRecordId: taskId,
-      reason: 'decision',
-      fact: { kind: 'gate', id: escalated.gateId },
-    });
+    await raiseGateItem(tx, person, taskId, escalated.gateId);
   }
 }
 
@@ -178,12 +183,7 @@ export async function raiseAssignment(
       // oxlint-disable-next-line no-await-in-loop
       await tx.query(REOPEN, [tx.businessId, person, change.taskId, gate.id]);
       // oxlint-disable-next-line no-await-in-loop
-      await raiseInboxItem(tx, {
-        recipientPersonId: person,
-        subjectRecordId: change.taskId,
-        reason: 'decision',
-        fact: { kind: 'gate', id: gate.id },
-      });
+      await raiseGateItem(tx, person, change.taskId, gate.id);
     }
   }
   if (change.assignee === null || change.assignee === change.by) return;
