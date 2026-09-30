@@ -31,7 +31,8 @@ import { runtimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import { startLiveTopics, type LiveTopics } from '../../apps/api/live.ts';
 import { joinLiveBoard } from '../../packages/core-commands/src/reads/live-join.ts';
-import { authorised, ISSUER, SECRET, tokenFor } from './fixture.ts';
+import { authorised, ISSUER, tokenFor } from './fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
   appliedDetail,
@@ -183,8 +184,7 @@ describe.skipIf(serverUrl === undefined)(
       api = composeApi({
         database: pool,
         admin: s.db.admin,
-        secret: SECRET,
-        issuer: ISSUER,
+        signIn: testSignIn(ISSUER),
         keys: runtimeKeys({ ...process.env }),
         live: { topics, recheckMs: 200 },
       }).app;
