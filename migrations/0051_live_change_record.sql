@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0042 the live change record (C4, CS-15.19).
+-- 0051 the live change record (C4, CS-15.19).
 --
 -- The writes that emit 0035's invalidations also stamp the task they name
 -- here, in the same transaction, so *changes since* (API-4) reads the same
