@@ -149,8 +149,8 @@ function audits(): void {
     expect(await auditCount(ada.actorId)).toBe(before + 1);
   });
 
-  /* oxlint-disable unicorn/consistent-function-scoping -- Sol's criterion-19 proof, kept as written */
-  it('Sol proof, criterion 19: reading own preferences adds no audit event', async () => {
+  /* oxlint-disable unicorn/consistent-function-scoping -- kept as written (MP-2-11a review, criterion 19) */
+  it('MP-2-11 no audit for preferences: reading own preferences adds no audit event', async () => {
     const countReads = async (): Promise<number> => {
       const [row] = await fixture.db.admin.execute<{ n: string }>(
         `select count(*)::text as n from public.audit_events
