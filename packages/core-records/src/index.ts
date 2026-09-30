@@ -204,6 +204,7 @@ export {
 } from './automations/automations.ts';
 export {
   claimOccurrence,
+  FIRING_LIMITS,
   type OccurrenceCause,
   type OccurrenceClaim,
   type OccurrenceOutcome,

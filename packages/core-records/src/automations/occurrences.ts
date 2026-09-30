@@ -14,7 +14,25 @@ import {
   type ActivationMode,
 } from './automations.ts';
 
-export type OccurrenceOutcome = 'started' | 'activation_off' | 'no_standing_approval' | 'approved';
+export type OccurrenceOutcome =
+  | 'started'
+  | 'activation_off'
+  | 'no_standing_approval'
+  | 'approved'
+  | 'over_activation_rate'
+  | 'over_business_rate';
+
+/**
+ * C33's limits on firing (#483 point 4), the reviewed defaults, set here and
+ * changed only by a reviewed change. Each rate counts a rolling 60 minutes of
+ * the occurrence records.
+ */
+export const FIRING_LIMITS = {
+  /** One a minute covers the shortest schedule and a normal event stream. */
+  activationPerHour: 60,
+  /** Ten busy automations without one business crowding the shared worker. */
+  businessPerHour: 600,
+} as const;
 
 export interface OccurrenceRow {
   readonly id: string;

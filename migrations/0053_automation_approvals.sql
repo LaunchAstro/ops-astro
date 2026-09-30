@@ -77,8 +77,10 @@ create table public.standing_approval_revocations (
 alter table public.activation_occurrences
   add column approval_id uuid,
   drop constraint activation_occurrences_outcome_known,
+  -- An occurrence past a rate (C33, #483 point 4) starts no run and says which.
   add constraint activation_occurrences_outcome_known
-    check (outcome in ('started', 'activation_off', 'no_standing_approval', 'approved')),
+    check (outcome in ('started', 'activation_off', 'no_standing_approval', 'approved',
+                       'over_activation_rate', 'over_business_rate')),
   add constraint activation_occurrences_approved_names_approval
     check ((outcome = 'approved') = (approval_id is not null)),
   add constraint activation_occurrences_approval_fkey

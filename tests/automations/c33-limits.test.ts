@@ -1,0 +1,96 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// C33: the occurrence rates, against a real database (U36, #483 point 4). The
+// rates reuse AW-01's durable limit: each count is read back from the
+// occurrence records under the business's lock, so a restarted scheduler meets
+// the same count. The run ceiling, the event intake bound and fairness across
+// businesses are held in `c33-held.test.ts`.
+
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  claimOccurrence,
+  connect,
+  FIRING_LIMITS,
+  type OccurrenceOutcome,
+} from '../../packages/core-records/src/index.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { firingOf, occurrenceOf, type Firing } from './firing.ts';
+import { createAutomationWorld, type AutomationWorld } from './world.ts';
+
+const serverUrl = databaseUrlFromEnvironment();
+
+// eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
+describe.skipIf(serverUrl === undefined)('C33 limits on firing', () => {
+  let w: AutomationWorld;
+  let f: Firing;
+
+  beforeAll(async () => {
+    w = await createAutomationWorld('c33l');
+    f = firingOf(w);
+  });
+
+  afterAll(async () => {
+    await w?.db.drop();
+  });
+
+  const claimNext = async (activationId: string): Promise<OccurrenceOutcome> =>
+    occurrenceOf(await w.claim(activationId, { dueAt: f.nextDue() })).outcome;
+
+  /** Claims `n` due times in turn; the distinct outcomes. */
+  const claimMany = async (activationId: string, n: number): Promise<OccurrenceOutcome[]> => {
+    const outcomes = new Set<OccurrenceOutcome>();
+    for (let i = 0; i < n; i += 1) {
+      // One claim at a time: each reads the count the last one left.
+      // oxlint-disable-next-line no-await-in-loop
+      outcomes.add(await claimNext(activationId));
+    }
+    return [...outcomes];
+  };
+
+  /** The rolling hour moves on past every occurrence recorded so far. */
+  const hourPasses = async (): Promise<void> => {
+    await w.db.admin.execute(
+      `update public.activation_occurrences set recorded_at = recorded_at - interval '61 minutes'`,
+    );
+  };
+
+  it('C33 occurrence rate refused: the 60th occurrence in an hour per activation starts and the 61st is refused and recorded, the next window fires, and the count survives a scheduler restart', async () => {
+    const { activation } = await f.approved();
+    expect(await claimMany(activation.id, FIRING_LIMITS.activationPerHour)).toEqual(['approved']);
+    const over = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
+    expect(over).toMatchObject({ outcome: 'over_activation_rate', runId: null });
+    expect(await w.occurrences(activation.id)).toBe(FIRING_LIMITS.activationPerHour + 1);
+
+    // A restarted scheduler: a new pool, nothing carried over in memory.
+    const restarted = connect(w.db.appUrl, { source: 'runtime' });
+    try {
+      const again = await restarted.withBusiness(w.alpha, (tx) =>
+        claimOccurrence(tx, activation.id, { dueAt: f.nextDue() }),
+      );
+      expect(occurrenceOf(again).outcome).toBe('over_activation_rate');
+    } finally {
+      await restarted.close();
+    }
+
+    await hourPasses();
+    expect(await claimNext(activation.id)).toBe('approved');
+  }, 120_000);
+
+  it('C33 occurrence rate refused: 600 per business, the 601st refused on an activation with room of its own, and the next window fires', async () => {
+    await hourPasses();
+    const busy = FIRING_LIMITS.businessPerHour / FIRING_LIMITS.activationPerHour;
+    for (let i = 0; i < busy; i += 1) {
+      // oxlint-disable-next-line no-await-in-loop
+      const { activation } = await f.approved();
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await claimMany(activation.id, FIRING_LIMITS.activationPerHour)).toEqual(['approved']);
+    }
+    const { activation: quiet } = await f.approved();
+    const over = occurrenceOf(await w.claim(quiet.id, { dueAt: f.nextDue() }));
+    expect(over).toMatchObject({ outcome: 'over_business_rate', runId: null });
+    expect(await w.occurrences(quiet.id)).toBe(1);
+
+    await hourPasses();
+    expect(await claimNext(quiet.id)).toBe('approved');
+  }, 300_000);
+});
