@@ -369,6 +369,8 @@
     "tests/api/preferences.test.ts",
     "tests/api/mp-2-11-tips.test.ts",
     "tests/identity/mp-2-11-recent-sign-in.test.ts",
+    "tests/commands/mp-2-11-business-windows.test.ts",
+    "tests/commands/mp-2-11-business-windows-upgrade.test.ts",
     "tests/cli/api-2-credential-cli.test.ts",
     "tests/operations/s0-5-effect-metadata.test.ts",
     "tests/operations/s0-5-readiness.test.ts",
