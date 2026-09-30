@@ -24,6 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { CheckRequest } from './requests-check.ts';
 import type { ConversationRequest } from './requests-conversation.ts';
 import type { Envelope } from './request-envelope.ts';
 
@@ -262,14 +263,7 @@ export type CommandRequest =
       readonly amountMinor: unknown;
       readonly reason: unknown;
     } & Envelope)
-  | ({
-      readonly command: 'task.check';
-      readonly leaseId: string;
-      readonly fence: number;
-      readonly name: string;
-      readonly outcome: string;
-      readonly note?: string | null;
-    } & Envelope)
+  | CheckRequest
   | ConversationRequest
   // Read by its own parser (`model-call.ts`), never by a person handler.
   | ({ readonly command: 'model.call' } & Envelope)

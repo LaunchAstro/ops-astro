@@ -207,22 +207,13 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       );
       return { body: { operationId, ...lease, attemptId: held.attemptId }, credential };
     }
-    if (name === 'task.check') {
-      const check = { name: 'the agent checks', outcome: 'passed' };
-      return {
-        body: { operationId, leaseId: held.leaseId, fence: held.fence, ...check },
-        credential,
-      };
-    }
-    if (name === 'model.call') {
-      const call = { operation: 'model.replay_compose', fields: [toneOn(held.taskId)] };
-      return {
-        body: { operationId, leaseId: held.leaseId, fence: held.fence, ...call },
-        credential,
-      };
-    }
-    const outcome = { outcome: 'completed', report: { wrote: 'a draft' } };
-    const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...outcome };
+    const own =
+      name === 'task.check'
+        ? { name: 'the agent checks', outcome: 'passed' }
+        : name === 'model.call'
+          ? { operation: 'model.replay_compose', fields: [toneOn(held.taskId)] }
+          : { outcome: 'completed', report: { wrote: 'a draft' } };
+    const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...own };
     return { body, credential };
   }
 
