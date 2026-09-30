@@ -187,3 +187,77 @@ export async function revokeAgentCredential(
   );
   return undefined;
 }
+
+/**
+ * The form a credential takes: the base64url of one HMAC-SHA256, 43
+ * characters and no dot. A sign-in token always has two, so the agent route
+ * tells the two apart by shape alone and never hands a credential to the
+ * sign-in provider's verifier.
+ */
+export const isAgentCredentialForm = (token: string): boolean => /^[A-Za-z0-9_-]{43}$/u.test(token);
+
+/** What a live credential lets its agent act as, read on every call. */
+export interface CredentialStanding {
+  readonly credentialId: string;
+  readonly agentActorId: string;
+  readonly personId: string;
+  readonly roleKey: string | null;
+  /** The ticked `collection:action` keys. */
+  readonly scope: readonly string[];
+}
+
+/** Why a presented credential is not served: one answer to the caller, whichever. */
+export type CredentialNotLive = 'not-live';
+
+/**
+ * The credential a secret is, in this business, if it is live at `now`: not
+ * revoked, not past its expiry, its agent actor active and its issuer still
+ * a member. Found by its digest, so the secret itself is never compared or
+ * kept. The row is locked `for share` for the rest of the call, so a
+ * revocation (`lockAgentCredential`, `for update`) either commits first and
+ * this call finds it, or waits for this call to finish.
+ */
+export async function resolveAgentCredential(
+  tx: TenantQuery,
+  secret: string,
+  now: Date,
+): Promise<CredentialStanding | CredentialNotLive> {
+  const rows = await tx.query<{
+    readonly id: string;
+    readonly agent_actor_id: string;
+    readonly issued_by_person_id: string;
+    readonly scope: readonly string[];
+    readonly expires_at: Date;
+    readonly revoked_at: Date | null;
+    readonly agent_active: boolean;
+    readonly member: boolean;
+    readonly role_key: string | null;
+  }>(
+    `select c.id, c.agent_actor_id, c.issued_by_person_id, c.scope, c.expires_at, c.revoked_at,
+            a.active as agent_active, m.id is not null as member, m.role_key
+       from public.agent_credentials c
+       join public.actors a on a.business_id = c.business_id and a.id = c.agent_actor_id
+       left join public.memberships m
+         on m.business_id = c.business_id and m.person_id = c.issued_by_person_id and m.active
+      where c.business_id = $1 and c.credential_hash = $2
+      for share of c`,
+    [tx.businessId, digestOf(secret)],
+  );
+  const row = rows[0];
+  if (
+    row === undefined ||
+    row.revoked_at !== null ||
+    now.getTime() >= row.expires_at.getTime() ||
+    !row.agent_active ||
+    !row.member
+  ) {
+    return 'not-live';
+  }
+  return {
+    credentialId: row.id,
+    agentActorId: row.agent_actor_id,
+    personId: row.issued_by_person_id,
+    roleKey: row.role_key,
+    scope: row.scope,
+  };
+}

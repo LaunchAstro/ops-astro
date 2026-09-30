@@ -10,6 +10,12 @@
 
 export { type AgentRequest } from './commands/agent-call.ts';
 export { agentAnswer, executeAgentCommand } from './commands/agent-envelope.ts';
+export {
+  CREDENTIAL_REACH,
+  executeCredentialCommand,
+  type CredentialQuota,
+  type QuotaSlot,
+} from './commands/credential-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
 export {
   GATE_ITEMS,

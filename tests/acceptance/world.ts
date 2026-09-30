@@ -70,6 +70,7 @@ import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { testSignIn } from '../support/sign-in.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
+import { executeCredentialCommand } from '../../packages/core-commands/src/commands/credential-envelope.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
@@ -179,6 +180,7 @@ export async function createWorld(part: string): Promise<World> {
     executeCommand,
     executeRead,
     executeAgentCommand,
+    executeCredentialCommand,
   });
 
   return {
@@ -226,6 +228,7 @@ export function rebuildApi(world: World): {
       executeCommand,
       executeRead,
       executeAgentCommand,
+      executeCredentialCommand,
     }),
     close: async () => {
       await database.close();

@@ -8,6 +8,7 @@
 
 import { expect, it } from 'vitest';
 import type { AgentLimits } from '../../apps/api/auth/agent-quota.ts';
+import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { bearer, serverUrl, type Answer } from '../acceptance/world.ts';
 import { harness, openWorld } from './api-2-agent-credential-world.ts';
 import {
@@ -26,9 +27,13 @@ const needsServer = it.skipIf(serverUrl === undefined);
 const READ_ONLY = { scope: [{ collection: 'task', action: 'read' }] };
 const WIDE = { credential: 1000, person: 1000, business: 1000 };
 
-function limited(overrides: Partial<AgentLimits>): { api: Api; tick: (ms: number) => void } {
+function limited(
+  overrides: Partial<AgentLimits>,
+  database: Database = harness.world.db.app,
+): { api: Api; tick: (ms: number) => void } {
   let clock = Date.now();
   const api = apiWith({
+    database,
     agentCredentials: {
       now: () => new Date(clock),
       limits: { requests: WIDE, concurrent: WIDE, exports: WIDE, ...overrides },
@@ -107,12 +112,16 @@ needsServer(
 needsServer(
   'API-2 quota in flight: a call past the concurrency limit is refused at once',
   async () => {
-    const { api } = limited({ concurrent: { ...WIDE, credential: 1 } });
+    // A pool of its own, wide enough that two calls are in flight at once.
+    const pool = connect(harness.world.db.appUrl, { source: 'runtime', max: 3 });
+    const { api } = limited({ concurrent: { ...WIDE, credential: 1 } }, pool);
     const credential = await issued();
     // The task's row lock holds the first call in flight.
     const hold = latch();
     const locked = latch();
-    const holding = harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
+    // On its own connection, so the calls keep the world's pool.
+    const own = connect(harness.world.db.appUrl, { source: 'runtime', max: 1 });
+    const holding = own.withBusiness(harness.world.alpha, async (tx) => {
       await tx.query('select id from public.records where id = $1 for update', [
         harness.alphaTask.id,
       ]);
@@ -125,10 +134,11 @@ needsServer(
       setTimeout(resolve, 300);
     });
     const second = await readWith(api, credential.secret).finally(hold.open);
-    await holding;
+    await holding.finally(async () => await own.close());
     expectClearRefusal(second, credential.secret);
     expect((await first).code).toBe('ok');
-    expect((await readWith(api, credential.secret)).code, 'its slot is back').toBe('ok');
+    const back = await readWith(api, credential.secret).finally(async () => await pool.close());
+    expect(back.code, 'its slot is back').toBe('ok');
   },
 );
 

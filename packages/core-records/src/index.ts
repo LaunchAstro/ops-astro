@@ -22,11 +22,14 @@ export {
   CREDENTIAL_EXCLUDED_ACTIONS,
   CREDENTIAL_MAX_DAYS,
   deriveAgentCredential,
+  isAgentCredentialForm,
   issueAgentCredential,
   lockAgentCredential,
+  resolveAgentCredential,
   revokeAgentCredential,
   type AgentCredential,
   type CredentialKey,
+  type CredentialStanding,
 } from './authority/agent-credentials.ts';
 export { readEnvFile } from './env-file.ts';
 export {

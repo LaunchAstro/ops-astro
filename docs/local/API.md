@@ -1110,6 +1110,13 @@ returned. It is a header and not a body field for the same reason the bearer
 token is. A credential in a body is a credential that gets logged with the
 payload, stored in the register row and compared by a digest.
 
+An agent credential (API-2) is the other bearer this prefix takes: the secret
+a person issued on Settings ▸ Access, as `Authorization: Bearer`, with no agent
+login behind it and no `X-Agent-Delegation`. It is told from a sign-in token by
+its form and never reaches the provider's verifier, and this prefix never reads
+a session cookie. Its calls, reach and refusals are in AUTHORITY.md, "Agent
+credentials (API-2)"; past a limit it answers `AGENT_QUOTA_EXCEEDED` 429.
+
 An agent login confers nothing on its own. With no `X-Agent-Delegation` header
 it may read `task.queue` and call `task.pickup` (`BEFORE_PICKUP`,
 `commands/agent-envelope.ts`, read off the surface rows whose `agent` is

@@ -540,6 +540,7 @@ const ROWS = [
     meaning: 'The delegation is expired, revoked or settled',
     source: 'L2 AUTHORITY.md',
   },
+  { code: 'AGENT_QUOTA_EXCEEDED', status: 429, meaning: 'Past an agent quota', source: 'API-2' },
   {
     code: 'DELEGATION_WIDENS',
     status: 403,

@@ -58,6 +58,13 @@ export interface Session {
    * step-up reads it (`authority/step-up.ts`); nothing else grants on it.
    */
   readonly assurance: Assurance;
+  /**
+   * Present only on a call made with an agent credential (API-2): its ticked
+   * `collection:action` keys. `actorId` is then the credential's agent and
+   * `personId` the person it acts for, and every grant check asks the key
+   * within these as well as the person's grants (`subjectsOf`).
+   */
+  readonly credentialScope?: readonly string[];
 }
 
 /**

@@ -22,6 +22,11 @@ export type Action = 'read' | 'comment' | 'write' | 'assign' | 'decide' | 'share
 export interface Subject {
   readonly kind: SubjectKind;
   readonly id: string;
+  /**
+   * The `collection:action` keys this subject is asked within, when it stands
+   * for an agent credential's call (API-2); absent, every key it holds.
+   */
+  readonly within?: readonly string[];
 }
 
 /** `id` is null exactly at business scope, which is the whole tenant. */
@@ -69,6 +74,11 @@ export interface EffectiveGrant {
 
 /** A session presents two identities, and a grant may name either. */
 export function subjectsOf(session: Session): readonly Subject[] {
+  // An agent credential's call stands on its person's grants alone, and only
+  // within the keys they ticked (API-2): never the agent actor's own rows.
+  if (session.credentialScope !== undefined) {
+    return [{ kind: 'person', id: session.personId, within: session.credentialScope }];
+  }
   return [
     { kind: 'person', id: session.personId },
     { kind: 'actor', id: session.actorId },
@@ -108,12 +118,22 @@ export const EFFECTIVE = `
             or (c.expires_at is not null and c.expires_at <= p.expires_at))
   )`;
 
+/** The subjects that may be asked about this key: every one not held within other keys. */
+export function askedFor(
+  subjects: readonly Subject[],
+  request: { readonly collection: string; readonly action: string },
+): readonly Subject[] {
+  const key = `${request.collection}:${request.action}`;
+  return subjects.filter((subject) => subject.within?.includes(key) ?? true);
+}
+
 /** Every grant that authorises this request right now. Empty is a refusal, not an answer. */
 export async function effectiveGrants(
   tx: TenantQuery,
-  subjects: readonly Subject[],
+  every: readonly Subject[],
   request: ScopeRequest,
 ): Promise<readonly EffectiveGrant[]> {
+  const subjects = askedFor(every, request);
   return await tx.query<EffectiveGrant>(
     `${EFFECTIVE}
      select e.id, e.scope_kind, e.scope_id, e.can_delegate, e.may_permit_delegation, e.expires_at

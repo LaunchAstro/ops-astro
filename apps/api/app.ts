@@ -34,12 +34,14 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { streamSSE, type SSEStreamingApi } from 'hono/streaming';
 import { deleteCookie, setCookie } from 'hono/cookie';
-import type { AgentLimits } from './auth/agent-quota.ts';
+import { createAgentQuota, DEFAULT_AGENT_LIMITS, type AgentLimits } from './auth/agent-quota.ts';
 import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
   EXPIRED_FIXES,
+  NO_ASSURANCE,
   PUBLIC_LEGAL_DOCUMENTS,
+  isAgentCredentialForm,
   readPublishedLegal,
   recordBodyRefusal,
   statusOf,
@@ -83,6 +85,7 @@ import type { CommandDeclaration } from '../../packages/core-wire/src/index.ts';
 import type {
   executeCommand,
   executeAgentCommand,
+  executeCredentialCommand,
   CommandRefusal,
   executeRead,
 } from '../../packages/core-commands/src/index.ts';
@@ -155,6 +158,12 @@ export interface ApiOptions {
    * which is the honest answer for a deployment that has not enabled it.
    */
   readonly executeAgentCommand?: AgentExecutor;
+  /**
+   * An agent credential's calls on the agent prefix (API-2),
+   * `commands/credential-envelope.ts` in every deployment that mounts the
+   * agent prefix. Absent, a credential answers as an unknown agent does.
+   */
+  readonly executeCredentialCommand?: typeof executeCredentialCommand;
   /**
    * The sign-in provider's second-factor calls (C59), `auth/factors.ts` in a
    * deployment. Absent means the three factor routes are not mounted, which is
@@ -232,8 +241,36 @@ const AGENT: Entry = {
 
 interface Admitted {
   readonly presented: VerifiedSubject;
+  /** The agent credential the bearer is, on the agent prefix only; `presented` then names its digest. */
+  readonly credential?: string;
   readonly businessId: string;
   readonly body: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * On the agent prefix a bearer and nothing else: a session cookie is never
+ * read there (API-2 bearer only, S0-6). A bearer in the agent credential's
+ * form is the product's own scheme and never reaches the sign-in provider's
+ * verifier; it stands here as its digest, so no log or detector holds it.
+ */
+async function presentedBy(
+  options: ApiOptions,
+  context: Context,
+  entry: Entry,
+): Promise<{
+  readonly presented: VerifiedSubject | 'expired' | undefined;
+  readonly credential?: string;
+}> {
+  if (entry !== AGENT) return { presented: await options.verify(context.req) };
+  const token = bearerOf(context.req);
+  if (token === undefined) return { presented: undefined };
+  if (!isAgentCredentialForm(token)) return { presented: await options.verify(context.req) };
+  const digest = {
+    provider: 'agent-credential',
+    subject: sessionIdOf(token),
+    assurance: NO_ASSURANCE,
+  };
+  return { presented: digest, credential: token };
 }
 
 /**
@@ -255,7 +292,7 @@ async function admit(
   // A session cookie from another site's page stops here, before the
   // verifier reads it (`auth/session.ts`).
   if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
-  const presented = await options.verify(context.req);
+  const { presented, credential } = await presentedBy(options, context, entry);
   if (presented !== undefined && presented !== 'expired') context.set(PRESENTED, presented);
   if (presented === undefined) {
     // A tab that names no sign-in of its own reads nothing on the cookies of
@@ -275,17 +312,23 @@ async function admit(
   const businessId = await options.resolveBusiness(context.req.param('businessKey') ?? '');
   if (body === undefined) {
     // An admission refusal: the resolved business, the verified subject (ruling 4).
-    if (businessId !== undefined) {
+    if (businessId !== undefined && credential === undefined) {
       await recordBodyRefusal(options.database, businessId, entry.owner, presented);
     }
     return refuse(context, refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]));
   }
   if (businessId === undefined) return refuse(context, entry.unresolved());
-  return { presented, businessId, body };
+  return { presented, businessId, body, ...(credential === undefined ? {} : { credential }) };
 }
 
 export function createApi(options: ApiOptions): Hono {
   const api = new Hono();
+  const now = options.agentCredentials?.now ?? (() => new Date());
+  const quota = createAgentQuota(
+    options.agentCredentials?.limits ?? DEFAULT_AGENT_LIMITS,
+    now,
+    recordsIn,
+  );
 
   // The browser trades the provider's token for the session cookie here, and
   // gives it back at `/end`; both only from this application's own pages.
@@ -397,7 +440,20 @@ export function createApi(options: ApiOptions): Hono {
   const agentExecutor = options.executeAgentCommand;
   if (agentExecutor !== undefined) {
     mountSurface(`${PREFIX.agent}:businessKey`, AGENT, async (context, declaration, admitted) => {
-      const { presented, businessId, body } = admitted;
+      const { presented, businessId, body, credential } = admitted;
+      if (credential !== undefined) {
+        const run = options.executeCredentialCommand;
+        if (run === undefined) return refuse(context, AGENT.unresolved());
+        const call = { credential, now: now(), quota };
+        const answer = await run(options.database, businessId, call, {
+          ...body,
+          command: declaration.name,
+        });
+        if (isCommandRefusal(answer)) return refuse(context, answer);
+        // Shaped as the person prefix shapes it: a read flat, a command its handle.
+        if (declaration.kind === 'read') context.set(HANDED_OUT, recordsIn(answer));
+        return context.json({ ...answer }, 200);
+      }
       // From the route, never from the body, exactly as on the person path: a
       // caller must not be able to post to one endpoint and have another
       // operation run. `operationId` is passed as the JSON carried it, absent

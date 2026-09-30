@@ -54,6 +54,7 @@ import { createApi, type LiveOptions, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
   executeAgentCommand,
+  executeCredentialCommand,
   executeCommand,
   executeRead as readExecutor,
   settleAccessEndings,
@@ -299,6 +300,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
       executeRead,
       executeCommand,
       executeAgentCommand,
+      executeCredentialCommand,
       ...(config.live === undefined ? {} : { live: config.live }),
       // The provider GoTrue is: the one destination its factor calls reach.
       factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
