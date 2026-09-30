@@ -379,7 +379,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(typeof body['notificationQueue']).toBe('number');
     });
 
-    it('a plain-text server error cannot count as a foreign join refusal', async () => {
+    it('a plain-text server error at join throws, never read as a refusal', async () => {
       const broken = new Hono();
       broken.get('*', (context) => context.text('server failure', 500));
       await expect(
