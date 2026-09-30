@@ -580,8 +580,10 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   grant, the caller must hold `manage` on the grant's collection and the
   grant's own (collection, action), both live and both at a scope covering
   the grant's. For a delegation, the same test runs for every (collection,
-  action) the delegation reaches, at its purpose scope. A manager without
-  `share` cannot revoke a `share` grant.
+  action) the delegation reaches, at its purpose scope; a pair on `run` is
+  asked on `task` there, since run reach exists only inside a task delegation
+  on that task and no one holds `run:manage` (MP-6-2, ORCH34). A manager
+  without `share` cannot revoke a `share` grant.
 - `revokeGrant` and `revokeDelegation` write `revoked_at` and now return the
   instant they wrote, or null when they wrote nothing. A second revocation is
   `TRANSITION_NOT_PERMITTED` for a grant and `DELEGATION_NOT_LIVE` for a
