@@ -545,9 +545,9 @@
   padding: 4px 8px;
   border: 1px solid var(--border);
   color: var(--text-muted);
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
   cursor: default;
 }
 .fresh__live {
