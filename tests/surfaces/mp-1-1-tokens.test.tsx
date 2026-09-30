@@ -242,6 +242,7 @@ describe('MP-1-1 tokens', () => {
     const html = renderToStaticMarkup(
       <Shell
         face="agency"
+        build={null}
         rail={[]}
         here="/"
         title="Board"

@@ -37,6 +37,7 @@ it('MP-1-2 the wordmark and planet masks are present', () => {
   const rail = renderToStaticMarkup(
     <Shell
       face="agency"
+      build={null}
       rail={[]}
       here="/"
       title="Board"
