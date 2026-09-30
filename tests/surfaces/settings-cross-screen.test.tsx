@@ -34,7 +34,7 @@ const tick = async (): Promise<void> => {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-const ADA: Session = { token: 'tok-ada', businessKey: 'alpha', email: 'ada@alpha.local' };
+const ADA: Session = { businessKey: 'alpha', email: 'ada@alpha.local' };
 
 type ReadAnswer = 'denied' | 'unavailable';
 
@@ -87,7 +87,7 @@ function api(): {
 const open = async (fetch: typeof globalThis.fetch): Promise<Mounted> => {
   const page = await mount(
     <SettingsScreen
-      client={new OperationsClient({ origin: '', businessKey: 'alpha', token: ADA.token, fetch })}
+      client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
       grantKey={grantKeyOf(ADA)}
       storage={window.sessionStorage}
     />,

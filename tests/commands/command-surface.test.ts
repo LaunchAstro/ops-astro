@@ -44,6 +44,9 @@ const DECLARED_READS = [
   'conversation.list',
   'conversation.read',
   'gate.pending',
+  'inbox.count',
+  'inbox.read',
+  'inbox.unattended',
   'person.list',
   'preset.plan',
   'session.capabilities',
@@ -98,7 +101,7 @@ describe('the surface as a table', () => {
     // AW-05's two answers at the budget stop; `live_correction` is C80's.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate|conversation|model|run|live_correction)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate|conversation|model|run|inbox|notifications|live_correction)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -106,6 +109,7 @@ describe('the surface as a table', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one table, read top to bottom
 describe('the surface as a table', () => {
   it('declares the twelve reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);

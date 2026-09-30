@@ -383,7 +383,7 @@ export async function discoverEligible(
              -- AW-05: a run waiting for budget ended its own lease and
              -- retired its delegation when it stopped, and its hold is the
              -- approved ceiling kept for a person's answer. Neither fact is
-             -- a transition to classify; the answer is (migration 0044).
+             -- a transition to classify; the answer is (migration 0193).
              or (run.state <> 'waiting_budget'
                  -- A revocation that committed without its classification:
                  -- the delegation row records it, and the lease may still be live.

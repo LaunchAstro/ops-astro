@@ -58,6 +58,7 @@ import {
   digestOf,
 } from './restart-harness.ts';
 import { declaredApiPort, readOverHttp, startApi } from './restart-process.ts';
+import { asBrowser } from '../support/sign-in.ts';
 
 /** The proposals `task.read` carries on its task, as the task page reads them. */
 const proposalsOf = (body: Record<string, unknown>): unknown =>
@@ -355,11 +356,11 @@ describe.skipIf(serverUrl === undefined)('restart and session expiry', () => {
     const client = new OperationsClient({
       origin: 'http://api.test',
       businessKey: 'alpha',
-      token: expired,
-      // Typed as the client's own `fetch` shape rather than the DOM's, because
-      // `tsconfig.json` is the server project and does not carry the DOM lib.
-      fetch: (async (input: string, init?: RequestInit) =>
-        await world.api.fetch(new Request(input, init))) as typeof globalThis.fetch,
+      signedIn: true,
+      fetch: asBrowser(
+        expired,
+        async (input, init) => await world.api.fetch(new Request(input, init)),
+      ),
       onSessionEnded: (refusal) => ended.push(refusal.code),
     });
 

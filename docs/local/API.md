@@ -18,14 +18,17 @@ bash scripts/local/db-up.sh   # SLICE-DATA: Postgres on 127.0.0.1:54390
 bash scripts/local/auth-up.sh # GoTrue on 127.0.0.1:54391, writes .local/auth.env
 node scripts/db-migrate.mjs   # SLICE-DATA: migrations
 node scripts/local/auth-seed.mjs   # the five synthetic logins
-node scripts/local-seed.mjs        # SLICE-DATA: businesses, persons, logins, grants
+node scripts/local-seed.mjs        # SLICE-DATA grants (new database: LOCAL_SEED_MADE_UP=confirm)
 bash scripts/local/api-up.sh  # the API on 127.0.0.1:8790
 node scripts/local/verify-slice.mjs
 ```
 
 `auth-up.sh` starts Postgres itself if it is not already up, with the same
 container name, pinned digest, port and volume `db-up.sh` uses, so the two
-converge whichever runs first. Neither script touches the Hub's `supabase_*`
+converge whichever runs first. Like `db-up.sh`, it replaces a container on
+another image or volume (one made before the local database moved to
+Postgres 17) and keeps every volume. Whenever it starts Postgres afresh, it
+starts GoTrue afresh too, so GoTrue migrates schema `auth` on the new cluster. Neither script touches the Hub's `supabase_*`
 containers.
 
 `.local/` holds `db.env`, `auth.env`, `synthetic-users.json`,
@@ -211,9 +214,21 @@ the task the check was made on (`namedTaskId` in `commands/agent-authority.ts`).
 
 ## Who is calling
 
-`Authorization: Bearer <GoTrue access token>`. The adapter verifies the HS256
-signature and `exp` with `SUPABASE_JWT_SECRET` and takes `sub` as
-`VerifiedSubject { provider: 'supabase', subject }`.
+`Authorization: Bearer <GoTrue access token>`. The adapter verifies the ES256
+signature and `exp` against GoTrue's published key set
+(`<GOTRUE_URL>/.well-known/jwks.json`, or `SUPABASE_KEY_SET_URL`) and takes
+`sub` as `VerifiedSubject { provider: 'supabase', subject }`. The API holds no
+secret that can make a token.
+
+A browser holds no token (S0-6c). It posts the token once to
+`POST /api/session`, which verifies it, answers `{ ok: true, session }` and
+sets it as an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/b/`,
+one per sign-in, named from `session` (a digest of the token, not a secret).
+A cookie-carried request needs `x-ops-astro-csrf: 1` and no cross-site
+`Sec-Fetch-Site` (else `AUTH_CROSS_SITE` 403), and reads only the cookie of
+the sign-in its `x-ops-astro-session` names; session cookies with none named
+are `AUTH_SESSION_MISMATCH` 403. `/api/session/end` clears only the named
+sign-in's cookie, so a late sign-out ends no other. A bearer is read first.
 
 Nothing else reaches identity. Not a body field, not a host or forwarded
 header, not an `apikey`, not a query parameter. A request carrying `actorId` or
@@ -283,10 +298,20 @@ passes it with no cast.
 
 `apps/api/server.ts` exports `composeApi(config)`. It builds the served app
 with `/api/health`, the boundary and the fault mapping (`server.onError`), and
-returns it with the app's business resolver. It reads no environment, opens no
+returns it with the app's business resolver. Every answer under `/api`, a
+refusal, a fault and a missing route included, is sent `Cache-Control: private,
+no-store`, since the API is served behind Vercel's edge network (`S0-6 no edge
+caching`, `tests/api/api-answers-never-cached.test.ts`). It reads no environment, opens no
 socket and starts no process. `main()` runs only as the process entry
 (`import.meta.main`). It reads the environment, calls `composeApi`, runs
 restart recovery through that same resolver, and only then binds the port.
+`apps/api/function.ts` is the Vercel function entry: it builds the same
+`composeApi` from the function's settings, with no identity route, live channel,
+recovery or sweeper, which belong to a long-running process, and no admin login: the business key is read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (migration 0046; unset, every key is refused), and the entry refuses to start with `DATABASE_ADMIN_URL` set. It answers only
+requests whose `Host` and URL both name `SERVED_HOST`, the environment's own host; any other,
+a deployment's generated address included, is refused 421 before anything is
+read, so a promotion leaves the previous deployment serving nothing
+(`tests/api/function-entry.test.ts`).
 Tests build the server with `composeApi` (`compose` in `tests/api/fixture.ts`),
 so they run the wiring the server listens with rather than a copy of it. A
 test that hands the boundary its own executor or recorder calls `createApi`
@@ -298,7 +323,8 @@ directly.
 (`brokerSettings` and `startModelBroker`, `apps/api/model-broker.ts`): custody's
 own process, forked with only its credential file and destination list, and
 the `model.call` executor over it, handed to `composeApi` as
-`executeModelCall`. None set is no broker, and `model.call` answers
+`executeModelCall`, and the conversation exchange over the same broker as
+`answerConversation` (below). None set is no broker, and `model.call` answers
 `DEPENDENCY_NOT_LANDED` 501. Some of them, or a malformed one, stops the server
 with a problem naming the setting, never its value. The model operations and
 their adapters are registered in code there, not configured: the replay
@@ -431,12 +457,12 @@ Four rows joined the surface when L2's model modules landed, and one came off
 the pending list. Each reaches the API and the command line by generation, with
 no route written by hand.
 
-| Operation                          | Route                               | Body                                                                              | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                               |
-| ---------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `task.comment`                     | `/task/comment`                     | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 (naming `body` when it is absent, blank or holds a NUL or an unpaired surrogate, or `audience` or `comment_type`), `AUDIENCE_NOT_PERMITTED` 422 (an external party writing `internal`; the agent prefix writing `client`), `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
-| `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                          | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422                                                                                                                                                                       |
-| `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                    | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                              |
-| `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                             | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                              |
+| Operation                          | Route                               | Body                                                                                           | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `task.comment`                     | `/task/comment`                     | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?`, `mentions?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 (naming `body` when it is absent, blank or holds a NUL or an unpaired surrogate, or `audience`, `comment_type` or `mentions`), `AUDIENCE_NOT_PERMITTED` 422 (an external party writing `internal`; the agent prefix writing `client`), `MENTION_NOT_READABLE` 422 (naming each person mentioned who cannot read the comment; nothing saves), `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
+| `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                                       | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422                                                                                                                                                                                                                                                                                         |
+| `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                                 | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
+| `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
 
 ## The live correction (C80)
 
@@ -468,7 +494,10 @@ cannot hold reaches `business_settings`.
 `task.comment` writes a comment record beside the task and leaves the task's
 own revision alone, so a caller may keep writing against the revision they
 hold. The author is the acting actor and the posting time is the server's;
-neither is a payload field.
+neither is a payload field. `mentions` lists person ids; each one mentioned
+is raised an inbox item in the same transaction (INB-1), and one who cannot
+read the task, or an outside party named in an `internal` comment, refuses
+the whole comment before it saves.
 
 `preset.plan` is declared `kind: 'read'` because it writes nothing, even on
 success. It is the one read that does not take the `read` action, which is why
@@ -926,7 +955,7 @@ MP-7-11 adds the assistant panel's tab row, under the same rule
 second page replaces the first, and `null` clears it. The address is a page of
 this product: one leading slash, never two and never a slash then a
 backslash, printable ASCII with no backslash, at most 300 characters; what it
-shows is 1 to 200 characters with no control character. Migration 0051
+shows is 1 to 200 characters with no control character. Migration 0200
 refuses the same rows as the backstop. Neither write moves the last activity,
 which measures the exchange. Both answer the conversation's id and address
 only, so the title and the page are stored on the conversation and nowhere
@@ -942,6 +971,28 @@ written by the product's exchange, never by an agent calling in. The message
 text is stored in `conversation_messages` and nowhere else: the answer and the
 operation register carry ids and the address, and the audit event the
 payload's digest.
+
+The exchange (AW-03, `commands/conversation-exchange.ts`). Where the
+deployment started a broker, `composeApi` mounts `answerConversation` beside
+`executeModelCall`, and after `conversation.start` or `conversation.message`
+is applied on the person path the API asks it for the agent's answer, after
+the command has committed: the message stays kept whatever the answer is. It
+resolves the caller again, finds the message as the caller's own person
+message in a conversation of this business whose body is kept, and sends its
+words through AW-01's conversation seam (`callModelInConversation`,
+`model.conversation_answer`, the owner's own session, local routes only,
+nothing held). The answer is kept as an `agent` message whose
+`answers_message_id` names the question (0221: one reply per message, in the
+same conversation), in a second transaction under the conversation's row
+lock. The HTTP answer then carries `reply` beside the command's own fields:
+`{ answered: true, messageId, body }`, or `{ answered: false, code, words }`
+in fixed words (`LOCAL_MODEL_REQUIRED`: models are off for this material and
+nothing was sent, AW-03 egress off; `RATE_LIMITED`; anything else, an answer
+that could not be used and nothing kept). No `reply` means nothing answers: no
+broker, or the message is not the caller's to have answered. A repeat of the
+same operation finds the reply kept and answers with it; the model is not
+asked again. The register stores the command's answer only, so the model's
+words are in the reply's row and nowhere else.
 
 Two system operations, the worker's and no person's command
 (`commands/conversation-lifecycle.ts`), each take the conversation's row lock
@@ -974,10 +1025,10 @@ activity, so a retried pass asks for the same purge. Nothing schedules the
 pass yet, and raising a failure as an inbox item is INB-1's.
 
 Which conversation created a task is a fact of the task's creation audit
-event: `audit_events.origin_conversation_id` (0050), a same-business
+event: `audit_events.origin_conversation_id` (0199), a same-business
 reference to `conversations`, in the chain's one hash formula
 (`audit_event_hash`, thirteen arguments). A null adds nothing to the hashed
-text, so events without one hash as they did before 0050. The command that
+text, so events without one hash as they did before 0199. The command that
 creates a task from a conversation sets it; until that command exists, the
 wrap-up's "tasks created" item says no task records the conversation.
 
@@ -1231,7 +1282,7 @@ whole of what `decide` compares.
 Each version carries `checks`: the checks its run recorded through
 `task.check` under the run's lease, oldest first, each with its `outcome` and
 the lease holder as `performedByActorId` (MP-6-1, CS-16.3; `run_checks`,
-migration 0048). They are read in the same snapshot as the rest.
+migration 0197). They are read in the same snapshot as the rest.
 
 Each lineage carries `scopes`: what each lease its runs took was allowed to
 touch, oldest first (MP-6-4, CS-6.1). A scope is the lease's own delegation,
@@ -1276,6 +1327,11 @@ proposals: {
     payload: unknown;
     supersededAt: string | null;
     runId: string | null;
+    startedAt: string | null;          // the run's first claim (MP-6-2)
+    endedAt: string | null;            // a hand-back with no claim after it
+    tokenUnits: number | null;         // the run's model calls' units (0204)
+    pins: { kind; path; digest; size; readAt; definitionVersionId; pinnedAt }[]; // pinned at run start (0192)
+    reads: { sequence; path; digest; size; readAt; isEntry }[];  // the run's read ledger (0192)
     evidence: { id; renderer; digest; body } | null;
     gate: { id; state; round; expiresAt; expired; payloadDigest } | null;
   }[];
@@ -1610,8 +1666,9 @@ it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `gate.pending`, `person.list`,
-`preset.plan`, `settings.read`, `session.capabilities`, `conversation.read` and `conversation.list` are declared in `COMMAND_SURFACE`
-with `kind: 'read'`. The boundary branches on that and calls the executor the
+`preset.plan`, `settings.read`, `session.capabilities`, `inbox.read`,
+`inbox.count`, `inbox.unattended`, `conversation.read` and `conversation.list`
+are declared in `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
 ```ts
@@ -1622,6 +1679,50 @@ exported as `executeRead` from `packages/core-commands/src/reads/execute.ts`,
 returning either the contract's `{ ok: true, ... }` shape or a command refusal.
 `executeRead` is a required option of `createApi`, so every declared read has
 an executor.
+
+`inbox.read` answers the caller's own items as `{ ok: true, inbox }`: every
+open item, and the newest 50 closed ones (`INBOX_HISTORY_PAGE`) about a task
+the caller reads now, oldest raised first. `inbox.count` answers
+`{ ok: true, owed }`, the list's counted entries, counted in one query under
+the same rule (`reads/inbox.ts`). Access is derived for every item inside the
+read's own query, so neither read grows with a person's closed history. The
+page of closed items is found from the caller's grants: each task they read
+(the whole business on the history index; otherwise each task a grant names
+or reaches through its client, on the per-task history index; both migration 0044) gives its newest 50, and the newest 50 of those are the page.
+An item about a task the caller cannot read is never looked at for the page,
+so it takes no place in it and another client's change never moves it. Those
+items are read beside the page, newest first, from the page's oldest item on
+and at most 200 closed items (`INBOX_HISTORY_SCAN`); the records read returns
+them as withheld and the list does not show them. A readable entry about a planned run carries `alert`,
+T2h's latest alert on that run (the same record, `id`, `kind`,
+`waitingReason` and `raisedAt`, that the task page and the queue read show);
+no other read carries it. A readable entry carries its pointers, its task's `key` and `title`,
+and `closedBy`, the decider's `personId` and `name` once it is cleared, all
+read in the same transaction, so the item stores none of them. A gone entry
+carries its own identity and axes and nothing of the task. The board screen
+draws both reads above the board (`apps/web/src/views/inbox.tsx`, INB-1g).
+
+The board screen follows one event stream per tab (INB-1f),
+`GET <person prefix><business>/live`, beside T2f's `/live/task/:recordId`
+and through the same door (`apps/api/app.ts`, `apps/api/live-board.ts`). The
+join is `joinLiveBoard` (`reads/live-join.ts`): a person inside the business,
+never an external reader or an agent, holding a live grant. It sends `resync`
+on connect and after the listener reconnects, `invalidate` whose data is a
+task's identifier only when the caller may read that task now (asked per event
+as T2f asks `task.execution`), `inbox` with no data when what `inbox.read`
+shows the caller changed (the topic names no item, so the stream compares a
+digest of that read, `shownInbox`, and a change to an item the caller is not
+shown says nothing), and `closed` the first time the join is refused again (at
+every recheck, 30 seconds by default, and before each batch). The stream hears
+the inbox of the person the bearer resolves to, asked at each batch and again
+after each task read and each changed inbox digest, before its frame: if that is now another person,
+the previous person's topic is dropped unsaid, the new one's is heard, and the
+stream says nothing until its next recheck sends `resync`. The inbox topic is
+`business:inbox:person`, sent at commit by migration 0043's trigger on
+`inbox_items`, and the fan-out (`apps/api/live.ts`) hands it only to that
+person's streams in that business. The page re-reads the board on
+`invalidate` and the inbox list and count on `inbox`; while the stream is
+down its 30-second floor re-reads both (`apps/web/src/data/board-live.ts`).
 
 `task.read` carries the task's comments. An internal reader, meaning a
 membership role of `owner`, `admin` or `member`, is given every comment in full.

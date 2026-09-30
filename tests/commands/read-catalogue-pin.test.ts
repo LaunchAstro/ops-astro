@@ -28,6 +28,9 @@ const PINNED_SHAPE = {
   'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
   'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
+  'inbox.count': { spine: false, subject: false, authority: 'self' },
+  'inbox.read': { spine: false, subject: false, authority: 'self' },
+  'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
@@ -43,6 +46,9 @@ const PINNED_IDENTIFIERS = {
   'conversation.list': [],
   'conversation.read': ['conversationId'],
   'gate.pending': [],
+  'inbox.count': [],
+  'inbox.read': [],
+  'inbox.unattended': [],
   'person.list': [],
   'preset.plan': [],
   'session.capabilities': [],
@@ -135,6 +141,9 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'session.capabilities': BODIES.map(() => null),
   'conversation.read': BODIES.map(() => null),
   'conversation.list': BODIES.map(() => null),
+  'inbox.read': BODIES.map(() => null),
+  'inbox.count': BODIES.map(() => null),
+  'inbox.unattended': BODIES.map(() => null),
 };
 
 /** The refusal without its `refused` flag, or null. */

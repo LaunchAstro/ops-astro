@@ -19,7 +19,7 @@ import { setState, writeOwnedFields } from './tasks-state.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
-import { setBusinessSetting } from './settings-write.ts';
+import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
@@ -39,6 +39,7 @@ import { refuseModelCallAsPerson } from './model-call-person.ts';
 import { endOnRun, topUpOnRun } from './run-answers.ts';
 import { reviseStateOnRun } from './run-state.ts';
 import { decideLiveCorrection, requestLiveCorrection } from './live-corrections.ts';
+import { stampOwnSeen } from './inbox-seen.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -85,6 +86,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
       request.body,
       request.audience,
       request.commentType,
+      request.mentions,
     ),
 
   // The revision travels with the rest of the envelope rather than as a
@@ -141,6 +143,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // MP-6-2: a run's state revised, a person's under run:write; the agent's is
   // served on its own prefix (`agent-operations.ts`).
   'run.revise_state': reviseStateOnRun,
+  'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
+  'notifications.set_channel': setNotificationChannel,
 };
 
 function writeOwned(

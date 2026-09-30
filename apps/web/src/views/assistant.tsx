@@ -19,8 +19,10 @@
 // seam); the catalogue is empty until the business's price book is readable
 // here, so the picker offers nothing and the choice is not sent.
 //
-// The agent does not answer yet: the exchange runs on AW-01's model seam. A
-// kept question says so in plain words.
+// The agent's answer comes back beside each kept question (AW-03's exchange,
+// on AW-01's conversation seam) and is drawn as the agent's line, as text.
+// Where the deployment answers nothing, or no model may take the question,
+// the tab says so in plain words: the server's own, for a refusal.
 //
 // A started tab links to the conversation's own address (C36), where it stays
 // after it is taken out of the tab row.
@@ -43,7 +45,12 @@ import {
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { modelOffer, subjectFor, type ModelChoice, type Subject } from '../assistant/subject.ts';
-import type { CallResult, CommandOutcome, OperationsClient } from '../operations/client.ts';
+import type {
+  CallResult,
+  CommandOutcome,
+  ConversationReply,
+  OperationsClient,
+} from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
 import { pathTo, ROUTES, type RouteId } from '../routes.ts';
 
@@ -103,7 +110,14 @@ interface Opening {
   readonly scope: { readonly kind: 'task'; readonly id: string } | null;
 }
 
-/** The tab's first question, then the page it was given before it started. */
+/** The agent's answer to a kept question, why there is none, or that none comes here. */
+function replied(store: Store, key: string, reply: ConversationReply | undefined): void {
+  if (reply === undefined) store.line(key, 'note', KEPT);
+  else if (reply.answered) store.line(key, 'ai', reply.body);
+  else store.line(key, 'failed', reply.words);
+}
+
+/** The tab's first question, its answer, then the page it was given before it started. */
 async function startWith(
   client: OperationsClient,
   store: Store,
@@ -129,6 +143,7 @@ async function startWith(
     return null;
   }
   store.update((current) => started(current, chat.key, id));
+  replied(store, chat.key, settled.kind === 'ok' ? settled.value.reply : undefined);
   const page = store.chat(chat.key)?.page ?? null;
   if (page !== null) await report(chat.key, setScope(client, id, page));
   return id;
@@ -154,19 +169,17 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     store.line(key, 'user', body);
     const pending = starts.current.get(key);
     const known = chat.conversationId ?? (pending === undefined ? null : await pending);
-    let kept: boolean;
     if (known === null) {
       const starting = start(chat, body);
       starts.current.set(key, starting);
-      kept = (await starting) !== null;
-      if (!kept) starts.current.delete(key);
-    } else {
-      kept = await report(
-        key,
-        props.client.mutate('conversation.message', { conversationId: known, body }),
-      );
+      if ((await starting) === null) starts.current.delete(key);
+      return;
     }
-    if (kept) store.line(key, 'note', KEPT);
+    const settled = settle(
+      await props.client.mutate('conversation.message', { conversationId: known, body }),
+    );
+    if (settled.kind === 'ok') replied(store, key, settled.value.reply);
+    else store.line(key, 'failed', settled.because);
   };
   return { report, send };
 }

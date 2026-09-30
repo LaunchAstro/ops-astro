@@ -51,6 +51,7 @@ import { TASK_STATE_FIELDS } from '../../packages/core-records/src/tasks/states.
 import { createCli } from '../../apps/cli/client.ts';
 import { OperationsClient, type ReadName } from '../../apps/web/src/operations/client.ts';
 import type { Harness } from './role-case-harness.ts';
+import { asBrowser } from '../support/sign-in.ts';
 
 export type Surface = 'api' | 'cli' | 'web';
 export const SURFACES: readonly Surface[] = ['api', 'cli', 'web'];
@@ -193,8 +194,11 @@ export function surfacesOf(
   const web = new OperationsClient({
     origin: 'http://api.test',
     businessKey: 'alpha',
-    token: world.ada.token,
-    fetch: async (url, init) => await world.api.fetch(new Request(url as string, init)),
+    signedIn: true,
+    fetch: asBrowser(
+      world.ada.token,
+      async (url, init) => await world.api.fetch(new Request(url, init)),
+    ),
   });
   return async (surface, name, body) => {
     if (surface === 'api') {

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // AW-01 J: an automation occurrence's run, the worker's system write after
-// C52-A's dispatch recheck (ORCH36 ruling, option B; migration 0054). Never a
+// C52-A's dispatch recheck (ORCH36 ruling, option B; migration 0203). Never a
 // command: no API route, command-line verb or agent operation reaches it, and
-// the run row goes in through `ops_astro_occurrence`, the one role 0054 lets
+// the run row goes in through `ops_astro_occurrence`, the one role 0203 lets
 // write an origin. docs/local/RUNTIME.md, "An automation occurrence's run",
 // has the design.
 
