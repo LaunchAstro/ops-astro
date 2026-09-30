@@ -77,6 +77,8 @@ export const TASKS: readonly TaskSummary[] = [
 
 const DETAIL: InternalTaskDetail = {
   ...(TASKS[0] as TaskSummary),
+  // The token ledger (MP-6-5) draws nothing before an approval.
+  ledger: null,
   description:
     'Pull the signed scope, the two variations and the renewal terms into one pack for review.',
   history: [
@@ -98,7 +100,6 @@ const DETAIL: InternalTaskDetail = {
   proposals: [],
   capCurrency: 'AUD',
   envelope: null,
-  ledger: null,
   alerts: [],
 };
 
