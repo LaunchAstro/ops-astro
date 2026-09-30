@@ -33,7 +33,7 @@ export function pgDump(sourceUrl) {
     `--network=${staging.networks.staging.name}`,
     '--env=PGPASSWORD',
     '--env=PGSSLMODE',
-    staging.services.db.image,
+    staging.services.backups.image,
     'pg_dump',
     '--format=custom',
     `--role=${BACKUP_ROLE}`,

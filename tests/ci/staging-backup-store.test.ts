@@ -39,8 +39,8 @@ describe('S0-3 store persists', () => {
     const def = load();
     const store = def.services['backups'];
     expect(store?.container_name).toBe('ops-astro-staging-backups');
-    // The production major, the same pinned image as staging's database.
-    expect(store?.image).toBe(def.services['db']?.image);
+    // The production major, pinned by digest.
+    expect(store?.image).toMatch(/^postgres:17-alpine@sha256:[0-9a-f]{64}$/u);
     expect(store?.environment?.['POSTGRES_DB']).toBe('ops_astro_staging_backups');
     expect(store?.networks).toEqual(['staging']);
     expect(store?.ports).toBeUndefined();
@@ -57,10 +57,8 @@ describe('S0-3 store persists', () => {
     expect(volume?.driver_opts).toBeUndefined();
   });
 
-  it('staging’s own database stays memory-backed and apart from the store', () => {
+  it('no other service holds the store’s volume', () => {
     const def = load();
-    expect(def.volumes['ops-astro-staging-pgdata']?.driver_opts?.['type']).toBe('tmpfs');
-    expect(def.services['db']?.volumes).not.toContain(`${STORE_VOLUME}:${DATA}`);
     const others = Object.entries(def.services).filter(([name]) => name !== 'backups');
     for (const [name, service] of others)
       expect(

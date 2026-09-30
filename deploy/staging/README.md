@@ -5,10 +5,10 @@ production machine (ticket S0-1). This folder is its definition, and nothing
 here deploys it: the first deploy is S0-6, once S0-2's alerts reach the owner.
 
 `compose.json` is a Docker Compose file written as JSON, so the CI tests read
-it without a YAML parser. It holds staging's own services: its Postgres, on
-the same major as production's managed database (17), and its auth server,
-the same pinned build the local slice runs. The API and the web bundle join
-in S0-6 as app services, run from the image the deploy builds (below).
+it without a YAML parser. It holds what staging runs on the machine: the
+backup store (Postgres, on the same major as production's managed database, 17) and the worker unit (the worker and its forwarder). Staging's database
+and sign-in are its Supabase project, and the web app and API are on Vercel
+(the Vercel re-plan), so neither has a container here.
 `x-ops-astro` names what other scripts read: the prefix every
 staging name carries, the production major and the artefact the promotion
 step selects.

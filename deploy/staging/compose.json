@@ -7,101 +7,6 @@
     "madeUpDataOnly": true
   },
   "services": {
-    "db": {
-      "container_name": "ops-astro-staging-db",
-      "image": "postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
-      "environment": {
-        "POSTGRES_DB": "ops_astro_staging",
-        "POSTGRES_USER": "${STAGING_DB_ADMIN_USER:?set from the staging runbook}",
-        "POSTGRES_PASSWORD": "${STAGING_DB_ADMIN_PASSWORD:?set from the staging runbook}"
-      },
-      "command": [
-        "postgres",
-        "-c",
-        "ssl=on",
-        "-c",
-        "ssl_cert_file=/etc/ops-astro-tls/server.crt",
-        "-c",
-        "ssl_key_file=/etc/ops-astro-tls/server.key"
-      ],
-      "volumes": [
-        "ops-astro-staging-pgdata:/var/lib/postgresql/data",
-        "ops-astro-staging-tls:/etc/ops-astro-tls:ro"
-      ],
-      "networks": ["staging"],
-      "restart": "unless-stopped",
-      "healthcheck": {
-        "test": ["CMD", "pg_isready", "-h", "127.0.0.1", "-d", "ops_astro_staging"],
-        "interval": "5s",
-        "timeout": "5s",
-        "retries": 20
-      },
-      "user": "70:70",
-      "read_only": true,
-      "cap_drop": ["ALL"],
-      "security_opt": ["no-new-privileges:true"],
-      "tmpfs": [
-        "/var/run/postgresql:size=1m,uid=70,gid=70,mode=0775",
-        "/tmp:size=64m,uid=70,gid=70,mode=1777"
-      ],
-      "cpus": "1.0",
-      "mem_limit": "1g",
-      "memswap_limit": "1g",
-      "pids_limit": 200,
-      "logging": {
-        "driver": "json-file",
-        "options": {
-          "max-size": "10m",
-          "max-file": "3"
-        }
-      }
-    },
-    "auth": {
-      "container_name": "ops-astro-staging-auth",
-      "image": "public.ecr.aws/supabase/gotrue:v2.192.0@sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab",
-      "depends_on": {
-        "db": {
-          "condition": "service_healthy"
-        }
-      },
-      "environment": {
-        "GOTRUE_API_HOST": "0.0.0.0",
-        "PORT": "9999",
-        "API_EXTERNAL_URL": "${STAGING_AUTH_URL:?set from the staging runbook}",
-        "GOTRUE_SITE_URL": "${STAGING_SITE_URL:?set from the staging runbook}",
-        "GOTRUE_DB_DRIVER": "postgres",
-        "GOTRUE_DB_NAMESPACE": "auth",
-        "DATABASE_URL": "${STAGING_AUTH_DATABASE_URL:?set from the staging runbook}",
-        "GOTRUE_JWT_SECRET": "${STAGING_JWT_SECRET:?set from the staging runbook}",
-        "GOTRUE_JWT_AUD": "authenticated",
-        "GOTRUE_JWT_ISSUER": "${STAGING_AUTH_URL:?set from the staging runbook}",
-        "GOTRUE_JWT_DEFAULT_GROUP_NAME": "authenticated",
-        "GOTRUE_JWT_ADMIN_ROLES": "service_role",
-        "GOTRUE_JWT_EXP": "3600",
-        "GOTRUE_DISABLE_SIGNUP": "true",
-        "GOTRUE_EXTERNAL_EMAIL_ENABLED": "true",
-        "GOTRUE_MAILER_AUTOCONFIRM": "true",
-        "GOTRUE_SMTP_HOST": "",
-        "GOTRUE_LOG_LEVEL": "info"
-      },
-      "networks": ["staging"],
-      "restart": "unless-stopped",
-      "read_only": true,
-      "cap_drop": ["ALL"],
-      "security_opt": ["no-new-privileges:true"],
-      "tmpfs": ["/tmp:size=16m"],
-      "cpus": "0.5",
-      "mem_limit": "256m",
-      "memswap_limit": "256m",
-      "pids_limit": 100,
-      "logging": {
-        "driver": "json-file",
-        "options": {
-          "max-size": "10m",
-          "max-file": "3"
-        }
-      }
-    },
     "backups": {
       "container_name": "ops-astro-staging-backups",
       "image": "postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
@@ -235,14 +140,6 @@
     }
   },
   "volumes": {
-    "ops-astro-staging-pgdata": {
-      "name": "ops-astro-staging-pgdata",
-      "driver_opts": {
-        "type": "tmpfs",
-        "device": "tmpfs",
-        "o": "size=512m,uid=70,gid=70,mode=0700"
-      }
-    },
     "ops-astro-staging-backups-data": {
       "name": "ops-astro-staging-backups-data"
     },

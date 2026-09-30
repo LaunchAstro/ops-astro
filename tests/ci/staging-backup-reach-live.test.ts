@@ -32,7 +32,7 @@ const image =
     JSON.parse(read('deploy/staging/compose.json')) as {
       services: Record<string, { image?: string }>;
     }
-  ).services['db']?.image ?? '';
+  ).services['backups']?.image ?? '';
 const dockerUp = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
 const live = dockerUp || process.env['CI'] ? describe : describe.skip;
 const docker = (args: string[], env: NodeJS.ProcessEnv = process.env, input?: string) => {
@@ -55,14 +55,8 @@ live('S0-3 store reach, live', () => {
   });
   const env = {
     ...process.env,
-    STAGING_DB_ADMIN_USER: 'probe',
-    STAGING_DB_ADMIN_PASSWORD: 'probe-only',
     STAGING_BACKUPS_ADMIN_USER: admin,
     STAGING_BACKUPS_ADMIN_PASSWORD: randomBytes(12).toString('hex'),
-    STAGING_AUTH_URL: 'http://127.0.0.1',
-    STAGING_SITE_URL: 'http://127.0.0.1',
-    STAGING_AUTH_DATABASE_URL: 'postgres://unused',
-    STAGING_JWT_SECRET: 'unused',
     ...WORKER_UNIT,
   };
   const compose = (args: string[]) =>
@@ -97,7 +91,6 @@ live('S0-3 store reach, live', () => {
         services: { backups: { container_name: names('backups') } },
         networks: { staging: { name: names('staging') } },
         volumes: {
-          'ops-astro-staging-pgdata': { name: names('pgdata') },
           'ops-astro-staging-backups-data': { name: names('backups-data') },
           'ops-astro-staging-tls': { name: names('tls') },
         },

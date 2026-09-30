@@ -36,7 +36,7 @@ export async function restoreDrill({
   privateKey,
   scope,
   docker: run = docker,
-  image = staging.services.db.image,
+  image = staging.services.backups.image,
 }) {
   const record = {
     event: 'restore drill',

@@ -56,8 +56,8 @@ function reachCases1() {
     const args = reachArgs(def.networks.staging.name);
     expect(args.slice(0, 3)).toStrictEqual(['run', '--rm', '-i']);
     expect(args).toContain(`--network=${def.networks.staging.name}`);
-    expect(args).toContain(def.services['db']?.image);
-    expect(args.slice(args.indexOf(def.services['db']?.image ?? '') + 1)).toStrictEqual([
+    expect(args).toContain(def.services['backups']?.image);
+    expect(args.slice(args.indexOf(def.services['backups']?.image ?? '') + 1)).toStrictEqual([
       'psql',
       '-X',
       '-q',

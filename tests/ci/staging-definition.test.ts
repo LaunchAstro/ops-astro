@@ -243,7 +243,7 @@ it('S0-1 staging apart: own names, own ports, own credentials, no layout', () =>
   const prefix = def['x-ops-astro'].ownPrefix;
   expect(prefix).toBe('ops-astro-staging');
   expect(def.name).toBe(prefix);
-  expect(Object.keys(def.services).toSorted().join()).toBe('auth,backups,db,forwarder,worker');
+  expect(Object.keys(def.services).toSorted().join()).toBe('backups,forwarder,worker');
 
   for (const [name, service] of Object.entries(def.services)) {
     expect(service.container_name, name).toBe(`${prefix}-${name}`);
@@ -266,8 +266,8 @@ it('S0-1 staging apart: own names, own ports, own credentials, no layout', () =>
   const names = [...text.matchAll(PLACEHOLDER)].map((m) => m.groups!['name']!);
   expect(names.length).toBeGreaterThan(5);
   for (const name of names) expect(name).toMatch(/^STAGING_/u);
-  // No machine layout: no address but loopback (and the auth server's listen-on-all
-  // inside its own container), no host path, no user's home.
+  // No machine layout: no address but loopback (and a listen-on-all inside a
+  // container of its own), no host path, no user's home.
   expect(
     text
       .match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/gu)
@@ -282,7 +282,7 @@ it('S0-1 database majors', () => {
   const def = definition();
   // LF-3, answered 28 September 2026: the hosted production major is 17.
   expect(def['x-ops-astro'].productionDatabaseMajor).toBe(17);
-  const image = def.services['db']!.image!;
+  const image = def.services['backups']!.image!;
   const match = /^postgres:(?<major>\d+)-alpine@sha256:(?<digest>[0-9a-f]{64})$/u.exec(image);
   expect(match, image).not.toBeNull();
   expect(Number(match!.groups!['major'])).toBe(def['x-ops-astro'].productionDatabaseMajor);
@@ -293,7 +293,4 @@ it('S0-1 database majors', () => {
       'u',
     ),
   );
-  // The auth server is the same pinned build the local slice runs.
-  const auth = def.services['auth']!.image!;
-  expect(read('scripts/local/auth-up.sh')).toContain(`AUTH_IMAGE=${auth}\n`);
 });

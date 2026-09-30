@@ -69,9 +69,9 @@ const staging = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
 ) as {
   'x-ops-astro': { ownPrefix: string; productionDatabaseMajor: number };
-  services: { db: { image: string } };
+  services: { backups: { image: string } };
 };
-const IMAGE = staging.services.db.image;
+const IMAGE = staging.services.backups.image;
 const PRODUCTION_MAJOR = staging['x-ops-astro'].productionDatabaseMajor;
 // Postgres 18 by digest: CI's own service image (.github/workflows/ci.yml).
 const OTHER_MAJOR_IMAGE =

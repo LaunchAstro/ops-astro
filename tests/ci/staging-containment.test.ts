@@ -155,14 +155,14 @@ const REFUSALS: Row[] = [
       }),
     remove: (def) => {
       def.networks['outside'] = { name: 'ops-astro-staging-outside' };
-      def.services['auth']!.networks!.push('outside');
+      def.services['worker']!.networks!.push('outside');
     },
   },
   {
     name: 'no port published: staging is reached through its own network, never the machine',
     check: (def) => each(def, all(def), (s) => (s.ports === undefined ? null : 'publishes a port')),
     remove: (def) => {
-      def.services['db']!.ports = ['127.0.0.1:${STAGING_DB_PORT:?x}:5432'];
+      def.services['backups']!.ports = ['127.0.0.1:${STAGING_DB_PORT:?x}:5432'];
     },
   },
   {
@@ -174,7 +174,7 @@ const REFUSALS: Row[] = [
           : `volumes ${String(s.volumes)}`,
       ),
     remove: (def) => {
-      def.services['auth']!.volumes = ['/var/run/docker.sock:/var/run/docker.sock'];
+      def.services['worker']!.volumes = ['/var/run/docker.sock:/var/run/docker.sock'];
     },
   },
   {
@@ -188,7 +188,7 @@ const REFUSALS: Row[] = [
       ...(['secrets', 'configs'] as const).filter((key) => def[key] !== undefined),
     ],
     remove: (def) => {
-      def.services['auth']!['env_file'] = ['.env'];
+      def.services['worker']!['env_file'] = ['.env'];
     },
   },
   {
@@ -199,7 +199,7 @@ const REFUSALS: Row[] = [
         return [...keys, 'cap_add', 'extra_hosts', 'volumes_from'].find((k) => k in s) ?? null;
       }),
     remove: (def) => {
-      def.services['db']!['extra_hosts'] = ['host.docker.internal:host-gateway'];
+      def.services['backups']!['extra_hosts'] = ['host.docker.internal:host-gateway'];
     },
   },
   {
@@ -210,7 +210,7 @@ const REFUSALS: Row[] = [
         if (!s.security_opt?.includes('no-new-privileges:true')) return 'no-new-privileges';
         return s.read_only === true ? null : 'read_only';
       }),
-    remove: (def) => delete def.services['auth']!.cap_drop,
+    remove: (def) => delete def.services['worker']!.cap_drop,
   },
 ];
 
@@ -221,7 +221,7 @@ const LIMITS: Row[] = [
     name: 'CPU',
     check: (def) =>
       each(def, all(def), (s) => (Number(s.cpus) > 0 && Number(s.cpus) <= 2 ? null : 'cpus')),
-    remove: (def) => delete def.services['auth']!.cpus,
+    remove: (def) => delete def.services['worker']!.cpus,
   },
   {
     name: 'memory, with no swap beyond it',
@@ -229,7 +229,7 @@ const LIMITS: Row[] = [
       each(def, all(def), (s) =>
         bytes(s.mem_limit ?? '') > 0 && s.memswap_limit === s.mem_limit ? null : 'mem_limit',
       ),
-    remove: (def) => delete def.services['db']!.memswap_limit,
+    remove: (def) => delete def.services['backups']!.memswap_limit,
   },
   {
     name: 'process count',
@@ -237,7 +237,7 @@ const LIMITS: Row[] = [
       each(def, all(def), (s) =>
         Number.isInteger(s.pids_limit) && s.pids_limit! > 0 && s.pids_limit! <= 500 ? null : 'pids',
       ),
-    remove: (def) => delete def.services['auth']!.pids_limit,
+    remove: (def) => delete def.services['worker']!.pids_limit,
   },
   {
     name: 'disk: read-only root, every writable place a sized tmpfs inside the memory limit',
@@ -250,7 +250,7 @@ const LIMITS: Row[] = [
         const total = places.reduce((sum, [, size]) => sum + size, 0);
         return total < bytes(s.mem_limit ?? '') ? null : 'writable places exceed memory';
       }),
-    remove: (def) => delete def.volumes['ops-astro-staging-pgdata']!.driver_opts,
+    remove: (def) => void def.services['worker']!.tmpfs!.push('/scratch'),
   },
   {
     name: 'log size',
@@ -263,7 +263,7 @@ const LIMITS: Row[] = [
           ? null
           : 'logging';
       }),
-    remove: (def) => delete def.services['db']!.logging!.options!['max-size'],
+    remove: (def) => delete def.services['backups']!.logging!.options!['max-size'],
   },
 ];
 
@@ -282,15 +282,15 @@ describe.each([
 /** Changes that make some place other than the store's data persistent or unsized; each must fail the disk row. */
 const NOT_THE_STORE: [string, (def: Definition) => void][] = [
   [
-    'staging’s database made persistent',
+    'the checkout’s volume made writable on the worker',
     (def) => {
-      delete def.volumes['ops-astro-staging-pgdata']!.driver_opts;
+      def.services['worker']!.volumes = ['ops-astro-staging-app:/app'];
     },
   ],
   [
     'the store’s volume on another service',
     (def) => {
-      def.services['auth']!.volumes = [`${STORE_DATA}:/var/lib/postgresql/data`];
+      def.services['worker']!.volumes = [`${STORE_DATA}:/var/lib/postgresql/data`];
     },
   ],
   [
@@ -403,7 +403,7 @@ live('S0-1 containment and resource limits, live', () => {
   let prodPort = 0;
   const compose = (args: string[]) =>
     docker(['compose', '-p', project, '-f', DEFINITION, '-f', override, ...args], env);
-  const inStaging = (script: string) => docker(['exec', `${project}-db`, 'sh', '-c', script]);
+  const inStaging = (script: string) => docker(['exec', `${project}-backups`, 'sh', '-c', script]);
   const productionGreen = async () => {
     expect(docker(['exec', prod, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres']).status).toBe(
       0,
@@ -416,14 +416,8 @@ live('S0-1 containment and resource limits, live', () => {
     prodPort = await freePort();
     env = {
       ...process.env,
-      STAGING_DB_ADMIN_USER: 'probe',
-      STAGING_DB_ADMIN_PASSWORD: 'probe-only',
       STAGING_BACKUPS_ADMIN_USER: 'probe',
       STAGING_BACKUPS_ADMIN_PASSWORD: 'probe-only',
-      STAGING_AUTH_URL: 'http://127.0.0.1',
-      STAGING_SITE_URL: 'http://127.0.0.1',
-      STAGING_AUTH_DATABASE_URL: 'postgres://unused',
-      STAGING_JWT_SECRET: 'unused',
       ...WORKER_UNIT,
     };
     writeFileSync(
@@ -434,7 +428,6 @@ live('S0-1 containment and resource limits, live', () => {
         ),
         networks: { staging: { name: names('staging') } },
         volumes: {
-          'ops-astro-staging-pgdata': { name: names('pgdata') },
           'ops-astro-staging-backups-data': { name: names('backups-data') },
           'ops-astro-staging-tls': { name: names('tls') },
           'ops-astro-staging-app': { name: names('app') },
@@ -444,7 +437,7 @@ live('S0-1 containment and resource limits, live', () => {
     // The stand-in production service: the same image, none of staging's limits,
     // on an ordinary network and a loopback port, the way a live service runs.
     // Its password is a canary that must never be found inside staging.
-    const image = load().services['db']!.image!;
+    const image = load().services['backups']!.image!;
     expect(docker(['network', 'create', prod]).status).toBe(0);
     const started = docker([
       'run',
@@ -499,7 +492,7 @@ live('S0-1 containment and resource limits, live', () => {
       'cp /src/server.crt /src/server.key /tls/ && chown 70:70 /tls/* && chmod 600 /tls/server.key',
     ]);
     expect(filled.status, filled.out).toBe(0);
-    const up = compose(['up', '-d', '--wait', 'db']);
+    const up = compose(['up', '-d', '--wait', 'backups']);
     expect(up.status, up.out).toBe(0);
     await settle(prodPort, 60);
     await productionGreen();
@@ -514,7 +507,7 @@ live('S0-1 containment and resource limits, live', () => {
 
   it("the way in is staging's own network, never a port on the machine", () => {
     // The runbook's seed and migrate steps run as one-off containers here.
-    const image = load().services['db']!.image!;
+    const image = load().services['backups']!.image!;
     const reach = docker([
       'run',
       '--rm',
@@ -523,14 +516,14 @@ live('S0-1 containment and resource limits, live', () => {
       image,
       'pg_isready',
       '-h',
-      'db',
+      'backups',
     ]);
     expect(reach.status, reach.out).toBe(0);
-    expect(docker(['port', names('db')]).out).toBe('');
+    expect(docker(['port', names('backups')]).out).toBe('');
   });
 
   it('every service, as Docker creates it, carries its confinement and limits', () => {
-    const create = compose(['create', 'auth', 'backups', 'worker', 'forwarder']);
+    const create = compose(['create', 'backups', 'worker', 'forwarder']);
     expect(create.status, create.out).toBe(0);
     const format =
       '{{json .HostConfig.ReadonlyRootfs}} {{json .HostConfig.CapDrop}} {{.HostConfig.NanoCpus}} ' +
@@ -605,27 +598,30 @@ live('S0-1 containment and resource limits, live', () => {
     // The probe can see a reachable target: from production's own network it
     // reaches production. Only then does a refusal from staging mean anything.
     expect(
-      probe(['run', '--rm', '--network', prod, load().services['db']!.image!], `${prodIp}:5432`),
+      probe(
+        ['run', '--rm', '--network', prod, load().services['backups']!.image!],
+        `${prodIp}:5432`,
+      ),
     ).toBe(0);
     // On Linux the machine's listener is reachable through an ordinary bridge's
     // gateway, so the same address refused from staging means something.
     if (process.platform === 'linux')
       expect(
         probe(
-          ['run', '--rm', '--network', prod, load().services['db']!.image!],
+          ['run', '--rm', '--network', prod, load().services['backups']!.image!],
           `${gateway}:${hostPort}`,
         ),
       ).toBe(0);
     if (process.platform === 'linux')
       expect(
         probe(
-          ['run', '--rm', '--network', names('dual'), load().services['db']!.image!],
+          ['run', '--rm', '--network', names('dual'), load().services['backups']!.image!],
           `${v6}:${hostPort}`,
         ),
         'control: the IPv6 host address is reachable from a dual-stack bridge',
       ).toBe(0);
     for (const [what, target] of targets)
-      expect(probe(['exec', `${project}-db`], target), `${what} (${target})`).not.toBe(0);
+      expect(probe(['exec', `${project}-backups`], target), `${what} (${target})`).not.toBe(0);
     expect(inStaging('test -e /var/run/docker.sock').status, 'docker socket').not.toBe(0);
     expect(inStaging('touch /escape').out).toMatch(/Read-only file system/u);
 
@@ -645,7 +641,7 @@ live('S0-1 containment and resource limits, live', () => {
 
   // eslint-disable-next-line max-lines-per-function -- one test, its body kept byte for byte
   it('S0-1 resource limits: saturating each inside staging leaves production green', async () => {
-    const db = load().services['db']!;
+    const db = load().services['backups']!;
     const cgroup = (file: string) => inStaging(`cat /sys/fs/cgroup/${file}`).out;
 
     // CPU: every core spun for five seconds; the quota holds it to the limit.
@@ -653,13 +649,13 @@ live('S0-1 containment and resource limits, live', () => {
     inStaging('for i in 1 2 3 4 5 6 7 8; do timeout 5 sh -c "while :; do :; done" & done; wait');
     await productionGreen();
 
-    // Memory: a hog past the limit is killed; staging's database survives it.
+    // Memory: a hog past the limit is killed; the store survives it.
     expect(Number(cgroup('memory.max'))).toBe(bytes(db.mem_limit!));
     const hog = inStaging(
       `head -c ${bytes(db.mem_limit!) + 256 * 1024 ** 2} /dev/zero | tail > /dev/null; echo $?`,
     );
     expect(hog.out).toMatch(/137|Killed/u);
-    expect(docker(['exec', `${project}-db`, 'pg_isready', '-h', '127.0.0.1']).status).toBe(0);
+    expect(docker(['exec', `${project}-backups`, 'pg_isready', '-h', '127.0.0.1']).status).toBe(0);
     await productionGreen();
 
     // Process count: forks stop at the limit.
@@ -670,14 +666,12 @@ live('S0-1 containment and resource limits, live', () => {
     expect(Number(forks.out.split('\n').at(-1))).toBe(db.pids_limit);
     await productionGreen();
 
-    // Disk: the database's own space fills and stops at its size.
-    const volume = load().volumes['ops-astro-staging-pgdata']!;
-    const fill = inStaging(
-      'dd if=/dev/zero of=/var/lib/postgresql/data/fill bs=1M count=4096; rm -f /var/lib/postgresql/data/fill',
-    );
+    // Disk: a sized scratch space fills and stops at its size.
+    const scratchSpace = db.tmpfs!.find((entry) => entry.startsWith('/tmp:'))!;
+    const fill = inStaging('dd if=/dev/zero of=/tmp/fill bs=1M count=4096; rm -f /tmp/fill');
     expect(fill.out).toMatch(/No space left on device/u);
     const written = Number(/(\d+) bytes/u.exec(fill.out)?.[1]);
-    expect(written).toBeLessThanOrEqual(sizeOption(volume.driver_opts!['o']!));
+    expect(written).toBeLessThanOrEqual(sizeOption(scratchSpace.split(/:(.*)/su)[1]!));
     await productionGreen();
 
     // Log size: a flood through the main process's output is rotated away.
@@ -686,14 +680,14 @@ live('S0-1 containment and resource limits, live', () => {
     inStaging(
       `head -c ${cap + 16 * 1024 ** 2} /dev/zero | tr '\\0' x | fold -w 200 > /proc/1/fd/1`,
     );
-    const kept = spawnSync('sh', ['-c', `docker logs ${project}-db 2>&1 | wc -c`], {
+    const kept = spawnSync('sh', ['-c', `docker logs ${project}-backups 2>&1 | wc -c`], {
       encoding: 'utf8',
     });
     expect(Number(kept.stdout.trim())).toBeLessThanOrEqual(cap);
     await productionGreen();
 
     // Staging itself rode every limit out: no container of it was restarted.
-    for (const service of ['db'])
+    for (const service of ['backups'])
       expect(docker(['inspect', names(service), '--format', '{{.RestartCount}}']).out).toBe('0');
   }, 240_000);
 });

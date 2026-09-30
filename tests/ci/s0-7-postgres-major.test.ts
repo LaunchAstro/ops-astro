@@ -29,11 +29,11 @@ const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 
 const staging = JSON.parse(read('deploy/staging/compose.json')) as {
   'x-ops-astro': { productionDatabaseMajor: number };
-  services: { db: { image: string } };
+  services: { backups: { image: string } };
 };
 const PRODUCTION_MAJOR = staging['x-ops-astro'].productionDatabaseMajor;
-/** The one 17 digest: the image staging's database runs, which production's major decides. */
-const DIGEST = /@sha256:([0-9a-f]{64})$/u.exec(staging.services.db.image)?.[1] ?? '';
+/** The one 17 digest: the image staging's backup store runs, which production's major decides. */
+const DIGEST = /@sha256:([0-9a-f]{64})$/u.exec(staging.services.backups.image)?.[1] ?? '';
 /** The look-ahead job names its own major; every other run expects production's. */
 const LOOKAHEAD = 'OPS_ASTRO_DB_LOOKAHEAD_MAJOR';
 
@@ -72,7 +72,7 @@ describe('S0-7 CI on the hosted major', () => {
 function ciOnTheCases1() {
   it('production major and the digest are stated once, in staging', () => {
     expect(PRODUCTION_MAJOR).toBe(17);
-    expect(staging.services.db.image).toMatch(/^postgres:17-alpine@sha256:[0-9a-f]{64}$/u);
+    expect(staging.services.backups.image).toMatch(/^postgres:17-alpine@sha256:[0-9a-f]{64}$/u);
     expect(DIGEST).toHaveLength(64);
   });
 

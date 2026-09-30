@@ -54,7 +54,7 @@ export function reachArgs(network) {
     `--name=${staging['x-ops-astro'].ownPrefix}-store-${randomBytes(4).toString('hex')}`,
     `--network=${network}`,
     ...LOGIN.map((name) => `--env=${name}`),
-    staging.services.db.image,
+    staging.services.backups.image,
     'psql',
     '-X',
     '-q',

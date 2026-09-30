@@ -112,12 +112,14 @@ describe('S0-6 services unchanged', () => {
 });
 
 function imagePinsCases1() {
-  it('every service staging runs, the auth server included, is named by a recorded digest', () => {
+  it('every service staging runs, the worker unit included, is named by a recorded digest', () => {
     expect(imagePinProblems(definition, record)).toStrictEqual([]);
     const pinned = Object.entries(definition.services).filter(
       ([name]) => !(definition['x-ops-astro'].appServices ?? []).includes(name),
     );
-    expect(pinned.map(([name]) => name)).toEqual(expect.arrayContaining(['db', 'auth']));
+    expect(pinned.map(([name]) => name)).toEqual(
+      expect.arrayContaining(['backups', 'worker', 'forwarder']),
+    );
   });
 
   it('an app service is named only by the image the deploy builds', () => {
@@ -190,12 +192,12 @@ function imagePinsCases3() {
     const moved = effects({
       runningImages: () => ({
         ...expected(),
-        'ops-astro-staging-db': `sha256:${'d'.repeat(64)}`,
+        'ops-astro-staging-backups': `sha256:${'d'.repeat(64)}`,
       }),
     });
     const outcome = await deploy({ version: STAGED, store: store() }, moved, clean);
     expect(outcome.kind).toBe('failed');
-    expect(outcome).toMatchObject({ reason: expect.stringContaining('ops-astro-staging-db') });
+    expect(outcome).toMatchObject({ reason: expect.stringContaining('ops-astro-staging-backups') });
     expect(outcome).not.toHaveProperty('record');
   });
 
