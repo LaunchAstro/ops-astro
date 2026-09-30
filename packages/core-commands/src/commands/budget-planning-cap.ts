@@ -14,7 +14,8 @@
 // lock the broker takes before it holds a reply, so of two setters the loser
 // waits, re-reads and is refused `VERSION_STALE` naming the limit it is at. Two
 // first setters meet on the unique key instead: the second's insert waits for
-// the first and does nothing.
+// the first, does nothing, and compares with the row it finds, so a first
+// planning reply's default row (AUD 50) still takes a setter from 5000.
 //
 // A lower cap is not refused for being below what is committed: the cap is a
 // ceiling on the next reply, and the broker refuses whatever no longer fits.
@@ -72,10 +73,9 @@ export async function setPlanningCap(
     const fix = `Send whole minor units above zero, in ${PRICE_BOOK_CURRENCY}, the price book's currency.`;
     return refused(refuseCommand('FIELD_VALUE_INVALID', invalid, [fix]));
   }
-  const cap = await lockedCap(tx);
+  let cap = await lockedCap(tx);
   if (limitOf(cap) !== fromLimitMinor) return stale(cap);
-  let id = cap?.id;
-  if (id === undefined) {
+  if (cap === undefined) {
     const [inserted] = await tx.query<{ id: string }>(
       `insert into public.budget_caps (business_id, id, key, limit_minor, currency)
        values ($1, $2, 'planning', $3, $4)
@@ -83,15 +83,18 @@ export async function setPlanningCap(
        returning id`,
       [tx.businessId, randomUUID(), limitMinor, currency],
     );
-    // Another first setter committed the row while this insert waited on it.
-    if (inserted === undefined) return stale(await lockedCap(tx));
-    id = inserted.id;
-  } else {
-    await tx.query(
-      `update public.budget_caps set limit_minor = $3
-        where business_id = $1 and id = $2 and key = 'planning'`,
-      [tx.businessId, id, limitMinor],
-    );
+    if (inserted !== undefined) {
+      return applied(inserted.id, null, { key: 'planning', limitMinor, currency });
+    }
+    // Another setter, or a first planning reply writing the default, committed
+    // the row while this insert waited on it: compare with what it holds now.
+    cap = await lockedCap(tx);
+    if (cap === undefined || limitOf(cap) !== fromLimitMinor) return stale(cap);
   }
-  return applied(id, null, { key: 'planning', limitMinor, currency });
+  await tx.query(
+    `update public.budget_caps set limit_minor = $3
+      where business_id = $1 and id = $2 and key = 'planning'`,
+    [tx.businessId, cap.id, limitMinor],
+  );
+  return applied(cap.id, null, { key: 'planning', limitMinor, currency });
 }
