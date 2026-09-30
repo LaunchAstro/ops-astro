@@ -6,8 +6,9 @@
 // kinds it declares. An undeclared write fails; so does a kind declared
 // business-internal whose table reaches a task or a client through its
 // foreign keys, since a row holding a task's id is a client-scoped write.
-// The act's own bookkeeping (its audit event and its operation row) is the
-// same for every command and is not a record kind. Two commands have no
+// The act's own bookkeeping (its audit event, its operation row and the
+// bearer's verification) is the same for every call and is not a record kind.
+// A declared kind that is no table fails too, so a misspelt one cannot pass. Two commands have no
 // recipe of their own (a grant id, a live delegation) and get one here.
 
 import { randomUUID } from 'node:crypto';
@@ -26,8 +27,15 @@ if (serverUrl === undefined) {
   console.warn('operations/s0-5-effect-metadata: DATABASE_URL is unset, so nothing below ran.');
 }
 
-/** Written by every command as the record of the act, never a record kind of its own. */
-const BOOKKEEPING: ReadonlySet<string> = new Set(['audit_events', 'operations']);
+/**
+ * Written for every call as the record of the act, never a record kind of its
+ * own: the audit event, the operation row, and the bearer's verification.
+ */
+const BOOKKEEPING: ReadonlySet<string> = new Set([
+  'audit_events',
+  'operations',
+  'authentication_attempts',
+]);
 
 let harness: Harness;
 
@@ -66,7 +74,7 @@ async function clientScoped(): Promise<ReadonlySet<string>> {
   return new Set(rows.map((row) => row.name));
 }
 
-/** The positive recipe, or one made here for the two commands that have none. */
+/** The positive recipe, or one made here where it changes nothing or there is none. */
 async function bodyFor(declaration: CommandDeclaration): Promise<Prepared> {
   if (declaration.name === 'grant.revoke') {
     const mia = harness.world.mia as unknown as Member;
@@ -75,6 +83,13 @@ async function bodyFor(declaration: CommandDeclaration): Promise<Prepared> {
       async (tx) => await grantTo(tx, mia, 'comment'),
     );
     return { body: { grantId } };
+  }
+  if (declaration.name === 'access.grant') {
+    // The recipe re-grants a key the member already holds; one client's is new.
+    const made = await harness.asPerson('client.create', { name: `s0-5 effects ${randomUUID()}` });
+    const clientId = (made.body['detail'] as Record<string, unknown>)['clientId'];
+    const holderId = (harness.world.mia as unknown as Member).personId;
+    return { body: { holderId, collection: 'task', action: 'read', clientId } };
   }
   if (declaration.name === 'delegation.revoke') {
     const task = await harness.freshTask(`s0-5 effects ${randomUUID()}`);
@@ -88,6 +103,54 @@ async function bodyFor(declaration: CommandDeclaration): Promise<Prepared> {
   return await harness.positiveBody(declaration);
 }
 
+/** What is wrong with a declaration before it runs: a kind that is no table, or scoped too narrowly. */
+function declaredFaults(
+  declaration: CommandDeclaration,
+  tables: ReadonlySet<string>,
+  scoped: ReadonlySet<string>,
+): string[] {
+  const { name } = declaration;
+  return COMMAND_EFFECTS[name].writes.flatMap((kind) => [
+    ...(tables.has(kind.kind) ? [] : [`${name}: declares ${kind.kind}, which is no table`]),
+    ...(kind.scope === 'business' && scoped.has(kind.kind)
+      ? [`${name}: declares ${kind.kind} business-internal; it reaches a task or client`]
+      : []),
+  ]);
+}
+
+/** Runs the command on its fixture and names every table it changed that it does not declare. */
+async function runFaults(declaration: CommandDeclaration): Promise<string[]> {
+  const { name } = declaration;
+  const prepared = await bodyFor(declaration);
+  if ('exception' in prepared) return [`${name}: no fixture (${prepared.exception})`];
+  const before = await fingerprint();
+  const answer = await harness.asPerson(name, prepared.body);
+  if (answer.code !== 'ok') return [`${name}: its fixture was refused ${answer.code}`];
+  const after = await fingerprint();
+  const written = [...after.keys()].filter(
+    (table) => !BOOKKEEPING.has(table) && after.get(table) !== before.get(table),
+  );
+  const declared = COMMAND_EFFECTS[name].writes;
+  return [
+    ...(declaration.kind === 'write' && written.length === 0 && !(name in NO_CHANGE)
+      ? [`${name}: its fixture changed no row, so its declaration is unproved`]
+      : []),
+    ...written
+      .filter((table) => !declared.some((kind) => kind.kind === table))
+      .map((table) => `${name}: wrote ${table}, undeclared`),
+  ];
+}
+
+/**
+ * Write commands whose fixture changes no row, each with where its write is
+ * proved instead. Any other write that changes nothing fails: its declaration
+ * would be unproved.
+ */
+const NO_CHANGE: Readonly<Record<string, string>> = {
+  'task.purge':
+    'a fresh trash is inside the retention window; the purge is tests/commands/purge-retention.test.ts',
+};
+
 describe.skipIf(serverUrl === undefined)('S0-5 gate coverage: the effect metadata, proved', () => {
   beforeAll(async () => {
     harness = await createHarness('s05_effects');
@@ -99,41 +162,12 @@ describe.skipIf(serverUrl === undefined)('S0-5 gate coverage: the effect metadat
 
   it('S0-5 gate coverage (proved): each command changes only the record kinds it declares, at no narrower scope', async () => {
     const scoped = await clientScoped();
+    const tables = new Set((await fingerprint()).keys());
     const found: string[] = [];
     for (const declaration of COMMAND_SURFACE) {
-      const { name } = declaration;
-      const declared = COMMAND_EFFECTS[name].writes;
-      for (const kind of declared) {
-        if (kind.scope === 'business' && scoped.has(kind.kind)) {
-          found.push(
-            `${name}: declares ${kind.kind} business-internal; it reaches a task or client`,
-          );
-        }
-      }
       // One command at a time: the digest before and after must be this one's alone.
       // eslint-disable-next-line no-await-in-loop
-      const prepared = await bodyFor(declaration);
-      if ('exception' in prepared) {
-        found.push(`${name}: no fixture (${prepared.exception})`);
-        continue;
-      }
-      // eslint-disable-next-line no-await-in-loop
-      const before = await fingerprint();
-      // eslint-disable-next-line no-await-in-loop
-      const answer = await harness.asPerson(name, prepared.body);
-      if (answer.code !== 'ok') {
-        found.push(`${name}: its fixture was refused ${answer.code}`);
-        continue;
-      }
-      // eslint-disable-next-line no-await-in-loop
-      const after = await fingerprint();
-      const written = [...after.keys()].filter(
-        (table) => !BOOKKEEPING.has(table) && after.get(table) !== before.get(table),
-      );
-      for (const table of written) {
-        if (!declared.some((kind) => kind.kind === table))
-          found.push(`${name}: wrote ${table}, undeclared`);
-      }
+      found.push(...declaredFaults(declaration, tables, scoped), ...(await runFaults(declaration)));
     }
     expect(found).toStrictEqual([]);
   }, 300_000);

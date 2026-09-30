@@ -44,10 +44,143 @@ export interface ClassedEffects extends DataEffects {
   readonly class: DataClass;
 }
 
-export function classOf(_effects: DataEffects): DataClass {
-  throw new Error('S0-5: the class rule is not built');
+/**
+ * The class, from what the command does: `invitation` if it admits a new
+ * outside person; `client-data` if it writes a client-scoped row, takes any
+ * intake, or makes an outside effect for a client; `made-up-safe` otherwise.
+ */
+export function classOf(effects: DataEffects): DataClass {
+  if (effects.access) return 'invitation';
+  if (
+    effects.writes.some((write) => write.scope === 'client') ||
+    effects.intake.length > 0 ||
+    effects.outside.some((effect) => effect.forClient)
+  ) {
+    return 'client-data';
+  }
+  return 'made-up-safe';
 }
 
-export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = {} as {
-  readonly [Name in CommandName]: DataEffects;
+const business = (...kinds: string[]): RecordWrite[] =>
+  kinds.map((kind) => ({ kind, scope: 'business' }));
+const client = (...kinds: string[]): RecordWrite[] =>
+  kinds.map((kind) => ({ kind, scope: 'client' }));
+const writing = (
+  writes: readonly RecordWrite[],
+  outside: readonly OutsideEffect[] = [],
+): DataEffects => ({ writes, intake: [], outside, access: false });
+
+const READ = writing([]);
+// A task is a row of `records`, with its unique values beside it.
+const TASK = writing(client('records', 'record_unique_values'));
+const PROPOSAL = writing(
+  client(
+    'evidence_packs',
+    'gates',
+    'planned_runs',
+    'planned_steps',
+    'proposal_lineages',
+    'proposal_versions',
+  ),
+);
+const SETTINGS = writing(business('business_settings'));
+const LEGAL = writing(business('legal_document_versions'));
+// A grant names a client only by its scope; it holds no content and admits
+// no one, and a party-scoped grant needs a client, which is gated itself.
+const GRANTS = writing(business('grants'));
+const CREDENTIAL = writing(business('agent_credentials', 'actors'));
+
+/**
+ * Every command's effects, one entry each: the type is keyed by every command
+ * name, so a command added without an entry does not compile. Record kinds
+ * are tables. Each is proved against the rows its fixture actually changes
+ * (`tests/operations/s0-5-effect-metadata.test.ts`); reads write only the
+ * act's audit, which is no record kind.
+ */
+export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = {
+  'task.create': TASK,
+  'task.update': TASK,
+  'task.complete': TASK,
+  'task.reopen': TASK,
+  'task.comment': writing(client('records')),
+  'task.propose': PROPOSAL,
+  'task.decide': writing(
+    client('attempts', 'gate_decisions', 'gates', 'reservations', 'task_envelopes'),
+  ),
+  // An agent's pickup also mints its delegation.
+  'task.pickup': writing([
+    ...client('attempts', 'leases', 'planned_runs', 'reservations', 'run_events'),
+    ...business('delegations'),
+  ]),
+  'task.handback': writing([
+    ...client(
+      'alerts',
+      'attempts',
+      'handback_reports',
+      'leases',
+      'planned_runs',
+      'reservations',
+      'run_events',
+      'task_envelopes',
+    ),
+    ...business('delegations'),
+  ]),
+  'task.start': TASK,
+  'task.assign': TASK,
+  'task.triage': TASK,
+  'task.set_stage': TASK,
+  'task.set_party': TASK,
+  'task.set_audience': TASK,
+  'task.reparent': TASK,
+  'task.move': TASK,
+  'task.rank': TASK,
+  'task.trash': TASK,
+  'task.restore': TASK,
+  'task.purge': TASK,
+  'task.read': READ,
+  'task.board': READ,
+  'task.queue': READ,
+  'task.execution': READ,
+  'person.list': READ,
+  'preset.plan': READ,
+  'settings.read': READ,
+  'session.capabilities': READ,
+  'access.read': READ,
+  'client.list': READ,
+  'operations.read': READ,
+  // Drafts the notices and returns them; nothing is sent or stored.
+  'privacy.draft_breach_notices': READ,
+  'settings.set_four_eyes_threshold': SETTINGS,
+  'settings.set_client_sign_off': SETTINGS,
+  'settings.set_money_step_up': SETTINGS,
+  'privacy.record_incident': writing(business('privacy_incidents')),
+  'legal.draft_version': LEGAL,
+  'legal.approve_version': LEGAL,
+  'legal.publish_version': LEGAL,
+  'privacy.set_overseas_service': writing(business('overseas_services')),
+  'privacy.set_data_class': writing(business('data_classes')),
+  'credential.issue': CREDENTIAL,
+  'credential.revoke': CREDENTIAL,
+  'client.create': writing(client('clients')),
+  'access.grant': GRANTS,
+  'access.revoke': GRANTS,
+  // C58: the team member signed out and deactivated at the identity provider.
+  'access.end': writing(
+    business('access_endings', 'actors', 'memberships', 'grants', 'delegations'),
+    [{ provider: 'identity', forClient: false }],
+  ),
+  'grant.revoke': GRANTS,
+  'delegation.revoke': writing([
+    ...client('attempts', 'leases', 'planned_runs', 'reservations', 'task_envelopes'),
+    ...business('delegations'),
+  ]),
+  'task.cancel': writing(client('alerts', 'planned_runs', 'proposal_lineages')),
+  'task.restart': PROPOSAL,
+  'task.heartbeat': writing(client('leases')),
+  'task.dispatch': writing(client('attempts', 'planned_steps')),
+  'task.observe': writing(client('attempts')),
+  'task.receipt': READ,
+  'budget.top_up': writing(client('task_envelopes')),
+  'budget.record_outcome': writing(client('alerts', 'attempts', 'reservations', 'task_envelopes')),
+  'budget.write_off': writing(client('attempts', 'reservations', 'task_envelopes')),
 };

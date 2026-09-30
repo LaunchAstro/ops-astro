@@ -3,34 +3,35 @@
 // S0-5: the gate before the first real client data and the first client invite.
 //
 // The readiness check is read by every command the command catalogue classes
-// `client-data` or `invitation`, and the classes come from effect metadata on
-// that catalogue (API-1). S0-5 also waits on the backup restore (S0-3) and the
-// task share grant (MP-4-10, U15), which it must refuse in its own case. None
-// is on main, so each named case is held here until S0-5 is built after them.
+// `client-data` or `invitation`. The classes are built, from each command's
+// effect metadata (`s0-5-effect-classes.test.ts`, `s0-5-effect-metadata.test.ts`);
+// the cases marked NEXT wait only on the readiness check itself, S0-5's next
+// increment. S0-5 also waits on the backup restore (S0-3), the task share
+// grant (MP-4-10, U15) and the agent route (S0-6), none on this branch.
 // Several close only on the owner's evidence or on staging; those say so.
 
 import { it } from 'vitest';
 
 it.todo(
-  'S0-5 gate refusals: with each of the eight items forced open in turn, every client-data and invitation command is refused in plain words and writes nothing, a seeded stand-in of each class included (LEANS-ON SL02 API-1)',
+  'S0-5 gate refusals: with each of the eight items forced open in turn, every client-data and invitation command is refused in plain words and writes nothing, a seeded stand-in of each class included (NEXT: the readiness check)',
 );
 it.todo(
-  'S0-5 gate coverage: a command with no effect metadata fails the build, and with the gate forced open every client-data and invitation command in the catalogue is refused and writes nothing (LEANS-ON SL02 API-1)',
+  'S0-5 gate coverage (gate forced open): every client-data and invitation command in the catalogue is refused and writes nothing; its metadata half is built (NEXT: the readiness check)',
 );
 it.todo(
-  'S0-5 isolation: another business, and another client, is never read, listed, counted, exported or changed through the gate (LEANS-ON SL02 API-1, SL01 S0-3)',
+  'S0-5 isolation: another business, and another client, is never read, listed, counted, exported or changed through the gate (LEANS-ON SL01 S0-3)',
 );
 it.todo(
-  'S0-5 operator only: ticking an item, accepting a finding or changing the mode by an agent credential, under a delegation, or without operations:manage is refused and writes nothing (LEANS-ON SL02 API-1, SL01 S0-6)',
+  'S0-5 operator only: ticking an item, accepting a finding or changing the mode by an agent credential, under a delegation, or without operations:manage is refused and writes nothing (LEANS-ON SL01 S0-6)',
 );
 it.todo(
-  'S0-5 mode one way: the mode changes only from made-up data to real data, by the owner, while the readiness check is true, and never back (LEANS-ON SL02 API-1)',
+  'S0-5 mode one way: the mode changes only from made-up data to real data, by the owner, while the readiness check is true, and never back (NEXT: the readiness check)',
 );
 it.todo(
-  'S0-5 client change refused once the task has content: through the app, the API, the command line and an agent credential, for every task-content kind in the catalogue, and in both interleavings (LEANS-ON SL02 API-1, SL01 S0-6)',
+  'S0-5 client change refused once the task has content: through the app, the API, the command line and an agent credential, for every task-content kind in the catalogue, and in both interleavings (LEANS-ON SL01 S0-6)',
 );
 it.todo(
-  'S0-5 content marker and lock order: a command that changes the revision without the marker, or writes before the lock, fails the build (LEANS-ON SL02 API-1)',
+  'S0-5 content marker and lock order: a command that changes the revision without the marker, or writes before the lock, fails the build (NEXT: the readiness check)',
 );
 it.todo(
   'MP-4-10 gate refusal: with the gate forced open, the share grant is refused in plain words and writes nothing (LEANS-ON SL08 MP-4-10)',

@@ -11,7 +11,7 @@ import {
   type CommandDeclaration,
   type CommandName,
 } from './surface.ts';
-import type { ClassedEffects } from './data-effects.ts';
+import { COMMAND_EFFECTS, classOf, type ClassedEffects } from './data-effects.ts';
 
 /** A place in the app that calls a command; `file` is relative to apps/web/src. */
 export type UiUse = { readonly command: string; readonly route: string; readonly file: string };
@@ -39,7 +39,7 @@ export interface CatalogueRow extends Profile {
   // `route (file)` per place the app calls it; empty: none yet
   readonly ui: readonly string[];
   // S0-5 (U18): what it does to data, and the class the gate reads
-  readonly dataEffects: ClassedEffects | null;
+  readonly dataEffects: ClassedEffects;
 }
 
 /** A UI action with no command, and why it needs none (CS-15.18). */
@@ -93,7 +93,10 @@ export function buildCatalogue(
       },
       cli: declaration.name,
       ui: [...new Set(ui)].toSorted(),
-      dataEffects: null,
+      dataEffects: {
+        ...COMMAND_EFFECTS[declaration.name],
+        class: classOf(COMMAND_EFFECTS[declaration.name]),
+      },
     };
   });
 }
