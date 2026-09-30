@@ -1249,6 +1249,50 @@ returning either the contract's `{ ok: true, ... }` shape or a command refusal.
 `executeRead` is a required option of `createApi`, so every declared read has
 an executor.
 
+`inbox.read` answers the caller's own items as `{ ok: true, inbox }`: every
+open item, and the newest 50 closed ones (`INBOX_HISTORY_PAGE`) about a task
+the caller reads now, oldest raised first. `inbox.count` answers
+`{ ok: true, owed }`, the list's counted entries, counted in one query under
+the same rule (`reads/inbox.ts`). Access is derived for every item inside the
+read's own query, so neither read grows with a person's closed history. The
+page of closed items is found from the caller's grants: each task they read
+(the whole business on the history index; otherwise each task a grant names
+or reaches through its client, on the per-task history index; both migration 0044) gives its newest 50, and the newest 50 of those are the page.
+An item about a task the caller cannot read is never looked at for the page,
+so it takes no place in it and another client's change never moves it. Those
+items are read beside the page, newest first, from the page's oldest item on
+and at most 200 closed items (`INBOX_HISTORY_SCAN`); the records read returns
+them as withheld and the list does not show them. A readable entry about a planned run carries `alert`,
+T2h's latest alert on that run (the same record, `id`, `kind`,
+`waitingReason` and `raisedAt`, that the task page and the queue read show);
+no other read carries it. A readable entry carries its pointers, its task's `key` and `title`,
+and `closedBy`, the decider's `personId` and `name` once it is cleared, all
+read in the same transaction, so the item stores none of them. A gone entry
+carries its own identity and axes and nothing of the task. The board screen
+draws both reads above the board (`apps/web/src/views/inbox.tsx`, INB-1g).
+
+The board screen follows one event stream per tab (INB-1f),
+`GET <person prefix><business>/live`, beside T2f's `/live/task/:recordId`
+and through the same door (`apps/api/app.ts`, `apps/api/live-board.ts`). The
+join is `joinLiveBoard` (`reads/live-join.ts`): a person inside the business,
+never an external reader or an agent, holding a live grant. It sends `resync`
+on connect and after the listener reconnects, `invalidate` whose data is a
+task's identifier only when the caller may read that task now (asked per event
+as T2f asks `task.execution`), `inbox` with no data when what `inbox.read`
+shows the caller changed (the topic names no item, so the stream compares a
+digest of that read, `shownInbox`, and a change to an item the caller is not
+shown says nothing), and `closed` the first time the join is refused again (at
+every recheck, 30 seconds by default, and before each batch). The stream hears
+the inbox of the person the bearer resolves to, asked at each batch and again
+after each task read and each changed inbox digest, before its frame: if that is now another person,
+the previous person's topic is dropped unsaid, the new one's is heard, and the
+stream says nothing until its next recheck sends `resync`. The inbox topic is
+`business:inbox:person`, sent at commit by migration 0043's trigger on
+`inbox_items`, and the fan-out (`apps/api/live.ts`) hands it only to that
+person's streams in that business. The page re-reads the board on
+`invalidate` and the inbox list and count on `inbox`; while the stream is
+down its 30-second floor re-reads both (`apps/web/src/data/board-live.ts`).
+
 `task.read` carries the task's comments. An internal reader, meaning a
 membership role of `owner`, `admin` or `member`, is given every comment in full.
 Every other role is given `externalCommentProjection`'s answer, which is the
