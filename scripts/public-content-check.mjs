@@ -58,9 +58,12 @@ const provenanceIdentities = [
 // `.local` is reserved for multicast DNS by RFC 6762 and is not delegable, so
 // these cannot reach a mailbox either, and a real address at someone's Bonjour
 // hostname is still a finding because it is not one of these six.
+// Then Sol's REVB1SL01S34 proof (byte for byte): two made-up database logins,
+// password `example` before a host, which read as addresses; those strings alone.
 const publishedAddresses = [
   /^security@launchastro\.com$/u,
   /^[a-z0-9._%+-]+@example\.(?:invalid|test|localhost)$/u,
+  /^example@(?:production-db\.example\.test|aws-0-ap-southeast-2\.pooler\.supabase\.com)$/u,
   /^[a-z0-9._%+-]+@example\.(?:com|net|org)$/u,
   /^ada@alpha\.local$/u,
   /^mia@alpha\.local$/u,
