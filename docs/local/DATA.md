@@ -261,7 +261,7 @@ foreign insert into `delegations` is refused with `check_violation`
 (migration 0018), but no application role reaches it: the group holds only
 `select` and `insert` on `handback_reports`, so the privilege check refuses
 `update` and `delete` before the trigger runs. Its only live caller is the owner,
-whom it refuses. `live_correction_receipts_append_only` (migration 0032, C80)
+whom it refuses. `live_correction_receipts_append_only` (migration 0042, C80)
 is `security invoker`: raising needs no privilege, and the group holds only
 `select` and `insert` on `live_correction_receipts`, so the definer set is
 unchanged. `live_corrections` takes `select`, `insert` and `update`, and a
