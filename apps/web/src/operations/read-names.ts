@@ -49,6 +49,9 @@ export const READ_NAMES = [
   'connection.graduation',
   // The Workflow triggers registry (C33).
   'automation.registry',
+  // What agent runs cost: skill costing (MP-14-9) and the agents' cost log (MP-14-6).
+  'finance.skill_costs',
+  'finance.agent_costs',
   // The gates waiting on the caller's decision (MP-6-1).
   'gate.pending',
   // A conversation at its address (AW-03).

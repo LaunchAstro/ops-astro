@@ -275,6 +275,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'conversation.start',
   'definition.release',
   'delegation.revoke',
+  'finance.agent_costs',
+  'finance.skill_costs',
   'gate.pending',
   'graduation.demote',
   'graduation.promote',
@@ -581,7 +583,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same sixty from an expected revision', () => {
+  it('exempts the same sixty-two from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

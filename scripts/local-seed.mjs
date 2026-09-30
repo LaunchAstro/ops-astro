@@ -109,6 +109,8 @@ const GRANTS_BY_ROLE = {
     ['custody', 'manage'],
     // The connector fleet on Connections & signal (MP-14-7a).
     ['connection', 'read'],
+    // What agent runs cost (MP-14-9, MP-14-6): the key catalogue's `finance:read`.
+    ['finance', 'read'],
     // Standing mandates (MP-14-10a): the owner's and administrators', never an agent's.
     ['mandate', 'manage'],
     // Settings ▸ Workflow triggers (C33): releasing a definition version.

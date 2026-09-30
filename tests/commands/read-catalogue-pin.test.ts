@@ -35,6 +35,8 @@ const PINNED_SHAPE = {
   'connection.signal': { spine: false, subject: false, authority: 'holds-any-grant' },
   'connection.graduation': { spine: false, subject: false, authority: 'holds-any-grant' },
   'automation.registry': { spine: false, subject: false, authority: 'declared' },
+  'finance.skill_costs': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'finance.agent_costs': { spine: false, subject: false, authority: 'holds-any-grant' },
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
   'settings.read': { spine: false, subject: false, authority: 'declared' },
   'task.board': { spine: true, subject: false, authority: 'declared' },
@@ -51,6 +53,8 @@ const PINNED_IDENTIFIERS = {
   'connection.signal': [],
   'conversation.list': [],
   'conversation.read': ['conversationId'],
+  'finance.agent_costs': [],
+  'finance.skill_costs': [],
   'gate.pending': [],
   'person.list': [],
   'preset.plan': [],
@@ -147,6 +151,13 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'connection.signal': BODIES.map(() => null),
   'connection.graduation': BODIES.map(() => null),
   'automation.registry': BODIES.map(() => null),
+  'finance.skill_costs': BODIES.map(() => null),
+  // U39: the cost log's period, which none of these bodies carries.
+  'finance.agent_costs': BODIES.map(() => ({
+    code: 'FIELD_VALUE_INVALID',
+    names: ['from'],
+    fixes: ['Send from and to as ISO date-times, from before to.'],
+  })),
   'session.capabilities': BODIES.map(() => null),
   'conversation.read': BODIES.map(() => null),
   'conversation.list': BODIES.map(() => null),
@@ -161,7 +172,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same seventeen reads', () => {
+  it('names the same nineteen reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

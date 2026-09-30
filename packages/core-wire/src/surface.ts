@@ -346,6 +346,7 @@ const MANDATE_COLLECTION = 'mandate';
 const AUTOMATION_COLLECTION = 'automation';
 const RECORD_COLLECTION = 'record';
 const CONVERSATION_COLLECTION = 'conversation';
+const FINANCE_COLLECTION = 'finance';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -666,6 +667,11 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // a mandate carries a spend ceiling), never an agent: an agent may propose,
   // never create, an activation.
   read('connection.graduation', CONNECTION_COLLECTION),
+  // What agent runs cost (U39): skill costing (MP-14-9) and the agents' cost
+  // log for a period (MP-14-6), each asked per row by the scopes the caller
+  // holds `finance:read` at; a person's, never an agent's.
+  read('finance.skill_costs', FINANCE_COLLECTION),
+  read('finance.agent_costs', FINANCE_COLLECTION),
   declare('mandate.file', 'manage', {
     collection: MANDATE_COLLECTION,
     targetsExistingRecord: false,

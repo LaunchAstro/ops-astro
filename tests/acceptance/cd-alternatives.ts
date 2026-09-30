@@ -53,6 +53,9 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['connection.signal', {}],
   // The per-client region (MP-14-10a) names no row.
   ['connection.graduation', {}],
+  // What agent runs cost (U39) name no row; the cost log takes its period.
+  ['finance.skill_costs', {}],
+  ['finance.agent_costs', { from: '2026-01-01T00:00:00.000Z', to: '2100-01-01T00:00:00.000Z' }],
   // The Workflow triggers registry (C33) names no row.
   ['automation.registry', {}],
   // A new client record (C41-A) names no row.

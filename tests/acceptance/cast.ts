@@ -110,6 +110,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'mandate',
   // Settings ▸ Workflow triggers (C33): `automation:manage` releases a version.
   'automation',
+  // What agent runs cost (U39): `finance:read`.
+  'finance',
   // New client onboarding (C41-A): `record:write` makes a client and starts it.
   'record',
   'conversation',

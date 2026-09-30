@@ -25,6 +25,7 @@
 // the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
+import type { CostPeriodOperands } from './costs.ts';
 import type {
   CapabilitiesResult,
   PersonListResult,
@@ -39,6 +40,8 @@ import type {
   ConnectionSignalResult,
   ConnectionGraduationResult,
   AutomationRegistryResult,
+  AgentCostsResult,
+  SkillCostsResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
@@ -114,6 +117,10 @@ export interface ReadOperands {
   readonly 'connection.graduation': NoOperands;
   /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
   readonly 'automation.registry': NoOperands;
+  /** Skill costing at the scopes the caller holds `finance:read` (MP-14-9). */
+  readonly 'finance.skill_costs': NoOperands;
+  /** The agents' cost log for a period, same scopes (MP-14-6). */
+  readonly 'finance.agent_costs': CostPeriodOperands;
   /**
    * What the caller may do here. The one read whose answer is about the caller
    * rather than about the business, and the one that takes no grant: every
@@ -160,6 +167,8 @@ export type ReadResult =
   | ConnectionSignalResult
   | ConnectionGraduationResult
   | AutomationRegistryResult
+  | SkillCostsResult
+  | AgentCostsResult
   | CapabilitiesResult
   | ConversationReadResult
   | ConversationListResult;

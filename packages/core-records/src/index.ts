@@ -155,6 +155,7 @@ export {
   type RepairRefusal,
   type RepairStarted,
 } from './connections/fleet.ts';
+export { listRunCosts, type CostPeriod, type RunCostRow } from './costs/run-costs.ts';
 export {
   listAgents,
   listGrants,

@@ -95,11 +95,18 @@ describe.skipIf(serverUrl === undefined)('MP-14-6 what our agents cost us', () =
 
   it('MP-14-6 a malformed or empty period is refused', async () => {
     const now = new Date().toISOString();
-    for (const body of [{}, { from: 'yesterday', to: now }, { from: now, to: now }]) {
+    for (const [body, field] of [
+      [{}, 'from'],
+      [{ from: 'yesterday', to: now }, 'from'],
+      [{ from: now, to: 'tomorrow' }, 'to'],
+      [{ from: now, to: now }, 'to'],
+    ] as const) {
       // eslint-disable-next-line no-await-in-loop -- one body at a time
       const answer = await w.read(w.finance, 'finance.agent_costs', body);
-      expect(answer.status).toBe(400);
-      expect(answer.body['code']).toBe('COMMAND_BODY_INVALID');
+      expect(answer.status).toBe(422);
+      expect(answer.body['code']).toBe('FIELD_VALUE_INVALID');
+      expect(answer.body['names']).toStrictEqual([field]);
+      expect(answer.body['runs']).toBeUndefined();
     }
   });
 

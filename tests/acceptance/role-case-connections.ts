@@ -55,7 +55,12 @@ export async function connectionsBody(
     case 'connection.fleet':
     case 'connection.signal':
     case 'connection.graduation':
+    case 'finance.skill_costs':
       return { body: {} };
+    case 'finance.agent_costs':
+      return {
+        body: { from: '2026-01-01T00:00:00.000Z', to: '2100-01-01T00:00:00.000Z' },
+      };
     case 'connector.repair':
       return { body: { connectionId: (await context.brokenConnection?.()) ?? randomUUID() } };
     case 'mandate.file':

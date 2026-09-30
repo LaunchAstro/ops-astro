@@ -54,9 +54,10 @@ if (serverUrl === undefined) {
 // budget stop, asked of the run's task. `gate` is the awaiting-review
 // read's (MP-6-1): the gates waiting on a decision, asked with `decide` on
 // tasks. `conversation` is a person's conversation with the agent (AW-03),
-// its writes and its read at its address.
+// its writes and its read at its address. `finance` is what agent runs cost
+// (U39): skill costing and the agents' cost log, each `finance:read`.
 const PATH_SHAPE =
-  /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret|connection|connector|mandate|graduation|automation|activation|definition|approval|record|onboarding|gate|conversation|model|run)\/[a-z_]+$/u;
+  /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret|connection|connector|mandate|graduation|automation|activation|definition|approval|record|onboarding|gate|conversation|model|run|finance)\/[a-z_]+$/u;
 
 /** Every read the surface declares, sorted. */
 const DECLARED_READS = [
@@ -66,6 +67,8 @@ const DECLARED_READS = [
   'connection.signal',
   'conversation.list',
   'conversation.read',
+  'finance.agent_costs',
+  'finance.skill_costs',
   'gate.pending',
   'person.list',
   'preset.plan',
@@ -112,7 +115,7 @@ describe('the surface as a table', () => {
 });
 
 describe('the surface as a table', () => {
-  it('declares the seventeen reads as reads, and everything else as a write', () => {
+  it('declares the nineteen reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
