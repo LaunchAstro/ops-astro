@@ -52,6 +52,7 @@ describe.skipIf(serverUrl === undefined)('G2 the business lookup login', () => {
   });
 
   roleCases();
+  effectiveCases();
   readCases();
   refusalCases();
 });
@@ -100,6 +101,46 @@ function roleCases() {
        order by 1`,
       [LOOKUP],
     );
+    expect(held.map((row) => row.held)).toStrictEqual([
+      'public.businesses(id) SELECT',
+      'public.businesses(key) SELECT',
+      'schema public USAGE',
+    ]);
+  });
+}
+
+// REVB1SL01RELC: what the role can do, not only what was granted to it by
+// name, so a grant to PUBLIC or through a membership counts. Invoker functions
+// run with the caller's rights and widen nothing, so only definer ones count.
+const EFFECTIVE = `
+  select format('%I.%I %s', n.nspname, c.relname, p) as held
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace,
+         unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) p
+   where c.relkind in ('r', 'p', 'v', 'm', 'f') and n.nspname not in ('pg_catalog', 'information_schema')
+     and has_table_privilege($1, c.oid, p)
+  union all
+  select format('%I.%I(%I) %s', n.nspname, c.relname, a.attname, p)
+    from pg_attribute a join pg_class c on c.oid = a.attrelid join pg_namespace n on n.oid = c.relnamespace,
+         unnest(array['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) p
+   where a.attnum > 0 and not a.attisdropped and c.relkind in ('r', 'p', 'v', 'm', 'f')
+     and n.nspname not in ('pg_catalog', 'information_schema') and has_column_privilege($1, c.oid, a.attnum, p)
+  union all
+  select format('%I.%I %s', n.nspname, c.relname, p)
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace, unnest(array['USAGE', 'SELECT', 'UPDATE']) p
+   where c.relkind = 'S' and has_sequence_privilege($1, c.oid, p)
+  union all
+  select format('%s EXECUTE', p.oid::regprocedure) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where p.prosecdef and n.nspname not in ('pg_catalog', 'information_schema')
+     and has_function_privilege($1, p.oid, 'EXECUTE')
+  union all
+  select format('schema %s %s', n.nspname, p) from pg_namespace n, unnest(array['USAGE', 'CREATE']) p
+   where n.nspname not in ('pg_catalog', 'information_schema') and n.nspname not like 'pg\\_%'
+     and has_schema_privilege($1, n.oid, p)
+  order by 1`;
+
+function effectiveCases() {
+  it('can in effect read businesses (id, key) and use public, and nothing else, PUBLIC included', async () => {
+    const held = await world.db.admin.execute<{ held: string }>(EFFECTIVE, [LOOKUP]);
     expect(held.map((row) => row.held)).toStrictEqual([
       'public.businesses(id) SELECT',
       'public.businesses(key) SELECT',
