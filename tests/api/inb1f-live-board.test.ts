@@ -337,6 +337,51 @@ describe.skipIf(serverUrl === undefined)(
       }
     });
 
+    it('a client-scoped board reader hears their own client task move', async () => {
+      const clientA = randomUUID();
+      const clientB = randomUUID();
+      const taskA = await createTask(s, `inb1f-client-a-${randomUUID()}`);
+      const taskB = await createTask(s, `inb1f-client-b-${randomUUID()}`);
+      await s.db.admin.execute(
+        `update public.records set data = data || jsonb_build_object('client', $2::text)
+          where id = $1`,
+        [taskA, clientA],
+      );
+      await s.db.admin.execute(
+        `update public.records set data = data || jsonb_build_object('client', $2::text)
+          where id = $1`,
+        [taskB, clientB],
+      );
+      const reader = await enrol(s.db.app, s.business, `inb1f-party-reader-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await grantTo(tx, reader, 'read', { kind: 'party', id: clientA });
+        const own = await raiseInboxItem(tx, {
+          recipientPersonId: reader.personId,
+          subjectRecordId: taskA,
+          reason: 'mention',
+          fact: { kind: 'record', id: randomUUID() },
+        });
+        const other = await raiseInboxItem(tx, {
+          recipientPersonId: reader.personId,
+          subjectRecordId: taskB,
+          reason: 'mention',
+          fact: { kind: 'record', id: randomUUID() },
+        });
+        const entries = await readInboxItems(tx, reader.personId);
+        expect(entries.find((entry) => entry.id === own)?.access).toBe('readable');
+        expect(entries.find((entry) => entry.id === other)?.access).toBe('withheld');
+      });
+      const tab = await tabOf(reader);
+      await joined(tab);
+      await pool.withBusiness(s.business, async (tx) => {
+        await tx.query('update public.records set data = data where id = any($1::uuid[])', [
+          [taskA, taskB],
+        ]);
+      });
+      await within(2_000, () => named(tab, taskA) > 0, 'the reader hears client A');
+      expect(named(tab, taskB)).toBe(0);
+    });
+
     it('INB-1 the owed count moves live: the same tab hears its own inbox on the deciding commit, never another person’s', async () => {
       const taskId = await createTask(s, `inb1f-inbox-${randomUUID()}`);
       const reviewer = await enrol(s.db.app, s.business, `inb1f-reviewer-${randomUUID()}`);
