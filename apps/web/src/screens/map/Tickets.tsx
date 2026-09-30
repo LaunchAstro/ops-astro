@@ -8,7 +8,7 @@
 
 import { useState, type ReactElement } from 'react';
 import type { MapView } from '../../../../../packages/core-wire/src/index.ts';
-import { Section, ticketLink } from './Sections.tsx';
+import { Section, ticketLink } from './ReadSections.tsx';
 import { passes, type Filters, type Send } from './model.ts';
 
 type Ticket = MapView['tickets'][number];

@@ -3,13 +3,14 @@
 // The map view's sections (WF-3), the first of the four views, in the order
 // the scoping map names them:
 // Destination, Notes, Decisions so far, Not yet specified, Out of scope, and
-// the version history. Every edit is handed up as a `map.revise` body; this
-// file sends nothing itself.
+// the version history, with charting's pre-answers (WF-6) after Decisions so
+// far. The sections that only read are `ReadSections.tsx`. Every edit is
+// handed up as a `map.revise` body; this file sends nothing itself.
 
-import { useState, type ReactElement, type ReactNode } from 'react';
+import { useState, type ReactElement } from 'react';
 import { PaneEmpty } from '@launchastro/ui';
 import type { MapView } from '../../../../../packages/core-wire/src/index.ts';
-import { pathTo } from '../../routes.ts';
+import { Decisions, PreAnswers, Section, ticketLink, Versions } from './ReadSections.tsx';
 
 /** One edit: the operands of `map.revise` beyond its target and revision. */
 export type Revise = (body: Readonly<Record<string, unknown>>) => void;
@@ -49,25 +50,11 @@ export function MapSections(props: SectionsProps): ReactElement {
         }}
       />
       <Decisions map={map} />
+      <PreAnswers map={map} />
       <Fog map={map} busy={busy} onRevise={revise} />
       <OutOfScope map={map} busy={busy} onRevise={revise} />
       <Versions map={map} />
     </div>
-  );
-}
-
-export function Section(props: {
-  readonly name: string;
-  readonly label: string;
-  readonly children: ReactNode;
-}): ReactElement {
-  return (
-    <section className="sb__sect" data-map-section={props.name}>
-      <div className="sb__sh">
-        <span className="sb__k">{props.label}</span>
-      </div>
-      {props.children}
-    </section>
   );
 }
 
@@ -146,30 +133,6 @@ function EditForm(
         </button>
       </div>
     </form>
-  );
-}
-
-/** A ticket's own address, or nothing for one without a key. */
-export function ticketLink(key: string | null, text: string): ReactNode {
-  return key === null ? text : <a href={pathTo('agency:task-detail', { key })}>{text}</a>;
-}
-
-function Decisions(props: { readonly map: MapView }): ReactElement {
-  const lines = props.map.decisions;
-  return (
-    <Section name="decisions" label="Decisions so far">
-      {lines.length === 0 ? (
-        <PaneEmpty say="No ticket has been resolved yet." />
-      ) : (
-        <ol>
-          {lines.map((line) => (
-            <li key={line.ticketId} data-ticket={line.ticketId}>
-              {ticketLink(line.key, line.gist ?? line.title ?? line.ticketId)}
-            </li>
-          ))}
-        </ol>
-      )}
-    </Section>
   );
 }
 
@@ -268,28 +231,6 @@ function OutOfScope(props: SectionsListProps): ReactElement {
           props.onRevise({ addOutOfScope: [{ text }] });
         }}
       />
-    </Section>
-  );
-}
-
-function Versions(props: { readonly map: MapView }): ReactElement {
-  const versions = props.map.versions;
-  return (
-    <Section name="history" label="History">
-      {versions.length === 0 ? (
-        <PaneEmpty say="No version has been written yet." />
-      ) : (
-        <ol className="sbact">
-          {versions.toReversed().map((entry) => (
-            <li className="sbact__row" key={entry.version} data-version={entry.version}>
-              <span className="sb__state">Version {entry.version}</span>
-              <span className="sbact__meta">
-                {entry.at} · {entry.actorId} · {entry.changed.length} changed
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
     </Section>
   );
 }

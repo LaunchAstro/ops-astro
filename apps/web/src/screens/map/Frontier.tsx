@@ -12,7 +12,7 @@ import type { MapFrontierResult, MapView } from '../../../../../packages/core-wi
 import type { OperationsClient } from '../../operations/client.ts';
 import { useRead } from '../../data/use-read.ts';
 import { RecordState } from '../../views/record-state.tsx';
-import { Section, ticketLink } from './Sections.tsx';
+import { Section, ticketLink } from './ReadSections.tsx';
 import { TICKET_TYPES, passes, type Filters, type Send } from './model.ts';
 
 export function FrontierView(props: {

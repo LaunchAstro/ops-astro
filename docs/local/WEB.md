@@ -193,10 +193,15 @@ confirmed write is in `confirmed.ts`.
 
 ## A Wayfinder map
 
-`/map/:key` (WF-3, `screens/Map.tsx` and `screens/map/Sections.tsx`) draws one
+`/map/:key` (WF-3, `screens/Map.tsx`, `screens/map/Sections.tsx` for what a
+person edits and `screens/map/ReadSections.tsx` for what only reads) draws one
 `map.view` answer: Destination, Notes, Decisions so far (each line links its
-ticket's `/task/:key`), Not yet specified (the fog), Out of scope and the
-version history. Every edit (Destination or Notes rewritten, a fog line added or
+ticket's `/task/:key`), Pre-answered, Not yet specified (the fog), Out of scope
+and the version history. Pre-answered is charting's cited pre-answers (WF-6):
+each question, its answer, "decided, veto open" on an obvious call, and its one
+source, a cited record by its key as a link, a reference as written, or
+withheld where the reader may not read the record (never its id). A
+pre-answer resolves nothing, so it is never a line of Decisions so far. Every edit (Destination or Notes rewritten, a fog line added or
 removed, an Out of scope line added) is one `map.revise` carrying the map's
 record revision from the same read, so a second writer's edit comes back
 `VERSION_STALE` and the page reads the map again. After an applied edit the
