@@ -18,17 +18,14 @@ bash scripts/local/db-up.sh   # SLICE-DATA: Postgres on 127.0.0.1:54390
 bash scripts/local/auth-up.sh # GoTrue on 127.0.0.1:54391, writes .local/auth.env
 node scripts/db-migrate.mjs   # SLICE-DATA: migrations
 node scripts/local/auth-seed.mjs   # the five synthetic logins
-node scripts/local-seed.mjs        # SLICE-DATA grants (new database: LOCAL_SEED_MADE_UP=confirm)
+node scripts/local-seed.mjs        # SLICE-DATA: businesses, persons, logins, grants
 bash scripts/local/api-up.sh  # the API on 127.0.0.1:8790
 node scripts/local/verify-slice.mjs
 ```
 
 `auth-up.sh` starts Postgres itself if it is not already up, with the same
 container name, pinned digest, port and volume `db-up.sh` uses, so the two
-converge whichever runs first. Like `db-up.sh`, it replaces a container on
-another image or volume (one made before the local database moved to
-Postgres 17) and keeps every volume. Whenever it starts Postgres afresh, it
-starts GoTrue afresh too, so GoTrue migrates schema `auth` on the new cluster. Neither script touches the Hub's `supabase_*`
+converge whichever runs first. Neither script touches the Hub's `supabase_*`
 containers.
 
 `.local/` holds `db.env`, `auth.env`, `synthetic-users.json`,
@@ -214,21 +211,9 @@ the task the check was made on (`namedTaskId` in `commands/agent-authority.ts`).
 
 ## Who is calling
 
-`Authorization: Bearer <GoTrue access token>`. The adapter verifies the ES256
-signature and `exp` against GoTrue's published key set
-(`<GOTRUE_URL>/.well-known/jwks.json`, or `SUPABASE_KEY_SET_URL`) and takes
-`sub` as `VerifiedSubject { provider: 'supabase', subject }`. The API holds no
-secret that can make a token.
-
-A browser holds no token (S0-6c). It posts the token once to
-`POST /api/session`, which verifies it, answers `{ ok: true, session }` and
-sets it as an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/b/`,
-one per sign-in, named from `session` (a digest of the token, not a secret).
-A cookie-carried request needs `x-ops-astro-csrf: 1` and no cross-site
-`Sec-Fetch-Site` (else `AUTH_CROSS_SITE` 403), and reads only the cookie of
-the sign-in its `x-ops-astro-session` names; session cookies with none named
-are `AUTH_SESSION_MISMATCH` 403. `/api/session/end` clears only the named
-sign-in's cookie, so a late sign-out ends no other. A bearer is read first.
+`Authorization: Bearer <GoTrue access token>`. The adapter verifies the HS256
+signature and `exp` with `SUPABASE_JWT_SECRET` and takes `sub` as
+`VerifiedSubject { provider: 'supabase', subject }`.
 
 Nothing else reaches identity. Not a body field, not a host or forwarded
 header, not an `apikey`, not a query parameter. A request carrying `actorId` or
@@ -298,20 +283,10 @@ passes it with no cast.
 
 `apps/api/server.ts` exports `composeApi(config)`. It builds the served app
 with `/api/health`, the boundary and the fault mapping (`server.onError`), and
-returns it with the app's business resolver. Every answer under `/api`, a
-refusal, a fault and a missing route included, is sent `Cache-Control: private,
-no-store`, since the API is served behind Vercel's edge network (`S0-6 no edge
-caching`, `tests/api/api-answers-never-cached.test.ts`). It reads no environment, opens no
+returns it with the app's business resolver. It reads no environment, opens no
 socket and starts no process. `main()` runs only as the process entry
 (`import.meta.main`). It reads the environment, calls `composeApi`, runs
 restart recovery through that same resolver, and only then binds the port.
-`apps/api/function.ts` is the Vercel function entry: it builds the same
-`composeApi` from the function's settings, with no identity route, live channel,
-recovery or sweeper, which belong to a long-running process, and no admin login: the business key is read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (migration 0046; unset, every key is refused), and the entry refuses to start with `DATABASE_ADMIN_URL` set. It answers only
-requests whose `Host` and URL both name `SERVED_HOST`, the environment's own host; any other,
-a deployment's generated address included, is refused 421 before anything is
-read, so a promotion leaves the previous deployment serving nothing
-(`tests/api/function-entry.test.ts`).
 Tests build the server with `composeApi` (`compose` in `tests/api/fixture.ts`),
 so they run the wiring the server listens with rather than a copy of it. A
 test that hands the boundary its own executor or recorder calls `createApi`
