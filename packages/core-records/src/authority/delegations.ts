@@ -607,13 +607,36 @@ export async function revokeDelegation(
   // runtime transitions name another, and each names it.
   cause: RevocationCause = 'delegation_revoked',
 ): Promise<Date | null> {
+  return (await revokeDelegationClearing(tx, delegationId, cause)).revokedAt;
+}
+
+/**
+ * `revokeDelegation`, answering also the tasks it cleared. A revoked agent
+ * holds no task (Assign to AI): the revocation this call wrote clears the
+ * delegation from every task holding it as its `agent`, each a write at the
+ * task's next revision, in the same transaction. The tasks come back so a
+ * caller that records changes records one per task.
+ */
+export async function revokeDelegationClearing(
+  tx: TenantQuery,
+  delegationId: string,
+  cause: RevocationCause = 'delegation_revoked',
+): Promise<{ readonly revokedAt: Date | null; readonly cleared: readonly string[] }> {
   const rows = await tx.query<{ readonly revoked_at: Date }>(
     `update public.delegations set revoked_at = now(), revocation_cause = $3
       where business_id = $1 and id = $2 and revoked_at is null and settled_at is null
       returning revoked_at`,
     [tx.businessId, delegationId, cause],
   );
-  return rows[0]?.revoked_at ?? null;
+  const revokedAt = rows[0]?.revoked_at ?? null;
+  if (revokedAt === null) return { revokedAt, cleared: [] };
+  const cleared = await tx.query<{ readonly id: string }>(
+    `update public.records set data = data - 'agent', revision = revision + 1
+      where business_id = $1 and data ->> 'agent' = $2
+      returning id`,
+    [tx.businessId, delegationId.toLowerCase()],
+  );
+  return { revokedAt, cleared: cleared.map((row) => row.id) };
 }
 
 /** Handback settles a delegation: it stops permitting work without being a revocation. */

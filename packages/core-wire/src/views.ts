@@ -136,6 +136,31 @@ export interface TaskDetail extends TaskSummary {
   readonly time: TaskTimeView | null;
   /** The tags this task carries (MP-4-11), by name. */
   readonly tags: readonly TagView[];
+  /**
+   * The agent assignee (Assign to AI): the delegation holding the task and
+   * the person accountable for it, or null. `live` is false once it expired
+   * or settled; a revoke clears it. Null to an agent reader.
+   */
+  readonly agent: AgentAssigneeView | null;
+  /**
+   * The reader's own live delegations that reach this task, for the Assign
+   * to AI control. Never anyone else's; empty for an agent.
+   */
+  readonly myAgents: readonly AgentOfferView[];
+}
+
+/** The agent holding a task, and who answers for it. */
+export interface AgentAssigneeView {
+  readonly delegationId: string;
+  readonly purpose: string;
+  readonly accountable: PersonView;
+  readonly live: boolean;
+}
+
+/** One of the reader's own agents the Assign to AI control offers. */
+export interface AgentOfferView {
+  readonly delegationId: string;
+  readonly purpose: string;
 }
 
 /** One name in the business's tag vocabulary (MP-4-11). */

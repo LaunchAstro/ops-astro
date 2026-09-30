@@ -39,13 +39,14 @@ import {
   effectiveGrants,
   revokeGrant,
   subjectsOf,
-  revokeDelegation,
+  revokeDelegationClearing,
   isUuid,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Action, Scope } from '../../../core-records/src/index.ts';
 import { classifyAuthorityLoss, requireUnchanged } from '../../../core-runtime/src/index.ts';
 import type { Classification } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
+import { recordAgentsCleared } from './tasks-agent.ts';
 import { declarationOf } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -307,6 +308,8 @@ export async function revokeDelegationAsManager(
     }
   }
 
+  // The tasks the revoke cleared its agent from (Assign to AI), each recorded below.
+  let cleared: readonly string[] = [];
   const loss = await classifyAuthorityLoss(tx, {
     delegationIds: [delegationId],
     revoke: async () => {
@@ -315,10 +318,12 @@ export async function revokeDelegationAsManager(
            from public.delegations where business_id = $1 and id = $2`,
         [tx.businessId, delegationId],
       );
-      const revokedAt =
+      const revoked =
         live[0]?.live === true
-          ? await revokeDelegation(tx, delegationId, 'delegation_revoked')
-          : null;
+          ? await revokeDelegationClearing(tx, delegationId, 'delegation_revoked')
+          : { revokedAt: null, cleared: [] };
+      cleared = revoked.cleared;
+      const revokedAt = revoked.revokedAt;
       return revokedAt === null
         ? { applied: false, value: null }
         : { applied: true, value: revokedAt, lost: [delegationId], lostLeases: [] };
@@ -336,6 +341,7 @@ export async function revokeDelegationAsManager(
       ),
     );
   }
+  await recordAgentsCleared(tx, context, delegationId, cleared);
   return applied(delegationId, null, {
     delegationId,
     revokedAt: revokedAt.toISOString(),

@@ -46,6 +46,8 @@ export type {
   PersonListResult,
   TagListResult,
   TagView,
+  AgentAssigneeView,
+  AgentOfferView,
   PersonView,
   PresetPlanResult,
   ProposalVersionView,

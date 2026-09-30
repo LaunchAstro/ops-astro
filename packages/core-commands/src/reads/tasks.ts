@@ -43,6 +43,7 @@ import { readActualMinutes } from './board-time.ts';
 import { readTaskRank, type RankPool } from './rank.ts';
 import { readBoardCrumb } from './board-crumb.ts';
 import { readTaskSteps } from './steps.ts';
+import { readTaskAgents } from './task-agents.ts';
 
 // A served row is always in its reader's pool; this is only the type's answer.
 const UNRANKED = { number: null, score: null, calc: '' } as const;
@@ -328,6 +329,7 @@ export async function readTaskDetail(
     steps: await readTaskSteps(tx, taskTypeId, row.id, rankPool),
     time: timeReader === null ? null : await readTaskTime(tx, row.id, timeReader),
     tags: await tagsOfTask(tx, row.id),
+    ...(await readTaskAgents(tx, row.id, timeReader)),
   };
 }
 
