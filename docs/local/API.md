@@ -1787,7 +1787,7 @@ row refuses them too, naming `installation`.
 The eight items are `ops.gate_items` rows, each with an `https` evidence link:
 `tested-backups`, `second-factor`, `legal-basics`, `privacy-act-statement`,
 `overseas-register`, `breach-runbook`, `security-pass`, `phone-alerts`. The
-application's role reads neither table. The mode moves from made-up to real
+application's role reads both tables and writes neither. The mode moves from made-up to real
 only while every item is done, and never back; the row cannot be deleted.
 Recording an item and changing the mode by command are not built yet.
 

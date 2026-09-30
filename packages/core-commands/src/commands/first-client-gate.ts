@@ -6,9 +6,10 @@
 // transaction by every command the catalogue classes `client-data` or
 // `invitation` (from its effect metadata, never its name). A made-up-data
 // installation runs them; a real-data installation refuses them while any of
-// the eight items is open. The mode and the items live in `ops`, which only
-// `public.first_client_readiness()` reads for the application's role
-// (migration 0056), so no person or agent writes the readiness value.
+// the eight items is open. The mode and the items live in `ops`, which the
+// application's role reads through `public.first_client_readiness()` and
+// cannot write (migration 0056), so no person or agent writes the readiness
+// value.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { COMMAND_EFFECTS, classOf, type CommandName } from '../../../core-wire/src/index.ts';
