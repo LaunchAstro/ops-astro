@@ -19,7 +19,7 @@ import {
   type GroupThread,
 } from '../../packages/ui/src/index.ts';
 import { mount, type Mounted } from './mount.tsx';
-import { LAUNCH, ME, STUDIO, THREADS, message, props } from './team-fixture.tsx';
+import { LAUNCH, ME, STUDIO, THREADS, message, props, next } from './team-fixture.tsx';
 
 let mounted: Mounted | undefined;
 afterEach(async () => {
@@ -233,7 +233,7 @@ describe('C71-G a removed member reads nothing written after removal', () => {
     mounted = await mount(<TeamPanel {...p} />);
     await mounted.click('[data-group="g-launch"] .tmc__g');
     expect(ids(mounted, '.tmc__conv .msg')).toEqual(['g1', 'g2']);
-    await mounted.render(<TeamPanel {...p} groups={[STUDIO]} />);
+    await mounted.render(<TeamPanel {...next(p, { groups: [STUDIO] })} />);
     expect(group(mounted, 'g-launch')).toBeNull();
     expect(ids(mounted, '.tmc__conv .msg')).toEqual([]);
     expect(mounted.find('.tmc__conv .composer')).toBeNull();
@@ -256,7 +256,7 @@ describe('C71-G group messages arrive live and count as unread (CS-7.42)', () =>
       lastRead: '2026-09-28T10:20:00Z',
       messages: [...LAUNCH.messages, message('g3', 'p-remy', '2026-09-28T12:00:00Z')],
     };
-    await mounted.render(<TeamPanel {...p} groups={[arrived, later]} />);
+    await mounted.render(<TeamPanel {...next(p, { groups: [arrived, later] })} />);
     expect(ids(mounted, '.tmc__conv .msg')).toEqual(['g1', 'g2', 'g3']);
     expect(group(mounted, 'g-studio')?.querySelector('.cbadge')?.textContent).toBe('1');
     expect(group(mounted, 'g-launch')?.querySelector('.cbadge')?.textContent).toBe('1');

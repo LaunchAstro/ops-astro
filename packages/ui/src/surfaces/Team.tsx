@@ -4,17 +4,22 @@
 // person's own availability, the group list, and the conversation selected,
 // direct or group.
 //
-// Each teammate is two controls, never one control doing two jobs by where it
-// was pressed: the face opens the conversation here, the name is the door to
-// their work. Away is the word Away and a dashed ring, with the person's own
-// reason on the face; it is only ever what they set, so nothing here watches
-// time or input.
+// Each teammate is two controls (`TeamStrip.tsx`): the face opens the
+// conversation here, the name is the door to their work. Away is only ever
+// what the person set, so nothing here watches time or input.
 //
 // Unread is derived from the reader's own read marker and nothing else. The
 // panel opens on the first conversation with anything unread (direct first,
 // then groups) without reading it; the marker moves on a click into the conversation or on the face, and a
 // send moves it in the comment command's own transaction (R36). Messages are
 // comments on the one comment record, drawn in the task thread's dialect.
+//
+// The door and the conversations are each the host's to give or withhold: a
+// host with no view of a person's work passes `work: null` and the name is
+// plain text; one with no comment read for conversations passes
+// `conversations: null`, and a face is then a face that opens nothing, with
+// no group list and an empty conversation room. The strip and the reader's
+// own availability never wait on either.
 
 import { useState, type ReactElement } from 'react';
 import {
@@ -30,20 +35,15 @@ import {
   type TeamConversation,
   type Teammate,
 } from '../state/team.ts';
-import { follow, type OpenHow } from './gesture.ts';
 import { Conversation } from './TeamConversation.tsx';
 import { Mine } from './TeamAvailability.tsx';
 import { GroupHead, GroupList } from './TeamGroups.tsx';
+import { Strip, type TeamWork } from './TeamStrip.tsx';
 
-export interface TeamPanelProps {
-  /** Every member the reader works with, the reader included. */
-  readonly people: readonly Teammate[];
-  /** The reader's own person id. */
-  readonly me: string;
-  /** Where a teammate's work opens (Projects scoped to them). */
-  readonly workHref: (personId: string) => string;
-  readonly onOpenWork: (personId: string, how: OpenHow) => void;
-  readonly onSetAvailability: (change: AvailabilityChange) => void;
+export type { TeamWork } from './TeamStrip.tsx';
+
+/** The reader's conversations and what they may do in them (C71-D, C71-G). */
+export interface TeamConversations {
   /** The reader's direct conversations, as the comment read returned them (C71-D). */
   readonly threads: readonly DirectThread[];
   /** Move the reader's own read marker on the conversation with this teammate. */
@@ -55,93 +55,26 @@ export interface TeamPanelProps {
   readonly onGroup: (action: GroupAction) => void;
 }
 
-/** The face says whom it messages and, when they set it, why they are away. */
-const faceLabel = (person: Teammate): string =>
-  person.away === null
-    ? `Message ${person.name}`
-    : `Message ${person.name}, away: ${person.away.reason}`;
-
-function Chip(props: {
-  readonly person: Teammate;
-  readonly on: boolean;
-  readonly unread: number;
-  readonly onSelect: () => void;
-  readonly panel: TeamPanelProps;
-}): ReactElement {
-  const { person, on, panel } = props;
-  const label = faceLabel(person);
-  return (
-    <span
-      className={`tmc__p${on ? ' is-on' : ''}${person.away === null ? '' : ' tmc__p--away'}`}
-      data-person={person.personId}
-    >
-      <button
-        type="button"
-        className="tmc__face"
-        aria-pressed={on}
-        aria-label={label}
-        title={label}
-        onClick={props.onSelect}
-      >
-        <span className="tmc__av" aria-hidden="true">
-          {person.initials}
-        </span>
-      </button>
-      <a
-        className="tmc__n"
-        href={panel.workHref(person.personId)}
-        title={`See everything assigned to ${person.short}`}
-        onClick={(event) => {
-          follow(event, (how) => {
-            panel.onOpenWork(person.personId, how);
-          });
-        }}
-      >
-        {person.short}
-        <span className="tmc__door" aria-hidden="true" />
-      </a>
-      {person.away === null ? null : <span className="tmc__away">Away</span>}
-      {props.unread > 0 ? (
-        <span className="cbadge tmc__u" aria-label={`${String(props.unread)} unread`}>
-          {props.unread}
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-function Strip(props: {
-  readonly teammates: readonly Teammate[];
-  readonly selected: string | null;
-  readonly unread: (personId: string) => number;
-  readonly onSelect: (personId: string) => void;
-  readonly panel: TeamPanelProps;
-}): ReactElement {
-  return (
-    <div className="tmc__strip">
-      {props.teammates.map((person) => (
-        <Chip
-          key={person.personId}
-          person={person}
-          on={person.personId === props.selected}
-          unread={props.unread(person.personId)}
-          onSelect={() => {
-            props.onSelect(person.personId);
-          }}
-          panel={props.panel}
-        />
-      ))}
-    </div>
-  );
+export interface TeamPanelProps {
+  /** Every member the reader works with, the reader included. */
+  readonly people: readonly Teammate[];
+  /** The reader's own person id. */
+  readonly me: string;
+  readonly onSetAvailability: (change: AvailabilityChange) => void;
+  /** Null while the host has no view of a person's work: the name is plain text. */
+  readonly work: TeamWork | null;
+  /** Null while the host has no comment read for them: a face opens nothing and the room stays empty. */
+  readonly conversations: TeamConversations | null;
 }
 
 /** What the conversation pane shows: a teammate's direct conversation or a group. */
 type Selected = { readonly kind: 'person' | 'group'; readonly id: string } | null;
 
-function opening(props: TeamPanelProps): Selected {
-  const person = openingThread(props.threads, props.me);
+function opening(talk: TeamConversations | null, me: string): Selected {
+  if (talk === null) return null;
+  const person = openingThread(talk.threads, me);
   if (person !== null) return { kind: 'person', id: person };
-  const group = openingGroup(props.groups, props.me);
+  const group = openingGroup(talk.groups, me);
   return group === null ? null : { kind: 'group', id: group };
 }
 
@@ -156,19 +89,20 @@ function markRead(
 }
 
 function OpenConversation(props: {
-  readonly panel: TeamPanelProps;
+  readonly talk: TeamConversations;
+  readonly me: string;
   readonly selected: Selected;
   readonly teammates: readonly Teammate[];
   readonly threadWith: (id: string) => DirectThread | undefined;
   readonly read: (selected: Selected) => void;
 }): ReactElement {
-  const { panel, selected } = props;
+  const { talk, me, selected } = props;
   const person =
     selected?.kind === 'person'
       ? props.teammates.find((p) => p.personId === selected.id)
       : undefined;
   const group =
-    selected?.kind === 'group' ? panel.groups.find((g) => g.id === selected.id) : undefined;
+    selected?.kind === 'group' ? talk.groups.find((g) => g.id === selected.id) : undefined;
   const onRead = (): void => {
     props.read(selected);
   };
@@ -178,10 +112,10 @@ function OpenConversation(props: {
         id={person.personId}
         to={person.short}
         thread={props.threadWith(person.personId)}
-        me={panel.me}
+        me={me}
         onRead={onRead}
         onSend={(body) => {
-          panel.onSend(person.personId, body);
+          talk.onSend(person.personId, body);
         }}
       />
     );
@@ -189,15 +123,15 @@ function OpenConversation(props: {
   if (group === undefined) return <p className="dp__empty">Nobody selected.</p>;
   return (
     <>
-      <GroupHead group={group} me={panel.me} teammates={props.teammates} onGroup={panel.onGroup} />
+      <GroupHead group={group} me={me} teammates={props.teammates} onGroup={talk.onGroup} />
       <Conversation
         id={group.id}
         to={group.name}
         thread={group}
-        me={panel.me}
+        me={me}
         onRead={onRead}
         onSend={(body) => {
-          panel.onGroup({ do: 'send', id: group.id, body });
+          talk.onGroup({ do: 'send', id: group.id, body });
         }}
       />
     </>
@@ -205,35 +139,74 @@ function OpenConversation(props: {
 }
 
 /** Read the selected conversation: the direct marker by `onMarkRead`, a group's by its `read` action. */
-function reader(props: TeamPanelProps): (which: Selected) => void {
+function reader(talk: TeamConversations, me: string): (which: Selected) => void {
   return (which) => {
     if (which?.kind === 'person') {
-      const thread = props.threads.find((t) => t.with === which.id);
-      markRead(thread, props.me, (upTo) => {
-        props.onMarkRead(which.id, upTo);
+      const thread = talk.threads.find((t) => t.with === which.id);
+      markRead(thread, me, (upTo) => {
+        talk.onMarkRead(which.id, upTo);
       });
     } else if (which?.kind === 'group') {
       markRead(
-        props.groups.find((g) => g.id === which.id),
-        props.me,
+        talk.groups.find((g) => g.id === which.id),
+        me,
         (upTo) => {
-          props.onGroup({ do: 'read', id: which.id, upTo });
+          talk.onGroup({ do: 'read', id: which.id, upTo });
         },
       );
     }
   };
 }
 
+/** The group list and the open conversation, drawn only when the host gives conversations. */
+function Talk(props: {
+  readonly talk: TeamConversations;
+  readonly me: string;
+  readonly teammates: readonly Teammate[];
+  readonly selected: Selected;
+  readonly select: (which: Selected) => void;
+  readonly read: (which: Selected) => void;
+}): ReactElement {
+  const { talk, me, selected } = props;
+  return (
+    <>
+      <GroupList
+        groups={talk.groups}
+        selected={selected?.kind === 'group' ? selected.id : null}
+        unread={(group) => unreadOf(group, me)}
+        onSelect={(id) => {
+          props.select({ kind: 'group', id });
+        }}
+        teammates={props.teammates}
+        onGroup={talk.onGroup}
+      />
+      <div className="tmc__conv" data-team="conversations">
+        <OpenConversation
+          talk={talk}
+          me={me}
+          selected={selected}
+          teammates={props.teammates}
+          threadWith={(id) => talk.threads.find((thread) => thread.with === id)}
+          read={props.read}
+        />
+      </div>
+    </>
+  );
+}
+
 export function TeamPanel(props: TeamPanelProps): ReactElement {
-  const [selected, setSelected] = useState<Selected>(() => opening(props));
+  const talk = props.conversations;
+  const [selected, setSelected] = useState<Selected>(() => opening(talk, props.me));
   const mine = props.people.find((person) => person.personId === props.me);
   const teammates = teammatesOf(props.people, props.me);
-  const threadWith = (id: string): DirectThread | undefined =>
-    props.threads.find((thread) => thread.with === id);
-  const read = reader(props);
+  const read = talk === null ? null : reader(talk, props.me);
   const select = (which: Selected): void => {
     setSelected(which);
-    read(which);
+    read?.(which);
+  };
+  const unread = (id: string): number => {
+    const thread = talk?.threads.find((t) => t.with === id);
+    return thread === undefined ? 0 : unreadOf(thread, props.me);
   };
   return (
     <div className="tmc">
@@ -241,34 +214,28 @@ export function TeamPanel(props: TeamPanelProps): ReactElement {
       <Strip
         teammates={teammates}
         selected={selected?.kind === 'person' ? selected.id : null}
-        unread={(id) => {
-          const thread = threadWith(id);
-          return thread === undefined ? 0 : unreadOf(thread, props.me);
-        }}
-        onSelect={(id) => {
-          select({ kind: 'person', id });
-        }}
-        panel={props}
+        unread={unread}
+        onSelect={
+          talk === null
+            ? null
+            : (id) => {
+                select({ kind: 'person', id });
+              }
+        }
+        work={props.work}
       />
-      <GroupList
-        groups={props.groups}
-        selected={selected?.kind === 'group' ? selected.id : null}
-        unread={(group) => unreadOf(group, props.me)}
-        onSelect={(id) => {
-          select({ kind: 'group', id });
-        }}
-        teammates={teammates}
-        onGroup={props.onGroup}
-      />
-      <div className="tmc__conv">
-        <OpenConversation
-          panel={props}
-          selected={selected}
+      {talk === null || read === null ? (
+        <div className="tmc__conv" data-team="conversations" />
+      ) : (
+        <Talk
+          talk={talk}
+          me={props.me}
           teammates={teammates}
-          threadWith={threadWith}
+          selected={selected}
+          select={select}
           read={read}
         />
-      </div>
+      )}
     </div>
   );
 }

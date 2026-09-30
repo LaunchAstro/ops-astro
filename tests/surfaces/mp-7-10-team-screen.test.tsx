@@ -74,7 +74,7 @@ const team = async () => {
     fetch: api.fetch,
   });
   const page = await mount(<TeamScreen client={client} grantKey="b:me" />);
-  await until('the strip', () => page.find('[data-team="people"]') !== null);
+  await until('the strip', () => page.find('.tmc__strip') !== null);
   return { api, page };
 };
 
@@ -110,7 +110,7 @@ it('MP-7-10 people strip with away state as a word', async () => {
     'Bo Reyes, away: On a shoot',
   );
   expect(chip(page, 'p-me')).toBeNull();
-  expect(mine(page)).not.toContain('away');
+  expect(page.find('.tmc__me span')?.textContent).toBe('You are in');
   await page.unmount();
 });
 

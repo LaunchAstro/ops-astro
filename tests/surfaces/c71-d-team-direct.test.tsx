@@ -20,7 +20,7 @@ import {
   type DirectThread,
 } from '../../packages/ui/src/index.ts';
 import { mount, type Mounted } from './mount.tsx';
-import { ME, THREADS, chip, message, props } from './team-fixture.tsx';
+import { ME, THREADS, chip, message, props, next } from './team-fixture.tsx';
 
 let mounted: Mounted | undefined;
 afterEach(async () => {
@@ -184,7 +184,7 @@ describe('C71-D CS-7.42 a new message shows in the open thread and moves the unr
     await mounted.render(
       <>
         <Shell {...shell(arrived)} />
-        <TeamPanel {...p} threads={arrived} />
+        <TeamPanel {...next(p, { threads: arrived })} />
       </>,
     );
     expect(

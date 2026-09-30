@@ -9,6 +9,7 @@ import type {
   GroupAction,
   GroupThread,
   OpenHow,
+  TeamConversations,
   TeamMessage,
   TeamPanelProps,
   Teammate,
@@ -90,27 +91,51 @@ export interface Calls {
   readonly groups: GroupAction[];
 }
 
-/** What a test may put in place of the fixture's own: any prop, or a whole capability left out. */
-export type Over = Partial<TeamPanelProps> & {
+/** What a test may put in place of the fixture's own: the people, the conversations' threads and groups, or a whole capability left out. */
+export interface Over {
+  readonly people?: readonly Teammate[];
+  readonly threads?: readonly DirectThread[];
+  readonly groups?: readonly GroupThread[];
   readonly work?: null;
   readonly conversations?: null;
-};
+}
 
 export function props(over: Over = {}): TeamPanelProps & { readonly calls: Calls } {
   const calls: Calls = { work: [], availability: [], marks: [], sends: [], groups: [] };
-  return {
-    people: PEOPLE,
-    me: ME,
-    workHref: (id) => `/projects/?person=${id}`,
-    onOpenWork: (id, how) => calls.work.push([id, how]),
-    onSetAvailability: (change) => calls.availability.push(change),
-    threads: [],
+  const conversations: TeamConversations = {
+    threads: over.threads ?? [],
     onMarkRead: (withPerson, upTo) => calls.marks.push([withPerson, upTo]),
     onSend: (to, body) => calls.sends.push([to, body]),
-    groups: [],
+    groups: over.groups ?? [],
     onGroup: (action) => calls.groups.push(action),
-    ...over,
+  };
+  return {
+    people: over.people ?? PEOPLE,
+    me: ME,
+    onSetAvailability: (change) => calls.availability.push(change),
+    work:
+      over.work === null
+        ? null
+        : {
+            href: (id) => `/projects/?person=${id}`,
+            onOpen: (id, how) => calls.work.push([id, how]),
+          },
+    conversations: over.conversations === null ? null : conversations,
     calls,
+  };
+}
+
+/** The same panel after the next read returned these threads or groups; its calls still land in `p.calls`. */
+export function next(p: TeamPanelProps, read: Pick<Over, 'threads' | 'groups'>): TeamPanelProps {
+  const talk = p.conversations;
+  if (talk === null) return p;
+  return {
+    ...p,
+    conversations: {
+      ...talk,
+      threads: read.threads ?? talk.threads,
+      groups: read.groups ?? talk.groups,
+    },
   };
 }
 

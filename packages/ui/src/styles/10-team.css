@@ -48,8 +48,10 @@
   padding: 0;
   border: 0;
   background: none;
-  cursor: pointer;
   line-height: 0;
+}
+button.tmc__face {
+  cursor: pointer;
 }
 .tmc__av {
   display: grid;
@@ -68,7 +70,7 @@
   font-size: 0.6875rem;
   text-decoration: none;
 }
-.tmc__n:hover {
+a.tmc__n:hover {
   color: var(--accent);
   text-decoration: underline;
 }

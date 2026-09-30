@@ -44,6 +44,12 @@ function AwayForm(props: {
   );
 }
 
+/** The reader's own line: in, away with their reason, or just away when they gave none. */
+function sentence(away: Availability | null): string {
+  if (away === null) return 'You are in';
+  return away.reason === null ? 'You are away' : `You are away: ${away.reason}`;
+}
+
 /** The reader's own availability: in, or away with their reason. */
 export function Mine(props: {
   readonly away: Availability | null;
@@ -63,7 +69,7 @@ export function Mine(props: {
   const away = props.away;
   return (
     <p className="tmc__me">
-      <span>{away === null ? 'You are in' : `You are away: ${away.reason}`}</span>
+      <span>{sentence(away)}</span>
       <button
         type="button"
         className={`btn btn--sm ${away === null ? 'tmc__set' : 'tmc__back'}`}
