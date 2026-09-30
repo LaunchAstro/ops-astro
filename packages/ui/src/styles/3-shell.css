@@ -58,9 +58,9 @@
   padding: 0 var(--s-5);
 }
 .rail__hub {
-  font-size: var(--text-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  font: var(--type-rail-label);
+  letter-spacing: var(--type-rail-label-tracking);
+  text-transform: var(--type-rail-label-case);
   color: var(--ink-faint);
 }
 .rail__group {
@@ -75,7 +75,9 @@
   padding: 0.45rem var(--s-5);
   border-left: 2px solid transparent;
   color: var(--text-2);
-  font-size: 0.875rem;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
   text-decoration: none;
 }
 .rail__item:hover {
@@ -85,7 +87,9 @@
 .rail__item[aria-current='page'] {
   color: var(--text);
   border-left-color: var(--accent);
-  font-weight: var(--weight-medium);
+  font: var(--type-body-strong);
+  letter-spacing: var(--type-body-strong-tracking);
+  text-transform: var(--type-body-strong-case);
 }
 @media (width <= 900px) {
   .rail {
@@ -134,9 +138,9 @@
 }
 .topbar__title .t-title {
   margin: 0;
-  font-family: var(--font-display);
-  font-weight: var(--weight-medium);
-  font-size: 1.5rem;
+  font: var(--type-title);
+  letter-spacing: var(--type-title-tracking);
+  text-transform: var(--type-title-case);
 }
 .topbar__meta {
   display: flex;
@@ -190,9 +194,9 @@
   border: 0;
   background: none;
   color: var(--ink-faint);
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  line-height: 1;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
   cursor: pointer;
 }
 .dock__tab:hover {
@@ -277,9 +281,9 @@
   gap: 0.5rem;
 }
 .aip__title {
-  font-family: var(--font-display);
-  font-weight: var(--weight-medium);
-  font-size: 1.05rem;
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
 }
 .aip__hmodel {
   margin-left: auto;
@@ -309,8 +313,9 @@
 .aip__msg {
   max-width: 92%;
   padding: 0.6rem 0.8rem;
-  font-size: 0.875rem;
-  line-height: 1.5;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 .aip__msg--ai {
   align-self: flex-start;
@@ -325,7 +330,9 @@
 .aip__msg--note {
   background: transparent;
   border: 1px dashed var(--border);
-  font-size: 0.78rem;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   color: var(--text-muted);
 }
 .aip__chips {
@@ -340,7 +347,9 @@
   border-radius: var(--radius-pill);
   background: var(--surface-2);
   color: var(--text-2);
-  font-size: var(--text-overline);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   cursor: pointer;
 }
 .aip__inputrow {
