@@ -2,6 +2,7 @@
 //
 // `task.handback`: a lease settled, with its report and any successor.
 
+import { raiseDecision, raiseIncident, raiseRunSettled } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import {
   handback,
@@ -235,6 +236,15 @@ async function settle(
   }
 
   const settled = result.value;
+  // INB-1: the launcher is told, and a successor's gate is a decision to raise.
+  const outcome = fields.outcome as 'completed' | 'failed';
+  const taskId = await raiseRunSettled(tx, { leaseId: settled.leaseId, outcome });
+  await raiseIncident(tx, [
+    { reservationId: settled.reservationId, state: settled.reservationState },
+  ]);
+  if (settled.successorGateId !== null) {
+    await raiseDecision(tx, { taskId, gateId: settled.successorGateId });
+  }
   return applied(null, null, {
     leaseId: settled.leaseId,
     reservationId: settled.reservationId,

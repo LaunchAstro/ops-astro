@@ -82,6 +82,15 @@ export {
 } from './inbox/items.ts';
 export { taskAccess } from './inbox/access.ts';
 export {
+  raiseAssignment,
+  raiseDecision,
+  raiseEscalation,
+  raiseIncident,
+  raiseRunSettled,
+} from './inbox/raise.ts';
+export { raiseMentions, readMentions, type Mentioned } from './inbox/mentions.ts';
+export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
+export {
   isSettingRevisionStale,
   readBusinessSetting,
   readBusinessSettings,
