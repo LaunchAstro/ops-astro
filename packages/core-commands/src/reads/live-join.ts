@@ -63,20 +63,38 @@ export async function shownInbox(
  * Whether the board may tell its reader that one task moved (INB-1 35), by the
  * grants `inbox.read` asks: the business, the task, or a party grant on the
  * task's own client, so a reader of client A hears client A and never client B.
+ * `'gone'`: trashed while the reader still holds read on it.
  */
 export async function boardHears(
   database: Database,
   businessId: BusinessId,
   presented: VerifiedSubject,
   taskId: string,
-): Promise<boolean> {
-  const outcome = await withSession(
-    database,
-    businessId,
-    presented,
-    async (tx, session) =>
-      isInternalReader(session.roleKey) &&
-      (await taskAccess(tx, session.personId, taskId)) === 'readable',
-  );
-  return outcome === true;
+): Promise<boolean | 'gone'> {
+  const outcome = await withSession(database, businessId, presented, async (tx, session) => {
+    if (!isInternalReader(session.roleKey)) return false;
+    const access = await taskAccess(tx, session.personId, taskId);
+    if (access === 'readable') return true;
+    // A row no longer there is `gone` to anyone; it says nothing here.
+    const rows = await tx.query(`select 1 from public.records where business_id = $1 and id = $2`, [
+      tx.businessId,
+      taskId,
+    ]);
+    return access === 'gone' && rows.length > 0 ? 'gone' : false;
+  });
+  return outcome === true || outcome === 'gone' ? outcome : false;
+}
+
+/** A digest of the grants the board's reader holds now: a revoked read moves it. */
+export async function boardReach(
+  database: Database,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+): Promise<string | undefined> {
+  const outcome = await withSession(database, businessId, presented, async (tx, session) => {
+    if (!isInternalReader(session.roleKey)) return refuseNotFound();
+    const held = (await readCapabilities(tx, session)).grants.map((grant) => JSON.stringify(grant));
+    return createHash('sha256').update(JSON.stringify(held.toSorted())).digest('hex');
+  });
+  return typeof outcome === 'string' ? outcome : undefined;
 }

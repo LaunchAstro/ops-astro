@@ -47,6 +47,7 @@ import {
   isCommandRefusal,
   isReadName,
   boardHears,
+  boardReach,
   joinLiveBoard,
   shownInbox,
   refuseCommand,
@@ -406,6 +407,11 @@ export function createApi(options: ApiOptions): Hono {
               return isCommandRefusal(again) ? undefined : again.personId;
             },
             reads: async (taskId) => await mayHear(options, context, admitted.businessId, taskId),
+            reach: async () => {
+              const presented = await options.verify(context.req);
+              if (typeof presented !== 'object') return undefined;
+              return await boardReach(options.database, admitted.businessId, presented);
+            },
             shown: async (personId) =>
               await mayShowInbox(options, context, admitted.businessId, personId),
           },
@@ -460,7 +466,7 @@ async function mayHear(
   context: Context,
   businessId: string,
   taskId: string,
-): Promise<boolean> {
+): Promise<boolean | 'gone'> {
   const presented = await options.verify(context.req);
   if (typeof presented !== 'object') return false;
   return await boardHears(options.database, businessId, presented, taskId);
