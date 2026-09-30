@@ -240,6 +240,7 @@
     "tests/acceptance/d06-generated.test.ts",
     "tests/acceptance/d06-agent.test.ts",
     "tests/cli/cli-process.test.ts",
+    "tests/cli/aw-11-child-credential-cli.test.ts",
     "tests/cli/cli-delegation-replay.test.ts",
     "tests/runtime/authority-loss-narrowed.test.ts",
     "tests/commands/runtime-residuals.test.ts",
