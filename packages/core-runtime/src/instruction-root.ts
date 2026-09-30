@@ -8,15 +8,16 @@
 // segment is looked at without following links, so a symlink anywhere on the
 // way, a name that resolves outside the root, a directory and a missing file
 // all read as nothing, which the manifest capture answers
-// `DEFINITION_UNAVAILABLE`. The file is opened without following a link and
-// read once, through the handle that was checked.
+// `DEFINITION_UNAVAILABLE`; the root itself unreachable is the store down, the
+// same code naming the fault as ours (`storeUnavailable`). The file is opened
+// without following a link and read once, through the handle that was checked.
 //
 // C33's `definition_version` replaces this source when it is built: runs then
 // pin a definition version in the same slot (`0043_bootstrap_pins`), and the
 // directory goes.
 
 import { constants } from 'node:fs';
-import { lstat, open, realpath } from 'node:fs/promises';
+import { access, lstat, open, realpath } from 'node:fs/promises';
 import { isAbsolute, join, sep } from 'node:path';
 import { isInstructionPath, type InstructionSource } from './definitions.ts';
 
@@ -56,9 +57,23 @@ async function readInside(root: string, path: string): Promise<Uint8Array | unde
   }
 }
 
+/** Whether `root` is a directory this process can list and read, now. */
+async function reachable(root: string): Promise<boolean> {
+  try {
+    const at = await realpath(root);
+    await access(at, constants.R_OK | constants.X_OK);
+    return (await lstat(at)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /** The files under `root`, read-only. */
 export function directorySource(root: string): InstructionSource {
-  return { read: async (path) => await readInside(root, path) };
+  return {
+    read: async (path) => await readInside(root, path),
+    available: async () => await reachable(root),
+  };
 }
 
 /** The process's instruction root, or `undefined` when none is configured (or it is not absolute). */
