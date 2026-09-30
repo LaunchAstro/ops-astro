@@ -10,10 +10,11 @@
 // reading the secret. `S0-6 signing-key canary` covers where key material may
 // go; `local-keys.test.ts` covers the local auth server's key and the fixtures.
 //
-// Nothing here needs the network or a database. The started server is given a
-// database address nobody listens on: a verified bearer gets past sign-in and
-// then fails on the database, a refused one stops at sign-in, and that
-// difference is the whole measurement.
+// Nothing here needs the network, and requests reach no database. The started
+// server is given a database address nobody listens on: a verified bearer gets
+// past sign-in and then fails on the database, a refused one stops at sign-in,
+// and that difference is the whole measurement. Only the live channel's LISTEN,
+// which the server opens before it binds, is given the test database.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -42,6 +43,8 @@ const ROOT = join(import.meta.dirname, '../..');
 const ISSUER = 'http://127.0.0.1:54391';
 const OLD_SECRET = 'the-shared-secret-the-api-used-to-hold';
 const CREATE = `/api/b/alpha${pathOf('task.create')}`;
+// The runtime role's own address: LISTEN needs no more.
+const LISTEN_URL = process.env['DATABASE_URL'] || undefined;
 
 const now = () => Math.floor(Date.now() / 1000);
 const claims = (over: Record<string, unknown> = {}) => ({
@@ -143,7 +146,7 @@ let started: Started;
 
 let unused: number;
 
-describe('S0-6 published keys only', () => {
+describe.skipIf(LISTEN_URL === undefined)('S0-6 published keys only', () => {
   beforeAll(async () => {
     served = await serveTestKeySet();
     unused = await freePort();
@@ -152,6 +155,7 @@ describe('S0-6 published keys only', () => {
     started = await startServer({
       DATABASE_URL: nowhere,
       DATABASE_ADMIN_URL: nowhere,
+      DATABASE_LISTEN_URL: LISTEN_URL as string,
       GOTRUE_URL: ISSUER,
       SUPABASE_KEY_SET_URL: served.url,
     });
