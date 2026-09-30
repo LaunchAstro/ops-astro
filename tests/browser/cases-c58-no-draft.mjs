@@ -143,14 +143,14 @@ async function signedOut(page, task) {
 // ------------------------------------------------------------------ the steps
 
 // Open the task, type the canaries, return the tab's token: its sign-in's HttpOnly cookie (S0-6c).
+const sessionIdIn = (key) => JSON.parse(sessionStorage.getItem(key)).sessionId;
 async function openAndType(page, task) {
   await page.goto(`${WEB}/task/${task.recordId}`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#task-title', { timeout: 15_000 });
   await page.fill('#task-title', TITLE_CANARY);
   await page.fill('#comment-body', COMMENT_CANARY);
   await page.waitForSelector('button[data-draft-resolve="save"]', { timeout: 15_000 });
-  const read = (key) => JSON.parse(sessionStorage.getItem(key)).sessionId;
-  const name = `${SESSION_COOKIE}-${await page.evaluate(read, SESSION_KEY)}`;
+  const name = `${SESSION_COOKIE}-${await page.evaluate(sessionIdIn, SESSION_KEY)}`;
   const token = (await page.context().cookies()).find((cookie) => cookie.name === name)?.value;
   if (token === undefined) throw new Error('the tab names no sign-in cookie');
   return token;
