@@ -24,9 +24,41 @@ export interface LedgerEnvelope {
   readonly cap: { readonly key: string; readonly limitMinor: number; readonly currency: string };
 }
 
-/** The task's ledger: the open envelope first, then the closed ones, newest first. */
+/** One stop at a run's approved ceiling (AW-05), as `task.read`'s ledger carries it. */
+export interface LedgerStop {
+  readonly askId: string;
+  readonly runId: string;
+  /** 1 to `STOP_LIMIT`. */
+  readonly number: number;
+  /** `consolidated` on the last. */
+  readonly kind: string;
+  readonly ceilingMinor: number;
+  readonly spentMinor: number;
+  readonly currency: string;
+  readonly raisedAt: string;
+  /** `top_up`, `end`, or null while the ask waits. */
+  readonly answer: string | null;
+  readonly awaitingSecond: { readonly amountMinor: number } | null;
+}
+
+/** The task's ledger: the open envelope first, then the closed ones, newest first, and the runs' stops. */
 export interface TaskLedger {
   readonly envelopes: readonly LedgerEnvelope[];
+  /** Absent on a read from before AW-05's stops. */
+  readonly stops?: readonly LedgerStop[];
+}
+
+/** A run asks three times at most; the last is the one consolidated decision (AW-05). */
+export const STOP_LIMIT = 3;
+
+/** The latest ask on each run that has stopped, in the order the read gives the runs. */
+export function latestStops(ledger: TaskLedger | null): readonly LedgerStop[] {
+  const latest = new Map<string, LedgerStop>();
+  for (const stop of ledger?.stops ?? []) {
+    const seen = latest.get(stop.runId);
+    if (seen === undefined || stop.number > seen.number) latest.set(stop.runId, stop);
+  }
+  return [...latest.values()];
 }
 
 /** A skill a run's version names in its evidence: a door to the Docs panel. */

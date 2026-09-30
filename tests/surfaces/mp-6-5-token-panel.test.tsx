@@ -245,10 +245,4 @@ describe('MP-6-5 token panel', () => {
       await unmountAll();
     }
   });
-
-  it.skip('MP-6-5 stop states (LEANS-ON SL11 AW-05: the stop, the top-up request, stops counted to three and the consolidated decision live in 0034_budget_wait and 0035_budget_answers, unmerged)', () => {
-    // Written when AW-05's states reach this branch: the panel shows the stop
-    // and the top-up request, counts the stops against three, and after the
-    // third shows the one consolidated decision; answering them is C54's.
-  });
 });

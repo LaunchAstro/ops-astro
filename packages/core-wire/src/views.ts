@@ -125,6 +125,27 @@ export interface TaskEnvelope {
 export interface TaskLedgerView {
   /** Open one first, then the closed ones, newest first. Empty before any approval. */
   readonly envelopes: readonly EnvelopeView[];
+  /** AW-05's stops on the task's runs, by run, oldest ask first. Empty before any stop. */
+  readonly stops: readonly BudgetStopView[];
+}
+
+/** One stop at a run's approved ceiling: the ask a person answers (AW-05, MP-6-5, C54). */
+export interface BudgetStopView {
+  readonly askId: string;
+  readonly runId: string;
+  /** 1 to 3; a run asks three times at most. */
+  readonly number: number;
+  /** The third is the one consolidated decision. */
+  readonly kind: 'stop' | 'consolidated';
+  readonly ceilingMinor: number;
+  /** The spend to date when it stopped. */
+  readonly spentMinor: number;
+  readonly currency: string;
+  readonly raisedAt: string;
+  /** A person's answer, or null while the ask waits. */
+  readonly answer: 'top_up' | 'end' | null;
+  /** A first top-up above the four-eyes band, waiting for a second person, or null. */
+  readonly awaitingSecond: { readonly amountMinor: number } | null;
 }
 
 export interface EnvelopeView {

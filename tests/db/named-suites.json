@@ -107,6 +107,7 @@
     "MP-7-11 (SL12, session 5) names mp-7-11-tabs (the tab row on the server: the person's own conversations newest activity first, a fresh tab, rename, add page to context with a second pointer replacing the first, hostile page addresses refused, owner-only, the conversation:write refusal, no audit event beyond the command's own) as conformance, and mp-7-11-isolation (list, rename and set_scope across another business, another client in the same business and the owner's agent under a live delegation; a client; the canary; revoked) as an invariant",
     "C36 (SL12, session 7) names c36-address (a conversation's address keeps AW-03's refusals, read by the id the address carries: another business NOT_FOUND byte for byte a made-up address, a colleague SCOPE_NOT_GRANTED and nothing else, a client session refused, after the purge only the wrap-up) as conformance, and c36-isolation (the address read across another business, another client in the same business and the owner's agent under a live delegation, statuses checked, nothing of the conversation in any body) as an invariant",
     "MP-6-5 (SL12, session 7) names mp-6-5-ledger (the token ledger on the task read: allowance composition from the envelope, its cap and the approval that opened it; per-run rows naming their envelope and adding up to it; no envelope before any approval; no audit event beyond the read's own) as conformance, and mp-6-5-isolation (the ledger across another business, another client in the same business and the agent working another task under a live delegation, statuses checked, no foreign envelope or reservation id in any body) as an invariant",
+    "MP-6-5 and C54 (SL12, session 11) name mp-6-5-stops (AW-05's stops on the task read: the stop as the broker raised it, a top-up above the band awaiting a second holder then applied, the end, the third ask as the consolidated decision; a task reads only its own stops, and another client and another business read none) as conformance",
     "C54 (SL12, session 10) names c54-isolation (the three money acts on an unknown effect and the top-up, across another business, another client in the same business and the agent under a live delegation, statuses checked, no foreign task, attempt, hold or envelope id in any body, the hold unmoved) as an invariant, and c54-money (refusal billing:decide, audit readback of each act on an intact chain, and the top-up approver with two approvers at once) as conformance"
   ],
   "invariant": [
@@ -413,6 +414,7 @@
     "tests/api/mp-7-11-tabs.test.ts",
     "tests/api/c36-address.test.ts",
     "tests/api/mp-6-5-ledger.test.ts",
+    "tests/api/mp-6-5-stops.test.ts",
     "tests/api/c54-money.test.ts"
   ]
 }

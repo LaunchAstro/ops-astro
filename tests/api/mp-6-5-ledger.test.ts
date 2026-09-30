@@ -38,7 +38,7 @@ interface Reservation {
 }
 
 interface Read {
-  readonly ledger: { readonly envelopes: readonly Envelope[] };
+  readonly ledger: { readonly envelopes: readonly Envelope[]; readonly stops: readonly unknown[] };
   readonly proposals: readonly { readonly reservations: readonly Reservation[] }[];
 }
 
@@ -131,7 +131,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-5 token ledger', () => {
   it('MP-6-5 per-run rows match the ledger: a task never approved has no envelope, and says so', async () => {
     const bare = await c.createTask('never approved');
     const read = await taskRead(bare.id);
-    expect(read.ledger).toStrictEqual({ envelopes: [] });
+    expect(read.ledger).toStrictEqual({ envelopes: [], stops: [] });
   });
 
   it('MP-6-5 no audit event: the ledger adds no event beyond the read’s own', async () => {
