@@ -18,7 +18,7 @@
 //   the lines that ride on the run are still to build on it.
 // - `ticket resolved (answer, gist)` inside the delegation and
 //   `WF-7 refusal task:write` are `wf-7-resolve.test.ts`; `WF-7 isolation`
-//   is `wf-7-isolation.test.ts`.
+//   is `wf-7-isolation.test.ts`; `WF-7 CLI parity` is `wf-7-cli.test.ts`.
 // - The skill pinned by digest: the digest is settled (the `skills` CLI's
 //   folder hash, `skill-digest.ts`; the research skill matches its pin), but
 //   the line is the run pinning it, so it waits on the run (U37, U100).
@@ -36,7 +36,6 @@ describe('WF-7 held (to build on the run; LEANS-ON the research ceiling, SL04 U9
   it.todo('WF-7 twice failed');
   it.todo('WF-7 skill pinned by digest');
   it.todo('WF-7 waiting item under the lease');
-  it.todo('WF-7 CLI parity');
   it.todo('WF-7 audit readback');
   it.todo(
     'WF-7 owner check: Run on a research ticket with a small approved ceiling claims it, posts a cited answer and closes it; with no ceiling it stops and asks',
