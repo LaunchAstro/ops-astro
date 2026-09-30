@@ -3,7 +3,9 @@
     "T4e's catalogue (split section 3.2): each part before T4e, its named invariants, the test files",
     "that carry them and the part's own commits on the merged line (groups A to E, #173 to #180).",
     "T4-N4 reverts every T2 and T3 part (split, row T4e): `keep` is what a revert leaves at the head,",
-    "tests/, so its invariant runs against the product without the part. T3d2's red-first commit is",
+    "tests/, so its invariant runs against the product without the part. A part that added to",
+    "surface.ts's command-name union also keeps surface.ts, since no reverse of it keeps the later",
+    "rows (batch 1's inbox): its rows stay declared and its handlers go. T3d2's red-first commit is",
     "its proof harness (without it nothing runs), so its revert is its fix commit, the hard SIGKILL",
     "stops, keeping only the proof file and its runner. T4a to T4d are test tooling: no revert, each",
     "proven by its own planted-mutation cases, `planted`, run unmutated (a T4-P line).",
@@ -81,7 +83,7 @@
       "id": "T2c1",
       "invariants": ["recheck_inside_dispatch"],
       "files": ["tests/runtime/t2c1-dispatch.test.ts"],
-      "keep": ["tests/"],
+      "keep": ["tests/", "packages/core-wire/src/surface.ts"],
       "commits": [
         "4a3260048f053be46d7d16802a4790eee574cbd3",
         "afbd0ec14f414808d1f2c3b7b31da36f758c76cc",
@@ -105,7 +107,7 @@
       "id": "T2c2",
       "invariants": ["effect_once_with_receipt"],
       "files": ["tests/runtime/t2c2-effect.test.ts", "tests/api/t2c2-worker.test.ts"],
-      "keep": ["tests/"],
+      "keep": ["tests/", "packages/core-wire/src/surface.ts"],
       "commits": [
         "ed75270678f0eee2f0b11a0030c21eb5add578e2",
         "845594f977edda4825070d4a4c7d08331ccbc211",
@@ -165,7 +167,7 @@
         "tests/cli/t2e-top-up-surfaces.test.ts",
         "tests/surfaces/task-top-up.test.tsx"
       ],
-      "keep": ["tests/"],
+      "keep": ["tests/", "packages/core-wire/src/surface.ts"],
       "commits": [
         "9bf8d18a2c53a5e42adcd43305e03710e46b8436",
         "94c9cde4d1e1e64c858d82c5f5657f8a59086ea2",
@@ -316,7 +318,7 @@
         "tests/runtime/t3c-write-off.test.ts",
         "tests/runtime/t3c-write-off-isolation.test.ts"
       ],
-      "keep": ["tests/"],
+      "keep": ["tests/", "packages/core-wire/src/surface.ts"],
       "commits": [
         "966cb6c76831d4defe119ad90a2385e93172e93a",
         "c24f948d8ce53190f49959a2b7a343cf7da249b8"
@@ -340,7 +342,7 @@
       "id": "T3d1",
       "invariants": ["reconcile_never_repeats"],
       "files": ["tests/runtime/t3d1-reconcile.test.ts"],
-      "keep": ["tests/"],
+      "keep": ["tests/", "packages/core-wire/src/surface.ts"],
       "commits": [
         "4f41852b3a20ec0cc0ff34583136c92df004886a",
         "b92772177943d50c2b1d28303026e26a181c0cdd",
