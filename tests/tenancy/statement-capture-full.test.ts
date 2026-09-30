@@ -149,10 +149,13 @@ describe.skipIf(serverUrl === undefined)('T04/M03 over the whole exported invent
     it.each(OPERATIONS)(
       '%s',
       async (_name, declaration) => {
-        // `session.capabilities` asks for membership and nothing else, so the
-        // member it refuses is the verified login with no membership at all.
-        const caller =
-          declaration.name === 'session.capabilities' ? harness.world.orphan : harness.world.noah;
+        // `session.capabilities` and the operations authorised on the caller's
+        // own account (`self`: C23's `session.person` and `session.end`) ask for
+        // membership and nothing else, so the member they refuse is the
+        // verified login with no membership at all.
+        const membershipOnly =
+          declaration.name === 'session.capabilities' || declaration.authorisedOn === 'self';
+        const caller = membershipOnly ? harness.world.orphan : harness.world.noah;
         const call: CapturedCall = {
           name: declaration.name,
           prefix: 'person',

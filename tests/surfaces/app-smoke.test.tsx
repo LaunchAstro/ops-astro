@@ -59,6 +59,9 @@ function scripted(replies: readonly (() => Promise<Response>)[]): {
   const calls: string[] = [];
   let index = 0;
   const fetch = (async (url: string | URL) => {
+    // The person menu's name (C23) is the frame's read, not the screen's, so
+    // it is answered outside the script and kept out of the screen's calls.
+    if (String(url).endsWith('/session/person')) return await PERSON();
     calls.push(String(url));
     const reply = replies[Math.min(index, replies.length - 1)];
     index += 1;
@@ -75,6 +78,8 @@ const json =
       status,
       headers: { 'content-type': 'application/json' },
     });
+
+const PERSON = json({ ok: true, person: { name: 'Mia Hart' } });
 
 const never = () =>
   new Promise<Response>(() => {

@@ -85,32 +85,80 @@
   color: var(--ink-faint);
 }
 .rail__group {
+  position: relative;
   display: flex;
   flex-direction: column;
 }
+/* One level, items 36 tall (MP-2-2). The railmark takes the place of a
+   border: it is one element that slides, not a border per item that jumps. */
 .rail__item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--s-2);
-  padding: 0.45rem var(--s-5);
-  border-left: 2px solid transparent;
+  box-sizing: border-box;
+  height: 36px;
+  padding: 0 var(--s-5);
   color: var(--text-2);
   font: var(--type-body);
   letter-spacing: var(--type-body-tracking);
   text-transform: var(--type-body-case);
   text-decoration: none;
 }
+/* A section's own glyph (MP-2-2, T-R4): the expanded rail stays text; the
+   folded rail (MP-2-3) displays it. */
+.rail__icon {
+  display: none;
+}
 .rail__item:hover {
   background: var(--surface-2);
   color: var(--text);
 }
-.rail__item[aria-current='page'] {
+.rail__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.rail__item[data-lit] {
   color: var(--text);
-  border-left-color: var(--accent);
   font: var(--type-body-strong);
   letter-spacing: var(--type-body-strong-tracking);
   text-transform: var(--type-body-strong-case);
+}
+/* The railmark: 2px of accent the height of the lit item. It snaps on load
+   (`data-placing`) and slides over 220ms on in-app navigation. */
+.railmark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: var(--railmark-h);
+  background: var(--accent);
+  transform: translateY(var(--railmark-y));
+  transition:
+    transform var(--dur-1) var(--ease),
+    height var(--dur-1) var(--ease);
+  pointer-events: none;
+}
+.railmark[data-placing] {
+  transition: none;
+}
+.railmark[hidden] {
+  display: block;
+  opacity: 0;
+}
+/* "Back to Clients" above a client's sections (MP-2-9). */
+.rail__backrow {
+  padding: 0 var(--s-5);
+}
+.rail__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  text-decoration: none;
+}
+/* The drawer's own close, drawn only while it is open. */
+.navclose {
+  display: none;
 }
 @media (width <= 900px) {
   .rail {
@@ -134,6 +182,70 @@
       transform var(--dur-1) var(--ease),
       visibility 0s;
   }
+  .shell[data-nav='open'] .navclose {
+    display: inline-flex;
+  }
+}
+.rail__brand {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.navclose {
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+/* The drawer's backdrop: 40% black, fading in over 220ms (MP-2-8). */
+.navbackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: var(--scrim);
+  animation: navbackdrop-in var(--dur-1) var(--ease);
+}
+@keyframes navbackdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+@media not all and (max-width: 900px) {
+  .navbackdrop {
+    display: none;
+  }
+}
+/* The hamburger: first in the page header, at 900 and below only. */
+.navtoggle {
+  display: none;
+  order: -1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.navtoggle span {
+  display: block;
+  width: 14px;
+  height: 1.5px;
+  background: currentColor;
+}
+@media (width <= 900px) {
+  .navtoggle {
+    display: inline-flex;
+  }
 }
 
 /* -- The page strip and the content column ------------------------------- */
@@ -141,6 +253,367 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+/* The chrome: the app strip, the tab row and the page header, one block,
+   sticky above 900 and scrolling away at 900 and below (MP-2-7). */
+.chrome {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+}
+@media not all and (max-width: 900px) {
+  .chrome {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+  .topbar__meta {
+    min-height: 34px;
+  }
+}
+
+/* -- The app strip (MP-2-5): dark chrome on the agency face, teal on the
+      client face. Its ink is on-dark on either ground. ------ */
+.appbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  min-height: 45px;
+  box-sizing: border-box;
+  padding: 0.4rem var(--s-4);
+  background: var(--app-chrome);
+  color: var(--on-dark);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.appbar[data-face='client'] {
+  background: var(--client-brand);
+}
+/* Back and Forward: 26 square, faint until hovered, hidden at 640. */
+.appbar__step {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: color-mix(in oklch, var(--on-dark) 55%, transparent);
+  cursor: pointer;
+}
+.appbar__step:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--on-dark) 10%, transparent);
+  color: var(--on-dark);
+}
+.appbar__step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.appbar__step + .appbar__step {
+  margin-left: calc(var(--s-4) * -1 + 2px);
+}
+/* Search, drawn and disabled until it is built (R29): not focusable. */
+.appbar__search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 90px;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid color-mix(in oklch, var(--on-dark) 12%, transparent);
+  background: color-mix(in oklch, var(--on-dark) 7%, transparent);
+  color: color-mix(in oklch, var(--on-dark) 50%, transparent);
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.appbar__key {
+  margin-left: auto;
+  padding: 0 0.25rem;
+  border: 1px solid color-mix(in oklch, var(--on-dark) 20%, transparent);
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
+}
+.appbar__preview {
+  flex: 1;
+  color: color-mix(in oklch, var(--on-dark) 72%, transparent);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  text-align: right;
+  white-space: nowrap;
+}
+/* The signed-in person (C23): the strip's last element, its circle in the
+   strip's on-dark ink; the menu opens under it, flush right. */
+.who {
+  position: relative;
+  flex: none;
+  margin-left: auto;
+}
+.who__trigger {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+.who__trigger .av {
+  background: color-mix(in oklch, var(--on-dark) 16%, transparent);
+  color: var(--on-dark);
+}
+.who__trigger:hover .av,
+.who__trigger[aria-expanded='true'] .av {
+  background: color-mix(in oklch, var(--on-dark) 28%, transparent);
+}
+.who__menu {
+  /* Clear of the strip: the circle sits 7.5px above the strip's bottom edge. */
+  top: calc(100% + 8px);
+  right: 0;
+  left: auto;
+  min-width: 14rem;
+}
+.who__menu .menu__opt {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  background: none;
+  text-align: start;
+  text-decoration: none;
+}
+.who__menu .menu__opt:hover,
+.who__menu .menu__opt:focus-visible {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.who__head {
+  display: grid;
+  gap: 2px;
+  padding: 6px 12px var(--s-2);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--s-1);
+}
+.who__name {
+  color: var(--text);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
+}
+.who__email {
+  color: var(--text-muted);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  overflow-wrap: anywhere;
+}
+
+/* The face switch: the strip's dress of the segmented control. */
+.facesw {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid color-mix(in oklch, var(--on-dark) 22%, transparent);
+}
+.facesw button {
+  height: 30px;
+  padding: 0 0.75rem;
+  border: 0;
+  background: none;
+  color: color-mix(in oklch, var(--on-dark) 60%, transparent);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  cursor: pointer;
+}
+.facesw button[aria-pressed='true'] {
+  background: var(--on-dark);
+  color: var(--app-chrome);
+  cursor: default;
+}
+.appbar__timer {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.35rem;
+  height: 30px;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid color-mix(in oklch, var(--on-dark) 22%, transparent);
+  background: none;
+  color: var(--on-dark);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+@media (width <= 900px) {
+  .appbar {
+    padding-inline: var(--s-3);
+    gap: var(--s-3);
+  }
+  .appbar__search {
+    display: none;
+  }
+}
+@media (width <= 640px) {
+  .appbar__step {
+    display: none;
+  }
+  .appbar__timer .appbar__label {
+    display: none;
+  }
+  .appbar__timer {
+    padding-inline: 0.45rem;
+  }
+}
+.clienthdr {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.clienthdr__mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  background: var(--accent);
+  color: var(--on-dark);
+  font: var(--type-rail-label);
+  letter-spacing: var(--type-rail-label-tracking);
+  text-transform: var(--type-rail-label-case);
+}
+.appbar[data-face='client'] .clienthdr__mark {
+  background: color-mix(in oklch, var(--on-dark) 20%, transparent);
+}
+.clienthdr__name {
+  overflow: hidden;
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.clienthdr__tag {
+  color: color-mix(in oklch, var(--on-dark) 46%, transparent);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  white-space: nowrap;
+}
+@media (width <= 900px) {
+  .clienthdr__tag {
+    display: none;
+  }
+}
+
+/* -- The tab row (MP-2-6): the section's pages, an underline that slides
+      over 420ms, and overflow that scrolls with a fade and an arrow at each
+      edge with more past it (R62). It never widens its column. ------------ */
+.tabbar {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.tabbar__scroll {
+  position: relative;
+  display: flex;
+  flex: 1;
+  gap: var(--s-6);
+  min-width: 0;
+  padding: 0 var(--s-6);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabbar__scroll::-webkit-scrollbar {
+  display: none;
+}
+.tabbar[data-more='start'] .tabbar__scroll {
+  mask-image: linear-gradient(to right, transparent, #000 3rem);
+}
+.tabbar[data-more='end'] .tabbar__scroll {
+  mask-image: linear-gradient(to left, transparent, #000 3rem);
+}
+.tabbar[data-more='start end'] .tabbar__scroll {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 3rem,
+    #000 calc(100% - 3rem),
+    transparent
+  );
+}
+.tabbar__t {
+  flex: none;
+  padding: 0.65rem 0 0.525rem;
+  border-bottom: 2px solid transparent;
+  color: var(--text-2);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.tabbar__t:hover {
+  color: var(--text);
+}
+.tabbar__t[aria-current='page'] {
+  color: var(--text);
+  font: var(--type-body-strong);
+  letter-spacing: var(--type-body-strong-tracking);
+  text-transform: var(--type-body-strong-case);
+}
+.tabmark {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: var(--tabmark-w);
+  height: 2px;
+  background: var(--accent);
+  transform: translateX(var(--tabmark-x));
+  transition:
+    transform var(--dur-2) var(--ease),
+    width var(--dur-2) var(--ease);
+  pointer-events: none;
+}
+.tabmark[data-placing] {
+  transition: none;
+}
+.tabmark[hidden] {
+  display: none;
+}
+.tabbar__arrow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  padding: 0;
+  border: 0;
+  background: var(--bg);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.tabbar__arrow:hover {
+  color: var(--text);
+}
+.tabbar__arrow[data-edge='start'] {
+  left: 0;
+}
+.tabbar__arrow[data-edge='end'] {
+  right: 0;
 }
 .topbar {
   display: flex;
@@ -432,4 +905,82 @@
 .aip__tabs {
   padding: var(--s-3) var(--s-5) 0;
   border-bottom: 1px solid var(--border);
+}
+
+/* -- Search (C1): a modal palette over a scrim, one field, the hits the
+      scoped service answered. ------------------------------------------- */
+button.appbar__search {
+  font: inherit;
+  text-align: left;
+  opacity: 1;
+  cursor: text;
+}
+button.appbar__search:hover {
+  border-color: color-mix(in oklch, var(--on-dark) 22%, transparent);
+}
+.palette__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: var(--scrim);
+}
+.palette {
+  position: fixed;
+  top: 12vh;
+  left: 50%;
+  z-index: 91;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100vw - 2rem));
+  max-height: 70vh;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  box-shadow: var(--shadow-overlay);
+  transform: translateX(-50%);
+}
+.palette__field {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--s-4);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: var(--type-body-lg);
+  letter-spacing: var(--type-body-lg-tracking);
+  text-transform: var(--type-body-lg-case);
+}
+.palette__field:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.palette__list {
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.palette__hit {
+  display: flex;
+  gap: var(--s-3);
+  padding: 0.6rem var(--s-4);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.palette__hit[aria-selected='true'],
+.palette__hit:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.palette__key {
+  flex: none;
+  color: var(--ink-faint);
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
+}
+.palette__none {
+  margin: 0;
+  padding: var(--s-4);
+  color: var(--text-2);
 }

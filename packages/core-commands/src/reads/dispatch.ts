@@ -52,6 +52,9 @@ export const READ_BODY_FIXES: readonly string[] = [
  * It is written after the read rather than before it so the outcome is the
  * outcome, and inside the same transaction so an audited read and its answer
  * commit together or neither does.
+ *
+ * The one exception is a successful read on a row the surface declares not
+ * audited: a person's own preferences (CS-2.8). Its refusals are audited.
  */
 export async function runRead(
   tx: TenantQuery,
@@ -67,6 +70,7 @@ export async function runRead(
   }
   const outcome = served.outcome;
   const refusal = isCommandRefusal(outcome) ? outcome : undefined;
+  if (refusal === undefined && !declarationOf(request.read).audited) return outcome;
   await writeAuditEvent(tx, {
     actorId: session.actorId,
     command: request.read,
@@ -226,7 +230,7 @@ async function admit<K extends ReadName>(
     subjectRecordId: readied.recordId ?? null,
   });
 
-  if (row.authority !== 'holds-any-grant') {
+  if (row.authority !== 'holds-any-grant' && row.authority !== 'self') {
     const authorised = await checkAuthority(tx, subjectsOf(session), {
       // The action is the declaration's, and so is the collection unless the
       // row names the one the request is really about (`preset.plan`).

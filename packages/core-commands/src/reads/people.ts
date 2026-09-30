@@ -42,6 +42,20 @@ export async function listPeople(tx: TenantQuery): Promise<readonly PersonView[]
 }
 
 /**
+ * The caller's own name, for the person menu (C23). By the session's own
+ * person, in the session's own business: there is no other row it could read.
+ */
+export async function readOwnName(tx: TenantQuery, personId: string): Promise<string> {
+  const rows = await tx.query<{ readonly display_name: string }>(
+    `select display_name from public.people where business_id = $1 and id = $2`,
+    [tx.businessId, personId],
+  );
+  const name = rows[0]?.display_name;
+  if (name === undefined) throw new Error('readOwnName: the resolved session has no person row');
+  return name;
+}
+
+/**
  * The Team panel's people strip (MP-7-10): the business's staff, each with
  * their availability, or none when they never set it (available). A client of
  * the business is not on it: the list is staff only, as the panel is.

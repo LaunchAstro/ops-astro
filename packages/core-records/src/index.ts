@@ -58,6 +58,7 @@ export {
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { heldScopes } from './authority/held-scopes.ts';
 export { heldPermissions, type HeldPermission } from './authority/held-permissions.ts';
 export {
   grantAccess,
@@ -160,6 +161,14 @@ export {
   type OverseasService,
   type RegisterState,
 } from './operations/overseas-services.ts';
+export {
+  admitsPreference,
+  isPreferenceKey,
+  PREFERENCE_KEYS,
+  readPreferences,
+  savePreference,
+  type PreferenceKey,
+} from './preferences/store.ts';
 export {
   isSettingRevisionStale,
   readBusinessSetting,

@@ -68,6 +68,10 @@ export type CommandName =
   // over the applied writes in `audit_events`, never a second record of them.
   | 'task.ledger'
   | 'person.list'
+  // Search over what the caller may read (C1). The grant it takes is `read`
+  // on tasks at whatever scope the caller holds it, asked by the search
+  // itself so the scope is part of the statement that finds candidates.
+  | 'task.search'
   | 'team.list'
   // The preset planner. It reads the model and writes nothing at all, so it is
   // a read by the only definition this table has; what makes it unlike the
@@ -84,6 +88,11 @@ export type CommandName =
   // why it takes no grant beyond membership: every pair in it is a pair the
   // caller already holds, so returning them confers nothing.
   | 'session.capabilities'
+  // Who is signed in (C23): the caller's own name and nothing else, for the
+  // person menu. Like `session.capabilities` it is about the caller, so it takes
+  // no grant; unlike it, it answers a person who holds none, because anyone
+  // signed in may see their own name.
+  | 'session.person'
   // Settings ▸ Access (C32): Team, Clients and Agents from the one set of
   // person records, each with what its grants and delegations allow now.
   | 'access.read'
@@ -141,7 +150,15 @@ export type CommandName =
   // A person records what an unknown effect came to: one of three (T3d1).
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
-  | 'budget.write_off';
+  | 'budget.write_off'
+  // Sign-out (C23, CS-2.9): records `session ended (sign-out)` on the audit
+  // chain. `account:write`, which every signed-in person holds on their own
+  // account and nobody holds on another's, so it names no one: the account is
+  // the caller's, always.
+  | 'session.end'
+  // The one preference store (MP-2-11a): the caller's own keys.
+  | 'preference.read'
+  | 'preference.save';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -191,8 +208,19 @@ export interface CommandDeclaration {
    * - `claim`: the task the body's reservation or lease belongs to, so a
    *   record-scoped writer works their own lease on that task. Own-lease work
    *   names its task only through the claim and writes no task revision.
+   * - `self`: the caller's own account. No grant row is asked: the catalogue
+   *   gives every signed-in person this action on their own account and on
+   *   nobody else's, and the command takes no identifier that could name
+   *   another (`account:write`, C23).
    */
-  readonly authorisedOn: 'record' | 'business' | 'target' | 'claim';
+  readonly authorisedOn: 'record' | 'business' | 'target' | 'claim' | 'self';
+  /**
+   * Whether an applied attempt, the replay of one, or a successful read joins
+   * the audit chain. False only where the capability row says the action is
+   * not audited: saving and reading a person's own preferences (CS-2.8). A
+   * refused attempt joins it on every row, so a probe stays visible.
+   */
+  readonly audited: boolean;
   /**
    * Who locks a targeted task. `command`: the envelope locks it and compares
    * the revision before the handler runs, the ordinary task-write path.
@@ -281,6 +309,7 @@ function declare(
     readonly agent?: CommandDeclaration['agent'];
     readonly authority?: readonly string[];
     readonly rule?: string;
+    readonly audited?: boolean;
   } = {},
 ): CommandDeclaration {
   const targetsExistingRecord = options.targetsExistingRecord ?? true;
@@ -301,6 +330,7 @@ function declare(
     targetLock: options.targetLock ?? 'command',
     action,
     agent: options.agent ?? 'never',
+    audited: options.audited ?? true,
   };
 }
 
@@ -308,6 +338,8 @@ const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const ACCOUNT_COLLECTION = 'account';
+const PREFERENCE_COLLECTION = 'preference';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -322,7 +354,8 @@ function read(
   options: {
     readonly action?: Action;
     readonly agent?: CommandDeclaration['agent'];
-    readonly authorisedOn?: 'record' | 'business';
+    readonly authorisedOn?: 'record' | 'business' | 'self';
+    readonly audited?: boolean;
   } = {},
 ): CommandDeclaration {
   return {
@@ -334,6 +367,9 @@ function read(
     targetLock: 'command',
     action: options.action ?? 'read',
     agent: options.agent ?? 'never',
+    // Every read writes its event (`reads/dispatch.ts`, I13), but a person's
+    // own preferences (CS-2.8).
+    audited: options.audited ?? true,
   };
 }
 
@@ -460,6 +496,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  'session.end': {},
+  'preference.save': { preference: 'text', value: 'any' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -536,6 +574,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // use for the whole business's trail, so it is not offered one.
   read('task.ledger', TASK_COLLECTION),
   read('person.list', 'person'),
+  // Served without the business-scope check: a record-scoped reader searches
+  // the records they hold, which `reads/search.ts` asks the grant model for.
+  read('task.search', TASK_COLLECTION),
   // The Team panel's people strip (MP-7-10): staff only, answered to anyone
   // else as for a thing they cannot see.
   read('team.list', 'person'),
@@ -558,6 +599,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // delegation's purpose; before a pickup it is refused like every other
   // operation outside the two (minimum contract 8.2 case 9).
   read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated' }),
+  // The caller's own name, served without a grant (`reads/dispatch.ts`). Never
+  // an agent's: the person menu is a person's.
+  read('session.person', SESSION_COLLECTION, { authorisedOn: 'self' }),
   // `manage` on `access`, the key the Access screen's grants are changed under
   // (C32): the answer is every person's authority, so reading it is not a
   // member's everyday read. An agent never holds it.
@@ -765,6 +809,26 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
+  }),
+  // Sign-out: the caller's own account, never anyone else's and never an
+  // agent's. It targets no record and takes no identifier, so a body naming a
+  // person, an actor or an account is refused rather than ignored.
+  declare('session.end', 'write', {
+    collection: ACCOUNT_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: [],
+  }),
+
+  // A person's own preferences (MP-2-11a): the caller's row only, no grant
+  // asked. No agent reaches either row yet.
+  read('preference.read', PREFERENCE_COLLECTION, { authorisedOn: 'self', audited: false }),
+  declare('preference.save', 'write', {
+    collection: PREFERENCE_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: [],
+    audited: false,
   }),
 ];
 

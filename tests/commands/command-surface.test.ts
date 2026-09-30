@@ -79,7 +79,7 @@ describe('the surface as a table', () => {
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
     expect(
       paths.every((path) =>
-        /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|access|operations|privacy|legal|credential|client)\/[a-z_]+$/u.test(
+        /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|preference|access|operations|privacy|legal|credential|client)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -87,25 +87,31 @@ describe('the surface as a table', () => {
   });
 });
 
+/** The reads the surface declares, sorted. */
+const DECLARED_READS = [
+  'access.read',
+  'client.list',
+  'operations.read',
+  'person.list',
+  'preference.read',
+  'preset.plan',
+  'privacy.draft_breach_notices',
+  'session.capabilities',
+  'session.person',
+  'settings.read',
+  'task.board',
+  'task.execution',
+  'task.ledger',
+  'task.queue',
+  'task.read',
+  'task.receipt',
+  'task.search',
+  'team.list',
+];
+
 describe('the surface as a table', () => {
-  it('declares the fifteen reads as reads, and everything else as a write', () => {
-    expect([...READS].toSorted()).toStrictEqual([
-      'access.read',
-      'client.list',
-      'operations.read',
-      'person.list',
-      'preset.plan',
-      'privacy.draft_breach_notices',
-      'session.capabilities',
-      'settings.read',
-      'task.board',
-      'task.execution',
-      'task.ledger',
-      'task.queue',
-      'task.read',
-      'task.receipt',
-      'team.list',
-    ]);
+  it('declares the eighteen reads as reads, and everything else as a write', () => {
+    expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
       // A read has nothing to be stale against. It does not always take the

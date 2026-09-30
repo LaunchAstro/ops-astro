@@ -49,6 +49,7 @@ export type {
   ServiceHealthView,
   Capability,
   CapabilitiesResult,
+  SessionPersonResult,
   ClientListResult,
   ClientView,
   CommentView,
@@ -75,6 +76,7 @@ export type {
   QueueResult,
   ReceiptResult,
   ReservationView,
+  SearchHit,
   SettingsReadResult,
   SessionCapabilities,
   SettingView,
@@ -89,6 +91,7 @@ export type {
   TaskExecutionResult,
   TaskLedgerResult,
   TaskReadResult,
+  TaskSearchResult,
   TaskStateView,
   TaskSummary,
 } from './views.ts';

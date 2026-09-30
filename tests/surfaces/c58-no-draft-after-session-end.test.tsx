@@ -234,7 +234,9 @@ describe('C58 no draft after session end', () => {
 
   it('signing out mid-edit says the edit was not saved and holds no draft', async () => {
     const { view, store, sessions } = await openMidEdit();
-    await view.click('.topbar__who button');
+    // Sign-out is the person menu's since C23.
+    await view.click('.appbar .who__trigger');
+    await view.click('.who__menu button[role="menuitem"]');
     await expectSignedOutWithNoDraft(view, store, sessions);
     expect(view.find('[data-reason="signed-out"]')).not.toBeNull();
     await signInAgainFindsNoDraft(view, true);

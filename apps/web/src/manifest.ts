@@ -10,7 +10,7 @@
 // Legacy addresses are inputs, never outputs: `canonicalOf` is the one table
 // from each mockup source address to its canonical one.
 
-import { ROUTES, pathTo, type Namespace, type RouteId } from './routes.ts';
+import { ROUTES, type Namespace, type RouteId } from './routes.ts';
 
 export interface Page {
   readonly namespace: Namespace;
@@ -23,6 +23,11 @@ export interface Page {
   readonly ticket: string;
   /** The mockup source address it replaces, with the hash that chose it. */
   readonly legacy: string;
+  /**
+   * False for an address the mockup reserved and never designed (R2): it stays
+   * out of the rail and the tab rows, and typed, it shows the shared state.
+   */
+  readonly designed: boolean;
 }
 
 export interface Section {
@@ -30,8 +35,12 @@ export interface Section {
   readonly id: string;
   readonly label: string;
   readonly path: string;
-  /** The tab row. */
+  /** Every page of the section, undesigned ones included. */
   readonly pages: Page[];
+  /** The tab row: the designed pages (R2). */
+  readonly tabs: Page[];
+  /** Whether the rail lists it: some page of it is designed (R2). */
+  readonly navigable: boolean;
 }
 
 const ROOTS: Readonly<Record<Namespace, string>> = {
@@ -43,11 +52,15 @@ const ROOTS: Readonly<Record<Namespace, string>> = {
 // The mockup's route table (`routes.json`, version 1). An unindented line opens
 // a rail section, `namespace | label`; each page below it is `id | label |
 // address under the namespace root | ticket | legacy source`. `@` reads a built
-// page's address from `ROUTES`; `~` marks a page the rail and tabs leave out.
+// page's address from `ROUTES`; `~` marks a page the rail and tabs leave out;
+// `?` marks an address the mockup reserved and never designed (R2), which the
+// rail and tabs leave out too. `/dashboard/` is Portfolio Command's and the
+// separate Portfolio tab is gone (R1); its old address is kept as a utility
+// page so a remembered link still lands.
 const TABLE = `
 agency | Dashboard
-  dashboard | Dashboard | dashboard/ | MP-2-10
-  portfolio | Portfolio | dashboard/portfolio/ | MP-14-1 | /agency/portfolio/
+  dashboard | Portfolio | dashboard/ | MP-14-1 | /agency/portfolio/
+  ~portfolio | Portfolio | dashboard/portfolio/ | MP-14-1
   executive | Executive | dashboard/executive/ | MP-14-3 | /agency/executive/
 agency | Inbox
   inbox | Inbox | inbox/ | MP-7-3
@@ -61,16 +74,16 @@ agency | Connections & signal
   connections | Connections & signal | connections/ | MP-14-7 | /agency/connections-and-signal/
   site-health | Site health | connections/site-health/ | MP-14-11 | /agency/site-health/
 agency | Docs
-  docs | Docs | docs/ | MP-2-10
-  snippets | Snippets | docs/snippets/ | MP-2-10
+  ?docs | Docs | docs/ | MP-2-10
+  ?snippets | Snippets | docs/snippets/ | MP-2-10
 agency | Settings
   general | General | @agency:settings | MP-2-11
-  keys | Keys | settings/keys/ | MP-2-10
-  access | Access | settings/access/ | MP-2-10
-  emails | Emails | settings/emails/ | MP-2-10
-  workflow-triggers | Workflow triggers | settings/workflow-triggers/ | MP-2-10
-  telemetry | Telemetry | settings/telemetry/ | MP-2-10
-  cal | Cal | settings/cal/ | MP-2-10
+  ?keys | Keys | settings/keys/ | MP-2-10
+  ?access | Access | settings/access/ | MP-2-10
+  ?emails | Emails | settings/emails/ | MP-2-10
+  ?workflow-triggers | Workflow triggers | settings/workflow-triggers/ | MP-2-10
+  ?telemetry | Telemetry | settings/telemetry/ | MP-2-10
+  ?cal | Cal | settings/cal/ | MP-2-10
 clients | Overview
   brief | Brief | | MP-10-2 | /agency/brief/
   weekly-report | Weekly report | reports/weekly/ | MP-10-9 | /client-portal/reports/weekly-report/
@@ -154,10 +167,19 @@ for (const line of TABLE.split('\n').filter((each) => each.trim() !== '')) {
   const open = drafts.at(-1);
   if (!line.startsWith(' ') || open === undefined) {
     const namespace = key as Namespace;
-    drafts.push({ namespace, id: '', label, path: ROOTS[namespace], pages: [] });
+    drafts.push({
+      namespace,
+      id: '',
+      label,
+      path: ROOTS[namespace],
+      pages: [],
+      tabs: [],
+      navigable: false,
+    });
     continue;
   }
-  const id = key.replace(/^~/u, '');
+  const id = key.replace(/^[~?]/u, '');
+  const designed = !key.startsWith('?');
   const path = below.startsWith('@')
     ? ROUTES[below.slice(1) as RouteId].path
     : `${ROOTS[open.namespace]}${below}`;
@@ -170,9 +192,14 @@ for (const line of TABLE.split('\n').filter((each) => each.trim() !== '')) {
     path,
     ticket,
     legacy,
+    designed,
   };
   parsed.push(page);
-  if (section !== 'utility') open.pages.push(page);
+  if (section === 'utility') continue;
+  open.pages.push(page);
+  if (!designed) continue;
+  open.tabs.push(page);
+  open.navigable = true;
 }
 
 /** The rail, in order, per namespace. */
@@ -248,29 +275,3 @@ export const crossingDeclared = (from: Namespace, href: string): boolean =>
   CROSS_FACE.some(
     ([at, to, path]) => at === from && to === namespaceOf(href) && fits(path, href) !== false,
   );
-
-/** A mockup source address: never drawn, linked or stored. */
-export const isLegacy = (address: string): boolean =>
-  /^\/(?:agency|client-portal)\//u.test(address);
-
-/**
- * The canonical address for a known legacy one, else null: the hash picks the
- * tab, `?client=` the client (none goes to the client list), and the canonical
- * address then passes the same grant check as any other.
- */
-export function canonicalOf(address: string): string | null {
-  const url = new URL(address, 'http://address.invalid');
-  const path = url.pathname.replace(/\/?$/u, '/');
-  const client = url.searchParams.get('client');
-  const task = url.searchParams.get('task');
-  if (path === '/agency/task/')
-    return task === null ? null : pathTo('agency:task-detail', { key: task });
-  const sources = PAGES.filter((page) => page.legacy !== '' && page.legacy.split('#')[0] === path);
-  const chosen =
-    sources.find((page) => url.hash !== '' && page.legacy.endsWith(url.hash)) ??
-    sources.find((page) => !page.legacy.includes('#')) ??
-    sources[0];
-  if (chosen === undefined) return null;
-  if (!chosen.path.includes(':client')) return chosen.path;
-  return client === null ? '/clients/' : fill(chosen.path, encodeURIComponent(client));
-}

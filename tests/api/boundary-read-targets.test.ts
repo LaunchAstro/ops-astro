@@ -47,6 +47,7 @@ const TARGET_FREE: readonly (readonly [CommandName, Record<string, unknown>])[] 
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'boundary', fields: [] }],
   ['settings.read', {}],
   ['session.capabilities', {}],
+  ['task.search', { query: 'boundary' }],
 ];
 
 describe.skipIf(serverUrl === undefined)('read targets at the request boundary', () => {

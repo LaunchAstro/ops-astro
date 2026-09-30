@@ -31,6 +31,7 @@ import type {
   BreachNoticesResult,
   ClientListResult,
   CapabilitiesResult,
+  SessionPersonResult,
   OperationsReadResult,
   PersonListResult,
   TeamListResult,
@@ -40,6 +41,7 @@ import type {
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
+  TaskSearchResult,
   TaskLedgerResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
@@ -75,6 +77,8 @@ export interface ReadOperands {
    */
   readonly 'task.ledger': { readonly before: string | null; readonly timeZone: string };
   readonly 'person.list': NoOperands;
+  /** The words to find among the tasks the caller may read (C1). */
+  readonly 'task.search': { readonly query: string };
   readonly 'team.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
@@ -117,6 +121,10 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /** Who is signed in: the caller's own name (C23). It takes no grant either. */
+  readonly 'session.person': NoOperands;
+  /** The caller's own saved preferences (MP-2-11a). */
+  readonly 'preference.read': NoOperands;
   /** Who may do what here: Team, Clients and Agents with their previews (C32). */
   readonly 'access.read': NoOperands;
   readonly 'client.list': NoOperands;
@@ -146,6 +154,7 @@ export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
   | SharedTaskRead
   | TaskBoardResult
+  | TaskSearchResult
   | TaskLedgerResult
   | PersonListResult
   | TeamListResult
@@ -155,6 +164,8 @@ export type ReadResult =
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
+  | SessionPersonResult
+  | { readonly ok: true; readonly preferences: Readonly<Record<string, unknown>> }
   | AccessReadResult
   | ClientListResult
   | OperationsReadResult

@@ -25,6 +25,7 @@
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
 import type { PrivacyRequest } from './requests-privacy.ts';
+import type { SelfRequest } from './requests-self.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -285,7 +286,8 @@ export type CommandRequest =
       readonly attemptId: unknown;
       readonly amountMinor: unknown;
       readonly reason: unknown;
-    } & Envelope);
+    } & Envelope)
+  | SelfRequest<Envelope>;
 
 /**
  * The part of a request the register compares, which is everything except the

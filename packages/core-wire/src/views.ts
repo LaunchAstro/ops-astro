@@ -444,6 +444,19 @@ export interface PresetPlanResult {
   readonly plan: PresetPlan;
 }
 
+/** One task a search found: enough to list it and to open it. */
+export interface SearchHit {
+  readonly id: string;
+  readonly key: string;
+  readonly title: string | null;
+}
+
+/** `task.search`'s answer. No match in scope is `[]`, and there is no count. */
+export interface TaskSearchResult {
+  readonly ok: true;
+  readonly hits: readonly SearchHit[];
+}
+
 export interface SettingsReadResult {
   readonly ok: true;
   readonly settings: readonly SettingView[];
@@ -511,6 +524,16 @@ export interface ReceiptResult {
         }
       | { readonly state: string; readonly heldMinor: number };
   };
+}
+
+/**
+ * Who is signed in (C23): the caller's own name, for the person menu, and
+ * nothing else about anybody. No identifier: the menu needs none, and an answer
+ * that carries only a name cannot carry someone else's.
+ */
+export interface SessionPersonResult {
+  readonly ok: true;
+  readonly person: { readonly name: string };
 }
 
 /** One permission in effect: an action on a collection, over the scope it reaches. */

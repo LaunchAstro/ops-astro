@@ -924,12 +924,15 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.ledger`                      | `readLedger` (`reads/ledger.ts`)                                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `task.queue`                       | `readQueue` (`reads/queue.ts`)                                                            | served before a pickup (`BEFORE_PICKUP`, `serve`)                                               |
 | `person.list`                      | `listPeople` (`reads/people.ts`)                                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.search`                      | `searchTasks` (`reads/search.ts`)                                                         | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `team.list`                        | `listTeam` (`reads/people.ts`)                                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `preset.plan`                      | `planPresetSync` (`records/preset-plan.ts`)                                               | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `settings.read`                    | `readSettings` (`reads/settings.ts`)                                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `session.capabilities`             | `readCapabilities` (`reads/capabilities.ts`)                                              | served under a live delegation (`authorise`, `capabilitiesOf`)                                  |
 | `settings.set_four_eyes_threshold` | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `settings.set_client_sign_off`     | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `session.person`                   | `readOwnName` (`reads/people.ts`)                                                         | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `session.end`                      | `endOwnSession` (`commands/session-end.ts`)                                               | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `settings.set_money_step_up`       | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 
 "Served under a live delegation" means an agent call with no credential is
@@ -1261,9 +1264,9 @@ it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
 
 ## Reads
 
-`task.read`, `task.board`, `task.queue`, `task.ledger`, `person.list`, `team.list`,
-`preset.plan`, `settings.read`, `session.capabilities` and `access.read` are declared in
-`COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
+`task.read`, `task.board`, `task.queue`, `task.ledger`, `task.search`, `person.list`,
+`team.list`, `preset.plan`, `settings.read`, `session.capabilities` and `access.read` are
+declared in `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
 ```ts
@@ -1316,11 +1319,26 @@ case (g) carries the rows. The server declares the two answers as
 (`packages/core-wire/src/views.ts`), and the web imports that type
 rather than keeping a copy; the two are told apart by the key.
 
-| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                       | Refusals it can answer                                                                                  |
-| ---------------------- | ----------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                 | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                             |
-| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                      | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
-| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords }` (`clientRecords`: every client `{ clientId, name }`): each person `{ personId, name, permissions: [{ collection, action, scope }] }`, each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403     |
+| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                       | Refusals it can answer                                                                                     |
+| ---------------------- | ----------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                 | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                                |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                      | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401    |
+| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords }` (`clientRecords`: every client `{ clientId, name }`): each person `{ personId, name, permissions: [{ collection, action, scope }] }`, each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403        |
+| `session.person`       | `/session/person`       | `{}`; it takes no fields | `{ ok: true, person: { name } }`, the caller's own name                                                                                                                                                                                                      | `FIELD_NOT_WRITABLE` 422, `COMMAND_BODY_INVALID` 400, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
+
+`session.person` and the command `session.end` are the person menu's (C23).
+Neither asks the grant model: `session.person` answers anyone signed in with
+their own name, a member holding no grant and a client outside the business
+included, and `session.end` is `account:write` on the caller's own account,
+which every signed-in person holds and nobody holds on another's
+(`authorisedOn: 'self'`, `packages/core-wire/src/surface.ts`). Neither takes an
+identifier, so a body naming a person, an actor or an account is refused rather
+than read. `session.end` takes only `operationId`, answers
+`{ recordId: null, detail: { ended: 'sign-out' } }`, and writes nothing but its
+audit event, `session.end` on the business's chain naming the actor; the
+browser ends the credential itself at the identity provider, with
+`logout?scope=local`, so the person's other sessions stay signed in. Neither is
+an agent's.
 
 `settings.read` takes `read` on `settings` while the two settings commands take
 `manage` on the same collection. The asymmetry is deliberate. A setting is a
@@ -1415,9 +1433,9 @@ lived in the client and the server looked fine. The attempted values go to
 the audit row's `attempted` column and never to the response.
 
 **A read takes only its own identifier.** `task.read` takes `recordId` and
-`task.board` takes `board`; `task.queue`, `task.ledger`, `person.list`, `team.list`,
-`preset.plan`, `settings.read`, `session.capabilities` and `access.read` take none. Any other
-identifier field, a `recordId` on those eight included, is `COMMAND_BODY_INVALID` 400 naming
+`task.board` takes `board`; `task.queue`, `task.ledger`, `task.search`, `person.list`,
+`team.list`, `preset.plan`, `settings.read`, `session.capabilities` and `access.read` take
+none. Any other identifier field, a `recordId` on those nine included, is `COMMAND_BODY_INVALID` 400 naming
 it, audited, and the same answer for an own, a foreign and a fabricated id
 (the row's `identifiers` in `READ_CATALOGUE`, `reads/catalogue.ts`, checked in
 `serveRead` after the system fields, `reads/dispatch.ts`).
@@ -1432,8 +1450,30 @@ successful and refused alike (I13). Its `operation_id` is null: a read has
 nothing to replay. A read of one task carries that task as the subject, which
 is what makes "who looked at this" answerable. The task's own `history`
 excludes the reads, because a history is what happened _to_ the task.
-`settings.read` and `session.capabilities` carry a null subject: neither is
-about one record, and naming one would make "who read this record" false.
+`settings.read`, `session.capabilities` and `task.search` carry a null
+subject: none is about one record, and naming one would make "who read this
+record" false.
+
+**`task.search` puts the caller's scope in the statement that finds
+candidates** (ticket C1). The body is `{ query }`: up to 200 characters with at
+least one word of letters or digits in them, else `FIELD_VALUE_INVALID` 422
+naming `query`. The first eight words reach the index, each as a prefix, all of
+them required; nothing else of the query reaches `to_tsquery`. `heldScopes`
+(`authority/grants.ts`) asks the grant model's own live expression which
+`task:read` scopes the caller holds. The statement is handed the whole business
+or the named records, and never reads a task outside them into the process.
+The answer is `{ ok: true, hits: [{ id, key, title }] }`, at most 20, with no
+count; `[]` means nothing in scope matched. A member holding no `task:read` is
+refused `SCOPE_NOT_GRANTED` 403, never answered with an empty list. An external
+party is refused `SCOPE_NOT_GRANTED` too, before anything is read: the portal
+has no search until a client search is designed. `searchTasks`
+(`reads/search.ts`) is the one function every caller of the index uses.
+`tests/reads/search.test.ts` holds it.
+
+One pair is the exception: a person's own preferences are saved and read
+without an audit event (CS-2.8, MP-2-11a). A successful `preference.save` or
+`preference.read` writes none, and a refused one is audited like any other.
+The surface row's `audited: false` says so; nothing else skips the chain.
 
 ## Open items
 

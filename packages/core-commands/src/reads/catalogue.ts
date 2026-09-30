@@ -18,6 +18,7 @@ import {
   clientsReached,
   planPresetSync,
   isUuid,
+  readPreferences,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import { readAlerts, readOutages } from '../../../core-runtime/src/index.ts';
@@ -37,12 +38,13 @@ import {
   readTaskDetail,
   resolveTaskId,
 } from './tasks.ts';
-import { listPeople, listTeam, readAccess } from './people.ts';
+import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
+import { searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
@@ -84,8 +86,11 @@ interface RowBase<K extends ReadName> {
    * action, at the subject's record scope or the business's. A function: the
    * collection it names instead. `holds-any-grant`: no collection is asked;
    * the read refuses a caller holding nothing (see `session.capabilities`).
+   * `self`: no grant is asked; the answer is about the caller alone and names
+   * nobody else (`session.person`).
    */
-  readonly authority: 'declared' | 'holds-any-grant' | ((operands: ReadOperands[K]) => string);
+  readonly authority:
+    'declared' | 'holds-any-grant' | 'self' | ((operands: ReadOperands[K]) => string);
   /**
    * Whether an external party refused by the grant check is told `NOT_FOUND`
    * rather than `SCOPE_NOT_GRANTED` (minimum contract 8.2 case 7: "Sibling
@@ -163,6 +168,9 @@ function parsed<T>(operands: T): { readonly ok: true; readonly operands: T } {
 
 const NONE = (): { readonly ok: true; readonly operands: Readonly<Record<never, never>> } =>
   parsed({});
+
+/** The longest query a search takes, which is longer than anything typed into ⌘K. */
+const QUERY_LENGTH = 200;
 
 /**
  * A zone name as the zone database spells one: letters, digits and `_+-`, in
@@ -264,6 +272,21 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       }
       return { ok: true, tasks: await readBoard(tx, spine.taskTypeId, operands.board) };
     },
+  },
+  // The grant is asked by the search, not here: a record-scoped reader is
+  // refused a business-scope check and still may search what they hold, so the
+  // scopes they hold are what the statement is handed (`reads/search.ts`).
+  'task.search': {
+    identifiers: [],
+    parse: ({ query }) =>
+      typeof query === 'string' && query.length <= QUERY_LENGTH && wordsOf(query).length > 0
+        ? parsed({ query })
+        : rejected('query', `Send query as up to ${QUERY_LENGTH} characters with a word in them.`),
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, operands, { spine }) =>
+      await searchTasks(tx, session, { taskTypeId: spine.taskTypeId, query: operands.query }),
   },
   // No subject record, for the reason `task.queue` gives: the ledger is about
   // every task the business has, and naming one would make "who read this
@@ -453,6 +476,34 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: true,
     serve: serveReceipt,
   },
+  // The person menu's name (C23). Answered to anyone signed in, a member with
+  // no grant and a client outside the business included, because it is only
+  // ever their own: the statement reads the caller's own person row and takes
+  // no operand that could name another.
+  'session.person': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'self',
+    outsiderNotFound: false,
+    serve: async (tx, session) => ({
+      ok: true,
+      person: { name: await readOwnName(tx, session.personId) },
+    }),
+  },
+  // The caller's own preferences (MP-2-11a): the query names the caller, so
+  // nothing else is reachable. A caller holding no live grant is refused.
+  'preference.read': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'self',
+    outsiderNotFound: false,
+    serve: async (tx, session) =>
+      (await holdsAnyGrant(tx, session))
+        ? { ok: true, preferences: await readPreferences(tx, session.personId) }
+        : NO_GRANT_AT_ALL,
+  },
   // Every person's authority, so it asks the key that changes it: `manage` on
   // `access`, which no agent holds. No subject record, as for `task.queue`.
   'access.read': {
@@ -504,6 +555,10 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     serve: async (tx, _session, operands) => await readBreachNotices(tx, operands),
   },
 };
+
+async function holdsAnyGrant(tx: TenantQuery, session: Session): Promise<boolean> {
+  return (await readCapabilities(tx, session)).grants.length > 0;
+}
 
 /** Whether `id` names a live task in the caller's business: `task.move`'s own check. */
 async function liveTask(tx: TenantQuery, taskTypeId: string, id: string): Promise<boolean> {

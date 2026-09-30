@@ -29,15 +29,18 @@ const PINNED_SHAPE = {
   'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'operations.read': { spine: false, subject: false, authority: 'declared' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
+  'preference.read': { spine: false, subject: false, authority: 'self' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
   'privacy.draft_breach_notices': { spine: false, subject: false, authority: 'declared' },
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'session.person': { spine: false, subject: false, authority: 'self' },
   'settings.read': { spine: false, subject: false, authority: 'declared' },
   'task.board': { spine: true, subject: false, authority: 'declared' },
   'task.execution': { spine: true, subject: true, authority: 'declared' },
   'task.queue': { spine: false, subject: false, authority: 'declared' },
   'task.read': { spine: true, subject: true, authority: 'declared' },
   'task.receipt': { spine: true, subject: true, authority: 'declared' },
+  'task.search': { spine: true, subject: false, authority: 'holds-any-grant' },
   'task.ledger': { spine: true, subject: false, authority: 'declared' },
   'team.list': { spine: false, subject: false, authority: 'declared' },
 };
@@ -47,9 +50,11 @@ const PINNED_IDENTIFIERS = {
   'client.list': [],
   'operations.read': [],
   'person.list': [],
+  'preference.read': [],
   'preset.plan': [],
   'privacy.draft_breach_notices': [],
   'session.capabilities': [],
+  'session.person': [],
   'settings.read': [],
   'task.board': ['board'],
   'task.execution': ['recordId'],
@@ -57,6 +62,7 @@ const PINNED_IDENTIFIERS = {
   'task.queue': [],
   'task.read': ['recordId'],
   'task.receipt': ['attemptId'],
+  'task.search': [],
   'team.list': [],
 };
 
@@ -93,6 +99,11 @@ const BOARD = {
   code: 'FIELD_VALUE_INVALID',
   names: ['board'],
   fixes: ['Send board as a board task’s identifier, or null for tasks on no board.'],
+};
+const QUERY = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['query'],
+  fixes: ['Send query as up to 200 characters with a word in them.'],
 };
 const plan = (name: string) => ({
   code: 'FIELD_VALUE_INVALID',
@@ -160,6 +171,9 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'person.list': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
+  'session.person': BODIES.map(() => null),
+  'preference.read': BODIES.map(() => null),
+  'task.search': BODIES.map(() => QUERY),
   'access.read': BODIES.map(() => null),
   'operations.read': BODIES.map(() => null),
   'privacy.draft_breach_notices': BODIES.map(() => INCIDENT_ID),
@@ -175,7 +189,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same fifteen reads', () => {
+  it('names the same eighteen reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

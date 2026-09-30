@@ -48,6 +48,14 @@ function recorder(handler: string) {
   };
 }
 
+vi.mock('../../packages/core-commands/src/commands/session-end.ts', async (original) => ({
+  ...(await original<object>()),
+  endOwnSession: recorder('endOwnSession'),
+}));
+vi.mock('../../packages/core-commands/src/commands/preference-save.ts', async (original) => ({
+  ...(await original<object>()),
+  saveOwnPreference: recorder('saveOwnPreference'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-write.ts', async (original) => ({
   ...(await original<object>()),
   createTask: recorder('createTask'),
@@ -182,6 +190,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'credential.issue': [],
   'credential.revoke': ['credentialId'],
   'grant.revoke': [],
+  'preference.save': [],
+  'session.end': [],
   'legal.approve_version': ['versionId'],
   'legal.draft_version': [],
   'legal.publish_version': ['versionId'],
@@ -223,12 +233,16 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'legal.publish_version',
   'operations.read',
   'person.list',
+  'preference.read',
+  'preference.save',
   'preset.plan',
   'privacy.draft_breach_notices',
   'privacy.record_incident',
   'privacy.set_data_class',
   'privacy.set_overseas_service',
   'session.capabilities',
+  'session.end',
+  'session.person',
   'settings.read',
   'settings.set_client_sign_off',
   'settings.set_four_eyes_threshold',
@@ -250,6 +264,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.receipt',
   'task.restart',
   'task.restore',
+  'task.search',
   'team.list',
 ];
 
@@ -409,6 +424,8 @@ const REQUESTS: readonly CommandRequest[] = [
     amountMinor: 0,
     reason: 'why',
   },
+  { command: 'session.end', operationId: 'op' },
+  { command: 'preference.save', operationId: 'op', preference: 'appearance', value: 'dark' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -474,6 +491,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'session.end': ['endOwnSession', 'request'],
+  'preference.save': ['saveOwnPreference', 'appearance', 'dark'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -513,7 +532,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same forty-six from an expected revision', () => {
+  it('exempts the same fifty-two from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

@@ -41,6 +41,12 @@ export const READ_NAMES = [
   'task.execution',
   // What an observed effect came from (T2c2); the task page draws it in T2g.
   'task.receipt',
+  // Search over what the caller may read (C1); the ⌘K surface is C1b's.
+  'task.search',
+  // Who is signed in, for the person menu (C23).
+  'session.person',
+  // The caller's own preferences (MP-2-11a); MP-2-11 draws them.
+  'preference.read',
   // The activity ledger (MP-8-4), a read from the day it was declared.
   'task.ledger',
   // Settings ▸ Access (C32), under `access:manage` on the server.

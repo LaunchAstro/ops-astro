@@ -137,6 +137,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // T3e2: the journey drops nothing, so one report and one of its runs.
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
+  // Nothing in the journey saves a preference (MP-2-11a adds the command).
+  'public.person_preferences': `insert into public.person_preferences
+       (business_id, person_id, key, value)
+     select business_id, id, 'appearance', '"dark"'::jsonb from public.people
+      where business_id = $1 order by id limit 1 returning 1`,
   // 0043: set by a person in the Team panel (MP-7-10), which the journey never opens.
   'public.person_availability': `insert into public.person_availability
        (business_id, person_id, state, reason)

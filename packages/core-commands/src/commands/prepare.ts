@@ -59,7 +59,9 @@ export const REVISION_FIXES: readonly string[] = [
 ];
 
 /** The one write an external party (R4) may reach, and then only in the client audience. */
-const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment']);
+// Signing out is the other: it writes nothing about the business, only the
+// record that this person's session ended (C23), and a client signs out too.
+const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment', 'session.end']);
 
 const EXTERNAL_FIXES: readonly string[] = [
   'A person without a membership may read what was shared with them and nothing more.',
@@ -547,6 +549,8 @@ const SCOPE_OF: Readonly<
     return firstScope(tx, request, own === undefined ? [] : [own]);
   },
   claim: (tx, request) => firstScope(tx, request, CLAIM_LOOKUPS),
+  // Never asked: `self` takes no grant row (see `prepareCommand`).
+  self: () => Promise.resolve(BUSINESS),
 };
 
 /** Everything the handler needs first, or the refusal that stops it. */
@@ -581,13 +585,18 @@ export async function prepareCommand(
   if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
-  const authorised = await checkAuthority(tx, subjectsOf(session), {
-    // From the declaration, never written in here: see `CommandDeclaration`.
-    collection: declaration.collection,
-    action: declaration.action,
-    scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
-  });
-  if (!authorised.ok) return refused(authorised.refusal);
+  // `self` is the caller's own account, which every signed-in person may write
+  // and nobody may name: the grant model holds no row for it, and the command
+  // takes no identifier, which `refuseIrrelevantTarget` above has held.
+  if (declaration.authorisedOn !== 'self') {
+    const authorised = await checkAuthority(tx, subjectsOf(session), {
+      // From the declaration, never written in here: see `CommandDeclaration`.
+      collection: declaration.collection,
+      action: declaration.action,
+      scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
+    });
+    if (!authorised.ok) return refused(authorised.refusal);
+  }
   // The one step-up (C59), inside the grant check and straight after it: only
   // a key in the money set is asked, so a caller without the grant is told
   // that first, and nothing after this line runs on a stale sign-in.

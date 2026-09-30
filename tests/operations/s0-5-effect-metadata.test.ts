@@ -153,6 +153,8 @@ async function runFaults(declaration: CommandDeclaration): Promise<string[]> {
 const NO_CHANGE: Readonly<Record<string, string>> = {
   'task.purge':
     'a fresh trash is inside the retention window; the purge is tests/commands/purge-retention.test.ts',
+  'session.end':
+    'a sign-out writes only its audit event; the browser ends the credential (tests/commands/c23-session-end.test.ts)',
 };
 
 describe.skipIf(serverUrl === undefined)('S0-5 gate coverage: the effect metadata, proved', () => {
