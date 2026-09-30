@@ -77,16 +77,47 @@
   gap: var(--s-2);
 }
 
+/* The create form wears the mockup's quick-add field (`.cbd__field`, layer 4)
+   and its secondary sm button, in one row above the board. */
 .projects__create {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   gap: var(--s-3);
 }
 
-.projects__create .field {
-  flex: 1 1 18rem;
-  margin-block-end: 0;
+.projects__create .cbd__field {
+  flex: 0 1 31rem;
+}
+
+.projects__create > p {
+  flex: 1 0 100%;
+  margin: 0;
+}
+
+/* The inbox minimum (INB-1) is a flush list card: the head keeps the card's
+   padding and the rows (the kit's page rows) run to its edges. A state that
+   is not a list (loading, empty, refused) sits inside the card's padding. */
+.inbox > .readstate {
+  padding: 0 var(--s-5) var(--s-5);
+}
+
+.inbox > .readstate[data-outcome='ready'] {
+  padding: 0;
+}
+
+.inbox__list {
+  margin: 0;
+  padding: 0;
+}
+
+.inbox__task {
+  color: inherit;
+  text-decoration: none;
+}
+
+.inbox__task:hover {
+  text-decoration: underline;
 }
 
 .topbar__who {
@@ -104,7 +135,7 @@
     align-items: stretch;
   }
 
-  .projects__create .field {
+  .projects__create .cbd__field {
     flex: 1 1 auto;
   }
 }

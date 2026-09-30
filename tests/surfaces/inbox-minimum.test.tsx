@@ -55,6 +55,9 @@ describe('INB-1g the inbox inside Tasks', () => {
       '2',
     );
     expect(view.all('[data-inbox-item]')).toHaveLength(2);
+    // B3: a flush card of the kit's look, its title in the head, the items as the kit's list rows.
+    expect(view.all('section.card.card--flush.inbox > .card__head #inbox-heading')).toHaveLength(1);
+    expect(view.all('.inbox__list > li.lrow[data-inbox-item]')).toHaveLength(2);
     expect(view.text()).toContain('You were mentioned');
     expect(view.text()).toContain('Assigned to you');
     expect(api.posted.map((p) => p.path)).toEqual(

@@ -233,6 +233,14 @@
       "ruling": "DS-COMP-28"
     },
     {
+      "selector": ".cbd__chip",
+      "ruling": "DS-COMP-17"
+    },
+    {
+      "selector": ".tl__due.is-bad",
+      "ruling": "DS-COMP-17"
+    },
+    {
       "selector": ".tph__n",
       "ruling": "DR-6"
     }

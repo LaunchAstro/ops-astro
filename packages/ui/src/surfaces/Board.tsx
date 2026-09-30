@@ -15,7 +15,7 @@
 // filters that are on, because "board default and filtered" is one of the
 // captures the visual acceptance set requires.
 
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { Empty } from '../primitives/Absence.tsx';
 import { Spill } from '../primitives/Status.tsx';
 import type { DrawnState } from '../state/project.ts';
@@ -112,14 +112,21 @@ export function Board(props: BoardProps): ReactElement {
           <table className="table cbd__tbl">
             <colgroup>
               {columns.map((column) => (
-                <col key={column.key} style={{ width: `${column.pct.toFixed(4)}%` }} />
+                <col
+                  key={column.key}
+                  data-hide-below={column.hideBelow ?? undefined}
+                  style={{ width: `${column.pct.toFixed(4)}%` }}
+                />
               ))}
             </colgroup>
             <thead>
               <tr>
                 {columns.map((column) => (
                   <th key={column.key} data-hide-below={column.hideBelow ?? undefined}>
-                    <span className="cbd__thl">{column.label}</span>
+                    {/* The rank head is the mockup's icon-only tight column: the word is for a reader. */}
+                    <span className={column.key === 'rank' ? 'visually-hidden' : 'cbd__thl'}>
+                      {column.label}
+                    </span>
                   </th>
                 ))}
               </tr>
@@ -129,7 +136,7 @@ export function Board(props: BoardProps): ReactElement {
                 const rows = props.rows.filter((row) => row.group === group);
                 if (rows.length === 0) return [];
                 return [
-                  <tr className="cbd__grp" key={`group-${group}`}>
+                  <tr className="cbd__grp" key={`group-${group}`} data-grp={group}>
                     <td colSpan={columns.length}>
                       <span className="cbd__grpb">{group}</span>
                     </td>
@@ -141,6 +148,9 @@ export function Board(props: BoardProps): ReactElement {
           </table>
         </div>
       )}
+      <p className="cbd__read">
+        {props.rows.length === 1 ? '1 task' : `${String(props.rows.length)} tasks`}
+      </p>
     </div>
   );
 }
@@ -151,7 +161,7 @@ function Row(props: { readonly row: BoardRow }): ReactElement {
     <tr data-taskrow={row.id}>
       <td>
         {row.rank === null ? (
-          <span className="cbd__dim" title="Not ranked yet — it is in the review queue">
+          <span className="cbd__rank" title="Not ranked yet: it is in the review queue">
             —
           </span>
         ) : (
@@ -171,7 +181,7 @@ function Row(props: { readonly row: BoardRow }): ReactElement {
           <span className="cbd__dim">Unassigned</span>
         ) : (
           <div className="cbd__name">
-            <span className="cbd__av" aria-hidden="true">
+            <span className="av av--person" aria-hidden="true" title={row.assignee}>
               {initials(row.assignee)}
             </span>
             <span className="cbd__nm">{row.assignee}</span>
@@ -181,15 +191,26 @@ function Row(props: { readonly row: BoardRow }): ReactElement {
       <td>
         <Due row={row} />
       </td>
-      <td data-hide-below={900}>{row.stage ?? <span className="cbd__dim">—</span>}</td>
+      <td data-hide-below={900}>
+        {row.stage === null ? <span className="cbd__dim">—</span> : <Chip>{row.stage}</Chip>}
+      </td>
       <td>
-        <Spill state={row.state} />
+        <Chip>
+          <Spill state={row.state} />
+        </Chip>
       </td>
       <td data-hide-below={1280}>{row.estimate ?? <span className="cbd__dim">—</span>}</td>
       <td data-hide-below={1280}>{row.actual ?? <span className="cbd__dim">—</span>}</td>
     </tr>
   );
 }
+
+/** The board's cell chip (stage, state): an outline tag that ellipses in a narrow column. */
+const Chip = (props: { readonly children: ReactNode }): ReactElement => (
+  <span className="cbd__chips">
+    <span className="cbd__chip">{props.children}</span>
+  </span>
+);
 
 function Due(props: { readonly row: BoardRow }): ReactElement {
   const { due, dueLabel } = props.row;

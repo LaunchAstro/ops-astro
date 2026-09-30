@@ -210,6 +210,13 @@
 .lrow__lead:empty {
   display: none;
 }
+/* A row with no lead slot gives the lead's column (and its gap) to the main one. */
+.lrow:not(:has(> .lrow__lead)) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.lrow:not(:has(> .lrow__lead)) > * {
+  grid-column: auto;
+}
 .lrow__main {
   display: grid;
   min-width: 0;
