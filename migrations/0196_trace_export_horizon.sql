@@ -1,8 +1,8 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0196 the trace export reads below the transaction horizon (AW-13).
+-- 0047 the trace export reads below the transaction horizon (AW-13).
 --
--- 0195's cursor ordered events by (created_at, id), and created_at is the
+-- 0046's cursor ordered events by (created_at, id), and created_at is the
 -- writing transaction's start. A transaction that started first and
 -- committed last left its event behind a cursor that had already moved past
 -- it: never exported and never a gap.

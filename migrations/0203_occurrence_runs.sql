@@ -15,7 +15,7 @@
 --   origin_approved_by_actor_id  the person whose standing approval carried
 --                                it, named on the run as the audit event's
 --                                digest names them. The version is the run's
---                                definition pin (0192).
+--                                definition pin (0043).
 --
 -- A run is exactly one of a plan's run (lineage and version, no origin) or an
 -- occurrence's run (an origin, no lineage or version).
@@ -23,7 +23,7 @@
 -- Only the occurrence role writes an origin. `ops_astro_occurrence` holds
 -- insert on runs, a read of a task's revision (for 0032's trigger) and the
 -- tenancy policy's business, and nothing else; the application's group may take it for one statement (SET)
--- and never inherits it, as 0191 does for the broker. The trigger below
+-- and never inherits it, as 0042 does for the broker. The trigger below
 -- refuses an origin written by any other role, and any change to an origin
 -- after the insert, so a run cannot be moved onto or off an occurrence.
 --

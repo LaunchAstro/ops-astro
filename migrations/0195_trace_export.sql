@@ -1,12 +1,12 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0195 the diagnostic trace export (AW-13). The exporter reads `run_events`
+-- 0046 the diagnostic trace export (AW-13). The exporter reads `run_events`
 -- by a cursor of its own, outside the execution path, and sends a
 -- content-free copy of each event to a trace target. Nothing here is read by
 -- a run, and nothing a run writes waits on it: the durable record is the
 -- buffer, and a stopped, killed or failing exporter only falls behind.
 --
--- * The copy is registered in the copy register (0191) before it is first
+-- * The copy is registered in the copy register (0042) before it is first
 --   materialised, as class `diagnostic_trace`, keyed by the run, retained as
 --   a trace (30 days, AW-13's retention line).
 -- * `trace_export_cursors`: one row per business, the last event delivered,

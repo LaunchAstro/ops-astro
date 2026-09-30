@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
 -- AW-05: the answers at the budget stop. A run waiting for budget
--- (0193) leaves the wait only by a person's answer to its latest ask
+-- (0044) leaves the wait only by a person's answer to its latest ask
 -- (`core-runtime/src/budget-answer.ts`):
 --
 --   budget_approvals  one row per person approving a top-up of one ask: the

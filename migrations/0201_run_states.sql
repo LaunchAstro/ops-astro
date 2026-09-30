@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0201 a run's state: its current knowledge and unknowns (MP-6-2, CS-16.4).
+-- 0052 a run's state: its current knowledge and unknowns (MP-6-2, CS-16.4).
 --
 -- Each revision is a version, kept with the actor who revised it (`run:write`,
 -- a person or an agent inside its delegation) and never rewritten, so the

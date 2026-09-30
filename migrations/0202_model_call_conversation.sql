@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0202 a model call from a person's own conversation (AW-01's conversation
+-- 0053 a model call from a person's own conversation (AW-01's conversation
 -- seam, ORCH35 option a). SL11's 0048, numbered after SL12's 0052 where the
 -- two stack (ORCH38); the batch 3 join sets the final numbers.
 --

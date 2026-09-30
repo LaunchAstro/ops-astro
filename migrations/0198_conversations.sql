@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0198 the conversation outlives its body (AW-03).
+-- 0049 the conversation outlives its body (AW-03).
 --
 -- Three records. A conversation: its owner, its scope and subject, when it
 -- was last active and when its body was purged. Its messages: the body,
