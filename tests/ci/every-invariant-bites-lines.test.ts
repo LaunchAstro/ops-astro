@@ -68,7 +68,7 @@ describe('every_invariant_bites: a revert fails by its declared crossing', () =>
 });
 
 describe('every_invariant_bites: UNPROVEN is exactly the known list', () => {
-  it('holds T2b (#191) and T2f (#192), and only them, as UNPROVEN, never a pass', () => {
+  it("holds exactly the catalogue's known parts, T2b and T2f, as UNPROVEN, never a pass", () => {
     const known = PARTS.filter((one) => one.knownUnproven !== undefined);
     expect(known.map((one) => `${one.id} ${String(one.knownUnproven)}`)).toEqual([
       'T2b #191',
