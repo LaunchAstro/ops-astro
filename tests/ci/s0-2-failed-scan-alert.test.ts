@@ -39,7 +39,9 @@ it('a scanner that cannot start raises the failed-scan alert', async () => {
     const scan = await run(process.execPath, [resolve('scripts/secrets-scan.mjs')], {
       ...process.env,
       PATH: `${bin}:${process.env['PATH'] ?? ''}`,
-      OPS_ERROR_SINK_DSN: `http://fakekey@127.0.0.1:${port}/9`,
+      OPS_ERROR_SINK_DSN: 'https://fakekey@example.test/9',
+      NODE_OPTIONS: `--import=${resolve('tests/support/sink-at-loopback.mjs')}`,
+      TEST_SINK_PORT: String(port),
       OPS_ENVIRONMENT: 'staging',
     });
     expect(scan.code).toBe(1);

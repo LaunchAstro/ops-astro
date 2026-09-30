@@ -58,9 +58,15 @@ STANDARD.add('URIError').add('EvalError').add('AggregateError');
 const FRAME = /^\s*at (?:.+? \()?(.+?):(\d+):\d+\)?$/u;
 const RELEASE = /^[0-9a-f]{12}(?:-dirty)?$/u;
 
-function base(level: SinkEvent['level'], alert: AlertKind, where: Where, release?: string) {
+function base(
+  level: SinkEvent['level'],
+  alert: AlertKind,
+  where: Where,
+  release?: string,
+  id: string = randomUUID().replaceAll('-', ''),
+) {
   const stamped = release !== undefined && RELEASE.test(release) ? { release } : {};
-  const event = { event_id: randomUUID().replaceAll('-', ''), timestamp: Date.now() / 1000 };
+  const event = { event_id: id, timestamp: Date.now() / 1000 };
   return {
     ...event,
     platform: 'node' as const,
@@ -143,18 +149,17 @@ export function errorEvent(cause: unknown, place: Place): SinkEvent {
   };
 }
 
-type Stored = {
-  readonly release?: unknown;
-  readonly exception?: { readonly values?: unknown };
-};
+type Stored = { readonly exception?: { readonly values?: unknown } };
 
 /**
  * An error row of the outbox (0047), rebuilt for the sink as `errorEvent`
  * builds one: a standard class, the fixed words and the frames that name a
  * file of this checkout, no more. A row is written by the application group,
- * so whatever else it holds (a message, a tag, a custom class) is not sent.
+ * so whatever else it holds (a message, a tag, a custom class, a release) is
+ * not sent: the release is the forwarder's own stamp, and `id` the caller's,
+ * fixed by the row so a retried send is the same event.
  */
-export function rebuiltError(stored: unknown, place: Place): SinkEvent {
+export function rebuiltError(stored: unknown, place: Place, id?: string): SinkEvent {
   const event: Stored = typeof stored === 'object' && stored !== null ? stored : {};
   const values = event.exception?.values;
   const thrown = (Array.isArray(values) ? values[0] : undefined) as
@@ -174,10 +179,9 @@ export function rebuiltError(stored: unknown, place: Place): SinkEvent {
       ? [{ filename, lineno, in_app: true }]
       : [];
   });
-  const release = typeof event.release === 'string' ? event.release : undefined;
   const value = plainAlert('app-error', place.where).text;
   return {
-    ...base('error', 'app-error', place.where, release),
+    ...base('error', 'app-error', place.where, place.release, id),
     exception: { values: [{ type, value, stacktrace: { frames } }] },
   };
 }
@@ -187,18 +191,28 @@ export function alertEvent(kind: AlertKind, where: Where, release?: string): Sin
   return { ...base('warning', kind, where, release), message };
 }
 
-const NOT_A_DSN = 'OPS_ERROR_SINK_DSN is not a DSN (https://<key>@<host>/<project>).';
+// What a watcher or a sink off the machine cannot be: loopback, private, shared,
+// link-local (the metadata address), IPv6 literals and local names. URL has
+// already normalised case and numeric forms (2130706433 and 0x7f.0.0.1 read as
+// 127.0.0.1).
+export const UNREACHABLE: RegExp =
+  /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|169\.254\.|0\.|\[)|(^|\.)(localhost|local|internal|lan)\.?$/u;
+
+const NOT_A_DSN =
+  'OPS_ERROR_SINK_DSN is not a DSN at a public https address (https://<key>@<host>/<project>).';
 
 /**
  * The sink's store endpoint, from its DSN. The key travels in the auth header
- * only; a malformed DSN is refused by the setting's name, never echoed.
+ * only, over https, to a public address, and never after a redirect; a
+ * malformed or private DSN is refused by the setting's name, never echoed.
  */
 export function dsnTransport(dsn: string, fetcher: typeof fetch = fetch): Transport {
   const url = URL.parse(dsn);
   const project = url?.pathname.replaceAll('/', '') ?? '';
   if (
     url === null ||
-    !/^https?:$/u.test(url.protocol) ||
+    url.protocol !== 'https:' ||
+    UNREACHABLE.test(url.hostname) ||
     url.username === '' ||
     !/^\d+$/u.test(project)
   ) {
@@ -211,6 +225,7 @@ export function dsnTransport(dsn: string, fetcher: typeof fetch = fetch): Transp
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-sentry-auth': auth },
       body: JSON.stringify(event),
+      redirect: 'manual',
       // A hung sink is a sink that is down: give up, the watcher reports it.
       signal: AbortSignal.timeout(10_000),
     });

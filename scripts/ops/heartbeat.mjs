@@ -11,11 +11,11 @@
 // a GET to a public https address, with no redirect followed, a 10-second
 // limit and its answer's body discarded.
 
-// What a watcher off the machine cannot reach: loopback, private, shared, link-local
-// (the metadata address), IPv6 literals and local names. URL has already
-// normalised case and numeric forms (2130706433 and 0x7f.0.0.1 read as 127.0.0.1).
-export const UNREACHABLE =
-  /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|169\.254\.|0\.|\[)|(^|\.)(localhost|local|internal|lan)\.?$/u;
+// What a watcher off the machine cannot reach, the sink's own rule
+// (`apps/api/alerts/sink.ts`).
+import { UNREACHABLE } from '../../apps/api/alerts/sink.ts';
+
+export { UNREACHABLE };
 
 /** One ping to `address`; the outcome in a word, never the address. */
 export async function ping(address, get = fetch) {

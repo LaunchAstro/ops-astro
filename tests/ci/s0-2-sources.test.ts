@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const SCANNER = resolve('scripts/secrets-scan.mjs');
 const received: Record<string, unknown>[] = [];
 let dsn = '';
+let port = '';
 const server = createServer((request: IncomingMessage, response) => {
   let body = '';
   request.on('data', (chunk: Buffer) => (body += chunk.toString()));
@@ -31,7 +32,8 @@ beforeAll(async () => {
   await new Promise<void>((done) => {
     server.listen(0, '127.0.0.1', done);
   });
-  dsn = `http://fakekey@127.0.0.1:${(server.address() as AddressInfo).port}/9`;
+  dsn = 'https://fakekey@example.test/9';
+  port = String((server.address() as AddressInfo).port);
 });
 afterAll(async () => {
   await new Promise((done) => {
@@ -53,7 +55,16 @@ async function scan(dir: string, env: Record<string, string>) {
       execFile(
         command,
         args,
-        { cwd: dir, env: { PATH: process.env['PATH'] ?? '', ...env }, timeout: 60_000 },
+        {
+          cwd: dir,
+          env: {
+            PATH: process.env['PATH'] ?? '',
+            ...env,
+            NODE_OPTIONS: `--import=${resolve('tests/support/sink-at-loopback.mjs')}`,
+            TEST_SINK_PORT: port,
+          },
+          timeout: 60_000,
+        },
         (error, stdout, stderr) => {
           done({ code: error === null ? 0 : Number(error.code ?? 1), out: stdout + stderr });
         },

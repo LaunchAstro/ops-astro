@@ -190,10 +190,14 @@ function testAlertReachesCases2() {
       server.listen(0, '127.0.0.1', resolve);
     });
     const { port } = server.address() as AddressInfo;
-    const dsn = `http://fakekey@127.0.0.1:${port}/5`;
+    const dsn = 'https://fakekey@example.test/5';
+    const route = {
+      NODE_OPTIONS: `--import=${new URL('../support/sink-at-loopback.mjs', import.meta.url).pathname}`,
+      TEST_SINK_PORT: String(port),
+    };
     try {
       // Check first, then act: a refused run sends nothing to the sink.
-      const refused = { OPS_ERROR_SINK_DSN: dsn };
+      const refused = { OPS_ERROR_SINK_DSN: dsn, ...route };
       for (const where of ['', 'prod']) {
         expect(run(['test'], { ...refused, OPS_ENVIRONMENT: where }).status).toBe(1);
       }
@@ -204,6 +208,7 @@ function testAlertReachesCases2() {
         PATH: process.env['PATH'] ?? '',
         OPS_ERROR_SINK_DSN: dsn,
         OPS_ENVIRONMENT: 'staging',
+        ...route,
       };
       const { stdout, stderr } = await promisify(execFile)(process.execPath, [SCRIPT, 'test'], {
         env,
