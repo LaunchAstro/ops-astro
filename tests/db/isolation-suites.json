@@ -57,6 +57,7 @@
     "tests/commands/inbox-clearing-client-isolation.test.ts",
     "tests/reads/inbox-named.test.ts",
     "tests/api/inb1f-live-board.test.ts",
-    "tests/api/c4-notifications-live.test.ts"
+    "tests/api/c4-notifications-live.test.ts",
+    "tests/reads/mp-7-3-client-groups.test.ts"
   ]
 }
