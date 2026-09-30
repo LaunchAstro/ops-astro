@@ -330,10 +330,12 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
         [tx.businessId, hiddenItem, bea],
       );
     });
-    // Closed and about a task Ada cannot read: not returned at all, so neither
-    // the item nor the decider it names reaches her.
+    // Closed and about a task Ada cannot read: withheld, and the decider it
+    // names does not reach her.
     const read = await inAlpha(async (tx) => await readInboxItems(tx, ada));
-    expect(read.find((item) => item.id === hiddenItem)).toBeUndefined();
+    const withheld = read.find((item) => item.id === hiddenItem);
+    expect(withheld?.access).toBe('withheld');
+    expect(withheld).not.toHaveProperty('closedByPersonId');
     expect(JSON.stringify(read)).not.toContain(bea);
     expect(JSON.stringify(read)).not.toContain(taskB);
   });
@@ -424,11 +426,13 @@ describe.skipIf(serverUrl === undefined)('INB-1 three records', () => {
         [tx.businessId, onOther, bea],
       );
     });
-    // Closed and withheld, it is not returned at all: the history page is
-    // taken over what Cleo reads. The canaries, the other task's id and its
-    // reviewer's id, appear nowhere in the read.
+    // Closed, it is still withheld, and redacted the same way. The canaries,
+    // the other task's id and its reviewer's id, appear nowhere in the read.
     const read = await inAlpha(async (tx) => await readInboxItems(tx, cleo));
-    expect(read.find((item) => item.id === onOther)).toBeUndefined();
+    expect(read.find((item) => item.id === onOther)?.access).toBe('withheld');
+    expect(Object.keys(read.find((item) => item.id === onOther) ?? {}).toSorted()).toStrictEqual(
+      Object.keys(withheld ?? {}).toSorted(),
+    );
     expect(read.find((item) => item.id === onShared)?.access).toBe('readable');
     expect(JSON.stringify(read)).not.toContain(taskB);
     expect(JSON.stringify(read)).not.toContain(bea);
