@@ -30,3 +30,8 @@ export async function ping(address, get = fetch) {
     return 'failed';
   }
 }
+
+/** Whether the error sink behind `dsn` answers its health page (stub). */
+export async function sinkAnswers() {
+  return false;
+}

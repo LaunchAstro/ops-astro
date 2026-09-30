@@ -46,6 +46,7 @@ it('S0-2 heartbeats: the worker and its forwarder are one unit, and the stop nam
     'OPS_ERROR_SINK_DSN',
     'OPS_FORWARDER_HEARTBEAT_URL',
     'OPS_RELEASE',
+    'OPS_SINK_HEARTBEAT_URL',
   ]);
   expect(forwarder?.environment?.['OPS_ENVIRONMENT']).toBe('staging');
   expect(worker?.['command']).toEqual(['node', 'apps/worker/main.ts']);

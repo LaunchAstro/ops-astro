@@ -17,6 +17,7 @@ const heartbeat = async () =>
     MODULE
   )) as {
     ping: (address: string | undefined, get?: typeof fetch) => Promise<string>;
+    sinkAnswers: (dsn: string, get?: typeof fetch) => Promise<boolean>;
   };
 
 const TOKEN = 'made-up-heartbeat-path';
@@ -37,6 +38,7 @@ function answering(status: number) {
 describe('S0-3 heartbeat', () => {
   heartbeatCases1();
   heartbeatCases2();
+  sinkCases();
 });
 
 function heartbeatCases1() {
@@ -110,5 +112,29 @@ function heartbeatCases2() {
     }
     expect(title).toMatch(/restore/iu);
     expect(text.split('\n')).toHaveLength(3);
+  });
+}
+
+// S0-2 heartbeats: the error sink reports by heartbeat, sent from the machine
+// (re-plan section 7, item 10). Its forwarder pings the sink's heartbeat only
+// when the sink's own health page answers; the key in the DSN is never sent.
+function sinkCases() {
+  const DSN = 'https://made-up-sink-key@example.test/3';
+
+  it('the error sink answers only when its health page does, asked without its key', async () => {
+    const { sinkAnswers } = await heartbeat();
+    const { get, asked } = answering(200);
+    expect(await sinkAnswers(DSN, get)).toBe(true);
+    expect(asked.map((a) => a.url)).toEqual(['https://example.test/_health/']);
+    expect(asked[0]?.init?.redirect).toBe('manual');
+    expect(asked[0]?.init?.signal).toBeInstanceOf(AbortSignal);
+    for (const status of [302, 500]) {
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await sinkAnswers(DSN, answering(status).get), String(status)).toBe(false);
+    }
+    const thrown = (async () => {
+      throw new Error('connect ECONNREFUSED');
+    }) as typeof fetch;
+    expect(await sinkAnswers(DSN, thrown)).toBe(false);
   });
 }
