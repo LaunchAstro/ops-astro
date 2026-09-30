@@ -464,8 +464,9 @@
 }
 .sb__gate-note {
   margin-inline-start: auto;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   color: var(--text-muted);
   white-space: nowrap;
 }
