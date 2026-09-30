@@ -148,6 +148,8 @@ export function createPositiveBody(
         return { body: {} };
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
+      case 'definition.attribution':
+        return { body: { digest: 'a'.repeat(64) } };
       case 'settings.set_four_eyes_threshold':
         return { body: { value: 1200 } };
       case 'settings.set_client_sign_off':

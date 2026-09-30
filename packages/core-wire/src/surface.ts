@@ -68,6 +68,9 @@ export type CommandName =
   | 'task.execution'
   // The gate engine's pending decisions a person may make (MP-6-1).
   | 'gate.pending'
+  // AW-04: which runs read an instruction file, by digest, and what they
+  // reached: a pre-review projection, the team's only.
+  | 'definition.attribution'
   | 'person.list'
   // The preset planner. It reads the model and writes nothing at all, so it is
   // a read by the only definition this table has; what makes it unlike the
@@ -549,6 +552,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // `decide` on tasks (`gate:decide`), asked per row inside the query, so a
   // record-scoped decider sees its own records' gates (`reads/awaiting-review.ts`).
   read('gate.pending', TASK_COLLECTION, { action: 'decide' }),
+  // `read` on tasks, asked per run inside the query, so a record-scoped reader
+  // sees its own tasks' runs (`reads/attribution.ts`). No agent route.
+  read('definition.attribution', TASK_COLLECTION),
   read('person.list', 'person'),
   // `preset` is what this route is about; the grant it takes is `manage` on
   // the family the request names, which `reads/dispatch.ts` reads off the

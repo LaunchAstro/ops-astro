@@ -797,6 +797,17 @@ call every table and function as `ops_astro_worker`, beside the application
 login, the application group and an outsider, at the full schema and at every
 migration prefix ([DATA.md](DATA.md#what-the-tenancy-proofs-are)).
 
+## Attribution by digest (AW-04)
+
+`definition.attribution` asks `read` on tasks the way `gate.pending` asks
+`decide`: the door takes any grant, and the statement that reads the runs
+keeps only those whose task the caller's `read` covers (`coveredScopes`), so a
+record-scoped member sees its own tasks' runs and no other's. It is the team's,
+as the queue's alerts and outages are: a client, a contractor and anyone
+holding no `read` on tasks get `SCOPE_NOT_GRANTED`, never an empty list. An
+agent has no route to it (`DELEGATION_EXCLUDES_OPERATION`). Every row is
+labelled pre-review; see [API.md](API.md).
+
 ## What is not here
 
 This file is the model modules. What calls them is elsewhere, and on this head
