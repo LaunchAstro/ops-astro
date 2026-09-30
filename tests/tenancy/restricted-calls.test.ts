@@ -155,6 +155,12 @@ const UNREACHED: Readonly<Record<string, string>> = {
             coalesce((select id from public.people where business_id = $1 order by id limit 1),
                      gen_random_uuid())
      returning 1`,
+  // AW-13: nothing starts the exporter on the journey.
+  'public.trace_export_cursors': `insert into public.trace_export_cursors (business_id)
+     values ($1) returning 1`,
+  'public.trace_export_gaps': `insert into public.trace_export_gaps
+       (business_id, id, code, events)
+     values ($1, gen_random_uuid(), 'target_unreachable', 1) returning 1`,
   'public.bootstrap_bytes': `insert into public.bootstrap_bytes
        (business_id, content_digest, content_size, bytes)
      values ($1, encode(sha256('seed'::bytea), 'hex'), 4, 'seed'::bytea) returning 1`,

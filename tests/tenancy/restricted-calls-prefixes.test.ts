@@ -153,6 +153,9 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     kind: 'end',
     first_person_id: randomUUID(),
   },
+  // AW-13: nothing starts the exporter on the journey.
+  'public.trace_export_cursors': {},
+  'public.trace_export_gaps': { code: 'target_unreachable', events: 1 },
   'public.bootstrap_bytes': {
     content_digest: SEED_DIGEST,
     content_size: 4,

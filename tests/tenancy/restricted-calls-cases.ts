@@ -38,6 +38,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'budget_asks'],
   // AW-05: an answer and its approvals are never rewritten.
   ['si', 'budget_answers budget_approvals'],
+  // AW-13: the export's cursor moves; its gaps are facts and never rewritten.
+  ['siu', 'trace_export_cursors'],
+  ['si', 'trace_export_gaps'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
   // AW-02: a historical run is never rewritten; the application moves its
