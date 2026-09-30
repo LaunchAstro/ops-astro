@@ -116,7 +116,8 @@
     "MP-4-7 (SL08) names task-writing and task-writing-agent over writing-support: the description and the agent brief through task.update under task:write (agent_brief a text field of its own, unslotted, generic, internal, in 0045); each change and its refusal join the audit chain as task.update with the field named in the result the register stored; a caller without task:write refused, nothing written; an agent writes the two texts on its own delegated task and reads the brief back, and is refused any other field and any other task; and the crossings: another business (not found, never written, words never shown), another client's task under a record grant.",
     "MP-4-8 field-edit step (SL08) names task-panel-fields and task-panel-fields-agent over panel-fields-world: the panel's rename and due date through task.update (task:write) and its assignee through task.assign (task:assign), each refused whole to a caller without the key; the audit readback (applied edits by the actor on the task, a refusal with no subject); a read records only who looked (I13) and adds no change or history; a rename read back on the task and its board row; and the three crossings (another business not found with no canary, another client's task refused to a record-scoped editor, another person's task refused to an agent under a live delegation).",
     "MP-4-12 (SL08) names task-page-link and task-page-link-agent over panel-fields-world: the page link as the task's own page_link, set, re-pointed and cleared through task.update (task:write), refused whole to a reader, joining the audit chain as task.update; only an in-product path and hash is stored (a scheme, another host, a backslash, a control character, a relative or empty address refused FIELD_VALUE_INVALID with nothing stored); and the three crossings (another business not found with no canary, another client's task refused to a record-scoped editor, an agent under a live delegation linking neither its task nor another's).",
-    "MP-4-14 (SL08) names task-corrections-isolation and task-corrections-agent: the finished task the corrections draw is read through task.read only, and its three crossings (another business's finished task not found with no canary, another client's refused to a record-scoped reader, another person's refused to an agent under a live delegation)."
+    "MP-4-14 (SL08) names task-corrections-isolation and task-corrections-agent: the finished task the corrections draw is read through task.read only, and its three crossings (another business's finished task not found with no canary, another client's refused to a record-scoped reader, another person's refused to an agent under a live delegation).",
+    "MP-4-8 agent reach (SL08) names task-assign-agent over agent-fixture: an agent sets its own task's assignee through task.assign only under a delegation holding assign (a pickup's read, comment and write refused DELEGATION_OUT_OF_PURPOSE), the delegate refused to it by name with nothing written, and another person's task refused under the live delegation with no canary and the assignee unchanged."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -336,7 +337,8 @@
     "tests/commands/task-page-link.test.ts",
     "tests/commands/task-page-link-agent.test.ts",
     "tests/commands/task-corrections-isolation.test.ts",
-    "tests/commands/task-corrections-agent.test.ts"
+    "tests/commands/task-corrections-agent.test.ts",
+    "tests/commands/task-assign-agent.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

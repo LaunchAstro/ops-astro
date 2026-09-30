@@ -31,6 +31,7 @@
     "tests/commands/task-page-link.test.ts",
     "tests/commands/task-page-link-agent.test.ts",
     "tests/commands/task-corrections-isolation.test.ts",
-    "tests/commands/task-corrections-agent.test.ts"
+    "tests/commands/task-corrections-agent.test.ts",
+    "tests/commands/task-assign-agent.test.ts"
   ]
 }
