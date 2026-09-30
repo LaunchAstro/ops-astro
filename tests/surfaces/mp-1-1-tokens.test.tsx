@@ -13,7 +13,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, describe, expect, it } from 'vitest';
+import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
 import { captureBuiltPages, madeUpSession, serveApp } from '../visual/app-pages.ts';
 import { comparePng } from '../visual/compare.ts';
 import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
@@ -219,6 +221,42 @@ describe('MP-1-1 tokens', () => {
     expect(
       SHEETS.flatMap((sheet) => lightOnly(sets, sheet.slice(root.length), read(sheet))),
     ).toEqual([]);
+  });
+});
+
+describe('MP-1-1 tokens', () => {
+  it('MP-1-1 dock callout edge', () => {
+    const sets = resolved();
+    const shell = read(`${styles}3-shell.css`).replaceAll(/\/\*[\s\S]*?\*\//gu, '');
+    const rule = /\.dock__tablabel\s*\{([^}]*)\}/u.exec(shell)?.[1] ?? '';
+    const ground = /background:\s*var\((--[\w-]+)\)/u.exec(rule)?.[1] ?? '';
+    const edge = /border:\s*1px solid var\((--[\w-]+)\)/u.exec(rule)?.[1] ?? '';
+    expect(ground, 'the callout has a token ground').not.toBe('');
+    expect(edge, 'the callout has a 1px token edge').not.toBe('');
+    const dark = sets.dark;
+    expect(dark[edge], 'the edge differs from the callout ground in dark').not.toBe(dark[ground]);
+    expect(dark[edge], 'the edge differs from the page ground in dark').not.toBe(dark['--bg']);
+    expect(dark[edge]).not.toBe('transparent');
+
+    // Every dock tab carries its callout, hidden from the accessible name.
+    const html = renderToStaticMarkup(
+      <Shell
+        face="agency"
+        rail={[]}
+        here="/"
+        title="Board"
+        dock={[
+          { id: 'assistant', label: 'Assistant', open: false },
+          { id: 'clients', label: 'Clients', open: true },
+        ]}
+        onDockTab={() => {}}
+        seated={false}
+      >
+        <p>content</p>
+      </Shell>,
+    );
+    expect(html).toContain('<span class="dock__tablabel" aria-hidden="true">Assistant</span>');
+    expect(html).toContain('<span class="dock__tablabel" aria-hidden="true">Clients</span>');
   });
 });
 
