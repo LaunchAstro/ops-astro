@@ -6,7 +6,6 @@
 // a migrated database, custody's real process and the fake provider on
 // loopback. No case reaches a real network.
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, it as vitestIt } from 'vitest';
@@ -21,8 +20,6 @@ import { attemptsOf, itemFor, MAIL, masked, noDatabase, useEmailWorld, w } from 
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 const ROOT = resolve(import.meta.dirname, '../..');
-/** A module that can open a connection: a network import, a global fetch, or a mail or HTTP client. */
-const OPENS = String.raw`from 'node:(https?|net|tls|dgram|http2)'|(^|[^.\w])fetch\(|undici|nodemailer|axios`;
 
 useEmailWorld();
 
@@ -119,43 +116,14 @@ it('AW-07b egress: a send outside the broker is refused', async () => {
   }
   expect(w.provider.received.length).toBe(before);
 
-  // The egress proof: no server-side product module opens a connection but
-  // custody's egress. The loopback stand-ins only listen; the sign-in key set
-  // and the command line's own client reach the product's own services.
-  const listed = execFileSync(
-    'git',
-    [
-      'grep',
-      '--untracked',
-      '-lE',
-      OPENS,
-      '--',
-      'packages',
-      'apps/api',
-      'apps/worker',
-      'apps/cli',
-      'apps/forwarder',
-    ],
-    { cwd: ROOT, encoding: 'utf8' },
-  )
-    .trim()
-    .split('\n')
-    .filter((file) => !file.startsWith('packages/') || /^packages\/[^/]+\/src\//u.test(file))
-    .toSorted();
-  expect(listed).toEqual([
-    'apps/api/auth/jwks.ts',
-    'apps/cli/client.ts',
-    'packages/core-connectors/src/email-fake.ts',
-    'packages/core-connectors/src/replay.ts',
-    'packages/core-custody/src/egress.ts',
-  ]);
-  for (const stand of ['email-fake.ts', 'replay.ts']) {
-    const source = readFileSync(resolve(ROOT, 'packages/core-connectors/src', stand), 'utf8');
-    expect(source).not.toMatch(/\brequest as|\bhttp\.request|\bget as|(^|[^.\w])fetch\(/u);
-  }
-  for (const client of ['apps/api/auth/jwks.ts', 'apps/cli/client.ts']) {
-    expect(readFileSync(resolve(ROOT, client), 'utf8')).not.toMatch(/resend|\/emails|smtp/iu);
-  }
+  // The egress proof is AW-01 egress 10's closed list of network sites
+  // (tests/custody/aw-01-egress.test.ts): a module that could send mail
+  // outside custody is a new entry there. The adapter holds no network
+  // primitive at all, and the fake provider only listens.
+  const source = (file: string): string =>
+    readFileSync(resolve(ROOT, 'packages/core-connectors/src', file), 'utf8');
+  expect(source('email.ts')).not.toMatch(/['"`]node:|(?<![\w$.])fetch\s*\(|request\(/u);
+  expect(source('email-fake.ts')).not.toMatch(/\brequest as|\.request\(|\bget as|fetch\s*\(/u);
 });
 
 it('AW-07b isolation (send): another client, another business and another person are never mailed', async () => {
