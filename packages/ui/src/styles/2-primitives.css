@@ -473,33 +473,6 @@
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
 }
-/* DS-PRIM-32: sample data only. The edge is inset so the mark never moves
-   layout, and a marked region inside another keeps only its edge. */
-.is-mock {
-  position: relative;
-  background: var(--mock-tint);
-  box-shadow: inset 0 0 0 1px var(--mock-edge);
-}
-.is-mock--nested,
-.is-mock .is-mock {
-  background: none;
-}
-.mocktag {
-  padding: 0 0.3rem;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
-}
-/* The one shared mock label: the region's top-right corner, taking no layout. */
-.is-mock > .mocktag {
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 1;
-  background: var(--bg);
-}
 /* DS-PRIM-33: one accent ring pulse where a link landed. */
 .flash-target {
   animation: locate-flash var(--dur-flash) var(--ease) 1;
