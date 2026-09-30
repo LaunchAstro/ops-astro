@@ -39,7 +39,7 @@ describe('every_invariant_bites: a part’s declared dependents', () => {
         .join('\n')
         .split('\n')
         .filter((line) => line.startsWith('+'));
-      for (const { part: id, reaches, why } of part.dependents ?? []) {
+      for (const { part: id, reaches, via, why } of part.dependents ?? []) {
         const dependent = PARTS.find((one) => one.id === id && one.planted === undefined);
         expect(dependent !== undefined && id !== part.id, `${part.id} declares ${id}`).toBe(true);
         expect(why.length, `${part.id} ${id} says why`).toBeGreaterThan(0);
@@ -48,7 +48,14 @@ describe('every_invariant_bites: a part’s declared dependents', () => {
           `${part.id} added ${reaches}`,
         ).toBe(true);
         const suite = suiteOf(dependent?.files ?? []);
-        expect(suite.includes(reaches), `${id}'s suite reaches ${reaches}`).toBe(true);
+        // Through a process the suite starts: it names the entry file, which names the symbol.
+        if (via !== undefined) {
+          expect(suite.includes(via), `${id}'s suite starts ${via}`).toBe(true);
+          const entry = readFileSync(resolve(ROOT, via), 'utf8');
+          expect(entry.includes(reaches), `${via} reaches ${reaches}`).toBe(true);
+        } else {
+          expect(suite.includes(reaches), `${id}'s suite reaches ${reaches}`).toBe(true);
+        }
       }
     }
   });

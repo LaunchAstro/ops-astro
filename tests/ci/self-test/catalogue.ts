@@ -45,6 +45,8 @@ export interface Part {
   readonly dependents?: readonly {
     readonly part: string;
     readonly reaches: string;
+    /** The product entry file the dependent's suite runs as a process, when it reaches the symbol that way. */
+    readonly via?: string;
     readonly why: string;
   }[];
 }
