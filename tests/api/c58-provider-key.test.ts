@@ -6,17 +6,26 @@
 // service bearer signed with the local key, as the seed tools make it. With
 // neither, nothing is sent and the steps stay owed. Sign-in never reads it.
 
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { sign } from 'hono/jwt';
+import { sign, verify } from 'hono/jwt';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { composeApi, providerAdminKey } from '../../apps/api/server.ts';
 import { TEST_KEY_SET_URL, staticKeySet } from '../support/sign-in.ts';
+
+const ROOT = join(import.meta.dirname, '..', '..');
+
+/** A token's header, decoded. */
+const headerOf = (token: string): Readonly<Record<string, unknown>> =>
+  JSON.parse(Buffer.from(token.split('.')[0] ?? '', 'base64url').toString()) as Record<
+    string,
+    unknown
+  >;
 
 /** One ES256 key as auth-up.sh keeps it in `.local/auth-signing-key.json`. */
 async function localSigningKeys(): Promise<readonly Readonly<Record<string, unknown>>[]> {
@@ -124,7 +133,7 @@ describe('C58 provider credential: where the key comes from', () => {
     rmSync(local, { recursive: true, force: true });
   });
 
-  it('C58 provider credential: SUPABASE_SERVICE_KEY when set, for any issuer', async () => {
+  it('C58 provider credential: SUPABASE_SERVICE_KEY when set, for a hosted issuer', async () => {
     const key = providerAdminKey(
       { SUPABASE_SERVICE_KEY: 'the-service-key', GOTRUE_URL: 'https://abc.supabase.co/auth/v1' },
       local,
@@ -132,19 +141,17 @@ describe('C58 provider credential: where the key comes from', () => {
     expect(await key?.()).toBe('the-service-key');
   });
 
-  it('C58 provider credential: unset on a loopback issuer, a five-minute service bearer from the local key, minted per call', async () => {
-    writeFileSync(join(local, 'auth-signing-key.json'), JSON.stringify(await localSigningKeys()));
-    const key = providerAdminKey({ GOTRUE_URL: 'http://127.0.0.1:54391' }, local);
-    const token = await key?.();
-    const [, payload = ''] = String(token).split('.');
-    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString()) as Record<
-      string,
-      unknown
-    >;
-    expect(claims['role']).toBe('service_role');
-    expect(Number(claims['exp']) - Number(claims['iat'])).toBe(300);
+  it('C58 provider credential: the service key is never sent in clear text to a non-loopback issuer', () => {
+    const settings = { SUPABASE_SERVICE_KEY: `service-key-${randomUUID()}` };
+    for (const address of ['http://auth.example.test/auth/v1', 'http://127.0.0.1.example.test']) {
+      expect(providerAdminKey({ ...settings, GOTRUE_URL: address }, local), address).toBe(
+        undefined,
+      );
+    }
+    expect(
+      providerAdminKey({ ...settings, GOTRUE_URL: 'http://127.0.0.1:54391' }, local),
+    ).toBeDefined();
   });
-
   it('C58 provider credential: unset on a hosted issuer, or with no local key, there is none', () => {
     expect(providerAdminKey({ GOTRUE_URL: 'https://abc.supabase.co/auth/v1' }, local)).toBe(
       undefined,
@@ -155,5 +162,40 @@ describe('C58 provider credential: where the key comes from', () => {
     } finally {
       rmSync(empty, { recursive: true, force: true });
     }
+  });
+});
+
+describe('C58 provider credential: the held note', () => {
+  it('C58 provider credential: the held note says an unban would revive the old sessions, so restoring access is a new login', () => {
+    for (const file of ['apps/api/auth/logins.ts', 'docs/local/API.md']) {
+      const text = readFileSync(join(ROOT, file), 'utf8').replaceAll(/\s+/gu, ' ');
+      expect(text, file).not.toMatch(/An unban never restores those sessions/u);
+      expect(text, file).toMatch(/unban\b[^.]*\b(revive|would restore)/iu);
+    }
+  });
+});
+
+describe('C58 provider credential: the local mint', () => {
+  const local = mkdtempSync(join(tmpdir(), 'c58-mint-'));
+  afterAll(() => {
+    rmSync(local, { recursive: true, force: true });
+  });
+
+  it('C58 provider credential: unset on a loopback issuer, a five-minute service bearer from the local key, minted per call', async () => {
+    const file = join(local, 'auth-signing-key.json');
+    const first = await localSigningKeys();
+    writeFileSync(file, JSON.stringify(first));
+    const key = providerAdminKey({ GOTRUE_URL: 'http://127.0.0.1:54391' }, local);
+    const token = String(await key?.());
+    // Signed by the local key, named by its kid (GoTrue picks the key by it).
+    const { d: _private, ...publicHalf } = first[0] ?? {};
+    const claims = await verify(token, publicHalf as JsonWebKey, 'ES256');
+    expect(headerOf(token)['kid']).toBe(first[0]?.['kid']);
+    expect(claims['role']).toBe('service_role');
+    expect(Number(claims['exp']) - Number(claims['iat'])).toBe(300);
+    // Per call: a key made since is the one the next call signs with.
+    const second = await localSigningKeys();
+    writeFileSync(file, JSON.stringify(second));
+    expect(headerOf(String(await key?.()))['kid']).toBe(second[0]?.['kid']);
   });
 });
