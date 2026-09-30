@@ -20,7 +20,8 @@
         "tests/api/live-board-scoped-revocation-review.test.ts",
         "tests/api/live-board-client-move-review.test.ts",
         "tests/api/live-board-revoked-during-rejoin-review.test.ts",
-        "tests/api/live-task-admitted-during-close-review.test.ts"
+        "tests/api/live-task-admitted-during-close-review.test.ts",
+        "tests/api/live-board-revoked-after-final-read-review.test.ts"
       ],
       "rules": {
         "no-await-in-loop": "off",
