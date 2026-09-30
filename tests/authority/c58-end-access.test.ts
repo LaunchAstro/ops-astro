@@ -19,6 +19,7 @@
 // nothing; Bea is bravo's, holding `access:manage` there. Each case enrols the
 // person it ends. Every name below is made up.
 
+import { loginLiveElsewhere } from '../../packages/core-records/src/index.ts';
 import { describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { createGoTrueLogins } from '../../apps/api/auth/logins.ts';
@@ -140,7 +141,11 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
 
     const alpha = harness.world.alpha;
     const again = async () =>
-      await settleAccessEndings(harness.world.db.app, alpha, provider, { claimSeconds: 0 });
+      await settleAccessEndings(harness.world.db.app, alpha, provider, {
+        claimSeconds: 0,
+        sharedElsewhere: async (subject) =>
+          await loginLiveElsewhere(harness.world.db.admin, subject, alpha),
+      });
     // The server's own pass: it finds alpha by its owed ending and settles it
     // under alpha's tenancy. The provider fails again, so the step stays owed.
     await retryAccessEndings(harness.world.db.admin, harness.world.db.app, provider, 0);

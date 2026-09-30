@@ -47,6 +47,7 @@ import {
   connectAsAdmin,
   connectListener,
   connectSessionEnds,
+  loginLiveElsewhere,
   isBusinessId,
   KEY_FILE_VARIABLE,
   readEnvFile,
@@ -312,6 +313,8 @@ export function composeApi(config: ApiConfig): ComposedApi {
       factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
       ...(config.sessionEnds === undefined ? {} : { sessionEnds: config.sessionEnds }),
       logins,
+      sharedLogin: async (subject, businessId) =>
+        await loginLiveElsewhere(admin, subject, businessId),
       // C34: tracing where switched on; the watcher and error sink are C29's.
       health:
         config.tracingUrl === undefined
@@ -407,12 +410,11 @@ export async function retryAccessEndings(
   let owed = 0;
   for (const row of rows) {
     if (!isBusinessId(row.business_id)) continue;
-    const settle = settleAccessEndings(
-      database,
-      row.business_id,
-      logins,
-      claimSeconds === undefined ? {} : { claimSeconds },
-    );
+    const business = row.business_id;
+    const settle = settleAccessEndings(database, business, logins, {
+      sharedElsewhere: async (subject) => await loginLiveElsewhere(admin, subject, business),
+      ...(claimSeconds === undefined ? {} : { claimSeconds }),
+    });
     // eslint-disable-next-line no-await-in-loop -- one business at a time, each under its own tenancy
     owed += (await settle).owed;
   }

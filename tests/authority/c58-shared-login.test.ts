@@ -35,7 +35,7 @@ import { grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 useEndAccessWorld();
 
 describe.skipIf(serverUrl === undefined)('C58 interim review: the ban and other businesses', () => {
-  it('Sol proof, criterion data separation: ending access in alpha never bans a provider login still live in bravo', async () => {
+  it('C58 isolation: ending access in alpha never bans a provider login still live in bravo', async () => {
     const { calls, provider } = scripted();
     const api = apiWith(provider);
     const { person } = await teammate('dual');

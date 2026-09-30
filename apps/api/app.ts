@@ -182,6 +182,12 @@ export interface ApiOptions {
    * commits. Absent, they stay owed for the server's retry.
    */
   readonly logins?: LoginProvider;
+  /**
+   * Whether an ended login's subject is still live in another business, on the
+   * owner's connection (`loginLiveElsewhere`, ORCH46 ruling A). Without it the
+   * act's provider steps are left to the retry.
+   */
+  readonly sharedLogin?: (subject: string, businessId: string) => Promise<boolean>;
   readonly live?: LiveOptions;
   /**
    * The security detections (ticket S0-2): each answer's outcome, as a signal
@@ -389,10 +395,12 @@ export function createApi(options: ApiOptions): Hono {
     if (isCommandRefusal(result)) return refuse(context, result);
     // C58: the provider steps an ending owes are tried as soon as it commits,
     // outside its transaction; what fails stays owed for the server's retry.
-    if (name === 'access.end' && options.logins !== undefined) {
+    const { logins, sharedLogin } = options;
+    if (name === 'access.end' && logins !== undefined && sharedLogin !== undefined) {
       const only = endingIdsOf(result);
+      const sharedElsewhere = async (subject: string) => await sharedLogin(subject, businessId);
       if (only.length > 0) {
-        await settleAccessEndings(options.database, businessId, options.logins, { only });
+        await settleAccessEndings(options.database, businessId, logins, { only, sharedElsewhere });
       }
     }
     return context.json({ ...result }, 200);

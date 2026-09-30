@@ -259,6 +259,7 @@ export {
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
 export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';
+export { loginLiveElsewhere } from './identity/shared-login.ts';
 export {
   connectSessionEnds,
   END_PROVIDER_SESSIONS,

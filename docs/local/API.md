@@ -1784,7 +1784,12 @@ call that ends a user's sessions, and it refuses a banned user's every refresh
 and sign-in, so the ban is the session end (ORCH46). What access token is left
 runs out within the hour and is refused here from the commit. GoTrue keeps a
 banned user's sessions and refresh tokens, so an unban would revive them:
-restoring access is a new login, never an unban (ORCH46). The calls carry the
+restoring access is a new login, never an unban (ORCH46). A provider user is
+one person's across every business, while a login is one business's: while the
+subject still has a live login in another business (mapped, its access not
+ended there), both steps are stamped done with the reason `shared` and nothing
+is sent, so ending access here never ends it there; the business that ends it
+last bans (`loginLiveElsewhere`, on the owner's connection, answers yes or no). The calls carry the
 admin key, `SUPABASE_SERVICE_KEY` (hosted, the project's service key; with none
 set on a local stack, a five-minute `service_role` bearer signed with the local
 auth key, minted per call); with neither, nothing is sent and both steps stay

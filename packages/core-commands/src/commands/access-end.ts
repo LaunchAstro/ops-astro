@@ -146,10 +146,16 @@ export async function settleAccessEndings(
   businessId: BusinessId,
   provider: LoginProvider,
   options: {
+    /**
+     * Whether the subject is still live in another business (ORCH46 ruling A):
+     * then the ban would end that business's access too, so both steps are
+     * stamped done with the reason `shared` and nothing is sent.
+     */
+    readonly sharedElsewhere: (subject: string) => Promise<boolean>;
     readonly claimSeconds?: number;
     /** Only these endings: the ones an act has just written. All owed ones otherwise. */
     readonly only?: readonly string[];
-  } = {},
+  },
 ): Promise<SettleReport> {
   const claimSeconds = options.claimSeconds ?? ACCESS_ENDING_CLAIM_SECONDS;
   const claimed = await database.withBusiness(
@@ -173,42 +179,69 @@ export async function settleAccessEndings(
   let settled = 0;
   for (const row of claimed) {
     // eslint-disable-next-line no-await-in-loop -- one ending at a time, each its own provider calls
-    const done = await attempt(provider, row);
+    const done = await attempt(provider, row, options.sharedElsewhere);
     // eslint-disable-next-line no-await-in-loop -- its stamp, before the next ending is asked
-    await database.withBusiness(businessId, async (tx) => {
-      await tx.query(
-        `update public.access_endings
-            set sessions_ended_at = case when $3 then coalesce(sessions_ended_at, now())
-                                         else sessions_ended_at end,
-                login_deactivated_at = case when $4 then coalesce(login_deactivated_at, now())
-                                            else login_deactivated_at end,
-                last_fault = $5
-          where business_id = $1 and id = $2`,
-        [businessId, row.id, done.sessions, done.login, done.fault],
-      );
-    });
+    await stamp(database, businessId, row.id, done);
     if (done.sessions && done.login) settled += 1;
   }
   return { attempted: claimed.length, settled, owed: claimed.length - settled };
 }
 
+/** What was done, stamped once: `coalesce` keeps each step's first stamp. */
+async function stamp(
+  database: Database,
+  businessId: BusinessId,
+  id: string,
+  done: Attempted,
+): Promise<void> {
+  await database.withBusiness(businessId, async (tx) => {
+    await tx.query(
+      `update public.access_endings
+          set sessions_ended_at = case when $3 then coalesce(sessions_ended_at, now())
+                                       else sessions_ended_at end,
+              login_deactivated_at = case when $4 then coalesce(login_deactivated_at, now())
+                                          else login_deactivated_at end,
+              last_fault = $5,
+              provider_steps_skipped = coalesce(provider_steps_skipped, $6)
+        where business_id = $1 and id = $2`,
+      [businessId, id, done.sessions, done.login, done.fault, done.skipped],
+    );
+  });
+}
+
+interface Attempted {
+  sessions: boolean;
+  login: boolean;
+  fault: ProviderFault | null;
+  skipped: 'shared' | null;
+}
+
 async function attempt(
   provider: LoginProvider,
   row: Owed,
-): Promise<{ sessions: boolean; login: boolean; fault: ProviderFault | null }> {
+  sharedElsewhere: (subject: string) => Promise<boolean>,
+): Promise<Attempted> {
   let sessions = row.sessions_done;
   let login = row.login_done;
+  // Asked before any call; a failure to ask is a fault, and the steps stay owed.
+  let shared: boolean;
+  try {
+    shared = await sharedElsewhere(row.subject);
+  } catch {
+    return { sessions, login, fault: 'unreachable', skipped: null };
+  }
+  if (shared) return { sessions: true, login: true, fault: null, skipped: 'shared' };
   if (!sessions) {
     const answer = await asked(async () => await provider.endSessions(row.subject));
-    if (!answer.ok) return { sessions, login, fault: answer.fault };
+    if (!answer.ok) return { sessions, login, fault: answer.fault, skipped: null };
     sessions = true;
   }
   if (!login) {
     const answer = await asked(async () => await provider.deactivate(row.subject));
-    if (!answer.ok) return { sessions, login, fault: answer.fault };
+    if (!answer.ok) return { sessions, login, fault: answer.fault, skipped: null };
     login = true;
   }
-  return { sessions, login, fault: null };
+  return { sessions, login, fault: null, skipped: null };
 }
 
 /** A provider call that throws is a fault by its kind, never its words. */

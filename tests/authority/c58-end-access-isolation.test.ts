@@ -19,6 +19,7 @@
 // nothing; Bea is bravo's, holding `access:manage` there. Each case enrols the
 // person it ends. Every name below is made up.
 
+import { loginLiveElsewhere } from '../../packages/core-records/src/index.ts';
 import { describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { createGoTrueLogins } from '../../apps/api/auth/logins.ts';
@@ -142,6 +143,8 @@ async function c58IsolationBravoSEndingIsBravo(): Promise<void> {
   calls.length = 0;
   await settleAccessEndings(harness.world.db.app, harness.world.alpha, provider, {
     claimSeconds: 0,
+    sharedElsewhere: async (subject) =>
+      await loginLiveElsewhere(harness.world.db.admin, subject, harness.world.alpha),
   });
   expect(calls.map((each) => each.subject)).not.toContain(bravoMate.person.presented.subject);
   expect(await stateOf(bravoMate.person, harness.world.bravo)).toEqual(bravoOwed);

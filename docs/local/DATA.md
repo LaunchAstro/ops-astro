@@ -550,7 +550,7 @@ each stamped once when done (`sessions_ended_at`, `login_deactivated_at`).
 (the kind of the last failure, one of five words, never the provider's text)
 record the retries. The application may select, insert and update; nothing
 deletes a row. Tenancy-keyed with the restrictive policy. The partial index
-`access_endings_owed` is what the server's retry looks for.
+`access_endings_owed` is what the server's retry looks for. `provider_steps_skipped` (0066) is `shared` where both steps were stamped done without a call because the subject was still live in another business.
 
 ## Ended sessions (0057, C58)
 
