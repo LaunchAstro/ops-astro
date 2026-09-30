@@ -114,6 +114,7 @@ plain-text 500 when an operand was missing. Each now answers
 | `task.propose`                               | `lineageId`                                           | a string or `null`, or absent to open a new lineage                        | `refuseMistypedIdentifier`, from `prepareCommand` (`commands/prepare.ts`)                              |
 | `task.create`                                | `parentId`, `board`, `boardSection`, `conversationId` | each a string or `null`, or absent                                         | `refuseMistypedIdentifier`, from `prepareCommand` (`commands/prepare.ts`)                              |
 | `task.decide`                                | `gateId`, `versionId`                                 | each a string; absent is refused                                           | `refuseMistypedIdentifier`, from `prepareCommand` (`commands/prepare.ts`)                              |
+| `task.accept_plan`                           | `gateId`, `versionId`                                 | each a string; absent is refused                                           | `refuseMistypedIdentifier`, from `prepareCommand` (`commands/prepare.ts`)                              |
 
 The five `refuse…Operands` functions are in `commands/operands.ts`, beside
 `isFieldMap` and `invalid`, which the read catalogue shares. A read's operand
@@ -1050,6 +1051,35 @@ writes the task record, so neither takes an `expectedRevision`.
 | `run.top_up`             | `/api/b/:key/run/top_up`             | `operationId`, `recordId`, `runId`, `amountMinor`, `currency` | `decide` on `billing`, asked of the task named in `recordId`; the runtime asks it again of the run's task under the run's locks |
 | `run.end_at_budget_stop` | `/api/b/:key/run/end_at_budget_stop` | `operationId`, `recordId`, `runId`                            | `decide` on `gate`, asked the same way                                                                                          |
 
+## The plan accept
+
+A person's one click on a plan (AW-04, [RUNTIME.md](RUNTIME.md#instruction-files-pinned-by-digest))
+is `task.accept_plan`: the approval of the plan's gate, as `task.decide`
+approves one, with the plan bound to the decision and the run's instruction
+file pinned in the same transaction. The command line and the app's client
+post it to the same route. No agent reaches it: an agent may propose a plan,
+never activate one.
+
+| Operation          | Route                          | Body                                                                                                                | Authority                                                                                          |
+| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `task.accept_plan` | `/api/b/:key/task/accept_plan` | `operationId`, `gateId`, `versionId`, `note`, `planText`, `plan`, `entryPath`, `paths`, `conversationId` (optional) | `decide`, asked of the gate's own task as `task.decide` is; `decide` asks it again under its locks |
+
+`versionId` is the plan version shown beside the button; a newer reply makes
+it stale and the accept is `PROPOSAL_SUPERSEDED` 409. `planText` is the exact
+words the person read (1 to 20,000 characters). `plan` is the structured
+record `{ steps: [{ key, title, after }] }`: a lower-case slug per key, each
+`after` naming earlier keys of this plan, no other fields, no duplicate keys or
+references, no cycle; anything else is `FIELD_VALUE_INVALID` 422 naming `plan`
+(or `planText`), before any write. `entryPath` and `paths` (up to 50) name
+files in the server's instruction root (`OPS_ASTRO_INSTRUCTION_ROOT`); an odd
+path, a symlink, a name outside the root, a directory or a missing file is
+`DEFINITION_UNAVAILABLE`. With no root configured the accept is
+`DEPENDENCY_NOT_LANDED`. `conversationId` is the caller's own conversation
+or `NOT_FOUND` 404, and becomes the audit event's origin. Every other refusal
+is `task.decide`'s. It answers the approval's detail with `runId`, `pin`,
+`manifestDigest`, `planRecordId`, `textDigest` and `recordDigest`. A repeat of
+the operation id replays it; a changed body is `OPERATION_ID_REUSED`.
+
 A run's state revised (MP-6-2) is the agent page's one write. It names the
 task and the run on it too, and carries the version it read (0 before the
 first) instead of an `expectedRevision`. It is also on the agent prefix, under
@@ -1157,6 +1187,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.comment`                     | `commentOnTask` (`commands/tasks-comment.ts`)                                             | served under a live delegation, `internal` audience only (the row's `serve`, `AGENT_AUDIENCES`) |
 | `task.propose`                     | `proposeOnTask` (`commands/tasks-propose.ts`)                                             | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `task.decide`                      | `decideOnGate` (`commands/tasks-decide.ts`)                                               | refused `DELEGATION_EXCLUDES_DECISION` (`authorise`, `decideAsAgent`)                           |
+| `task.accept_plan`                 | `acceptPlanOnGate` (`commands/plan-accept.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `task.pickup`                      | `pickupAsPerson` (`commands/tasks-pickup.ts`)                                             | served before a pickup (`BEFORE_PICKUP`, `serve`)                                               |
 | `task.handback`                    | `handbackOwnLease` (`commands/tasks-handback.ts`)                                         | served under a live delegation (`serve`)                                                        |
 | `task.start`                       | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |

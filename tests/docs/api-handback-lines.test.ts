@@ -226,6 +226,9 @@ describe('API.md operands and codes derived from the code', () => {
       'task.decide',
       'gateId',
       'versionId',
+      'task.accept_plan',
+      'gateId',
+      'versionId',
     ]);
     let operation = '';
     for (const name of typed) {

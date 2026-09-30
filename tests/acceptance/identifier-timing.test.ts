@@ -23,7 +23,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
-import { PROPOSAL } from './role-case-bodies.ts';
+import { ACCEPTED_PLAN, PROPOSAL } from './role-case-bodies.ts';
 import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
 import { foreignConversation } from './foreign-conversation.ts';
@@ -259,6 +259,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       foreign: () => ({ gateId: f.proposal.gateId, versionId: f.proposal.versionId, ...decision }),
       fabricated: () => ({ gateId: randomUUID(), versionId: randomUUID(), ...decision }),
     });
+    const accept = { ...ACCEPTED_PLAN, note: NOBODY };
+    out.push({
+      op: 'task.accept_plan',
+      operand: 'gateId',
+      by: ada,
+      code: 'NOT_FOUND',
+      foreign: () => ({ gateId: f.proposal.gateId, versionId: f.proposal.versionId, ...accept }),
+      fabricated: () => ({ gateId: randomUUID(), versionId: randomUUID(), ...accept }),
+    });
     byAda('task.board', 'board', f.task.id, (board) => ({ board }));
     const conversation = await foreignConversation(w.h.world.db.admin, w.h.world.bravo);
     byAda('conversation.read', 'conversationId', conversation, (conversationId) => ({
@@ -372,11 +381,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 42 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 43 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(42);
-    expect(names).toHaveLength(42);
+    expect(new Set(names).size, 'distinct operations').toBe(43);
+    expect(names).toHaveLength(43);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
 import {
+  ACCEPTED_PLAN,
   PROPOSAL,
   lineageOn,
   type Prepared,
@@ -111,6 +112,10 @@ export function createPositiveBody(
       case 'task.decide': {
         const gate = await approvableGate(context);
         return { body: { ...gate, decision: 'approve', note: 'the admin approves' } };
+      }
+      case 'task.accept_plan': {
+        const gate = await approvableGate(context);
+        return { body: { ...gate, ...ACCEPTED_PLAN, note: 'the admin accepts the plan' } };
       }
       case 'task.pickup':
         // Person pickup (EX-01, transaction contract T3 line 66, minimum

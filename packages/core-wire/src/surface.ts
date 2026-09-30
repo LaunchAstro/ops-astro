@@ -43,6 +43,8 @@ export type CommandName =
   | 'task.decide'
   | 'task.pickup'
   | 'task.handback'
+  // AW-04: the plan accept, a person's one click on the plan's gate.
+  | 'task.accept_plan'
   // The owning operations the task type's field definitions name.
   | 'task.start'
   | 'task.assign'
@@ -365,6 +367,16 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     note: 'any',
     recipientPersonId: 'id?|null',
   },
+  'task.accept_plan': {
+    gateId: 'id',
+    versionId: 'id',
+    note: 'any',
+    planText: 'any',
+    plan: 'any',
+    entryPath: 'any',
+    paths: 'any',
+    conversationId: 'id?|null',
+  },
   'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },
   // A lease call names its task through its lease; a `recordId` beside the
   // lease is taken and plays no part in the check (API.md, id operands).
@@ -464,6 +476,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'target',
     untargetedIdentifiers: ['gateId', 'versionId'],
     agent: 'delegated',
+  }),
+  // AW-04: the plan accept is `task.decide`'s approval asked on the gate's own
+  // task, with the plan bound and the run's instruction file pinned in the
+  // same transaction. Out of the agent's reach: only a person activates.
+  declare('task.accept_plan', 'decide', {
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['gateId', 'versionId', 'conversationId'],
   }),
   // Own-lease work is `write` on the task the reservation or lease belongs to,
   // the scope the runtime and `grant.revoke` ask under their locks: a

@@ -162,6 +162,18 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     manifest_digest: SEED_DIGEST,
     pinned_by_actor_id: randomUUID(),
   },
+  // AW-04: nothing binds a plan before a plan accept.
+  'public.plan_records': {
+    id: randomUUID(),
+    gate_id: randomUUID(),
+    decision_id: randomUUID(),
+    run_id: randomUUID(),
+    plan_text: 'restricted calls seed',
+    text_digest: SEED_DIGEST,
+    record: { steps: [] },
+    record_digest: SEED_DIGEST,
+    bound_by_actor_id: randomUUID(),
+  },
   'public.bootstrap_reads': {
     run_id: randomUUID(),
     sequence: 1,

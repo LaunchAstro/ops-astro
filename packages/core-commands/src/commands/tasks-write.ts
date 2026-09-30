@@ -218,7 +218,7 @@ export async function createTask(
  * and a made-up id alike. Absent or null is a task created from no
  * conversation.
  */
-async function originOf(
+export async function originOf(
   tx: TenantQuery,
   context: CommandContext,
   conversationId: string | null | undefined,
