@@ -110,6 +110,9 @@ export type CommandName =
   | 'settings.set_client_sign_off'
   // C59: whether a money action needs a recent second-factor sign-in.
   | 'settings.set_money_step_up'
+  // MP-2-11: the conversation and retention windows, in days (C122-1).
+  | 'settings.set_conversation_window'
+  | 'settings.set_retention_window'
   // C55: the breach runbook's day-0 record, `privacy incident recorded`.
   | 'privacy.record_incident'
   // C81: the legal documents' versions, drafted, approved as those exact
@@ -457,6 +460,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'settings.set_four_eyes_threshold': { value: 'any', expectedRevision: 'any' },
   'settings.set_client_sign_off': { value: 'any', expectedRevision: 'any' },
   'settings.set_money_step_up': { value: 'any', expectedRevision: 'any' },
+  'settings.set_conversation_window': { value: 'any', expectedRevision: 'any' },
+  'settings.set_retention_window': { value: 'any', expectedRevision: 'any' },
   'privacy.record_incident': {
     whatHappened: 'any',
     foundAt: 'any',
@@ -656,13 +661,22 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),
-  // C59: the money step-up, switched only by `settings:manage` (the owner or
-  // an administrator), never by an agent, and audited by the envelope.
-  declare('settings.set_money_step_up', 'manage', {
-    collection: SETTINGS_COLLECTION,
-    targetsExistingRecord: false,
-    untargetedIdentifiers: [],
-  }),
+  // C59's money step-up and MP-2-11's two windows: switched only by
+  // `settings:manage` (the owner or an administrator), never by an agent, and
+  // audited by the envelope.
+  ...(
+    [
+      'settings.set_money_step_up',
+      'settings.set_conversation_window',
+      'settings.set_retention_window',
+    ] as const
+  ).map((name) =>
+    declare(name, 'manage', {
+      collection: SETTINGS_COLLECTION,
+      targetsExistingRecord: false,
+      untargetedIdentifiers: [],
+    }),
+  ),
   // C55: a privacy incident is recorded under `privacy:manage` (the owner and
   // administrators), never by an agent, and audited by the envelope as a
   // digest of the act.
@@ -960,37 +974,8 @@ export function pathOf(name: CommandName): string {
   return `/${name.replace('.', '/')}`;
 }
 
-/**
- * The two mounts the API serves the surface under and the command line sends
- * to, each followed by the business key and then `pathOf(name)`. One copy for
- * both sides. The agent's is its own so that an
- * agent asking and a person asking cannot be mistaken for each other.
- */
-export const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;
-
-/**
- * A person's own availability (MP-7-10), on the person prefix alone: their own
- * account, not a surface command, so no agent route and no grant row.
- */
-export const ACCOUNT_AVAILABILITY_PATH = '/account/availability';
-
-/**
- * C81: where a business's published legal documents are read with no sign-in,
- * as `${PUBLIC_PREFIX}<businessKey>/legal/<document>`. Nothing else is served
- * under it.
- */
-export const PUBLIC_PREFIX = '/api/public/b/';
-
-/**
- * The header an agent presents its delegation credential in.
- *
- * A header rather than a body field for the same reason the bearer token is
- * one: it is a credential, and a credential in a body is a credential that
- * gets logged with the payload, stored in the register row and compared by a
- * digest. The register compares what the request *is*; the authority it was
- * made under is not part of that.
- */
-export const DELEGATION_HEADER = 'x-agent-delegation';
+// The mounts, the account path, the public prefix and the agent's header.
+export { ACCOUNT_AVAILABILITY_PATH, DELEGATION_HEADER, PREFIX, PUBLIC_PREFIX } from './mounts.ts';
 
 /** The reads, which no caller may reach through the command envelope. */
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(

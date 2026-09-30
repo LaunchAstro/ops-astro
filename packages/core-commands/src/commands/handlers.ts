@@ -104,6 +104,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'settings.set_four_eyes_threshold': setting,
   'settings.set_client_sign_off': setting,
   'settings.set_money_step_up': setting,
+  'settings.set_conversation_window': setting,
+  'settings.set_retention_window': setting,
 
   'privacy.record_incident': recordIncident,
   'legal.draft_version': draftVersion,
@@ -168,6 +170,8 @@ function setting(
     | 'settings.set_four_eyes_threshold'
     | 'settings.set_client_sign_off'
     | 'settings.set_money_step_up'
+    | 'settings.set_conversation_window'
+    | 'settings.set_retention_window'
   >,
 ): Promise<HandlerOutcome> {
   return setBusinessSetting(tx, context, request.command, request.value, request.expectedRevision);

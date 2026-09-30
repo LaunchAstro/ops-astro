@@ -171,6 +171,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'settings.set_four_eyes_threshold': SETTINGS,
   'settings.set_client_sign_off': SETTINGS,
   'settings.set_money_step_up': SETTINGS,
+  'settings.set_conversation_window': SETTINGS,
+  'settings.set_retention_window': SETTINGS,
   'privacy.record_incident': writing(business('privacy_incidents')),
   'legal.draft_version': LEGAL,
   'legal.approve_version': LEGAL,

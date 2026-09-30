@@ -215,6 +215,12 @@ export type CommandRequest =
       readonly value: boolean;
       readonly expectedRevision?: number;
     } & Envelope)
+  // MP-2-11: whole days (C122-1).
+  | ({
+      readonly command: 'settings.set_conversation_window' | 'settings.set_retention_window';
+      readonly value: number;
+      readonly expectedRevision?: number;
+    } & Envelope)
   // C55, C81 and API-2, in their own file.
   | PrivacyRequest<Envelope>
   // The support controls. Revocation names the row it revokes; the time is the
