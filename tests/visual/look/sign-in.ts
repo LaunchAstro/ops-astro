@@ -7,7 +7,7 @@
 // action) and the card and its title (DS-PRIM-21, the account settings card).
 // The page is drawn signed out and without the shell.
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './probe.ts';
 
 const APP = { page: 'agency:sign-in' } as const;
 const WIDTHS = [1480, 900, 390] as const;

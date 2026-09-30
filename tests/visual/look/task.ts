@@ -5,7 +5,7 @@
 // box on its Agent perspective. The app draws the made-up T-1, whose one
 // proposal waits at an armed gate (made-up-api.ts).
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './probe.ts';
 
 const MOCK = { path: '/agency/task/?task=proj-meridian-hero-copy' } as const;
 const AGENT = { ...MOCK, open: '[role=tab]:has-text("Agent")' } as const;
