@@ -14,18 +14,18 @@
 // It is not behind the operator gate: the first reset makes staging's operator.
 //
 // In order: every refusal that needs no connection; then, connected, a
-// database neither marked made-up nor new is refused, and so is a service key
-// the admin API does not accept (one read); then the owner's folder and the
-// record folder are made; only then empty (the product's schemas and the
-// made-up mark), migrate, make the sign-ins, seed (`scripts/local-seed.mjs`,
-// which judges the database again and marks it) and write the installation's
-// operating business once. Exit 0 when done, 1 when
+// database neither marked made-up nor new is refused, and so are a service key
+// the admin API does not accept (one read) and a record that cannot be opened
+// for appending; then the owner's folder is made; only then empty (the
+// product's schemas and the made-up mark), migrate, make the sign-ins, seed
+// (`scripts/local-seed.mjs`, which judges the database again and marks it) and
+// write the installation's operating business once. Exit 0 when done, 1 when
 // refused or stopped. Nothing it prints carries an address, a password, a key
 // or a project reference.
 
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { migrate } from '../../packages/core-records/src/tenancy/migrate.ts';
@@ -144,8 +144,14 @@ try {
     refuse('the database is neither marked made-up nor new, so it may hold real data');
   // Every precondition before anything is emptied: a refusal empties and records nothing.
   if (!(await keyAccepted())) refuse('the admin API did not accept SUPABASE_SERVICE_KEY');
+  // The record opens for appending now, or nothing is emptied and nothing is written.
+  try {
+    mkdirSync(env.OPS_ASTRO_DEPLOYMENTS, { recursive: true, mode: 0o700 });
+    closeSync(openSync(join(env.OPS_ASTRO_DEPLOYMENTS, RECORD_FILE), 'a', 0o600));
+  } catch {
+    refuse('the record in OPS_ASTRO_DEPLOYMENTS cannot be written');
+  }
   mkdirSync(folder, { mode: 0o700 });
-  mkdirSync(env.OPS_ASTRO_DEPLOYMENTS, { recursive: true, mode: 0o700 });
   step = 'emptying';
   // oxlint-disable-next-line no-await-in-loop -- in order: each builds on the one before
   for (const statement of EMPTY) await admin.execute(statement);
