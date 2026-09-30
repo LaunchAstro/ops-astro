@@ -141,7 +141,7 @@ describe('C32 agents on Settings ▸ Access', () => {
     const api = server([json(access([ADA, MIA])), json(access([ADA, MIA], []))]);
     const view = await open(api.fetch);
     expect(view.find('[data-agent="d-1"]')?.closest('tr')?.textContent).toContain('task:write');
-    await view.click('[data-revoke="d-1"]');
+    await view.click('[data-revoke="d-1"] button');
     await settle();
     await settle();
     expect(api.commands()).toEqual([

@@ -17,11 +17,11 @@ describe('C58 End access on Settings ▸ Access', () => {
   it('C58 end access: one confirmed act for that person, then the list reread', async () => {
     const api = server([json(access([ADA, MIA])), json(access([ADA]))]);
     const view = await open(api.fetch);
-    await view.click(`[data-end="${MIA.personId}"]`);
+    await view.click(`[data-end="${MIA.personId}"] button`);
     // Nothing is sent before the act is confirmed.
     expect(api.commands()).toEqual([]);
     expect(view.find('[data-confirm="end-access"]')?.textContent).toContain(MIA.name);
-    await view.click('[data-confirm="end-access"] [data-act="end"]');
+    await view.click('[data-confirm="end-access"] [data-act="end"] button');
     await settle();
     await settle();
     expect(api.commands()).toEqual([
@@ -37,8 +37,8 @@ describe('C58 End access on Settings ▸ Access', () => {
   it('C58 end access can be called off: nothing is sent', async () => {
     const api = server([json(access([ADA, MIA]))]);
     const view = await open(api.fetch);
-    await view.click(`[data-end="${MIA.personId}"]`);
-    await view.click('[data-confirm="end-access"] [data-act="keep"]');
+    await view.click(`[data-end="${MIA.personId}"] button`);
+    await view.click('[data-confirm="end-access"] [data-act="keep"] button');
     expect(view.find('[data-confirm="end-access"]')).toBeNull();
     expect(api.commands()).toEqual([]);
   });

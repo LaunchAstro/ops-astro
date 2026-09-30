@@ -51,6 +51,11 @@ const CATALOGUE: Readonly<Record<string, readonly string[]>> = {
 
 export const SELF_SCOPED_COLLECTIONS: readonly string[] = ['account', 'credential', 'preference'];
 
+/** Every key a grant may carry, as `collection:action`, in catalogue order (Settings ▸ Access). */
+export const GRANTABLE_KEYS: readonly string[] = Object.entries(CATALOGUE).flatMap(
+  ([collection, actions]) => actions.map((action) => `${collection}:${action}`),
+);
+
 /** Whether a collection is one a grant may name. */
 export function isGrantableCollection(collection: string): boolean {
   return Object.hasOwn(CATALOGUE, collection);
