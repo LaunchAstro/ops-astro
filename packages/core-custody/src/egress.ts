@@ -18,6 +18,7 @@ import type { LookupAddress } from 'node:dns';
 import { request as httpRequest, type IncomingMessage, type RequestOptions } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
+import { presented, type StoredCredential } from './credentials.ts';
 
 export interface Destination {
   readonly key: string;
@@ -261,7 +262,7 @@ async function exchange(
 export async function send(
   destinations: ReadonlyMap<string, Destination>,
   request: OutboundRequest,
-  credential: { readonly header: string; readonly value: string } | null,
+  credential: Pick<StoredCredential, 'header' | 'scheme' | 'value'> | null,
   resolve: Resolve = resolveBySystem,
 ): Promise<Outbound> {
   const destination = destinations.get(request.destination);
@@ -280,10 +281,7 @@ export async function send(
     'content-type': 'application/json',
     'content-length': String(Buffer.byteLength(request.body)),
   };
-  if (credential !== null) {
-    headers[credential.header] =
-      credential.header === 'authorization' ? `Bearer ${credential.value}` : credential.value;
-  }
+  if (credential !== null) headers[credential.header] = presented(credential);
   return await exchange(
     url,
     {

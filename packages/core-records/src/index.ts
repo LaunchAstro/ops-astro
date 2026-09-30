@@ -255,3 +255,4 @@ export {
   type OnboardingStepRow,
   type StepState,
 } from './onboarding/onboardings.ts';
+export { hasRoom, type DurableLimit } from './tenancy/limit.ts';

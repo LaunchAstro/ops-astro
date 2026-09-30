@@ -64,6 +64,7 @@ import { createSupabaseVerifier } from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
+import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import {
   describeRecovered,
   parseRecoveryScope,
@@ -325,6 +326,13 @@ async function main(): Promise<void> {
     console.error(`api: ${brokerConfig.problem}`);
     process.exit(1);
   }
+  // The diagnostic trace export (AW-13): off until `TRACE_EXPORT=on`; on with
+  // a staged setting missing or malformed, the server stops before it listens.
+  const traceConfig = traceExportSettings(environment);
+  if (traceConfig.kind === 'invalid') {
+    console.error(`api: ${traceConfig.problem}`);
+    process.exit(1);
+  }
   const broker =
     brokerConfig.kind === 'configured' ? await startModelBroker(brokerConfig) : undefined;
   console.log(`api: credential broker ${broker === undefined ? 'not configured' : 'started'}`);
@@ -363,6 +371,16 @@ async function main(): Promise<void> {
   }
   for (const business of recovered.businesses) console.log(describeRecovered(business));
 
+  // AW-13: the trace export over the recovered businesses, as system work on
+  // an interval; nothing on the wire reaches it. Started before the port is
+  // bound, so a custody that cannot start stops the server first.
+  const traced = recovered.businesses.map((business) => business.businessId);
+  const tracer =
+    traceConfig.kind === 'on'
+      ? await startTraceExporter(traceConfig, database, async () => await Promise.resolve(traced))
+      : undefined;
+  console.log(`api: trace export ${tracer === undefined ? 'off' : 'on'}`);
+
   serve({ fetch: app.fetch, hostname: '127.0.0.1', port }, (info) => {
     console.log(`api: listening on http://127.0.0.1:${info.port}`);
     console.log('api: reads mounted');
@@ -381,9 +399,13 @@ async function main(): Promise<void> {
 
   const stop = (): void => {
     sweeper.stop();
-    void Promise.allSettled([database.close(), admin.close(), topics.close(), broker?.stop()]).then(
-      () => process.exit(0),
-    );
+    void Promise.allSettled([
+      database.close(),
+      admin.close(),
+      topics.close(),
+      broker?.stop(),
+      tracer?.stop(),
+    ]).then(() => process.exit(0));
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
