@@ -8,9 +8,11 @@ import { useState, type FormEvent, type ReactElement } from 'react';
 import { Button, Card, Select, type Option } from '@launchastro/ui';
 import {
   GRANTABLE_KEYS,
+  type AccessGrant,
   type AccessReadResult,
   type PersonView,
 } from '../../../../../packages/core-wire/src/index.ts';
+import { scopeWords } from './rows.tsx';
 
 const WHOLE_BUSINESS = '';
 
@@ -101,6 +103,41 @@ export function ConfirmEnd(props: {
         <span data-act="keep">
           <Button variant="ghost" onClick={props.onKeep}>
             Keep access
+          </Button>
+        </span>
+      </Card>
+    </div>
+  );
+}
+
+/** A person and one grant of theirs, waiting on the confirmation before `access.revoke`. */
+export interface Revoking {
+  readonly person: PersonView;
+  readonly grant: AccessGrant;
+}
+
+export function ConfirmRevokeGrant(props: {
+  readonly revoking: Revoking;
+  readonly result: AccessReadResult;
+  readonly onRevoke: () => void;
+  readonly onKeep: () => void;
+}): ReactElement {
+  const { person, grant } = props.revoking;
+  const over = scopeWords(grant.scope, props.result.clientRecords);
+  return (
+    <div data-confirm="revoke-grant">
+      <Card
+        title={`Revoke ${person.name}'s ${grant.collection}:${grant.action} over ${over}?`}
+        sub="Only this grant ends; their other grants and their login stay."
+      >
+        <span data-act="revoke">
+          <Button variant="primary" onClick={props.onRevoke}>
+            Revoke grant
+          </Button>
+        </span>
+        <span data-act="keep">
+          <Button variant="ghost" onClick={props.onKeep}>
+            Keep grant
           </Button>
         </span>
       </Card>

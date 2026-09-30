@@ -60,6 +60,10 @@ interface DelegationRow {
  * asks. A former member whose grant outlived them is on neither list: sign-in
  * refuses them, so they can do nothing now. An agent carries its person's row.
  *
+ * Each person also carries their live grant rows by id, from the same walk,
+ * whether or not sign-in would admit them, so any one can be revoked
+ * (`access.revoke`). The walk reads this business's grants alone.
+ *
  * Each preview is `heldPermissions`, the grant check's own walk, for a person
  * sign-in would admit: one with standing and an active acting identity. The
  * grant check runs only behind sign-in, so a person it refuses (for instance
@@ -104,7 +108,9 @@ export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult
     permissions: admitted.has(person.personId)
       ? once(held.filter((permission) => permission.personId === person.personId))
       : [],
-    grants: [],
+    grants: held
+      .filter((permission) => permission.personId === person.personId)
+      .map(({ grantId, collection, action, scope }) => ({ grantId, collection, action, scope })),
   });
   return {
     team: team.map((person) => withPreview(person)),

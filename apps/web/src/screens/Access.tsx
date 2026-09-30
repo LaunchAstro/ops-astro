@@ -9,8 +9,9 @@
 // from the read's own client records. A scope the read does not list is said
 // as that, never by its identifier.
 //
-// Three writes, each the command the server checks under `access:manage`:
+// Four writes, each the command the server checks under `access:manage`:
 // `access.grant` gives one person one key over the business or one client;
+// `access.revoke` ends one grant, by the id the read lists, once confirmed;
 // `access.end` ends a person's access in one act (their login, every session
 // and their grants), sent only once it is confirmed; `delegation.revoke` ends
 // an agent's, by its delegation. After each, the list is read again: the
@@ -23,7 +24,7 @@ import type { OperationsClient } from '../operations/client.ts';
 import { describeFailure, type SubmitResult } from '../records/submit.ts';
 import { RecordState } from '../views/record-state.tsx';
 import type { AccessReadResult, PersonView } from '../../../../packages/core-wire/src/index.ts';
-import { ConfirmEnd, GiveAccess } from './access/acts.tsx';
+import { ConfirmEnd, ConfirmRevokeGrant, GiveAccess, type Revoking } from './access/acts.tsx';
 import { Agents, People } from './access/rows.tsx';
 
 export interface AccessScreenProps {
@@ -51,14 +52,13 @@ const giveWith =
     act(() => client.mutate('access.grant', body), `Gave ${holder.name} ${key}.`);
   };
 
-function AccessLists(props: {
-  readonly client: OperationsClient;
-  readonly result: AccessReadResult;
-  readonly busy: boolean;
-  readonly act: Act;
-}): ReactElement {
-  const { client, result, act } = props;
+/**
+ * The two acts that wait on a confirmation before anything is sent: ending a
+ * person's access (`access.end`) and revoking one grant (`access.revoke`).
+ */
+function usePending(client: OperationsClient, act: Act) {
   const [ending, setEnding] = useState<PersonView | null>(null);
+  const [revoking, setRevoking] = useState<Revoking | null>(null);
   const endAccess = (person: PersonView): void => {
     setEnding(null);
     act(
@@ -66,9 +66,23 @@ function AccessLists(props: {
       `Ended ${person.name}'s access: their login, sessions and grants.`,
     );
   };
-  const clients = result.clientRecords;
-  return (
+  const revokeGrant = ({ person, grant }: Revoking): void => {
+    setRevoking(null);
+    act(
+      () => client.mutate('access.revoke', { grantId: grant.grantId }),
+      `Revoked ${person.name}'s ${grant.collection}:${grant.action}.`,
+    );
+  };
+  const confirmations = (result: AccessReadResult): ReactElement => (
     <>
+      {revoking === null ? null : (
+        <ConfirmRevokeGrant
+          revoking={revoking}
+          result={result}
+          onKeep={() => setRevoking(null)}
+          onRevoke={() => revokeGrant(revoking)}
+        />
+      )}
       {ending === null ? null : (
         <ConfirmEnd
           person={ending}
@@ -76,14 +90,28 @@ function AccessLists(props: {
           onEnd={() => endAccess(ending)}
         />
       )}
-      <People id="team" title="Team" people={result.team} clients={clients} onEnd={setEnding} />
-      <People
-        id="clients"
-        title="Clients"
-        people={result.clients}
-        clients={clients}
-        onEnd={setEnding}
-      />
+    </>
+  );
+  const onRevokeGrant = (person: PersonView, grant: Revoking['grant']): void =>
+    setRevoking({ person, grant });
+  return { confirmations, onEnd: setEnding, onRevokeGrant };
+}
+
+function AccessLists(props: {
+  readonly client: OperationsClient;
+  readonly result: AccessReadResult;
+  readonly busy: boolean;
+  readonly act: Act;
+}): ReactElement {
+  const { client, result, act } = props;
+  const { confirmations, onEnd, onRevokeGrant } = usePending(client, act);
+  const clients = result.clientRecords;
+  const lists = { clients, onEnd, onRevokeGrant };
+  return (
+    <>
+      {confirmations(result)}
+      <People id="team" title="Team" people={result.team} {...lists} />
+      <People id="clients" title="Clients" people={result.clients} {...lists} />
       <Agents result={result} onRevoke={revokeWith(client, act)} />
       <GiveAccess result={result} busy={props.busy} onGive={giveWith(client, act)} />
     </>
