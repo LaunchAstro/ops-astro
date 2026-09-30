@@ -3,8 +3,8 @@
 import { describe, expect, it } from 'vitest';
 import { PARTS, classify } from './self-test/mutations.ts';
 
-describe('T4e review 3 proofs', () => {
-  it('Sol proof, criterion 3: a declared crossing that never ran fails its part revert', () => {
+describe('every_invariant_bites: an unrun crossing, and each isolation suite of a part', () => {
+  it('a declared crossing that never ran fails its part revert', () => {
     const line = classify('T4-N4 T3b reverted: unknown_stays_unknown', {
       applied: true,
       executed: 1,
@@ -16,7 +16,7 @@ describe('T4e review 3 proofs', () => {
     expect(line.detail).toContain('client to client and person to person');
   });
 
-  it('Sol proof, criterion 3: T2d and T3c reverts run their separate isolation suites', () => {
+  it('T2d and T3c reverts run their separate isolation suites', () => {
     for (const [id, file] of [
       ['T2d', 'tests/runtime/t2d-settle-isolation.test.ts'],
       ['T3c', 'tests/runtime/t3c-write-off-isolation.test.ts'],

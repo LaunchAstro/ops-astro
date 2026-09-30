@@ -3,7 +3,7 @@
 import { expect, it } from 'vitest';
 import { awaitStopped } from './kill-harness.ts';
 
-it('Sol proof, criterion 2: a stop first reached after two seconds fails the process proof', async () => {
+it('a stop first reached after two seconds fails the process proof', async () => {
   const pause = new Int32Array(new SharedArrayBuffer(4));
   const started = performance.now();
   const seen = await awaitStopped(1, 2_000, () => {
