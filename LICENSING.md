@@ -49,7 +49,6 @@ Langfuse is selected as an optional external diagnostic service. The exact
 release, distribution, OSS and enterprise boundaries, and notices require
 review before deployment. This foundation includes no Langfuse service and
 makes no claim that an inspected deployment excludes enterprise code. It
-carries only the vendor's MIT compose file and environment example, byte for
-byte, for a disposable local target that AW-13 starts, proves against and
+carries only the vendor's MIT compose file, byte for byte, for a disposable local target that AW-13 starts, proves against and
 destroys (`scripts/local/trace-target/`, listed in [NOTICE](NOTICE)); no
 licence key is set there and the target is never deployed.

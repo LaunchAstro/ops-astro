@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // AW-13's pinned local trace target (`scripts/local/trace-target/`): the
-// vendor's compose file and environment example at the pin, byte for byte,
-// the checked override, and the model they render to, which is what runs.
+// vendor's compose file at the pin, byte for byte, the checked override, and
+// the model they render to, which is what runs.
 // `profileRefusals` names every way the profile drifts from `pin.json`: a
 // vendor byte, the version, an image or its digest, the service set, a port
 // off loopback, or a setting the contract fixes (telemetry off, no licence

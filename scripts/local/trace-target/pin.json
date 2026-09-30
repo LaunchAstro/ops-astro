@@ -1,10 +1,9 @@
 {
-  "comment": "AW-13's pinned local trace target (research/langfuse-2026-09-11/CONTRACT.md section 8, observed 11 September 2026). The vendor files are byte-identical copies at the tag (the environment example stored as env.prod.example, without its leading dot, which this repository's commit gate refuses); every image is by digest from Docker Hub, except the blob store, whose publisher offers no free version tag (contract 8.3: its choice stays open; pinned here by the digest the contract observed).",
+  "comment": "AW-13's pinned local trace target (research/langfuse-2026-09-11/CONTRACT.md section 8, observed 11 September 2026). The vendor compose file is a byte-identical copy at the tag; the vendor's environment example is not stored (nothing runs it, and its placeholder addresses and key trip the public-content and secret scans), its digest at the tag was sha256:4935ccfe0f3b03784cc611113c7646161e2f306790261b8496a0d7e7714b2255; every image is by digest from Docker Hub, except the blob store, whose publisher offers no free version tag (contract 8.3: its choice stays open; pinned here by the digest the contract observed).",
   "version": "v4.33.0",
   "tagCommit": "81bbfd169b72ea2ed53639699cc6632e8f908ce8",
   "vendor": {
-    "docker-compose.yml": "sha256:d373385b2ad54d11c4d26a66c70ee7eaab87c7088adeb6a017c6612143efc697",
-    "env.prod.example": "sha256:4935ccfe0f3b03784cc611113c7646161e2f306790261b8496a0d7e7714b2255"
+    "docker-compose.yml": "sha256:d373385b2ad54d11c4d26a66c70ee7eaab87c7088adeb6a017c6612143efc697"
   },
   "services": {
     "langfuse-web": "docker.io/langfuse/langfuse:4.33.0@sha256:1e2bb860753bb61978e68270d70f194b204dc15c4278c1bb95ce904bc4e60123",

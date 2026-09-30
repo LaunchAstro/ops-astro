@@ -1642,8 +1642,8 @@ and codes, never a sentence, to a trace target an operator reads.
   ([API.md](API.md#the-composition-root)); the server then exports every
   recovered business on an interval, and a failure is logged by kind only.
 - The pinned local target, `scripts/local/trace-target/`, proved by
-  `AW-13 pinned profile`: the vendor's compose file and environment example at v4.33.0,
-  byte-identical, a checked override (images from Docker Hub by digest,
+  `AW-13 pinned profile`: the vendor's compose file at v4.33.0, byte-identical (its
+  environment example is not stored: nothing runs it), a checked override (images from Docker Hub by digest,
   telemetry, media upload and batch export off, no SSRF allowlist, AI or
   cloud variable, signup closed, only the web port and only on loopback, every
   secret required from the run), and the model they render to, which is what

@@ -66,16 +66,13 @@ its licence and the path it sits at, in the same commit that adds it.
          third-party material.
 
 4. Langfuse self-hosting files, version 4.33.0
-   Path: scripts/local/trace-target/docker-compose.yml and
-         scripts/local/trace-target/env.prod.example
+   Path: scripts/local/trace-target/docker-compose.yml
    Copyright: 2023-2026 ClickHouse, Inc.
    Licence: MIT Expat, the full text at
             scripts/local/trace-target/LICENSE-langfuse
    Source: https://github.com/langfuse/langfuse, tag v4.33.0, commit
            81bbfd169b72ea2ed53639699cc6632e8f908ce8
-   Note: byte-identical to the tag, the digests in
-         scripts/local/trace-target/pin.json. The environment example is
-         the vendor's .env.prod.example renamed without its leading dot,
-         because this repository's commit gate refuses a `.env.*` path. The
-         images the local profile runs are pulled at run time and are not
-         in this repository.
+   Note: byte-identical to the tag, the digest in
+         scripts/local/trace-target/pin.json. The vendor's environment
+         example is not included. The images the local profile runs are
+         pulled at run time and are not in this repository.

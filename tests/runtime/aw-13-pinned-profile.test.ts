@@ -63,13 +63,6 @@ const DRIFTS: [string, RegExp, (dir: string, model: Model) => void][] = [
     },
   ],
   [
-    'vendor environment example',
-    /env\.prod\.example/u,
-    (dir) => {
-      writeFileSync(join(dir, 'env.prod.example'), 'TELEMETRY_ENABLED=true\n');
-    },
-  ],
-  [
     'the pin names another version',
     /version/u,
     (dir) => {

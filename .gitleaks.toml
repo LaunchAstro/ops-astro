@@ -20,18 +20,12 @@ useDefault = true
 # the scan by being absent from the file list rather than exempted from it --
 # scripts/secrets-scan.mjs builds that list with `git ls-files`, so every path
 # git tracks is scanned wherever it sits.
-#
-# scripts/local/trace-target/env.prod.example is the trace target vendor's
-# environment example, byte-identical at its pin: its commented placeholder
-# key reads as one. `AW-13 pinned profile` refuses any byte change to that
-# file, so nothing new can sit there unscanned.
 description = "The exact paths that carry no secrets and would otherwise be noisy"
 paths = [
   '''^LICENSE$''',
   '''^pnpm-lock\.yaml$''',
   '''^scripts/gate/denylist\.sha256$''',
   '''^scripts/gate/shape-rules\.txt$''',
-  '''^scripts/local/trace-target/env\.prod\.example$''',
   '''^tests/gate/canary\.txt$''',
   '''^tests/gate/shape-canary\.txt$''',
 ]
