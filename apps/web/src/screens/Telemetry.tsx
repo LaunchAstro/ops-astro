@@ -86,36 +86,58 @@ const serviceRows = (section: Section): readonly Record<string, ReactNode>[] =>
     };
   });
 
-function Health(props: { readonly result: OperationsReadResult }): ReactElement {
+/** The page kit's section (PAGE-MAP SH-42): one head over what it holds. */
+const HealthSec = (props: { readonly children: ReactNode }): ReactElement => (
+  <section className="sec">
+    <h2 className="sec__head">Service health</h2>
+    {props.children}
+  </section>
+);
+
+function Health(props: {
+  readonly result: OperationsReadResult;
+  readonly businessKey: string;
+}): ReactElement {
   const section = props.result.serviceHealth;
   if (section === undefined) {
     return (
-      <div data-health="absent">
-        <Empty
-          title="Service health is not in this answer."
-          description="The watcher and the error sink are read by the API; this answer did not come through it."
-        />
-      </div>
+      <HealthSec>
+        <div data-health="absent">
+          <Empty
+            title="Service health is not in this answer."
+            description="The watcher and the error sink are read by the API; this answer did not come through it."
+          />
+        </div>
+      </HealthSec>
     );
   }
   return (
-    <Card title="Service health" sub={`Checked at ${section.checkedAt}`}>
-      <div data-health="sources">
-        <Table
-          caption="Where service health is read from"
-          columns={SOURCE_COLUMNS}
-          rows={sourceRows(section)}
-          dense
-        />
+    <HealthSec>
+      <p className="card__sub">
+        For {props.businessKey}, from the operations read, checked at {section.checkedAt}.
+      </p>
+      <div className="stack" data-health-cards>
+        <div data-health="sources">
+          <Card title="Sources" sub="Where service health is read from">
+            <Table
+              caption="Where service health is read from"
+              columns={SOURCE_COLUMNS}
+              rows={sourceRows(section)}
+              dense
+            />
+          </Card>
+        </div>
+        <div data-health="services">
+          <Card title="Services" sub="Each service as its source last saw it">
+            <Table
+              caption="Each service as its source last saw it"
+              columns={SERVICE_COLUMNS}
+              rows={serviceRows(section)}
+            />
+          </Card>
+        </div>
       </div>
-      <div data-health="services">
-        <Table
-          caption="Each service as its source last saw it"
-          columns={SERVICE_COLUMNS}
-          rows={serviceRows(section)}
-        />
-      </div>
-    </Card>
+    </HealthSec>
   );
 }
 
@@ -126,16 +148,11 @@ export function TelemetryScreen(props: TelemetryScreenProps): ReactElement {
     run: () => client.read<OperationsReadResult>('operations.read', {}),
     deps: [client],
   });
+  // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
-    <div className="stack" data-screen="telemetry" data-business={client.businessKey}>
-      <header className="tpr">
-        <h2 className="tpr__title">Telemetry</h2>
-        <div className="card__sub">
-          Service health for {client.businessKey}, from the operations read.
-        </div>
-      </header>
+    <div className="secs" data-screen="telemetry" data-business={client.businessKey}>
       <RecordState state={state} subject="service health" onRetry={reload}>
-        {(result) => <Health result={result} />}
+        {(result) => <Health result={result} businessKey={client.businessKey} />}
       </RecordState>
     </div>
   );

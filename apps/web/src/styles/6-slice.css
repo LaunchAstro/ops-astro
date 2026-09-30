@@ -71,6 +71,14 @@
    disabled states: redrawing either would be the override of a ported rule
    this sheet exists not to make. */
 
+/* A settings page's sections (SL09: Access, Telemetry), 32px apart, as the
+   placeholder page's `.content` spaces its `.sec` blocks (PAGE-MAP SH-40 to 44). */
+.secs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+
 .btnrow {
   display: flex;
   flex-wrap: wrap;
