@@ -13,7 +13,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it('Sol proof, criterion 2: a failed unmutated typecheck makes its control red', async () => {
+it('a failed unmutated typecheck makes its control red', async () => {
   process.env['DATABASE_URL'] = 'postgres://postgres:x@127.0.0.1:54470/journey';
   process.env['DATABASE_ADMIN_URL'] = process.env['DATABASE_URL'];
   process.env['SELF_TEST_CLUSTER'] = 'self-test-container';

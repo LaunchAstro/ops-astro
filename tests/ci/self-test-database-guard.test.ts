@@ -11,7 +11,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-it('Sol proof, criterion 3: the self-test refuses a shared admin URL before opening its scratch worktree', async () => {
+it('the self-test refuses a shared admin URL before opening its scratch worktree', async () => {
   process.env['DATABASE_URL'] = 'postgres://postgres:x@127.0.0.1:54470/journey';
   process.env['DATABASE_ADMIN_URL'] = 'postgres://postgres:x@127.0.0.1:54390/journey';
   process.env['SELF_TEST_CLUSTER'] = 'self-test-container';

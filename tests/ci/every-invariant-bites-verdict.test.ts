@@ -25,8 +25,8 @@ function report(results: VitestReport['testResults'][number]['assertionResults']
   };
 }
 
-describe('T4e Sol proofs', () => {
-  it('Sol proof, criterion 2: the whole run rejects a missing part even when one mutation goes red', () => {
+describe('every_invariant_bites: each part held to its own invariant', () => {
+  it('the whole run rejects a missing part even when one mutation goes red', () => {
     const one = classify('T4-N1', {
       applied: true,
       executed: 1,
@@ -36,7 +36,7 @@ describe('T4e Sol proofs', () => {
     expect(everyInvariantBites([one]).status).toBe('fail');
   });
 
-  it('Sol proof, criterion 2: a sibling failure cannot stand in for the named invariant', () => {
+  it('a sibling failure cannot stand in for the named invariant', () => {
     const ran = summarise(
       scratch,
       report([
@@ -48,7 +48,7 @@ describe('T4e Sol proofs', () => {
     expect(classify('T4-N4 T2a: run_progress_read', ran).status).toBe('fail');
   });
 
-  it('Sol proof, criterion 3: a revert with a green isolation case fails by name', () => {
+  it('a revert with a green isolation case fails by name', () => {
     const ran = summarise(
       scratch,
       report([
