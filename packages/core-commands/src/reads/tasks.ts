@@ -9,7 +9,7 @@
 // out of `data` would still return the right answer on a record the trigger had
 // stopped projecting, which is the failure worth catching.
 //
-// `description` and `agent_brief` are the exceptions and have to be: they are
+// `description`, `agent_brief` and `page_link` are the exceptions and have to be: they are
 // unslotted on purpose (`tasks/spine.ts`), so `data` is where they live.
 //
 // A task that is not here, and a task that is in another business, produce
@@ -49,6 +49,7 @@ interface TaskRowRead {
   readonly completed_at: Date | null;
   readonly description: string | null;
   readonly agent_brief: string | null;
+  readonly page_link: string | null;
   readonly state_id: string | null;
   readonly state_key: string | null;
   readonly state_label: string | null;
@@ -81,6 +82,7 @@ const SELECT = `
          r.ts_2  as completed_at,
          r.data ->> 'description' as description,
          r.data ->> 'agent_brief' as agent_brief,
+         r.data ->> 'page_link' as page_link,
          s.id as state_id,
          s.data ->> 'key' as state_key,
          s.data ->> 'label' as state_label,
@@ -289,6 +291,7 @@ export async function readTaskDetail(
     ...summaryOf(row),
     description: row.description,
     agentBrief: row.agent_brief,
+    pageLink: row.page_link,
     history: await historyOf(tx, row.id, comments.internal),
     comments: await commentsFor(tx, comments.commentTypeId, row.id, comments),
     // The proposals go to every reader of the detail, internal or external,

@@ -164,8 +164,9 @@ export const auditCount = async (): Promise<number> =>
     )[0]?.n,
   );
 
-export async function setUp(): Promise<void> {
-  db = await createFreshDatabase({ part: 'hp' });
+/** `part` names this file's fresh database, so two files never share one. */
+export async function setUp(part = 'hp'): Promise<void> {
+  db = await createFreshDatabase({ part });
   alpha = (await insertBusiness(db.app, 'panel-alpha')) as BusinessId;
   bravo = (await insertBusiness(db.app, 'panel-bravo')) as BusinessId;
   await installSpine(db.app, alpha);

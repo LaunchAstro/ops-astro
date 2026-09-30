@@ -27,6 +27,8 @@
     "tests/commands/task-writing.test.ts",
     "tests/commands/task-writing-agent.test.ts",
     "tests/commands/task-panel-fields.test.ts",
-    "tests/commands/task-panel-fields-agent.test.ts"
+    "tests/commands/task-panel-fields-agent.test.ts",
+    "tests/commands/task-page-link.test.ts",
+    "tests/commands/task-page-link-agent.test.ts"
   ]
 }

@@ -45,6 +45,7 @@ import {
   type PanelDoor,
   type Perspective,
 } from './Perspectives.tsx';
+import { PageLink } from './PageLink.tsx';
 import { PanelFields, PanelName } from './PanelFields.tsx';
 import { withPageDefaults } from './read-defaults.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
@@ -119,6 +120,7 @@ function PanelBody(props: TaskPanelProps & { readonly task: Task }): ReactElemen
         task={task}
         onChanged={props.onChanged}
       />
+      <PageLink client={client} task={task} onChanged={props.onChanged} />
       <TaskFacts task={task} />
       <HandlingTicks client={client} task={task} onChanged={props.onChanged} />
       <Perspectives
