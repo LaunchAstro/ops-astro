@@ -180,7 +180,11 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
 
   return (
     <div className="stack">
-      <RefreshRow held={held !== null} onRefresh={reload} />
+      {/* The failed read draws its own Try again; a second button above it
+          is the stray one the mockup never draws (UI-TRACK B4). */}
+      {state.outcome === 'unavailable' ? null : (
+        <RefreshRow held={held !== null} onRefresh={reload} />
+      )}
       <RecordState state={state} subject="task" onRetry={reload}>
         {(value) =>
           'sharedTask' in value ? (
@@ -289,9 +293,9 @@ function RefreshRow(props: {
       does not reconcile them — the person does, with the Save or Discard
       choice the form is showing them.
     */}
-      <div className="btnrow">
+      <div className="btnrow tpr__refresh">
         <button
-          className="btn"
+          className="btn btn--sm btn--secondary"
           type="button"
           data-refresh="task"
           disabled={props.held}

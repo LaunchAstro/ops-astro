@@ -91,13 +91,13 @@ export function Decide(props: DecideProps): ReactElement {
   };
 
   return (
-    <div className="btnrow" data-decide="controls">
+    <div className="btnrow gatebox__acts" data-decide="controls">
       {why === null ? (
         <>
           {/* Two controls and no third: reject is the proposal header's own
               action (T3a), never a gate control (package 2 item 4). */}
           <button
-            className="btn"
+            className="btn btn--sm btn--secondary"
             data-decide="request_changes"
             data-gate-id={gate.id}
             data-version-id={props.versionId}
@@ -110,7 +110,7 @@ export function Decide(props: DecideProps): ReactElement {
             Request changes
           </button>
           <button
-            className="btn btn--primary"
+            className="btn btn--sm btn--primary"
             data-decide="approve"
             data-gate-id={gate.id}
             data-version-id={props.versionId}
@@ -156,7 +156,7 @@ export function Decide(props: DecideProps): ReactElement {
               </button>
             </div>
           ) : null}
-          <p className="card__sub" data-gate="notice">
+          <p className="gatebox__note" data-gate="notice">
             This demonstration changes nothing outside the app: its one effect is a team-only
             comment on this task.
           </p>

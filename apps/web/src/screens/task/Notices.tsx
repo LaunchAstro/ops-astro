@@ -17,22 +17,64 @@ import { titleOf } from '../../views/task-title.ts';
 export function TaskHeader(props: { readonly task: InternalTaskDetail }): ReactElement {
   const { task } = props;
   return (
-    <header className="tpr">
-      <div className="tpr__crumb">
-        <a className="sb__addr" href={pathTo('agency:projects-board')}>
-          Projects
-        </a>
-        <span aria-hidden="true">›</span>
-        <span>No board</span>
-        <span className="sbact__meta">· {task.key}</span>
-        <Spill state={drawTaskState(task.state)} />
+    <>
+      <header className="tpr">
+        <div className="tpr__crumb">
+          <a className="sb__addr" href={pathTo('agency:projects-board')}>
+            Projects
+          </a>
+          <span aria-hidden="true">›</span>
+          <span>No board</span>
+          <span className="sbact__meta">· {task.key}</span>
+          <Spill state={drawTaskState(task.state)} />
+        </div>
+        <h2 className="tpr__title">{titleOf(task.title)}</h2>
+        <div className="card__sub">
+          Revision {task.revision} ·{' '}
+          {task.completedAt === null ? 'not completed' : `completed ${task.completedAt}`}
+        </div>
+      </header>
+      <TaskFacts task={task} />
+    </>
+  );
+}
+
+/** A field this build does not carry yet: drawn, with a dash, never a made-up value. */
+const NOT_BUILT = '–';
+
+/**
+ * The read-only field grid under the header (TP-10, DS-COMP-26 inline form):
+ * the mockup's ten fields in its order. Assignee, due date and status are the
+ * task's own; the rest are not on this build and draw a dash. Editing stays
+ * with the controls below it.
+ */
+function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactElement {
+  const { task } = props;
+  const fields: readonly (readonly [string, string])[] = [
+    ['Assignee', task.assignee?.name ?? 'Unassigned'],
+    ['Client', NOT_BUILT],
+    ['Due date', task.due === null ? 'No date' : task.due.slice(0, 10)],
+    ['Estimate', NOT_BUILT],
+    ['Project', NOT_BUILT],
+    ['Category', NOT_BUILT],
+    ['Stage', NOT_BUILT],
+    ['Status', task.state?.label ?? 'No state'],
+    ['Page link', NOT_BUILT],
+    ['Handling', NOT_BUILT],
+  ];
+  return (
+    <div className="tpr__facts" data-task-facts="">
+      <div className="taskform">
+        <dl className="tf__grid">
+          {fields.map(([label, value]) => (
+            <div className="tf__row" key={label}>
+              <dt className="tf__k">{label}</dt>
+              <dd className="sb__state">{value}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
-      <h2 className="tpr__title">{titleOf(task.title)}</h2>
-      <div className="card__sub">
-        Revision {task.revision} ·{' '}
-        {task.completedAt === null ? 'not completed' : `completed ${task.completedAt}`}
-      </div>
-    </header>
+    </div>
   );
 }
 
