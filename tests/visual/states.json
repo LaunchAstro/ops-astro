@@ -3,11 +3,11 @@
   "mask": [".u-mono", "time", ".sbact__meta", ".sb__meta", "[data-visual-mask]"],
   "drift": { "state": "gate", "control": ".gatebox__acts > *", "token": "--warning" },
   "appDrift": {
-    "page": "agency:sign-in",
-    "control": ".signin__form .btn--primary",
+    "page": "agency:gallery",
+    "control": "[data-catalogue-id=\"DS-PRIM-1\"] [data-gallery-state=\"Primary\"] .btn",
     "token": "--border",
     "theme": "dark",
-    "note": "The one page drawn without a session at this head, in dark: the theme step in apps/web/index.html (taken byte for byte from SL03's MP-1-1) sets data-theme from the system before first paint, and the mode proves each width is drawn in dark, not as light. U04 (SL03) moves this to agency:gallery once the gallery lands."
+    "note": "The component gallery (MP-1-3), the kit in its states, in dark (U04): it asks for a session and draws no record, so the made-up session (made-up-session.json, origin the CI job's port) draws it with no API. The mode proves each width is drawn in dark, not as light."
   },
   "states": [
     {

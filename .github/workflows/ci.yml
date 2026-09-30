@@ -167,6 +167,8 @@ jobs:
           rm -f "${RUNNER_TEMP}/${archive}"
           "$bin/gitleaks" version
           echo "$bin" >> "$GITHUB_PATH"
+      - name: The pinned headless shell for MP-1-1's harness captures, which pnpm check runs
+        run: pnpm exec playwright install --with-deps --only-shell chromium
       - run: pnpm check
       - name: Semgrep p/default on the supply-chain settings, image pinned by digest (CQ-3)
         run: bash scripts/local/semgrep-settings.sh
@@ -431,4 +433,4 @@ jobs:
           set -euo pipefail
           pnpm --filter @launchastro/web exec vite preview --host 127.0.0.1 --port 5391 --strictPort &
           for _ in $(seq 1 30); do curl -sf http://127.0.0.1:5391/ >/dev/null && break; sleep 1; done
-          node tests/visual/run.ts --app-drift --app http://127.0.0.1:5391 --out "$RUNNER_TEMP/visual"
+          node tests/visual/run.ts --app-drift --app http://127.0.0.1:5391 --session tests/visual/made-up-session.json --out "$RUNNER_TEMP/visual"

@@ -127,7 +127,7 @@ export function App(props: AppProps): ReactElement {
   // whole action, not only the storage clear, is gated on it still being the
   // one in hand. Identity is the test: `setSession` is the only way a session
   // gets here, and every sign-in mints a new object.
-  const endedRef = useRef<(from: Session, refusal: WireRefusal) => void>(() => undefined);
+  const endedRef = useRef<(from: Session, refusal: WireRefusal) => void>(() => {});
   const hereRef = useRef(here);
   hereRef.current = here;
   const sessionRef = useRef(session);
@@ -254,12 +254,13 @@ export function App(props: AppProps): ReactElement {
           : PANELS.map((panel) => ({
               id: panel.id,
               label: panel.label,
+              icon: panel.icon,
               open: panel.route !== null && here === pathTo(panel.route),
             }))
       }
       onDockTab={(id) => {
         const panel = PANELS.find((entry) => entry.id === id);
-        if (panel?.route == null) return;
+        if (panel === undefined || panel.route === null) return;
         const target = pathTo(panel.route);
         props.navigate(here === target ? pathTo('agency:projects-board') : target);
       }}

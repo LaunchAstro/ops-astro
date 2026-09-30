@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { PNG } from 'pngjs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { comparePng } from './compare.ts';
-import { checkRenderer, readPacket, rendererOf, type Packet } from './packet.ts';
+import { checkRenderer, readPacket, rendererOf, themesOf, type Packet } from './packet.ts';
 import { builtPages, DARK_PENDING, overflowOf, report, type PageShot } from './report.ts';
 
 type Rgb = readonly [number, number, number];
@@ -51,7 +51,9 @@ beforeAll(() => {
   pictures = mkdtempSync(join(tmpdir(), 'mp-1-7-'));
   for (const page of builtPages()) {
     for (const width of packet.widths) {
-      writeFileSync(pictureOf(page, width), capture(width, { x: 40, colour: TOKEN }));
+      for (const theme of themesOf(packet)) {
+        writeFileSync(pictureOf(page, width, theme), capture(width, { x: 40, colour: TOKEN }));
+      }
     }
   }
 });
@@ -59,12 +61,20 @@ afterAll(() => {
   rmSync(pictures, { recursive: true, force: true });
 });
 
-const pictureOf = (page: string, width: number): string =>
-  join(pictures, `${page.replace(':', '_')}@${width}-light.page.png`);
+const pictureOf = (page: string, width: number, theme = 'light'): string =>
+  join(pictures, `${page.replace(':', '_')}@${width}-${theme}.page.png`);
 
-const everyShot = (widths: readonly number[], overflow = 0): PageShot[] =>
+const everyShot = (widths: readonly number[], overflow = 0, of: Packet = packet): PageShot[] =>
   builtPages().flatMap((page) =>
-    widths.map((width) => ({ page, width, picture: pictureOf(page, width), overflow })),
+    widths.flatMap((width) =>
+      themesOf(of).map((theme) => ({
+        page,
+        width,
+        theme,
+        picture: pictureOf(page, width, theme),
+        overflow,
+      })),
+    ),
   );
 
 describe('MP-1-7', () => {
@@ -90,14 +100,19 @@ describe('MP-1-7', () => {
   });
 
   it('MP-1-7 dark pending: every dark picture is marked waiting for the dark theme until U04', () => {
-    expect(packet.themes.dark).toBe(DARK_PENDING);
-    const { lines } = report(packet, builtPages(), everyShot(packet.widths));
+    // U04 (MP-1-1) has landed the dark theme on this branch, so the packet
+    // captures dark; a packet that still marks it pending prints each as waiting.
+    expect(packet.themes.dark).toBe('captured');
+    const pending: Packet = { ...packet, themes: { ...packet.themes, dark: DARK_PENDING } };
+    const { lines } = report(pending, builtPages(), everyShot(packet.widths, 0, pending));
     const dark = lines.filter((line) => line.includes('-dark'));
     expect(dark).toHaveLength(builtPages().length * packet.widths.length);
     for (const line of dark)
       expect(line).toMatch(/^pending .+@\d+-dark: waiting for the dark theme/u);
   });
+});
 
+describe('MP-1-7', () => {
   it('MP-1-7 renderer pinned: a capture from a different browser mode is refused until it is measured', () => {
     const pinned = packet.renderer;
     expect(() => checkRenderer(packet, { ...pinned })).not.toThrow();
@@ -139,19 +154,21 @@ function zeroHorizontalOverflow(): void {
 
 function everyPageBuiltSoFar(): void {
   it('MP-1-7 every page built so far: each registered route has a picture at each width', () => {
-    // The wave 0 pages and the others already built: the route registry's four.
+    // The wave 0 pages and the others already built: the route registry's
+    // four, and the component gallery (MP-1-3, U04).
     expect(builtPages()).toEqual([
       'agency:sign-in',
       'agency:projects-board',
       'agency:task-detail',
       'agency:settings',
+      'agency:gallery',
     ]);
     const all = report(packet, builtPages(), everyShot(packet.widths));
     expect(all.failed).toBe(0);
     expect(all.lines.at(-1)).toBe(
       `width-and-theme check: ${builtPages().length} page(s) at ${packet.widths.length} width(s): ` +
-        `${builtPages().length * packet.widths.length} light picture(s), none missing; ` +
-        `${builtPages().length * packet.widths.length} dark waiting for the dark theme; none scrolls sideways`,
+        `${builtPages().length * packet.widths.length} light and ` +
+        `${builtPages().length * packet.widths.length} dark picture(s), none missing; none scrolls sideways`,
     );
     // A page registered with no pictures, and one width missing on another, both fail.
     const missing = everyShot(packet.widths).filter(
@@ -159,8 +176,10 @@ function everyPageBuiltSoFar(): void {
     );
     const planted = report(packet, [...builtPages(), 'agency:planted'], missing);
     expect(planted.lines).toContain('FAIL agency:settings@1650-light: no picture');
+    expect(planted.lines).toContain('FAIL agency:settings@1650-dark: no picture');
     expect(planted.lines).toContain('FAIL agency:planted@1480-light: no picture');
-    expect(planted.failed).toBe(1 + packet.widths.length);
+    expect(planted.lines).toContain('FAIL agency:planted@1480-dark: no picture');
+    expect(planted.failed).toBe(2 * (1 + packet.widths.length));
     // A picture counts only when its file is there, as a PNG as wide as its width.
     const faked = everyShot(packet.widths);
     const swapped: Record<number, string> = {
@@ -169,7 +188,8 @@ function everyPageBuiltSoFar(): void {
       1480: new URL(import.meta.url).pathname,
     };
     for (const shot of faked) {
-      if (shot.page === 'agency:sign-in') shot.picture = swapped[shot.width] ?? shot.picture;
+      if (shot.page === 'agency:sign-in' && shot.theme === 'light')
+        shot.picture = swapped[shot.width] ?? shot.picture;
     }
     const counted = report(packet, builtPages(), faked);
     expect(counted.lines).toContain('FAIL agency:sign-in@390-light: no picture');

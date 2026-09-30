@@ -11,8 +11,9 @@
 //   node tests/visual/run.ts --app-drift --app URL [--session FILE] [--page ID] [--theme light|dark]
 //     [--out DIR]
 //
-// Light is captured at every width in the packet; dark prints as undischarged,
-// owned by U04. Without --app each drawn state prints red: T4b1 drives the
+// Every width in the packet is captured in each theme the packet captures:
+// light, and dark from U04 (MP-1-1); while dark is pending it prints as
+// undischarged. Without --app each drawn state prints red: T4b1 drives the
 // app into the states this captures, from T4a's fixture, at a local address.
 // --prove-drift is `visual_fails_on_drift` in the pinned renderer: an
 // unchanged recapture of the mockup passes, and a control shifted by two
@@ -21,7 +22,8 @@
 //
 // MP-1-7 widens it to the boundary widths and adds the width-and-theme
 // report: with --app, every page the app registers is captured at each width
-// in light and measured for sideways scroll; --session is a signed-in local
+// in each theme and measured for sideways scroll; the planted drift runs in
+// each theme too (MP-1-1 dark harness bites); --session is a signed-in local
 // fixture session (T4b1) as Playwright storage state, --task the key the task
 // page opens. The report goes to DIR/width-and-theme.txt.
 //
@@ -53,7 +55,9 @@ import {
   liveRenderer,
   MODE,
   readPacket,
+  themesOf,
   visualDir,
+  type Theme,
 } from './packet.ts';
 import {
   addressOf,
@@ -131,23 +135,30 @@ try {
   say(`renderer ${JSON.stringify(packet.renderer)}; tolerance ${JSON.stringify(packet.tolerance)}`);
   say(`mockup tree ${tree}; ${catalogue.screenshots}`);
   for (const width of packet.widths) {
-    const mockup = await openSide(browser, packet, width, { mockupDir, tree });
-    const appSide =
-      app === undefined ? undefined : await openSide(browser, packet, width, { app, session });
-    sides.push(mockup, ...(appSide === undefined ? [] : [appSide]));
-    for (const state of catalogue.states) await compareState(width, state, mockup, appSide);
-    if (appSide !== undefined && app !== undefined) await capturePages(width, appSide, app);
-    const external = [...mockup.external].toSorted();
-    const listed = Object.keys(packet.external).toSorted();
-    say(
-      `blocked and served locally at ${width}: ${external.length} of ${listed.length} listed address(es)`,
-    );
-    const unresolved = [...mockup.unresolved, ...(appSide?.unresolved ?? [])];
-    if (JSON.stringify(external) !== JSON.stringify(listed) || unresolved.length > 0) {
+    for (const theme of themesOf(packet)) {
+      const at = `${width}-${theme}`;
+      const mockup = await openSide(browser, packet, width, { mockupDir, tree, theme });
+      const appSide =
+        app === undefined
+          ? undefined
+          : await openSide(browser, packet, width, { app, session, colorScheme: theme });
+      sides.push(mockup, ...(appSide === undefined ? [] : [appSide]));
+      for (const state of catalogue.states)
+        await compareState(width, theme, state, mockup, appSide);
+      if (appSide !== undefined && app !== undefined)
+        await capturePages(width, theme, appSide, app);
+      const external = [...mockup.external].toSorted();
+      const listed = Object.keys(packet.external).toSorted();
       say(
-        `FAIL blocked list at ${width}: served ${external.join(' ')}; unresolved ${unresolved.join(' ') || 'none'}`,
-        true,
+        `blocked and served locally at ${at}: ${external.length} of ${listed.length} listed address(es)`,
       );
+      const unresolved = [...mockup.unresolved, ...(appSide?.unresolved ?? [])];
+      if (JSON.stringify(external) !== JSON.stringify(listed) || unresolved.length > 0) {
+        say(
+          `FAIL blocked list at ${at}: served ${external.join(' ')}; unresolved ${unresolved.join(' ') || 'none'}`,
+          true,
+        );
+      }
     }
   }
 } finally {
@@ -155,15 +166,17 @@ try {
   await browser.close();
 }
 
-/** One state at one width: the mockup's regions, then the app's, compared. */
+/** One state at one width in one theme: the mockup's regions, then the app's, compared. */
 async function compareState(
   width: number,
+  theme: Theme,
   state: State,
   mockup: Side,
   appSide?: Side,
 ): Promise<void> {
-  say(`undischarged ${state.id}@${width}-dark: ${packet.themes.dark}`);
-  const name = `${state.id}@${width}-light`;
+  if (!themesOf(packet).includes('dark'))
+    say(`undischarged ${state.id}@${width}-dark: ${packet.themes.dark}`);
+  const name = `${state.id}@${width}-${theme}`;
   if (state.mockup === null) {
     say(`no visual reference ${name}: ${String(state.reason)}`);
     return;
@@ -201,10 +214,10 @@ async function compareState(
   }
 }
 
-/** Every page the app registers, at one width, in light: a picture and its sideways scroll. */
-async function capturePages(width: number, side: Side, origin: URL): Promise<void> {
+/** Every page the app registers, at one width in one theme: a picture and its sideways scroll. */
+async function capturePages(width: number, theme: Theme, side: Side, origin: URL): Promise<void> {
   for (const id of builtPages()) {
-    const name = `${id}@${width}-light`;
+    const name = `${id}@${width}-${theme}`;
     const address = addressOf(id, task === undefined ? {} : { key: task });
     if (address === undefined || (needsSession(id) && session === undefined)) {
       say(`red ${name}: needs ${address === undefined ? '--task' : '--session'} (T4b1's fixture)`);
@@ -216,7 +229,13 @@ async function capturePages(width: number, side: Side, origin: URL): Promise<voi
     await page.close();
     const picture = `${out}/${name}.page.png`;
     if (shot !== undefined) writeFileSync(picture, shot.png);
-    shots.push({ page: id, width, picture: shot === undefined ? null : picture, overflow });
+    shots.push({
+      page: id,
+      width,
+      theme,
+      picture: shot === undefined ? null : picture,
+      overflow,
+    });
   }
 }
 

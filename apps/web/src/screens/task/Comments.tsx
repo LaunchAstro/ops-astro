@@ -33,7 +33,7 @@
 // `task.comment` leaves the revision alone, so there is nothing to merge.
 
 import { useRef, type ReactElement } from 'react';
-import { PaneEmpty } from '@launchastro/ui';
+import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommand } from '../../records/use-command.ts';
@@ -226,7 +226,7 @@ export function Comments(props: CommentsProps): ReactElement {
 /** The comments on the task, oldest first, each with who may read it. */
 function CommentThread(props: { readonly comments: CommentsProps['comments'] }): ReactElement {
   return props.comments.length === 0 ? (
-    <PaneEmpty say="Nothing has been said about this one yet." />
+    <Empty look="inline" title="Nothing has been said about this one yet." />
   ) : (
     <div className="thread" data-comments="list">
       {props.comments.map((comment) => (
