@@ -68,32 +68,23 @@ describe('every_invariant_bites: a revert fails by its declared crossing', () =>
 });
 
 describe('every_invariant_bites: UNPROVEN is exactly the known list', () => {
-  it("holds exactly the catalogue's known parts, T2b and T2f, as UNPROVEN, never a pass", () => {
-    const known = PARTS.filter((one) => one.knownUnproven !== undefined);
-    expect(known.map((one) => `${one.id} ${String(one.knownUnproven)}`)).toEqual([
-      'T2b #191',
-      'T2f #192',
-    ]);
+  it('holds no part as UNPROVEN now that T2b and T2f bite; a listed part biting in full fails', () => {
+    expect(PARTS.filter((one) => one.knownUnproven !== undefined)).toEqual([]);
     const lines = everyLine();
-    const t2b = lines.find((line) => line.case.startsWith('T4-N4 T2b'));
-    expect([t2b?.status, t2b?.detail.startsWith('UNPROVEN, follow-up #191')]).toEqual([
-      'unproven',
-      true,
-    ]);
     expect(everyInvariantBites(lines).status).toBe('pass');
-    // T2f biting in full, before #192 closes and the list is updated, fails the run.
-    const t2f = PARTS.find((one) => one.id === 'T2f');
-    const full = ran({
-      cases: [
-        ...(bites('T2f').cases ?? []),
-        ...(t2f?.crossings ?? []).map((one) => ({ name: one.case, passed: false })),
-      ],
-    });
-    const bitten = lines.map((line) =>
-      line.case.startsWith('T4-N4 T2f') ? classify(line.case, full) : line,
-    );
-    expect(everyInvariantBites(bitten).detail).toContain(
-      'unproven T2b, not exactly the known T2b, T2f',
+    // A crossing that did not run fails its line: no follow-up excuses it.
+    const t2b = lines.find((line) => line.case.startsWith('T4-N4 T2b'));
+    const invariant = { name: 'worker_boundary: the case', passed: false };
+    const unrun = classify(String(t2b?.case), ran({ cases: [invariant] }));
+    expect(unrun.status).toBe('fail');
+    // A part still listed as known while it bites in full fails the run.
+    const others = PARTS.filter((one) => one.id !== 'T2b');
+    const listed = [
+      ...others,
+      { ...PARTS.find((one) => one.id === 'T2b')!, knownUnproven: '#191' },
+    ];
+    expect(everyInvariantBites(lines, listed).detail).toContain(
+      'unproven none, not exactly the known T2b',
     );
   });
 });

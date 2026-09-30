@@ -31,6 +31,10 @@ const oklab = (colour: string): string => {
   return lab.map((n) => n.toFixed(4)).join(' ');
 };
 
+// The donut's slices compared by value, as the sparkline's colours are.
+const paintOf = (slices: PaintView['slices']): PaintView['slices'] =>
+  slices.map(({ fill, opacity }) => ({ fill: oklab(fill), opacity }));
+
 let views: PaintView[] = [];
 
 beforeAll(() => {
@@ -51,11 +55,13 @@ describe('MP-1-5 kit paint from the mockup', () => {
 
   it("MP-1-5 the donut's slices take the mockup's chart paint in order: ink, accent, lilac", () => {
     for (const view of views) {
-      expect(view.slices, view.name).toEqual([
-        { fill: INK[themeOf(view)], opacity: '0.92' },
-        { fill: ACCENT, opacity: '0.92' },
-        { fill: LILAC, opacity: '0.92' },
-      ]);
+      expect(paintOf(view.slices), view.name).toEqual(
+        paintOf([
+          { fill: INK[themeOf(view)], opacity: '0.92' },
+          { fill: ACCENT, opacity: '0.92' },
+          { fill: LILAC, opacity: '0.92' },
+        ]),
+      );
     }
     const slices = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((label) => ({ label, value: 1 }));
     const markup = renderToStaticMarkup(
@@ -83,6 +89,12 @@ describe('MP-1-5 kit paint from the mockup', () => {
     );
     expect(toned).toContain('data-tone="ok"');
     expect(toned).toContain('data-paint="accent"');
+  });
+
+  it('MP-1-5 a donut slice read after a transition, in oklab, still matches its paint', () => {
+    const read = [{ fill: 'oklab(0.58 0.0543519 -0.202844)', opacity: '0.92' }];
+    expect(paintOf(read)).toEqual(paintOf([{ fill: ACCENT, opacity: '0.92' }]));
+    expect(paintOf(read)).not.toEqual(paintOf([{ fill: LILAC, opacity: '0.92' }]));
   });
 
   it('MP-1-5 the sparkline draws in the accent, its host colour in the mockup, and keeps a named tone', () => {
