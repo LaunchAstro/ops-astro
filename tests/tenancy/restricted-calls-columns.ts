@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The column grants (AW-02: planned_runs moves its state alone) held against
-// the contract, and an actual update of each granted column by every caller.
+// The column grants (AW-02: planned_runs moves its state alone; C31's custody
+// select; the SL13 tables' updates) held against the contract, and an actual
+// update of each granted column by every caller.
 // Beside `restricted-calls-callers.ts`, whose callers it drives.
 
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { APPLICATION_ROLE } from '../support/fresh-database.ts';
 import {
   catalogueColumnGrants,
+  columnSelectsAt,
   columnUpdatesAt,
   describeOutcome,
 } from './restricted-calls-cases.ts';
@@ -33,7 +35,10 @@ export async function columnUpdateFindings(
 ): Promise<string[]> {
   const pairs = columnUpdatesAt(at);
   const held = await catalogueColumnGrants(admin);
-  const wanted = pairs.map((pair) => `${APPLICATION_ROLE} UPDATE ${pair}`);
+  const wanted = [
+    ...columnSelectsAt(at).map((pair) => `${APPLICATION_ROLE} SELECT ${pair}`),
+    ...pairs.map((pair) => `${APPLICATION_ROLE} UPDATE ${pair}`),
+  ];
   const wrong = held.join(', ') === wanted.join(', ') ? [] : [`column grants: ${held.join(', ')}`];
   for (const pair of pairs) {
     // One table at a time: the callers share their connections.
