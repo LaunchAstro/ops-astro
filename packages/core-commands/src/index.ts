@@ -11,6 +11,12 @@
 export { type AgentRequest } from './commands/agent-call.ts';
 export { agentAnswer, executeAgentCommand } from './commands/agent-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
+export {
+  GATE_ITEMS,
+  gateDecision,
+  type GateItem,
+  type Readiness,
+} from './commands/first-client-gate.ts';
 export { isCommandRefusal, refuseCommand, type CommandRefusal } from './commands/refusal.ts';
 export { type CommandRequest } from './commands/requests.ts';
 // T3d1: the pass asks the register whether an unknown step's effect happened.
