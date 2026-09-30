@@ -38,7 +38,7 @@ describe.skipIf(serverUrl === undefined)('C52-A pins', () => {
 
   it('C52-A no silent skill change: runs and a newer release leave the pin and its approval; an edit leaves no approval standing', async () => {
     const { version, activation, approval } = await f.approved();
-    const s = starter();
+    const s = starter(w.worker);
     await f.fire(activation.id, s.start);
     await f.fire(activation.id, s.start);
     await f.fire(activation.id, s.start);
@@ -72,7 +72,7 @@ describe.skipIf(serverUrl === undefined)('C52-A pins', () => {
   it('C52-A isolation: another business’s activation, approval and occurrence answer as unknown to the records', async () => {
     const { activation, approval } = await f.approved();
     const occurrence = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
-    const s = starter();
+    const s = starter(w.worker);
     const inBravo = async <T>(run: (tx: TenantQuery) => Promise<T>): Promise<T> =>
       await w.db.app.withBusiness(w.bravo, run);
     expect(
@@ -105,7 +105,12 @@ describe.skipIf(serverUrl === undefined)('C52-A pins', () => {
     expect(await inBravo((tx) => dispatchOccurrence(tx, occurrence.id, s.start))).toEqual({
       kind: 'unknown',
     });
+    const bravoWorker = starter(w.bravoWorker);
+    expect(await inBravo((tx) => dispatchOccurrence(tx, occurrence.id, bravoWorker.start))).toEqual(
+      { kind: 'unknown' },
+    );
     expect(s.runs).toEqual([]);
+    expect(bravoWorker.runs).toEqual([]);
     expect(await w.inAlpha((tx) => readStandingApproval(tx, activation.id))).toMatchObject({
       id: approval.id,
       revoked: false,

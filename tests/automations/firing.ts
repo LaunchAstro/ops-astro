@@ -2,11 +2,11 @@
 //
 // C52-A's firing helpers over C33's world: adopt a released version, claim,
 // dispatch, revoke and turn off, each in the first business's own transaction.
-// The run is the agent engine's (AW-01, not on this branch), so dispatch is
-// handed a run starter that counts what it is asked to start.
+// Dispatch is handed the product's run starter for the world's worker (AW-01
+// J's write), wrapped to list the runs it started.
 
-import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
+import { occurrenceRunStarter } from '../../packages/core-commands/src/index.ts';
 import {
   adoptVersion,
   dispatchOccurrence,
@@ -36,14 +36,42 @@ export interface Starter {
   readonly start: RunStarter;
 }
 
-export function starter(): Starter {
+/** The product's starter for this worker, listing each run it started. */
+export function starter(workerActorId: string): Starter {
   const runs: RunRequest[] = [];
+  const real = occurrenceRunStarter(workerActorId);
   return {
     runs,
-    start(_tx, run) {
-      runs.push(run);
-      return Promise.resolve(randomUUID());
+    async start(tx, run) {
+      const answer = await real(tx, run);
+      if (typeof answer === 'string') runs.push(run);
+      return answer;
     },
+  };
+}
+
+/** What an occurrence's run writes, counted in every business. */
+export interface RunFootprint {
+  readonly runs: number;
+  readonly pins: number;
+  readonly tasks: number;
+  readonly audit: number;
+}
+
+export async function runFootprint(w: AutomationWorld): Promise<RunFootprint> {
+  return {
+    runs: await w.count(
+      'select count(*) as n from public.planned_runs where origin_occurrence_id is not null',
+    ),
+    pins: await w.count(
+      `select count(*) as n from public.run_definition_pins where ref_kind = 'definition_version'`,
+    ),
+    tasks: await w.count(
+      `select count(*) as n from public.records where data->>'source' = 'system:automation'`,
+    ),
+    audit: await w.count(
+      `select count(*) as n from public.audit_events where command = 'occurrence.run_start'`,
+    ),
   };
 }
 

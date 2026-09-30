@@ -32,6 +32,7 @@ export type RunStarter = (tx: TenantQuery, run: RunRequest) => Promise<string>;
 export type Dispatch =
   | { readonly kind: 'unknown' }
   | { readonly kind: 'not_approved'; readonly outcome: OccurrenceOutcome }
+  | { readonly kind: 'refused'; readonly code: string }
   | { readonly kind: 'dispatched' | 'replayed'; readonly dispatch: DispatchRow };
 
 interface ClaimedDbRow {

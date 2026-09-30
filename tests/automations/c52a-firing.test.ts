@@ -14,7 +14,7 @@ import {
   readStandingApproval,
 } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { firingOf, occurrenceOf, starter, type Firing } from './firing.ts';
+import { firingOf, occurrenceOf, runFootprint, starter, type Firing } from './firing.ts';
 import { createAutomationWorld, type AutomationWorld } from './world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -33,12 +33,17 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
     await w?.db.drop();
   });
 
+  const runsFor = async (occurrenceId: string): Promise<number> =>
+    await w.count('select count(*) as n from public.planned_runs where origin_occurrence_id = $1', [
+      occurrenceId,
+    ]);
+
   it('C52-A approved occurrence starts one run: on the exact pinned version, one occurrence starts one run', async () => {
     const { version, activation, approval } = await f.approved();
     expect(approval).toMatchObject({ versionId: version.id, act: 'adopted', revoked: false });
     const occurrence = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
     expect(occurrence).toMatchObject({ outcome: 'approved', versionId: version.id });
-    const s = starter();
+    const s = starter(w.worker);
     const sent = await f.dispatch(occurrence.id, s.start);
     expect(sent.kind).toBe('dispatched');
     expect(s.runs).toEqual([
@@ -55,7 +60,7 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
     expect(await f.revoke(approval.id)).toBe('already_revoked');
     const occurrence = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
     expect(occurrence.outcome).toBe('no_standing_approval');
-    const s = starter();
+    const s = starter(w.worker);
     expect(await f.dispatch(occurrence.id, s.start)).toEqual({
       kind: 'not_approved',
       outcome: 'no_standing_approval',
@@ -75,7 +80,7 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
     await f.turnOff(activation.id);
     const occurrence = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
     expect(occurrence.outcome).toBe('activation_off');
-    const s = starter();
+    const s = starter(w.worker);
     expect(await f.dispatch(occurrence.id, s.start)).toEqual({
       kind: 'not_approved',
       outcome: 'activation_off',
@@ -87,11 +92,12 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
   });
 
   it('C52-A revoked before dispatch: an occurrence claimed before a revoke or a turn-off and dispatched after it starts no run', async () => {
+    const before = await runFootprint(w);
     const revoked = await f.approved();
     const held = occurrenceOf(await w.claim(revoked.activation.id, { dueAt: f.nextDue() }));
     expect(held.outcome).toBe('approved');
     expect(await f.revoke(revoked.approval.id)).toBe('revoked');
-    const s = starter();
+    const s = starter(w.worker);
     const late = await f.dispatch(held.id, s.start);
     expect(late).toEqual({
       kind: 'dispatched',
@@ -108,6 +114,7 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
       dispatch: { occurrenceId: heldOff.id, outcome: 'activation_off', runId: null },
     });
     expect(s.runs).toEqual([]);
+    expect(await runFootprint(w)).toEqual(before);
     expect(await f.started(revoked.activation.id)).toBe(0);
     expect(await f.started(off.activation.id)).toBe(0);
   });
@@ -125,11 +132,12 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
     expect(ids.size).toBe(1);
     expect(await w.occurrences(activation.id)).toBe(1);
     const [id] = [...ids] as [string];
-    const s = starter();
+    const s = starter(w.worker);
     const sent = await Promise.all([f.dispatch(id, s.start), f.dispatch(id, s.start)]);
     sent.push(await f.dispatch(id, s.start));
     expect(sent.map((one) => one.kind).toSorted()).toEqual(['dispatched', 'replayed', 'replayed']);
     expect(s.runs).toHaveLength(1);
+    expect(await runsFor(id)).toBe(1);
     expect(await f.started(activation.id)).toBe(1);
   });
 
@@ -141,13 +149,14 @@ describe.skipIf(serverUrl === undefined)('C52-A firing', () => {
       w.claim(activation.id, { eventId }),
     ]);
     expect(occurrenceOf(a).id).toBe(occurrenceOf(b).id);
-    const s = starter();
+    const s = starter(w.worker);
     const sent = await Promise.all([
       f.dispatch(occurrenceOf(a).id, s.start),
       f.dispatch(occurrenceOf(b).id, s.start),
     ]);
     expect(sent.map((one) => one.kind).toSorted()).toEqual(['dispatched', 'replayed']);
     expect(s.runs).toHaveLength(1);
+    expect(await runsFor(occurrenceOf(a).id)).toBe(1);
     expect(await w.occurrences(activation.id)).toBe(1);
     expect(await f.started(activation.id)).toBe(1);
   });

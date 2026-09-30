@@ -15,15 +15,18 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import type { ActivationView } from '../../packages/core-wire/src/index.ts';
 import { createRegistryWorld, detail, type RegistryWorld } from './registry-world.ts';
 import { starter } from './firing.ts';
+import { insertWorker } from './world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('C52-A standing approval commands', () => {
   let w: RegistryWorld;
+  let worker: string;
 
   beforeAll(async () => {
     w = await createRegistryWorld('c52ac');
+    worker = await insertWorker(w.controls.fixture.db, w.controls.fixture.business);
   }, 120_000);
 
   afterAll(async () => {
@@ -66,7 +69,7 @@ describe.skipIf(serverUrl === undefined)('C52-A standing approval commands', () 
 
   let hour = 0;
   const fireOnce = async (activationId: string): Promise<number> => {
-    const counting = starter();
+    const counting = starter(worker);
     const { db, business } = w.controls.fixture;
     await db.app.withBusiness(business, async (tx) => {
       const claim = await claimOccurrence(tx, activationId, {

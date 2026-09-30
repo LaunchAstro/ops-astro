@@ -5,7 +5,8 @@
 // carries a canary. Occurrences are claimed by the scheduler and the event
 // intake under the worker lease (AW-01, not built), so the world claims
 // through the application role in the business's own transaction, as the
-// worker will.
+// worker will. Each business has an active worker, whose actor starts an
+// occurrence's run (AW-01 J), and the task spine that run's task lands on.
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -20,7 +21,7 @@ import {
   type OccurrenceClaim,
   type TenantQuery,
 } from '../../packages/core-records/src/index.ts';
-import { enrol, type Member } from '../commands/fixture.ts';
+import { enrol, installSpine, type Member } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
 
@@ -32,6 +33,8 @@ export interface AutomationWorld {
   readonly bravo: string;
   readonly admin: Member;
   readonly bravoAdmin: Member;
+  readonly worker: string;
+  readonly bravoWorker: string;
   readonly definition: string;
   readonly canary: string;
   inAlpha<T>(run: (tx: TenantQuery) => Promise<T>): Promise<T>;
@@ -46,6 +49,21 @@ export interface AutomationWorld {
   occurrences(activationId: string): Promise<number>;
 }
 
+/** An actor of the business's own worker, active unless asked otherwise. */
+export async function insertWorker(
+  db: FreshDatabase,
+  business: string,
+  active = true,
+): Promise<string> {
+  const id = randomUUID();
+  await db.admin.execute(
+    `insert into public.actors (business_id, id, kind, active, deactivated_at)
+     values ($1, $2, 'worker', $3, case when $3 then null else now() end)`,
+    [business, id, active],
+  );
+  return id;
+}
+
 // eslint-disable-next-line max-lines-per-function -- the world and its helpers, built in one place
 export async function createAutomationWorld(part: string): Promise<AutomationWorld> {
   const db = await createFreshDatabase({ part });
@@ -53,6 +71,10 @@ export async function createAutomationWorld(part: string): Promise<AutomationWor
   const bravo = await insertBusiness(db.app, 'bravo');
   const admin = await enrol(db.app, alpha, 'admin');
   const bravoAdmin = await enrol(db.app, bravo, 'bravoadmin');
+  const worker = await insertWorker(db, alpha);
+  const bravoWorker = await insertWorker(db, bravo);
+  await installSpine(db.app, alpha);
+  await installSpine(db.app, bravo);
   const canary = `c33-canary-${randomUUID()}`;
   const inAlpha = async <T>(run: (tx: TenantQuery) => Promise<T>): Promise<T> =>
     await db.app.withBusiness(alpha, run);
@@ -74,6 +96,8 @@ export async function createAutomationWorld(part: string): Promise<AutomationWor
     bravo,
     admin,
     bravoAdmin,
+    worker,
+    bravoWorker,
     definition,
     canary,
     inAlpha,
