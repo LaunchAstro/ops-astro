@@ -298,7 +298,8 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
       recordId: w.taskId,
     } as never);
     expect(foreign).toMatchObject({ code: 'NOT_FOUND' });
-    expect(JSON.stringify(foreign)).not.toMatch(/liability_unknown|2500/u);
+    // The held amount as a value: a bare 2500 also turns up inside a random id in the title.
+    expect(JSON.stringify(foreign)).not.toMatch(/liability_unknown|(?<![\w-])2500(?![\w-])/u);
 
     const idle = await enrol(s.db.app, s.business, `t3b-idle-${randomUUID()}`);
     expect(await readAs(idle)).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
@@ -319,10 +320,12 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
       `t3b-wrong-${randomUUID()}`,
       otherTask,
     );
-    expect(JSON.stringify(await readAs(own))).not.toMatch(/liability_unknown|heldMinor|2500/u);
+    expect(JSON.stringify(await readAs(own))).not.toMatch(
+      /liability_unknown|heldMinor|(?<![\w-])2500(?![\w-])/u,
+    );
     const crossed = await readAs(wrong);
     expect(crossed).toMatchObject({ code: 'NOT_FOUND' });
-    expect(JSON.stringify(crossed)).not.toMatch(/liability_unknown|2500/u);
+    expect(JSON.stringify(crossed)).not.toMatch(/liability_unknown|(?<![\w-])2500(?![\w-])/u);
   });
 });
 
