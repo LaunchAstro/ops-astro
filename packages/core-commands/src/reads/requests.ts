@@ -26,6 +26,7 @@
 
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type {
+  AttributionResult,
   CapabilitiesResult,
   PersonListResult,
   PresetPlanResult,
@@ -114,6 +115,8 @@ export interface ReadOperands {
   readonly 'conversation.read': { readonly conversationId: unknown };
   /** The caller's own conversations, for the assistant panel's tab row (MP-7-11). */
   readonly 'conversation.list': NoOperands;
+  /** The runs that read one file, by its digest: pre-review (AW-04). */
+  readonly 'definition.attribution': { readonly digest: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -142,4 +145,5 @@ export type ReadResult =
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
   | ConversationReadResult
-  | ConversationListResult;
+  | ConversationListResult
+  | AttributionResult;

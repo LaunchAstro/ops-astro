@@ -529,6 +529,37 @@ export interface OutageView {
   }[];
 }
 
+/**
+ * AW-04's attribution by digest: the runs whose read ledger holds the file,
+ * entry and non-entry alike, and the operations those runs reached. It is
+ * pre-review, every row labelled so: it may floor a declaration of reach and
+ * nothing else, and no evaluation, promotion or conformance input takes it.
+ */
+export interface PreReviewAttribution {
+  readonly label: 'pre-review';
+  readonly digest: string;
+  readonly runs: readonly PreReviewRun[];
+  /** Every operation any run below reached (a refused call reached nothing). */
+  readonly operations: readonly string[];
+}
+
+export interface PreReviewRun {
+  readonly label: 'pre-review';
+  readonly taskId: string;
+  readonly runId: string;
+  /** The paths the run read the file at. */
+  readonly paths: readonly string[];
+  /** Whether the file was the run's entry file. */
+  readonly entry: boolean;
+  readonly operations: readonly string[];
+}
+
+/** `definition.attribution`'s answer. */
+export interface AttributionResult {
+  readonly ok: true;
+  readonly attribution: PreReviewAttribution;
+}
+
 /** `preset.plan`'s answer: a dry-run plan that installs and approves nothing. */
 export interface PresetPlanResult {
   readonly ok: true;

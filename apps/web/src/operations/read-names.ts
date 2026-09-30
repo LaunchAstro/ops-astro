@@ -46,6 +46,8 @@ export const READ_NAMES = [
   'conversation.read',
   // The caller's own conversations, for the tab row (MP-7-11).
   'conversation.list',
+  // Which runs read an instruction file, by digest: pre-review (AW-04).
+  'definition.attribution',
 ] as const;
 
 /**

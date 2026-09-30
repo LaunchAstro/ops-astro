@@ -316,6 +316,16 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return { ok: true, execution: await readTaskExecution(tx, recordId, operands.cursor) };
     },
   },
+  // AW-04, pre-review: not built yet.
+  'definition.attribution': {
+    identifiers: [],
+    parse: ({ digest }) => parsed({ digest: String(digest) }),
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async () =>
+      await Promise.resolve(refuseCommand('DEPENDENCY_NOT_LANDED', [], ['not built yet'])),
+  },
   // No subject record, as the queue: the list is about the gates the caller
   // may decide. The door asks for any grant; the rows are filtered by the
   // caller's `decide` inside the query, and a caller holding none is refused.
