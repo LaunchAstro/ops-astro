@@ -374,7 +374,7 @@ holding it, one applied `task.assign` audit event per task, in its own
 transaction. Four eyes counts an agent assignee as its delegating person.
 `task.read` answers `agent` (the delegation, its purpose, the accountable
 person and whether it is live) and `myAgents` (the reader's own live
-delegations for this task; empty for an agent). Assignment starts no run.
+delegations for this task); an agent reader is sent neither. Assignment starts no run.
 
 **`task.trash` asks `write` on the task and on every live descendant the walk
 reaches.** A business-scoped grant covers them all. Otherwise each descendant

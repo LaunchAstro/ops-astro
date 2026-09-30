@@ -8,7 +8,7 @@
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { AgentAssigneeView, AgentOfferView } from '../../../core-wire/src/index.ts';
 
-/** The task's agent, and the reader's own agents for it; none for an agent reader. */
+/** The task's agent, and the reader's own agents for it; neither for an agent reader. */
 export async function readTaskAgents(
   tx: TenantQuery,
   recordId: string,
@@ -17,6 +17,9 @@ export async function readTaskAgents(
   readonly agent: AgentAssigneeView | null;
   readonly myAgents: readonly AgentOfferView[];
 }> {
+  // An agent reader is sent neither: the delegation holding the task may be
+  // another person's, and an agent never sees another person's delegations.
+  if (reader === null) return { agent: null, myAgents: [] };
   const held = await tx.query<{
     readonly id: string;
     readonly purpose: string;
@@ -42,7 +45,6 @@ export async function readTaskAgents(
           accountable: { personId: row.person_id, name: row.person_name ?? '' },
           live: row.live,
         };
-  if (reader === null) return { agent, myAgents: [] };
   const mine = await tx.query<{ readonly id: string; readonly purpose: string }>(
     `select id, purpose from public.delegations
       where business_id = $1 and delegate_person_id = $2 and purpose_scope_id = $3
