@@ -552,13 +552,33 @@ async function authoriseClaimant(
     delegatePersonId: request.authorisedByPersonId,
     mintedByActorId: request.mintedByActorId,
     purpose: found.purpose,
-    collections: [request.collection],
+    collections: await delegatedCollections(tx, request, lockedAt),
     actions: [...actions],
     expiresAt,
     purposeScope: { kind: 'record', id: found.task_id },
   });
   if (!minted.ok) return { ok: false, refusal: minted.refusal };
   return { ok: true, value: minted.value };
+}
+
+/**
+ * The collections the agent's delegation reaches: the work's own, and `run`
+ * where the delegating person holds `run:write` at the locked instant, so the
+ * agent may revise its run's state (MP-6-2). The mint holds `run` to `write`;
+ * a person without it mints the task delegation it always was.
+ */
+async function delegatedCollections(
+  tx: TenantQuery,
+  request: PickupRequest,
+  lockedAt: string,
+): Promise<readonly string[]> {
+  const runWrite = await checkAuthorityAt(
+    tx,
+    [{ kind: 'person', id: request.authorisedByPersonId }],
+    { collection: 'run', action: 'write', scope: { kind: 'business', id: null } },
+    lockedAt,
+  );
+  return runWrite.ok ? [request.collection, 'run'] : [request.collection];
 }
 
 interface NewLease {

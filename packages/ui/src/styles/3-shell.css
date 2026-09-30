@@ -363,3 +363,62 @@
   padding: var(--s-3) var(--s-5) 0;
   border-bottom: 1px solid var(--border);
 }
+/* The conversation tab row's parts (AI-06 to AI-08). Each tab carries its own
+   close, shown on the selected tab and on hover or focus, and always at phone
+   width where there is no hover (DOCK D-10). */
+.aip__tab {
+  display: inline-flex;
+  align-items: center;
+}
+.aip__tabx,
+.aip__new,
+.aip__act {
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+}
+.aip__tabx {
+  opacity: 0;
+  padding: 0 0.2rem;
+}
+.aip__tab:hover .aip__tabx,
+.aip__tab:focus-within .aip__tabx,
+.aip__tab:has([aria-selected='true']) .aip__tabx {
+  opacity: 1;
+}
+@media (max-width: 640px) {
+  .aip__tabx {
+    opacity: 1;
+  }
+}
+.aip__new {
+  margin-left: auto;
+}
+.aip__tabx:hover,
+.aip__new:hover,
+.aip__act:hover {
+  color: var(--accent);
+}
+.cmtab--rename {
+  max-width: 18ch;
+  border: 1px solid var(--accent);
+  background: var(--paper);
+  color: var(--text);
+}
+/* Where the ask came from, and what each answer read (AI-11, AI-12). */
+.aip__cited {
+  margin: 0;
+  padding: var(--s-2) var(--s-5) 0;
+  color: var(--text-muted);
+  font-size: var(--text-overline);
+}
+.aip__cites {
+  margin: 0.4rem 0 0;
+  padding-left: 1rem;
+  font-size: var(--text-overline);
+}
+.aip__msg--failed {
+  border-color: var(--danger);
+}

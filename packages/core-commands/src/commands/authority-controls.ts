@@ -173,7 +173,7 @@ async function stillAuthorised(tx: TenantQuery, dependent: Dependent): Promise<b
     ...(dependent.actor_id === null ? [] : [{ kind: 'actor' as const, id: dependent.actor_id }]),
   ];
   for (const collection of dependent.collections) {
-    // eslint-disable-next-line no-await-in-loop -- one collection per delegation today
+    // eslint-disable-next-line no-await-in-loop -- the task's collection, and run where minted
     const held = await checkAuthority(tx, subjects, {
       collection,
       action: 'write',
@@ -300,10 +300,14 @@ export async function revokeDelegationAsManager(
   const delegation = rows[0];
   if (delegation === undefined) return NOT_FOUND;
   const scope: Scope = { kind: delegation.purpose_scope_kind, id: delegation.purpose_scope_id };
+  // Run reach exists only inside a task delegation on its purpose task, and
+  // no one holds `run:manage`, so its pair is judged on the claim's collection
+  // at that scope (ORCH34): each run pair so judged is a task pair it also asks.
   for (const collection of delegation.collections) {
+    const judged = collection === 'run' ? claimCollection() : collection;
     for (const action of delegation.actions) {
       // eslint-disable-next-line no-await-in-loop -- a handful of pairs, each one decisive
-      if (!(await withinCeiling(tx, context, collection, action, scope))) return OUTSIDE_CEILING;
+      if (!(await withinCeiling(tx, context, judged, action, scope))) return OUTSIDE_CEILING;
     }
   }
 

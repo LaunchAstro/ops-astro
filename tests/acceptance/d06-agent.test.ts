@@ -4,7 +4,7 @@
 //
 // The agent's own operations are `AGENT_SURFACE`, and each has a real positive
 // control here: the queue before any pickup, a pickup of a freshly approved
-// reservation, and a read, a comment, a heartbeat, the capabilities read and a
+// reservation, and a read, a comment, a heartbeat, a check, the capabilities read and a
 // handback under the credential that pickup handed out. Each is sent once
 // valid, then again with every classified system-owned field, and the contract
 // outcome is asserted: `FIELD_NOT_WRITABLE` naming the field, every other table
@@ -39,6 +39,8 @@ import {
   type Durable,
 } from './d06-cases.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
+import { agentHold } from './d06-agent-fixture.ts';
+import { revisedState } from './d06-run-state.ts';
 import type { Answer } from './world.ts';
 import { serverUrl } from './world.ts';
 
@@ -53,9 +55,11 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.read',
   'task.comment',
   'task.propose',
+  'run.revise_state',
   'task.heartbeat',
   'task.dispatch',
   'task.observe',
+  'task.check',
   'model.call',
   'task.pickup',
   'task.handback',
@@ -76,21 +80,11 @@ const excluded = COMMAND_SURFACE.map((one) => one.name)
   .filter((name) => !AGENT_OPERATIONS.includes(name))
   .flatMap((operation) => SYSTEM_OWNED_FIELDS.map((key) => ({ operation, key })));
 
-interface Pickup {
-  readonly credential: string;
-  readonly delegationId: string;
-  readonly leaseId: string;
-  readonly fence: number;
-  readonly taskId: string;
-  readonly attemptId: string;
-}
-
 // eslint-disable-next-line max-lines-per-function -- one fixture, and the cells that share it
 describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
   let harness: Harness;
   let durable: () => Promise<Durable>;
-  /** The one delegation the agent holds, if any: an agent may hold one at a time. */
-  let live: Pickup | undefined;
+  const hold = agentHold(() => harness);
   const tally = new Tally();
 
   beforeAll(async () => {
@@ -104,41 +98,6 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     await harness?.close();
   });
 
-  /** A reservation a person approved, ready to be picked up. */
-  async function reservation(): Promise<string> {
-    const { decided } = await harness.approvedReservation();
-    expect(decided.code, 'the decision a pickup needs').toBe('ok');
-    return String((decided.body['detail'] as Record<string, unknown>)['reservationId']);
-  }
-
-  /** Remember a pickup the server granted, whether or not the cell wanted it. */
-  function track(answer: Answer): void {
-    if (answer.code !== 'ok') return;
-    const detail = answer.body['detail'] as Record<string, unknown>;
-    live = {
-      credential: String(detail['credential']),
-      delegationId: String(detail['delegationId']),
-      leaseId: String(detail['leaseId']),
-      fence: Number(detail['fence']),
-      taskId: String(detail['taskId']),
-      attemptId: String(detail['attemptId']),
-    };
-  }
-
-  /** Give the held delegation back through its owning operation, as the person who granted it. */
-  async function release(): Promise<void> {
-    if (live === undefined) return;
-    await harness.asPerson('delegation.revoke', { delegationId: live.delegationId });
-    live = undefined;
-  }
-
-  async function ensureLive(): Promise<Pickup> {
-    if (live === undefined)
-      track(await harness.asAgent('task.pickup', { reservationId: await reservation() }));
-    if (live === undefined) throw new Error('d06-agent: the journey could not pick up');
-    return live;
-  }
-
   /** A valid body for one agent operation, and the credential it travels with. */
   async function positive(
     name: CommandName,
@@ -146,14 +105,14 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     const operationId = randomUUID();
     if (name === 'task.queue') return { body: { operationId } };
     if (name === 'task.pickup') {
-      await release();
-      return { body: { operationId, reservationId: await reservation() } };
+      await hold.release();
+      return { body: { operationId, reservationId: await hold.reservation() } };
     }
-    if (name === 'task.handback') await release();
+    if (name === 'task.handback') await hold.release();
     // A call holds 500 and spends 100 of the reservation's 3,000, so each gets
     // a lease of its own rather than draining one.
-    if (name === 'model.call') await release();
-    const held = await ensureLive();
+    if (name === 'model.call') await hold.release();
+    const held = await hold.ensureLive();
     const credential = held.credential;
     if (name === 'session.capabilities') return { body: { operationId }, credential };
     if (name === 'task.read') return { body: { operationId, recordId: held.taskId }, credential };
@@ -187,6 +146,8 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       };
       return { body: { operationId, ...body }, credential };
     }
+    const state = name === 'run.revise_state' ? await revisedState(harness.world, held) : null;
+    if (state !== null) return { body: { operationId, ...state }, credential };
     if (name === 'task.heartbeat' || name === 'task.dispatch') {
       return { body: { operationId, leaseId: held.leaseId, fence: held.fence }, credential };
     }
@@ -206,15 +167,13 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       );
       return { body: { operationId, ...lease, attemptId: held.attemptId }, credential };
     }
-    if (name === 'model.call') {
-      const call = { operation: 'model.replay_compose', fields: [toneOn(held.taskId)] };
-      return {
-        body: { operationId, leaseId: held.leaseId, fence: held.fence, ...call },
-        credential,
-      };
-    }
-    const outcome = { outcome: 'completed', report: { wrote: 'a draft' } };
-    const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...outcome };
+    const own =
+      name === 'task.check'
+        ? { name: 'the agent checks', outcome: 'passed' }
+        : name === 'model.call'
+          ? { operation: 'model.replay_compose', fields: [toneOn(held.taskId)] }
+          : { outcome: 'completed', report: { wrote: 'a draft' } };
+    const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...own };
     return { body, credential };
   }
 
@@ -223,8 +182,8 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     prepared: { body: Record<string, unknown>; credential?: string },
   ): Promise<Answer> {
     const answer = await harness.asAgent(name, prepared.body, prepared.credential);
-    if (name === 'task.pickup') track(answer);
-    if (name === 'task.handback' && answer.code === 'ok') live = undefined;
+    if (name === 'task.pickup') hold.track(answer);
+    if (name === 'task.handback' && answer.code === 'ok') hold.settled();
     return answer;
   }
 
@@ -269,7 +228,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     'agent $operation, not the agent’s, refuses top-level $key and writes nothing',
     async (cell) => {
       const value = probeValue(cell.key);
-      const held = await ensureLive();
+      const held = await hold.ensureLive();
       const declaration = COMMAND_SURFACE.find((one) => one.name === cell.operation);
       if (declaration === undefined) throw new Error(`d06-agent: ${cell.operation} undeclared`);
       const body = { ...harness.probeBody(declaration), [cell.key]: value };
