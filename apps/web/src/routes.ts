@@ -84,7 +84,6 @@ export const ROUTES = {
     path: '/task/',
     title: 'Task',
     surface: 'none',
-    rail: false,
     authenticated: true,
   },
   // The business's own two operation-classified settings. It draws no pinned
@@ -116,7 +115,6 @@ export const ROUTES = {
     path: '/todos',
     title: 'My to-dos',
     surface: 'none',
-    rail: false,
     authenticated: true,
   },
 } as const satisfies Readonly<Record<`${Namespace}:${string}`, RouteDescriptor>>;

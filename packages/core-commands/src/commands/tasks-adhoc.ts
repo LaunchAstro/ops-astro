@@ -13,14 +13,13 @@
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand } from './refusal.ts';
 import { refused, type HandlerOutcome } from './outcome.ts';
-import type { CommandContext } from './context.ts';
 import type { FieldValues } from './requests.ts';
-import { writeOwnedFields } from './tasks-state.ts';
+import { writeOwnedFields, type FieldWriteContext } from './tasks-state.ts';
 
 /** The person entry's handler and the agent's (`agent-operations.ts`). */
 export async function setAdHoc(
   tx: TenantQuery,
-  context: Pick<CommandContext, 'spine' | 'target'>,
+  context: FieldWriteContext,
   fields: FieldValues,
 ): Promise<HandlerOutcome> {
   if ('ad_hoc' in fields && typeof fields['ad_hoc'] !== 'boolean') {

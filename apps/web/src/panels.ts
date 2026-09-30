@@ -53,5 +53,6 @@ export const PANELS: readonly PanelRegistration[] = [
     label: 'Projects',
     ariaLabel: 'My to-dos',
     route: 'agency:todos',
+    icon: 'briefcase',
   },
 ];

@@ -14,8 +14,9 @@
 // (MP-4-8), or its page where the screen has no panel.
 // The hover box's timer starts the reader's own clock with `time.start`
 // (MP-4-6, U19), the one clock the task page's time section also reads.
+// `dueTone` judges a due date against the reader's own day.
 
-import type { ProjectRow, RowActions } from '@launchastro/ui';
+import type { BoardRow, ProjectRow, RowActions } from '@launchastro/ui';
 import type { BoardTask, PersonView } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { ESTIMATE_CHOICES } from './task/estimates.ts';
@@ -173,4 +174,23 @@ function openers(options: {
     },
     ...(panel.opened === null ? {} : { opened: panel.opened }),
   };
+}
+
+const pad = (n: number): string => String(n).padStart(2, '0');
+
+/**
+ * Overdue, today or later, judged against the reader's own calendar day.
+ *
+ * The stored date part is the day the person picked in a local date input
+ * (task/DetailsForm.tsx), so "today" is the local day too. Taking it from
+ * `toISOString()` would be the UTC day, which in Australia lags the local one
+ * for the first ten hours of every morning and draws yesterday's work as due
+ * today.
+ */
+export function dueTone(iso: string | null, now: Date = new Date()): BoardRow['due'] {
+  if (iso === null) return null;
+  const today = `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const day = iso.slice(0, 10);
+  if (day < today) return 'past';
+  return day === today ? 'today' : 'later';
 }

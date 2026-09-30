@@ -50,7 +50,7 @@ const screen = async (tasks: readonly ReturnType<typeof task>[]): Promise<Mounte
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => 'operation-1',
   });

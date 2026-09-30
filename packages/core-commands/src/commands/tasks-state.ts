@@ -317,10 +317,19 @@ export async function setStateById(
   return applied(target.id, revision === undefined ? null : Number(revision), { state: state.key });
 }
 
+/**
+ * What an owned field write reads: the spine, the locked task and the person
+ * making the write, whom an assignment never raises an item to (INB-1). On
+ * the agent entry that person is the delegating person the agent acts for.
+ */
+export type FieldWriteContext = Pick<CommandContext, 'spine' | 'target'> & {
+  readonly session: Pick<CommandContext['session'], 'personId'>;
+};
+
 /** Write the fields this command's name owns, and refuse the ones it does not. */
 export async function writeOwnedFields(
   tx: TenantQuery,
-  context: Pick<CommandContext, 'spine' | 'target'>,
+  context: FieldWriteContext,
   command: CommandName,
   fields: FieldValues,
 ): Promise<HandlerOutcome> {

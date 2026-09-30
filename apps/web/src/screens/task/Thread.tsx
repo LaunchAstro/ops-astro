@@ -21,7 +21,7 @@
 // Seen waits on the portal's read receipt.
 
 import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
-import { PaneEmpty } from '@launchastro/ui';
+import { Empty } from '@launchastro/ui';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { parentOf, threadOf } from './thread-shape.ts';
 
@@ -41,7 +41,7 @@ export function CommentThread(props: {
 }): ReactElement {
   const messages = threadOf(props.comments);
   return messages.length === 0 ? (
-    <PaneEmpty say={props.empty} />
+    <Empty look="inline" title={props.empty} />
   ) : (
     <div className="thread" data-comments="list">
       {messages.map((message) =>

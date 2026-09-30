@@ -40,7 +40,7 @@ function commands(answer: () => { body: unknown; status: number } | 'hold') {
       });
     });
   }) as unknown as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   return { client, sent, held };
 }
 

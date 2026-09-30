@@ -67,7 +67,7 @@ export function conversing(...threads: readonly (readonly unknown[])[]): {
     sent.push({ to, body: JSON.parse(typeof init?.body === 'string' ? init.body : '{}') });
     return Promise.resolve(json({ recordId: 'r', revision: 4 }));
   }) as unknown as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   return {
     sent,
     view: async () => {

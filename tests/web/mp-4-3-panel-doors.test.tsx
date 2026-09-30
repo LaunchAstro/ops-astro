@@ -31,7 +31,7 @@ function changing(
     }
     throw new Error(`unrouted ${at}`);
   }) as unknown as typeof globalThis.fetch;
-  return new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  return new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
 }
 
 describe('MP-4-3 counts update at once after a status or message change', () => {

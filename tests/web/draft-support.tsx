@@ -51,7 +51,7 @@ export function server(refuse: readonly string[] = [], unknownCreates = 0) {
     return Promise.resolve(json({ recordId: NEW_ID, revision: 2, detail }));
   }) as unknown as typeof globalThis.fetch;
   return {
-    client: new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch }),
+    client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),
     sent,
   };
 }

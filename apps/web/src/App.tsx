@@ -13,7 +13,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { Shell } from '@launchastro/ui';
 import { gateOf, matchRoute, pathTo } from './routes.ts';
 import { NO_CLIENT_GRANTS, canonicalOf, pageAt, type ClientAccess } from './manifest.ts';
-import { ClientRefused, NotFound, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
+import {
+  ClientRefused,
+  NotFound,
+  PagePlaceholder,
+  RouteTabs,
+  SignedInAlready,
+  railFor,
+} from './route-views.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { PANELS } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
@@ -21,9 +28,7 @@ import { grantKeyOf, type Interruption, type Session, type SessionStore } from '
 import { signOut } from './session/sign-in.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { drawScreen } from './screen-registry.tsx';
-import { DraftPanel } from './screens/task/DraftPanel.tsx';
-import { TaskPanel } from './screens/task/Panel.tsx';
-import { useTaskPanel } from './screens/task/panel-host.ts';
+import { useDockPanel } from './screens/task/DockPanel.tsx';
 
 export interface AppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
@@ -183,7 +188,7 @@ export function App(props: AppProps): ReactElement {
   const match = matchRoute(bare);
   const at = pageAt(bare);
   const grantKey = grantKeyOf(session);
-  const taskPanel = useTaskPanel();
+  const dock = useDockPanel({ client, grantKey, session, storage: props.storage });
   const clientAccess = props.clientAccess ?? NO_CLIENT_GRANTS;
   const refused =
     at !== null &&
@@ -234,7 +239,7 @@ export function App(props: AppProps): ReactElement {
               />
             ),
           storage: props.storage,
-          taskPanel: taskPanel.host,
+          taskPanel: dock.host,
         });
     }
   })();
@@ -286,53 +291,10 @@ export function App(props: AppProps): ReactElement {
         props.navigate(here === target ? pathTo('agency:projects-board') : target);
       }}
       seated={false}
-      // The dock task panel (MP-4-8), in the shell's panel slot until the dock
-      // frame (MP-3-1) draws panels in place. A new door or task remounts it;
-      // a new-task draft (MP-4-13) takes the same slot.
-      panel={
-        session === null ? null : taskPanel.draft === null ? (
-          taskPanel.opening === null ? null : (
-            <TaskPanel
-              key={`${taskPanel.opening.taskKey}\u0000${taskPanel.opening.door}\u0000${taskPanel.opening.tab ?? ''}`}
-              client={client}
-              grantKey={grantKey}
-              opening={taskPanel.opening}
-              changes={taskPanel.host.changes}
-              onChanged={taskPanel.changed}
-              onClose={taskPanel.close}
-              onNewTask={taskPanel.openDraft}
-              onLeaving={taskPanel.leaving}
-            />
-          )
-        ) : (
-          <DraftPanel
-            key={`${session.businessKey}:${session.email}`}
-            client={client}
-            storage={props.storage}
-            person={`${session.businessKey}:${session.email}`}
-            scope={taskPanel.draft}
-            onCreated={(key) => {
-              taskPanel.host.open(key, 'open');
-              taskPanel.changed();
-            }}
-            onClose={taskPanel.close}
-          />
-        )
-      }
+      panel={dock.panel}
     >
       {at === null || refused || session === null ? null : <RouteTabs at={at} />}
       {content}
     </Shell>
-  );
-}
-
-function SignedInAlready(props: { readonly onGo: () => void }): ReactElement {
-  return (
-    <div className="readstate" data-outcome="ready">
-      <p className="empty__title">You are already signed in.</p>
-      <button className="btn btn--primary" type="button" onClick={props.onGo}>
-        Go to Projects
-      </button>
-    </div>
   );
 }

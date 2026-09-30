@@ -2,8 +2,9 @@
 //
 // What the manifest draws (MP-2-1): the rail and tab row for an address, the
 // placeholder for a page whose ticket has not landed, the one refusal for
-// a client address the person holds no grant on, and the answer for an address
-// nothing resolves. Their looks belong to MP-2-2, MP-2-6 and MP-2-10.
+// a client address the person holds no grant on, the answer for an address
+// nothing resolves, and the one for sign-in reached while signed in. Their
+// looks belong to MP-2-2, MP-2-6 and MP-2-10.
 
 import type { ReactElement } from 'react';
 import { Empty, type RailEntry } from '@launchastro/ui';
@@ -82,6 +83,17 @@ export function NotFound(props: { readonly path: string }): ReactElement {
           Go to Projects
         </a>
       </p>
+    </div>
+  );
+}
+
+export function SignedInAlready(props: { readonly onGo: () => void }): ReactElement {
+  return (
+    <div className="readstate" data-outcome="ready">
+      <p className="empty__title">You are already signed in.</p>
+      <button className="btn btn--primary" type="button" onClick={props.onGo}>
+        Go to Projects
+      </button>
     </div>
   );
 }

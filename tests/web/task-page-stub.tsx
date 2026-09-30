@@ -95,7 +95,7 @@ export function server(answers: Answers): OperationsClient {
     if (answer === undefined) throw new Error(`no answer queued for ${String(body.recordId)}`);
     return Promise.resolve(json(answer.body, answer.status ?? 200));
   }) as unknown as typeof globalThis.fetch;
-  return new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  return new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
 }
 
 export const page = async (taskKey: string, answers: Answers): Promise<Mounted> => {

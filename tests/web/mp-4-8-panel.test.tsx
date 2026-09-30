@@ -57,7 +57,7 @@ function serving(over: Readonly<Record<string, unknown>> = {}): {
     return Promise.resolve(json({ recordId: 'r', revision: 5 }));
   }) as unknown as typeof globalThis.fetch;
   return {
-    client: new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch }),
+    client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),
     sent,
   };
 }

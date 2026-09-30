@@ -462,7 +462,7 @@ const serveOwnedWrite =
     delegation: Delegation,
     taskId: string | undefined,
   ) => ReturnType<typeof setScores>) =>
-  async (tx, { request }, _operands, _delegation, taskId) => {
+  async (tx, { request }, _operands, delegation, taskId) => {
     // `authorise` has held the delegation to this task and its `write` action
     // to the delegating person's live grant. The lock and the revision are the
     // person envelope's (`prepareCommand`), so the two entries refuse a stale
@@ -483,7 +483,10 @@ const serveOwnedWrite =
         invalid('fields', `Send fields as an object of fields to values, such as ${example}.`),
       );
     }
-    return await write(tx, { spine, target }, fields);
+    // The agent writes for its delegating person, so an assignment raises no
+    // item to them (INB-1), as their own write would not.
+    const session = { personId: delegation.delegatePersonId };
+    return await write(tx, { spine, target, session }, fields);
   };
 
 async function serveHeartbeat(

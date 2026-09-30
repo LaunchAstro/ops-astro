@@ -52,7 +52,7 @@ function commands() {
     sent.push({ command, body });
     return Promise.resolve(json({ ok: true, recordId: null, revision: null, detail: {} }));
   }) as unknown as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   return { client, sent };
 }
 

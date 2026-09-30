@@ -71,7 +71,7 @@ const screen = async (sent: Sent): Promise<Mounted> => {
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => 'operation-1',
   });

@@ -17,7 +17,7 @@
 // and starring (P-20). The actual is the time logged (MP-4-6).
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { Empty, ProjectsBoard, type BoardRow, type ProjectRow } from '@launchastro/ui';
+import { Empty, ProjectsBoard, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { assigneeOf, rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
@@ -284,23 +284,4 @@ function rowOf(task: BoardTask): ProjectRow {
     ...(isInProductLink(task.pageLink) ? { page: task.pageLink } : {}),
     comments: { client: 0, mentions: 0, latest: null },
   };
-}
-
-const pad = (n: number): string => String(n).padStart(2, '0');
-
-/**
- * Overdue, today or later, judged against the reader's own calendar day.
- *
- * The stored date part is the day the person picked in a local date input
- * (task/DetailsForm.tsx), so "today" is the local day too. Taking it from
- * `toISOString()` would be the UTC day, which in Australia lags the local one
- * for the first ten hours of every morning and draws yesterday's work as due
- * today.
- */
-export function dueTone(iso: string | null, now: Date = new Date()): BoardRow['due'] {
-  if (iso === null) return null;
-  const today = `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const day = iso.slice(0, 10);
-  if (day < today) return 'past';
-  return day === today ? 'today' : 'later';
 }

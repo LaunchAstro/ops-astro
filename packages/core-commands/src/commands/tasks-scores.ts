@@ -12,9 +12,8 @@
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand } from './refusal.ts';
 import { refused, type HandlerOutcome } from './outcome.ts';
-import type { CommandContext } from './context.ts';
 import type { FieldValues } from './requests.ts';
-import { writeOwnedFields } from './tasks-state.ts';
+import { writeOwnedFields, type FieldWriteContext } from './tasks-state.ts';
 
 const MARKS: readonly string[] = ['confidence', 'ease', 'impact'];
 
@@ -29,7 +28,7 @@ function isMark(value: unknown): boolean {
  */
 export async function setScores(
   tx: TenantQuery,
-  context: Pick<CommandContext, 'spine' | 'target'>,
+  context: FieldWriteContext,
   fields: FieldValues,
 ): Promise<HandlerOutcome> {
   const outside = MARKS.filter((key) => key in fields && !isMark(fields[key]));

@@ -62,7 +62,7 @@ function recording(): { readonly client: OperationsClient; readonly sent: unknow
     throw new Error(`unrouted ${at}`);
   }) as unknown as typeof globalThis.fetch;
   return {
-    client: new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch }),
+    client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),
     sent,
   };
 }
