@@ -57,10 +57,10 @@ import {
   pathOf,
 } from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
-import type { NotARead, ReadName } from './read-names.ts';
+import type { AccountRoute, NotARead, ReadName } from './read-names.ts';
 
 export { READ_NAMES } from './read-names.ts';
-export type { NotARead, ReadName } from './read-names.ts';
+export type { AccountRoute, NotARead, ReadName } from './read-names.ts';
 
 /** What a mutation returns when it worked: a durable handle and a new revision. */
 export interface CommandOutcome {
@@ -164,7 +164,7 @@ export class OperationsClient {
    * to be idempotent about and no revision to be stale against.
    */
   async read<T>(name: ReadName, body: Readonly<Record<string, unknown>>): Promise<CallResult<T>> {
-    return await this.#post<T>(name, body);
+    return await this.#post<T>(pathOf(name), body);
   }
 
   /**
@@ -183,7 +183,12 @@ export class OperationsClient {
     if (options.expectedRevision !== undefined) {
       payload['expectedRevision'] = options.expectedRevision;
     }
-    return await this.#post<CommandOutcome>(name, payload);
+    return await this.#post<CommandOutcome>(pathOf(name), payload);
+  }
+
+  /** The person's own account route (C58), always with an empty body: see `AccountRoute`. */
+  async account<T>(route: AccountRoute): Promise<CallResult<T>> {
+    return await this.#post<T>(`/account/${route}`, {});
   }
 
   /** The task's live channel (T2f), or nothing if the join is refused or unreachable. */
@@ -214,11 +219,8 @@ export class OperationsClient {
     }
   }
 
-  async #post<T>(
-    name: CommandName,
-    body: Readonly<Record<string, unknown>>,
-  ): Promise<CallResult<T>> {
-    const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${pathOf(name)}`;
+  async #post<T>(path: string, body: Readonly<Record<string, unknown>>): Promise<CallResult<T>> {
+    const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${path}`;
     // The browser adds the cookie, the only credential. No actor, business or
     // forwarded header for a tampered request to reach (checklist N7).
     const headers: Record<string, string> = {
