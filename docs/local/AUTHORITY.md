@@ -66,7 +66,11 @@ The order of its checks matters:
    purpose-scoped to one task", and R1's own grant is business-wide. Without
    the stored scope, a call on a sibling task reaches that same grant and passes
    exactly as a call on the picked-up task does. A business- or party-scoped
-   request under a delegation is refused here too.
+   request under a delegation is refused here too. A collection may also carry
+   fewer actions than the delegation lists: `run` carries `write` only (MP-6-2,
+   `CEILING` in `delegations.ts`), so a delegation that reaches `run` answers
+   any other action on it here, and a mint that asks `run` for no `write` is
+   `DELEGATION_WIDENS` naming the ceiling.
 3. `DELEGATION_ALREADY_LIVE`: the agent already holds a live delegation for
    this purpose. `delegations_one_live_per_purpose_idx` (`0008:195`) is unique
    on `(business_id, agent_actor_id, purpose)` where
