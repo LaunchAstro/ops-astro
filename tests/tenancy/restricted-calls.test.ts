@@ -193,6 +193,18 @@ const UNREACHED: Readonly<Record<string, string>> = {
                           order by id limit 1)
        left join public.gates g on g.business_id = d.business_id and g.id = d.gate_id
      returning 1`,
+  // AW-04 (U10): no planning reply is priced before a cap is set. The row
+  // rides on the business's first cap and person; a business with none gets
+  // made-up ids, which the owner's seed writes with foreign keys off.
+  'public.planning_envelopes': `insert into public.planning_envelopes
+       (business_id, id, cap_id, conversation_id, owner_person_id)
+     select $1, gen_random_uuid(),
+            coalesce((select id from public.budget_caps where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            gen_random_uuid(),
+            coalesce((select id from public.people where business_id = $1 order by id limit 1),
+                     gen_random_uuid())
+     returning 1`,
   'public.bootstrap_reads': `insert into public.bootstrap_reads
        (business_id, id, run_id, sequence, path, content_digest, content_size, is_entry)
      select p.business_id, gen_random_uuid(), p.run_id, 1, p.path, p.content_digest,

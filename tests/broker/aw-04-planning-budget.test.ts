@@ -7,112 +7,28 @@
 // The allowance line (the cap, and what is left) reads before the first
 // message; the planning spend (settled plus held) reads beside the plan. A
 // failed reply stays held as unknown liability against the envelope. The
-// isolation case crosses another business, another person of the business
-// (a client of it, holding a share) and an agent under a live delegation.
+// crossings are `aw-04-planning-budget-isolation.test.ts`.
 
-import { randomUUID } from 'node:crypto';
-import { beforeAll, expect, it as vitestIt } from 'vitest';
-import { writeAuditEvent } from '../../packages/core-commands/src/commands/audit.ts';
+import { expect, it as vitestIt } from 'vitest';
+import { callModelForPlanning } from '../../packages/core-custody/src/index.ts';
+import type { AdminConnection } from '../../packages/core-records/src/index.ts';
+import { racer } from '../runtime/schedules-harness.ts';
+import { LOCAL, callCount, noDatabase, s, world } from './broker-world.ts';
 import {
-  callModelForPlanning,
-  readPlanningAllowance,
-  type Broker,
-  type ConversationCallRequest,
-  type ModelCaller,
-  type ModelCallResult,
-  type PlanningAllowance,
-} from '../../packages/core-custody/src/index.ts';
-import type { Database } from '../../packages/core-records/src/index.ts';
-import { enrol, grantTo, type Member } from '../commands/fixture.ts';
-import {
-  createTask,
-  liveWork,
-  racer,
-  seedSchedules,
-  type Schedules,
-  type Work,
-} from '../runtime/schedules-harness.ts';
-import { cq8World } from '../runtime/t2d-harness.ts';
-import {
-  LOCAL,
-  PLANTED_PROMPT,
-  callCount,
-  digestOf,
-  noDatabase,
-  s,
-  useBrokerWorld,
-  withRoutes,
-  world,
-} from './broker-world.ts';
+  allowance,
+  ask,
+  local,
+  ownerOf,
+  p,
+  plan,
+  rowsFor,
+  setCap,
+  usePlanningWorld,
+} from './aw-04-planning-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
-useBrokerWorld('aw04plan');
-
-let bravo: Schedules;
-let work: Work;
-
-beforeAll(async () => {
-  if (noDatabase) return;
-  bravo = await seedSchedules(s.db, 'aw04plan-bravo', 1_000_000);
-  work = await liveWork(s, `aw04plan-${randomUUID()}`, 2_000);
-}, 180_000);
-
-const ownerOf = (on: Schedules): ModelCaller => ({
-  actorId: on.decider.actorId,
-  delegationId: null,
-  attendedByPersonId: on.decider.personId,
-});
-
-const ask = (on: Schedules, id: string = randomUUID()): ConversationCallRequest => ({
-  conversation: { id, businessId: on.business, ownerPersonId: on.decider.personId },
-  operation: 'model.replay_compose',
-  fields: [{ name: 'message', source: 'outside', value: PLANTED_PROMPT }],
-});
-
-/** The local route (planning replies keep AW-03's egress rule), audited as `on`'s agent. */
-const local = (on: Schedules): Broker => ({
-  ...withRoutes([LOCAL]),
-  audit: async (tx, note) => {
-    await writeAuditEvent(tx, {
-      actorId: on.agentActorId,
-      command: note.action,
-      outcome: note.outcome,
-      refusalCode: note.refusalCode,
-      payloadDigest: digestOf(note.detail),
-      attempted: note.outcome === 'refused' ? note.detail : null,
-    });
-  },
-});
-
-const plan = async (
-  on: Schedules,
-  caller: ModelCaller,
-  request: ConversationCallRequest,
-  database: Database = on.db.app,
-): Promise<ModelCallResult> =>
-  await callModelForPlanning(database, on.business, caller, request, local(on));
-
-async function setCap(on: Schedules, limitMinor: number): Promise<void> {
-  await on.db.admin.execute(
-    `insert into public.budget_caps (business_id, id, key, limit_minor, currency)
-     values ($1, $2, 'planning', $3, 'AUD')`,
-    [on.business, randomUUID(), limitMinor],
-  );
-}
-
-const allowance = async (
-  on: Schedules,
-  personId: string,
-  conversationId: string,
-): Promise<PlanningAllowance> =>
-  await on.db.app.withBusiness(
-    on.business,
-    async (tx) => await readPlanningAllowance(tx, personId, conversationId),
-  );
-
-const rowsFor = async (on: Schedules, id: string): Promise<readonly Record<string, unknown>[]> =>
-  await on.db.admin.execute(`select * from public.model_calls where conversation_id = $1`, [id]);
+usePlanningWorld('aw04plan');
 
 it('AW-04 planning budget: with no planning cap set, a planning reply is refused and nothing is written or sent', async () => {
   const request = ask(s);
@@ -171,80 +87,68 @@ it('AW-04 planning budget: a failed reply stays held at its maximum against the 
     leftMinor: before.leftMinor - 500,
     conversation: { spentMinor: 0, heldMinor: 500 },
   });
-  // What is left is under one reply's maximum now: refused, nothing written.
+  // Leave one short of a reply's maximum: refused, nothing written.
+  await s.db.admin.execute(
+    `update public.budget_caps set limit_minor = limit_minor - $2 + 499
+      where business_id = $1 and key = 'planning'`,
+    [s.business, after.leftMinor],
+  );
   const calls = await callCount();
   expect(await plan(s, ownerOf(s), request)).toMatchObject({ code: 'BUDGET_UNAVAILABLE' });
   expect(await callCount()).toBe(calls);
 });
 
+/** Resolves once `count` backends in this database wait on a lock. */
+async function waiting(execute: AdminConnection['execute'], count: number): Promise<void> {
+  for (let tries = 0; tries < 200; tries += 1) {
+    // The activity view is read once per transaction unless its snapshot is cleared.
+    // eslint-disable-next-line no-await-in-loop
+    await execute('select pg_stat_clear_snapshot()');
+    // eslint-disable-next-line no-await-in-loop
+    const [row] = await execute<{ n: string }>(
+      `select count(*)::text as n from pg_stat_activity
+        where datname = current_database() and wait_event_type = 'Lock'`,
+    );
+    if (Number(row?.n) >= count) return;
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => {
+      setTimeout(resolve, 25);
+    });
+  }
+  throw new Error('the two replies never met');
+}
+
 it('AW-04 planning budget: two replies racing for the last of the allowance, on two connections at once: one holds, one is refused', async () => {
-  await setCap(bravo, 800);
+  // One reply's maximum (500) and less than the replay's price (100): the
+  // second cannot fit whether the first is still held or already settled.
+  await setCap(p.bravo, 599);
   world.provider.mode('answer');
-  const second = racer(bravo);
+  const second = racer(p.bravo);
+  // Two operations on two routes, so only the cap's lock stands between them;
+  // a blocker holds both at the envelope's insert until both have decided.
+  const single = { ...local(p.bravo), routes: [{ ...LOCAL, key: 'on_premises_2' }] };
   try {
-    const [one, two] = await Promise.all([
-      plan(bravo, ownerOf(bravo), ask(bravo)),
-      plan(bravo, ownerOf(bravo), ask(bravo), second),
-    ]);
-    const codes = [one, two].map((result) => (result.ok ? 'held' : result.code)).sort();
-    expect(codes).toStrictEqual(['BUDGET_UNAVAILABLE', 'held']);
+    const results = await p.bravo.db.admin.transaction(async (execute) => {
+      await execute('lock table public.planning_envelopes in exclusive mode');
+      const both = Promise.all([
+        plan(p.bravo, ownerOf(p.bravo), ask(p.bravo)),
+        callModelForPlanning(
+          second,
+          p.bravo.business,
+          ownerOf(p.bravo),
+          {
+            ...ask(p.bravo),
+            operation: 'model.replay_single',
+          },
+          single,
+        ),
+      ]);
+      await waiting(execute, 2);
+      return { both };
+    });
+    const codes = (await results.both).map((result) => (result.ok ? 'held' : result.code));
+    expect(codes.toSorted()).toStrictEqual(['BUDGET_UNAVAILABLE', 'held']);
   } finally {
     await second.close();
   }
 });
-
-it('AW-04 planning budget isolation: another business, another client, another person under a live delegation', async () => {
-  const mine = ask(s);
-  world.provider.mode('answer');
-  expect(await plan(s, ownerOf(s), mine)).toMatchObject({ ok: true });
-  const id = mine.conversation.id;
-  const calls = await callCount();
-  const foreign = new RegExp(`${id}|${s.business}|${PLANTED_PROMPT}`, 'u');
-
-  // 1. Another business: bravo's owner, in bravo, naming alpha's conversation.
-  const crossed = await plan(bravo, ownerOf(bravo), {
-    ...mine,
-    conversation: { ...mine.conversation, ownerPersonId: bravo.decider.personId },
-  });
-  expect(crossed).toMatchObject({ ok: false, code: 'AUTHORITY_LOST', callId: null });
-  const bravoRead = await allowance(bravo, bravo.decider.personId, id);
-  expect(bravoRead.conversation).toStrictEqual({ spentMinor: 0, heldMinor: 0 });
-  expect(JSON.stringify([crossed, bravoRead])).not.toMatch(foreign);
-
-  // 2. Another client of the business, shared one task: not the conversation's owner.
-  await s.db.app.withBusiness(s.business, async (tx) => {
-    await grantTo(tx, s.decider, 'share');
-  });
-  const task = await createTask(s, 'aw04plan client task');
-  const client: Member = await cq8World(s).client(s.business, s.decider, 'aw04pc', task);
-  const asClient = await plan(s, { ...ownerOf(s), attendedByPersonId: client.personId }, mine);
-  expect(asClient).toMatchObject({ ok: false, code: 'AUTHORITY_LOST', callId: null });
-  expect((await allowance(s, client.personId, id)).conversation).toStrictEqual({
-    spentMinor: 0,
-    heldMinor: 0,
-  });
-
-  // 3. Another person, and an agent acting under a live delegation for the owner.
-  const other = await enrol(s.db.app, s.business, 'aw04plan-other');
-  const asOther = await plan(s, { ...ownerOf(s), attendedByPersonId: other.personId }, mine);
-  const asAgent = await plan(
-    s,
-    {
-      actorId: s.agentActorId,
-      delegationId: String(work.picked['delegationId'] ?? randomUUID()),
-      attendedByPersonId: s.decider.personId,
-    },
-    mine,
-  );
-  for (const refused of [asOther, asAgent]) {
-    expect(refused).toMatchObject({ ok: false, code: 'AUTHORITY_LOST', callId: null });
-  }
-  expect((await allowance(s, other.personId, id)).conversation).toStrictEqual({
-    spentMinor: 0,
-    heldMinor: 0,
-  });
-  expect(await callCount()).toBe(calls);
-  expect(JSON.stringify([asClient, asOther, asAgent])).not.toMatch(foreign);
-  // The owner's own read still shows the spend the crossings could not see.
-  expect((await allowance(s, s.decider.personId, id)).conversation.spentMinor).toBeGreaterThan(0);
-}, 120_000);

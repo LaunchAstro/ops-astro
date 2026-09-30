@@ -174,6 +174,12 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     record_digest: SEED_DIGEST,
     bound_by_actor_id: randomUUID(),
   },
+  // AW-04 (U10): no planning reply is priced before a cap is set.
+  'public.planning_envelopes': {
+    cap_id: randomUUID(),
+    conversation_id: randomUUID(),
+    owner_person_id: randomUUID(),
+  },
   'public.bootstrap_reads': {
     run_id: randomUUID(),
     sequence: 1,
