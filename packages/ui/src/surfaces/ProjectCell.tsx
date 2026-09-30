@@ -18,7 +18,7 @@ import {
   type RowActions,
 } from '../board/projects.ts';
 import { EditableCell } from './CellEditor.tsx';
-import { ProjectName } from './ProjectName.tsx';
+import { ProjectName, isOpened } from './ProjectName.tsx';
 
 export interface CellContext {
   readonly now: Date;
@@ -51,8 +51,13 @@ function Rank(props: { readonly row: ProjectRow }): ReactNode {
 }
 
 /** The badge opens the task on its comments; it never sorts and never filters (P-22, P-36). */
-function Comments(props: { readonly row: ProjectRow; readonly href: string }): ReactNode {
-  const badge = commentBadge(props.row);
+function Comments(props: {
+  readonly row: ProjectRow;
+  readonly href: string;
+  readonly actions: RowActions | undefined;
+}): ReactNode {
+  const { row, actions } = props;
+  const badge = commentBadge(row);
   if (badge === null) return null;
   return (
     <a
@@ -60,6 +65,14 @@ function Comments(props: { readonly row: ProjectRow; readonly href: string }): R
       href={`${props.href}#comments`}
       title={badge.title}
       aria-label={badge.title}
+      data-panel-door={isOpened(actions, row, 'reply') ? 'reply' : undefined}
+      onClick={(event) => {
+        const onOpen = actions?.onOpenComments;
+        if (onOpen === undefined || event.button !== 0) return;
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        onOpen(row);
+      }}
     >
       <span className="cbd__cmtg" aria-hidden="true">
         ◌
@@ -213,7 +226,7 @@ export function projectCell(row: ProjectRow, key: string, context: CellContext):
         />
       );
     case 'comments':
-      return <Comments row={row} href={context.href(row)} />;
+      return <Comments row={row} href={context.href(row)} actions={context.actions} />;
     case 'client':
       return row.client ?? dash();
     case 'assignee':

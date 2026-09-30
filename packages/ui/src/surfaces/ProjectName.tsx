@@ -41,6 +41,13 @@ export function ProjectName(props: ProjectNameProps): ReactElement {
   );
 }
 
+/** Whether `row` is the one open beside the board, by `door`. */
+export const isOpened = (
+  actions: RowActions | undefined,
+  row: ProjectRow,
+  door: 'open' | 'reply',
+): boolean => actions?.opened?.id === row.id && actions.opened.door === door;
+
 /** The name as a link, or, after a double-click, the rename input. */
 function NameOrRename(props: ProjectNameProps): ReactElement {
   const { row, href, actions } = props;
@@ -67,6 +74,7 @@ function NameOrRename(props: ProjectNameProps): ReactElement {
     <a
       className="cbd__nm"
       href={href}
+      data-panel-door={isOpened(actions, row, 'open') ? 'open' : undefined}
       onClick={(event) => {
         const onOpen = actions?.onOpen;
         if (onOpen === undefined || event.button !== 0) return;

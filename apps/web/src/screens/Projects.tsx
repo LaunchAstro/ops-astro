@@ -17,7 +17,7 @@
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Empty, ProjectsBoard, type BoardRow, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
-import { rowActions } from './projects-row.ts';
+import { rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
 import type {
   BoardTask,
@@ -38,6 +38,8 @@ interface PendingCreate {
 export interface ProjectsProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
+  /** The dock task panel (MP-4-8): rows open beside the board through it. Absent, they open the task page. */
+  readonly taskPanel?: BoardPanelHost;
 }
 
 export function Projects(props: ProjectsProps): ReactElement {
@@ -58,12 +60,16 @@ export function Projects(props: ProjectsProps): ReactElement {
   // a fresh id instead would make the server's replay register unreachable and
   // the retry would create a second task.
   const [pending, setPending] = useState<PendingCreate | null>(null);
+  // The row open beside the board and the door it was opened by (MP-5-8).
+  const [opened, setOpened] = useState<RowOpened | null>(null);
+  const panel = props.taskPanel;
 
   const { state, reload } = useRead<TaskBoardResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskBoardResult>('task.board', { board: null }),
     isEmpty: (value) => value.tasks.length === 0,
-    deps: [],
+    // A change made in the panel is the board's next read, as it is the task page's.
+    deps: [panel?.changes ?? 0],
   });
 
   // The people the assignee editor offers (MP-5-10); until they answer, the
@@ -207,6 +213,7 @@ export function Projects(props: ProjectsProps): ReactElement {
               people: persons,
               href: (key) => pathTo('agency:task-detail', { key }),
               reload,
+              ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
             })}
             address={window.location.search}
             onAddress={(query) => {

@@ -57,6 +57,14 @@ export interface RowActions {
   readonly onRename?: (row: ProjectRow, title: string) => void;
   /** Open the task beside the board (a plain click, after the double-click window). */
   readonly onOpen?: (row: ProjectRow) => void;
+  /** Open the task beside the board on its conversation: the comment badge's door (P-36). */
+  readonly onOpenComments?: (row: ProjectRow) => void;
+  /**
+   * The row whose task is open beside the board and the door it was opened
+   * by: that one element carries `data-panel-door`, so closing the panel
+   * returns focus to it and not to another row's.
+   */
+  readonly opened?: { readonly id: string; readonly door: 'open' | 'reply' };
   /** The hover box's timer; drawn only when the page can start one. */
   readonly onStartTimer?: (row: ProjectRow) => void;
   /** The people the assignee editor offers (MP-5-10); none, no assignee editor. */
