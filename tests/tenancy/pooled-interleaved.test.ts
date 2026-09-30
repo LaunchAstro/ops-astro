@@ -8,7 +8,9 @@
 // reaches the next. T05 (`pooled-crossover.test.ts`) shows one business's
 // operation, then another's; here two requests interleave on the one backend,
 // each in two transactions with the other's between them, as a pooler hands
-// them out, and the backend is asked what it holds between each.
+// them out, and the backend is asked what it holds between each. A request
+// whose transaction ends badly (a throw, a statement error, a statement
+// timeout, a cancellation from another connection) leaves nothing either.
 //
 // The pool has one connection (`max: 1`), so every transaction below lands on
 // the same backend, and `pg_backend_pid()` is recorded to show it did.
@@ -18,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   connectObserved,
   type ObservedPool,
+  type TenantQuery,
 } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   createFreshDatabase,
@@ -131,6 +134,7 @@ describe.skipIf(serverUrl === undefined)('S0-6 pooled transactions', () => {
 
   interleavedCase();
   atOnceCase();
+  recoveryCase();
 });
 
 function interleavedCase() {
@@ -167,4 +171,65 @@ function atOnceCase() {
     expect(await between()).toStrictEqual(CLEAN);
     expect(backends.size).toBe(1);
   });
+}
+
+/** Cancels the backend's sleep from another connection, as a client that gives up does. */
+async function cancelWhenAsleep(pid: number, tries = 250): Promise<void> {
+  const [row] = await built().db.admin.execute<{ readonly cancelled: boolean }>(
+    `select pg_cancel_backend(pid) as cancelled from pg_stat_activity
+      where pid = $1 and wait_event = 'PgSleep'`,
+    [pid],
+  );
+  if (row?.cancelled === true) return;
+  if (tries === 0) throw new Error('the backend never started its sleep');
+  await new Promise((resolve) => {
+    setTimeout(resolve, 20);
+  });
+  await cancelWhenAsleep(pid, tries - 1);
+}
+
+/** Each way a request's transaction can end badly, and what it ends with. */
+const FAULTS: readonly (readonly [string, RegExp, (tx: TenantQuery) => Promise<unknown>])[] = [
+  [
+    'a throw mid-transaction',
+    /thrown mid-transaction/u,
+    async (tx) => {
+      await tx.query(`select count(*) from records`);
+      throw new Error('thrown mid-transaction');
+    },
+  ],
+  ['a statement error', /division by zero/u, async (tx) => await tx.query(`select 1 / 0`)],
+  [
+    'a statement timeout',
+    /statement timeout/u,
+    async (tx) => {
+      await tx.query(`set local statement_timeout = '50ms'`);
+      await tx.query(`select pg_sleep(5)`);
+    },
+  ],
+  [
+    'a cancellation',
+    /canceling statement due to user request/u,
+    async (tx) => {
+      const [own] = await tx.query<{ readonly pid: number }>(`select pg_backend_pid() as pid`);
+      await Promise.all([tx.query(`select pg_sleep(5)`), cancelWhenAsleep(Number(own?.pid))]);
+    },
+  ],
+];
+
+function recoveryCase() {
+  it.each(FAULTS)(
+    'after %s, the backend holds nothing and the next request sees only its own business',
+    async (_, ended, fault) => {
+      const { alpha, beta, backends } = built();
+      await expect(built().pool.withBusiness(alpha.businessId, fault)).rejects.toThrow(ended);
+      expect(await between()).toStrictEqual(CLEAN);
+      const seenByBeta = await titles(beta);
+      expect(seenByBeta.length).toBeGreaterThan(0);
+      expect(seenByBeta.every((title) => title.startsWith('beta '))).toBe(true);
+      expect((await titles(alpha)).every((title) => title.startsWith('alpha '))).toBe(true);
+      expect(await between()).toStrictEqual(CLEAN);
+      expect(backends.size).toBe(1);
+    },
+  );
 }
