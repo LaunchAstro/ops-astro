@@ -60,7 +60,8 @@ const actionOf = (key: string): string => key.slice(key.indexOf(':') + 1);
 /** The profile the owning command declares, which every surface must ask. */
 export function profileOf(declaration: CommandDeclaration): Profile {
   const key = `${declaration.collection}:${declaration.action}`;
-  const authority = declaration.authority ?? [key];
+  // A self-scoped row asks no grant: every signed-in person reaches their own rows.
+  const authority = declaration.authorisedOn === 'self' ? [] : (declaration.authority ?? [key]);
   return {
     authority,
     authorisedOn: declaration.authorisedOn,
@@ -170,6 +171,7 @@ export interface HeldGrant {
 
 // Which commands `principal` may call, and where (issue 55). Business-scoped needs business-wide
 // keys; an agent reaches queue and pickup holding nothing (8.2) and never the person-only app.
+// A row asking no grant is the caller's own (self) or answered to anyone holding one.
 export function reachableBy(
   rows: readonly CatalogueRow[],
   principal: { readonly kind: 'person' | 'agent'; readonly grants: readonly HeldGrant[] },
@@ -182,7 +184,9 @@ export function reachableBy(
     .filter(
       (row) =>
         (agent && row.agent === 'before-pickup') ||
-        row.authority.every((key) => holds(key, row.authorisedOn === 'business')),
+        (row.authority.length === 0
+          ? row.authorisedOn === 'self' || principal.grants.length > 0
+          : row.authority.every((key) => holds(key, row.authorisedOn === 'business'))),
     )
     .map((row) => ({
       command: row.command,

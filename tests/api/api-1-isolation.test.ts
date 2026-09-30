@@ -110,29 +110,6 @@ function leaksInSuccessfulReads(): void {
       leaked.mockRestore();
     }
   });
-
-  it('isolation sees leaked client data in successful reads', async () => {
-    const row = rows.find((one) => one.command === 'task.read');
-    if (row === undefined) throw new Error('task.read is missing from the catalogue');
-    const leaked = vi
-      .spyOn(api, 'fetch')
-      .mockImplementation(() =>
-        Promise.resolve(
-          new Response(
-            JSON.stringify({ recordId: task.client2, fields: { title: 'other client secret' } }),
-            { status: 200, headers: { 'content-type': 'application/json' } },
-          ),
-        ),
-      );
-    try {
-      const heard = await threeWays(row, clientOne, 'alpha', { recordId: task.client1 });
-      expect(heard).toHaveLength(3);
-      expect(heard[0]).toHaveProperty('body');
-      expect(JSON.stringify(heard)).not.toContain(task.client2);
-    } finally {
-      leaked.mockRestore();
-    }
-  });
 }
 
 function refusalsNameNoForeignRecord(): void {

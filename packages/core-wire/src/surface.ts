@@ -303,9 +303,11 @@ function read(
     readonly action?: Action;
     readonly agent?: CommandDeclaration['agent'];
     readonly authorisedOn?: 'record' | 'business' | 'self';
+    readonly authority?: readonly string[];
   } = {},
 ): CommandDeclaration {
   return {
+    ...(options.authority === undefined ? {} : { authority: options.authority }),
     name,
     kind: 'read',
     collection,
@@ -504,7 +506,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent reaches it only under a delegation, where it answers the
   // delegation's purpose; before a pickup it is refused like every other
   // operation outside the two (minimum contract 8.2 case 9).
-  read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated' }),
+  // It asks no grant of its own (`authority: []`), so discovery lists it for any holder.
+  read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated', authority: [] }),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was

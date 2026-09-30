@@ -16,6 +16,7 @@ import {
   profileOf,
   renderReport,
 } from '../packages/core-wire/src/index.ts';
+import { runRead } from '../packages/core-commands/src/reads/dispatch.ts';
 import { createApi } from '../apps/api/app.ts';
 import { createCli } from '../apps/cli/client.ts';
 import { OperationsClient, READ_NAMES } from '../apps/web/src/operations/client.ts';
@@ -23,6 +24,14 @@ import { OperationsClient, READ_NAMES } from '../apps/web/src/operations/client.
 const WEB = resolve(import.meta.dirname, '..', 'apps', 'web', 'src');
 // transport, addresses
 const NOT_ACTIONS = new Set(['operations/client.ts', 'manifest.ts', 'routes.ts']);
+// The only files that send a request themselves; everything else calls a command.
+const TRANSPORTS = new Map([
+  ['operations/client.ts', 'the commands’ own client'],
+  ['session/sign-in.ts', 'signs a person in and out: a session, not a record'],
+  ['main.tsx', 'asks where to sign in, before there is a session'],
+]);
+const REQUEST_GLOBALS = new Set(['fetch', 'XMLHttpRequest', 'EventSource', 'WebSocket']);
+const REQUEST_METHODS = new Set(['fetch', 'sendBeacon']);
 
 function sources(root) {
   return readdirSync(root, { recursive: true, withFileTypes: true })
@@ -36,18 +45,49 @@ function importsOf(root, file, text) {
   );
 }
 
-/** Command names among the string literals of `file`, parsed by swc: comments are never code. */
-export function commandsIn(text, namespaces, file = 'a.tsx') {
-  const found = [];
+const TYPES = new Set(['TsTypeAnnotation', 'TsTypeAliasDeclaration', 'TsInterfaceDeclaration']);
+
+/** Every node of `file`, parsed by swc: comments are never code; `values` leaves types out. */
+function nodesOf(text, file, values = false) {
+  const nodes = [];
   const walk = (node) => {
     if (Array.isArray(node)) return node.forEach((one) => walk(one));
     if (node === null || typeof node !== 'object') return;
-    if (node.type === 'StringLiteral') found.push(node.value);
-    if (node.type === 'TemplateLiteral' && !node.expressions[0]) found.push(node.quasis[0].cooked);
+    if (values && TYPES.has(node.type)) return;
+    nodes.push(node);
     for (const key of Object.keys(node)) if (key !== 'span') walk(node[key]);
   };
   walk(parseSync(text, { syntax: 'typescript', tsx: file.endsWith('.tsx') }));
-  return found.filter((one) => /^[a-z]+\.[a-z_]+$/u.test(one) && namespaces.has(one.split('.')[0]));
+  return nodes;
+}
+
+const textOf = (node) =>
+  node.type === 'StringLiteral'
+    ? node.value
+    : node.type === 'TemplateLiteral' && !node.expressions[0]
+      ? node.quasis[0].cooked
+      : undefined;
+
+/** Command names among the string literals of `file`. */
+export function commandsIn(text, namespaces, file = 'a.tsx') {
+  return nodesOf(text, file)
+    .map((node) => textOf(node))
+    .filter((one) => /^[a-z]+\.[a-z_]+$/u.test(one ?? '') && namespaces.has(one.split('.')[0]));
+}
+
+/**
+ * Whether `file` sends a request itself: a request global referenced (a bare identifier carries
+ * `optional`; a property name or key does not), `.fetch(` or `.sendBeacon(` called, or an API address.
+ */
+export function sendsDirectly(text, file = 'a.tsx') {
+  return nodesOf(text, file, true).some((node) => {
+    const method = node.type === 'CallExpression' ? node.callee.property : undefined;
+    return (
+      (node.type === 'Identifier' && 'optional' in node && REQUEST_GLOBALS.has(node.value)) ||
+      REQUEST_METHODS.has(method?.value ?? method?.expression?.value) ||
+      (textOf(node) ?? '').startsWith('/api/')
+    );
+  });
 }
 
 /** Every place the app calls a command; a file no route's screen imports is the app shell's. */
@@ -76,6 +116,9 @@ export function scanUses(files, namespaces, unparsed = []) {
     let commands = [];
     try {
       commands = commandsIn(text, namespaces, file);
+      if (!TRANSPORTS.has(file) && sendsDirectly(text, file)) {
+        unparsed.push(`${file} sends a request itself, with no command or CLI verb`);
+      }
     } catch {
       // Fails closed: a file that cannot be read for commands fails the check.
       unparsed.push(`${file} does not parse, so its commands cannot be checked`);
@@ -90,9 +133,40 @@ export function scanUses(files, namespaces, unparsed = []) {
 const [ROOT, AGENT] = [`${PREFIX.person}b`, `${PREFIX.agent}b`];
 const under = (root) => COMMAND_SURFACE.map((one) => root + pathOf(one.name));
 
-// What the real API runs at each path on both prefixes, recorded by stub executors, profiled.
+// Enough of each read's operands to reach its grant check; the family a plan names is the
+// collection it asks. A read missing here is refused before the check and fails parity.
+const OPERANDS = {
+  'task.read': { recordId: 'r' },
+  'task.execution': { recordId: 'r' },
+  'task.board': { board: null },
+  'task.receipt': { attemptId: 'a' },
+  'preset.plan': { recordTypeKey: 'preset', presetKey: 'p', fields: [] },
+};
+
+// The grants a read really asks: the real read path on a transaction that holds none.
+async function askedBy(read) {
+  const asked = [];
+  const spine = [
+    { key: 'task', id: 't' },
+    { key: 'task_state', id: 's' },
+  ];
+  const tx = {
+    businessId: 'business',
+    query: (sql, params) => {
+      if (sql.includes('from effective e')) asked.push(`${params[0]}:${params[1]}`);
+      return Promise.resolve(sql.includes('from record_types') ? spine : []);
+    },
+  };
+  const session = { personId: 'p', actorId: 'a', roleKey: 'member' };
+  await runRead(tx, session, { ...OPERANDS[read], read }).catch(() => null);
+  return asked;
+}
+
+// What the real API runs at each path on both prefixes, profiled: a read by the grants its
+// path asks, a command by its declaration (its executor stubbed).
 async function routedByApi() {
   let ran;
+  let asked;
   const command = (...args) => (
     (ran = args[4].command),
     Promise.resolve({ recordId: 'r', revision: 1 })
@@ -101,19 +175,24 @@ async function routedByApi() {
     database: {},
     verify: () => Promise.resolve({ subject: 'parity' }),
     resolveBusiness: () => Promise.resolve('business'),
-    executeRead: (...args) => ((ran = args[3].read), Promise.resolve({})),
+    executeRead: async (...args) => ((ran = args[3].read), (asked = await askedBy(ran)), {}),
     executeCommand: command,
     executeAgentCommand: command,
   });
   const routed = new Map();
   for (const path of [...under(ROOT), ...under(AGENT)]) {
     ran = undefined;
+    asked = undefined;
     const init = { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' };
     // eslint-disable-next-line no-await-in-loop -- one route at a time, one recorded name
     await api.fetch(new Request(`http://parity${path}`, init));
     const name = ran;
     const runs = COMMAND_SURFACE.find((one) => one.name === name);
-    if (runs !== undefined) routed.set(path, profileOf(runs));
+    if (runs === undefined) continue;
+    routed.set(
+      path,
+      asked === undefined ? profileOf(runs) : { ...profileOf(runs), authority: asked },
+    );
   }
   return routed;
 }
