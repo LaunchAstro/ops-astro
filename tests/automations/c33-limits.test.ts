@@ -13,6 +13,7 @@ import {
   FIRING_LIMITS,
   type OccurrenceOutcome,
 } from '../../packages/core-records/src/index.ts';
+import { awaitWaiters, barrier } from '../runtime/gate-negatives-cases.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { firingOf, occurrenceOf, type Firing } from './firing.ts';
 import { createAutomationWorld, type AutomationWorld } from './world.ts';
@@ -74,6 +75,39 @@ describe.skipIf(serverUrl === undefined)('C33 limits on firing', () => {
 
     await hourPasses();
     expect(await claimNext(activation.id)).toBe('approved');
+  }, 120_000);
+
+  it('C33 occurrence rate refused: two claimers racing for the last place in the hour, the second waits for the first and is refused', async () => {
+    await hourPasses();
+    const { activation } = await f.approved();
+    expect(await claimMany(activation.id, FIRING_LIMITS.activationPerHour - 1)).toEqual([
+      'approved',
+    ]);
+    const held = barrier();
+    const firstIn = barrier();
+    const other = connect(w.db.appUrl, { source: 'runtime' });
+    try {
+      // The first claimer holds its transaction open after its claim.
+      const first = w.inAlpha(async (tx) => {
+        const claim = await claimOccurrence(tx, activation.id, { dueAt: f.nextDue() });
+        firstIn.release();
+        await held.held;
+        return occurrenceOf(claim).outcome;
+      });
+      await firstIn.held;
+      const second = other.withBusiness(
+        w.alpha,
+        async (tx) =>
+          occurrenceOf(await claimOccurrence(tx, activation.id, { dueAt: f.nextDue() })).outcome,
+      );
+      // The second is parked on the first's lock, not answered.
+      await awaitWaiters(w.db, 1);
+      held.release();
+      expect([await first, await second]).toEqual(['approved', 'over_activation_rate']);
+    } finally {
+      held.release();
+      await other.close();
+    }
   }, 120_000);
 
   it('C33 occurrence rate refused: 600 per business, the 601st refused on an activation with room of its own, and the next window fires', async () => {

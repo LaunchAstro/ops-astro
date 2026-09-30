@@ -7,6 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
+import { hasRoom, type DurableLimit } from '../tenancy/limit.ts';
 import {
   ACTIVATION_COLUMNS,
   activationOf,
@@ -66,6 +67,42 @@ const occurrenceOf = (row: OccurrenceDbRow): OccurrenceRow => ({
   runId: row.run_id,
 });
 
+/** A rate's count: this business's occurrences let through in the last hour, read under its lock. */
+function firedLastHour(name: string, limit: number, activationId?: string): DurableLimit {
+  return {
+    name,
+    limit,
+    async count(tx) {
+      const rows = await tx.query<{ readonly n: number }>(
+        `select count(*)::int as n from public.activation_occurrences
+          where outcome in ('approved', 'started')
+            and recorded_at > now() - interval '60 minutes'
+            and ($1::uuid is null or activation_id = $1)`,
+        [activationId ?? null],
+      );
+      return rows[0]?.n ?? 0;
+    },
+  };
+}
+
+/**
+ * `approved` while both rates have room, else the rate it is over. AW-01's
+ * durable limit, the one limiter: the activation's lock, then the business's,
+ * always in that order, each held to commit so the occurrence is written
+ * before the next claimer counts.
+ */
+async function withinRates(tx: TenantQuery, activationId: string): Promise<OccurrenceOutcome> {
+  const own = firedLastHour(
+    `c33.activation.${activationId}`,
+    FIRING_LIMITS.activationPerHour,
+    activationId,
+  );
+  if (!(await hasRoom(tx, [own]))) return 'over_activation_rate';
+  const business = firedLastHour('c33.business', FIRING_LIMITS.businessPerHour);
+  if (!(await hasRoom(tx, [business]))) return 'over_business_rate';
+  return 'approved';
+}
+
 export type OccurrenceCause = { readonly dueAt: Date } | { readonly eventId: string };
 
 export type OccurrenceClaim =
@@ -82,9 +119,9 @@ export type OccurrenceClaim =
  * A second claim of the same cause, whether a replayed event, a restarted
  * scheduler or a racing one, commits nothing and answers `replayed` with the
  * first occurrence. No run starts here: an occurrence on an activation that is
- * on, under a standing approval that is not revoked (C52-A), is `approved`
- * and names that approval, and dispatch rechecks it before any run; every
- * other occurrence records why it will not start one.
+ * on, under a standing approval that is not revoked (C52-A), and within both
+ * rates, is `approved` and names that approval, and dispatch rechecks it
+ * before any run; every other occurrence records why it will not start one.
  */
 export async function claimOccurrence(
   tx: TenantQuery,
@@ -109,6 +146,7 @@ export async function claimOccurrence(
   const standing = found[0].standing;
   let outcome: OccurrenceOutcome = 'activation_off';
   if (activation.enabled) outcome = standing === null ? 'no_standing_approval' : 'approved';
+  if (outcome === 'approved') outcome = await withinRates(tx, activation.id);
   const approvalId = outcome === 'approved' ? standing : null;
   const dueAt = scheduled ? cause.dueAt : null;
   const eventId = scheduled ? null : cause.eventId;
