@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Section 009's rows (MP-14-10a): one graduation row per action class for the
+// Section 010's rows (MP-14-10a): one graduation row per action class for the
 // chosen client, and one card per standing approval or refusal.
 //
 // Every row carries the same switch, including the rows that can never move:

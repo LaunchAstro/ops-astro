@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Connections & signal, the per-client region (MP-14-10a): the client scope
-// bar, 009 Graduation with its standing approvals, and the per-client halves
-// of 010 Channels and 011 Exceptions, which MP-14-10b draws.
+// bar, 010 Graduation with its standing approvals, and the per-client halves
+// of 011 Channels and 012 Exceptions, which MP-14-10b draws.
 //
 // One read, `connection.graduation`, brings every client the caller may see,
 // so the one select drives all three sections as view state and asks the
@@ -179,8 +179,8 @@ function Shown(props: {
   return (
     <>
       <ScopeBar clients={region.clients} chosen={client.id} choose={choose} />
-      <section data-section="009" id="graduation">
-        <h2>009 Graduation {scoped}</h2>
+      <section data-section="010" id="graduation">
+        <h2>010 Graduation {scoped}</h2>
         {props.said === null ? null : (
           <p role="alert" data-region-said>
             {props.said}
@@ -198,12 +198,12 @@ function Shown(props: {
           send={send}
         />
       </section>
-      <section data-section="010" data-not-connected="channels">
-        <h2>010 Channels {scoped}</h2>
+      <section data-section="011" data-not-connected="channels">
+        <h2>011 Channels {scoped}</h2>
         <InDevelopment title="Channels for this client" owner="MP-14-10b" />
       </section>
-      <section data-section="011" data-not-connected="exceptions">
-        <h2>011 Exceptions {scoped}</h2>
+      <section data-section="012" data-not-connected="exceptions">
+        <h2>012 Exceptions {scoped}</h2>
         <InDevelopment title="Exceptions for this client" owner="MP-14-10b" />
       </section>
     </>

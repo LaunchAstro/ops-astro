@@ -1996,6 +1996,9 @@ of each only from more than one priced run whose every settled call recorded
 them. `models: { ids, unnamedCalls }`, on a skill and on each log row, lists
 every exact model id its calls named and counts the settled calls that named
 none. The process document is `{ available: false, reason }` until Docs exists.
+Connections & signal draws `finance.skill_costs` as section 009, Skill costing
+(MP-14-9; R61 moves the per-client region to 010 to 012); `null` or a refusal
+leaves the section out.
 
 | Operation             | Route                  | Body           | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | --------------------- | ---------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
