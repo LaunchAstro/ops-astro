@@ -391,4 +391,31 @@ describe.skipIf(serverUrl === undefined)('INB-1e unattended', () => {
       expect((await call('inbox.unattended', opalToken, {}, 'bravo')).status).not.toBe(200);
     });
   });
+
+  describe('C55 unattended from INB-1', () => {
+    it('the operations view carries the unattended list inbox.unattended answers, for each caller, and no other', async () => {
+      const view = async (token: string, key = BUSINESS_KEY) =>
+        ok(await call('operations.read', token, {}, key)).body['unattended'];
+      for (const [token, key] of [
+        [opalToken, BUSINESS_KEY],
+        [ottoToken, BUSINESS_KEY],
+        [brunoToken, 'bravo'],
+      ] as const) {
+        // oxlint-disable-next-line no-await-in-loop
+        const list = await unattended(token, key);
+        expect(list.length).toBeGreaterThan(0);
+        // oxlint-disable-next-line no-await-in-loop
+        expect(await view(token, key)).toStrictEqual(list);
+      }
+      // Client to client: Otto's view is his client's items only, a strict part of Opal's.
+      const forOtto = ((await view(ottoToken)) as Entry[]).map((e) => String(e['id']));
+      const forOpal = await listed(opalToken);
+      expect(forOtto.every((id) => forOpal.includes(id))).toBe(true);
+      expect(forOtto.length).toBeLessThan(forOpal.length);
+      // Person to person: no view at all without operations:read.
+      const refused = await call('operations.read', pimToken);
+      expect(refused.body['code']).toBe('SCOPE_NOT_GRANTED');
+      expect(refused.body['unattended']).toBeUndefined();
+    });
+  });
 });
