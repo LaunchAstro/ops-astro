@@ -54,6 +54,7 @@ import {
 } from '../../packages/core-runtime/src/index.ts';
 import { createOutboxAlerts, scopeKey } from './alerts/outbox.ts';
 import type { Alerts } from './alerts/sink.ts';
+import { publishableKey } from './auth/publishable-key.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
 import {
   parseRecoveryScope,
@@ -109,6 +110,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     database,
     admin: connectAsAdmin(lookupUrl, { source: 'lookup' }),
     signIn: { issuer, keySetUrl },
+    providerKey: publishableKey(settings['SUPABASE_PUBLISHABLE_KEY']),
     keys,
     ...(alerts === undefined ? {} : { alerts }),
   });
