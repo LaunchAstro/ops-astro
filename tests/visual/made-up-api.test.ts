@@ -12,7 +12,7 @@ const NOT_DRAWN = new Set(['task.receipt', 'preset.plan', 'inbox.unattended']);
 describe('the made-up reads the width-and-theme harness draws from', () => {
   it('answers a read at the path the app asks it on, with the made-up rows', () => {
     const answer = madeUpAnswer(`${PREFIX.person}alpha${pathOf('task.board')}`);
-    expect(answer).toEqual({ status: 200, json: { ok: true, tasks: TASKS } });
+    expect(answer).toMatchObject({ status: 200, json: { ok: true, tasks: TASKS } });
   });
 
   it('answers the live stream as down, so nothing streams into a capture', () => {

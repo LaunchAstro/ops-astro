@@ -14,35 +14,24 @@
 // against the mockup's page. Every name and client is made up.
 
 import type {
+  BoardTask,
   CapabilitiesResult,
   InboxCountResult,
   InboxReadResult,
-  InternalTaskDetail,
   InternalTaskRead,
   PersonListResult,
   QueueResult,
   SettingsReadResult,
+  TagListResult,
   TaskBoardResult,
   TaskExecutionResult,
   TaskStateView,
   TaskSummary,
+  TaskTodosResult,
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
+import { detailOf, MIA, NATHAN, STATE, STATES, todoOf } from './made-up-task.ts';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
-
-const STATE = {
-  active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
-  waiting: {
-    id: 's-waiting',
-    key: 'waiting',
-    label: 'Waiting on client',
-    machineCategory: 'backlog',
-  },
-  hold: { id: 's-hold', key: 'hold', label: 'On hold', machineCategory: 'unstarted' },
-} as const satisfies Record<string, TaskStateView>;
-
-const NATHAN = { personId: 'p-nathan', name: 'Nathan' };
-const MIA = { personId: 'p-mia', name: 'Mia' };
 
 const task = (
   n: number,
@@ -50,7 +39,7 @@ const task = (
   state: TaskStateView,
   due: string | null,
   assignee: TaskSummary['assignee'] = NATHAN,
-): TaskSummary => ({
+): BoardTask => ({
   id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
   key: `T-${String(n)}`,
   title,
@@ -60,10 +49,21 @@ const task = (
   priority: null,
   completedAt: null,
   revision: 1,
+  rank: { number: null, score: null, calc: '' },
+  stage: null,
+  clientSet: false,
+  actualMinutes: 0,
+  estimateMinutes: null,
+  pageLink: null,
+  statePosition: null,
+  waitReason: null,
+  awaitingDecision: false,
+  agent: null,
+  myAgents: [],
 });
 
 // The harness clock is 2026-09-26; dates sit either side of it.
-export const TASKS: readonly TaskSummary[] = [
+export const TASKS: readonly BoardTask[] = [
   task(1, 'Contract review pack, 31 July', STATE.active, '2026-09-30'),
   task(6, 'Renewal pack, 14 August', STATE.active, '2026-10-07'),
   task(9, 'Sign off the Meridian ad run rate, 29% over budget', STATE.active, '2026-09-18'),
@@ -75,35 +75,16 @@ export const TASKS: readonly TaskSummary[] = [
   task(33, 'Paid social rebuild', STATE.hold, null),
 ];
 
-const DETAIL: InternalTaskDetail = {
-  ...(TASKS[0] as TaskSummary),
-  description:
-    'Pull the signed scope, the two variations and the renewal terms into one pack for review.',
-  history: [
-    { at: '2026-09-24T01:10:00.000Z', actorId: NATHAN.personId, operation: 'task.create' },
-    { at: '2026-09-25T03:40:00.000Z', actorId: NATHAN.personId, operation: 'task.update' },
-  ],
-  comments: [
-    {
-      id: 'c-1',
-      audience: 'internal',
-      author: NATHAN.personId,
-      body: 'Variation two is still unsigned; chase before the pack goes out.',
-      comment_type: 'note',
-      posted_at: '2026-09-25T04:00:00.000Z',
-      edited_at: null,
-      source: 'app',
-    },
-  ],
-  proposals: [],
-  capCurrency: 'AUD',
-  envelope: null,
-  alerts: [],
-};
+const DETAIL = detailOf(TASKS[0] as BoardTask);
 
 const READS = {
-  'task.board': { ok: true, tasks: TASKS } satisfies TaskBoardResult,
-  'task.read': { ok: true, task: DETAIL } satisfies InternalTaskRead,
+  'task.board': {
+    ok: true,
+    tasks: TASKS,
+    changedAt: '2026-09-25T04:00:00.000Z',
+    viewer: NATHAN.personId,
+  } satisfies TaskBoardResult,
+  'task.read': { ok: true, task: DETAIL, states: STATES } satisfies InternalTaskRead,
   'person.list': { ok: true, persons: [NATHAN, MIA] } satisfies PersonListResult,
   'settings.read': {
     ok: true,
@@ -172,6 +153,19 @@ const READS = {
     ],
   } satisfies InboxReadResult,
   'inbox.count': { ok: true, owed: 2 } satisfies InboxCountResult,
+  'tag.list': {
+    ok: true,
+    tags: [
+      { id: 'tag-legal', name: 'Legal' },
+      { id: 'tag-renewal', name: 'Renewal' },
+    ],
+  } satisfies TagListResult,
+  'task.todos': {
+    ok: true,
+    todos: TASKS.filter((one) => one.assignee?.personId === NATHAN.personId).map((one) =>
+      todoOf(one),
+    ),
+  } satisfies TaskTodosResult,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */
