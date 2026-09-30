@@ -213,18 +213,18 @@ function server(options: ServerOptions = {}) {
   const proposed: Record<string, unknown>[] = [];
   const decided: Record<string, unknown>[] = [];
 
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-    if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
+    if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
     if (at.endsWith('/task/read')) {
       reads.push(reads.length + 1);
-      return json({ ok: true, task });
+      return Promise.resolve(json({ ok: true, task }));
     }
     if (at.endsWith('/task/propose')) {
       proposed.push(body);
       if (options.refusePropose !== undefined) {
-        return refusal(options.refusePropose.code, options.refusePropose.status);
+        return Promise.resolve(refusal(options.refusePropose.code, options.refusePropose.status));
       }
       // The proposal lands beside the task: a third version appears and the
       // task's own revision does not move.
@@ -240,12 +240,14 @@ function server(options: ServerOptions = {}) {
         },
         ...lineage.versions,
       ];
-      return json({ recordId: TASK_ID, revision: 7, detail: { versionId: 'v-3333' } });
+      return Promise.resolve(
+        json({ recordId: TASK_ID, revision: 7, detail: { versionId: 'v-3333' } }),
+      );
     }
     if (at.endsWith('/task/decide')) {
       decided.push(body);
       if (options.refuseDecide !== undefined) {
-        return refusal(options.refuseDecide.code, options.refuseDecide.status);
+        return Promise.resolve(refusal(options.refuseDecide.code, options.refuseDecide.status));
       }
       gate.state = 'approved';
       gate.expired = false;
@@ -275,15 +277,17 @@ function server(options: ServerOptions = {}) {
           attempt: { id: 'a-1', state: 'reserved', dispatchMarker: null, observed: null },
         },
       ];
-      return json({ recordId: TASK_ID, revision: 7, detail: { reservationId: 'r-1' } });
+      return Promise.resolve(
+        json({ recordId: TASK_ID, revision: 7, detail: { reservationId: 'r-1' } }),
+      );
     }
-    return json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404);
+    return Promise.resolve(json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404));
   }) as unknown as typeof globalThis.fetch;
 
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => 'operation-1',
   });

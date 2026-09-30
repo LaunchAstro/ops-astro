@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The Projects board's name cell (MP-5-9, BOARDS P-30, P-32, P-33). The tick
-// completes or reopens through the page's one completion transition. A plain
+// completes or reopens through the page's one completion transition; on a
+// task the reader's agent holds it says it sends the work to review. A plain
 // click opens the task after 260ms, the window a double-click needs; a
 // double-click renames in place, Enter or blur saving, Escape cancelling, a
 // blank or unchanged name saving nothing. The hover box holds the timer (only
@@ -11,6 +12,7 @@
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { ProjectRow, RowActions } from '../board/projects.ts';
+import { Icon } from '../primitives/Icon.tsx';
 
 const OPEN_DELAY_MS = 260;
 
@@ -29,7 +31,8 @@ export function ProjectName(props: ProjectNameProps): ReactElement {
           className="cbd__tick"
           type="checkbox"
           checked={row.completed}
-          aria-label={row.completed ? `Reopen ${row.name}` : `Complete ${row.name}`}
+          aria-label={tickLabel(row)}
+          {...(row.toReview === true ? { title: REVIEW } : {})}
           onChange={() => {
             actions.onTick?.(row, !row.completed);
           }}
@@ -39,6 +42,14 @@ export function ProjectName(props: ProjectNameProps): ReactElement {
       {actions === undefined ? null : <Routes row={row} href={href} actions={actions} />}
     </div>
   );
+}
+
+/** The tick on a task the reader's agent holds sends the work to review (P-30). */
+const REVIEW = 'The agent’s work is done — send it to Needs review for your confirmation';
+
+function tickLabel(row: ProjectRow): string {
+  if (row.completed) return `Reopen ${row.name}`;
+  return row.toReview === true ? `Send ${row.name} to review` : `Complete ${row.name}`;
 }
 
 /** Whether `row` is the one open beside the board, by `door`. */
@@ -158,7 +169,7 @@ function Routes(props: {
             actions.onStartTimer?.(row);
           }}
         >
-          ▶
+          <Icon name="play" size="xs" />
         </button>
       )}
       <a
@@ -178,7 +189,7 @@ function Routes(props: {
         aria-label={`Go to the work on ${row.name}, in the app`}
         title="Go to the work (in the app)"
       >
-        ↗
+        <Icon name="arrow-up-right-from-square" size="xs" />
       </a>
     </span>
   );

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `/projects/`. The board of the business's unboarded tasks, and the form that
-// makes one.
+// `/projects/`. The caller's inbox, the board of the business's unboarded
+// tasks, and the form that makes one.
 //
 // The read is `task.board` with `board: null`, which the contract defines as
 // the business's unboarded tasks — the acceptance case creates a task
@@ -17,9 +17,9 @@
 // and starring (P-20). The actual is the time logged (MP-4-6).
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { Empty, ProjectsBoard, type BoardRow, type ProjectRow } from '@launchastro/ui';
+import { Empty, ProjectsBoard, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
-import { rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
+import { assigneeOf, rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
 import type {
   BoardTask,
@@ -28,9 +28,11 @@ import type {
 } from '../../../../packages/core-wire/src/index.ts';
 import { TASK_STAGES, isInProductLink } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
+import { Inbox } from '../views/inbox.tsx';
 
 /** A create whose outcome is not known, held so the retry is the same attempt. */
 interface PendingCreate {
@@ -85,6 +87,8 @@ export function Projects(props: ProjectsProps): ReactElement {
     deps: [],
   });
   const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
+  // INB-1f: one stream for the tab, shared by the board and the inbox panels.
+  const followInbox = useBoardLive(client, props.grantKey, reload);
 
   // The same attempt while the asked-for task is the same one, a new attempt
   // when the person has changed what they are asking for. Retrying an unknown
@@ -140,6 +144,8 @@ export function Projects(props: ProjectsProps): ReactElement {
 
   return (
     <div className="stack">
+      {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
+      <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
       <form className="taskform projects__create" onSubmit={onCreate}>
         <div className="field">
           <label className="tf__k" htmlFor="create-title">
@@ -238,6 +244,9 @@ const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);
 
 /** One task from the read as a Projects board row (MP-5-8). */
 function rowOf(task: BoardTask): ProjectRow {
+  // A read from a server that predates Assign to AI carries neither: none.
+  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents'>> = task;
+  const agent = read.agent ?? null;
   return {
     id: task.id,
     key: task.key,
@@ -248,10 +257,12 @@ function rowOf(task: BoardTask): ProjectRow {
     // The client's name waits on the client model; `clientSet` says only
     // that there is one.
     client: null,
-    assignee:
-      task.assignee === null
-        ? null
-        : { id: task.assignee.personId, name: task.assignee.name, agent: false },
+    assignee: assigneeOf(task, agent),
+    // The reader's own agents for the task; the read sends no one else's.
+    agents: (read.myAgents ?? []).map((one) => ({ id: one.delegationId, name: one.purpose })),
+    // The tick sends the reader's agent's work to review unless it is there.
+    toReview:
+      agent !== null && task.completedAt === null && task.state?.machineCategory !== 'unstarted',
     due: task.due,
     completed: task.completedAt !== null,
     stage: task.stage === null ? null : TASK_STAGES.labelOf(task.stage),
@@ -273,23 +284,4 @@ function rowOf(task: BoardTask): ProjectRow {
     ...(isInProductLink(task.pageLink) ? { page: task.pageLink } : {}),
     comments: { client: 0, mentions: 0, latest: null },
   };
-}
-
-const pad = (n: number): string => String(n).padStart(2, '0');
-
-/**
- * Overdue, today or later, judged against the reader's own calendar day.
- *
- * The stored date part is the day the person picked in a local date input
- * (task/DetailsForm.tsx), so "today" is the local day too. Taking it from
- * `toISOString()` would be the UTC day, which in Australia lags the local one
- * for the first ten hours of every morning and draws yesterday's work as due
- * today.
- */
-export function dueTone(iso: string | null, now: Date = new Date()): BoardRow['due'] {
-  if (iso === null) return null;
-  const today = `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const day = iso.slice(0, 10);
-  if (day < today) return 'past';
-  return day === today ? 'today' : 'later';
 }

@@ -24,11 +24,15 @@ import { describe, expect, it } from 'vitest';
 import { useState, type ReactElement } from 'react';
 import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore, tabStorage, type StorageLike } from '../../apps/web/src/session/token.ts';
+import { SESSION_PATH } from '../../packages/core-wire/src/index.ts';
 import { mount, settle, type Mounted } from './mount.tsx';
+import { TEST_ONLY_MARKER } from '../support/marker.ts';
 
-const SESSION = { token: 'the-hour-old-token', businessKey: 'alpha', email: 'mia@alpha.local' };
+const SESSION = { businessKey: 'alpha', email: 'mia@alpha.local' };
+/** The token the tab's session cookie held when the test starts: an hour old. */
+const OLD_TOKEN = `${TEST_ONLY_MARKER}-the-hour-old-token`;
 /** What the stand-in identity provider hands back on a fresh sign-in. */
-const FRESH_TOKEN = 'a-fresh-token';
+const FRESH_TOKEN = `${TEST_ONLY_MARKER}-a-fresh-token`;
 
 const TASK = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -111,40 +115,40 @@ const scopeDenied = (): Response =>
 function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
   let reads = options.reads ?? 'ok';
   let mutations: 'ok' | 'ended' = 'ok';
-  const seenTokens: (string | null)[] = [];
 
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = ((url: string | URL) => {
     const at = String(url);
     // The task page also reads its run (T2g); none here.
     if (at.endsWith('/task/execution'))
       return json({ ok: true, execution: { outcome: 'no-run', runs: [], events: [] } });
     // T3e2: the task page reads the team's outage reports; none here.
     if (at.endsWith('/task/queue')) return json({ ok: true, queue: [], alerts: [], outages: [] });
+    // The inbox the board screen mounts (INB-1g), answered empty.
+    if (at.endsWith('/inbox/read')) return Response.json({ ok: true, inbox: [] });
+    if (at.endsWith('/inbox/count')) return Response.json({ ok: true, owed: 0 });
     if (at.startsWith('http://identity.invalid/token')) {
       // A new hour. Everything the old token could not do, the new one can.
       reads = 'ok';
       mutations = 'ok';
-      return json({ access_token: 'a-fresh-token' });
+      return Promise.resolve(json({ access_token: 'ops-astro-test-only-a-fresh-token' }));
     }
-    const headers = (init?.headers ?? {}) as Record<string, string>;
-    seenTokens.push(headers['authorization'] ?? null);
-
-    if (at.endsWith('/person/list')) return json({ ok: true, persons: PEOPLE });
+    if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: PEOPLE }));
     if (at.endsWith('/task/read') || at.endsWith('/task/board')) {
-      if (reads === 'ended') return unknownLogin();
-      if (reads === 'scope') return scopeDenied();
-      return at.endsWith('/task/read')
-        ? json({ ok: true, task: TASK })
-        : json({ ok: true, tasks: [TASK] });
+      if (reads === 'ended') return Promise.resolve(unknownLogin());
+      if (reads === 'scope') return Promise.resolve(scopeDenied());
+      return Promise.resolve(
+        at.endsWith('/task/read')
+          ? json({ ok: true, task: TASK })
+          : json({ ok: true, tasks: [TASK] }),
+      );
     }
     // Every mutation: create, assign, the three lifecycle commands, update.
-    if (mutations === 'ended') return unknownLogin();
-    return json({ recordId: TASK.id, revision: TASK.revision + 1 });
+    if (mutations === 'ended') return Promise.resolve(unknownLogin());
+    return Promise.resolve(json({ recordId: TASK.id, revision: TASK.revision + 1 }));
   }) as unknown as typeof globalThis.fetch;
 
   return {
     fetch,
-    seenTokens,
     endTheSession(): void {
       reads = 'ended';
       mutations = 'ended';
@@ -289,37 +293,56 @@ describe('a session the API will not vouch for any more', () => {
 // already signed in again. A stand-in that answered "the session has ended"
 // globally could not tell the two sessions apart and so could not show the
 // defect at all.
+// eslint-disable-next-line max-lines-per-function -- one stand-in, read top to bottom
 function byBearer(): {
   readonly fetch: typeof globalThis.fetch;
   /** Answer the old-token read that is still in flight. */
   readonly deliverTheDelayedRefusal: () => void;
+  /** The token the session cookie holds now. */
+  readonly cookie: () => string;
 } {
   let deliver: ((response: Response) => void) | null = null;
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  // The browser's cookie jar: the session cookie each call carries is the one
+  // held when it left, and signing in again replaces it (S0-6c).
+  let cookie = OLD_TOKEN;
+  const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     // The task page also reads its run (T2g); none here.
     if (at.endsWith('/task/execution'))
       return json({ ok: true, execution: { outcome: 'no-run', runs: [], events: [] } });
     // T3e2: the task page reads the team's outage reports; none here.
     if (at.endsWith('/task/queue')) return json({ ok: true, queue: [], alerts: [], outages: [] });
-    if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH_TOKEN });
+    // The inbox the board screen mounts (INB-1g), answered empty.
+    if (at.endsWith('/inbox/read')) return Response.json({ ok: true, inbox: [] });
+    if (at.endsWith('/inbox/count')) return Response.json({ ok: true, owed: 0 });
+    if (at.startsWith('http://identity.invalid/token'))
+      return Promise.resolve(json({ access_token: FRESH_TOKEN }));
     const headers = (init?.headers ?? {}) as Record<string, string>;
-    const stale = headers['authorization'] === `Bearer ${SESSION.token}`;
+    if (at === SESSION_PATH) {
+      cookie = headers['authorization']?.replace('Bearer ', '') ?? '';
+      return Promise.resolve(json({ ok: true }));
+    }
+    const stale = cookie === OLD_TOKEN;
 
-    if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
+    if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: TASK }));
     if (at.endsWith('/person/list')) {
       // The old token's people read never comes back on its own. The test
       // holds it, signs in again, and only then lets the 401 arrive.
-      if (!stale) return json({ ok: true, persons: PEOPLE });
-      return new Promise<Response>((resolve) => {
-        deliver = resolve;
-      });
+      if (!stale) return Promise.resolve(json({ ok: true, persons: PEOPLE }));
+      return Promise.resolve(
+        new Promise<Response>((resolve) => {
+          deliver = resolve;
+        }),
+      );
     }
-    return stale ? unknownLogin() : json({ recordId: TASK.id, revision: TASK.revision + 1 });
+    return Promise.resolve(
+      stale ? unknownLogin() : json({ recordId: TASK.id, revision: TASK.revision + 1 }),
+    );
   }) as unknown as typeof globalThis.fetch;
 
   return {
     fetch,
+    cookie: () => cookie,
     deliverTheDelayedRefusal: () => {
       if (deliver === null) throw new Error('no old-token read was in flight');
       deliver(unknownLogin());
@@ -351,7 +374,8 @@ describe('a refusal that belongs to a session which is already over', () => {
     expect(sessions.session).toBeNull();
 
     await signInAgain(view);
-    expect(sessions.session?.token).toBe(FRESH_TOKEN);
+    expect(sessions.session).not.toBeNull();
+    expect(api.cookie()).toBe(FRESH_TOKEN);
     expect(seen.at(-1)).toBe('/task/TSK-1');
     expect(view.text()).toContain('Wire the board to the API');
 
@@ -363,7 +387,8 @@ describe('a refusal that belongs to a session which is already over', () => {
 
     // The new session is untouched: in memory, in storage, on the screen, and
     // at the address the person was returned to.
-    expect(sessions.session?.token).toBe(FRESH_TOKEN);
+    expect(sessions.session).not.toBeNull();
+    expect(api.cookie()).toBe(FRESH_TOKEN);
     expect(store.held.get('ops-astro.session')).toBeDefined();
     expect(view.find('[data-reason="session-ended"]')).toBeNull();
     expect(view.find('#signin-email')).toBeNull();
@@ -381,26 +406,35 @@ describe('a refusal that belongs to a session which is already over', () => {
 // and this stand-in gives each business its own task with the same key --
 // which is the only way a test can tell "returned to where I was" apart from
 // "returned to a string that resolved to something else".
-const BRAVO = { token: 'the-hour-old-token', businessKey: 'bravo', email: 'bea@bravo.local' };
+const BRAVO = { businessKey: 'bravo', email: 'bea@bravo.local' };
 
 function perBusiness(): typeof globalThis.fetch {
-  return (async (url: string | URL, init?: RequestInit) => {
+  let cookie = OLD_TOKEN;
+  return ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     // The task page also reads its run (T2g); none here.
     if (at.endsWith('/task/execution'))
       return json({ ok: true, execution: { outcome: 'no-run', runs: [], events: [] } });
     // T3e2: the task page reads the team's outage reports; none here.
     if (at.endsWith('/task/queue')) return json({ ok: true, queue: [], alerts: [], outages: [] });
-    if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH_TOKEN });
+    // The inbox the board screen mounts (INB-1g), answered empty.
+    if (at.endsWith('/inbox/read')) return Response.json({ ok: true, inbox: [] });
+    if (at.endsWith('/inbox/count')) return Response.json({ ok: true, owed: 0 });
+    if (at.startsWith('http://identity.invalid/token'))
+      return Promise.resolve(json({ access_token: FRESH_TOKEN }));
     const headers = (init?.headers ?? {}) as Record<string, string>;
-    if (headers['authorization'] === `Bearer ${BRAVO.token}`) return unknownLogin();
+    if (at === SESSION_PATH) {
+      cookie = headers['authorization']?.replace('Bearer ', '') ?? '';
+      return Promise.resolve(json({ ok: true }));
+    }
+    if (cookie === OLD_TOKEN) return Promise.resolve(unknownLogin());
 
     const business = /\/b\/([^/]+)\//u.exec(at)?.[1] ?? '?';
     const task = { ...TASK, title: `The ${business} task called TSK-1` };
-    if (at.endsWith('/person/list')) return json({ ok: true, persons: PEOPLE });
-    if (at.endsWith('/task/read')) return json({ ok: true, task });
-    if (at.endsWith('/task/board')) return json({ ok: true, tasks: [task] });
-    return json({ recordId: TASK.id, revision: TASK.revision + 1 });
+    if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: PEOPLE }));
+    if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task }));
+    if (at.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [task] }));
+    return Promise.resolve(json({ recordId: TASK.id, revision: TASK.revision + 1 }));
   }) as unknown as typeof globalThis.fetch;
 }
 

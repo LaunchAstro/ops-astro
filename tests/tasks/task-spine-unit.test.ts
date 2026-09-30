@@ -62,8 +62,8 @@ describe('the spine declaration', () => {
     }
   });
 
-  // The two 0006 added, the three marks 0042 added for the rank (MP-4-9), and
-  // the Ad hoc mark 0043 added (MP-4-10).
+  // The two 0006 added, the three marks 0131 added for the rank (MP-4-9), and
+  // the Ad hoc mark 0132 added (MP-4-10).
   it('adds exactly six slots beyond that sixteen, all protected', () => {
     const beyond = TASK_SPINE.filter(
       (field) => field.slot !== null && !RESERVATION_ORDER.some(([slot]) => slot === field.slot),
@@ -132,6 +132,7 @@ describe('the spine declaration', () => {
     expect(TASK_SPINE.find((field) => field.key === 'state')?.owningOperations).toStrictEqual([
       'task.complete',
       'task.reopen',
+      'task.set_state',
       'task.start',
     ]);
   });

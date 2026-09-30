@@ -19,7 +19,7 @@ export {
   checkAuthority,
   effectiveGrants,
   issueGrant,
-  readableRecordIds,
+  OPERATIONS_MANAGE,
   revokeGrant,
   subjectsOf,
   type Action,
@@ -32,7 +32,7 @@ export {
   type Subject,
   type SubjectKind,
 } from './grants.ts';
-export { readableScope, type ReadableScope } from './readable-scope.ts';
+export { readableRecordIds, readableScope, type ReadableScope } from './readable-scope.ts';
 
 export {
   checkDelegatedAuthority,

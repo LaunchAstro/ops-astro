@@ -16,7 +16,7 @@
 // agent" or "The system" for the other two kinds (`whoOf`).
 
 import { useState, type ReactElement } from 'react';
-import { PaneEmpty } from '@launchastro/ui';
+import { Empty } from '@launchastro/ui';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
 
 type Entry = Task['history'][number];
@@ -102,7 +102,7 @@ export function History(props: {
       </div>
       {changes.length === 0 ? (
         <div data-history="empty">
-          <PaneEmpty say="Nothing has changed on this one yet." />
+          <Empty look="inline" title="Nothing has changed on this one yet." />
         </div>
       ) : null}
       {changes.length === 0 || props.folded !== true ? null : (

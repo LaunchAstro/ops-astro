@@ -9,6 +9,8 @@ import type { ReactElement } from 'react';
 import { FUNNEL_FIRST, freshness, funnelMenu, hiddenFilters } from '../board/funnel.ts';
 import type { RankedFacet } from '../board/funnel.ts';
 import type { BoardAction, Facet, MachineState, Preset } from '../board/types.ts';
+import { Empty } from '../primitives/Absence.tsx';
+import { Icon } from '../primitives/Icon.tsx';
 import { BoardSearch } from './BoardSearch.tsx';
 import { STACK_TIP } from './board-props.ts';
 import type { useFunnelMenu } from './board-hooks.ts';
@@ -138,7 +140,7 @@ function FunnelList(props: FunnelProps): ReactElement {
       </label>
       <FacetGroups listing={listing} ids={props.ids} noun={props.noun} dispatch={props.dispatch} />
       {listing.shown === 0 && menu.q.trim() !== '' ? (
-        <p className="cbd__menuempty">No filter matches “{menu.q.trim()}”.</p>
+        <Empty look="inline" title={`No filter matches “${menu.q.trim()}”.`} />
       ) : null}
       {listing.more > 0 || (menu.all && listing.shown > FUNNEL_FIRST) ? (
         <button
@@ -208,7 +210,7 @@ function Steps(props: { readonly machine: MachineState; readonly dispatch: Send 
             dispatch({ type: 'resetWidths' });
           }}
         >
-          ↔
+          <Icon name="arrows-h" size="sm" />
         </button>
       )}
       <Step kind="undo" step={history.past.at(-1)} dispatch={dispatch} />

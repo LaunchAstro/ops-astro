@@ -196,7 +196,7 @@ describe('MP-5-12 drawn from task.board through the Projects screen', () => {
     const client = new OperationsClient({
       origin: '',
       businessKey: 'alpha',
-      token: 'a-token',
+      signedIn: true,
       fetch,
       newOperationId: () => 'operation-1',
     });

@@ -140,6 +140,15 @@ describe('MP-4-7 the description is sans everywhere; mono only on the Agent MD f
   const rule = (selector: string): string =>
     new RegExp(`(?:^|\\n)${selector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`, 'u').exec(css)?.[1] ??
     '';
+  const tokens = readFileSync(
+    join(import.meta.dirname, '../../packages/ui/src/styles/1-tokens.css'),
+    'utf8',
+  );
+  /** The family a rule's text is set in: text is set only through a type style (MP-1-4). */
+  const family = (selector: string): string | undefined => {
+    const style = /font:\s*var\((--type-[a-z-]+)\)/u.exec(rule(selector))?.[1] ?? '--none';
+    return new RegExp(`${style}:[^;]*var\\((--font-[a-z]+)\\)\\s*;`, 'u').exec(tokens)?.[1];
+  };
 
   it('the description field and prose are sans; the brief field alone is mono', async () => {
     const { client, onSaved } = field();
@@ -157,9 +166,9 @@ describe('MP-4-7 the description is sans everywhere; mono only on the Agent MD f
     );
     expect(view.find('textarea[data-writing="description"]')?.className).toBe('tf__ta');
     expect(view.find('textarea[data-writing="brief"]')?.className).toBe('tf__ta tf__ta--md');
-    expect(rule('.tf__ta')).toContain('font-family: var(--font-sans)');
-    expect(rule('.tf__ta--md')).toContain('font-family: var(--font-mono)');
-    expect(rule('.tt__prose')).toContain('font-family: var(--font-sans)');
+    expect(family('.tf__ta')).toBe('--font-sans');
+    expect(family('.tf__ta--md')).toBe('--font-mono');
+    expect(family('.tt__prose')).toBe('--font-sans');
   });
 
   it('the page draws the description and the rendered brief as sans prose', async () => {

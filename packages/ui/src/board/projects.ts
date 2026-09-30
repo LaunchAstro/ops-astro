@@ -24,7 +24,14 @@ export {
 
 export { groupReason, statusOrder } from './project-groups.ts';
 
-export type { Actual, Estimate, PersonOption, ProjectRow, RowActions } from './project-row.ts';
+export type {
+  Actual,
+  AgentOption,
+  Estimate,
+  PersonOption,
+  ProjectRow,
+  RowActions,
+} from './project-row.ts';
 
 /** Token rows sort after every time row (P-27). */
 const TOKENS_AFTER = 1e12;

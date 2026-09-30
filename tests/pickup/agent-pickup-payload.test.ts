@@ -24,7 +24,6 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { createControls, detailOf, type Controls } from '../api/controls-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-
 const COMMON_KEYS = [
   'attemptId',
   'authorisedByPersonId',

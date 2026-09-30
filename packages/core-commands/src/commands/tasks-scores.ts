@@ -6,15 +6,14 @@
 // already refuses a field this command does not own, a value of the wrong type
 // and an unknown key. What it adds is the range: a mark is a whole number from
 // 1 to 10, or null to clear it, because absent is never 0. The database holds
-// the same rule (0042); refusing here first answers by name instead of as a
+// the same rule (0131); refusing here first answers by name instead of as a
 // fault from the constraint.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand } from './refusal.ts';
 import { refused, type HandlerOutcome } from './outcome.ts';
-import type { CommandContext } from './context.ts';
 import type { FieldValues } from './requests.ts';
-import { writeOwnedFields } from './tasks-state.ts';
+import { writeOwnedFields, type FieldWriteContext } from './tasks-state.ts';
 
 const MARKS: readonly string[] = ['confidence', 'ease', 'impact'];
 
@@ -29,7 +28,7 @@ function isMark(value: unknown): boolean {
  */
 export async function setScores(
   tx: TenantQuery,
-  context: Pick<CommandContext, 'spine' | 'target'>,
+  context: FieldWriteContext,
   fields: FieldValues,
 ): Promise<HandlerOutcome> {
   const outside = MARKS.filter((key) => key in fields && !isMark(fields[key]));

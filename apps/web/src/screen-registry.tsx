@@ -8,7 +8,8 @@
 // instead of falling through to whichever screen a bare `else` happened to
 // draw.
 
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import { Gallery } from '@launchastro/ui';
 import type { AuthenticatedRouteId, ParamsOf, RouteMatch } from './routes.ts';
 import type { OperationsClient } from './operations/client.ts';
 import { Projects } from './screens/Projects.tsx';
@@ -32,7 +33,7 @@ export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRo
   /** The route's parameters, decoded. */
   readonly params: ParamsOf<Id>;
   /** Why the board was reached instead of the address that was held. */
-  readonly notice: string | null;
+  readonly notice: ReactNode;
   readonly storage: Storage | null;
   /** Absent where no panel can open, and then a door cannot be pressed. */
   readonly taskPanel?: TaskPanelHost;
@@ -62,6 +63,7 @@ export const SCREENS: {
       />
     </>
   ),
+  'agency:gallery': () => <Gallery />,
   'agency:settings': (context) => (
     <SettingsScreen client={context.client} grantKey={context.grantKey} storage={context.storage} />
   ),

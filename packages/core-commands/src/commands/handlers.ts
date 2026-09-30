@@ -15,7 +15,7 @@ import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import type { HandlerOutcome } from './outcome.ts';
 import { createTask, updateTask } from './tasks-write.ts';
-import { setState, writeOwnedFields } from './tasks-state.ts';
+import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
 import { assignTask } from './tasks-agent.ts';
 import { setScores } from './tasks-scores.ts';
 import { setAdHoc } from './tasks-adhoc.ts';
@@ -25,7 +25,7 @@ import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { changeFrom, deleteTaskComment, editTaskComment } from './tasks-comment-edit.ts';
-import { setBusinessSetting } from './settings-write.ts';
+import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
@@ -40,6 +40,7 @@ import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
 import { deleteEntry, logTimeEntry, setEntryNote, startTime, stopTime } from './tasks-time.ts';
 import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts';
+import { stampOwnSeen } from './inbox-seen.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -61,6 +62,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.complete': (tx, context) => setState(tx, context, 'completed'),
   'task.reopen': (tx, context, request) => setState(tx, context, 'unstarted', request.reason),
   'task.start': (tx, context) => setState(tx, context, 'started'),
+  'task.set_state': (tx, context, request) => setStateById(tx, context, request.stateId),
 
   'task.assign': (tx, context, request) => assignTask(tx, context, request.fields),
   'task.triage': writeOwned,
@@ -91,6 +93,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
       request.audience,
       request.commentType,
       request.parentId,
+      request.mentions,
     ),
   'task.edit_comment': (tx, context, request) =>
     editTaskComment(tx, changeFrom(context), request.commentId, request.body),
@@ -147,6 +150,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
     addTagToTask(tx, context, request.recordId, request.tagId),
   'task.remove_tag': (tx, context, request) =>
     removeTagFromTask(tx, context, request.recordId, request.tagId),
+  'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
+  'notifications.set_channel': setNotificationChannel,
 };
 
 function writeOwned(

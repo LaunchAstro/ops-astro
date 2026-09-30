@@ -336,7 +336,10 @@ const NO_PRODUCT_IMPORTER_YET = new Map([
     'packages/core-commands/src/reads/conversation.ts',
     "MP-4-5's three detail levels of a task conversation, for the agent bundles (API-4) that call it",
   ],
-  ['apps/api/server.ts', 'the API process entry, started by node rather than imported'],
+  [
+    'apps/api/function.ts',
+    "the Vercel function entry, loaded by Vercel's Node.js runtime rather than imported",
+  ],
   [
     'apps/worker/main.ts',
     'the worker process entry (`pnpm worker`), started by node rather than imported',

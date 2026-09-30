@@ -69,7 +69,7 @@ export function serving(rows: readonly unknown[] = TODOS, refuse: readonly strin
     return Promise.resolve(json({ recordId: body['recordId'], revision: 4 }));
   }) as unknown as typeof globalThis.fetch;
   return {
-    client: new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch }),
+    client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),
     sent,
   };
 }

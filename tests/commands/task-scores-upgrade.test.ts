@@ -83,7 +83,7 @@ async function notedBeforeTheMarks(
 describe.skipIf(serverUrl === undefined)('MP-4-9 marks command over an upgrade', () => {
   it('moves a preset field already keyed impact aside, values and all', async () => {
     const migrations = readMigrations('migrations');
-    const marks = migrations.findIndex((migration) => migration.version === '0042_task_marks');
+    const marks = migrations.findIndex((migration) => migration.version === '0131_task_marks');
     const { business, taskTypeId, writer, noted } = await notedBeforeTheMarks(migrations, marks);
     const upgraded = db as EmptyDatabase;
 

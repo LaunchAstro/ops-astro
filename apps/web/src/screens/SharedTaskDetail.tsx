@@ -19,7 +19,7 @@
 // that could only ever be refused is not offered.
 
 import type { ReactElement } from 'react';
-import { PaneEmpty } from '@launchastro/ui';
+import { Empty } from '@launchastro/ui';
 import type { SharedTaskView } from '../../../../packages/core-wire/src/index.ts';
 
 export interface SharedTaskDetailProps {
@@ -40,7 +40,7 @@ export function SharedTaskDetail(props: SharedTaskDetailProps): ReactElement {
           <span className="sb__k">Shared fields</span>
         </div>
         {fields.length === 0 ? (
-          <PaneEmpty say="No field on this task is shared." />
+          <Empty look="inline" title="No field on this task is shared." />
         ) : (
           <dl className="taskform">
             {fields.map(([key, value]) => (
@@ -67,7 +67,7 @@ function SharedComments(props: { readonly comments: SharedTaskView['comments'] }
         <span className="sbact__meta">{props.comments.length} shared with you</span>
       </div>
       {props.comments.length === 0 ? (
-        <PaneEmpty say="Nothing on this task has been shared with you yet." />
+        <Empty look="inline" title="Nothing on this task has been shared with you yet." />
       ) : (
         <div className="thread" data-comments="list">
           {props.comments.map((comment) => {

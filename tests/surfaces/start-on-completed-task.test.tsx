@@ -63,7 +63,7 @@ function clientFor(category: 'unstarted' | 'started' | 'completed'): OperationsC
   return new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => 'operation-1',
   });

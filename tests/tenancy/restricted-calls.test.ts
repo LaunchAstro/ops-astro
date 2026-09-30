@@ -80,6 +80,20 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // T3e2: the journey drops nothing, so one report and one of its runs.
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
+  // Nothing in the journey raises an inbox item yet (INB-1b does), so one item,
+  // its recipient's attention row and one attempt are written here, in order.
+  'public.inbox_items': `insert into public.inbox_items
+       (business_id, id, recipient_person_id, subject_record_id, reason, fact_kind, fact_id)
+     select r.business_id, gen_random_uuid(), p.id, r.id, 'assignment', 'record', r.id
+       from public.records r join public.people p on p.business_id = r.business_id
+      where r.business_id = $1 order by r.id, p.id limit 1 returning 1`,
+  'public.inbox_attention': `insert into public.inbox_attention (business_id, item_id, person_id)
+     select business_id, id, recipient_person_id from public.inbox_items
+      where business_id = $1 order by id limit 1 returning 1`,
+  'public.inbox_delivery_attempts': `insert into public.inbox_delivery_attempts
+       (business_id, id, item_id, channel, state)
+     select business_id, gen_random_uuid(), id, 'in_app', 'asked' from public.inbox_items
+      where business_id = $1 order by id limit 1 returning 1`,
 };
 
 /**
@@ -94,7 +108,7 @@ const UNREACHED_OWN: Readonly<Record<string, string>> = {
        join public.attempts att on att.business_id = r.business_id
        join public.planned_runs run on run.business_id = att.business_id and run.id = att.run_id
       where r.business_id = $1 order by att.id limit 1 returning 1`,
-  // 0047: no journey step logs time yet, so one finished entry is written here.
+  // 0136: no journey step logs time yet, so one finished entry is written here.
   'public.time_entries': `insert into public.time_entries
        (business_id, id, task_id, person_id, actor_id, started_at, ended_at, minutes,
         ad_hoc, source)
@@ -103,7 +117,7 @@ const UNREACHED_OWN: Readonly<Record<string, string>> = {
        join public.people p on p.business_id = r.business_id
        join public.actors a on a.business_id = r.business_id
       where r.business_id = $1 order by r.id, p.id, a.id limit 1 returning 1`,
-  // 0050: no journey step tags a task yet, so one tag is named here...
+  // 0139: no journey step tags a task yet, so one tag is named here...
   'public.tags': `insert into public.tags (business_id, id, name, actor_id)
      select a.business_id, gen_random_uuid(), 'restricted ' || left(gen_random_uuid()::text, 8), a.id
        from public.actors a
@@ -156,6 +170,11 @@ async function roleClasses(
                  when r.rolname = $1 then 'application group'
                  when pg_has_role(r.rolname, $1, 'member') then 'application login'
                  when r.rolname = $2 then 'worker'
+                 when r.rolname = 'ops_astro_backup' then 'backup'
+                 when r.rolname = 'ops_astro_backup_retention' then 'backup retention'
+                 when r.rolname = 'ops_astro_backup_restore' then 'backup restore'
+                 when r.rolname = 'ops_astro_lookup' then 'lookup'
+                 when r.rolname = 'ops_astro_forwarder' then 'forwarder'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -229,6 +248,13 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(classes['unclassified'] ?? []).toStrictEqual([]);
     expect(classes['application group']).toStrictEqual([APPLICATION_ROLE]);
     expect(classes['worker']).toStrictEqual(['ops_astro_worker']);
+    // S0-3b: the backup identity reads and is proved in tests/db/backup-identity.test.ts.
+    expect(classes['backup']).toStrictEqual(['ops_astro_backup']);
+    // G2: the business lookup reads id and key of businesses, proved in tests/db/business-lookup.test.ts.
+    expect(classes['lookup']).toStrictEqual(['ops_astro_lookup']);
+    // S0-2: the outbox forwarder reads and deletes ops.api_events and keeps its raised alerts in
+    // ops.api_alerts (0048), proved in tests/db/api-events.test.ts.
+    expect(classes['forwarder']).toStrictEqual(['ops_astro_forwarder']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });

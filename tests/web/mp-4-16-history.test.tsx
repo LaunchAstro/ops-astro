@@ -138,7 +138,12 @@ describe('MP-4-16 a change on the page appears at once', () => {
       }
       throw new Error(`unrouted ${where}`);
     }) as unknown as typeof globalThis.fetch;
-    const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 't', fetch });
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch,
+    });
     const view = await mount(
       <TaskDetailScreen client={client} grantKey="alpha:member" taskKey="Proj-Verity-Pacing" />,
     );

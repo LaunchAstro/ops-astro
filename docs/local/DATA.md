@@ -8,17 +8,20 @@ deployment, and nothing here is the Hub's `supabase_*` database or the draft's.
 
 ## Owned resources
 
-| Thing     | Identity                                                                                              |
-| --------- | ----------------------------------------------------------------------------------------------------- |
-| Container | `ops-astro-local-pg`                                                                                  |
-| Image     | `postgres@sha256:77f5851…a1873`, the digest pinned in [supply-chain-pins.md](../supply-chain-pins.md) |
-| Address   | `127.0.0.1:54390`                                                                                     |
-| Volume    | `ops-astro-local-pgdata`, mounted at `/var/lib/postgresql`                                            |
-| Database  | `ops_astro_local`                                                                                     |
+| Thing     | Identity                                                                                                          |
+| --------- | ----------------------------------------------------------------------------------------------------------------- |
+| Container | `ops-astro-local-pg`                                                                                              |
+| Image     | `postgres@sha256:b0f9560…2b24`, Postgres 17, the digest pinned in [supply-chain-pins.md](../supply-chain-pins.md) |
+| Address   | `127.0.0.1:54390`                                                                                                 |
+| Volume    | `ops-astro-local-pgdata-17`, mounted at `/var/lib/postgresql/data`                                                |
+| Database  | `ops_astro_local`                                                                                                 |
 
-Postgres 18 keeps its cluster in a subdirectory of `/var/lib/postgresql`. Mount
-the volume at `/var/lib/postgresql/data` instead and the server finds a cluster
-in a directory it does not use, and refuses to start.
+The local database runs the hosted database's major, 17 (S0-7). Its volume is
+named for the major because a cluster one major wrote, the other refuses to
+open. A tree from before S0-7 ran 18 on `ops-astro-local-pgdata`, mounted at
+`/var/lib/postgresql`; `db-up.sh` replaces that container, starts an empty 17
+cluster on the new volume and leaves the old volume as it was. Migrate and
+seed again after the switch.
 
 ## Roles, and the two URLs
 
@@ -43,7 +46,7 @@ state; the major is pinned in `.nvmrc`.
 ```sh
 bash scripts/local/db-up.sh      # start it; idempotent; writes .local/db.env
 node scripts/db-migrate.mjs      # apply every migration in migrations/, in order, once each
-node scripts/local-seed.mjs      # businesses, people, logins, memberships, grants
+node scripts/local-seed.mjs      # people and grants (new database: LOCAL_SEED_MADE_UP=confirm)
 bash scripts/local/db-down.sh    # stop the container; the volume is untouched
 
 set -a; . ./.local/db.env; set +a
@@ -51,7 +54,7 @@ pnpm exec vitest run             # the whole suite, against this server
 ```
 
 `db-down.sh` never removes the volume. To delete the data, run
-`docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata`.
+`docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata-17`.
 
 ## Upgrade
 
@@ -182,27 +185,27 @@ There is no `tasks` table. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field
 table exactly:
 
-| Field               | Slot                 | Written by                                   |
-| ------------------- | -------------------- | -------------------------------------------- |
-| `state`             | `uuid_1`             | `task.start`, `task.complete`, `task.reopen` |
-| `assignee`          | `uuid_2`             | `task.assign`                                |
-| `title`             | `txt_4`              | `task.update`                                |
-| `description`       | unslotted, in `data` | `task.update`                                |
-| `agent_brief`       | unslotted, in `data` | `task.update` (0045, MP-4-7)                 |
-| `page_link`         | unslotted, in `data` | `task.update` (0048, MP-4-12)                |
-| `estimated_minutes` | unslotted, in `data` | `task.update` (0049, MP-4-8)                 |
-| `agent`             | unslotted, in `data` | `task.assign` (0051, Assign to AI)           |
-| `due`               | `ts_1`               | `task.update`                                |
-| `priority`          | `num_1`              | `task.update`                                |
-| `completed_at`      | `ts_2`               | derived on complete, cleared on reopen       |
-| `stage`             | `txt_5`              | `task.set_stage`                             |
-| `impact`            | `num_3`              | `task.set_scores`                            |
-| `confidence`        | `num_4`              | `task.set_scores`                            |
-| `ease`              | `num_5`              | `task.set_scores`                            |
-| `ad_hoc`            | `bool_2`             | `task.set_adhoc`                             |
-| `archived_at`       | unslotted, in `data` | derived on complete, cleared on reopen       |
-| `archived_why`      | unslotted, in `data` | derived on complete, cleared on reopen       |
-| `key`, `source`     | `txt_1`, `txt_2`     | system                                       |
+| Field               | Slot                 | Written by                                                     |
+| ------------------- | -------------------- | -------------------------------------------------------------- |
+| `state`             | `uuid_1`             | `task.start`, `task.complete`, `task.reopen`, `task.set_state` |
+| `assignee`          | `uuid_2`             | `task.assign`                                                  |
+| `title`             | `txt_4`              | `task.update`                                                  |
+| `description`       | unslotted, in `data` | `task.update`                                                  |
+| `agent_brief`       | unslotted, in `data` | `task.update` (0134, MP-4-7)                                   |
+| `page_link`         | unslotted, in `data` | `task.update` (0137, MP-4-12)                                  |
+| `estimated_minutes` | unslotted, in `data` | `task.update` (0138, MP-4-8)                                   |
+| `agent`             | unslotted, in `data` | `task.assign` (0140, Assign to AI)                             |
+| `due`               | `ts_1`               | `task.update`                                                  |
+| `priority`          | `num_1`              | `task.update`                                                  |
+| `completed_at`      | `ts_2`               | derived on complete, cleared on reopen                         |
+| `stage`             | `txt_5`              | `task.set_stage`                                               |
+| `impact`            | `num_3`              | `task.set_scores`                                              |
+| `confidence`        | `num_4`              | `task.set_scores`                                              |
+| `ease`              | `num_5`              | `task.set_scores`                                              |
+| `ad_hoc`            | `bool_2`             | `task.set_adhoc`                                               |
+| `archived_at`       | unslotted, in `data` | derived on complete, cleared on reopen                         |
+| `archived_why`      | unslotted, in `data` | derived on complete, cleared on reopen                         |
+| `key`, `source`     | `txt_1`, `txt_2`     | system                                                         |
 
 There is no `status` column and no second coarse field. Whether a task is done
 is the machine category of the state record the task points at.
@@ -210,7 +213,7 @@ is the machine category of the state record the task points at.
 A task's tags are not a field. The business's vocabulary is `tags` (one name
 per business whatever its case, a unique index on the lower-cased name) and
 the tags a task carries are rows of `task_tags`, keyed by the task and the
-tag (0050, MP-4-11): written by `tag.create`, `task.add_tag` and
+tag (0139, MP-4-11): written by `tag.create`, `task.add_tag` and
 `task.remove_tag`, read on `task.read` and by `tag.list`.
 
 A new task ranks after the last of its siblings: the tasks under its parent,
@@ -283,8 +286,8 @@ At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist
 (the header of `restricted-calls-prefixes.test.ts`, and its
 `answers every caller as the contract says after <version>`). At the full
-schema, the suite seeds `person_identifiers`, `person_merges` and `record_links`
-itself. The suite counts the own-tenant insert positive control (TC:108) per
+schema, the suite seeds `person_identifiers`, `person_merges`, `record_links` and
+the three `inbox_` tables itself. The suite counts the own-tenant insert positive control (TC:108) per
 table: one insert through the production wrapper on each tenant table the
 application may insert into, each `rows 1`, and each rolled back
 (`restricted-calls.test.ts`,

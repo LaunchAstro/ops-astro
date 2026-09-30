@@ -262,7 +262,7 @@ describe('MP-5-8 column read-back, drawn from task.board', () => {
     const client = new OperationsClient({
       origin: '',
       businessKey: 'alpha',
-      token: 'a-token',
+      signedIn: true,
       fetch,
       newOperationId: () => 'operation-1',
     });

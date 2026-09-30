@@ -84,8 +84,9 @@
 }
 
 .cbd__count {
-  font-family: var(--font-mono, monospace);
-  font-size: 0.8em;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 
 /* The viewer's own chip (P-11): an ink fill when on. */
@@ -102,7 +103,6 @@
 /* The Review chip's live count (P-10). */
 .cbd__count--accent {
   color: var(--accent-ink);
-  font-weight: 600;
 }
 
 .cbd__read {
@@ -129,7 +129,9 @@
 .cbdta__more {
   padding: 4px 10px;
   color: var(--text-muted);
-  font-size: 0.8em;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 
 .cbdta__opt {
@@ -145,18 +147,22 @@
 
 .cbdta__k {
   color: var(--text-muted);
-  font-size: 0.8em;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 
 /* The width model: when the floors exceed the card the table takes their
-   sum and scrolls here, inside the card; the page never scrolls sideways. */
+   sum and scrolls here, inside the card; the page never scrolls sideways.
+   The heads are the kit table's (`.table th`, MP-1-3); the width model, not
+   the kit table's phone floor, sizes the table. */
 .cbd__wrap {
   overflow-x: auto;
   max-width: 100%;
 }
 
-.cbd__tbl th {
-  position: relative;
+[data-board] .cbd__tbl {
+  min-width: 0;
 }
 
 /* The resize grip (MP-5-6, B-17): an 8px handle on the head's right edge
@@ -193,8 +199,10 @@
   outline: none;
 }
 
-.cbd__tbl th .cbd__th {
+.cbd__th {
   font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
   width: 100%;
   border: 0;
   padding: 0;
@@ -204,23 +212,21 @@
   cursor: pointer;
 }
 
-.cbd__tbl th[data-align='end'],
-.cbd__tbl td[data-align='end'] {
+.cbd__tbl [data-align='end'] {
   text-align: end;
 }
 
-.cbd__tbl th[data-align='center'],
-.cbd__tbl td[data-align='center'] {
+.cbd__tbl [data-align='center'] {
   text-align: center;
 }
 
-th:not([data-tight]) .cbd__thi {
+.cbd__hd:not([data-tight]) .cbd__thi {
   display: none;
 }
 
 /* Tight: the head drops its words and centres its icon; the label stays the
    button's accessible name. */
-th[data-tight] .cbd__thl {
+.cbd__hd[data-tight] .cbd__thl {
   display: none;
 }
 
@@ -237,9 +243,10 @@ td[data-tight] {
   position: absolute;
   left: 50%;
   bottom: 0;
-  transform: translate(-50%, 50%);
-  font-size: 8px;
-  line-height: 1;
+  transform: translate(-50%, 50%) scale(0.8);
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
   color: var(--text);
 }
 
@@ -264,9 +271,11 @@ td[data-tight] {
   border-radius: 8px;
   background: var(--accent);
   color: var(--accent-ink);
-  font-size: 10px;
-  line-height: 16px;
-  text-align: center;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  display: grid;
+  place-content: center;
 }
 
 /* Display-gated by `hidden`, never moved out of view. */
@@ -326,9 +335,9 @@ td[data-tight] {
 .cbd__menuk,
 .cbd__flabel {
   flex: 0 0 100%;
-  font-size: var(--fs-mono-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   color: var(--ink-faint);
 }
 
@@ -346,12 +355,6 @@ td[data-tight] {
   background: var(--text);
   border-color: var(--text);
   color: var(--bg);
-}
-
-.cbd__menuempty {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--text-muted);
 }
 
 .cbd__lnk {
@@ -387,9 +390,9 @@ td[data-tight] {
    so there is no Sync button; the short words are for narrow bars. */
 .cbd__fresh {
   margin-left: auto;
-  font-size: var(--fs-mono-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   color: var(--ink-faint);
   white-space: nowrap;
 }
@@ -452,7 +455,7 @@ td[data-tight] {
     overflow-x: clip;
   }
 
-  .cbd__tbl thead th {
+  .cbd__tbl .cbd__hd {
     position: sticky;
     top: calc(var(--chrome-h, 0px) + var(--catbar-h, 0px));
     z-index: 11;
@@ -462,41 +465,41 @@ td[data-tight] {
 
 /* The Projects board's cells (MP-5-8, BOARDS P-20 to P-28, P-36). */
 .cbd__rank {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
   color: var(--ink-faint);
 }
 .cbd__due {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   color: var(--text-2);
 }
 .cbd__due[data-tone='overdue'] {
   color: var(--danger);
-  font-weight: 500;
 }
 .cbd__due[data-tone='today'] {
-  font-weight: 500;
+  color: var(--text);
 }
 .cbd__chip {
   display: inline-block;
   padding: 1px 6px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  font-size: 11px;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   color: var(--text-2);
   white-space: nowrap;
 }
 .cbd__tok {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .cbd__tokk {
   display: block;
-  font-family: var(--font-sans, inherit);
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
   color: var(--ink-faint);
 }
 .cbd__cmt {
@@ -510,7 +513,9 @@ td[data-tight] {
   text-decoration: none;
 }
 .cbd__cmtg {
-  font-size: 13px;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .cbd__cmtn {
   position: absolute;
@@ -521,9 +526,12 @@ td[data-tight] {
   border-radius: 999px;
   background: var(--accent);
   color: var(--accent-ink);
-  font-size: 10px;
-  line-height: 14px;
-  text-align: center;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  display: grid;
+  place-content: center;
+  height: 14px;
 }
 .cbd__cmt:hover,
 .cbd__cmt:focus-visible {
@@ -553,8 +561,9 @@ td[data-tight] {
   background: var(--accent);
 }
 .brn__fig {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   color: var(--text-2);
 }
 .brn.is-over .brn__fill {
@@ -610,8 +619,9 @@ tr:focus-within .cbd__routes--pop {
   border-radius: 6px;
   background: var(--surface);
   color: var(--text-2);
-  font: inherit;
-  font-size: 0.8em;
+  font: var(--type-button);
+  letter-spacing: var(--type-button-tracking);
+  text-transform: var(--type-button-case);
   text-decoration: none;
   cursor: pointer;
 }

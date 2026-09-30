@@ -45,7 +45,7 @@ import { isInProductLink } from '../../../core-wire/src/index.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { clientOf } from './tasks-party.ts';
 import { oneKind } from './tasks-agent.ts';
-import { writeOwnedFields } from './tasks-state.ts';
+import { writeOwnedFields, type FieldWriteContext } from './tasks-state.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
 
@@ -358,7 +358,7 @@ export async function updateTaskAsAgent(
 /** `task.assign` as an agent makes it: the assignee of its own delegated task. */
 export async function assignTaskAsAgent(
   tx: TenantQuery,
-  context: Pick<CommandContext, 'spine' | 'target'>,
+  context: FieldWriteContext,
   fields: FieldValues,
 ): Promise<HandlerOutcome> {
   const outside = outsideAgentReach(fields, AGENT_ASSIGN_FIELDS);

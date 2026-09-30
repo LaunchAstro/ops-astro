@@ -24,6 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { CommentRequest } from './requests-comments.ts';
 import type { TagRequest } from './requests-tags.ts';
 import type { TimeRequest } from './requests-time.ts';
 
@@ -79,23 +80,9 @@ export type CommandRequest =
   | ({ readonly command: 'task.complete' } & Targeted)
   | ({ readonly command: 'task.reopen'; readonly reason: string } & Targeted)
   | ({ readonly command: 'task.start' } & Targeted)
-  | ({
-      readonly command: 'task.comment';
-      readonly body: string;
-      /** `internal` or `client`. Two fields, because who sees it and what it is
-       * are two questions (`core-records/src/tasks/comments.ts`). */
-      readonly audience: string;
-      /** `note`, `client` or `system`. A person writing a comment writes a note. */
-      readonly commentType?: string;
-      /** The top-level message on this task a reply sits under (R42). */
-      readonly parentId?: string | null;
-    } & Targeted)
-  | ({
-      readonly command: 'task.edit_comment';
-      readonly commentId: string;
-      readonly body: string;
-    } & Targeted)
-  | ({ readonly command: 'task.delete_comment'; readonly commentId: string } & Targeted)
+  | ({ readonly command: 'task.set_state'; readonly stateId: string } & Targeted)
+  // A comment, its edit and its deletion (MP-4-5), in `requests-comments.ts`.
+  | CommentRequest<Targeted>
   // A proposal is a record beside the task and targets it, so it names the
   // revision it was written against like every other targeted command. What it
   // does *not* carry is who is proposing, what they may spend it against or
@@ -281,6 +268,15 @@ export type CommandRequest =
       readonly attemptId: unknown;
       readonly amountMinor: unknown;
       readonly reason: unknown;
+    } & Envelope)
+  // The recipient opening their own inbox item (INB-1d).
+  | ({ readonly command: 'inbox.seen'; readonly itemId: string } & Envelope)
+  // The caller's own notification setting on one channel (INB-1e).
+  | ({
+      readonly command: 'notifications.set_channel';
+      readonly channel: string;
+      readonly mode: string;
+      readonly category?: string;
     } & Envelope)
   // Time tracking (MP-4-6), in `requests-time.ts`.
   | TimeRequest<Envelope>

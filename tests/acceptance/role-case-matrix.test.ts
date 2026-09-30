@@ -226,6 +226,43 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           );
           continue;
         }
+        if (declaration.authorisedOn === 'self' && grants !== undefined) {
+          // The caller's own inbox (INB-1d). The stamp is `preference:write`,
+          // self-scoped and held by every signed-in person, so nobody is R2
+          // for it; another person's item is NOT_FOUND (INB-1 seen
+          // self-scoped). The reads, like `session.capabilities`, refuse a
+          // caller holding no live grant and answer one holding any.
+          if (declaration.kind === 'write') {
+            except(
+              caller.name,
+              'e-no-grant',
+              declaration.name,
+              declaration.name === 'notifications.set_channel'
+                ? 'not applicable: self-scoped preference:write; the setting is only ever ' +
+                    'the caller’s own, refused by its rule in tests/commands/inbox-unattended.test.ts'
+                : 'not applicable: self-scoped preference:write; another person’s item ' +
+                    'is NOT_FOUND in tests/reads/inbox.test.ts',
+            );
+            continue;
+          }
+          // eslint-disable-next-line no-await-in-loop
+          const own = await call(
+            harness.world.api,
+            personPath('alpha', pathOf(declaration.name)),
+            harness.probeBody(declaration),
+            bearer(caller.token),
+          );
+          const none = grants.size === 0;
+          observe(
+            caller.name,
+            'e-no-grant',
+            declaration.name,
+            own,
+            none ? refusal('SCOPE_NOT_GRANTED') : SUCCESS,
+          );
+          expect(own.body['refused'] === true, `${caller.name}/${declaration.name}`).toBe(none);
+          continue;
+        }
         if (declaration.name === 'session.capabilities' && grants !== undefined) {
           // The read with no collection of its own: it reports the caller's
           // grants, so the grant it takes is holding one at all. `noah`, a

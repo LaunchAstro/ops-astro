@@ -37,7 +37,7 @@ export const field = (reply?: { status: number; body: unknown }) => {
     );
     return Promise.resolve(json(answer.body, answer.status));
   }) as unknown as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   const onSaved = () => {
     saved.push(Date.now());
   };

@@ -31,6 +31,7 @@ import {
   isLive,
   isRecordsRefusal,
   mergeFieldValues,
+  raiseAssignment,
   setTaskState,
 } from '../../../core-records/src/index.ts';
 import type {
@@ -207,13 +208,23 @@ export async function setState(
     if (await openGateOn(tx, target.id)) return refused(gatePending());
   }
 
-  const state = context.spine.states.find((candidate) => candidate.machineCategory === category);
+  // A task an agent holds is completed only after review (MP-4-15, BOARDS
+  // P-30): its tick moves it to the unstarted state, Needs review, where a
+  // person confirms the agent's work, and the tick there completes it. So the
+  // board, the status select and the Projects panel run one transition. The
+  // agent was read with the target, under the envelope's row lock.
+  const review =
+    category === 'completed' &&
+    typeof target.data['agent'] === 'string' &&
+    current?.machineCategory !== 'unstarted';
+  const moveTo: MachineCategory = review ? 'unstarted' : category;
+  const state = context.spine.states.find((candidate) => candidate.machineCategory === moveTo);
   if (state === undefined) {
     return refuse(
       'NOT_FOUND',
-      [category],
+      [moveTo],
       [
-        `This installation seeds no state in the ${category} category.`,
+        `This installation seeds no state in the ${moveTo} category.`,
         'Seed one, or use a state whose category this installation carries.',
       ],
     );
@@ -221,7 +232,7 @@ export async function setState(
 
   // Completing archives the unfinished steps and reopening restores the ones
   // it archived (MP-4-15): locked and asked about before anything is written.
-  const stepMove = STEP_MOVE[category];
+  const stepMove = review ? undefined : STEP_MOVE[category];
   const steps =
     stepMove === undefined
       ? { ok: true as const, ids: [] }
@@ -248,10 +259,77 @@ export async function setState(
   });
 }
 
+/**
+ * Point the task at one of the business's own states, by its record id.
+ *
+ * The status select's Waiting on client and On hold: the first shares
+ * `started` with Active, so no move by category reaches it. The id is looked
+ * up in this business's states only, so another business's state and an id
+ * that was never real are one answer. Completion is not reached this way,
+ * because `task.complete` is the one transition that asks about open gates
+ * and archives the steps, and a completed task is left only by `task.reopen`,
+ * which takes a reason; so no step moves and no stamp changes here.
+ */
+export async function setStateById(
+  tx: TenantQuery,
+  context: CommandContext,
+  stateId: string,
+): Promise<HandlerOutcome> {
+  const target = context.target;
+  if (target === undefined) throw new Error('setStateById: the envelope read no target');
+
+  const wanted = stateId.toLowerCase();
+  const state = context.spine.states.find((candidate) => candidate.id === wanted);
+  if (state === undefined) {
+    return refuse(
+      'NOT_FOUND',
+      ['stateId'],
+      ['No task state of this business carries that identifier.', 'task.read names the states.'],
+    );
+  }
+  if (state.machineCategory === 'completed') {
+    return notPermitted(state.key, [
+      'A task is completed by task.complete, which checks its open approvals first.',
+    ]);
+  }
+  const current = context.spine.states.find((candidate) => candidate.id === target.data['state']);
+  if (current?.machineCategory === 'completed') {
+    return notPermitted(current.key, [
+      'A completed task is reopened first.',
+      'Call task.reopen with a reason.',
+    ]);
+  }
+  if (current?.id === state.id) {
+    return notPermitted(state.key, ['The task is already in this state.']);
+  }
+
+  const moved = await setTaskState(tx, {
+    taskId: target.id,
+    stateId: state.id,
+    taskStateTypeId: context.spine.taskStateTypeId,
+  });
+  if (isRecordsRefusal(moved)) return refused(moved);
+  const rows = await tx.query<{ readonly revision: string }>(
+    `select revision::text as revision from records where business_id = $1 and id = $2`,
+    [tx.businessId, target.id],
+  );
+  const revision = rows[0]?.revision;
+  return applied(target.id, revision === undefined ? null : Number(revision), { state: state.key });
+}
+
+/**
+ * What an owned field write reads: the spine, the locked task and the person
+ * making the write, whom an assignment never raises an item to (INB-1). On
+ * the agent entry that person is the delegating person the agent acts for.
+ */
+export type FieldWriteContext = Pick<CommandContext, 'spine' | 'target'> & {
+  readonly session: Pick<CommandContext['session'], 'personId'>;
+};
+
 /** Write the fields this command's name owns, and refuse the ones it does not. */
 export async function writeOwnedFields(
   tx: TenantQuery,
-  context: Pick<CommandContext, 'spine' | 'target'>,
+  context: FieldWriteContext,
   command: CommandName,
   fields: FieldValues,
 ): Promise<HandlerOutcome> {
@@ -309,7 +387,8 @@ export async function writeOwnedFields(
 
   // Stored in the spelling the uuid cast answers, so the task names the
   // person in the one form every read and join compares against.
-  const merged = mergeFieldValues(target.data, canonicalPersonLinks(fields));
+  const links = canonicalPersonLinks(fields);
+  const merged = mergeFieldValues(target.data, links);
   const rows = await tx.query<{ readonly revision: string }>(
     `update records set data = $3 where business_id = $1 and id = $2 and deleted_at is null
      returning revision::text as revision`,
@@ -318,6 +397,11 @@ export async function writeOwnedFields(
   const written = rows[0];
   if (written === undefined) {
     return refuse('NOT_FOUND', [], ['No live task carries that identifier here.']);
+  }
+  // INB-1: the assignment is raised by the write that makes it (CS-16.8).
+  if ('assignee' in links) {
+    const assignee = typeof links['assignee'] === 'string' ? links['assignee'] : null;
+    await raiseAssignment(tx, { taskId: target.id, assignee, by: context.session.personId });
   }
   return applied(target.id, Number(written.revision), { changed: keys });
 }

@@ -61,6 +61,12 @@ type Sent = { readonly url: string; readonly body: Readonly<Record<string, unkno
 /** A server that answers the board with TASK, the people with none, and every command with success, keeping what it was sent. */
 const server = (sent: Sent): typeof globalThis.fetch =>
   ((url: string, init?: { body?: string }) => {
+    // The inbox the board screen mounts above the board (INB-1g), answered
+    // empty and kept out of what was sent; its live stream is unavailable.
+    const at = String(url);
+    if (at.endsWith('/live')) return Promise.resolve(new Response(null, { status: 503 }));
+    if (at.endsWith('/inbox/read')) return Promise.resolve(json({ ok: true, inbox: [] }));
+    if (at.endsWith('/inbox/count')) return Promise.resolve(json({ ok: true, owed: 0 }));
     const body = JSON.parse(init?.body ?? '{}') as Readonly<Record<string, unknown>>;
     sent.push({ url: String(url), body });
     // The assignee editor's people (MP-5-10): read once, never a command.
@@ -80,7 +86,7 @@ describe('MP-5-9 the row’s commands from the Projects screen', () => {
     const client = new OperationsClient({
       origin: '',
       businessKey: 'alpha',
-      token: 'a-token',
+      signedIn: true,
       fetch,
       newOperationId: () => 'operation-1',
     });
@@ -123,7 +129,7 @@ describe('MP-5-9 the hover box holds timer, add subtask and a door: the timer fr
     const client = new OperationsClient({
       origin: '',
       businessKey: 'alpha',
-      token: 'a-token',
+      signedIn: true,
       fetch: server(sent),
       newOperationId: () => 'operation-1',
     });

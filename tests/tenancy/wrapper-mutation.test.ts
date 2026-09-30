@@ -43,9 +43,9 @@ import {
 } from '../../packages/core-records/src/tenancy/statements.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import {
   ACCEPTANCE_ISSUER,
-  ACCEPTANCE_SECRET,
   bearer,
   call,
   personPath,
@@ -104,8 +104,8 @@ function observeOn(wrapper: Wrapper, world: World) {
   const byKey: Readonly<Record<string, string>> = { alpha: world.alpha, bravo: world.bravo };
   const api = createApi({
     database,
-    verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
-    resolveBusiness: async (key: string) => byKey[key],
+    verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
+    resolveBusiness: (key: string) => Promise.resolve(byKey[key]),
     executeCommand,
     executeRead,
     executeAgentCommand,
