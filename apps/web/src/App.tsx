@@ -20,7 +20,7 @@ import { drawContent } from './app-content.tsx';
 import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
-import { PANELS, dockTabs } from './panels.ts';
+import { useDock } from './dock.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
@@ -197,6 +197,13 @@ export function App(props: AppProps): ReactElement {
   );
   const searchable = session !== null && face === 'agency';
   useSearchKey(searchable, search.open);
+  const dock = useDock({
+    client,
+    session,
+    agency: face === 'agency',
+    here,
+    navigate: props.navigate,
+  });
 
   const signIn = (
     <SignIn
@@ -271,15 +278,8 @@ export function App(props: AppProps): ReactElement {
             </>
           }
           title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
-          // An open tab is announced as "Close", so pressing it leaves the address
-          // for the board rather than pushing the same address again.
-          dock={session === null || face === 'client' ? [] : dockTabs(here)}
-          onDockTab={(id) => {
-            const panel = PANELS.find((entry) => entry.id === id);
-            if (panel === undefined || panel.route === null) return;
-            const target = pathTo(panel.route);
-            props.navigate(here === target ? pathTo('agency:projects-board') : target);
-          }}
+          dock={dock.tabs}
+          onDockTab={dock.press}
           seated={false}
         >
           <FaceProvider face={face}>{content}</FaceProvider>

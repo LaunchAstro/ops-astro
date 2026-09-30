@@ -54,6 +54,9 @@ function server(answer: () => Response) {
     // The frame's person menu (C23) asks who is signed in; not this screen's call.
     if (String(url).endsWith('/session/person'))
       return Promise.resolve(json({ ok: true, person: {} }));
+    // The dock bell's owed count (MP-7-3) and its board topic are the frame's too.
+    if (String(url).endsWith('/inbox/count')) return Promise.resolve(json({ ok: true, owed: 0 }));
+    if (String(url).includes('/live?')) return Promise.resolve(new Response(null, { status: 503 }));
     urls.push(String(url));
     return Promise.resolve(answer());
   }) as unknown as typeof globalThis.fetch;

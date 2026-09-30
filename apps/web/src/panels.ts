@@ -73,10 +73,16 @@ export const PANELS: readonly PanelRegistration[] = [
  */
 export const dockTabs = (
   here: string,
-): { id: string; label: string; icon: GlyphName; open: boolean }[] =>
-  PANELS.map((panel) => ({
-    id: panel.id,
-    label: panel.label,
-    icon: panel.icon,
-    open: panel.route !== null && here === pathTo(panel.route),
-  }));
+  counts: Readonly<Record<string, number | null>> = {},
+): { id: string; label: string; icon: GlyphName; open: boolean; count?: number }[] =>
+  PANELS.map((panel) => {
+    const tab: { id: string; label: string; icon: GlyphName; open: boolean; count?: number } = {
+      id: panel.id,
+      label: panel.label,
+      icon: panel.icon,
+      open: panel.route !== null && here === pathTo(panel.route),
+    };
+    const count = counts[panel.id] ?? null;
+    if (count !== null) tab.count = count;
+    return tab;
+  });
