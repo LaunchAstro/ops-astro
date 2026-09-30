@@ -55,6 +55,13 @@ export interface Scratch {
   close(): void;
 }
 
+/** Local to a scratch repository, never pushed: unsigned, and no hooks. */
+const UNSIGNED = [
+  'user.name=T4e self-test',
+  'user.email=self-test@invalid',
+  'commit.gpgsign=false',
+].flatMap((one) => ['-c', one]);
+
 const gitIn = (cwd: string, args: readonly string[]): string =>
   execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -78,19 +85,7 @@ export function openScratch(): Scratch {
     },
     commit: (message) => {
       git(['add', '-A']);
-      // Local to the scratch branch, never pushed: unsigned, and no hooks.
-      const who = ['-c', 'user.name=T4e self-test', '-c', 'user.email=self-test@invalid'];
-      git([
-        ...who,
-        '-c',
-        'commit.gpgsign=false',
-        'commit',
-        '-q',
-        '--allow-empty',
-        '--no-verify',
-        '-m',
-        message,
-      ]);
+      git([...UNSIGNED, 'commit', '-q', '--allow-empty', '--no-verify', '-m', message]);
       return git(['rev-parse', 'HEAD']).trim();
     },
     close: () => {
@@ -150,11 +145,10 @@ export function changePinnedMockup(scratch: Scratch): Ran {
   mkdirSync(dir);
   const git = (args: readonly string[]): string =>
     execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
-  const who = ['-c', 'user.name=T4e self-test', '-c', 'user.email=self-test@invalid'];
   const save = (text: string): { commit: string; tree: string } => {
     writeFileSync(join(dir, 'index.html'), text);
     git(['add', 'index.html']);
-    git([...who, '-c', 'commit.gpgsign=false', 'commit', '-q', '--no-verify', '-m', 'mockup']);
+    git([...UNSIGNED, 'commit', '-q', '--no-verify', '-m', 'mockup']);
     return { commit: git(['rev-parse', 'HEAD']), tree: git(['rev-parse', 'HEAD^{tree}']) };
   };
   git(['init', '-q']);
@@ -184,12 +178,6 @@ export function changePinnedMockup(scratch: Scratch): Ran {
   };
 }
 
-/**
- * T4-N4. Reverts every commit of the part, newest first, outside what the part
- * keeps. A commit whose reverse no longer applies, because later parts built
- * on it, has its files set back to before that commit, and the detail counts
- * them. The kept files are then put back as they are at the head.
- */
 /** The files the part added that still exist at the head. */
 function addedBy(scratch: Scratch, part: Part): string[] {
   const added = new Set<string>();
@@ -213,6 +201,11 @@ function addedBy(scratch: Scratch, part: Part): string[] {
 }
 
 /**
+ * T4-N4. Reverts every commit of the part, newest first, outside what the part
+ * keeps. A commit whose reverse no longer applies, because later parts built
+ * on it, has its files set back to before that commit, and the detail counts
+ * them. The kept files are then put back as they are at the head.
+ *
  * With `keepAdded`, the files the part added stay and only its edits to files
  * that were there before are reverted: the part is unwired, its modules left
  * where its invariant can still load them. Used when the whole revert leaves
