@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 // With a database, the database-bound suites run, and every one migrates a
 // fresh database from empty in one transaction. Migration 0008 comments on a
@@ -40,6 +40,13 @@ export default defineConfig({
       'tests/**/*.test.tsx',
       'packages/**/*.test.ts',
       'apps/**/*.test.ts',
+    ],
+    // The browser proofs build `apps/web/dist`, which other suites rebuild (an
+    // emptied folder mid-run), so they run alone: CI's `local checks` step with
+    // BROWSER_PROOFS=1.
+    exclude: [
+      ...configDefaults.exclude,
+      ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
     ],
   },
 });
