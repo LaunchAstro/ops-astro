@@ -34,6 +34,7 @@ import {
 import {
   exportOnce,
   type Deliver,
+  type ExpiryPorts,
   type TraceDatabase,
 } from '../../packages/core-runtime/src/index.ts';
 
@@ -121,6 +122,19 @@ function keyFrom(file: string): Buffer | undefined {
   } finally {
     if (descriptor !== undefined) closeSync(descriptor);
   }
+}
+
+/** The trace destination as custody lists it. Not built yet: the origin alone. */
+export function traceDestination(origin: string): Destination {
+  return { key: TRACE_DESTINATION, origin };
+}
+
+const notBuilt = async (): Promise<never> =>
+  await Promise.reject(new Error('expiryThrough: not built'));
+
+/** Retention's deletes and reads through custody. Not built yet. */
+export function expiryThrough(_custody: Custody, _timeoutMs = 5_000): ExpiryPorts {
+  return { expire: notBuilt, present: notBuilt };
 }
 
 /** Delivery through custody's egress to the one trace destination. */

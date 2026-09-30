@@ -17,6 +17,7 @@
     "tests/api/c54-isolation.test.ts",
     "tests/runtime/aw-06-isolation.test.ts",
     "tests/runtime/aw-13-isolation.test.ts",
+    "tests/runtime/aw-13-retention-isolation.test.ts",
     "tests/runtime/aw-01-occurrence-run.test.ts",
     "tests/runtime/aw-01-occurrence-run-isolation.test.ts",
     "tests/runtime/aw-11-child-delegation-isolation.test.ts",

@@ -206,3 +206,10 @@ export {
   type GapCode,
   type TraceDatabase,
 } from './trace-export.ts';
+export {
+  EXPIRY_PAGE,
+  expireOnce,
+  TRACE_WINDOW_DAYS,
+  type ExpiryPorts,
+  type RetentionBatch,
+} from './trace-retention.ts';
