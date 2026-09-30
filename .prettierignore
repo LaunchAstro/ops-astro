@@ -59,3 +59,6 @@ tests/ci/staging-deploy-records-auth-version.test.ts
 # attests a proof by its bytes. (Proofs in .ts pass through lint-staged.)
 tests/ci/s0-7-auth-up-replaces-18.test.mjs
 tests/review/sl01-relc-lookup-grant-pin-proof.test.mjs
+
+# Sol's REV187W proof, byte-for-byte as the review patch held it.
+tests/ci/named-service-stop-reaches-database.test.ts
