@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The two forms of section 009 (MP-14-10a): the ceiling and expiry a promote
+// The two forms of section 010 (MP-14-10a): the ceiling and expiry a promote
 // needs, and a new standing mandate or refusal. Nothing is sent until every
 // value it needs is set: an empty press moves focus to the first empty field
 // and files nothing (AG-C54). The sentence is the mandate's label; the classes

@@ -132,7 +132,11 @@ afterEach(async () => {
   }
 });
 
-const text = (page: Mounted, selector: string): string => page.find(selector)?.textContent ?? '';
+const text = (page: Mounted, selector: string): string => page.all(selector)[0]?.textContent ?? '';
+
+/** An element's data attributes, read through the DOM's own map. */
+const data = (element: Element | null | undefined): DOMStringMap =>
+  element instanceof HTMLElement ? element.dataset : {};
 
 // eslint-disable-next-line max-lines-per-function -- one stub server, the cases that share it
 describe('MP-14-9 Connections & signal: skill costing', () => {
@@ -163,9 +167,7 @@ describe('MP-14-9 Connections & signal: skill costing', () => {
 
   it('MP-14-9 three figure branches: mean with spread, one run, none', async () => {
     const { page } = await open(COSTING);
-    expect(page.find('[data-skill="mean"] [data-figure]')?.getAttribute('data-figure')).toBe(
-      'mean',
-    );
+    expect(data(page.find('[data-skill="mean"] [data-figure]'))['figure']).toBe('mean');
     expect(text(page, '[data-skill="mean"] [data-figure]')).toContain('AUD 12.00 mean');
     expect(text(page, '[data-skill="mean"] [data-figure-spread]')).toBe('AUD 8.00–AUD 16.00');
     expect(text(page, '[data-skill="mean"] [data-figure-units]')).toBe('5,200 in · 900 out');
@@ -175,16 +177,14 @@ describe('MP-14-9 Connections & signal: skill costing', () => {
     );
     expect(text(page, '[data-skill="mean"] [data-models]')).toContain('1 call named no model');
 
-    expect(page.find('[data-skill="one"] [data-figure]')?.getAttribute('data-figure')).toBe('one');
+    expect(data(page.find('[data-skill="one"] [data-figure]'))['figure']).toBe('one');
     expect(text(page, '[data-skill="one"] [data-figure]')).toContain('AUD 4.50 one run');
     expect(text(page, '[data-skill="one"] [data-figure]')).toContain(
       'Not an average — this process has run once.',
     );
     expect(page.find('[data-skill="one"] [data-figure-spread]')).toBeNull();
 
-    expect(page.find('[data-skill="none"] [data-figure]')?.getAttribute('data-figure')).toBe(
-      'none',
-    );
+    expect(data(page.find('[data-skill="none"] [data-figure]'))['figure']).toBe('none');
     expect(text(page, '[data-skill="none"] [data-figure]')).not.toMatch(/AUD|\b0\b/u);
     expect(text(page, '[data-skill="none"] [data-observed]')).toContain(
       'no run of its own, across 2 tasks · 2 further runs alongside another skill',
@@ -203,19 +203,19 @@ describe('MP-14-9 Connections & signal: skill costing', () => {
     const shown = ['solo', 'shared', 'unattributed'].map((bucket) =>
       text(page, `${foot} [data-bucket="${bucket}"]`),
     );
-    expect(shown[0]).toContain('AUD 28.40 across 3 runs used ONE process (28%)');
+    expect(shown[0]).toContain(
+      'AUD 28.40 across 3 runs used ONE process and make the figures above (28%)',
+    );
     expect(shown[1]).toContain('AUD 21.60 across 3 used SEVERAL and is averaged into none (22%)');
     expect(shown[2]).toContain('AUD 50.00 across 4 names NO process at all (50%)');
-    const minor = page
-      .all(`${foot} [data-bucket]`)
-      .map((one) => Number(one.getAttribute('data-minor')));
+    const minor = page.all(`${foot} [data-bucket]`).map((one) => Number(data(one)['minor']));
     expect(minor.reduce((a, b) => a + b, 0)).toBe(10_000);
     expect(text(page, `${foot} [data-split-unpriced]`)).toContain('1 run has no known cost yet');
   });
 
   it('MP-14-9 section numbers read top to bottom; skill costing is 009 (R61)', async () => {
     const { page } = await open(COSTING);
-    const numbers = page.all('[data-section]').map((one) => one.getAttribute('data-section'));
+    const numbers = page.all('[data-section]').map((one) => data(one)['section']);
     expect(numbers).toEqual(numbers.toSorted());
     expect(new Set(numbers).size).toBe(numbers.length);
     expect(numbers).toContain('012');

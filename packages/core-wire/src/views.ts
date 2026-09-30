@@ -683,7 +683,7 @@ export interface ConnectionSignalResult {
   readonly roster: readonly RosterView[];
 }
 
-/** One action class's graduation row for one client (MP-14-10a, section 009). */
+/** One action class's graduation row for one client (MP-14-10a, section 010). */
 export interface GraduationRowView {
   readonly id: string;
   readonly clientId: string;
