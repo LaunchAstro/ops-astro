@@ -87,6 +87,24 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
+  // Settings ▸ Access (C32, C58) and Settings ▸ Telemetry (C34): pages of the
+  // manifest's Settings section, drawing no pinned surface. Access is who may
+  // do what, a grant and ending a person's access; Telemetry is the
+  // service-health section of C55's operations read (CS-2.16).
+  'agency:access': {
+    namespace: 'agency',
+    path: '/settings/access/',
+    title: 'Access',
+    surface: 'none',
+    authenticated: true,
+  },
+  'agency:telemetry': {
+    namespace: 'agency',
+    path: '/settings/telemetry/',
+    title: 'Telemetry',
+    surface: 'none',
+    authenticated: true,
+  },
   // The component gallery (MP-1-3): every piece of the kit in its states,
   // for the owner's checks and the width-and-theme harness. It draws sample
   // words and no record; it asks for a session like every working page, and
