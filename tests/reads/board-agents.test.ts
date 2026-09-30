@@ -96,7 +96,7 @@ describe.skipIf(serverUrl === undefined)('Assign to AI on the board', () => {
   });
 });
 
-describe.skipIf(serverUrl === undefined)('Assign to AI on the board: crossings', () => {
+describe.skipIf(serverUrl === undefined)('Assign to AI on the board: person to person', () => {
   it('person to person: Q’s agent on a row gives P no agent, no offer and no id', async () => {
     const task = await created(w, w.q, `Q's ${CANARY}`);
     const agent = await minted(w, w.q, task);
@@ -111,7 +111,9 @@ describe.skipIf(serverUrl === undefined)('Assign to AI on the board: crossings',
     // Q, reading the same board, is shown their own.
     expect(rowOf((await board(w.world.business, w.q)).rows, task)?.agent?.delegationId).toBe(agent);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('Assign to AI on the board: client to client', () => {
   it('client to client: a reader held to client X’s task is offered its agent there and nothing of client Y’s', async () => {
     const x = await created(w, w.p, 'Client X');
     const y = await created(w, w.p, `Client Y ${CANARY}`);
@@ -138,7 +140,9 @@ describe.skipIf(serverUrl === undefined)('Assign to AI on the board: crossings',
     expect(text).not.toContain(onY);
     expect(text).not.toContain(CANARY);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('Assign to AI on the board: business to business', () => {
   it('business to business: each business’s board offers its own agents and none of the other’s', async () => {
     const home = await created(w, w.p, `Home ${CANARY}`);
     const homeAgent = await minted(w, w.p, home);
@@ -169,7 +173,9 @@ describe.skipIf(serverUrl === undefined)('Assign to AI on the board: crossings',
     expect(ours.text).not.toContain(bravoTask);
     expect(offers(rowOf(ours.rows, home))).toStrictEqual([homeAgent]);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('Assign to AI on the board: an agent', () => {
   it('an agent does not read the board, and its refusal names no agent', async () => {
     const picked = await w.world.pickUp(w.p, 'the agent’s task');
     const agent = await minted(w, w.p, picked.taskId);

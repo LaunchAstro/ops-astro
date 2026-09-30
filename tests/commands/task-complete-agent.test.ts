@@ -84,15 +84,32 @@ const agentTask = async (by: Decider, title: string): Promise<{ task: string; ag
 describe.skipIf(serverUrl === undefined)('the agent tick (MP-4-15)', () => {
   it('an agent’s task, ticked, goes to Needs review first; ticked again, it completes', async () => {
     const { task } = await agentTask(w.p, 'agent work');
+    const step = await w.world.asPerson(w.p, {
+      command: 'task.create',
+      operationId: randomUUID(),
+      fields: { title: 'an unfinished step' },
+      parentId: task,
+    });
+    const stepId = 'recordId' in step ? (step.recordId ?? '') : '';
+    const archivedAt = async (): Promise<string | null | undefined> =>
+      (
+        await w.world.db.admin.execute<{ readonly at: string | null }>(
+          `select data ->> 'archived_at' as at from public.records where id = $1`,
+          [stepId],
+        )
+      )[0]?.at;
+
     const first = await lifecycle(w.p, 'task.complete', task);
     expect(codeOf(first)).toBe('not-a-refusal');
     expect(detailOf(first)).toMatchObject({ state: 'needs_review', completedAt: null });
     expect(await stored(task)).toStrictEqual({ key: 'needs_review', completedAt: null });
+    expect(await archivedAt()).toBeNull();
 
     const second = await lifecycle(w.p, 'task.complete', task);
     expect(detailOf(second)).toMatchObject({ state: 'complete' });
     expect((await stored(task))?.key).toBe('complete');
     expect((await stored(task))?.completedAt).not.toBeNull();
+    expect(await archivedAt()).toEqual(expect.any(String));
   });
 
   it('a person’s task, ticked, completes at once', async () => {
@@ -103,7 +120,9 @@ describe.skipIf(serverUrl === undefined)('the agent tick (MP-4-15)', () => {
       state: 'complete',
     });
   });
+});
 
+describe.skipIf(serverUrl === undefined)('the agent tick: two ticks at once', () => {
   it('two ticks at one revision: one sends it to review, the other is stale, and it is not completed', async () => {
     const { task } = await agentTask(w.p, 'two ticks');
     const at = await revisionOf(w, task);
@@ -119,7 +138,7 @@ describe.skipIf(serverUrl === undefined)('the agent tick (MP-4-15)', () => {
   });
 });
 
-describe.skipIf(serverUrl === undefined)('the agent tick: three crossings', () => {
+describe.skipIf(serverUrl === undefined)('the agent tick: person to person', () => {
   it('person to person: P’s tick on Q’s agent task goes to Q’s review and names nothing of Q’s agent', async () => {
     const { task, agent } = await agentTask(w.q, `Q's ${CANARY}`);
     const answer = await lifecycle(w.p, 'task.complete', task);
@@ -130,7 +149,9 @@ describe.skipIf(serverUrl === undefined)('the agent tick: three crossings', () =
     expect(text).not.toContain(w.q.personId);
     expect(text).not.toContain(CANARY);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('the agent tick: client to client', () => {
   it('client to client: a writer held to client X’s task is refused client Y’s agent task, unchanged', async () => {
     const { task: y } = await agentTask(w.p, `Client Y ${CANARY}`);
     const x = await created(w, w.p, 'Client X');
@@ -151,7 +172,9 @@ describe.skipIf(serverUrl === undefined)('the agent tick: three crossings', () =
     expect(JSON.stringify(answer)).not.toContain(CANARY);
     expect(await stored(y)).toStrictEqual({ key: 'active', completedAt: null });
   });
+});
 
+describe.skipIf(serverUrl === undefined)('the agent tick: business to business', () => {
   it('business to business: a person of business B holding every task grant there is not found A’s agent task, unchanged', async () => {
     const { task } = await agentTask(w.p, `Home ${CANARY}`);
     const bravo = await insertBusiness(w.world.db.app, `tick-b-${randomUUID().slice(0, 8)}`);
