@@ -18,6 +18,7 @@ import type { RowActions } from '@launchastro/ui';
 import type { BoardTask, PersonView } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { ESTIMATE_CHOICES } from './task/estimates.ts';
+import { TASK_STAGES } from '../../../../packages/core-wire/src/index.ts';
 
 /**
  * What the board needs of the dock task panel's host (the application's
@@ -104,7 +105,14 @@ function cellActions(
       send(client.mutate('task.update', { recordId: row.id, fields: { due } }, at(row.id)));
     },
     onStage: (row, stage) => {
-      send(client.mutate('task.set_stage', { recordId: row.id, fields: { stage } }, at(row.id)));
+      // The board draws labels; the task stores the stage's id.
+      send(
+        client.mutate(
+          'task.set_stage',
+          { recordId: row.id, fields: { stage: TASK_STAGES.idOf(stage) } },
+          at(row.id),
+        ),
+      );
     },
     estimates: ESTIMATE_CHOICES,
     onEstimate: (row, minutes) => {

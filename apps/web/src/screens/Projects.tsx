@@ -9,7 +9,8 @@
 //
 // The board is the board machine with the Projects board's nine columns
 // (MP-5-8). Each row is the read's task mapped onto the board's row: the rank
-// and its calc line, the stage, the due and the estimate (MP-4-8) come from
+// and its calc line, the stage (drawn by its label in the task stage list),
+// the due and the estimate (MP-4-8) come from
 // stored records, and the hover door goes to the task's page link (MP-4-12).
 // What the product does not store yet draws a dash or nothing and is recorded
 // as such: the client's name (the client model), the comment counts (INB-1)
@@ -25,7 +26,7 @@ import type {
   PersonListResult,
   TaskBoardResult,
 } from '../../../../packages/core-wire/src/index.ts';
-import { isInProductLink } from '../../../../packages/core-wire/src/index.ts';
+import { TASK_STAGES, isInProductLink } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { useCommand } from '../records/use-command.ts';
@@ -206,7 +207,7 @@ export function Projects(props: ProjectsProps): ReactElement {
             rows={value.tasks.map((task) => rowOf(task))}
             withheld={value.withheld ?? 0}
             changedAt={value.changedAt ?? null}
-            stages={[]}
+            stages={STAGE_LABELS}
             viewer={value.viewer ?? null}
             href={(row) => pathTo('agency:task-detail', { key: row.key })}
             actions={rowActions({
@@ -232,6 +233,9 @@ export function Projects(props: ProjectsProps): ReactElement {
   );
 }
 
+/** The Stage column's vocabulary and the stage editor's choices, in the list's order. */
+const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);
+
 /** One task from the read as a Projects board row (MP-5-8). */
 function rowOf(task: BoardTask): ProjectRow {
   return {
@@ -250,7 +254,7 @@ function rowOf(task: BoardTask): ProjectRow {
         : { id: task.assignee.personId, name: task.assignee.name, agent: false },
     due: task.due,
     completed: task.completedAt !== null,
-    stage: task.stage,
+    stage: task.stage === null ? null : TASK_STAGES.labelOf(task.stage),
     status: task.state?.label ?? 'No state',
     statusPosition: task.statePosition,
     // A run awaiting approval is the one wait the read carries; the banner
