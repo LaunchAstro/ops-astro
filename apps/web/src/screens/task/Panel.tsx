@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The dock task panel's body (MP-4-8, DS-COMP-38): where a task is changed
-// beside the page. Its own field edits (the name, the assignee and the due
+// beside the page. Its head's New task opens the new-task draft
+// (`DraftPanel.tsx`, MP-4-13); the task's client is not on the wire yet
+// (`clientSet` only), so a draft filed from here starts with no client. Its own field edits (the name, the assignee and the due
 // date) are `PanelFields.tsx`. It mounts the pieces built for it: the
 // handling ticks (MP-4-10), the description and agent brief fields (MP-4-7),
 // the subtasks and time (MP-4-4, MP-4-6), the conversation (MP-4-5) and the
@@ -25,7 +27,7 @@
 // **Escape closes the panel, never a control's Escape.** A key that started in
 // a field, a select or a text box is that control's (TR-A3-3).
 
-import { useState, type KeyboardEvent, type ReactElement } from 'react';
+import { useEffect, useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import type {
   InternalTaskDetail as Task,
@@ -46,6 +48,7 @@ import {
   type Perspective,
 } from './Perspectives.tsx';
 import { PageLink, pageLinkDoor } from './PageLink.tsx';
+import type { DraftScope } from './DraftPanel.tsx';
 import { PanelFields, PanelName } from './PanelFields.tsx';
 import { withPageDefaults } from './read-defaults.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
@@ -67,7 +70,9 @@ export interface TaskPanelProps {
   readonly changes?: number;
   readonly onChanged: () => void;
   readonly onClose: () => void;
-  readonly onNewTask?: () => void;
+  /** The head's New task (MP-4-13): a draft filed from this task. Absent, the door is not drawn live. */
+  readonly onNewTask?: (scope: DraftScope) => void;
+  /** Hand the host this person's timer stop while it runs on the task, or null (TR-S-PI6-4). */
   readonly onLeaving?: (stop: (() => void) | null) => void;
 }
 
@@ -108,6 +113,7 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
 function PanelBody(props: TaskPanelProps & { readonly task: Task }): ReactElement {
   const { client, task } = props;
   const [perspective, setPerspective] = useState<Perspective>('team');
+  useTimerStop(props);
   const counts = perspectiveCounts({
     steps: stepMarks(task.steps),
     proposals: task.proposals ?? [],
@@ -151,6 +157,28 @@ function PanelBody(props: TaskPanelProps & { readonly task: Task }): ReactElemen
 }
 
 type SideProps = TaskPanelProps & { readonly task: Task };
+
+/**
+ * While this person's timer runs on the task, the host holds its stop: closing
+ * the panel or opening another task logs the time through `time.stop`, never
+ * discarding it (MP-4-13, DP-07, D-33).
+ */
+function useTimerStop(props: SideProps): void {
+  const { client, task, onLeaving, onChanged } = props;
+  const running = (task.time?.running ?? null) !== null;
+  useEffect(() => {
+    onLeaving?.(
+      running
+        ? () => {
+            void client.mutate('time.stop', { taskId: task.id }).then(onChanged);
+          }
+        : null,
+    );
+    return () => {
+      onLeaving?.(null);
+    };
+  }, [client, task.id, running, onLeaving, onChanged]);
+}
 
 /** The subtasks and time, without the doors: this is where their edits happen. */
 function PanelWork(props: SideProps): ReactElement {
@@ -216,9 +244,9 @@ function PanelAgent(props: SideProps): ReactElement {
   );
 }
 
-/** The head: the task's name, its own page, a New task door not built yet, and close. */
+/** The head: the task's name, New task (a draft filed from here), its own page, and close. */
 function PanelHead(props: SideProps): ReactElement {
-  const { task } = props;
+  const { task, onNewTask } = props;
   return (
     <div className="dtp__head">
       <h2 className="t-title" data-panel-title>
@@ -228,8 +256,10 @@ function PanelHead(props: SideProps): ReactElement {
         className="btn"
         type="button"
         data-panel-head="new"
-        disabled
-        title="New task from the panel is not built yet (MP-4-13)."
+        disabled={onNewTask === undefined}
+        onClick={() => {
+          onNewTask?.({ clientId: null, from: task.title ?? task.key });
+        }}
       >
         New task
       </button>

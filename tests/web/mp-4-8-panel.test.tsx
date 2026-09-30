@@ -185,13 +185,12 @@ describe('MP-4-8 trail folded', () => {
 });
 
 describe('MP-4-8 head', () => {
-  it('names the task, goes to its own page, and draws New task unavailable with the reason', async () => {
+  it('names the task, goes to its own page, and draws New task disabled where no host takes a draft', async () => {
     const view = await panel(serving().client);
     expect(view.find('[data-panel-title]')?.textContent).toBe('Budget pacing fix');
     expect(view.find('[data-panel-head="page"]')?.getAttribute('href')).toBe(`/task/${KEY}`);
     const make = view.find('[data-panel-head="new"]') as HTMLButtonElement | null;
     expect(make?.disabled).toBe(true);
-    expect(make?.getAttribute('title')).toContain('not built yet');
     await view.unmount();
   });
 });

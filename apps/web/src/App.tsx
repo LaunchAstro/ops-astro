@@ -17,6 +17,7 @@ import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { drawScreen } from './screen-registry.tsx';
+import { DraftPanel } from './screens/task/DraftPanel.tsx';
 import { TaskPanel } from './screens/task/Panel.tsx';
 import { useTaskPanel } from './screens/task/panel-host.ts';
 
@@ -226,16 +227,34 @@ export function App(props: AppProps): ReactElement {
       }}
       seated={false}
       // The dock task panel (MP-4-8), in the shell's panel slot until the dock
-      // frame (MP-3-1) draws panels in place. A new door or task remounts it.
+      // frame (MP-3-1) draws panels in place. A new door or task remounts it;
+      // a new-task draft (MP-4-13) takes the same slot.
       panel={
-        session === null || taskPanel.opening === null ? null : (
-          <TaskPanel
-            key={`${taskPanel.opening.taskKey}\u0000${taskPanel.opening.door}\u0000${taskPanel.opening.tab ?? ''}`}
+        session === null ? null : taskPanel.draft === null ? (
+          taskPanel.opening === null ? null : (
+            <TaskPanel
+              key={`${taskPanel.opening.taskKey}\u0000${taskPanel.opening.door}\u0000${taskPanel.opening.tab ?? ''}`}
+              client={client}
+              grantKey={grantKey}
+              opening={taskPanel.opening}
+              changes={taskPanel.host.changes}
+              onChanged={taskPanel.changed}
+              onClose={taskPanel.close}
+              onNewTask={taskPanel.openDraft}
+              onLeaving={taskPanel.leaving}
+            />
+          )
+        ) : (
+          <DraftPanel
+            key={`${session.businessKey}:${session.email}`}
             client={client}
-            grantKey={grantKey}
-            opening={taskPanel.opening}
-            changes={taskPanel.host.changes}
-            onChanged={taskPanel.changed}
+            storage={props.storage}
+            person={`${session.businessKey}:${session.email}`}
+            scope={taskPanel.draft}
+            onCreated={(key) => {
+              taskPanel.host.open(key, 'open');
+              taskPanel.changed();
+            }}
             onClose={taskPanel.close}
           />
         )
