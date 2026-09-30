@@ -20,12 +20,12 @@ import { Empty, ProjectsBoard, type BoardRow, type ProjectRow } from '@launchast
 import type { OperationsClient } from '../operations/client.ts';
 import { rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
-import {
-  isInProductLink,
-  type BoardTask,
-  type PersonListResult,
-  type TaskBoardResult,
+import type {
+  BoardTask,
+  PersonListResult,
+  TaskBoardResult,
 } from '../../../../packages/core-wire/src/index.ts';
+import { isInProductLink } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { useCommand } from '../records/use-command.ts';
