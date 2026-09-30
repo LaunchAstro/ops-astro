@@ -35,7 +35,7 @@ import {
   type Answer,
   type Caller,
 } from './world.ts';
-import { PROPOSAL, type Task } from './role-case-bodies.ts';
+import { PROPOSAL, childProbe, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
@@ -187,6 +187,10 @@ export async function createHarness(part: string): Promise<Harness> {
       ...(declaration.name === 'model.call'
         ? { leaseId: randomUUID(), fence: 1, operation: 'model.replay_compose', fields: [] }
         : {}),
+      ...(declaration.name === 'run.delegate_child'
+        ? { leaseId: randomUUID(), fence: 1, ...childProbe(randomUUID()) }
+        : {}),
+      ...(declaration.name === 'run.child_handback' ? { outcome: 'completed' } : {}),
     };
   }
 

@@ -125,6 +125,9 @@ it('AW-11 the hand-over body is checked before anything is written', async () =>
     [{ expiresInSeconds: 1.5 }, 'FIELD_VALUE_INVALID'],
     [{ fence: '1' }, 'FIELD_VALUE_INVALID'],
     [{ child: { agentActorId: w.helper.actorId } }, 'COMMAND_BODY_INVALID'],
+    // A person's actor and a made-up one: one answer, and neither reaches the mint.
+    [{ helperActorId: w.s.decider.actorId }, 'FIELD_VALUE_INVALID'],
+    [{ helperActorId: randomUUID() }, 'FIELD_VALUE_INVALID'],
   ];
   for (const [extra, code] of bad) {
     // One call at a time: each refusal is read on its own, nothing written between.

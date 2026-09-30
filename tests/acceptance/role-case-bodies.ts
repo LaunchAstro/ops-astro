@@ -201,3 +201,17 @@ export async function ownUnknownAttempt(context: BodyContext): Promise<Record<st
   }
   return { recordId: taskId, attemptId: applied.attemptId };
 }
+
+/**
+ * AW-11's hand-over, well formed, so what answers it is authority: its
+ * operands are read by type before the delegation, as a handback's are.
+ */
+export function childProbe(helperActorId: string): Readonly<Record<string, unknown>> {
+  return {
+    helperActorId,
+    purpose: 'a_helper',
+    collections: ['task'],
+    actions: ['read'],
+    expiresInSeconds: 60,
+  };
+}

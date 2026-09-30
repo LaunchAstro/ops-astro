@@ -52,6 +52,9 @@ it('AW-11 command isolation: another business', async () => {
   // Alpha's child credential handed back in bravo by bravo's helper.
   const back = await handbackCall(w.bravo, w.bravoHelper, alphaChild, handbackBody());
   expect(callOf(back)).toBe('DELEGATION_NOT_LIVE');
+  // Answered as a made-up credential is, byte for byte.
+  const madeUp = await handbackCall(w.bravo, w.bravoHelper, randomUUID(), handbackBody());
+  expect(JSON.stringify(back)).toBe(JSON.stringify(madeUp));
   for (const body of [carried, crossed, back]) {
     const text = JSON.stringify(body);
     expect(text).not.toContain(canary);

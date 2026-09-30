@@ -212,9 +212,11 @@ export function createPositiveBody(
             'case (h), k-revoke rows',
         };
       case 'model.call':
-        // The run's worker's, never a person's: the person prefix refuses it
-        // SCOPE_NOT_GRANTED (AW-01, "n/a (system)"). The agent makes the call
-        // under its delegation in the agent journey, case (h).
+      case 'run.delegate_child':
+      case 'run.child_handback':
+        // The run's worker's, never a person's: the person prefix refuses each
+        // SCOPE_NOT_GRANTED (AW-01, AW-11, "n/a (system)"). The agent makes the
+        // call under its delegation in the agent journey, case (h).
         return {
           exception:
             'executed alternative: the person prefix refuses it by design; the agent calls it ' +

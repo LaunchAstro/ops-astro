@@ -22,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { READS } from '../../packages/core-wire/src/surface.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
-import { ACCEPTED_PLAN, PROPOSAL } from './role-case-bodies.ts';
+import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
@@ -420,6 +420,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['task.observe', { attemptId: randomUUID() }],
         ['task.check', { name: NOBODY, outcome: 'passed' }],
         ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
+        ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
       ];
       for (const [op, extra] of byLease) {
         const forms = {

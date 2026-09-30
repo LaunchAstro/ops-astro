@@ -75,6 +75,12 @@ export async function authorise<O extends object>(
         : refuseCommand('DELEGATION_EXCLUDES_OPERATION', [request.command], NO_DELEGATION_FIXES),
     );
   }
+  // A helper's handback answers to the credential itself: the runtime binds it
+  // to this login and settles that child, live or not (`handBackChild`).
+  if (operation.authority === 'helper') {
+    const { serve } = operation;
+    return { run: async (operands) => await serve(tx, call, operands, credential) };
+  }
   const resolved = await resolveDelegation(tx, session.actorId, credential);
   if (!resolved.ok) return refusing(resolved.refusal);
   const delegation = resolved.value;

@@ -353,9 +353,20 @@ handed back with its outcome, or dropped with the fault named
 (`DELEGATION_EXPIRED`, `DELEGATION_REVOKED`, `DELEGATION_NARROWED`); nothing
 re-delegates on a guess.
 
-Not built yet: the graph rows (with AW-06's planned layer), and the command
-surface for the hand-over and the handback (the runtime functions take the
-parent as resolved from the caller's own credential).
+Both are agent operations (`commands/agent-child.ts`; API.md, "The hand-over
+and the handback"). `run.delegate_child` is a `record` row on the lease's
+task: `authorise` resolves the parent from the caller's own credential and
+asks `run:write` of it there, so a parent the body could name does not exist,
+and the runtime then binds that delegation to the lease at its fence.
+`run.child_handback` is the one `helper` row: no grant is asked, the
+presented credential itself is the authority and `handBackChild` binds it to
+the caller's login. Neither credential reaches the register: a hand-over's
+replay re-authorises the parent, finds the child still live and its own, and
+derives the child's credential again under its pinned key; a handback's
+replay is released only to the same helper presenting the same credential.
+A person is refused both `SCOPE_NOT_GRANTED`.
+
+Not built yet: the graph rows (with AW-06's planned layer).
 
 ## The expired session
 

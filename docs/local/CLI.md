@@ -96,6 +96,11 @@ credential replaced by `(saved to <file>)`. Later calls
 it holds the credential that handback was sent with. A handback sent with
 another credential through `OPS_ASTRO_DELEGATION`, such as a replay of an older
 lease, leaves the saved one alone (`tests/cli/cli-delegation-replay.test.ts`).
+A successful `run.delegate_child` (AW-11) saves the helper's credential to
+`<delegation file>.child-<childDelegationId>`, owner-readable only, and prints
+the answer with it replaced by `(saved to <file>)`; the parent's own file is
+left alone. The helper sends it with `OPS_ASTRO_DELEGATION` for its calls and
+its `run.child_handback`.
 
 ```sh
 export OPS_ASTRO_AGENT=1 OPS_ASTRO_BUSINESS=alpha
@@ -104,6 +109,8 @@ pnpm cli task.pickup --json '{"reservationId":"<reservationId>","operationId":"<
 pnpm cli task.heartbeat --json '{"leaseId":"<leaseId>","fence":<fence>}'
 pnpm cli model.call --json '{"leaseId":"<leaseId>","fence":<fence>,"operation":"model.replay_compose","fields":[{"name":"tone","from":{"recordId":"<taskId>","key":"title"}}]}'
 pnpm cli task.handback --json '{"leaseId":"<leaseId>","fence":<fence>,"outcome":"completed","report":{}}'
+pnpm cli run.delegate_child --json '{"leaseId":"<leaseId>","fence":<fence>,"helperActorId":"<agentActorId>","purpose":"draft_help","collections":["task"],"actions":["read"],"expiresInSeconds":600}'
+OPS_ASTRO_DELEGATION="$(cat <delegation file>.child-<childDelegationId>)" pnpm cli run.child_handback --json '{"outcome":"completed"}'
 ```
 
 A person answers a run waiting at its approved ceiling on the person prefix

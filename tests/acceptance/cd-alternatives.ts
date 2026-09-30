@@ -67,6 +67,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'task.check': ['leaseId', 'agent'],
   'task.handback': ['leaseId', 'agent'],
   'model.call': ['leaseId', 'agent'],
+  'run.delegate_child': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
@@ -91,6 +92,14 @@ export function alternativeFor(name: CommandName): string | undefined {
     return (
       `executed alternative: identifier-negatives.test.ts "${CASE[kase]}" compares a foreign ` +
       `and a fabricated ${operand} by status and raw bytes, audited at home (ledger I03)`
+    );
+  }
+  if (name === 'run.child_handback') {
+    // AW-11: the body names nothing; the helper's own child credential is the
+    // target, so a foreign one and a made-up one are the operand compared.
+    return (
+      'executed alternative: aw-11-child-commands-isolation.test.ts "another business" ' +
+      "compares another business's child credential and a fabricated one by status and bytes"
     );
   }
   if (TARGET_FREE.some(([op]) => op === name)) {

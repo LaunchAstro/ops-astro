@@ -1051,6 +1051,37 @@ writes the task record, so neither takes an `expectedRevision`.
 | `run.top_up`             | `/api/b/:key/run/top_up`             | `operationId`, `recordId`, `runId`, `amountMinor`, `currency` | `decide` on `billing`, asked of the task named in `recordId`; the runtime asks it again of the run's task under the run's locks |
 | `run.end_at_budget_stop` | `/api/b/:key/run/end_at_budget_stop` | `operationId`, `recordId`, `runId`                            | `decide` on `gate`, asked the same way                                                                                          |
 
+## The hand-over and the handback
+
+AW-11. The holder of a lease hands part of its work to a helper agent that can
+do strictly less (`run.delegate_child`), and the helper hands its result back
+(`run.child_handback`). Both are served on the agent prefix only
+(`commands/agent-child.ts`); the person prefix refuses both
+`SCOPE_NOT_GRANTED`.
+
+| Route                                      | Body                                                                                                                                 | Authority                                                                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `/api/a/b/:key/run/delegate_child` (agent) | `operationId`, `leaseId`, `fence`, `helperActorId`, `purpose`, `collections`, `actions`, `expiresInSeconds` (1 to the lease maximum) | the caller's own delegation, on the lease's task (`run:write`); the runtime binds it to the lease at its fence under locks |
+| `/api/a/b/:key/run/child_handback` (agent) | `operationId`, `outcome` (`completed`, or `partial` with `refusal`, a registered code)                                               | the helper's own child credential, bound to its login; no grant, so a revoked or run-out child still hands back            |
+
+The body is read by its JSON types before any authority, each fault
+`FIELD_VALUE_INVALID` by name (a purpose and each collection is a short key;
+actions are the grant model's; `decide` is refused by the mint,
+`DELEGATION_EXCLUDES_DECISION`), and a field the row does not describe is
+`COMMAND_BODY_INVALID`. A helper that is not an agent of this business is
+`FIELD_VALUE_INVALID` on `helperActorId`, one answer for a person's id and a
+made-up one. A set that is not strictly narrower is `DELEGATION_WIDENS`.
+
+The hand-over answers the helper's one-call pickup (AUTHORITY.md,
+"Sub-delegation"), its `credential` in the clear on this answer only. The
+register keeps the answer without it; a repeat of the operation id
+re-authorises the parent, finds the child still live and its own, and derives
+the credential again under its pinned key. A child handed back, withdrawn or
+run out releases nothing (`DELEGATION_NOT_LIVE`). The handback answers
+`childDelegationId` and `outcome`; its replay is released only to the same
+helper presenting the same credential. A second handback is
+`DELEGATION_NOT_LIVE`.
+
 ## The plan accept
 
 A person's one click on a plan (AW-04, [RUNTIME.md](RUNTIME.md#instruction-files-pinned-by-digest))
