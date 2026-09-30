@@ -8,7 +8,12 @@
 // under a live delegation included, are in `aw-01-occurrence-run*.test.ts`.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { dispatchOccurrence, type TenantQuery } from '../../packages/core-records/src/index.ts';
+import { startOccurrenceRun } from '../../packages/core-commands/src/index.ts';
+import {
+  dispatchOccurrence,
+  readOccurrenceFacts,
+  type TenantQuery,
+} from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { DIGEST, createAutomationWorld, insertWorker, type AutomationWorld } from './world.ts';
 import { firingOf, occurrenceOf, runFootprint, starter, type Firing } from './firing.ts';
@@ -139,6 +144,36 @@ describe.skipIf(serverUrl === undefined)('C52-A run start', () => {
     expect(await runOf(occurrence.id)).toHaveLength(1);
   });
 
+  const startDirectly = async (business: string, occurrenceId: string, worker: string) =>
+    await w.db.app.withBusiness(business, async (tx) => {
+      const started = await startOccurrenceRun(
+        tx,
+        { occurrenceId, workerActorId: worker },
+        readOccurrenceFacts,
+      );
+      return started.ok ? 'applied' : started.refusal.code;
+    });
+
+  it('C52-A run start rechecks the approval: started past dispatch on an occurrence whose approval was revoked, ended or superseded, the run is refused and nothing is written', async () => {
+    const revoked = await f.approved();
+    const ended = await f.approved();
+    const superseded = await f.approved();
+    const held = await Promise.all(
+      [revoked, ended, superseded].map(async ({ activation }) =>
+        occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() })),
+      ),
+    );
+    await f.revoke(revoked.approval.id);
+    await f.turnOff(ended.activation.id);
+    await f.adopt(superseded.activation, await w.release(['scheduled']));
+    const before = await runFootprint(w);
+    const answers = await Promise.all(
+      held.map(async (occurrence) => await startDirectly(w.alpha, occurrence.id, w.worker)),
+    );
+    expect(answers).toEqual(Array.from({ length: 3 }, () => 'APPROVAL_NOT_STANDING'));
+    expect(await runFootprint(w)).toEqual(before);
+  });
+
   it('C52-A run start isolation: another business neither starts nor sees the run, its task, its canary title or its audit, and the task names no client', async () => {
     const { activation } = await f.approved();
     const occurrence = occurrenceOf(await w.claim(activation.id, { dueAt: f.nextDue() }));
@@ -147,6 +182,8 @@ describe.skipIf(serverUrl === undefined)('C52-A run start', () => {
       kind: 'unknown',
     });
     expect(bravo.runs).toEqual([]);
+    expect(await startDirectly(w.bravo, occurrence.id, w.bravoWorker)).toBe('OCCURRENCE_UNKNOWN');
+    expect(await runOf(occurrence.id)).toEqual([]);
     const sent = await f.dispatch(occurrence.id, starter(w.worker).start);
     expect(sent.kind === 'dispatched' && sent.dispatch.outcome).toBe('started');
     const [run] = await runOf(occurrence.id);

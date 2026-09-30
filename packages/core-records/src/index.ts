@@ -228,9 +228,12 @@ export {
 } from './automations/approvals.ts';
 export {
   dispatchOccurrence,
+  readOccurrenceFacts,
   type Dispatch,
   type DispatchOutcome,
   type DispatchRow,
+  type OccurrenceFacts,
+  type RunRefused,
   type RunRequest,
   type RunStarter,
 } from './automations/dispatch.ts';
