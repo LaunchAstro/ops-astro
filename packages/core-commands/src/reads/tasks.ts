@@ -458,6 +458,8 @@ export async function readBoardStamped(
       stage: row.stage,
       clientSet: row.client_set,
       actualMinutes: actuals.get(row.id) ?? 0,
+      estimateMinutes: row.estimated_minutes === null ? null : Number(row.estimated_minutes),
+      pageLink: row.page_link,
       statePosition: row.state_position === null ? null : Number(row.state_position),
       waitReason: gated.has(row.id) ? ('needs_approval' as const) : null,
       awaitingDecision: gated.has(row.id) && (decides === null || decides.has(row.id)),

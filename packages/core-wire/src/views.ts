@@ -479,6 +479,10 @@ export interface BoardTask extends TaskSummary {
    * time answers: one number, no names. Derived at read; 0 for none.
    */
   readonly actualMinutes: number;
+  /** The task's estimate in whole minutes (MP-4-8), as `task.read` answers it; null when not set. */
+  readonly estimateMinutes: number | null;
+  /** The in-product address the task is about (MP-4-12), as `task.read` answers it; null when unlinked. */
+  readonly pageLink: string | null;
   /**
    * Where the task's state stands in the workflow (MP-5-11): the state
    * record's `position`, read with the state, so the board groups in the
