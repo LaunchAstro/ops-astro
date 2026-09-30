@@ -58,6 +58,7 @@ it.skipIf(serverUrl === undefined)(
       const available = reachableBy(buildCatalogue([]), {
         kind: 'person',
         grants: [{ key: 'task:read', scope: { kind: 'record', id: shared } }],
+        member: false,
       }).map((row) => row.command);
       expect(available).not.toContain('notifications.set_channel');
     } finally {

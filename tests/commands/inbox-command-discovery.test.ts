@@ -25,6 +25,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
       ok(await world.call('inbox.seen', { itemId: entries[0].id }, world.writerToken));
       const discovered = reachableBy(buildCatalogue([]), {
         kind: 'person',
+        member: true,
         grants: ['read', 'write', 'comment'].map((action) => ({
           key: `task:${action}`,
           scope: { kind: 'business', id: null },
