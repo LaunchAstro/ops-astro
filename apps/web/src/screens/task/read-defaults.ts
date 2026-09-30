@@ -22,5 +22,6 @@ export function withPageDefaults<T extends TaskDetail>(task: T): T {
     steps: read.steps ?? [],
     time: read.time ?? null,
     agentBrief: read.agentBrief ?? null,
+    pageLink: read.pageLink ?? null,
   };
 }

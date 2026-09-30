@@ -16,10 +16,11 @@
 // Team otherwise.
 //
 // **A field with nothing in it reads "not set"**, and Page link "nothing
-// yet". Estimate, Category and Page link have no value on the record yet (the
-// time slice, a named board section and the page link arrive later), so they
-// read that way for every task until then; Client says only whether one is
-// set until the client model names it.
+// yet". The page link (MP-4-12) reads as words here, like every mark in the
+// band; the panel draws it as a door. Estimate and Category have no value on
+// the record yet (the estimate field and a named board section arrive later),
+// so they read that way for every task until then; Client says only whether
+// one is set until the client model names it.
 
 import type { ReactElement } from 'react';
 import type { InternalTaskDetail } from '../../../../../packages/core-wire/src/index.ts';
@@ -120,7 +121,7 @@ export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactEl
     ['category', 'Category', NOT_SET],
     ['stage', 'Stage', orNotSet(task.stage)],
     ['status', 'Status', orNotSet(task.state?.label)],
-    ['page-link', 'Page link', 'nothing yet'],
+    ['page-link', 'Page link', task.pageLink ?? 'nothing yet'],
     ['handling', 'Handling', <Handling key="handling" task={task} />],
   ];
   return (

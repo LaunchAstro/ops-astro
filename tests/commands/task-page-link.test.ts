@@ -16,6 +16,7 @@ import { isCommandRefusal } from '../../packages/core-commands/src/commands/refu
 import {
   CANARY,
   alpha,
+  as,
   auditOf,
   bravo,
   bravoEditor,
@@ -125,6 +126,19 @@ describe.skipIf(serverUrl === undefined)('MP-4-12 link stays in the product', ()
     const answer = await edit(alpha, editor, 'task.update', id, { page_link: link });
     expect(outcomeOf(answer)).toStrictEqual({ code: 'FIELD_VALUE_INVALID' });
     expect(await stored(id)).toBeNull();
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('MP-4-12 link stays in the product', () => {
+  it('task.create refuses a link out of the product and creates nothing', async () => {
+    const title = `made-${randomUUID()}`;
+    const answer = await as(alpha, editor, {
+      command: 'task.create',
+      fields: { title, page_link: '//example.test/x' },
+    });
+    expect(outcomeOf(answer)).toStrictEqual({ code: 'FIELD_VALUE_INVALID' });
+    const made = await db.admin.execute(`select 1 from public.records where txt_4 = $1`, [title]);
+    expect(made).toHaveLength(0);
   });
 });
 

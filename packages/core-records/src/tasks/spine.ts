@@ -335,6 +335,19 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: [],
     escalatingOperation: null,
   },
+  {
+    // The in-product address the task is about, path and hash (MP-4-12,
+    // CS-4.22, migration 0048). Unslotted, display only, as the fixed-slots
+    // contract has the legacy field; `task.update` keeps only an address
+    // inside the product (`isInProductLink`).
+    key: 'page_link',
+    label: 'Page link',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'generic',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
 ];
 
 /**

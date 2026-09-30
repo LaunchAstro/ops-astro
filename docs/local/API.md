@@ -990,6 +990,16 @@ transaction. An agent writes the two on its own delegated task and nothing
 else through `task.update` (`updateTaskText`): any other field in the body is
 refused `SCOPE_NOT_GRANTED`, naming it, and nothing is written.
 
+`task.read` also carries `pageLink` (MP-4-12, CS-4.22): the in-product address
+the task is about, its path and hash, or null. It is `page_link` (migration
+0048), unslotted and internal, written through `task.update` under
+`task:write` and audited as that command. `task.create` and `task.update`
+keep only an address inside the product (`isInProductLink`, core-wire): one
+`/` first, no `//` or `/\` host, no backslash, whitespace or control
+character, at most 2,048 characters. Anything else is refused
+`FIELD_VALUE_INVALID`, naming `page_link`, and nothing is written. The web
+applies the same rule before drawing a stored link as a door.
+
 ## The conversation
 
 `task.read`'s comments each carry `parent` and `signal` (MP-4-5, R42,

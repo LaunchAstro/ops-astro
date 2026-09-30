@@ -45,7 +45,7 @@ import {
   type PanelDoor,
   type Perspective,
 } from './Perspectives.tsx';
-import { PageLink } from './PageLink.tsx';
+import { PageLink, pageLinkDoor } from './PageLink.tsx';
 import { PanelFields, PanelName } from './PanelFields.tsx';
 import { withPageDefaults } from './read-defaults.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
@@ -238,9 +238,20 @@ function PanelHead(props: SideProps): ReactElement {
       >
         Open its page
       </a>
+      <GoTo task={task} />
       <button className="btn" type="button" data-panel-head="close" onClick={props.onClose}>
         Close
       </button>
     </div>
+  );
+}
+
+/** The head's go-to, drawn only when the task links to a page inside the product. */
+function GoTo(props: { readonly task: Task }): ReactElement | null {
+  const door = pageLinkDoor(props.task);
+  return door === null ? null : (
+    <a className="btn" data-panel-head="goto" href={door} title={door}>
+      Go to its page link
+    </a>
   );
 }

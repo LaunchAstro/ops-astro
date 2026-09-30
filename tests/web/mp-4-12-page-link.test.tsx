@@ -85,6 +85,21 @@ describe('MP-4-12 the head’s go-to appears only when linked', () => {
   );
 });
 
+const fact = (view: Awaited<ReturnType<typeof panel>>): string | null =>
+  view.find('.tpr__facts [data-field="page-link"]')?.textContent ?? null;
+
+describe('MP-4-12 the facts band reads the link', () => {
+  it('as words, like every mark in the band, and nothing yet with none', async () => {
+    const linked = await panel(serving({ pageLink: '/boards/website#row-4' }).client);
+    expect(fact(linked)).toContain('/boards/website#row-4');
+    expect(linked.find('.tpr__facts [data-field="page-link"] a')).toBeNull();
+    await linked.unmount();
+    const none = await panel(serving().client);
+    expect(fact(none)).toContain('nothing yet');
+    await none.unmount();
+  });
+});
+
 describe('MP-4-12 pin comes back as drawn', () => {
   it.todo('the star pins the task to the top of this person’s own list (no preference model yet)');
 });

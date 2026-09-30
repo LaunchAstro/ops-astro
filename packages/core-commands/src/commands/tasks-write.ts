@@ -41,6 +41,7 @@ import {
 import type { TenantQuery, TaskStateRow } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
+import { isInProductLink } from '../../../core-wire/src/index.ts';
 import { refuseCreateOperands, refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { clientOf } from './tasks-party.ts';
@@ -127,7 +128,7 @@ export async function createTask(
     return refused(classified, attemptedFrom(request.fields, classified.names));
   }
 
-  const mistyped = refuseWrongValueType(definitions, request.fields);
+  const mistyped = refuseValues(definitions, request.fields);
   if (mistyped !== undefined) return refused(mistyped);
 
   const placedInFields = PLACED_BY_OPERAND.filter((key) => key in request.fields);
@@ -243,7 +244,7 @@ export async function updateTask(
     return refused(classified, attemptedFrom(request.fields, classified.names));
   }
 
-  const mistyped = refuseWrongValueType(definitions, request.fields);
+  const mistyped = refuseValues(definitions, request.fields);
   if (mistyped !== undefined) return refused(mistyped);
 
   const placed = refusePlacement(request.fields, target.data);
@@ -272,6 +273,29 @@ export async function updateTask(
   return applied(target.id, Number(written.revision), {
     changed: Object.keys(request.fields).toSorted(),
   });
+}
+
+/** A value of the wrong type for its field, then a page link out of the product. */
+function refuseValues(
+  definitions: Parameters<typeof refuseWrongValueType>[0],
+  fields: FieldValues,
+): CommandRefusal | undefined {
+  return refuseWrongValueType(definitions, fields) ?? refuseLinkOutside(fields);
+}
+
+/**
+ * A page link (MP-4-12) kept only as an address inside the product, on create
+ * and on update: the panel draws it as a door, so a scheme or another host is
+ * refused before anything is stored. Null clears the link.
+ */
+function refuseLinkOutside(fields: FieldValues): CommandRefusal | undefined {
+  const link = fields['page_link'];
+  if (link === undefined || link === null || isInProductLink(link)) return undefined;
+  return refuseCommand(
+    'FIELD_VALUE_INVALID',
+    ['page_link'],
+    ['A page link is an address inside the product: its path and hash, starting with one /.'],
+  );
 }
 
 /** The two task texts an agent writes through `task.update` (MP-4-7). */
