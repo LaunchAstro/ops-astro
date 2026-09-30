@@ -12,7 +12,7 @@ export interface RunFacts {
   readonly runId: string;
   readonly lineageId: string;
   readonly state: string;
-  /** The plan step its proposal named (0061), or null. */
+  /** The plan step its proposal named (0210), or null. */
   readonly planStepKey: string | null;
   readonly superseded: boolean;
   readonly gateState: string | null;

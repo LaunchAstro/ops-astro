@@ -316,7 +316,7 @@ a share lock, so a revocation in flight either lands first and is named or
 waits for the mint.
 
 The database holds the same rules for the application role
-(`delegations_child_within_parent`, 0056), and fixes a delegation's
+(`delegations_child_within_parent`, 0205), and fixes a delegation's
 operation set, purpose, scope, person, authoriser and parent at mint
 (`delegations_set_is_fixed`); only `expires_at`, revocation and settlement
 move. Token claims add nothing (the U6 fallback): every call a child makes
@@ -341,7 +341,7 @@ The hand-over and the merged result are `core-runtime/src/child-work.ts`.
 own fence: the task, lease and parent delegation are locked, the heartbeat's
 owner check (`recheckOwner`) binds the parent to that lease, the child is
 minted as above and never past the lease's expiry, and a `delegated` run event
-is written (`0057`). The helper's one answer carries the business, the
+is written (`0206`). The helper's one answer carries the business, the
 resource (task, run, lease, fence, reservation), the approved version and task
 revision, its own `collection:action` set, the parent's envelope, its actor
 scope and expiry, the run's pinned bootstrap file or `null`, and what it cannot
@@ -370,7 +370,7 @@ A person is refused both `SCOPE_NOT_GRANTED`.
 A person sees the helpers under the parent's run on `task.execution` (API.md,
 the execution graph): each helper's standing by the same rule, and its steps,
 the calls the broker records with the caller's own delegation beside the
-lease's (`model_calls.caller_delegation_id`, `0060`). When the parent's lease
+lease's (`model_calls.caller_delegation_id`, `0209`). When the parent's lease
 runs out, the child it was capped at runs out with it and its credential is
 `DELEGATION_NOT_LIVE`; the sweep brings the work back, and a replacement parent
 picks it up and hands a new helper the work. The old child is never resumed.

@@ -1,8 +1,8 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0050 the conversation that created a task, on its creation audit event (AW-03).
+-- 0199 the conversation that created a task, on its creation audit event (AW-03).
 --
--- The task carries no conversation column (0049): which conversation created
+-- The task carries no conversation column (0198): which conversation created
 -- a task is a fact of the task's creation audit event. The audit event held
 -- only a digest of the payload, so the fact gets a column of its own there:
 -- `origin_conversation_id`, nullable, naming a conversation of the event's

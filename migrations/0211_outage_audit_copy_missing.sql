@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0062 a missing audit copy on the outage report (AW-04). A pinned read whose
+-- 0211 a missing audit copy on the outage report (AW-04). A pinned read whose
 -- audit copy the store could not keep goes through, and the team is told on
 -- the report T3e2 already gives it on `task.queue`: one row per business and
 -- digest, cause `audit_copy_missing`, which a second miss of the digest joins.

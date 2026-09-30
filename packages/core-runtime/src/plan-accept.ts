@@ -19,7 +19,7 @@
 //      it. The entry is in the manifest by construction; if the pin cannot be
 //      written the statement's error fails the transaction, so an approval
 //      never commits without its pin.
-//   5. The plan bound to the decision (`0058_plan_records`): the exact words
+//   5. The plan bound to the decision (`0207_plan_records`): the exact words
 //      the person approved and the structured record, each by digest, with
 //      the origin conversation. Checked by the caller before any of this
 //      (`boundPlanOf`); a row that cannot be written fails the transaction.

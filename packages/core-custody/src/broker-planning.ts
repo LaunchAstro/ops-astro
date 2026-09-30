@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// AW-04's planning budget (U10, migration 0063): every planning reply before
+// AW-04's planning budget (U10, migration 0212): every planning reply before
 // the accept is priced, against a small budget of its own. The business's
 // planning cap (`budget_caps` key `planning`) is the allowance; none set means
 // no planning spend. Each conversation spends through one planning envelope.
 // A reply holds its operation's priced maximum as its own call row, under the
-// cap's row lock, as a task call holds out of its reservation (0042); it then
+// cap's row lock, as a task call holds out of its reservation (0191); it then
 // settles at its price, is released on proof nothing happened, or stays held
 // as unknown liability. Nothing here is a second ledger: committed is the
 // calls' holds and settled actuals, read under that lock.

@@ -65,7 +65,7 @@ const LOCK_TASK = `select t.id::text as id, run.id::text as run_id, t.${CLIENT_S
  * field reads of it (S3): a link or an edit in flight is waited on, never
  * missed. The lease names the run and the run its
  * task, read here before the lease's own lock; the run's task is fixed once
- * written (the application may update a run's state only, 0043), and the
+ * written (the application may update a run's state only, 0192), and the
  * lease's run is compared again under the lease's lock (`lockFacts`).
  * Unknown to this business answers nothing, refused as a made-up lease is.
  */

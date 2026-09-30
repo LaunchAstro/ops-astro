@@ -53,11 +53,11 @@ if (serverUrl === undefined) {
 }
 
 const THROUGH_0029 = (version: string): boolean => version.slice(0, 4) <= '0029';
-// And AW-06's 0061 plan step key: the runtime that seeds below proposes with it.
+// And AW-06's 0210 plan step key: the runtime that seeds below proposes with it.
 // It reads nothing 0030 adds, and the runner applies whatever is pending, so
 // the upgrade still applies 0030 onto these rows.
 const SEEDED = (version: string): boolean =>
-  THROUGH_0029(version) || version.slice(0, 4) === '0061';
+  THROUGH_0029(version) || version.slice(0, 4) === '0210';
 
 const PACK_OF_VERSION = { code: '23503', constraint_name: 'gates_pack_in_same_version' };
 const VERSION_FIXED = { code: '23514', constraint_name: 'gates_version_fixed_once_decided' };
@@ -262,7 +262,7 @@ async function proposalState(db: EmptyDatabase, businessId: string): Promise<str
  * Columns a migration after 0030 adds to a table this snapshot reads. A row
  * that gained a column has not changed what it held, so the snapshot compares
  * the columns the seed wrote: 0041 (T3a) adds the escalation columns to gates
- * and 0050 adds `origin_conversation_id`.
+ * and 0199 adds `origin_conversation_id`.
  */
 const ADDED_AFTER_0030 = `array['escalated_to_person_id','escalated_by_person_id','escalated_by_actor_id','escalated_at','origin_conversation_id']`;
 
@@ -488,7 +488,7 @@ describe.skipIf(serverUrl === undefined)('a 0029 database holding a row 0030 for
         await expect(migrate(db.admin, 'migrations')).rejects.toSatisfy((error: unknown) =>
           /gates:/u.test(String((error as { cause?: unknown }).cause ?? error)),
         );
-        // Nothing past what was seeded: the ledger stops at 0029 (and the seeded 0061).
+        // Nothing past what was seeded: the ledger stops at 0029 (and the seeded 0210).
         const ledger = await db.admin.execute<{ readonly version: string }>(
           `select version from ops.schema_migrations order by version`,
         );

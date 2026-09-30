@@ -13,7 +13,7 @@
 // without following a link and read once, through the handle that was checked.
 //
 // C33's `definition_version` replaces this source when it is built: runs then
-// pin a definition version in the same slot (`0043_bootstrap_pins`), and the
+// pin a definition version in the same slot (`0192_bootstrap_pins`), and the
 // directory goes.
 
 import { constants } from 'node:fs';

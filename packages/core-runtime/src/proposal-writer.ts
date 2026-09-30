@@ -60,7 +60,7 @@ export interface ProposalWrite {
   readonly payload: Record<string, unknown>;
   /**
    * The run's one step. `planStep`, when present, is a step key of the task's
-   * bound plan, checked by the command under the task lock (AW-06, 0061).
+   * bound plan, checked by the command under the task lock (AW-06, 0210).
    */
   readonly step: {
     readonly kind: string;

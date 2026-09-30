@@ -1431,13 +1431,13 @@ legacy row as derivable, and 0022's trigger forbids it.
 
 ## The model call's ledger
 
-`0042_model_calls` (AW-01; numbered after main's 0041 at the rebase) adds two tables,
+`0191_model_calls` (AW-01; numbered after main's 0041 at the rebase) adds two tables,
 both tenancy-scoped with row security forced, and the fair share's count
 (`model_route_room`, with its role `ops_astro_broker`; [DATA.md](DATA.md)).
 
 - `model_calls`: one row per priced model call or recorded refusal, bound to
   its run, step, lease, approved version, reservation and delegation.
-- A conversation call (`0053_model_call_conversation`, AW-01's conversation
+- A conversation call (`0202_model_call_conversation`, AW-01's conversation
   seam): a person's call from their own conversation, through
   `callModelInConversation` (`core-custody/src/broker-conversation.ts`). The
   row names the conversation and none of the five task facts, no delegation,
@@ -1456,7 +1456,7 @@ both tenancy-scoped with row security forced, and the fair share's count
   past what its operation declares. The route, its reach, the credential kind
   and the account that carried it are recorded; a replay call records no
   account. The application group may select, insert and update.
-- Usage (`0055_model_call_usage`, ORCH37): a settled call records the model
+- Usage (`0204_model_call_usage`, ORCH37): a settled call records the model
   the provider says answered (`model_id`, null when the answer named none)
   and the units its answer says it used (`input_units`, `output_units`, both
   or neither), written by the priced settle in the transaction that settles
@@ -1466,7 +1466,7 @@ both tenancy-scoped with row security forced, and the fair share's count
   answer, and the database holds the same shape
   (`model_calls_model_id_shape`, `model_calls_units_whole`). Test:
   `aw-01-call-usage`.
-- Caller (`0060_model_call_caller`, AW-11): the delegation the broker's caller
+- Caller (`0209_model_call_caller`, AW-11): the delegation the broker's caller
   presented (`caller_delegation_id`): the lease's own for its holder, a
   child's for a helper spending on its parent's lease; null for a call no
   delegation made. `delegation_id` stays the lease's, the one ledger. Written
@@ -1508,7 +1508,7 @@ sends the values read there. Client persons and guests do not exist yet
 
 ## Instruction files pinned by digest
 
-`0043_bootstrap_pins` (AW-02; numbered after main's 0041 at the rebase) adds three
+`0192_bootstrap_pins` (AW-02; numbered after main's 0041 at the rebase) adds three
 tables, each tenancy-scoped with row security forced. A file's identity is its
 digest and its size; the path is provenance only.
 
@@ -1526,7 +1526,7 @@ digest and its size; the path is provenance only.
 The application group may select and insert a pin and a ledger row, and never
 update or delete one; it may insert an audit copy and never read, update or
 delete it. The worker and broker roles hold nothing on any of them. The run
-itself is never rewritten either: 0043 takes back the application's update on
+itself is never rewritten either: 0192 takes back the application's update on
 `planned_runs` (granted whole by 0010) and grants it on `state` alone, so a
 run keeps its version, task and lineage. Restricted calls pin the column grant
 at the full schema and every prefix.
@@ -1553,7 +1553,7 @@ a read that cannot be recorded fails the transaction and returns nothing. The
 audit copy is kept in a savepoint (`TransactionQuery.savepoint`, the driver's
 own nested scope): a copy the store refuses keeps the read, its ledger row and
 its event, and raises the business's one `audit_copy_missing` row for that
-digest on the outage report (`raiseMissingCopy`, 0062, AW-04 missing audit
+digest on the outage report (`raiseMissingCopy`, 0211, AW-04 missing audit
 copy); a later miss of the digest joins it. `setDigest` is the path-sorted set digest over a run's reads.
 
 The accept itself is `acceptPlan` (`core-runtime/src/plan-accept.ts`, AW-04):
@@ -1571,7 +1571,7 @@ signed decision and reservation, and its refusal is the accept's); then the pin
 goes on the gate's run with the manifest beside it. A pin that cannot be
 written fails the transaction, so an approval never commits without its pin,
 and a gate is approved once, so a second accept is refused and leaves one pin.
-Last, the plan is bound to the decision in `plan_records` (`0058_plan_records`):
+Last, the plan is bound to the decision in `plan_records` (`0207_plan_records`):
 the exact words, the structured record (`core-runtime/src/plan-record.ts`,
 checked for vocabulary, references, duplicates and cycles before anything is
 written), the SHA-256 of each, the run and the caller's origin conversation.
@@ -1592,7 +1592,7 @@ the run's own origin column (the bound plan and the audit event carry the origin
 ## The planning budget
 
 Every planning reply before the accept is priced (U10), against a small budget
-of its own (`0063_planning_envelopes`, `core-custody/src/broker-planning.ts`).
+of its own (`0212_planning_envelopes`, `core-custody/src/broker-planning.ts`).
 The business's planning cap is the `budget_caps` row keyed `planning`; with none
 set a planning reply is refused `BUDGET_UNAVAILABLE` before anything is written
 or sent. Each conversation spends through one planning envelope, which names
@@ -1628,7 +1628,7 @@ command asks as a money action (C59), and the surface above.
 
 ## The budget wait
 
-The approved ceiling is the stop (AW-05; `0044_budget_wait`, numbered after
+The approved ceiling is the stop (AW-05; `0193_budget_wait`, numbered after
 main's 0041 at the rebase). A model call whose priced maximum does not fit in what the
 run's reservation has left is refused `BUDGET_UNAVAILABLE`, and in the same
 transaction the run stops and asks (`raiseBudgetWait`,
@@ -1663,7 +1663,7 @@ calls on one run reaching the ceiling at once stop it once.
 ## The answers at the budget stop
 
 A waiting run leaves the wait only by a person's answer to its latest ask
-(AW-05; `0045_budget_answers`, numbered after main's 0041 at the rebase;
+(AW-05; `0194_budget_answers`, numbered after main's 0041 at the rebase;
 `core-runtime/src/budget-answer.ts`). The trigger lets it become `planned`
 only when that ask has a `top_up` answer, and `cancelled` only when it has an
 `end`. `budget_answers` (one per ask) and `budget_approvals` (one per person
@@ -1713,13 +1713,13 @@ or delete.
 
 ## The diagnostic trace export
 
-AW-13, `0046_trace_export`, `0047_trace_export_horizon` and `0059_trace_expiry`. A run's durable events leave as timings, counts
+AW-13, `0195_trace_export`, `0196_trace_export_horizon` and `0208_trace_expiry`. A run's durable events leave as timings, counts
 and codes, never a sentence, to a trace target an operator reads.
 
 - `core-runtime/src/trace-span.ts`: the span is a typed allowlist
   (`traceSpan`): a derived trace id (32 hex) and span id (16 hex), the event
   kind from a closed list (the run event kinds, AW-11's `delegated` and
-  `child_handed_back` from 0057 among them), the transform version, start and duration in whole
+  `child_handed_back` from 0206 among them), the transform version, start and duration in whole
   milliseconds, the event's place in its task's order, and a drop's cause
   from a closed list. Any other field, or a value outside a list, throws
   `TraceRefused`, which names the field and never the value. `otlp` writes
@@ -1739,7 +1739,7 @@ and codes, never a sentence, to a trace target an operator reads.
   run waits on the exporter.
 - `trace_export_cursors`: one row per business, the last delivered event by
   its writing transaction's id and its own, `(tx, id)` (`run_events.tx`,
-  `xid8`, 0047). The read takes only events below its snapshot's horizon
+  `xid8`, 0196). The read takes only events below its snapshot's horizon
   (`pg_snapshot_xmin`): every transaction below it has finished and any later
   write has a higher id, so an event that commits late never lands behind
   the cursor. A long transaction anywhere on the cluster holds the export
@@ -1797,7 +1797,7 @@ and codes, never a sentence, to a trace target an operator reads.
 
 ## An automation occurrence's run
 
-AW-01 J, `core-commands/src/commands/occurrence-run.ts` and migration 0054
+AW-01 J, `core-commands/src/commands/occurrence-run.ts` and migration 0203
 (ORCH36's ruling, option B). C33 records an occurrence, C52-A's dispatch
 rechecks the activation and its standing approval under the activation's lock,
 and then asks `startOccurrenceRun` for the run. It is never a command: no API
@@ -1815,7 +1815,7 @@ route, command-line verb or agent operation reaches it.
 - **Who writes it.** An active worker of the business, never a person or an
   agent (`WORKER_REQUIRED`). The run row goes in through
   `ops_astro_occurrence`, taken for the one insert with
-  `set_config('role', ..., true)`; 0054's trigger refuses an origin written by
+  `set_config('role', ..., true)`; 0203's trigger refuses an origin written by
   any other role, and any change to an origin after the insert.
 - **What refuses it.** An unknown or malformed occurrence
   (`OCCURRENCE_UNKNOWN`); a revoked, ended or superseded approval, or one that
@@ -1824,11 +1824,11 @@ route, command-line verb or agent operation reaches it.
   (`DEFINITION_UNAVAILABLE`). Each writes nothing. A newer release of the
   definition does not refuse it: the activation pins its version (automations
   contract 4.3).
-- **What it writes.** The task, the run, its definition pin (0043, kind
+- **What it writes.** The task, the run, its definition pin (0192, kind
   `definition_version`, pinned by the worker) and one `occurrence.run_start`
   audit event by the worker, whose payload digest covers the occurrence, run,
   task, definition, version, approval and approver.
-- **Pickup.** Pickup claims reservations on approved plan versions, and 0054
+- **Pickup.** Pickup claims reservations on approved plan versions, and 0203
   binds a reservation's run and version together, so no reservation can name
   an occurrence's run. AW-04 builds its claim.
 

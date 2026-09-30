@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0059 trace retention's record (AW-13).
+-- 0208 trace retention's record (AW-13).
 --
 -- The product is the trace store's deletion authority (contract 7.3). Each
 -- retention batch is one row: the window it applied, how many runs it asked

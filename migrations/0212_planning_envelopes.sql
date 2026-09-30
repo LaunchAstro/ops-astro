@@ -1,20 +1,20 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0063 the planning budget (AW-04, U10). Every planning reply before the
+-- 0212 the planning budget (AW-04, U10). Every planning reply before the
 -- accept is priced, and spends against a small budget of its own: the
 -- business's planning cap (`budget_caps` key `planning`; none set means no
 -- planning spend), with one planning envelope per conversation.
 --
 -- The envelope carries no totals. A planning call's hold is its own row, as a
--- task call's is (0042): committed is the sum of the calls' holds and settled
+-- task call's is (0191): committed is the sum of the calls' holds and settled
 -- actuals, read under the cap's row lock, so two replies at once cannot both
 -- take the last of it. The envelope names the conversation and the person who
 -- owns it, so the planning spend beside the plan is that envelope's calls.
 --
--- A conversation call (0053) was local and held nothing. A planning call is a
+-- A conversation call (0202) was local and held nothing. A planning call is a
 -- conversation call with an envelope: it holds its priced maximum, and its
 -- route is the broker's choice under the data classes and AW-03's rule.
--- `conversation_id` has no foreign key, as 0053's has none: the conversations
+-- `conversation_id` has no foreign key, as 0202's has none: the conversations
 -- table joins at the batch 3 join.
 
 create table public.planning_envelopes (

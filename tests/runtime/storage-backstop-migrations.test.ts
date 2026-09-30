@@ -65,10 +65,10 @@ if (serverUrl === undefined) {
 }
 
 const THROUGH_0025 = (version: string): boolean => version.slice(0, 4) <= '0025';
-// And AW-06's 0061 plan step key: the runtime that seeds below proposes with
+// And AW-06's 0210 plan step key: the runtime that seeds below proposes with
 // it, and it reads nothing the migrations under test add, so it is applied
 // with the seed and the runner applies whatever is pending after it.
-const SEEDED = (version: string): boolean => THROUGH_0025(version) || version.startsWith('0061');
+const SEEDED = (version: string): boolean => THROUGH_0025(version) || version.startsWith('0210');
 /** The three this suite is about. Later migrations may follow them on disk. */
 const NEW = ['0026', '0027', '0028'];
 
@@ -518,7 +518,7 @@ describe.skipIf(serverUrl === undefined)('a 0025 database holding a row a new ru
           message.test(String((error as { cause?: unknown }).cause ?? error)),
         );
         const [ledger] = await db.admin.execute<{ readonly last: string }>(
-          `select max(version) as last from ops.schema_migrations where version not like '0061%'`,
+          `select max(version) as last from ops.schema_migrations where version not like '0210%'`,
         );
         expect(ledger?.last.slice(0, 4)).toBe(stopsAt);
         expect(await seedSnapshot(db)).toBe(seeded);

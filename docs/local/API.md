@@ -607,7 +607,7 @@ the fault (`DELEGATION_EXPIRED` first, then `DELEGATION_REVOKED` or
 `DELEGATION_NARROWED`), by the rule the parent's merged result uses. `steps` are
 the helper's own model calls on the parent's lease,
 `{ callId, operation, state, reservedMinor, spentMinor, planned, unplanned }`,
-found by the caller's delegation the broker records (`0060`); they spend the
+found by the caller's delegation the broker records (`0209`); they spend the
 parent's one reservation, so the node's `heldMinor` and `spentMinor` already
 carry them. A call carries no plan key, so each step takes its run's
 placement: `planned` is the node's, and `unplanned` is true exactly when the
@@ -643,7 +643,7 @@ constrain, before the write rather than at it: a `purpose` outside
 the task's bound plan record, checked under the task lock; a key the plan
 lacks, a key on a task with no bound plan, or a `planStep` that is not a
 string is `FIELD_VALUE_INVALID` naming `step`, and nothing is written. The key
-is stored on the run's step (`0061`) and shown in the evidence pack the
+is stored on the run's step (`0210`) and shown in the evidence pack the
 approver signs. Both used to reach the database and arrive as `SERVICE_UNAVAILABLE`
 503, which tells a caller their server is broken when their request was.
 
@@ -979,7 +979,7 @@ MP-7-11 adds the assistant panel's tab row, under the same rule
 second page replaces the first, and `null` clears it. The address is a page of
 this product: one leading slash, never two and never a slash then a
 backslash, printable ASCII with no backslash, at most 300 characters; what it
-shows is 1 to 200 characters with no control character. Migration 0051
+shows is 1 to 200 characters with no control character. Migration 0200
 refuses the same rows as the backstop. Neither write moves the last activity,
 which measures the exchange. Both answer the conversation's id and address
 only, so the title and the page are stored on the conversation and nowhere
@@ -1027,10 +1027,10 @@ activity, so a retried pass asks for the same purge. Nothing schedules the
 pass yet, and raising a failure as an inbox item is INB-1's.
 
 Which conversation created a task is a fact of the task's creation audit
-event: `audit_events.origin_conversation_id` (0050), a same-business
+event: `audit_events.origin_conversation_id` (0199), a same-business
 reference to `conversations`, in the chain's one hash formula
 (`audit_event_hash`, thirteen arguments). A null adds nothing to the hashed
-text, so events without one hash as they did before 0050. The command that
+text, so events without one hash as they did before 0199. The command that
 creates a task from a conversation sets it; until that command exists, the
 wrap-up's "tasks created" item says no task records the conversation.
 
@@ -1342,7 +1342,7 @@ whole of what `decide` compares.
 Each version carries `checks`: the checks its run recorded through
 `task.check` under the run's lease, oldest first, each with its `outcome` and
 the lease holder as `performedByActorId` (MP-6-1, CS-16.3; `run_checks`,
-migration 0048). They are read in the same snapshot as the rest.
+migration 0197). They are read in the same snapshot as the rest.
 
 Each lineage carries `scopes`: what each lease its runs took was allowed to
 touch, oldest first (MP-6-4, CS-6.1). A scope is the lease's own delegation,

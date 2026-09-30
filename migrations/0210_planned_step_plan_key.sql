@@ -3,7 +3,7 @@
 -- AW-06 (ORCH41 decision (a)): the plan step a run's step was proposed under.
 --
 -- Optional. A proposal may name a step of the task's bound plan record
--- (0058's `plan_records`, the plan AW-04's accept bound to its decision); the
+-- (0207's `plan_records`, the plan AW-04's accept bound to its decision); the
 -- command checks the key against that record under the task lock and refuses
 -- a key the plan lacks. The execution graph puts the run under that step, and
 -- shows a run naming none, or a key the bound plan lacks, as unplanned.

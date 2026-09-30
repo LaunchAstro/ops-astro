@@ -3,7 +3,7 @@
 // AW-13: the diagnostic trace export. A run's durable events leave as
 // timings, counts and codes, never a sentence, to a trace target an operator
 // reads. The exporter is outside the execution path: it reads `run_events` by
-// its own cursor (0046), on its own transactions, and nothing a run does
+// its own cursor (0195), on its own transactions, and nothing a run does
 // waits on it or reads what it wrote. With the exporter stopped, killed or
 // failing, every run settles as before; the durable record is the buffer.
 //
@@ -72,7 +72,7 @@ export interface TraceDatabase {
  * no transaction is open while the target is asked.
  *
  * The read takes only events whose writing transaction is below its
- * snapshot's horizon, in transaction order (0047): every transaction below
+ * snapshot's horizon, in transaction order (0196): every transaction below
  * the horizon has finished and any later write has a higher id, so an event
  * that commits late never lands behind the cursor. A long transaction
  * anywhere holds the export back until it ends; it never loses an event.

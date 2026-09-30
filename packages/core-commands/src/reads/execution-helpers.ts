@@ -11,7 +11,7 @@
 // working), and its steps: the model calls it made on the parent's lease,
 // which spend the parent's one reservation (d71424f), so the node's money is
 // already the whole of it. A step is the call's own row, found by the
-// caller's delegation the broker records (0060), never by time or actor.
+// caller's delegation the broker records (0209), never by time or actor.
 //
 // Read in `execution.ts`'s one statement, so a helper's handback counts only
 // at or before the event head the page stops at.

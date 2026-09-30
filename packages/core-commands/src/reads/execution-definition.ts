@@ -4,7 +4,7 @@
 // every file it read, under that run's node (`execution-graph.ts`), so the
 // app, the API and the command line name them alike (moved from AW-02).
 //
-// The pin is the run's one `run_definition_pins` row (0043): a bootstrap file
+// The pin is the run's one `run_definition_pins` row (0192): a bootstrap file
 // by path, digest and size, or a definition version, with the accept-time
 // manifest's digest. The reads are its `bootstrap_reads` ledger in read
 // order, each written by the read itself (`readPinned`), and the set digest

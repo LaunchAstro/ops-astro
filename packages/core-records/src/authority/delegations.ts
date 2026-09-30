@@ -382,7 +382,7 @@ export interface ChildMintRequest {
  * transaction. Creating a child is `run:write` inside the parent's delegation.
  * The child draws on the parent's person, authoriser and record; its
  * operation set is a strict subset of the parent's, which the application
- * role holds too (0056), and the ordinary mint then checks the person's live
+ * role holds too (0205), and the ordinary mint then checks the person's live
  * grants. Depth one: a child mints nothing. `parent` must be the caller's
  * own, resolved from its credential in this transaction (`resolveDelegation`):
  * this function re-reads the row by id and cannot tell whose it is.

@@ -12,7 +12,7 @@
 // 3. One delete for the page, through the port (custody's egress).
 // 4. Each id read back: the endpoint may answer success for work its guard
 //    skipped, so only a read that finds nothing confirms a run.
-// 5. One batch row, append only (0059): the window, the runs asked, the runs
+// 5. One batch row, append only (0208): the window, the runs asked, the runs
 //    confirmed, and the gap code when the batch did not finish. A failed
 //    delete confirms nothing; an unconfirmed run is simply due again.
 //
