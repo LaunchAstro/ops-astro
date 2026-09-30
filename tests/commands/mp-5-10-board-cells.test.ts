@@ -2,12 +2,12 @@
 //
 // MP-5-10: the Projects board's in-place cell editors, against a real
 // database, through the commands they call. The assignee is `task.assign`
-// under `task:assign`; the due date is `task.update` and the stage
-// `task.set_stage`, both under `task:write`. Each change is read back with
+// under `task:assign`; the due date and the estimate are `task.update` and
+// the stage `task.set_stage`, all under `task:write`. Each change is read back with
 // its audit event; each is refused, with nothing written, to a person
 // without its key (`MP-5-10 refusals per key`); and no editor reaches
 // another client's task, another business's, or a task outside an agent's
-// live delegation (`MP-5-10 isolation`). The estimate waits on MP-4-8's field.
+// live delegation (`MP-5-10 isolation`).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -131,11 +131,14 @@ afterAll(async () => {
 });
 
 describe.skipIf(serverUrl === undefined)('MP-5-10 each change is recorded and read back', () => {
-  it('assignee, due and stage each save through their command, with their audit event', async () => {
+  it('assignee, due, stage and estimate each save through their command, with their audit event', async () => {
     const assigned = await edit(editor, 'task.assign', 'cells', { assignee: editor.personId });
     const dated = await edit(editor, 'task.update', 'cells', { due: '2026-10-02T00:00:00.000Z' });
     const staged = await edit(editor, 'task.set_stage', 'cells', { stage: 'Drafting' });
-    expect([assigned, dated, staged].map((each) => isCommandRefusal(each.result))).toStrictEqual([
+    const estimated = await edit(editor, 'task.update', 'cells', { estimated_minutes: 240 });
+    const saved = [assigned, dated, staged, estimated];
+    expect(saved.map((each) => isCommandRefusal(each.result))).toStrictEqual([
+      false,
       false,
       false,
       false,
@@ -143,8 +146,9 @@ describe.skipIf(serverUrl === undefined)('MP-5-10 each change is recorded and re
     const task = await readTask('cells');
     expect((task['assignee'] as Body | null)?.['personId']).toBe(editor.personId);
     expect(String(task['due'])).toContain('2026-10-02');
+    expect(task['estimateMinutes']).toBe(240);
     expect(await stageOf('cells')).toBe('Drafting');
-    for (const each of [assigned, dated, staged]) {
+    for (const each of saved) {
       // eslint-disable-next-line no-await-in-loop -- each change's own audit event, in turn
       expect(await world.auditFor(each.operationId)).toStrictEqual([
         { outcome: 'applied', code: null },
@@ -163,20 +167,20 @@ describe.skipIf(serverUrl === undefined)('MP-5-10 refusals per key', () => {
     expect(await revisionOf(ids['cells'] ?? '')).toBe(before);
   });
 
-  it('task:write: a reader is refused due and stage, and nothing is written', async () => {
+  it('task:write: a reader is refused due, stage and estimate, and nothing is written', async () => {
     const before = await revisionOf(ids['cells'] ?? '');
     const due = await edit(reader, 'task.update', 'cells', { due: '2026-12-01T00:00:00.000Z' });
     const stage = await edit(reader, 'task.set_stage', 'cells', { stage: 'Refused' });
-    expect([isCommandRefusal(due.result), isCommandRefusal(stage.result)]).toStrictEqual([
+    const estimate = await edit(reader, 'task.update', 'cells', { estimated_minutes: 15 });
+    expect([due, stage, estimate].map((each) => isCommandRefusal(each.result))).toStrictEqual([
+      true,
       true,
       true,
     ]);
     expect(await revisionOf(ids['cells'] ?? '')).toBe(before);
     expect(await stageOf('cells')).toBe('Drafting');
+    expect((await readTask('cells'))['estimateMinutes']).toBe(240);
   });
-
-  // task:write on the time estimate waits on MP-4-8's estimated_minutes field
-  // (SL08 U20, LEANS-ON). No todo here: the isolation manifest refuses a skip.
 });
 
 describe.skipIf(serverUrl === undefined)('MP-5-10 isolation', () => {

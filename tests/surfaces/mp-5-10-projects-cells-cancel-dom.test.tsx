@@ -7,6 +7,7 @@
 // cell's size (R47); cells whose command the page does not hand in stay as
 // they are (CS-5.16).
 
+import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   CELL,
@@ -108,11 +109,27 @@ describe('MP-5-10 CS-5.16 edit assignee, due, stage and time estimate in place a
   });
 
   it('a cell whose command the page does not hand in stays as it is', async () => {
-    const { board } = await open(['onStage', 'people']);
+    const { board } = await open(['onStage', 'people', 'onEstimate']);
     expect(one(board, EDIT('menu', 'stage'))).toBeNull();
     expect(one(board, EDIT('menu', 'assignee'))).toBeNull();
-    expect(one(board, EDIT('menu', 'due'))).not.toBeNull();
-    // The estimate waits on its stored field (MP-4-8, U20): no editor yet.
     expect(one(board, EDIT('menu', 'estimate'))).toBeNull();
+    expect(one(board, EDIT('menu', 'due'))).not.toBeNull();
+  });
+
+  it('the time estimate edits in place over its drawn value, and a choice saves it', async () => {
+    const { board, calls } = await open();
+    await board.click(EDIT('menu', 'estimate'));
+    const cell = one(board, `${CELL('menu', 'estimate')} .cbd__cell`);
+    expect(cell?.classList.contains('is-editing')).toBe(true);
+    expect(cell?.querySelector(':scope > .cbd__cellv')?.textContent).toBe('2h');
+    const option = board
+      .all(`${EDITOR('menu', 'estimate')} [role="option"]`)
+      .find((each) => each.textContent === '4h');
+    // eslint-disable-next-line require-await -- act's async form flushes the event's effects
+    await act(async () => {
+      option?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    expect(calls.estimates).toStrictEqual([['menu', 240]]);
+    expect(one(board, EDITOR('menu', 'estimate'))).toBeNull();
   });
 });

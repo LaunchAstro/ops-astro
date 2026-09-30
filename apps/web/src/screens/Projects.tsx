@@ -9,20 +9,22 @@
 //
 // The board is the board machine with the Projects board's nine columns
 // (MP-5-8). Each row is the read's task mapped onto the board's row: the rank
-// and its calc line, the stage and the due come from stored records. What the
-// product does not store yet draws a dash or nothing and is recorded as such:
-// the client's name (the client model), the estimate (MP-4-8), the comment
-// counts (INB-1) and starring (P-20). The actual is the time logged (MP-4-6).
+// and its calc line, the stage, the due and the estimate (MP-4-8) come from
+// stored records, and the hover door goes to the task's page link (MP-4-12).
+// What the product does not store yet draws a dash or nothing and is recorded
+// as such: the client's name (the client model), the comment counts (INB-1)
+// and starring (P-20). The actual is the time logged (MP-4-6).
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Empty, ProjectsBoard, type BoardRow, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
-import type {
-  BoardTask,
-  PersonListResult,
-  TaskBoardResult,
+import {
+  isInProductLink,
+  type BoardTask,
+  type PersonListResult,
+  type TaskBoardResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { RecordState } from '../views/record-state.tsx';
@@ -258,9 +260,13 @@ function rowOf(task: BoardTask): ProjectRow {
     // LEANS-ON), so no category chip draws.
     category: null,
     awaitingDecision: task.awaitingDecision,
-    estimate: null,
+    estimate:
+      task.estimateMinutes === null ? null : { kind: 'time', minutes: task.estimateMinutes },
     // The time logged on the task (MP-4-6); none logged draws a dash.
     actual: task.actualMinutes > 0 ? { kind: 'time', minutes: task.actualMinutes } : null,
+    // A stored link that is not an address inside the product is never a
+    // door (MP-4-12); the door is then the task's own page.
+    ...(isInProductLink(task.pageLink) ? { page: task.pageLink } : {}),
     comments: { client: 0, mentions: 0, latest: null },
   };
 }

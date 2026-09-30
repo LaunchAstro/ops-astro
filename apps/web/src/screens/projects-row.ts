@@ -3,7 +3,8 @@
 // What a Projects board row does (MP-5-9, MP-5-10), as commands. The tick is
 // the one completion transition, `task.complete` or `task.reopen`, never a
 // second one; a rename is `task.update` on the title. The cell editors send
-// `task.assign`, `task.update` on the due date and `task.set_stage`; the
+// `task.assign`, `task.update` on the due date and on the estimate (MP-4-8,
+// offering the task panel's choices) and `task.set_stage`; the
 // assignee editor offers the people `person.list` answers, and none while
 // that read has not answered. Each is sent at the revision the
 // board last read for that task, so a change made elsewhere since is refused
@@ -16,6 +17,7 @@
 import type { RowActions } from '@launchastro/ui';
 import type { BoardTask, PersonView } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
+import { ESTIMATE_CHOICES } from './task/estimates.ts';
 
 /**
  * What the board needs of the dock task panel's host (the application's
@@ -80,7 +82,7 @@ export function rowActions(options: {
   };
 }
 
-/** The cell editors' commands (MP-5-10): assignee, due date and stage, each at the board's revision. */
+/** The cell editors' commands (MP-5-10): assignee, due date, stage and estimate, each at the board's revision. */
 function cellActions(
   client: OperationsClient,
   people: readonly PersonView[] | null,
@@ -103,6 +105,16 @@ function cellActions(
     },
     onStage: (row, stage) => {
       send(client.mutate('task.set_stage', { recordId: row.id, fields: { stage } }, at(row.id)));
+    },
+    estimates: ESTIMATE_CHOICES,
+    onEstimate: (row, minutes) => {
+      send(
+        client.mutate(
+          'task.update',
+          { recordId: row.id, fields: { estimated_minutes: minutes } },
+          at(row.id),
+        ),
+      );
     },
   };
 }

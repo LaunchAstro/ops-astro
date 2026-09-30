@@ -46,6 +46,7 @@ export const ROWS: readonly ProjectRow[] = [
     assignee: { id: 'p-ana', name: 'Ana Lee', agent: false },
     due: '2026-10-05T00:00:00.000Z',
     stage: 'Drafting',
+    estimate: { kind: 'time', minutes: 120 },
   }),
   row('flyer', { name: 'Flyer', stage: 'Review' }),
 ];
@@ -67,6 +68,7 @@ export interface Calls {
   readonly assigns: [string, string | null][];
   readonly dues: [string, string | null][];
   readonly stages: [string, string][];
+  readonly estimates: [string, number | null][];
 }
 
 export const open = async (
@@ -75,7 +77,7 @@ export const open = async (
   board: Mounted;
   calls: Calls;
 }> => {
-  const calls: Calls = { assigns: [], dues: [], stages: [] };
+  const calls: Calls = { assigns: [], dues: [], stages: [], estimates: [] };
   const all: RowActions = {
     people: PEOPLE,
     onAssign: (each, person) => {
@@ -86,6 +88,10 @@ export const open = async (
     },
     onStage: (each, stage) => {
       calls.stages.push([each.id, stage]);
+    },
+    estimates: [30, 60, 120, 240],
+    onEstimate: (each, minutes) => {
+      calls.estimates.push([each.id, minutes]);
     },
   };
   const handed = Object.fromEntries(

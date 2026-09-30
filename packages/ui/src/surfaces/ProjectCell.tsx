@@ -4,8 +4,8 @@
 // cell, with its tick, rename and hover box, is ProjectName.tsx, MP-5-9). The
 // words come from `board/project-words.ts`; this draws them. The assignee, due
 // and stage cells edit in place where the page hands in their command
-// (MP-5-10, P-37; CellEditor.tsx). The estimate has no stored field to write
-// yet (MP-4-8), so it draws no editor.
+// (MP-5-10, P-37; CellEditor.tsx), the estimate among them (MP-4-8's
+// `estimated_minutes`, offering the task panel's choices).
 
 import type { ReactNode } from 'react';
 import {
@@ -14,6 +14,7 @@ import {
   dueWords,
   estimateWords,
   rankCell,
+  timeWords,
   type ProjectRow,
   type RowActions,
 } from '../board/projects.ts';
@@ -202,6 +203,38 @@ function stageEditor(
   );
 }
 
+const NOT_SET = 'Not set';
+
+function estimateEditor(row: ProjectRow, drawn: ReactNode, actions: RowActions): ReactNode {
+  const { onEstimate, estimates } = actions;
+  if (onEstimate === undefined || estimates === undefined) return drawn;
+  const current = row.estimate?.kind === 'time' ? row.estimate.minutes : null;
+  // A stored estimate outside the choices is offered as it is, so the menu
+  // never draws a value it cannot show.
+  const choices =
+    current === null || estimates.includes(current)
+      ? estimates
+      : [...estimates, current].toSorted((a, b) => a - b);
+  return (
+    <EditableCell
+      label={change('estimate', row)}
+      editor={{
+        kind: 'menu',
+        options: [
+          ...choices.map((minutes) => ({ value: String(minutes), label: timeWords(minutes) })),
+          { value: '', label: NOT_SET },
+        ],
+        current: current === null ? '' : String(current),
+      }}
+      onChoose={(value) => {
+        onEstimate(row, value === '' ? null : Number(value));
+      }}
+    >
+      {drawn}
+    </EditableCell>
+  );
+}
+
 /** The cell as drawn, wrapped in its editor where the page hands in the command (MP-5-10). */
 function editable(row: ProjectRow, key: string, drawn: ReactNode, context: CellContext): ReactNode {
   const actions = context.actions;
@@ -209,6 +242,7 @@ function editable(row: ProjectRow, key: string, drawn: ReactNode, context: CellC
   if (key === 'assignee') return assigneeEditor(row, drawn, actions);
   if (key === 'due') return dueEditor(row, drawn, actions);
   if (key === 'stage') return stageEditor(row, drawn, actions, context.stages ?? []);
+  if (key === 'estimate') return estimateEditor(row, drawn, actions);
   return drawn;
 }
 
@@ -241,7 +275,7 @@ export function projectCell(row: ProjectRow, key: string, context: CellContext):
         context,
       );
     case 'estimate':
-      return <Estimate row={row} />;
+      return editable(row, key, <Estimate row={row} />, context);
     case 'actual':
       return <Actual row={row} />;
     default:

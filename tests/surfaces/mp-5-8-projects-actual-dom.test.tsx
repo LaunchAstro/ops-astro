@@ -3,8 +3,9 @@
 //
 // MP-5-8: the Actual column drawn from `task.board`'s `actualMinutes` through
 // the Projects screen (the time logged on the task, MP-4-6). With no estimate
-// stored yet (MP-4-8's field) the burn bar has nothing to fill against, so
-// the cell prints the time itself; a task with no time logged draws a dash.
+// on the task the burn bar has nothing to fill against, so the cell prints
+// the time itself; a task with no time logged draws a dash. Against an
+// estimate: mp-5-8-projects-estimate-screen.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { Projects } from '../../apps/web/src/screens/Projects.tsx';
@@ -31,6 +32,8 @@ const task = (id: string, key: string, actualMinutes: number) => ({
   stage: null,
   clientSet: false,
   actualMinutes,
+  estimateMinutes: null,
+  pageLink: null,
   statePosition: 1,
   waitReason: null,
   awaitingDecision: false,

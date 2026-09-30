@@ -174,7 +174,7 @@ function Routes(props: {
         className="cbd__route"
         data-route="door"
         data-mark="in-app"
-        href={href}
+        href={row.page ?? href}
         aria-label={`Go to the work on ${row.name}, in the app`}
         title="Go to the work (in the app)"
       >

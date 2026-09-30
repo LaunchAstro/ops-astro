@@ -38,6 +38,11 @@ export interface ProjectRow {
   readonly awaitingDecision: boolean;
   readonly estimate: Estimate | null;
   readonly actual: Actual | null;
+  /**
+   * The in-product address the hover door goes to, the task's page link
+   * (MP-4-12), already checked as one; absent, the door is the task's own page.
+   */
+  readonly page?: string;
   readonly comments: {
     readonly client: number;
     readonly mentions: number;
@@ -75,6 +80,10 @@ export interface RowActions {
   readonly onDue?: (row: ProjectRow, due: string | null) => void;
   /** The stage chosen in place. */
   readonly onStage?: (row: ProjectRow, stage: string) => void;
+  /** The estimates the estimate editor offers, in minutes (MP-4-8's choices); none, no estimate editor. */
+  readonly estimates?: readonly number[];
+  /** The estimate chosen in place, in whole minutes, or null to clear it. */
+  readonly onEstimate?: (row: ProjectRow, minutes: number | null) => void;
 }
 
 /** One person the assignee editor offers. */

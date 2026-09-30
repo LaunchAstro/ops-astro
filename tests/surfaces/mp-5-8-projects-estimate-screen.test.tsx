@@ -113,17 +113,26 @@ const choose = async (board: Mounted, label: string): Promise<void> => {
 describe('MP-5-8 cells as specified: estimate and burn, drawn from task.board', () => {
   it('prints the stored estimate, a dash where none is, and burns the time logged against it', async () => {
     const board = await screen([]);
-    const text = (id: string, key: string) => board.find(CELL(id, key))?.textContent;
+    const text = (id: string, key: string) =>
+      board.host.querySelector<HTMLElement>(CELL(id, key))?.textContent;
     expect([text(SET, 'estimate'), text(BARE, 'estimate'), text(OVER, 'estimate')]).toStrictEqual([
       '2h',
       '—',
       '1h',
     ]);
     const fill = (id: string) =>
-      (board.find(`${CELL(id, 'actual')} .brn__fill`) as HTMLElement | null)?.style.width;
+      (
+        board.host.querySelector<HTMLElement>(
+          `${CELL(id, 'actual')} .brn__fill`,
+        ) as HTMLElement | null
+      )?.style.width;
     expect([fill(SET), fill(OVER)]).toStrictEqual(['75%', '100%']);
-    expect(board.find(`${CELL(OVER, 'actual')} .brn`)?.className).toContain('is-over');
-    expect(board.find(`${CELL(SET, 'actual')} .brn`)?.getAttribute('title')).toBe('1.5h of 2h');
+    expect(
+      board.host.querySelector<HTMLElement>(`${CELL(OVER, 'actual')} .brn`)?.className,
+    ).toContain('is-over');
+    expect(
+      board.host.querySelector<HTMLElement>(`${CELL(SET, 'actual')} .brn`)?.getAttribute('title'),
+    ).toBe('1.5h of 2h');
   });
 });
 
@@ -155,14 +164,18 @@ describe('MP-5-10 the estimate edits in place', () => {
 describe('MP-5-9 the hover box holds a door with its in-app mark', () => {
   it('goes to the task’s page link in the app, and to the task’s own page without a safe one', async () => {
     const board = await screen([]);
-    const door = (id: string) => board.find(`${CELL(id, 'name')} a[data-route="door"]`);
-    expect([door(SET)?.getAttribute('href'), door(SET)?.getAttribute('data-mark')]).toStrictEqual([
+    const door = (id: string) =>
+      board.host.querySelector<HTMLElement>(`${CELL(id, 'name')} a[data-route="door"]`);
+    expect([door(SET)?.getAttribute('href'), door(SET)?.dataset['mark']]).toStrictEqual([
       '/clients/acme#brief',
       'in-app',
     ]);
-    const own = (id: string) => board.find(`${CELL(id, 'name')} a.cbd__nm`)?.getAttribute('href');
+    const own = (id: string) =>
+      board.host.querySelector<HTMLElement>(`${CELL(id, 'name')} a.cbd__nm`)?.getAttribute('href');
     expect(door(BARE)?.getAttribute('href')).toBe(own(BARE));
     expect(door(HOSTILE)?.getAttribute('href')).toBe(own(HOSTILE));
-    expect(board.find(CELL(HOSTILE, 'name'))?.innerHTML).not.toContain('elsewhere.example');
+    expect(board.host.querySelector<HTMLElement>(CELL(HOSTILE, 'name'))?.innerHTML).not.toContain(
+      'elsewhere.example',
+    );
   });
 });
