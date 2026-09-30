@@ -28,15 +28,18 @@ import type { Conflict, Draft, Which } from './use-settings.ts';
 export const draftInWords = (draft: Draft): string =>
   draft === null ? 'off' : typeof draft === 'boolean' ? (draft ? 'on' : 'off') : String(draft);
 
-/** What the settings read is, in its own words. */
-export function ReadBanner(props: { readonly state: ReadState<unknown> }): ReactElement {
+/** What the settings read is, in its own words: DS-PRIM-28, the one empty state. */
+export function ReadBanner(props: {
+  readonly state: ReadState<unknown>;
+  readonly onRetry: () => void;
+}): ReactElement {
   const state = props.state;
   return (
     <div className="readstate" data-settings="read" data-outcome={state.outcome}>
       {state.outcome === 'loading' ? (
-        <p className="card__sub" role="status">
-          Reading what this business holds…
-        </p>
+        <div role="status">
+          <Empty look="inline" title="Reading what this business holds…" />
+        </div>
       ) : null}
       {state.outcome === 'denied' ? (
         <Empty
@@ -49,7 +52,12 @@ export function ReadBanner(props: { readonly state: ReadState<unknown> }): React
         <Empty
           title="These values could not be read."
           description={state.because}
-          hint="Nobody refused anything — the answer did not come back. Nothing below is the business's value."
+          hint="Nobody refused anything: the answer did not come back. Nothing below is the business's value."
+          action={
+            <button className="btn" type="button" onClick={props.onRetry}>
+              Try again
+            </button>
+          }
         />
       ) : null}
       {state.outcome === 'empty' ? (
@@ -90,34 +98,74 @@ export function CapabilityBanner(props: {
   );
 }
 
-/** The server's value for one setting, and when the server last wrote it. */
-export function ValueLine(props: {
+/** The server's value for one setting: the row's derived line, beside its controls. */
+export function Held(props: {
+  readonly which: Which;
+  readonly row: SettingView | null;
+}): ReactElement | null {
+  if (props.row === null) return null;
+  return (
+    <p className="setrow__state" data-settings={`${props.which}-value`}>
+      The business holds: <strong>{inWords(props.row)}</strong>
+    </p>
+  );
+}
+
+/** When the server last wrote one setting, under its explanation. */
+export function Written(props: {
   readonly which: Which;
   readonly row: SettingView | null;
 }): ReactElement | null {
   const row = props.row;
-  if (row === null) return null;
+  if (row?.updatedAt === undefined) return null;
   return (
-    <>
-      <p className="card__sub" data-settings={`${props.which}-value`}>
-        The business holds: <strong>{inWords(row)}</strong>
-      </p>
-      {row.updatedAt === undefined ? null : (
-        <p className="card__sub" data-settings={`${props.which}-updated`}>
-          Last written {row.updatedAt}
-          {/*
-            The live read answers `updatedByActorId: null` for a row the seed
-            wrote, and null is a real answer: nobody, or nobody recorded.
-            Printing it would be this screen inventing an actor called "null",
-            which is the same defect as drawing a default one field along.
-          */}
-          {row.updatedByActorId === undefined || row.updatedByActorId === null
-            ? ''
-            : ` by ${row.updatedByActorId}`}
-          {row.revision === undefined ? '' : `, revision ${String(row.revision)}`}
-        </p>
-      )}
-    </>
+    <p className="setrow__meta" data-settings={`${props.which}-updated`}>
+      Last written {row.updatedAt}
+      {/*
+        The live read answers `updatedByActorId: null` for a row the seed
+        wrote, and null is a real answer: nobody, or nobody recorded.
+        Printing it would be this screen inventing an actor called "null",
+        which is the same defect as drawing a default one field along.
+      */}
+      {row.updatedByActorId === undefined || row.updatedByActorId === null
+        ? ''
+        : ` by ${row.updatedByActorId}`}
+      {row.revision === undefined ? '' : `, revision ${String(row.revision)}`}
+    </p>
+  );
+}
+
+/**
+ * A setting's on and off, as the mockup's settings rows draw it: DS-PRIM-10's
+ * segmented control (AG-X22). `id` names the option `idFor` picks, so a label
+ * or a test can press it.
+ */
+export function OnOff(props: {
+  readonly label: string;
+  readonly id: string;
+  readonly idFor: 'on' | 'off';
+  readonly on: boolean;
+  readonly disabled: boolean;
+  readonly onChange: (on: boolean) => void;
+}): ReactElement {
+  return (
+    <div className="segmented" role="group" aria-label={props.label}>
+      {[true, false].map((value) => (
+        <button
+          key={value ? 'on' : 'off'}
+          id={(value ? 'on' : 'off') === props.idFor ? props.id : undefined}
+          type="button"
+          className="segmented__opt"
+          aria-pressed={props.on === value}
+          disabled={props.disabled}
+          onClick={() => {
+            props.onChange(value);
+          }}
+        >
+          {value ? 'On' : 'Off'}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -147,7 +195,7 @@ export function ConflictBlock(props: {
       ? 'not known'
       : inWords(props.row);
   return (
-    <div className="readstate" role="alert" data-settings="conflict">
+    <div className="readstate setrow__conflict" role="alert" data-settings="conflict">
       <p className="field__error">{props.conflict.because}</p>
       <p className="card__sub" data-settings="conflict-server">
         The server holds: <strong>{held}</strong>
@@ -156,7 +204,7 @@ export function ConflictBlock(props: {
         You asked for: <strong>{asked}</strong>
       </p>
       <button
-        className="btn btn--primary"
+        className="btn btn--sm btn--primary"
         type="button"
         data-settings={`confirm-${props.conflict.which}`}
         disabled={props.disabled}

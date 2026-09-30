@@ -99,6 +99,7 @@ const COLOUR_PROPERTY =
 const SHEETS = [
   `${styles}2-controls-and-marks.css`,
   `${styles}2-primitives.css`,
+  `${styles}2-forms.css`,
   `${styles}3-shell.css`,
   `${styles}4-board.css`,
   `${styles}5-task.css`,

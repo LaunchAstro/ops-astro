@@ -403,6 +403,10 @@
   background: var(--text);
   color: var(--bg);
 }
+.segmented__opt:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
 .facets {
   display: flex;
   flex-wrap: wrap;
