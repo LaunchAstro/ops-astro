@@ -93,6 +93,7 @@ import type {
   PersonListResult,
   QueueResult,
   TaskReadResult,
+  TaskStateView,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
@@ -100,7 +101,7 @@ import { ConflictNotice, MovedNotice, UnsavedBar } from './task/Notices.tsx';
 import { TaskHeader } from './task/Header.tsx';
 import { TaskFacts } from './task/Facts.tsx';
 import { TaskUnknown } from './task/Absent.tsx';
-import { withPageDefaults } from './task/read-defaults.ts';
+import { statesOf, withPageDefaults } from './task/read-defaults.ts';
 import { AssignToAI } from './task/AssignToAI.tsx';
 import {
   PanelDoorButton,
@@ -125,6 +126,7 @@ import { BriefSection, DescriptionSection } from './task/Writing.tsx';
 import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
 import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
+import { PageStatus } from './task/StatusField.tsx';
 
 export interface TaskDetailProps {
   readonly client: OperationsClient;
@@ -226,6 +228,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                 client={client}
                 grantKey={props.grantKey}
                 task={withPageDefaults(value.task)}
+                states={statesOf(value)}
                 draft={held}
                 note={note}
                 onDecided={setNote}
@@ -516,6 +519,8 @@ interface LoadedProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly task: Task;
+  /** The business's task states `task.read` sent, the Status select's choices. */
+  readonly states: readonly TaskStateView[];
   /** The unsaved edit, or nothing. Its presence is what "dirty" means. */
   readonly draft: Draft | null;
   /** What the server said about the last decision, or nothing. */
@@ -577,6 +582,7 @@ function Loaded(props: LoadedProps): ReactElement {
     due: saved.due,
   };
   const dirty = props.draft !== null;
+  const status = { client, task, states: props.states, onChanged: props.onChanged };
 
   /** Every keystroke lands in both places: this form, and the draft above it. */
   const edit = (next: { title?: string; due?: string }): void => {
@@ -649,6 +655,8 @@ function Loaded(props: LoadedProps): ReactElement {
               completed={task.completedAt !== null}
               onLifecycle={lifecycle}
             />
+
+            <PageStatus {...status} disabled={busy || dirty} />
 
             <Assignee
               people={people.state}

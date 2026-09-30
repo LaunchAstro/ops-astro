@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The dock task panel's field edits (MP-4-8): the name, the assignee, the due
-// date, the estimate and the stage; the project is `ProjectField.tsx` and the
-// tags are `TagField.tsx` (MP-4-11).
+// date, the estimate and the stage; the project is `ProjectField.tsx`, the
+// status `StatusField.tsx` and the tags `TagField.tsx` (MP-4-11).
 //
 // **Each field through its own command, at the revision the panel read.** The
 // name, the due date and the estimate go out through `task.update`
@@ -12,8 +12,8 @@
 // again and draw what the server holds; a refusal is quoted in the server's
 // words and nothing is drawn as changed.
 //
-// **Only the fields with an owner on the record.** Category, state and the
-// client wait on theirs (SL08 handback, LEANS-ON).
+// **Only the fields with an owner on the record.** Category and the client
+// wait on theirs (SL08 handback, LEANS-ON).
 //
 // **A control's Escape is the control's.** The name edit's Escape ends the
 // edit; the picker marks its own handled (TR-A3-3).
@@ -24,6 +24,7 @@ import {
   TASK_STAGES,
   type InternalTaskDetail as Task,
   type PersonListResult,
+  type TaskStateView,
 } from '../../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../../data/use-read.ts';
 import { useCommand } from '../../records/use-command.ts';
@@ -35,11 +36,14 @@ import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
 import { TagField } from './TagField.tsx';
 import { AssignToAI } from './AssignToAI.tsx';
 import { ProjectField } from './ProjectField.tsx';
+import { StatusField } from './StatusField.tsx';
 
 export interface PanelFieldsProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly task: Task;
+  /** The business's task states `task.read` sent, the Status select's choices. */
+  readonly states?: readonly TaskStateView[];
   readonly onChanged: () => void;
 }
 
@@ -131,6 +135,13 @@ export function PanelFields(props: PanelFieldsProps): ReactElement {
       <DueField {...props} {...field} />
       <EstimateField {...props} {...field} />
       <StageField {...props} {...field} />
+      <StatusField
+        client={props.client}
+        task={props.task}
+        states={props.states ?? []}
+        id="panel-field-status"
+        onChanged={props.onChanged}
+      />
       <ProjectField
         client={props.client}
         grantKey={props.grantKey}

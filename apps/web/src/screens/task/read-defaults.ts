@@ -4,7 +4,11 @@
 // as none: no rank, no board, no steps, no time, neither mark set. The page
 // reads the task through this once, at the read, so no part of it has to ask.
 
-import type { TaskDetail } from '../../../../../packages/core-wire/src/index.ts';
+import type {
+  InternalTaskRead,
+  TaskDetail,
+  TaskStateView,
+} from '../../../../../packages/core-wire/src/index.ts';
 
 type Partial<T> = { readonly [K in keyof T]?: T[K] };
 
@@ -28,4 +32,10 @@ export function withPageDefaults<T extends TaskDetail>(task: T): T {
     agent: read.agent ?? null,
     myAgents: read.myAgents ?? [],
   };
+}
+
+/** The read's task states; a read that sends none offers the task's own state alone. */
+export function statesOf(read: InternalTaskRead): readonly TaskStateView[] {
+  const sent: Partial<InternalTaskRead> = read;
+  return sent.states ?? [];
 }

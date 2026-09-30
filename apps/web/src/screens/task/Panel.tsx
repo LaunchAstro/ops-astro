@@ -32,6 +32,7 @@ import type { OperationsClient } from '../../operations/client.ts';
 import type {
   InternalTaskDetail as Task,
   TaskReadResult,
+  TaskStateView,
 } from '../../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../../data/use-read.ts';
 import { pathTo } from '../../routes.ts';
@@ -50,7 +51,7 @@ import {
 import { PageLink, pageLinkDoor } from './PageLink.tsx';
 import type { DraftScope } from './DraftPanel.tsx';
 import { PanelFields, PanelName } from './PanelFields.tsx';
-import { withPageDefaults } from './read-defaults.ts';
+import { statesOf, withPageDefaults } from './read-defaults.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
 import { HandlingTicks } from './Ticks.tsx';
 import { BriefField, DescriptionField } from './Writing.tsx';
@@ -102,7 +103,7 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
               This task is shared with you; it is changed by its business.
             </p>
           ) : (
-            <PanelBody {...props} task={withPageDefaults(value.task)} />
+            <PanelBody {...props} task={withPageDefaults(value.task)} states={statesOf(value)} />
           )
         }
       </RecordState>
@@ -110,7 +111,9 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
   );
 }
 
-function PanelBody(props: TaskPanelProps & { readonly task: Task }): ReactElement {
+function PanelBody(
+  props: TaskPanelProps & { readonly task: Task; readonly states: readonly TaskStateView[] },
+): ReactElement {
   const { client, task } = props;
   const [perspective, setPerspective] = useState<Perspective>('team');
   useTimerStop(props);
@@ -126,6 +129,7 @@ function PanelBody(props: TaskPanelProps & { readonly task: Task }): ReactElemen
         client={client}
         grantKey={props.grantKey}
         task={task}
+        states={props.states}
         onChanged={props.onChanged}
       />
       <PageLink client={client} task={task} onChanged={props.onChanged} />

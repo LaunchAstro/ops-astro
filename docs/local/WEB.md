@@ -234,9 +234,14 @@ The Project select (`screens/task/ProjectField.tsx`) offers None and the
 projects `task.board` answers for the Projects board, never the task itself,
 marks the task's board by the crumb's id (a board that is not a
 project stays as itself; one the reader may not open is drawn as that and
-cannot be chosen) and moves the task through `task.move`. The pin waits on the
-preference model. Category, state, the client and "Duplicate without
-contents" wait on their owners on the record or on other slices.
+cannot be chosen) and moves the task through `task.move`. The Status select
+(`screens/task/StatusField.tsx`, CS-4.18), on the panel and on the task page,
+offers the states `task.read` sends in the workflow's order (a state off the
+list stays as itself) and sends `task.set_state`; Complete is `task.complete`,
+and leaving Complete is `task.reopen` first, then `task.set_state` at the
+reopen's revision unless the unstarted state was chosen. The pin waits on the
+preference model. Category, the client and "Duplicate without contents" wait
+on their owners on the record or on other slices.
 
 The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`
 looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an

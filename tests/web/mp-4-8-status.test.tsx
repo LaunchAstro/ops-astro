@@ -63,7 +63,9 @@ describe('MP-4-8 Status select on the dock panel', () => {
     ]);
     await view.unmount();
   });
+});
 
+describe('MP-4-8 Status select: Complete is the one completion transition', () => {
   it('Complete is the one completion transition, task.complete, never task.set_state', async () => {
     const { client, sent } = at(ACTIVE);
     const view = await panel(client);
