@@ -11,6 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { verifyAuditChain } from '../../packages/core-commands/src/commands/audit.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { enrol, grantTo } from '../commands/fixture.ts';
 import {
@@ -131,4 +132,36 @@ it('WF-7 refusal run:write: a caller who may not write the ticket is refused as 
   const plain = await asOutsider(await createTask(s, 'wf7 outsider plain'));
   expect(codeOf(research)).toBe('SCOPE_NOT_GRANTED');
   expect(research).toStrictEqual(plain);
+}, 60_000);
+
+const refusedStarts = async (): Promise<number> =>
+  (
+    await s.db.admin.execute<{ n: number }>(
+      `select count(*)::int as n from public.audit_events
+        where business_id = $1 and command = 'task.propose' and outcome = 'refused'
+          and refusal_code = 'SCOPE_NOT_GRANTED' and subject_record_id is null`,
+      [s.business],
+    )
+  )[0]?.n ?? 0;
+
+it('WF-7 audit readback: run started (research) is recorded in the writing transaction and joins the chain; a refused start is recorded refused, with no subject', async () => {
+  const before = await refusedStarts();
+  expect(codeOf(await proposeAsPerson(await researchTicket('wf7 audit refused')))).toBe(
+    'SCOPE_NOT_GRANTED',
+  );
+  expect(await refusedStarts()).toBe(before + 1);
+  const ticket = await researchTicket('wf7 audit started');
+  await grantRunWrite(ticket);
+  const started = appliedDetail(await proposeAsPerson(ticket), 'task.propose');
+  const events = await s.db.admin.execute<{ same: boolean }>(
+    `select e.occurred_at = (select r.created_at from public.planned_runs r
+                              where r.business_id = e.business_id and r.id = $3) as same
+       from public.audit_events e
+      where e.business_id = $1 and e.command = 'task.propose' and e.subject_record_id = $2
+        and e.outcome = 'applied'`,
+    [s.business, ticket, started['runId']],
+  );
+  expect(events.map((event) => event.same)).toStrictEqual([true]);
+  const chain = await s.db.app.withBusiness(s.business, (tx) => verifyAuditChain(tx));
+  expect(chain.intact).toBe(true);
 }, 60_000);
