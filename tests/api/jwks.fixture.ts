@@ -6,6 +6,7 @@
 
 import { randomBytes, type webcrypto } from 'node:crypto';
 import { sign } from 'hono/jwt';
+import { vi, type Mock } from 'vitest';
 import {
   createKeySetVerifier,
   KEY_SET_MAX_BYTES,
@@ -97,6 +98,29 @@ export function verifierOver(fetch: KeySetFetch, refusals: KeySetRefusal[] = [])
     fetch,
     onRefusal: (refusal) => refusals.push(refusal),
   });
+}
+
+/** The substitute provider: what it serves can change between calls. */
+export interface Provider {
+  readonly fetch: Mock<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>;
+  readonly calls: { url: string; init: RequestInit | undefined }[];
+  serve(next: () => Response): void;
+}
+
+export function provider(initial: () => Response): Provider {
+  let answer = initial;
+  const calls: { url: string; init: RequestInit | undefined }[] = [];
+  const fetch = vi.fn((url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), init });
+    return Promise.resolve(answer());
+  });
+  return {
+    fetch,
+    calls,
+    serve(next: () => Response) {
+      answer = next;
+    },
+  };
 }
 
 export type Case = readonly [string, () => Response, KeySetRefusal['reason']];

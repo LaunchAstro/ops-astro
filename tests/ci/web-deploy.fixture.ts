@@ -12,7 +12,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll } from 'vitest';
-import { outputDigest } from '../../scripts/ops/build-output.ts';
+import { stampOutput } from '../../scripts/ops/build-output.ts';
 import { artefactName } from '../../scripts/ops/promotion.ts';
 
 export const STAGED = '0123456789ab';
@@ -80,11 +80,7 @@ export function store(files: Files = OUTPUT, version: string = STAGED): string {
     mkdirSync(dirname(join(out, path)), { recursive: true });
     writeFileSync(join(out, path), typeof body === 'string' ? body : JSON.stringify(body));
   }
-  writeFileSync(join(out, 'build.json'), JSON.stringify({ build: version }));
-  writeFileSync(
-    join(out, 'build.json'),
-    JSON.stringify({ build: version, digest: outputDigest(out) }),
-  );
+  stampOutput(out, version);
   return root;
 }
 

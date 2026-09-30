@@ -13,9 +13,7 @@
 //
 // The decisions are tested through `deploy` with its effects watched.
 
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { APP_IMAGE_PLACEHOLDER, deploy, imagePinProblems } from '../../scripts/ops/deploy.ts';
 import {
   definition,
@@ -23,32 +21,13 @@ import {
   STAGED,
   clean,
   PG,
-  scratch,
   withImages,
   snapshot,
   live,
   expected,
   effects,
+  store,
 } from './staging-deploy.fixture.ts';
-import { outputDigest } from '../../scripts/ops/build-output.ts';
-
-afterAll(() => rmSync(scratch, { recursive: true, force: true }));
-
-let stores = 0;
-
-/** An artefact store holding one stamped build. */
-const store = (version = STAGED, stamp = version): string => {
-  stores += 1;
-  const root = join(scratch, `store-${stores}`);
-  const build = join(root, definition['x-ops-astro'].artefact.replace('{version}', version));
-  mkdirSync(build, { recursive: true });
-  writeFileSync(join(build, 'build.json'), JSON.stringify({ build: stamp }));
-  writeFileSync(
-    join(build, 'build.json'),
-    JSON.stringify({ build: stamp, digest: outputDigest(build) }),
-  );
-  return root;
-};
 
 // ---- S0-6 image pins ------------------------------------------------------
 

@@ -26,24 +26,8 @@ import {
   handMade,
   keySet,
   verifierOver,
+  provider,
 } from './jwks.fixture.ts';
-
-/** The substitute provider: what it serves can change between calls. */
-function provider(initial: () => Response) {
-  let answer = initial;
-  const calls: { url: string; init: RequestInit | undefined }[] = [];
-  const fetch = vi.fn((url: string | URL | Request, init?: RequestInit) => {
-    calls.push({ url: String(url), init });
-    return Promise.resolve(answer());
-  });
-  return {
-    fetch,
-    calls,
-    serve(next: () => Response) {
-      answer = next;
-    },
-  };
-}
 
 let current: KeyPair;
 

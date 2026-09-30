@@ -4,9 +4,10 @@
 // staging-deploy-record.test.ts): the pinned compose file, fake effects and
 // the operator the gate admits.
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { stampOutput } from '../../scripts/ops/build-output.ts';
 import { type DeployEffects, type StagingDefinition } from '../../scripts/ops/deploy.ts';
 import { afterAll } from 'vitest';
 
@@ -32,6 +33,18 @@ export const PG =
 
 export const scratch: string = mkdtempSync(join(tmpdir(), 's0-6d-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+
+let stores = 0;
+
+/** An artefact store holding one stamped build. */
+export const store = (version: string = STAGED, stamp: string = version): string => {
+  stores += 1;
+  const root = join(scratch, `store-${stores}`);
+  const build = join(root, definition['x-ops-astro'].artefact.replace('{version}', version));
+  mkdirSync(build, { recursive: true });
+  stampOutput(build, stamp);
+  return root;
+};
 
 /** A definition with one pinned database and one app service, for the hostile cases. */
 export const withImages = (images: Record<string, unknown>): StagingDefinition => ({

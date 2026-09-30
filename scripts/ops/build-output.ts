@@ -22,7 +22,7 @@
 // is the one passing answer. Nothing it cannot read is taken as passing.
 
 import { createHash } from 'node:crypto';
-import { lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 /** A Node.js runtime as Vercel names one, and only that. */
@@ -140,4 +140,16 @@ export function outputDigest(out: string): string {
     hash.update(`${path}\0`).update(digested(out, path)).update('\0');
   }
   return `sha256:${hash.digest('hex')}`;
+}
+
+/**
+ * Stamps the output at `out` with `build` and its digest, as a release does:
+ * `build.json` is written first without the digest, so the digest covers it,
+ * then again with it. Answers what it recorded.
+ */
+export function stampOutput(out: string, build: string): { build: string; digest: string } {
+  writeFileSync(join(out, 'build.json'), JSON.stringify({ build }));
+  const record = { build, digest: outputDigest(out) };
+  writeFileSync(join(out, 'build.json'), JSON.stringify(record));
+  return record;
 }

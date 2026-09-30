@@ -12,7 +12,7 @@ import { existsSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
 import { markMadeUp, productionSigns, type OwnerQuery } from '../../scripts/ops/made-up-only.ts';
-import { serverUrl, USERS_FILE, MADE_UP } from './staging-no-production-data.fixture.ts';
+import { businessRow, emptied, serverUrl, USERS_FILE, MADE_UP } from './staging-no-production-data.fixture.ts';
 
 const SEED = new URL('../../scripts/local-seed.mjs', import.meta.url).pathname;
 
@@ -74,34 +74,9 @@ let db: FreshDatabase;
 
 let adminUrl: string;
 
-const reset = async (): Promise<void> => {
-  await db.admin.execute('drop event trigger if exists ops_astro_made_up_guard');
-  await db.admin.execute('drop schema if exists ops_astro_made_up cascade');
-  await db.admin.execute('delete from public.records');
-  await db.admin.execute('delete from public.record_types');
-  await db.admin.execute('delete from public.people');
-  await db.admin.execute('delete from public.businesses');
-  await db.admin.execute('delete from auth.users');
-  const [unmark] = await db.admin.execute<{ statement: string }>(
-    "select format('comment on database %I is null', current_database()) as statement",
-  );
-  await db.admin.execute(unmark!.statement);
-  // Emptied tables give their pages back, so an emptied database is a new one.
-  for (const table of ['public.records', 'public.record_types', 'public.people'])
-    // oxlint-disable-next-line no-await-in-loop
-    await db.admin.execute(`vacuum ${table}`);
-  await db.admin.execute('vacuum public.businesses');
-  await db.admin.execute('vacuum auth.users');
-};
+const reset = (): Promise<void> => emptied(db.admin);
 
-const business = async (key: string): Promise<string> => {
-  const id = randomUUID();
-  await db.admin.execute(
-    'insert into public.businesses (business_id, id, key, name) values ($1, $1, $2, $3)',
-    [id, key, `${key} Pty Ltd`],
-  );
-  return id;
-};
+const business = (key: string): Promise<string> => businessRow(db.admin, key);
 
 const address = (email: string): Promise<unknown> =>
   db.admin.execute('insert into auth.users (id, email) values ($1, $2)', [randomUUID(), email]);

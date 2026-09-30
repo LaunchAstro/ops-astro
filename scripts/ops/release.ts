@@ -26,7 +26,7 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { build } from 'vite';
-import { buildOutputProblems, outputDigest } from './build-output.ts';
+import { buildOutputProblems, outputDigest, stampOutput } from './build-output.ts';
 
 export { outputDigest };
 
@@ -82,10 +82,7 @@ export async function release({ dist, out }: { dist: string; out: string }): Pro
   writeFileSync(join(out, 'config.json'), JSON.stringify(CONFIG, null, 2));
   const problems = buildOutputProblems(out);
   if (problems.length > 0) throw new Error(problems.join('\n'));
-  writeFileSync(join(out, 'build.json'), JSON.stringify({ build: stamp }));
-  const record: Release = { build: stamp, digest: outputDigest(out) };
-  writeFileSync(join(out, 'build.json'), JSON.stringify(record));
-  return record;
+  return stampOutput(out, stamp);
 }
 
 if (import.meta.main) {
