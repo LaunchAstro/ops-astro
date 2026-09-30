@@ -12,9 +12,11 @@
 //
 // It refuses, by setting name and before it connects, any database or sign-in
 // address whose Supabase project reference is not STAGING_PROJECT_REF, or is
-// PRODUCTION_PROJECT_REF. A pooler login carries its project as
-// `<login>.<reference>`; a direct address as `db.<reference>.supabase.co`. It
-// never prints an address, a password, a key or a reference.
+// PRODUCTION_PROJECT_REF. A database host is only a project's own direct host,
+// `db.<reference>.supabase.co`, or Supabase's pooler in staging's region, which
+// picks the project by the login's `<login>.<reference>`; any other host is
+// refused, whatever its login says. It never prints an address, a password, a
+// key or a reference.
 
 export interface CastMember {
   readonly email: string;
@@ -64,6 +66,8 @@ export function notInvented(cast: readonly CastMember[]): string[] {
 export class Refusal extends Error {}
 
 const REF = /^[a-z]{20}$/u;
+/** Supabase's shared pooler in Sydney, staging's region (NATHAN-SUPABASE-FREE). */
+const POOLER = /^aws-[0-9]+-ap-southeast-2\.pooler\.supabase\.com$/u;
 type Environment = Readonly<Record<string, string | undefined>>;
 
 function setting(environment: Environment, name: string): string {
@@ -89,12 +93,13 @@ function databaseProject(name: string, value: string): string {
   } catch {
     throw new Refusal(`${name} is not a database address`);
   }
-  const login = /\.([a-z]{20})$/u.exec(user)?.[1];
+  // One dot: the pooler must read the same reference from the login as this does.
+  const login = /^[^.]+\.([a-z]{20})$/u.exec(user)?.[1];
   const direct = /^db\.([a-z]{20})\.supabase\.co$/u.exec(host)?.[1];
   if (direct !== undefined && (login === undefined || login === direct)) return direct;
-  const supabase = /(?:^|\.)supabase\.(?:co|com)$/u.test(host);
-  if (direct === undefined && supabase && !host.endsWith('.pooler.supabase.com'))
-    throw new Refusal(`${name} is a Supabase address the reset does not know`);
+  // Only the pooler routes by the login: anywhere else a login's reference proves nothing.
+  if (direct === undefined && !POOLER.test(host))
+    throw new Refusal(`${name} is not a staging database host`);
   if (login === undefined || direct !== undefined)
     throw new Refusal(`${name} names no one project (its login must be <login>.<reference>)`);
   return login;

@@ -160,7 +160,8 @@ try {
   console.log(`staging-reset: ${users.length} made-up sign-ins, confirmed as made, no mail sent`);
 
   step = 'seeding';
-  const seeded = spawnSync(process.execPath, [SEED], {
+  // Under the reset's own Node flags, so the seed runs as the reset does.
+  const seeded = spawnSync(process.execPath, [...process.execArgv, SEED], {
     encoding: 'utf8',
     env: {
       PATH: env.PATH ?? '',

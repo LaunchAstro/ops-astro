@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The staging reset suite's fixtures (s0-1-staging-reset.test.ts): the real
-// command as a person runs it, a throwaway database whose two logins carry the
-// pooler's `<login>.<reference>` form, and the provider's admin API as a
-// stand-in on loopback, so nothing hosted is reached.
+// command as a person runs it, a throwaway database reached as staging's pooler
+// (`tests/support/pooler-at-loopback.mjs`) whose two logins carry the pooler's
+// `<login>.<reference>` form, and the provider's admin API as a stand-in on
+// loopback, so nothing hosted is reached.
 
 import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -22,6 +23,9 @@ import { TEST_ONLY_MARKER } from '../support/marker.ts';
 import { serveTestKeySetApart, type ServedKeySet } from '../support/sign-in.ts';
 
 const RESET = new URL('../../scripts/ops/staging-reset.mjs', import.meta.url).pathname;
+const POOLER_AT_LOOPBACK = new URL('../support/pooler-at-loopback.mjs', import.meta.url).pathname;
+/** Staging's pooler, as the reset accepts it; the preload sends it to the local database. */
+const POOLER = 'aws-0-ap-southeast-2.pooler.supabase.com';
 export const MIGRATIONS: string = new URL('../../migrations/', import.meta.url).pathname;
 
 const ref = (): string =>
@@ -94,7 +98,7 @@ export interface Run {
 
 export function run(env: Record<string, string>, args: readonly string[] = []): Promise<Run> {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [RESET, ...args], {
+    const child = spawn(process.execPath, [`--import=${POOLER_AT_LOOPBACK}`, RESET, ...args], {
       env: { PATH: process.env['PATH'] ?? '', ...env },
     });
     let out = '';
@@ -124,10 +128,18 @@ export function databaseUrl(user: string, password: string, host?: string): stri
   return url.toString();
 }
 
+/** A throwaway database's address as the reset is given it: through staging's pooler. */
+function pooled(address: string): string {
+  const url = URL.parse(address);
+  if (url === null || !['localhost', '127.0.0.1'].includes(url.hostname)) return address;
+  url.hostname = POOLER;
+  return url.toString();
+}
+
 export let seedDirs = 0;
 export function settings(overrides: Record<string, string> = {}): Record<string, string> {
   seedDirs += 1;
-  return {
+  const env: Record<string, string> = {
     STAGING_PROJECT_REF: STAGING,
     PRODUCTION_PROJECT_REF: PRODUCTION,
     DATABASE_ADMIN_URL: own,
@@ -138,6 +150,8 @@ export function settings(overrides: Record<string, string> = {}): Record<string,
     OPS_ASTRO_DEPLOYMENTS: join(scratch, `records-${seedDirs}`),
     ...overrides,
   };
+  for (const name of ['DATABASE_ADMIN_URL', 'DATABASE_URL']) env[name] = pooled(env[name] ?? '');
+  return env;
 }
 
 /** A table no reset would keep: still there means nothing was emptied. */

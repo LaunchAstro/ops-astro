@@ -70,7 +70,9 @@ tenant tables have never held a row, is confirmed once by a person with
 change, or refused for any reason, is started again empty with the staging
 reset, `node scripts/ops/staging-reset.mjs` (empty, migrate, seed). It refuses
 any database or sign-in address whose Supabase project reference is not
-staging's, or is production's, and takes no file: a backup is never its input.
+staging's, or is production's, any database host but staging's own direct host
+or Supabase's Sydney pooler (whatever the login says), and takes no file: a
+backup is never its input.
 It makes the made-up sign-ins through the admin API, confirmed so no mail is
 sent, seeds the made-up operator staging's own gate checks, and writes the
 operating business once. The passwords and keys go to a new owner-only folder,
