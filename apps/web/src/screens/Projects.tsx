@@ -33,6 +33,7 @@ import { RecordState } from '../views/record-state.tsx';
 import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
 import { Inbox } from '../views/inbox.tsx';
+import { CATEGORIES_ARE_MOCK, categoryOf } from './category-mock.ts';
 
 /** A create whose outcome is not known, held so the retry is the same attempt. */
 interface PendingCreate {
@@ -216,6 +217,7 @@ export function Projects(props: ProjectsProps): ReactElement {
             stages={STAGE_LABELS}
             viewer={value.viewer ?? null}
             {...(value.owed === undefined ? {} : { owed: value.owed })}
+            mockCategories={CATEGORIES_ARE_MOCK}
             href={(row) => pathTo('agency:task-detail', { key: row.key })}
             actions={rowActions({
               client,
@@ -273,9 +275,8 @@ function rowOf(task: BoardTask): ProjectRow {
     // A run awaiting approval is the one wait the read carries; the banner
     // prints the mockup's word for it (B-21).
     waitReason: task.waitReason === 'needs_approval' ? 'approval' : null,
-    // No task category is stored yet (it arrives with named board sections,
-    // LEANS-ON), so no category chip draws.
-    category: null,
+    // No task category is stored yet: SL08's catalogue replaces this mock seam.
+    category: categoryOf(task),
     awaitingDecision: task.awaitingDecision,
     estimate:
       task.estimateMinutes === null ? null : { kind: 'time', minutes: task.estimateMinutes },

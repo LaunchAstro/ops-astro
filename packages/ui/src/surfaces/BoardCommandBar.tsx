@@ -9,6 +9,7 @@ import type { ReactElement } from 'react';
 import { FUNNEL_FIRST, freshness, funnelMenu, hiddenFilters } from '../board/funnel.ts';
 import type { RankedFacet } from '../board/funnel.ts';
 import type { BoardAction, Facet, MachineState, Preset } from '../board/types.ts';
+import { MockRegion } from '../kit/blocks.tsx';
 import { Empty } from '../primitives/Absence.tsx';
 import { Icon } from '../primitives/Icon.tsx';
 import { BoardSearch } from './BoardSearch.tsx';
@@ -165,29 +166,41 @@ function FacetGroups(props: {
   readonly noun: string;
   readonly dispatch: Send;
 }): ReactElement {
+  const facet = (one: RankedFacet): ReactElement => (
+    <button
+      className="cbd__facet"
+      key={one.id}
+      type="button"
+      data-add={one.id}
+      data-count={one.count}
+      aria-pressed={props.ids.includes(one.id)}
+      title={`${String(one.count)} ${props.noun}s${STACK_TIP}`}
+      onClick={(event) => {
+        props.dispatch({ type: 'press', id: one.id, stack: event.shiftKey });
+      }}
+    >
+      {one.label}
+    </button>
+  );
   return (
     <>
-      {props.listing.groups.map((group) => (
-        <div className="cbd__menugrp" key={group.kind}>
-          <span className="cbd__menuk">{group.kind}</span>
-          {group.facets.map((one) => (
-            <button
-              className="cbd__facet"
-              key={one.id}
-              type="button"
-              data-add={one.id}
-              data-count={one.count}
-              aria-pressed={props.ids.includes(one.id)}
-              title={`${String(one.count)} ${props.noun}s${STACK_TIP}`}
-              onClick={(event) => {
-                props.dispatch({ type: 'press', id: one.id, stack: event.shiftKey });
-              }}
-            >
-              {one.label}
-            </button>
-          ))}
-        </div>
-      ))}
+      {props.listing.groups.map((group) => {
+        const drawn = (
+          <div className="cbd__menugrp" key={group.kind}>
+            <span className="cbd__menuk">{group.kind}</span>
+            {group.facets.map((one) => facet(one))}
+          </div>
+        );
+        // A group of made-up filters (no catalogue yet) carries the one mock label.
+        const mock = group.facets.every((one) => one.mock === true);
+        return mock ? (
+          <MockRegion word key={group.kind}>
+            {drawn}
+          </MockRegion>
+        ) : (
+          drawn
+        );
+      })}
     </>
   );
 }

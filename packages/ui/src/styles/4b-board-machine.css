@@ -741,3 +741,14 @@ tr:focus-within .cbd__routes--pop {
 .cbd__wrap:has(.cbd__cell.is-editing) {
   overflow: visible;
 }
+
+/* Made-up category chips (no catalogue yet) under the one mock label (DS-PRIM-32):
+   the region is one item of the chip row, its chips in a row, room kept for the tag. */
+.cbd__filters > .is-mock {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 2.9rem 0.15rem 0.15rem;
+  border-radius: var(--radius-sm);
+}

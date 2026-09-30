@@ -26,6 +26,8 @@ export interface RankedFacet {
   readonly kind: string;
   readonly label: string;
   readonly count: number;
+  /** Made-up data: its menu group carries the mock label. */
+  readonly mock?: boolean;
 }
 
 export interface FunnelMenu {
@@ -50,6 +52,7 @@ export function rankFacets<Row>(
         kind: facet.kind,
         label: facet.label,
         count: rows.filter((row) => facet.test(row)).length,
+        ...(facet.mock === true ? { mock: true } : {}),
       },
     }))
     .toSorted((a, b) => b.ranked.count - a.ranked.count || a.order - b.order)

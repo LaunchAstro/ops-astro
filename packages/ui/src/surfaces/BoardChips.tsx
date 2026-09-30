@@ -8,6 +8,7 @@
 import type { ReactElement, RefObject } from 'react';
 import { presetCount } from '../board/filters.ts';
 import type { BoardAction, BoardView, Facet, Preset } from '../board/types.ts';
+import { MockRegion } from '../kit/blocks.tsx';
 import { GLYPH, STACK_TIP, type BoardMode } from './board-props.ts';
 
 export function ChipRow<Row>(props: {
@@ -23,19 +24,23 @@ export function ChipRow<Row>(props: {
   const { view, dispatch } = props;
   const onPresets = onPresetsOf(props.presets, view);
   const shownByPreset = new Set(onPresets.flatMap((preset) => preset.facetIds));
+  const chip = (preset: Preset): ReactElement => (
+    <PresetChip
+      key={preset.id}
+      preset={preset}
+      on={onPresets.includes(preset)}
+      count={presetCount(props.rows, preset, props.facets, props.hay)}
+      onPress={(stack) => {
+        dispatch({ type: 'preset', id: preset.id, stack });
+      }}
+    />
+  );
+  const mock = props.presets.filter((preset) => preset.mock === true);
   return (
     <div className="cbd__filters" ref={props.chipRow}>
-      {props.presets.map((preset) => (
-        <PresetChip
-          key={preset.id}
-          preset={preset}
-          on={onPresets.includes(preset)}
-          count={presetCount(props.rows, preset, props.facets, props.hay)}
-          onPress={(stack) => {
-            dispatch({ type: 'preset', id: preset.id, stack });
-          }}
-        />
-      ))}
+      {props.presets.filter((preset) => preset.mock !== true).map((one) => chip(one))}
+      {/* Made-up chips (no catalogue yet) sit together under the one mock label. */}
+      {mock.length === 0 ? null : <MockRegion word>{mock.map((one) => chip(one))}</MockRegion>}
       {props.modes.map((one) => (
         <ModeChip key={one.id} mode={one} on={view.mode === one.id} dispatch={dispatch} />
       ))}

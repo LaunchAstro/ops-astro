@@ -32,6 +32,7 @@ const attention = (row: ProjectRow): boolean =>
 export function projectPresets(
   rows: readonly ProjectRow[],
   viewer: string | null,
+  mockCategories = false,
 ): readonly Preset[] {
   const categories = [...new Set(rows.map((row) => row.category))]
     .filter((category): category is string => category !== null)
@@ -46,6 +47,7 @@ export function projectPresets(
       uncounted: true,
       variant: 'cat',
     };
+    if (mockCategories) Object.assign(chip, { mock: true });
     return flagged ? Object.assign(chip, { flag: WAITING }) : chip;
   });
   if (viewer === null) return chips;
