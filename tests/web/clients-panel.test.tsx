@@ -12,11 +12,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { App } from '../../apps/web/src/App.tsx';
-import type { PanelRegistry } from '../../apps/web/src/panels.ts';
+import { dockTabs, type PanelRegistry } from '../../apps/web/src/panels.ts';
 import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { MADE_UP_BOOK, type ClientBook } from '../../apps/web/src/data/clients-book.ts';
 import { ClientsScreen } from '../../apps/web/src/screens/Clients.tsx';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
+import { open } from './mp-2-1-support.tsx';
+import { follow } from './frame-support.tsx';
 
 const live: Mounted[] = [];
 afterEach(async () => {
@@ -43,11 +45,40 @@ const SMALL: ClientBook = {
   ],
 };
 
-describe('Clients panel registration', () => {
-  // A panel's registration names the route that draws it at an address of its
-  // own (panels.ts, R34), and no route draws the book yet: `agency:clients` at
-  // `/clients/` waits on the lead's ruling, since this piece adds no route.
-  it.todo('registers as the clients tab, drawn between team and todos in PANEL_RANK');
+describe('Clients panel registers and draws its tab in rank', () => {
+  it('is the clients tab, after team and before settings, on the users glyph, drawn at /clients/', () => {
+    expect(dockTabs().map((tab) => tab.id)).toEqual(['notifs', 'team', 'clients', 'settings']);
+    const tab = dockTabs().find((each) => each.id === 'clients');
+    expect(tab?.label).toBe('Clients');
+    expect(tab?.icon).toBe('users');
+    expect(tab?.route).toBe('agency:clients');
+  });
+
+  it('opens from its tab on the made-up book, its head door landing on /clients/', async () => {
+    const { view } = await open('/projects/');
+    live.push(view);
+    await press(view.find('.dock__tab[data-panel="clients"]'));
+    const panel = view.find('[data-panel-id="clients"]');
+    expect(panel?.querySelector('[data-act="door"]')?.getAttribute('href')).toBe('/clients/');
+    expect(panel?.querySelector('.clbook .is-mock .mocktag')?.textContent).toBe('Mock');
+  });
+});
+
+describe('Clients panel reached from the rail and Back to Clients', () => {
+  it("the rail's Clients item lands on the labelled book, not the placeholder", async () => {
+    const { view } = await open('/projects/');
+    live.push(view);
+    await follow(view, '.rail__item[href="/clients/"]');
+    expect(view.find('.content .clbook .is-mock')).not.toBeNull();
+    expect(view.find('[data-outcome="placeholder"]')).toBeNull();
+  });
+
+  it("Back to Clients from a client's workspace lands on the labelled book", async () => {
+    const { view } = await open('/clients/acme-dental/');
+    live.push(view);
+    await follow(view, '.rail .rail__back');
+    expect(view.find('.content .clbook .is-mock')).not.toBeNull();
+  });
 });
 
 describe('Clients panel made-up book', () => {
@@ -72,10 +103,10 @@ describe('Clients panel count counts the book', () => {
   it('counts the rows the book holds, their open work and what waits on us', async () => {
     const page = await book();
     const all = MADE_UP_BOOK.clients;
-    const open = all.reduce((sum, each) => sum + each.open, 0);
+    const openWork = all.reduce((sum, each) => sum + each.open, 0);
     const waiting = all.reduce((sum, each) => sum + each.waiting, 0);
     expect(count(page)).toBe(
-      `${all.length} of ${all.length} clients · ${open} open · ${waiting} waiting on us`,
+      `${all.length} of ${all.length} clients · ${openWork} open · ${waiting} waiting on us`,
     );
   });
 
@@ -170,7 +201,7 @@ async function rowDoor(page: Mounted): Promise<Element | null> {
   await press(page.find('.dock__tab[data-panel="settings"]'));
   const body = page.find('[data-panel-id="settings"] .dpanel__body') as HTMLElement;
   body.insertAdjacentHTML('beforeend', renderToStaticMarkup(<ClientsScreen book={SMALL} />));
-  return body.querySelector('.clbook__row .clbook__door');
+  return body.querySelector('.clbook__item .clbook__door');
 }
 
 describe('Clients panel row doors follow the gesture law', () => {

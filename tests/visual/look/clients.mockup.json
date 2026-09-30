@@ -1,0 +1,88 @@
+{
+  "about": "Mockup values for tests/visual/look/clients.ts, from look.ts --measure.",
+  "mockup": "7066bad7402c97b8a039447ad87f387cd719208c",
+  "probes": {
+    "clients.search": {
+      "1480-light": {
+        "box.height": "38",
+        "font-size": "14px",
+        "border-top-color": "rgba(0,0,0,31)",
+        "background-color": "rgba(255,255,255,255)"
+      },
+      "1480-dark": {
+        "box.height": "38",
+        "font-size": "14px",
+        "border-top-color": "rgba(245,245,245,26)",
+        "background-color": "rgba(10,10,13,255)"
+      }
+    },
+    "clients.count": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "text-transform": "uppercase",
+        "letter-spacing": "0.24px",
+        "color": "rgba(140,133,127,255)"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "text-transform": "uppercase",
+        "letter-spacing": "0.24px",
+        "color": "rgba(248,248,248,117)"
+      }
+    },
+    "clients.item": {
+      "1480-light": {
+        "border-bottom-color": "rgba(0,0,0,31)",
+        "box.height": "59"
+      },
+      "1480-dark": {
+        "border-bottom-color": "rgba(245,245,245,26)",
+        "box.height": "59"
+      }
+    },
+    "clients.tile": {
+      "1480-light": {
+        "box.width": "22",
+        "box.height": "22",
+        "font-family": "Chivo Mono",
+        "font-size": "9px",
+        "font-weight": "600",
+        "color": "rgba(107,99,93,255)",
+        "border-top-color": "rgba(0,0,0,82)"
+      },
+      "1480-dark": {
+        "box.width": "22",
+        "box.height": "22",
+        "font-family": "Chivo Mono",
+        "font-size": "9px",
+        "font-weight": "600",
+        "color": "rgba(248,248,248,184)",
+        "border-top-color": "rgba(250,250,250,51)"
+      }
+    },
+    "clients.name": {
+      "1480-light": {
+        "font-size": "13.5px",
+        "font-weight": "500",
+        "color": "rgba(0,0,0,255)"
+      },
+      "1480-dark": {
+        "font-size": "13.5px",
+        "font-weight": "500",
+        "color": "rgba(248,248,248,255)"
+      }
+    },
+    "clients.industry": {
+      "1480-light": {
+        "font-size": "11.5px",
+        "color": "rgba(140,133,127,255)"
+      },
+      "1480-dark": {
+        "font-size": "11.5px",
+        "color": "rgba(248,248,248,140)"
+      }
+    }
+  }
+}
