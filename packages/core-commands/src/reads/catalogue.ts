@@ -312,6 +312,14 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     serve: async (tx) => ({ ok: true, tags: await listTags(tx) }),
   },
+  'task.todos': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async () => await Promise.resolve({ ok: true, todos: [] }),
+  },
   // No subject record: the queue is about the business's outstanding work
   // rather than about one task, and naming one of the tasks on it in the
   // audit row would make "who read this record" false for the others. The
