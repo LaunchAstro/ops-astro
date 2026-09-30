@@ -24,6 +24,7 @@
 import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { STAMP_FILE } from '../../apps/web/build-stamp.ts';
 
 /** A Node.js runtime as Vercel names one, and only that. */
 const NODE_RUNTIME = /^nodejs\d+\.x$/u;
@@ -125,7 +126,7 @@ function filesUnder(directory: string): string[] {
  */
 function digested(out: string, path: string): Buffer {
   const bytes = readFileSync(join(out, path));
-  if (path !== 'build.json') return bytes;
+  if (path !== STAMP_FILE) return bytes;
   const { digest, ...record } = JSON.parse(bytes.toString('utf8')) as Record<string, unknown>;
   const written = Buffer.from(JSON.stringify({ ...record, digest }));
   return bytes.equals(written) ? Buffer.from(JSON.stringify(record)) : bytes;
@@ -148,8 +149,18 @@ export function outputDigest(out: string): string {
  * then again with it. Answers what it recorded.
  */
 export function stampOutput(out: string, build: string): { build: string; digest: string } {
-  writeFileSync(join(out, 'build.json'), JSON.stringify({ build }));
+  writeFileSync(join(out, STAMP_FILE), JSON.stringify({ build }));
   const record = { build, digest: outputDigest(out) };
-  writeFileSync(join(out, 'build.json'), JSON.stringify(record));
+  writeFileSync(join(out, STAMP_FILE), JSON.stringify(record));
   return record;
+}
+
+/** The stamp and digest the output at `out` records, each undefined when it records none. */
+export function recordedStamp(out: string): { build?: unknown; digest?: unknown } {
+  try {
+    // `null` is valid JSON and names nothing.
+    return (JSON.parse(readFileSync(join(out, STAMP_FILE), 'utf8')) as object | null) ?? {};
+  } catch {
+    return {};
+  }
 }

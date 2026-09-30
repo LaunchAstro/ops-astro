@@ -25,7 +25,7 @@
 
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { outputDigest } from './build-output.ts';
+import { outputDigest, recordedStamp } from './build-output.ts';
 
 /** A service as the service manager names it. */
 export interface ServiceRef {
@@ -76,8 +76,6 @@ export type PromotionOutcome =
 
 /** A promotable build identifier: S0-1c's stamp, without `-dirty`. */
 const CLEAN_BUILD = /^[0-9a-f]{12}$/u;
-/** The file S0-1c's build writes into its artefact. */
-const STAMP_FILE = 'build.json';
 const LONGEST_LINE = 200;
 const SERVICE = /^(?<manager>docker|launchd):(?<name>[A-Za-z0-9][A-Za-z0-9_.-]*)$/u;
 
@@ -100,18 +98,15 @@ export function parseService(text: string): ServiceRef {
 
 const label = (service: ServiceRef): string => `${service.manager}:${service.name}`;
 
-/** The stamp and digest an artefact records, each undefined when it has none. */
-function stampOf(directory: string): { build?: unknown; digest?: unknown } {
-  try {
-    // `null` is valid JSON and names nothing.
-    return (JSON.parse(readFileSync(join(directory, STAMP_FILE), 'utf8')) as object | null) ?? {};
-  } catch {
-    return {};
-  }
+/** A stored release output, checked: where it is, its name and the digest it holds. */
+export interface StoredArtefact {
+  path: string;
+  name: string;
+  digest: string;
 }
 
 /** The artefact staging ran, or why it cannot be promoted. */
-function select(request: PromotionRequest): { path: string; name: string } | string {
+function select(request: PromotionRequest): StoredArtefact | string {
   if (!CLEAN_BUILD.test(request.version)) {
     return `${request.version} is not a clean build identifier (twelve hex digits, never -dirty)`;
   }
@@ -127,10 +122,7 @@ function select(request: PromotionRequest): { path: string; name: string } | str
  * identifier, a directory by the definition's name, and a stamp naming that
  * same version. The staging deploy (S0-6) and the promotion read it alike.
  */
-export function storedArtefact(
-  version: string,
-  store: string,
-): { path: string; name: string } | string {
+export function storedArtefact(version: string, store: string): StoredArtefact | string {
   if (!CLEAN_BUILD.test(version)) {
     return `${version} is not a clean build identifier (twelve hex digits, never -dirty)`;
   }
@@ -143,14 +135,14 @@ export function storedArtefact(
     // Not there is refused below, the same as not a directory.
   }
   if (!isDirectory) return `no artefact ${name} in ${store}; the step never builds one`;
-  const { build, digest } = stampOf(path);
+  const { build, digest } = recordedStamp(path);
   if (build !== version) {
     const carried = typeof build === 'string' ? build : 'no stamp';
     return `${name} carries ${carried}, not ${version}; production gets the build staging ran, never another`;
   }
   if (typeof digest !== 'string') return `${name} records no digest; it is not a release output`;
   if (digest !== outputDigest(path)) return `${name} does not hold the bytes its digest records`;
-  return { path, name };
+  return { path, name, digest };
 }
 
 export function promote(request: PromotionRequest, effects: PromotionEffects): PromotionOutcome {

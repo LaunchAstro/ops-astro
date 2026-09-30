@@ -26,6 +26,9 @@
 // file holds that command's raw output instead. Compare exits 0 when every
 // live service is unchanged, 1 when one is not, and 2 when it cannot read a
 // snapshot, so a broken input is never green.
+//
+// The deploy and the promotion import `snapshot` and `compare` and use them as
+// the command does; `compare` throws where the command exits 2.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -95,32 +98,31 @@ function fromLaunchd(raw) {
     }));
 }
 
-function snapshot(args) {
-  const dockerFile = flag(args, '--docker-inspect');
-  const launchdFile = flag(args, '--launchctl');
+/** The live services as a snapshot, printed; a file holds its command's raw output instead. */
+export function snapshot({ dockerFile, launchdFile } = {}) {
   const docker = dockerFile ? readFileSync(dockerFile, 'utf8') : dockerInspect();
   const launchd = launchdFile
     ? readFileSync(launchdFile, 'utf8')
     : execFileSync('launchctl', ['list'], { encoding: 'utf8' });
   const services = [...fromDocker(docker), ...fromLaunchd(launchd)];
-  console.log(JSON.stringify({ taken: new Date().toISOString(), services }, undefined, 2));
+  return JSON.stringify({ taken: new Date().toISOString(), services }, undefined, 2);
 }
 
-function load(path) {
-  let parsed;
+function load(text, which) {
+  let services;
   try {
-    parsed = JSON.parse(readFileSync(path, 'utf8'));
+    ({ services } = JSON.parse(text));
   } catch {
-    refuse(`cannot read the snapshot ${path}; nothing is compared`);
+    // Not JSON, or `null`: refused below.
   }
-  if (!Array.isArray(parsed?.services)) refuse(`${path} is not a snapshot; nothing is compared`);
-  return new Map(parsed.services.map((s) => [`${s.manager} ${s.name}`, s]));
+  if (!Array.isArray(services)) throw new Error(`the ${which} snapshot is not a snapshot`);
+  return new Map(services.map((s) => [`${s.manager} ${s.name}`, s]));
 }
 
-function compare(args) {
-  if (args.length !== 2) refuse('compare needs a before and an after snapshot');
-  const before = load(args[0]);
-  const after = load(args[1]);
+/** Two printed snapshots compared: `unchanged` when every live service is, and the report. */
+export function compare(beforeText, afterText) {
+  const before = load(beforeText, 'before');
+  const after = load(afterText, 'after');
   const own = (key) => key.split(' ')[1].startsWith(OWN_PREFIX);
   const changed = [];
   let unchanged = 0;
@@ -143,22 +145,42 @@ function compare(args) {
   }
   const staging = [...after.keys()].filter((key) => own(key)).map((key) => key.split(' ')[1]);
   const added = [...after.keys()].filter((key) => !own(key) && !before.has(key));
-  console.log(`service-report: ${before.size} services before, ${after.size} after`);
-  if (staging.length > 0) console.log(`service-report: staging's own: ${staging.join(', ')}`);
-  if (added.length > 0) console.log(`service-report: new, not staging's: ${added.join(', ')}`);
-  for (const line of changed) console.log(`service-report: ${line}`);
-  console.log(`service-report: ${unchanged} live services unchanged`);
-  if (changed.length > 0) {
-    console.log(`service-report: RED, ${changed.length} change(s) to live services`);
-    process.exit(1);
-  }
-  console.log('service-report: GREEN, every live service unchanged');
+  const lines = [`${before.size} services before, ${after.size} after`];
+  if (staging.length > 0) lines.push(`staging's own: ${staging.join(', ')}`);
+  if (added.length > 0) lines.push(`new, not staging's: ${added.join(', ')}`);
+  lines.push(
+    ...changed,
+    `${unchanged} live services unchanged`,
+    changed.length > 0
+      ? `RED, ${changed.length} change(s) to live services`
+      : 'GREEN, every live service unchanged',
+  );
+  const report = lines.map((line) => `service-report: ${line}`).join('\n');
+  return { unchanged: changed.length === 0, report };
 }
 
-const [command, ...rest] = process.argv.slice(2);
-if (command === 'snapshot') snapshot(rest);
-else if (command === 'compare') compare(rest);
-else
-  refuse(
-    'usage: service-report.mjs snapshot [--docker-inspect f] [--launchctl f] | compare <before> <after>',
-  );
+if (import.meta.main) {
+  const [command, ...rest] = process.argv.slice(2);
+  if (command === 'snapshot') {
+    console.log(
+      snapshot({
+        dockerFile: flag(rest, '--docker-inspect'),
+        launchdFile: flag(rest, '--launchctl'),
+      }),
+    );
+  } else if (command === 'compare') {
+    if (rest.length !== 2) refuse('compare needs a before and an after snapshot');
+    let compared;
+    try {
+      compared = compare(readFileSync(rest[0], 'utf8'), readFileSync(rest[1], 'utf8'));
+    } catch (error) {
+      refuse(`${error.message}; nothing is compared`);
+    }
+    console.log(compared.report);
+    if (!compared.unchanged) process.exitCode = 1;
+  } else {
+    refuse(
+      'usage: service-report.mjs snapshot [--docker-inspect f] [--launchctl f] | compare <before> <after>',
+    );
+  }
+}

@@ -11,8 +11,9 @@
 // honest identifier, so it is refused rather than given a placeholder that
 // reads like a version.
 //
-// Three readers, one module: `vite.config.ts` stamps the page and the artefact,
-// `scripts/build.mjs` checks the artefact carries the stamp it asked for, and
+// Its readers, one module: `vite.config.ts` stamps the page and the artefact,
+// `scripts/build.mjs` checks the artefact carries the stamp it asked for, the
+// release step (`scripts/ops/release.ts`) takes it into its build output, and
 // the browser harness compares the served page against the checkout.
 
 import { execFileSync } from 'node:child_process';

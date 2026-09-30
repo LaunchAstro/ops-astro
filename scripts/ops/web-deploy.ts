@@ -35,7 +35,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildOutputProblems, outputDigest } from './build-output.ts';
 import { writeMaintenanceOutput } from './maintenance.ts';
-import { storedArtefact } from './promotion.ts';
+import { type StoredArtefact, storedArtefact } from './promotion.ts';
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -173,12 +173,10 @@ function deployCopy(
   folder: string,
   env: Environment,
   version: string,
-  selected: { path: string; name: string },
+  selected: StoredArtefact,
   authVersion: string,
 ): WebDeployOutcome {
-  const { digest } = JSON.parse(readFileSync(join(selected.path, 'build.json'), 'utf8')) as {
-    digest: string;
-  };
+  const { digest } = selected;
   const output = join(folder, '.vercel', 'output');
   cpSync(selected.path, output, { recursive: true });
   const problems = buildOutputProblems(output);

@@ -9,20 +9,18 @@
 // The operator gate (`operator.ts`) answers before any argument is read and
 // before Docker is asked; a refusal writes nothing. The live services are read
 // through S0-1a's service report, never a saved one, and compared with its own
-// compare. The app image is built from the artefact with
+// compare, both imported. The app image is built from the artefact with
 // deploy/staging/Dockerfile and handed to Compose by its id. The deployment
 // record is written only once staging is up on its pinned images with every
 // live service unchanged. Exit 0 when deployed, 1 when refused or failed, 2
 // when the arguments are unusable.
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { deploy } from './deploy.ts';
 import { recordDeployment, requireOperator } from './operator.ts';
+import { compare, snapshot } from './service-report.mjs';
 
-const REPORT = new URL('./service-report.mjs', import.meta.url).pathname;
 const DEFINITION = new URL('../../deploy/staging/compose.json', import.meta.url).pathname;
 const DOCKERFILE = new URL('../../deploy/staging/Dockerfile', import.meta.url).pathname;
 
@@ -56,24 +54,8 @@ const definition = JSON.parse(readFileSync(DEFINITION, 'utf8'));
 const containers = Object.entries(definition.services).map(([n, s]) => s.container_name ?? n);
 
 const effects = {
-  snapshot() {
-    return execFileSync(process.execPath, [REPORT, 'snapshot'], { encoding: 'utf8' });
-  },
-  compare(before, after) {
-    const folder = mkdtempSync(join(tmpdir(), 'ops-astro-deploy-'));
-    try {
-      writeFileSync(join(folder, 'before.json'), before);
-      writeFileSync(join(folder, 'after.json'), after);
-      const result = spawnSync(
-        process.execPath,
-        [REPORT, 'compare', join(folder, 'before.json'), join(folder, 'after.json')],
-        { encoding: 'utf8' },
-      );
-      return { unchanged: result.status === 0, report: `${result.stdout}${result.stderr}`.trim() };
-    } finally {
-      rmSync(folder, { recursive: true, force: true });
-    }
-  },
+  snapshot: () => snapshot(),
+  compare,
   buildImage(artefact) {
     const out = execFileSync('docker', ['build', '--quiet', '--file', DOCKERFILE, artefact], {
       encoding: 'utf8',
