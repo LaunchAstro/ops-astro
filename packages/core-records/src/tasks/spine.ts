@@ -361,6 +361,18 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: [],
     escalatingOperation: null,
   },
+  {
+    // The agent assignee (Assign to AI, migration 0051): a live delegation
+    // the assigner holds for this task. One kind at a time with `assignee`;
+    // `task.assign` is its only writer, and a revoke clears it.
+    key: 'agent',
+    label: 'Agent',
+    valueType: 'uuid',
+    slot: null,
+    writeMode: 'operation',
+    owningOperations: ['task.assign'],
+    escalatingOperation: null,
+  },
 ];
 
 /**
@@ -369,6 +381,7 @@ export const TASK_SPINE: readonly SpineField[] = [
  */
 export const PROTECTED_TASK_FIELDS: readonly string[] = [
   'ad_hoc',
+  'agent',
   'archived_at',
   'archived_why',
   'assignee',
