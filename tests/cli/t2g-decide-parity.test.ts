@@ -21,6 +21,7 @@ import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { runCli, serveApi, type Run, type ServedApi } from './cli-process-harness.ts';
 
 interface Gate {
+  readonly taskId: string;
   readonly gateId: string;
   readonly versionId: string;
 }
@@ -77,7 +78,11 @@ describe.skipIf(serverUrl === undefined)(
       );
       const detail = answer.json?.['detail'] as Record<string, unknown> | undefined;
       if (detail === undefined) throw new Error(`no proposal: ${answer.stdout} ${answer.stderr}`);
-      return { gateId: String(detail['gateId']), versionId: String(detail['versionId']) };
+      return {
+        taskId: String(task.json?.['recordId']),
+        gateId: String(detail['gateId']),
+        versionId: String(detail['versionId']),
+      };
     }
 
     const cli = async (gate: Gate, decision: string, env: Record<string, string>): Promise<Run> =>
@@ -90,6 +95,41 @@ describe.skipIf(serverUrl === undefined)(
         body: JSON.stringify({ operationId: randomUUID(), ...body(gate, decision) }),
       });
       return { status: response.status, body: (await response.json()) as Record<string, unknown> };
+    };
+
+    /** Ada completing the gate's task, on the command line and on the app route: each code. */
+    const completing = async (gate: Gate): Promise<readonly unknown[]> => {
+      const codes: unknown[] = [];
+      for (const surface of ['cli', 'app'] as const) {
+        // eslint-disable-next-line no-await-in-loop
+        const read = await runCli(
+          ['task.read', '--json', JSON.stringify({ recordId: gate.taskId })],
+          as(world.ada.token),
+        );
+        const revision = (read.json?.['task'] as Record<string, unknown> | undefined)?.['revision'];
+        const request = { recordId: gate.taskId, expectedRevision: revision };
+        if (surface === 'cli') {
+          // eslint-disable-next-line no-await-in-loop
+          const run = await runCli(
+            ['task.complete', '--json', JSON.stringify(request)],
+            as(world.ada.token),
+          );
+          codes.push(run.json?.['code']);
+        } else {
+          // eslint-disable-next-line no-await-in-loop
+          const response = await fetch(`${(api as ServedApi).origin}/api/b/alpha/task/complete`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              authorization: `Bearer ${world.ada.token}`,
+            },
+            body: JSON.stringify({ operationId: randomUUID(), ...request }),
+          });
+          // eslint-disable-next-line no-await-in-loop
+          codes.push(((await response.json()) as Record<string, unknown>)['code']);
+        }
+      }
+      return codes;
     };
 
     const recorded = async (gate: Gate) =>
@@ -147,6 +187,9 @@ describe.skipIf(serverUrl === undefined)(
       expect(noahCli.json?.['code']).toBe(noahApp.body['code']);
 
       expect(await recorded(gate)).toEqual([{ decision: null, state: 'pending' }]);
+      // Nothing moved, as T2g reads it: the gate the crossings could not
+      // decide still holds its task open, on both surfaces (contract 4.3).
+      expect(await completing(gate)).toStrictEqual(['GATE_PENDING', 'GATE_PENDING']);
       // Beside its positive control: the grant holder's same call on the same
       // gate is recorded, so each refusal above is the crossing's, never a
       // command line that decides nothing for anyone.
