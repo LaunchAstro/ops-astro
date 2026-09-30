@@ -209,7 +209,7 @@ export async function writeTaskComment(
   body: unknown,
   audience: unknown,
   commentType: unknown,
-  mentions: unknown = [],
+  mentions?: unknown,
 ): Promise<HandlerOutcome> {
   if (on.target.deleted_at !== null) return refused(refuseNotFound());
   const commentTypeId = on.commentTypeId;
@@ -244,13 +244,13 @@ export async function writeTaskComment(
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['comment_type'], TYPE_FIXES));
   }
   const named = mentions ?? [];
-  if (!Array.isArray(named) || !named.every((id) => isIdentifier(id))) {
+  if (!Array.isArray(named) || !named.every((id): id is string => isIdentifier(id))) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['mentions'], MENTIONS_FIXES));
   }
   // INB-1: a mention of someone who cannot read the comment is refused before
   // it saves, naming them, rather than raising an item they could never open.
   const task = { taskId: on.target.id, audience };
-  const mentioned = await readMentions(tx, task, named as string[]);
+  const mentioned = await readMentions(tx, task, named);
   const unreadable = mentioned.filter((person) => !person.readable);
   if (unreadable.length > 0) {
     return refused(

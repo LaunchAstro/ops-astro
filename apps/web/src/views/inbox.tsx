@@ -12,7 +12,7 @@
 // and nothing says delivered when only an attempt was asked or accepted. A
 // gone entry names nothing and links nowhere.
 
-import { useEffect, type MouseEvent, type ReactElement } from 'react';
+import { useEffect, type ReactElement } from 'react';
 import { CountBadge, Empty } from '@launchastro/ui';
 import type {
   InboxCountResult,
@@ -87,7 +87,7 @@ export function Inbox(props: InboxProps): ReactElement {
 
   return (
     <section className="card inbox" aria-labelledby="inbox-heading">
-      <Owed client={client} grantKey={props.grantKey} follow={props.follow} />
+      <Owed client={client} grantKey={props.grantKey} follow={follow} />
       <RecordState
         state={list.state}
         subject="inbox"
@@ -163,7 +163,7 @@ function InboxRow(props: {
         <a
           className="inbox__task"
           href={pathTo('agency:task-detail', { key: entry.task.key })}
-          onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+          onClick={(event) => {
             event.preventDefault();
             props.onOpen(event.currentTarget.href);
           }}
