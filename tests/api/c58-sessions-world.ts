@@ -15,6 +15,7 @@ import { executeAgentCommand } from '../../packages/core-commands/src/commands/a
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { connectSessionEnds, type SessionEnds } from '../../packages/core-records/src/index.ts';
 import {
   ACCEPTANCE_ISSUER,
   bearer,
@@ -100,6 +101,7 @@ export type SessionView = {
 
 export let world: World;
 let provider: Server;
+let ends: SessionEnds | undefined;
 let replies: Record<string, Reply> = { ...GOOD };
 export let seen: Seen[] = [];
 
@@ -211,6 +213,7 @@ export async function openSessionsWorld(): Promise<void> {
     executeCommand,
     executeRead,
     executeAgentCommand,
+    sessionEnds: (ends = connectSessionEnds(world.db.appUrl, { source: 'runtime' })),
     factors: createGoTrueFactors({
       baseUrl: `http://127.0.0.1:${(provider.address() as AddressInfo).port}`,
       timeoutMs: 300,
@@ -245,6 +248,7 @@ export async function closeSessionsWorld(): Promise<void> {
   await new Promise<void>((resolve) => {
     provider?.close(() => resolve());
   });
+  await ends?.close();
   await world?.close();
 }
 

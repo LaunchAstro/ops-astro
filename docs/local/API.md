@@ -232,7 +232,11 @@ A cookie-carried request needs `x-ops-astro-csrf: 1` and no cross-site
 `Sec-Fetch-Site` (else `AUTH_CROSS_SITE` 403), and reads only the cookie of
 the sign-in its `x-ops-astro-session` names; session cookies with none named
 are `AUTH_SESSION_MISMATCH` 403. `/api/session/end` clears only the named
-sign-in's cookie, so a late sign-out ends no other. A bearer is read first.
+sign-in's cookie, so a late sign-out ends no other. When that cookie's token
+verifies and names a provider session, it first ends that session for every
+business (below) and asks the provider to sign it out (`scope=local`); a
+bearer beside it, a forged or lapsed token ends nothing but the cookie, and
+the answer is `{ ok: true }` whatever the provider says. A bearer is read first.
 
 Nothing else reaches identity. Not a body field, not a host or forwarded
 header, not an `apikey`, not a query parameter. A request carrying `actorId` or
@@ -263,8 +267,10 @@ a UUID (`VerifiedSubject.sessionId`), and kept by every refresh. A session the
 person has ended (signed out of, ended from another session, or ended by a
 factor change) is refused at login resolution from that commit,
 `AUTH_SESSION_EXPIRED` 401, before the second-factor check, whatever the
-token's own `exp` says (`ended_sessions`, 0057). The provider's sign-out, which
-revokes the refresh tokens, comes after and cannot undo it.
+token's own `exp` says. The ending holds in every business the login reaches,
+whichever route asked (`ops.ended_provider_sessions`, 0065; each business's
+own record is `ended_sessions`, 0057). The provider's sign-out, which revokes
+the refresh tokens, comes after and cannot undo it.
 
 The business is named by the path and verified by login resolution. A business
 the caller is not a member of and a business that does not exist both answer

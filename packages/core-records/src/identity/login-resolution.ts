@@ -149,7 +149,7 @@ export async function resolveLogin(
   // session or by a factor change) is over from that commit, whatever the
   // token's own expiry says. Before the factor, so an ended session is told
   // to sign in again rather than to give a code.
-  if (presented.sessionId !== undefined && (await sessionEnded(tx, found.person_id, presented))) {
+  if (await sessionEnded(tx, presented)) {
     return await recordRefusal(tx, presented, refuse('AUTH_SESSION_EXPIRED', ENDED_FIXES));
   }
 
@@ -233,18 +233,18 @@ export async function standsOnShares(tx: TenantQuery, personId: string): Promise
   return row !== undefined && row.shares > 0 && row.business === 0;
 }
 
-/** Whether this person ended the session the token belongs to (C58, 0057). */
-async function sessionEnded(
-  tx: TenantQuery,
-  personId: string,
-  presented: VerifiedSubject,
-): Promise<boolean> {
+/**
+ * Whether the session the token belongs to has ended (C58, 0057 and 0065): a
+ * sign-out anywhere, in any business the login reaches or in the browser, ends
+ * it in all of them. A token naming no session has none to end.
+ */
+async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject): Promise<boolean> {
+  if (presented.sessionId === undefined) return false;
   const rows = await tx.query<{ readonly ended: boolean }>(
     `select exists (
-       select 1 from public.ended_sessions
-        where business_id = $1 and person_id = $2 and session_id = $3
+       select 1 from ops.ended_provider_sessions where session_id = $1
      ) as ended`,
-    [tx.businessId, personId, presented.sessionId],
+    [presented.sessionId],
   );
   return rows[0]?.ended === true;
 }

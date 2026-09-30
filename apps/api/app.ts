@@ -46,6 +46,7 @@ import {
 import type {
   Database,
   LegalDocument,
+  SessionEnds,
   VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
 import {
@@ -162,6 +163,12 @@ export interface ApiOptions {
    * and no agent holds `account:write`.
    */
   readonly factors?: FactorProvider;
+  /**
+   * Where the browser's sign-out ends the provider session for every business
+   * (C58, 0065): `connectSessionEnds` in a deployment. Absent, `/end` clears
+   * the cookie only.
+   */
+  readonly sessionEnds?: Pick<SessionEnds, 'end'>;
   /**
    * The installation's service-health sources (C34): the watcher, the error
    * sink and, where switched on, tracing. Read for `operations.read` after its
@@ -297,10 +304,20 @@ export function createApi(options: ApiOptions): Hono {
     setCookie(context, cookieNameFor(session), token, SESSION_COOKIE_OPTIONS);
     return context.json({ ok: true, session }, 200);
   });
-  api.post(`${SESSION_PATH}/end`, (context) => {
+  api.post(`${SESSION_PATH}/end`, async (context) => {
     if (!fromOwnPages(context.req)) return refuse(context, CROSS_SITE());
     // Only the named sign-in's cookie: a late answer cannot end any other.
     const session = namedSession(context.req);
+    // C58 refresh revoked: the cookie's token, verified before anything is
+    // ended, ends its provider session here for every business, then at the
+    // provider. A bearer beside it, a token that does not verify or one past
+    // its time ends nothing; the provider's answer never undoes the ending.
+    const token = bearerOf(context.req) === undefined ? sessionCookieOf(context.req) : undefined;
+    const presented = token === undefined ? undefined : await options.verify(context.req);
+    if (token !== undefined && typeof presented === 'object' && presented.sessionId) {
+      await options.sessionEnds?.end(presented.sessionId);
+      await options.factors?.signOut(token, 'local');
+    }
     if (session !== undefined) {
       deleteCookie(context, cookieNameFor(session), SESSION_COOKIE_OPTIONS);
     }

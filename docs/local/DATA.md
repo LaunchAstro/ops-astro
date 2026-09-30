@@ -559,10 +559,19 @@ attempt came in on (null on a refusal, and for a token that names none); a
 person's session list reads it through `authentication_attempts_person_sessions`.
 `ended_sessions` holds one row per session a person ended: signed out
 (`sign_out`), ended from another session (`end_others`) or by a second-factor
-change (`factor_change`). Unique on business, person and session; login
-resolution refuses a session named here for that person. The application may
-select and insert; nothing changes or deletes a row. Tenancy-keyed with the
-restrictive policy.
+change (`factor_change`). Unique on business, person and session. The
+application may select and insert; nothing changes or deletes a row.
+Tenancy-keyed with the restrictive policy.
+
+## Ended provider sessions (0065, C58)
+
+`ops.ended_provider_sessions` holds the id of every provider session ended
+anywhere: each `ended_sessions` row, and the browser's sign-out at
+`/api/session/end`, which names no business. Installation-wide, no business,
+person or reason: the id alone. Login resolution refuses a token whose session
+is here in every business, and a person's session list leaves it out. The
+application may insert and read the id column; nothing changes or deletes a
+row.
 
 ## Overseas-services register (0052, C81)
 

@@ -45,11 +45,16 @@ import {
   connect,
   connectAsAdmin,
   connectListener,
+  connectSessionEnds,
   isBusinessId,
   KEY_FILE_VARIABLE,
   readEnvFile,
 } from '../../packages/core-records/src/index.ts';
-import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
+import type {
+  AdminConnection,
+  Database,
+  SessionEnds,
+} from '../../packages/core-records/src/index.ts';
 import { createApi, type LiveOptions, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
@@ -183,6 +188,8 @@ export interface ApiConfig {
    * never reads it. Absent, those calls are not sent and stay owed.
    */
   readonly providerSecret?: string;
+  /** Where the browser's sign-out ends a provider session for every business (C58, 0065). */
+  readonly sessionEnds?: SessionEnds;
   /** Langfuse's URL, `LANGFUSE_HOST` (C34); absent is tracing switched off. */
   readonly tracingUrl?: string;
   /**
@@ -302,6 +309,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
       ...(config.live === undefined ? {} : { live: config.live }),
       // The provider GoTrue is: the one destination its factor calls reach.
       factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
+      ...(config.sessionEnds === undefined ? {} : { sessionEnds: config.sessionEnds }),
       logins,
       // C34: tracing where switched on; the watcher and error sink are C29's.
       health:
@@ -462,6 +470,7 @@ async function main(): Promise<void> {
     signIn: { issuer: issuer as string, keySetUrl },
     keys,
     live: { topics },
+    sessionEnds: connectSessionEnds(databaseUrl as string, { source: 'runtime' }),
     ...(providerSecret === undefined || providerSecret === '' ? {} : { providerSecret }),
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     ...(alerts === undefined ? {} : { alerts }),

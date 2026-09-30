@@ -259,3 +259,8 @@ export {
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
 export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';
+export {
+  connectSessionEnds,
+  END_PROVIDER_SESSIONS,
+  type SessionEnds,
+} from './tenancy/session-ends.ts';

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A person's own sessions (C58, 0057): the ones this business has served them
-// lately, and the ones they have ended.
+// lately, less the ones ended anywhere (0065).
 //
 // The sign-in provider gives a person no list of their sessions, so the list
 // is what the door has seen: the distinct `session_id`s of the person's
@@ -10,6 +10,7 @@
 // ends their own sessions and nobody else's.
 
 import type { TenantQuery } from '../tenancy/database.ts';
+import { END_PROVIDER_SESSIONS } from '../tenancy/session-ends.ts';
 import { SESSION_ABSOLUTE_SECONDS } from './verified-subject.ts';
 
 export type SessionEndReason = 'sign_out' | 'end_others' | 'factor_change';
@@ -36,10 +37,7 @@ const SEEN = `
      and a.session_id is not null
      and a.at > now() - make_interval(secs => $3)
      and not exists (
-       select 1 from public.ended_sessions e
-        where e.business_id = a.business_id
-          and e.person_id = a.person_id
-          and e.session_id = a.session_id)
+       select 1 from ops.ended_provider_sessions e where e.session_id = a.session_id)
    group by a.session_id
    order by max(a.at) desc, a.session_id
    limit $4`;
@@ -109,5 +107,7 @@ async function endSessions(
      returning 1`,
     [tx.businessId, personId, sessionIds, reason],
   );
+  // Ended in every business the login reaches, not only this one (0065).
+  await tx.query(END_PROVIDER_SESSIONS, [sessionIds]);
   return rows.length;
 }

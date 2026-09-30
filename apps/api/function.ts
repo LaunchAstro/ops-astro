@@ -32,7 +32,12 @@
 // the entry refuses to start beside it.
 
 import { join } from 'node:path';
-import { connect, connectAsAdmin, connectOutbox } from '../../packages/core-records/src/index.ts';
+import {
+  connect,
+  connectAsAdmin,
+  connectOutbox,
+  connectSessionEnds,
+} from '../../packages/core-records/src/index.ts';
 import { crashSeamProblem, runtimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createOutboxAlerts, scopeKey } from './alerts/outbox.ts';
 import type { Alerts } from './alerts/sink.ts';
@@ -82,6 +87,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
 
   const { app } = composeApi({
     database: connect(databaseUrl, { source: 'runtime' }),
+    sessionEnds: connectSessionEnds(databaseUrl, { source: 'runtime' }),
     admin: connectAsAdmin(lookupUrl, { source: 'lookup' }),
     signIn: { issuer, keySetUrl },
     keys,
