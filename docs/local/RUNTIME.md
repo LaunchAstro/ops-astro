@@ -1021,10 +1021,13 @@ partly covered rather than proved.
   Before the bound it is `TRANSITION_NOT_PERMITTED`; a recipient outside the
   role, or nobody, is `SCOPE_NOT_GRANTED` naming `recipientPersonId`, with
   nothing written. The inbox follows in the same transaction (INB-1): open
-  decision items on the gate held by anyone outside the business-scope role
-  are withdrawn, and every business-scope decider, the recipient among them,
-  holds an open one, raised if they had none (one granted the role after the
-  gate was raised included).
+  decision items on the gate held by anyone outside the business-scope role,
+  or by the task's assignee, are withdrawn, and every business-scope decider
+  but the assignee, the recipient among them, holds an open one, raised if
+  they had none (one granted the role after the gate was raised included).
+  Four eyes rules the inbox everywhere: no gate raises the assignee a
+  decision item, and an assignment withdraws the new assignee's open ones on
+  the task.
 - **Rejection is terminal** (G05): the rejected gate takes no second decision,
   a new version in the same lineage is refused `LINEAGE_TERMINAL` on the
   lineage rather than on the gate, and the authorised restart is a new lineage
