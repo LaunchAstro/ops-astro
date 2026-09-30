@@ -63,6 +63,8 @@ const required = (
 ).required_status_checks.map((c) => c.context);
 
 const LOOKAHEAD_JOB = 'database look-ahead, Postgres 18 (not required)';
+/** The shards the required `database conformance` check rolls up (#252). */
+const SHARD_JOB = 'database conformance shard ${{ matrix.shard }}';
 
 describe('S0-7 CI on the hosted major', () => {
   ciOnTheCases1();
@@ -79,7 +81,7 @@ function ciOnTheCases1() {
   it('S0-7 the four places name the same 17 digest', () => {
     const want = `postgres@sha256:${DIGEST}`;
     const places = {
-      'ci.yml database conformance': images(job('database conformance')),
+      'ci.yml database conformance': images(job(SHARD_JOB)),
       'ci.yml isolation tests': images(job('isolation tests')),
       'scripts/local/db-up.sh': assigned('scripts/local/db-up.sh', 'IMAGE'),
       'scripts/local/restart-proof.sh': assigned('scripts/local/restart-proof.sh', 'IMAGE'),
@@ -99,16 +101,20 @@ function ciOnTheCases1() {
   });
 
   it('S0-7 the required database-conformance job runs Postgres 17 by digest and fails on any skip', () => {
-    const block = job('database conformance');
+    const block = job(SHARD_JOB);
     expect(required).toContain('database conformance');
+    // The required check passes only when every shard did.
+    expect(job('database conformance')).toMatch(/^ {4}needs: \[database-shard\]$/mu);
     expect(required).toContain('isolation tests');
     expect(images(block)).toStrictEqual([`postgres@sha256:${DIGEST}`]);
     // The runner it calls is the one that fails a run with a skipped test
     // (tests/ci/db-conformance-cases.mjs holds that to cases).
-    expect(block).toMatch(/^ {6}- run: pnpm run db:conformance$/mu);
+    expect(block).toMatch(
+      /^ {6}- run: pnpm run db:conformance --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}$/mu,
+    );
     expect(read('scripts/db-conformance.mjs')).toMatch(/A skip is the failure/u);
     // The required jobs never ask for another major.
-    for (const name of ['database conformance', 'isolation tests']) {
+    for (const name of ['database conformance', SHARD_JOB, 'isolation tests']) {
       expect(job(name), name).not.toContain(LOOKAHEAD);
       expect(job(name), name).not.toMatch(/continue-on-error/u);
     }
