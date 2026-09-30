@@ -59,6 +59,7 @@ import type {
   executeCommand,
   executeAgentCommand,
   CommandRefusal,
+  ConversationExchange,
   executeRead,
   ModelCallExecutor,
 } from '../../packages/core-commands/src/index.ts';
@@ -122,6 +123,12 @@ export interface ApiOptions {
    * command rests on has not landed.
    */
   readonly executeModelCall?: ModelCallExecutor;
+  /**
+   * AW-03's exchange on the person path: after a person's message is kept,
+   * the agent's answer through the broker. Absent, a message is kept and
+   * nothing answers it.
+   */
+  readonly answerConversation?: ConversationExchange;
   readonly live?: LiveOptions;
 }
 

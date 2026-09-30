@@ -10,6 +10,12 @@
 
 export { type AgentRequest } from './commands/agent-call.ts';
 export { agentAnswer, executeAgentCommand } from './commands/agent-envelope.ts';
+export {
+  conversationExchange,
+  type Asked,
+  type ConversationExchange,
+  type ConversationReply,
+} from './commands/conversation-exchange.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
 export {
   modelCallExecutor,

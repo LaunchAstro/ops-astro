@@ -51,6 +51,7 @@ import {
   describeFault,
   executeCommand,
   executeRead as readExecutor,
+  type ConversationExchange,
   type ModelCallExecutor,
 } from '../../packages/core-commands/src/index.ts';
 import {
@@ -169,6 +170,8 @@ export interface ApiConfig {
   readonly live?: LiveOptions;
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
+  /** AW-03's exchange through the same broker; absent where none is configured. */
+  readonly answerConversation?: ConversationExchange;
 }
 
 export interface ComposedApi {
@@ -250,6 +253,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
       ...(config.executeModelCall === undefined
         ? {}
         : { executeModelCall: config.executeModelCall }),
+      ...(config.answerConversation === undefined
+        ? {}
+        : { answerConversation: config.answerConversation }),
     }),
   );
 
@@ -345,7 +351,9 @@ async function main(): Promise<void> {
     issuer: issuer as string,
     keys,
     live: { topics },
-    ...(broker === undefined ? {} : { executeModelCall: broker.executor }),
+    ...(broker === undefined
+      ? {}
+      : { executeModelCall: broker.executor, answerConversation: broker.answerConversation }),
   });
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
