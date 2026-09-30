@@ -377,9 +377,12 @@ groups in one row pattern: a label, one quiet sentence, the control on the right
 dismissed), read with `preference.read` and written with `preference.save`, the
 caller's own row only. **Notifications** writes nothing: in-app is drawn on and
 locked, email is drawn not connected until AW-07b, and decisions and incidents
-are drawn as never silenced. **This business** is the screen below, unchanged,
-except that a `STEP_UP_REQUIRED` refusal shows its fix (sign in again), never
-the code.
+are drawn as never silenced. **This business** is the screen below, whose
+`STEP_UP_REQUIRED` refusal shows its fix (sign in again), never the code, with
+two more rows: the conversation and retention windows in whole days, each
+written through its own command (`settings.set_conversation_window`,
+`settings.set_retention_window`) with the same revision, conflict and refusal
+handling (`settings/windows.tsx`).
 
 The appearance is applied at once (`appearance.ts`): `data-theme-preference` on
 the root, which MP-1-1's before-paint step turns into `data-theme`, with a 500ms

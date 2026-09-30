@@ -3,9 +3,9 @@
 // `/settings`: Settings General (MP-2-11). Three groups on one page, in the
 // mockup's row pattern: You and Notifications (the person's own, in
 // `settings/you.tsx`) and This business, which is the built settings screen
-// (`Settings.tsx`) unchanged: its two rows, their revision and refusal
-// handling and their capability gating. The conversation and retention
-// windows join This business when their commands land.
+// (`Settings.tsx`): the four-eyes, client sign-off, conversation window and
+// retention window rows, their revision and refusal handling and their
+// capability gating.
 
 import type { ReactElement } from 'react';
 import { SettingsScreen, type SettingsScreenProps } from './Settings.tsx';
