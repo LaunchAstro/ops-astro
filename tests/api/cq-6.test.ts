@@ -203,7 +203,9 @@ describe.skipIf(serverUrl === undefined)('CQ-6 on both prefixes', () => {
       const before = await revisionOf(task.id);
       for (const name of [
         'task.create',
-        'task.update',
+        // Not task.update: an agent writes the description and brief on its own
+        // delegated task (MP-4-7), and elsewhere is refused out of purpose.
+        'task.complete',
         'task.assign',
         'task.trash',
         'grant.revoke',

@@ -100,6 +100,7 @@ import { ConflictNotice, MovedNotice, UnsavedBar } from './task/Notices.tsx';
 import { TaskHeader } from './task/Header.tsx';
 import { TaskFacts } from './task/Facts.tsx';
 import { TaskUnknown } from './task/Absent.tsx';
+import { withPageDefaults } from './task/read-defaults.ts';
 import {
   PanelDoorButton,
   perspectiveCounts,
@@ -221,7 +222,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
               <Loaded
                 client={client}
                 grantKey={props.grantKey}
-                task={value.task}
+                task={withPageDefaults(value.task)}
                 draft={held}
                 note={note}
                 onDecided={setNote}
@@ -684,37 +685,56 @@ function Loaded(props: LoadedProps): ReactElement {
           </>
         }
         agent={
-          <>
-            <BriefSection brief={task.agentBrief} />
-            <Proposals
-              capCurrency={task.capCurrency}
-              client={client}
-              note={props.note}
-              onChanged={props.onChanged}
-              onDecided={props.onDecided}
-              onProposeRefused={props.onProposeRefused}
-              proposeRefusal={props.proposeRefusal}
-              proposeDraft={props.proposeDraft}
-              onProposeDraft={props.onProposeDraft}
-              persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
-              proposals={task.proposals}
-              envelope={task.envelope ?? null}
-              topUpNote={props.topUpNote}
-              onTopUpNote={props.onTopUpNote}
-              recordId={task.id}
-              revision={task.revision}
-            />
-            <RunProgress
-              client={client}
-              grantKey={props.grantKey}
-              readOf={task}
-              taskKey={task.key}
-            />
-            <Alerts alerts={task.alerts} />
-            <Outages state={outages.state} taskId={task.id} />
-          </>
+          <AgentSide
+            props={props}
+            persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
+            outages={<Outages state={outages.state} taskId={task.id} />}
+          />
         }
       />
     </div>
+  );
+}
+
+/**
+ * The Agent side of the task (MP-4-3): the brief (MP-4-7), the proposals and
+ * their gates with the top-up (T2e), and the run as it goes (T2a progress,
+ * T2h alerts, T3e2 outages).
+ */
+function AgentSide({
+  props,
+  persons,
+  outages,
+}: {
+  readonly props: LoadedProps;
+  readonly persons: PersonListResult['persons'];
+  readonly outages: ReactElement;
+}): ReactElement {
+  const { client, task } = props;
+  return (
+    <>
+      <BriefSection brief={task.agentBrief} />
+      <Proposals
+        capCurrency={task.capCurrency}
+        client={client}
+        note={props.note}
+        onChanged={props.onChanged}
+        onDecided={props.onDecided}
+        onProposeRefused={props.onProposeRefused}
+        proposeRefusal={props.proposeRefusal}
+        proposeDraft={props.proposeDraft}
+        onProposeDraft={props.onProposeDraft}
+        persons={persons}
+        proposals={task.proposals}
+        envelope={task.envelope ?? null}
+        topUpNote={props.topUpNote}
+        onTopUpNote={props.onTopUpNote}
+        recordId={task.id}
+        revision={task.revision}
+      />
+      <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
+      <Alerts alerts={task.alerts} />
+      {outages}
+    </>
   );
 }

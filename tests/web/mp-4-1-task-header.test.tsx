@@ -134,7 +134,7 @@ describe('MP-4-1 display title', () => {
 /** Every run line the page draws, as its shape and its words. */
 const runLine = async (over: Readonly<Record<string, unknown>>) => {
   const view = await page('Proj-Verity-Pacing', found(over));
-  const lines = view.all('[data-run]') as HTMLElement[];
+  const lines = view.all('header.tpr [data-run]') as HTMLElement[];
   const shape = lines.map((line) => [line.dataset['run'], line.textContent]);
   await view.unmount();
   return shape;

@@ -51,6 +51,13 @@ export function conversing(...threads: readonly (readonly unknown[])[]): {
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
+    // Main's page also reads the queue (T3e2 outages) and the run (T2a), and
+    // joins the task's live channel (T2f); none is a command the thread sent.
+    if (at.endsWith('/task/queue')) {
+      return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));
+    }
+    if (at.endsWith('/task/execution')) return Promise.resolve(json({ ok: false }));
+    if (at.includes('/live/task/')) return Promise.resolve(new Response(null, { status: 404 }));
     if (at.endsWith('/task/read')) {
       const comments = threads[Math.min(reads, threads.length - 1)] ?? [];
       reads += 1;
