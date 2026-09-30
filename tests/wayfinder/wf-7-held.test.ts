@@ -13,6 +13,9 @@
 // - The waiting-run inbox item: SL04 U99 (`inbox_items`, the raise).
 // - The ceiling approval's recent sign-in: C59's step-up (S0-5's sweep).
 // - The run's lease and checks: SL12 U31 (MP-6-1).
+// - The skill pinned by digest: the digest is settled (the `skills` CLI's
+//   folder hash, `skill-digest.ts`; the research skill matches its pin), but
+//   the line is the run pinning it, so it waits on the run (U37, U100).
 
 import { describe, it } from 'vitest';
 
