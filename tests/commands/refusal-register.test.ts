@@ -79,9 +79,7 @@ const STILL_UNPRODUCED: readonly string[] = [
   // AW-01 J's four for C52-A's dispatch, the occurrence run's one caller.
   'ACTIVATION_MODE_NOT_PERMITTED',
   'APPROVAL_NOT_STANDING',
-  'DEFINITION_DIGEST_MISMATCH',
   'DEFINITION_REVOKED',
-  'DEFINITION_UNAVAILABLE',
   'DELEGATION_EXCLUDES_ACTIVATION',
   // `AUDIENCE_NOT_PERMITTED` came off when a delegated agent's own-task
   // comment was wired: the agent writes `internal` only, and a `client`
