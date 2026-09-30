@@ -105,6 +105,11 @@
   text-transform: var(--type-body-case);
   text-decoration: none;
 }
+/* A section's own glyph (MP-2-2, T-R4): the expanded rail stays text; the
+   folded rail (MP-2-3) displays it. */
+.rail__icon {
+  display: none;
+}
 .rail__item:hover {
   background: var(--surface-2);
   color: var(--text);

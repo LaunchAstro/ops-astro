@@ -19,6 +19,7 @@ import {
   type Section,
 } from './manifest.ts';
 import { isLegacy } from './legacy.ts';
+import { RAIL_GLYPHS } from './rail-glyphs.ts';
 import { matchRoute, pathTo, type RouteMatch } from './routes.ts';
 import { RecordState } from './views/record-state.tsx';
 
@@ -78,6 +79,7 @@ export function railFor(
       href,
       lit: lights,
       exact: lights && href === here,
+      icon: RAIL_GLYPHS[`${namespace}:${each.id}`],
     };
   });
   const back = CROSS_FACE.find(([from, to]) => from === 'clients' && to === 'agency');

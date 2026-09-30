@@ -44,6 +44,8 @@ export interface RailEntry {
   readonly exact?: boolean;
   /** "Back to Clients": a link in the small primary dress above the sections (MP-2-9). */
   readonly kind?: 'section' | 'back';
+  /** The section's own glyph, drawn only once the rail folds (MP-2-2, T-R4). */
+  readonly icon?: GlyphName | undefined;
 }
 
 export interface DockTab {
@@ -191,6 +193,11 @@ export function Shell(props: ShellProps): ReactElement {
                   }
                 : {})}
             >
+              {entry.icon === undefined ? null : (
+                <span className="rail__icon" data-glyph={entry.icon} aria-hidden="true">
+                  <Icon name={entry.icon} size="sm" />
+                </span>
+              )}
               <span>{entry.label}</span>
             </a>
           ))}
