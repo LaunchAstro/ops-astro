@@ -212,7 +212,8 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(classes['backup']).toStrictEqual(['ops_astro_backup']);
     // G2: the business lookup reads id and key of businesses, proved in tests/db/business-lookup.test.ts.
     expect(classes['lookup']).toStrictEqual(['ops_astro_lookup']);
-    // S0-2: the outbox forwarder reads and deletes ops.api_events, proved in tests/db/api-events.test.ts.
+    // S0-2: the outbox forwarder reads and deletes ops.api_events and keeps its raised alerts in
+    // ops.api_alerts (0048), proved in tests/db/api-events.test.ts.
     expect(classes['forwarder']).toStrictEqual(['ops_astro_forwarder']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);

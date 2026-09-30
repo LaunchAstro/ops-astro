@@ -64,6 +64,15 @@ function outboxAlerts(key: Uint8Array) {
   return { alerts, close: async () => await outbox.close() };
 }
 
+/** The outbox, and (0048) the alerts it raised, kept until the sink takes them. */
+const FORWARDER_HOLDS = [
+  'ops.api_alerts DELETE',
+  'ops.api_alerts INSERT',
+  'ops.api_alerts SELECT',
+  'ops.api_events DELETE',
+  'ops.api_events SELECT',
+];
+
 function roleCases() {
   it('lets the application group insert the four columns, and refuses it every read, change and removal', async () => {
     await clear();
@@ -81,7 +90,7 @@ function roleCases() {
     }
   });
 
-  it('makes the forwarder a role no one logs in as, owning nothing, granted select and delete on the table alone', async () => {
+  it('makes the forwarder a role no one logs in as, owning nothing, granted the outbox and its kept alerts alone', async () => {
     const [role] = await world.db.admin.execute<Record<string, boolean>>(
       `select rolcanlogin, rolsuper, rolbypassrls, rolcreaterole, rolcreatedb, rolreplication
          from pg_roles where rolname = $1`,
@@ -106,10 +115,7 @@ function roleCases() {
        order by 1`,
       [FORWARDER],
     );
-    expect(held.map((row) => row.held)).toStrictEqual([
-      'ops.api_events DELETE',
-      'ops.api_events SELECT',
-    ]);
+    expect(held.map((row) => row.held)).toStrictEqual(FORWARDER_HOLDS);
   });
 }
 

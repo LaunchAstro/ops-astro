@@ -59,6 +59,7 @@ const count = async (): Promise<number> => {
 };
 const clear = async (): Promise<void> => {
   await fixture.db.admin.execute('delete from ops.api_events');
+  await fixture.db.admin.execute('delete from ops.api_alerts');
 };
 /** An instance appends after it answers: wait for the rows it owes. */
 const rowsReach = async (n: number): Promise<void> =>

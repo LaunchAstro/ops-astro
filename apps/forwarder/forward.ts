@@ -14,9 +14,11 @@
 //   allowlist (`rebuiltError`) under an id fixed by its row, and counts the
 //   signals under the detector's own rules, each row's time the clock and its
 //   keyed digest the scope;
-// - sends each alert raised, then deletes the errors sent, the signals an
-//   alert counted and the signals past their rule's window; a send that fails
-//   rolls the pass back, and every row waits for the next one;
+// - keeps each alert raised, its sink id fixed then (0048), and deletes the
+//   errors sent, the signals an alert counted and the signals past their
+//   rule's window; a send that fails rolls the pass back;
+// - then sends the kept alerts, each deleted only once the sink took it, so a
+//   retry after a lost answer sends the same id whatever commits later;
 // - pings its heartbeat once that has committed, and fails if the ping did.
 // It is its own app, not `apps/worker`: the worker is a client of the API and
 // never connects (`worker-holds-no-database`).
@@ -135,6 +137,18 @@ async function replay(execute: Execute, options: ForwarderOptions, now: number, 
   return { handled, spent };
 }
 
+/** Every alert kept, in the order raised; each leaves only once the sink took it. */
+async function deliver(execute: Execute, options: ForwarderOptions): Promise<void> {
+  await execute('set local role ops_astro_forwarder');
+  await advisoryLock({ query: execute }, 'ops.api_events forwarder');
+  const kept = await execute<Raised>('select id, kind from ops.api_alerts order by seq');
+  for (const { kind, id } of kept) {
+    // oxlint-disable-next-line no-await-in-loop -- in the order raised
+    await options.send(alertEvent(kind, options.where, options.release, id));
+  }
+  await execute('delete from ops.api_alerts where id = any($1::text[])', [kept.map((a) => a.id)]);
+}
+
 export function createForwarder(options: ForwarderOptions): {
   readonly once: () => Promise<{ handled: number; dropped: number }>;
 } {
@@ -151,16 +165,21 @@ export function createForwarder(options: ForwarderOptions): {
     if (dropped > 0) raised.push({ kind: 'signals-dropped', id: fixedId('dropped', stale!.last!) });
     const now = stale?.now.getTime() ?? Date.now();
     const { handled, spent } = await replay(execute, options, now, raised);
-    for (const { kind, id } of raised) {
-      // oxlint-disable-next-line no-await-in-loop -- in the order raised
-      await options.send(alertEvent(kind, options.where, options.release, id));
-    }
+    // Each alert is kept with its id, fixed now, as the signals it counted go: a
+    // send that fails leaves it to the next pass under the same id (0048).
+    await execute(
+      `insert into ops.api_alerts (id, kind)
+         select id, kind from unnest($1::text[], $2::text[]) with ordinality as a(id, kind, n)
+         order by n on conflict (id) do nothing`,
+      [raised.map((alert) => alert.id), raised.map((alert) => alert.kind)],
+    );
     await execute('delete from ops.api_events where id = any($1::bigint[])', [spent]);
     return { handled, dropped };
   };
 
   async function once(): Promise<{ handled: number; dropped: number }> {
     const done = await options.database.transaction(pass);
+    await options.database.transaction(async (execute) => await deliver(execute, options));
     const beat = await options.heartbeat?.();
     // Only a ping the watcher took completes a pass: failed, refused or not set is silence.
     if (beat !== undefined && beat !== 'sent') throw new Error(`the heartbeat was ${String(beat)}`);
