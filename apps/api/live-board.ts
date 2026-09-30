@@ -122,13 +122,11 @@ function batch(
       pending.check = false;
       // eslint-disable-next-line no-await-in-loop -- one batch is asked before the next.
       if ((await rejoin(stream, ask, bound, bind)) === 'closed') return;
-      if (bound.owed) {
-        if (!check) continue;
-        pending.resync = true;
-        bound.owed = false;
-      }
+      if (bound.owed && !check) continue;
+      // A rebind owes the recheck's resync; a revoked read moves only the reach.
       // eslint-disable-next-line no-await-in-loop
-      if (check && !pending.resync && (await ask.reach?.()) !== bound.reach) pending.resync = true;
+      pending.resync ||= bound.owed || (check && (await ask.reach?.()) !== bound.reach);
+      bound.owed = false;
       const { resync, inbox } = pending;
       const named = [...tasks];
       pending.resync = pending.inbox = false;

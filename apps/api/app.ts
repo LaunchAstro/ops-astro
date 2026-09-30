@@ -407,11 +407,7 @@ export function createApi(options: ApiOptions): Hono {
               return isCommandRefusal(again) ? undefined : again.personId;
             },
             reads: async (taskId) => await mayHear(options, context, admitted.businessId, taskId),
-            reach: async () => {
-              const presented = await options.verify(context.req);
-              if (typeof presented !== 'object') return undefined;
-              return await boardReach(options.database, admitted.businessId, presented);
-            },
+            reach: async () => await mayReach(options, context, admitted.businessId),
             shown: async (personId) =>
               await mayShowInbox(options, context, admitted.businessId, personId),
           },
@@ -470,6 +466,18 @@ async function mayHear(
   const presented = await options.verify(context.req);
   if (typeof presented !== 'object') return false;
   return await boardHears(options.database, businessId, presented, taskId);
+}
+
+/** A digest of the board reader's grants now, with the bearer verified again. */
+async function mayReach(
+  options: ApiOptions,
+  context: Context,
+  businessId: string,
+): Promise<string | undefined> {
+  const presented = await options.verify(context.req);
+  return typeof presented === 'object'
+    ? await boardReach(options.database, businessId, presented)
+    : undefined;
 }
 
 /** What `inbox.read` shows the stream's own person now, asked with the bearer verified again. */
