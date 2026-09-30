@@ -637,7 +637,8 @@ live('S0-1 containment and resource limits, live', () => {
     const control = docker(['exec', prod, 'sh', '-c', `grep -sl '${CANARY}' /proc/self/environ`]);
     expect(control.out).toBe('/proc/self/environ');
     listener.close();
-  }, 120_000);
+    // Thirteen containers and probes: a hosted runner needs more than 120 s.
+  }, 300_000);
 
   // eslint-disable-next-line max-lines-per-function -- one test, its body kept byte for byte
   it('S0-1 resource limits: saturating each inside staging leaves production green', async () => {

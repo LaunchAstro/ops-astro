@@ -167,6 +167,18 @@ jobs:
           rm -f "${RUNNER_TEMP}/${archive}"
           "$bin/gitleaks" version
           echo "$bin" >> "$GITHUB_PATH"
+      # S0-1 containment, live: its pinned images come from Docker Hub, whose
+      # anonymous pull limit a shared runner meets. They are pulled through
+      # Google's public mirror of it; each stays named by its digest, so the
+      # mirror can serve only the bytes that digest names.
+      - name: Docker Hub pulls through its mirror, images still by digest
+        run: |
+          set -euo pipefail
+          f=/etc/docker/daemon.json
+          current=$(sudo cat "$f" 2>/dev/null || echo '{}')
+          echo "$current" | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee "$f"
+          sudo systemctl restart docker
+          docker info --format '{{.RegistryConfig.Mirrors}}'
       - run: pnpm check
       - name: Semgrep p/default on the supply-chain settings, image pinned by digest (CQ-3)
         run: bash scripts/local/semgrep-settings.sh
