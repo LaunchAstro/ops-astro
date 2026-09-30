@@ -13,8 +13,9 @@
 // and leave the attempt and the step exactly as they were. An effect that can
 // be neither replayed nor reconciled is refused `EFFECT_NOT_RECONCILABLE`.
 // Data separation: a lease from another business is answered as one the
-// caller does not own and changes nothing there, and a dispatch never waits
-// on another business's step.
+// caller does not own and changes nothing there, directly and through the
+// `task.dispatch` command beside that business's own dispatch of it; a
+// dispatch never waits on another business's step.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -31,6 +32,7 @@ import {
 import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import { pickup } from '../../packages/core-runtime/src/pickup.ts';
+import { executeCommand, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
 import {
   dispatch,
   EFFECT_OPERATIONS,
@@ -150,6 +152,50 @@ async function leased(
         collection: TASK_COLLECTION,
       },
     };
+  });
+}
+
+/** A step approved and picked up by the business's own person, as `leased` does for its agent. */
+async function personLeased(database: Database, fixture: RuntimeFixture) {
+  const taskId = await newTask(database, fixture.businessId, fixture.decider);
+  return await database.withBusiness(fixture.businessId, async (tx) => {
+    const proposed = await propose(tx, {
+      taskId,
+      collection: TASK_COLLECTION,
+      proposedByActorId: fixture.decider.actorId,
+      subjects: subjectsOf(fixture.decider),
+      purpose: `t2c1_${randomUUID().slice(0, 8)}`,
+      maximumMinor: 2_500,
+      currency: 'AUD',
+      payload: { change: 'a team-only comment' },
+      step: { kind: 'synthetic_comment', payload: {} },
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    if (!proposed.ok) throw new Error('propose refused');
+    const decided = await decide(tx, {
+      gateId: proposed.value.gateId,
+      versionId: proposed.value.versionId,
+      decidedByPersonId: fixture.decider.personId,
+      decidedByActorId: fixture.decider.actorId,
+      subjects: subjectsOf(fixture.decider),
+      collection: TASK_COLLECTION,
+      decision: 'approve',
+      note: 'go',
+      signingKey: TEST_SIGNING_KEY,
+      capId: fixture.capId,
+    });
+    if (!decided.ok || decided.value.decision !== 'approve') throw new Error('decide refused');
+    const picked = await pickup(tx, {
+      claimant: 'person',
+      reservationId: decided.value.reservationId,
+      personId: fixture.decider.personId,
+      actorId: fixture.decider.actorId,
+      authorisedByPersonId: fixture.decider.personId,
+      collection: TASK_COLLECTION,
+      leaseSeconds: 600,
+    });
+    if (!picked.ok) throw new Error(`pickup refused ${picked.refusal.code}`);
+    return picked.value;
   });
 }
 
@@ -345,46 +391,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
   });
 
   it('answers an agent naming a person’s own lease as LEASE_NOT_OWNED, not a fault', async () => {
-    const taskId = await newTask(db.app, fixture.businessId, fixture.decider);
-    const personLease = await db.app.withBusiness(fixture.businessId, async (tx) => {
-      const proposed = await propose(tx, {
-        taskId,
-        collection: TASK_COLLECTION,
-        proposedByActorId: fixture.decider.actorId,
-        subjects: subjectsOf(fixture.decider),
-        purpose: `t2c1_${randomUUID().slice(0, 8)}`,
-        maximumMinor: 2_500,
-        currency: 'AUD',
-        payload: { change: 'a team-only comment' },
-        step: { kind: 'synthetic_comment', payload: {} },
-        expiresAt: new Date(Date.now() + 3_600_000),
-      });
-      if (!proposed.ok) throw new Error('propose refused');
-      const decided = await decide(tx, {
-        gateId: proposed.value.gateId,
-        versionId: proposed.value.versionId,
-        decidedByPersonId: fixture.decider.personId,
-        decidedByActorId: fixture.decider.actorId,
-        subjects: subjectsOf(fixture.decider),
-        collection: TASK_COLLECTION,
-        decision: 'approve',
-        note: 'go',
-        signingKey: TEST_SIGNING_KEY,
-        capId: fixture.capId,
-      });
-      if (!decided.ok || decided.value.decision !== 'approve') throw new Error('decide refused');
-      const picked = await pickup(tx, {
-        claimant: 'person',
-        reservationId: decided.value.reservationId,
-        personId: fixture.decider.personId,
-        actorId: fixture.decider.actorId,
-        authorisedByPersonId: fixture.decider.personId,
-        collection: TASK_COLLECTION,
-        leaseSeconds: 600,
-      });
-      if (!picked.ok) throw new Error(`pickup refused ${picked.refusal.code}`);
-      return picked.value;
-    });
+    const personLease = await personLeased(db.app, fixture);
     const mine = await leased(db.app, fixture);
     const answer = await run(fixture, {
       ...mine.request,
@@ -403,6 +410,31 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
     expect(answer.ok).toBe(false);
     if (!answer.ok) expect(answer.refusal.code).toBe('LEASE_NOT_OWNED');
     expect(await marks(db, theirs.attemptId)).toStrictEqual(before);
+
+    // Through the command T2c1 serves, `task.dispatch`, as each business's own person calls it.
+    const person = await personLeased(db.app, other);
+    const untouched = await marks(db, person.attemptId);
+    const dispatchAs = async (on: RuntimeFixture) =>
+      await executeCommand(db.app, on.businessId, on.decider.presented, 'api', {
+        command: 'task.dispatch',
+        operationId: randomUUID(),
+        leaseId: person.leaseId,
+        fence: person.fence,
+      } as never);
+    const crossed = await dispatchAs(fixture);
+    expect(isCommandRefusal(crossed) ? crossed.code : 'dispatched').toBe('LEASE_NOT_OWNED');
+    expect(JSON.stringify(crossed)).not.toContain(person.attemptId);
+    expect(await marks(db, person.attemptId)).toStrictEqual(untouched);
+    // Its positive control: the same command in the lease's own business
+    // marks that step, so the refusals are the ownership check on a working
+    // dispatch, not a dispatch that marks nothing anywhere.
+    const home = await dispatchAs(other);
+    expect(isCommandRefusal(home), JSON.stringify(home)).toBe(false);
+    expect(await marks(db, person.attemptId)).toMatchObject({
+      dispatch_marker: true,
+      dispatch_attempt_id: person.attemptId,
+      dispatch_marked: true,
+    });
   });
 
   it('T2 isolation: a dispatch never waits on another business’s step', async () => {
