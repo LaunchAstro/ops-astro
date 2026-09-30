@@ -19,7 +19,9 @@ const variableFace = /@font-face\s*\{\s*font-family:\s*'Funnel Sans';[\s\S]*?\n\
 
 it('MP-1-2 a forward red then green pair and a production woff2 request', async () => {
   const head = process.env['SOL_REVIEW_HEAD'] ?? 'HEAD';
-  const commits = git('rev-list', '--reverse', `${anchor}..${head}`).split('\n').filter(Boolean);
+  const commits = git('rev-list', '--reverse', '--ancestry-path', `${anchor}..${head}`)
+    .split('\n')
+    .filter(Boolean);
   let red: string | undefined;
   let green: string | undefined;
   for (const commit of commits) {
