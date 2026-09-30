@@ -194,6 +194,16 @@ async function eachCommandShut(open: string): Promise<string[]> {
   return found;
 }
 
+/** The agent route reads the same check: its pickup refused, nothing written. */
+async function agentRouteShut(open: string): Promise<unknown[]> {
+  await forceOpen(open);
+  const before = await fingerprint();
+  const picked = await harness.asAgent('task.pickup', agentPickup);
+  expect(changed(before, await fingerprint())).toStrictEqual([]);
+  await tickAll();
+  return [picked.status, picked.code, picked.body['names']];
+}
+
 describe.skipIf(serverUrl === undefined)('S0-5 readiness check', () => {
   beforeAll(async () => {
     harness = await createHarness('s05_gate');
@@ -233,17 +243,11 @@ describe.skipIf(serverUrl === undefined)('S0-5 readiness check', () => {
 
   it('S0-5 gate coverage (gate forced open): every client-data and invitation command in the catalogue is refused and writes nothing', async () => {
     expect(await eachCommandShut('phone-alerts')).toStrictEqual([]);
-    // The agent route reads the same check.
-    await forceOpen('second-factor');
-    const before = await fingerprint();
-    const picked = await harness.asAgent('task.pickup', agentPickup);
-    expect([picked.status, picked.code, picked.body['names']]).toStrictEqual([
+    expect(await agentRouteShut('second-factor')).toStrictEqual([
       409,
       'GATE_SHUT',
       ['second-factor'],
     ]);
-    expect(changed(before, await fingerprint())).toStrictEqual([]);
-    await tickAll();
     // Every item done: the same commands run on a real-data installation.
     const task = await harness.freshTask('s0-5 real, gate closed');
     expect(task.revision).toBeGreaterThan(0);
