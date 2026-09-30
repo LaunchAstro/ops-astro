@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /// <reference lib="dom" />
-/* oxlint-disable no-await-in-loop -- widths, themes and pages run one at a time,
-   in order: one browser context at a time, so each page is measured alone. */
 //
 // MP-1-4's visual match on the drawn pages: every page the app registers, in
 // the pinned headless shell at 1480, 900 and 390 in light and dark, served
@@ -18,20 +16,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium, type Page } from 'playwright';
-import { madeUpSession, screenOf, serveApp } from '../visual/app-pages.ts';
-import { load, openSide, type Side } from '../visual/capture.ts';
+import { eachBuiltPage, madeUpSession, screenOf, serveApp } from '../visual/app-pages.ts';
 import { scrollMetrics } from '../visual/drift.ts';
 import { WIDTHS } from '../visual/gallery-views.ts';
-import {
-  fetchAssets,
-  MODE,
-  readAssets,
-  readPacket,
-  themesOf,
-  type Packet,
-  type Theme,
-} from '../visual/packet.ts';
-import { addressOf, builtPages, needsSession, overflowOf } from '../visual/report.ts';
+import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
+import { overflowOf } from '../visual/report.ts';
 
 export type PageCensus = {
   /** `<page>@<width>-<theme>`. */
@@ -152,23 +141,6 @@ async function measure(
   return { drew, sideways, ...matchStyles(given.names, looks, drawn) };
 }
 
-/** Every built page at one width in one theme, each on the side its route asks for. */
-async function eachPage(
-  sides: { signedOut: Side; signedIn: Side },
-  at: { packet: Packet; app: URL; width: number; theme: Theme },
-  given: { names: string[]; exceptions: string[] },
-): Promise<PageCensus[]> {
-  const out: PageCensus[] = [];
-  for (const id of builtPages()) {
-    const side = needsSession(id) ? sides.signedIn : sides.signedOut;
-    const address = addressOf(id, { key: 'T-1' }) ?? '/';
-    const page = await load(side, at.packet, new URL(address, at.app).href);
-    out.push({ name: `${id}@${String(at.width)}-${at.theme}`, ...(await measure(page, given)) });
-    await page.close();
-  }
-  return out;
-}
-
 /** The census over every built page at each width in each theme. */
 export async function pageCensus(given: {
   names: string[];
@@ -179,30 +151,16 @@ export async function pageCensus(given: {
   const browser = await chromium.launch(MODE);
   const { app, close } = await serveApp();
   const dir = mkdtempSync(join(tmpdir(), 'page-census-'));
-  const out: PageCensus[] = [];
   try {
     const session = madeUpSession(app, dir);
-    for (const width of WIDTHS) {
-      for (const theme of themesOf(packet)) {
-        const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
-        const signedIn = await openSide(browser, packet, width, {
-          app,
-          session,
-          colorScheme: theme,
-        });
-        try {
-          out.push(
-            ...(await eachPage({ signedOut, signedIn }, { packet, app, width, theme }, given)),
-          );
-        } finally {
-          await Promise.all([signedOut.context.close(), signedIn.context.close()]);
-        }
-      }
-    }
+    const each = { browser, packet, app, session, widths: WIDTHS, themes: themesOf(packet) };
+    return await eachBuiltPage(each, async ({ name, page }) => ({
+      name,
+      ...(await measure(page, given)),
+    }));
   } finally {
     rmSync(dir, { recursive: true, force: true });
     await browser.close();
     await close();
   }
-  return out;
 }

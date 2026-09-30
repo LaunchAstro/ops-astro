@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /// <reference lib="dom" />
-/* oxlint-disable no-await-in-loop -- widths, themes and shapes run one at a
-   time, in order: one browser context at a time. */
+/* oxlint-disable no-await-in-loop -- shapes run one at a time, in order: one
+   browser context at a time. */
 //
 // The local half of MP-1-5's visual match (U05): the mockup's own chart
 // drawing beside the kit's, in the pinned renderer, at 1480, 900 and 390 in
@@ -21,24 +21,12 @@
 // (fill, stroke, width, opacity, and a text's font and words), and the SVG's
 // size. Both pictures are written for a person to set side by side.
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { chromium, type Page } from 'playwright';
-import { madeUpSession, serveApp } from './app-pages.ts';
-import { load, MOCKUP_ORIGIN, openSide, type Side } from './capture.ts';
-import { WIDTHS } from './gallery-views.ts';
-import {
-  checkMockupTree,
-  checkRenderer,
-  fetchAssets,
-  liveRenderer,
-  MODE,
-  readAssets,
-  readPacket,
-  themesOf,
-  type Packet,
-} from './packet.ts';
+import type { Page } from 'playwright';
+import { load, MOCKUP_ORIGIN, type Side } from './capture.ts';
+import { besideMockup } from './mockup-run.ts';
+import type { Packet } from './packet.ts';
 
 /** The workbench tab that draws each chart, by its canonical address (routes.json). */
 const WORKBENCH = (tab: string): string => `/clients/sample-client/workbench/${tab}/`;
@@ -248,43 +236,7 @@ async function oneView(
   return lines;
 }
 
-const mockupDir = process.env['MOCKUP_DIR'];
-if (mockupDir === undefined) throw new Error('visual: set MOCKUP_DIR to the pinned mockup clone');
-const flag = process.argv.indexOf('--out');
-const out =
-  flag === -1 ? mkdtempSync(join(tmpdir(), 'charts-mockup-')) : (process.argv[flag + 1] ?? '');
-mkdirSync(out, { recursive: true });
-const packet = readPacket();
-const tree = checkMockupTree(mockupDir, packet.mockup);
-await fetchAssets(readAssets(), packet);
-const browser = await chromium.launch(MODE);
-checkRenderer(packet, liveRenderer(browser, MODE));
-const { app, close } = await serveApp();
-const lines: string[] = [];
-try {
-  const session = madeUpSession(app, join(out, 'session'));
-  for (const width of WIDTHS) {
-    for (const theme of themesOf(packet)) {
-      const mockup = await openSide(browser, packet, width, { mockupDir, tree, theme });
-      const gallerySide = await openSide(browser, packet, width, {
-        app,
-        session,
-        colorScheme: theme,
-      });
-      try {
-        const gallery = await load(gallerySide, packet, new URL('/gallery/', app).href);
-        const name = `@${String(width)}-${theme}`;
-        lines.push(...(await oneView({ mockup, gallery }, { packet, name, out })));
-      } finally {
-        await Promise.all([mockup.context.close(), gallerySide.context.close()]);
-      }
-    }
-  }
-} finally {
-  rmSync(join(out, 'session'), { recursive: true, force: true });
-  await browser.close();
-  await close();
-}
-writeFileSync(join(out, 'summary.txt'), `${lines.join('\n')}\n`);
-console.log(lines.join('\n'));
-process.exitCode = lines.every((line) => line.startsWith('ok')) ? 0 : 1;
+await besideMockup('charts-mockup-', async (sides, at) => {
+  const gallery = await load(sides.gallery, at.packet, new URL('/gallery/', at.app).href);
+  return oneView({ mockup: sides.mockup, gallery }, at);
+});

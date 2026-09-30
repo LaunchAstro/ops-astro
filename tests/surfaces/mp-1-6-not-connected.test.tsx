@@ -7,7 +7,6 @@
 // treatments in a real browser at three widths in both themes
 // (mp-1-6-gallery-treatments.ts); the pages the ticket names wait on their slices.
 
-import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { URL as NodeURL, fileURLToPath } from 'node:url';
@@ -22,6 +21,7 @@ import {
   Unavailable,
   type Freshness,
 } from '../../packages/ui/src/kit/treatments.tsx';
+import { runLeg } from './browser-leg.ts';
 import { mount, type Mounted } from './mount.tsx';
 import { primitiveSheets } from '../support/primitive-sheets.ts';
 import type { TreatmentView } from './mp-1-6-gallery-treatments.ts';
@@ -186,10 +186,7 @@ it('MP-1-6 shown in its own unit on the component gallery', () => {
 });
 
 it('MP-1-6 visual match: the treatments on the gallery at 1480, 900 and 390, light and dark, in a browser: not connected with its reason, the outline primary with its tooltip, the freshness marker an indicator, pink on sample data only', () => {
-  const script = new NodeURL('mp-1-6-gallery-treatments.ts', import.meta.url).pathname;
-  const run = spawnSync(process.execPath, [script], { encoding: 'utf8', timeout: 900_000 });
-  expect(run.status, run.stderr.slice(-2000)).toBe(0);
-  const { views, sameInDark } = JSON.parse(run.stdout) as TreatmentsReport;
+  const { views, sameInDark } = runLeg<TreatmentsReport>('mp-1-6-gallery-treatments.ts');
   expect(views).toHaveLength(6);
   for (const view of views) {
     const width = Number(/@(\d+)-/u.exec(view.name)?.[1]);

@@ -10,7 +10,6 @@
 // I8). The visual match draws the gallery in a real browser at three widths in
 // both themes (tests/visual/gallery-views.ts, mp-1-3-gallery-states.ts).
 
-import { spawnSync } from 'node:child_process';
 import { type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, expect, it } from 'vitest';
@@ -19,6 +18,7 @@ import { GALLERY, Gallery } from '../../packages/ui/src/kit/gallery.tsx';
 import { PAGES, pageAt } from '../../apps/web/src/manifest.ts';
 import { ROUTES } from '../../apps/web/src/routes.ts';
 import { SCREENS } from '../../apps/web/src/screen-registry.tsx';
+import { runLeg } from './browser-leg.ts';
 import { mount, type Mounted } from './mount.tsx';
 import { primitiveSheets } from '../support/primitive-sheets.ts';
 import type { GalleryReport } from './mp-1-3-gallery-states.ts';
@@ -162,10 +162,7 @@ it('MP-1-3 segmented control with a hover rule', async () => {
 });
 
 it('MP-1-3 visual match: the gallery at 1480, 900 and 390, light and dark, every entry drawn inside the width, with hover, focus and the open select, in a browser', () => {
-  const script = new globalThis.URL('mp-1-3-gallery-states.ts', import.meta.url).pathname;
-  const run = spawnSync(process.execPath, [script], { encoding: 'utf8', timeout: 900_000 });
-  expect(run.status, run.stderr.slice(-2000)).toBe(0);
-  const { views, sameInDark } = JSON.parse(run.stdout) as GalleryReport;
+  const { views, sameInDark } = runLeg<GalleryReport>('mp-1-3-gallery-states.ts');
   const ids = GALLERY.map((entry) => entry.id);
   expect(views.map((view) => view.name)).toEqual(
     [1480, 900, 390].flatMap((width) => [`gallery@${width}-light`, `gallery@${width}-dark`]),

@@ -15,9 +15,9 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Browser } from 'playwright';
+import type { Browser, Page } from 'playwright';
 import { createServer } from 'vite';
-import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
+import { load, openSide, shoot, type Catalogue } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
 import type { Packet, Theme } from './packet.ts';
 import { addressOf, builtPages, needsSession, overflowOf, type PageShot } from './report.ts';
@@ -51,7 +51,50 @@ export function madeUpSession(app: URL, dir: string): string {
   return file;
 }
 
-export async function captureBuiltPages(options: {
+/** A built page drawn at one width in one theme: `<page>@<width>-<theme>`. */
+export type BuiltPage = { id: string; name: string; width: number; theme: Theme; page: Page };
+
+/**
+ * Every built page at each width in each theme, each on the side its route
+ * asks for (a public page signed out, a working page signed in), handed to
+ * `visit`, then closed.
+ */
+export async function eachBuiltPage<T>(
+  options: {
+    browser: Browser;
+    packet: Packet;
+    app: URL;
+    session: string;
+    widths: readonly number[];
+    themes: readonly Theme[];
+  },
+  visit: (built: BuiltPage) => Promise<T>,
+): Promise<T[]> {
+  const { browser, packet, app, session } = options;
+  const out: T[] = [];
+  for (const width of options.widths) {
+    for (const theme of options.themes) {
+      const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
+      const signedIn = await openSide(browser, packet, width, { app, session, colorScheme: theme });
+      try {
+        for (const id of builtPages()) {
+          const side = needsSession(id) ? signedIn : signedOut;
+          const address = addressOf(id, { key: 'T-1' }) ?? '/';
+          const page = await load(side, packet, new URL(address, app).href);
+          out.push(
+            await visit({ id, name: `${id}@${String(width)}-${theme}`, width, theme, page }),
+          );
+          await page.close();
+        }
+      } finally {
+        await Promise.all([signedOut.context.close(), signedIn.context.close()]);
+      }
+    }
+  }
+  return out;
+}
+
+export function captureBuiltPages(options: {
   browser: Browser;
   packet: Packet;
   app: URL;
@@ -60,26 +103,21 @@ export async function captureBuiltPages(options: {
   themes: readonly Theme[];
   out: string;
 }): Promise<PageShot[]> {
-  const { browser, packet, app, session } = options;
   const { mask } = JSON.parse(
     readFileSync(new URL('states.json', import.meta.url), 'utf8'),
   ) as Catalogue;
   mkdirSync(options.out, { recursive: true });
-  const shots: PageShot[] = [];
-  for (const width of options.widths) {
-    for (const theme of options.themes) {
-      // A public page (sign-in) is drawn signed out, a working page signed in.
-      const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
-      const signedIn = await openSide(browser, packet, width, { app, session, colorScheme: theme });
-      try {
-        const sides = { signedOut, signedIn };
-        shots.push(...(await capturePages(sides, { ...options, mask, width, theme })));
-      } finally {
-        await Promise.all([signedOut.context.close(), signedIn.context.close()]);
-      }
-    }
-  }
-  return shots;
+  return eachBuiltPage(options, async ({ id, name, width, theme, page }) => {
+    // The intended screen is checked before the picture counts.
+    const intended = needsSession(id) ? 'the page' : 'the sign-in form';
+    const drew = await page.evaluate(screenOf);
+    const [shot] = await shoot(page, name, { page: 'viewport' }, mask);
+    const overflow = overflowOf(await page.evaluate(scrollMetrics));
+    const picture = shot === undefined ? null : join(options.out, `${name}.page.png`);
+    if (shot !== undefined && picture !== null) writeFileSync(picture, shot.png);
+    const wrong = drew === intended ? {} : { wrongScreen: `drew ${String(drew)}, not ${intended}` };
+    return { page: id, width, theme, picture, overflow, ...wrong };
+  });
 }
 
 /** Which screen the app drew: its sign-in form, a gate, or the page itself. */
@@ -89,30 +127,4 @@ export function screenOf(): string {
   if (title.startsWith('You are already signed in')) return 'the already-signed-in gate';
   if (title.startsWith('No screen is registered')) return 'the not-found gate';
   return 'the page';
-}
-
-/** Every built page at one width in one theme, each on the side its route asks for. */
-async function capturePages(
-  sides: { signedOut: Side; signedIn: Side },
-  at: { packet: Packet; app: URL; width: number; theme: Theme; mask: string[]; out: string },
-): Promise<PageShot[]> {
-  const { packet, app, width, theme, mask, out } = at;
-  const shots: PageShot[] = [];
-  for (const id of builtPages()) {
-    const name = `${id}@${width}-${theme}`;
-    const address = addressOf(id, { key: 'T-1' }) ?? '/';
-    const side = needsSession(id) ? sides.signedIn : sides.signedOut;
-    const page = await load(side, packet, new URL(address, app).href);
-    // The intended screen is checked before the picture counts.
-    const intended = needsSession(id) ? 'the page' : 'the sign-in form';
-    const drew = await page.evaluate(screenOf);
-    const [shot] = await shoot(page, name, { page: 'viewport' }, mask);
-    const overflow = overflowOf(await page.evaluate(scrollMetrics));
-    await page.close();
-    const picture = shot === undefined ? null : join(out, `${name}.page.png`);
-    if (shot !== undefined && picture !== null) writeFileSync(picture, shot.png);
-    const wrong = drew === intended ? {} : { wrongScreen: `drew ${String(drew)}, not ${intended}` };
-    shots.push({ page: id, width, theme, picture, overflow, ...wrong });
-  }
-  return shots;
 }

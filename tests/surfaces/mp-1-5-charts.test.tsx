@@ -10,7 +10,6 @@
 // widths in both themes (mp-1-5-gallery-charts.ts); the pages the ticket
 // names wait on their slices.
 
-import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL, fileURLToPath } from 'node:url';
 import { type ReactElement } from 'react';
@@ -27,6 +26,7 @@ import {
   axisTicks,
   scoreBand,
 } from '../../packages/ui/src/kit/charts.tsx';
+import { runLeg } from './browser-leg.ts';
 import { mount, type Mounted } from './mount.tsx';
 import { primitiveSheets } from '../support/primitive-sheets.ts';
 import {
@@ -155,10 +155,7 @@ async function inlineShapes(): Promise<void> {
 
 describe('MP-1-5 chart primitives', () => {
   it('MP-1-5 visual match: the chart units on the gallery at 1480, 900 and 390, light and dark, in a browser: the seven shapes drawn inside the width, a line chart redrawn to its frame on resize, value tooltips on hover and focus, mono axis labels, dark unlike light', () => {
-    const script = new NodeURL('mp-1-5-gallery-charts.ts', import.meta.url).pathname;
-    const run = spawnSync(process.execPath, [script], { encoding: 'utf8', timeout: 900_000 });
-    expect(run.status, run.stderr.slice(-2000)).toBe(0);
-    const { views, sameInDark } = JSON.parse(run.stdout) as ChartsReport;
+    const { views, sameInDark } = runLeg<ChartsReport>('mp-1-5-gallery-charts.ts');
     expect(views).toHaveLength(6);
     for (const view of views) {
       const width = Number(/@(\d+)-/u.exec(view.name)?.[1]);
