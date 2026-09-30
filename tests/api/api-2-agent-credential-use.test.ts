@@ -5,8 +5,8 @@
 // Issuing and revoking a credential are built and proven
 // (`api-2-agent-credential.test.ts`, `api-2-agent-credential-revoke.test.ts`).
 // Using one needs the bearer-only agent route with no legacy signing secret
-// (S0-6), and the CLI cases need the command catalogue's CLI (API-1). Neither
-// is on main, so each case is held here by its name until they land. The row
+// (S0-6), which is not on this branch, so each case is held here by its name
+// until it lands. The CLI cases are built (`tests/cli/api-2-credential-cli.test.ts`). The row
 // already keeps the key id the verification will read, and revoking already
 // deactivates the agent actor.
 
@@ -29,10 +29,4 @@ it.todo(
 );
 it.todo(
   'API-2 quota: per-credential, per-person and per-business request, concurrency and export limits hold under a burst, with a clear refusal (LEANS-ON SL01 S0-6)',
-);
-it.todo(
-  'API-2 CLI credential.issue: the command line gives the same result and the same refusals as the API (LEANS-ON SL02 API-1)',
-);
-it.todo(
-  'API-2 CLI credential.revoke: the command line gives the same result and the same refusals as the API (LEANS-ON SL02 API-1)',
 );
