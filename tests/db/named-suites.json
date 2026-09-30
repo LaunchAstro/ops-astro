@@ -304,7 +304,7 @@
     "tests/commands/task-scores-api.test.ts",
     "tests/commands/task-scores-agent.test.ts",
     "tests/commands/task-scores-upgrade.test.ts",
-    "tests/commands/sol-proof-mp-4-9a.test.ts",
+    "tests/commands/task-scores-order-and-upgrade.test.ts",
     "tests/reads/task-rank.test.ts",
     "tests/reads/task-rank-agent.test.ts",
     "tests/commands/task-adhoc.test.ts",

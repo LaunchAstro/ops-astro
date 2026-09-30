@@ -18,7 +18,7 @@ import {
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine } from './fixture.ts';
 
-it('Sol proof, criterion 3: agent marks tests precede their implementation', () => {
+it('agent marks tests precede their implementation', () => {
   const firstTestCommit = execFileSync(
     'git',
     [
@@ -43,7 +43,7 @@ it('Sol proof, criterion 3: agent marks tests precede their implementation', () 
   expect(firstVersion.includes("it('cannot reach a task outside its delegation")).toBe(true);
 });
 
-it('Sol proof, criterion 4: marks isolation names business, client and person crossings', () => {
+it('marks isolation names business, client and person crossings', () => {
   const suite = readFileSync('tests/commands/task-scores.test.ts', 'utf8');
   for (const boundary of ['business to business', 'client to client', 'person to person']) {
     expect(
@@ -60,7 +60,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('MP-4-9a upgrade pro
     await db?.drop();
   });
 
-  it('Sol proof, criterion 7: an upgraded task with a pre-existing impact field can set its mark', async () => {
+  it('an upgraded task with a pre-existing impact field can set its mark', async () => {
     const migrations = readMigrations('migrations');
     const markIndex = migrations.findIndex((migration) => migration.version === '0042_task_marks');
     expect(markIndex).toBeGreaterThan(0);
