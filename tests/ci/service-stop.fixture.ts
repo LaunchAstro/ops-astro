@@ -12,11 +12,12 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect } from 'vitest';
+import { afterAll, expect } from 'vitest';
 import { signBearer, signForged, TEST_ISSUER } from '../support/sign-in.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
@@ -50,6 +51,7 @@ export const STAGED = '0123456789ab';
 export const serverUrl: string | undefined = databaseUrlFromEnvironment();
 
 export const scratch: string = mkdtempSync(join(tmpdir(), 's0-1g-'));
+afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 /** A sign-in's ES256 bearer, as the provider issues it; `forged` signs with a stranger's key. */
 export const token = async (subject: string, forged = false): Promise<string> =>

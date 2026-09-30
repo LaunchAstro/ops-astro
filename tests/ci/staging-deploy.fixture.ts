@@ -4,10 +4,11 @@
 // staging-deploy-record.test.ts): the pinned compose file, fake effects and
 // the operator the gate admits.
 
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type DeployEffects, type StagingDefinition } from '../../scripts/ops/deploy.ts';
+import { afterAll } from 'vitest';
 
 export const definition = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
@@ -28,6 +29,7 @@ export const PG =
   'postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24';
 
 export const scratch: string = mkdtempSync(join(tmpdir(), 's0-6d-'));
+afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 /** A definition with one pinned database and one app service, for the hostile cases. */
 export const withImages = (images: Record<string, unknown>): StagingDefinition => ({
