@@ -30,6 +30,8 @@ export const DRILL: string = new URL('../../scripts/ops/restore-drill.mjs', impo
   .pathname;
 
 export const DEPLOY: string = new URL('../../scripts/ops/deploy.mjs', import.meta.url).pathname;
+export const WEB_DEPLOY: string = new URL('../../scripts/ops/web-deploy.mjs', import.meta.url)
+  .pathname;
 
 export const definition = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
@@ -44,7 +46,7 @@ export const scratch: string = join(tmpdir(), `s0-1e-${randomBytes(6).toString('
 beforeAll(() => mkdirSync(scratch, { mode: 0o700 }));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-/** A PATH whose docker and launchctl append every call to `calls` and answer as the live manager. */
+/** A PATH whose docker, launchctl and vercel append every call to `calls`; the first two answer as the live manager. */
 export const manager = (apiRunning: boolean): { path: string; calls: string } => {
   const bin = mkdtempSync(join(scratch, 'bin-'));
   const calls = join(bin, 'calls.log');
@@ -59,7 +61,8 @@ export const manager = (apiRunning: boolean): { path: string; calls: string } =>
     join(bin, 'launchctl'),
     `#!/bin/sh\necho "launchctl $*" >> '${calls}'\nprintf 'PID\\tStatus\\tLabel\\n-\\t0\\torg.example.prod-auth\\n'\n`,
   );
-  for (const command of ['docker', 'launchctl']) chmodSync(join(bin, command), 0o755);
+  writeFileSync(join(bin, 'vercel'), `#!/bin/sh\necho "vercel $*" >> '${calls}'\nexit 2\n`);
+  for (const command of ['docker', 'launchctl', 'vercel']) chmodSync(join(bin, command), 0o755);
   return { path: `${bin}:${process.env['PATH'] ?? ''}`, calls };
 };
 
@@ -151,6 +154,14 @@ export const COMMANDS: Record<string, Command> = {
     }),
   // S0-6 operator only: a deploy of a stored build to staging.
   'the staging deploy': (env) => spawn(DEPLOY, ['--version', STAGED, '--artefacts', store()], env),
+  // S0-6 operator only: the Vercel deploy of a stored build output. Its Vercel
+  // settings are set, so one that skipped the gate would call the fake vercel.
+  'the web deploy': (env) =>
+    spawn(WEB_DEPLOY, ['--version', STAGED, '--artefacts', store()], {
+      VERCEL_ORG_ID: 'team_madeUpOrg0123',
+      VERCEL_PROJECT_ID: 'prj_madeUpProject0123',
+      ...env,
+    }),
   'the promotion step': (env, at) =>
     spawn(
       PROMOTE,
