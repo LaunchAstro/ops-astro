@@ -24,13 +24,16 @@
 // between unavailable and denied to be real at the source, not painted on in
 // the browser.
 //
-// **The business key is resolved on the administrative connection, and only
-// the key.** The tenancy root is behind forced row security keyed on the
-// setting the serving transaction has not set yet, so the mapping from a path
-// segment to a business identifier cannot be read by the application role: it
-// is the one lookup that has to precede tenancy. It reads one column of one
-// row by key and answers nothing else, and every statement after it runs
-// through `withBusiness` like everything else in the slice.
+// **The business key is resolved as the lookup identity, and only the key.**
+// The tenancy root is behind forced row security keyed on the setting the
+// serving transaction has not set yet, so the mapping from a path segment to a
+// business identifier cannot be read by the application role: it is the one
+// lookup that has to precede tenancy. It runs as `ops_astro_lookup` (0046),
+// which reads a business's id and key and nothing else, on the owner's
+// connection locally and on the function's lookup login on Vercel (G2). It
+// reads one column of one row by key and answers nothing else, and every
+// statement after it runs through `withBusiness` like everything else in the
+// slice.
 
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
@@ -134,10 +137,14 @@ export function createBusinessResolver(
     const cached = known.get(businessKey);
     if (cached !== undefined) return cached;
 
-    const rows = await admin.execute<{ id: string }>(
-      'select id from public.businesses where key = $1 limit 2',
-      [businessKey],
-    );
+    // As the lookup identity (0046), which reads id and key and nothing else.
+    const rows = await admin.transaction(async (execute) => {
+      await execute('set local role ops_astro_lookup');
+      return await execute<{ id: string }>(
+        'select id from public.businesses where key = $1 limit 2',
+        [businessKey],
+      );
+    });
     if (rows.length !== 1) return undefined;
     const id = rows[0]?.id;
     if (id === undefined || !isBusinessId(id)) return undefined;
@@ -150,7 +157,11 @@ export function createBusinessResolver(
 export interface ApiConfig {
   /** The application role's connection, the one every request runs on. */
   readonly database: Database;
-  /** The owner's connection, used for the business key and `/api/health` only. */
+  /**
+   * The connection the business key (as the lookup identity) and `/api/health`
+   * run on: the owner's locally, the lookup login on Vercel. The identity
+   * route, mounted only by `main`, reads the migration ledger on it too.
+   */
   readonly admin: AdminConnection;
   /** The issuer and published key set bearers are checked against: public keys only. */
   readonly signIn: Omit<SupabaseVerifierOptions, 'onRefusal'>;

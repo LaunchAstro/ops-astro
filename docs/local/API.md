@@ -306,7 +306,7 @@ socket and starts no process. `main()` runs only as the process entry
 restart recovery through that same resolver, and only then binds the port.
 `apps/api/function.ts` is the Vercel function entry: it builds the same
 `composeApi` from the function's settings, with no identity route, live channel,
-recovery or sweeper, which belong to a long-running process. It answers only
+recovery or sweeper, which belong to a long-running process, and no admin login: the business key is read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (migration 0046), and the entry refuses to start with `DATABASE_ADMIN_URL` set. It answers only
 requests whose `Host` and URL both name `SERVED_HOST`, the environment's own host; any other,
 a deployment's generated address included, is refused 421 before anything is
 read, so a promotion leaves the previous deployment serving nothing

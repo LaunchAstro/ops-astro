@@ -15,6 +15,13 @@
 // What `main` does that a function does not: the loopback identity route, the
 // live channel's LISTEN, restart recovery and the sweeper. Those belong to a
 // long-running process, the worker (re-plan, section 11).
+//
+// **No admin login (G2).** The business key, the one read before tenancy, is
+// read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (0046) that
+// reads business ids and keys and nothing else; `/api/health` runs on it too.
+// The entry refuses to start with `DATABASE_ADMIN_URL` in its environment, so
+// a breach of the function's settings never holds a login that reads every
+// business.
 
 import { join } from 'node:path';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/index.ts';
@@ -44,7 +51,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   const servedHost = required('SERVED_HOST').toLowerCase();
   if (!HOST.test(servedHost)) throw new Error('SERVED_HOST is not a bare host name.');
   const databaseUrl = required('DATABASE_URL');
-  const adminUrl = required('DATABASE_ADMIN_URL');
+  const lookupUrl = required('DATABASE_LOOKUP_URL');
   const issuer = required('GOTRUE_URL');
   const keySetUrl = keySetUrlFor(settings['SUPABASE_KEY_SET_URL'] ?? '', issuer);
   if (keySetUrl === undefined) {
@@ -64,7 +71,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
 
   const { app } = composeApi({
     database: connect(databaseUrl, { source: 'runtime' }),
-    admin: connectAsAdmin(adminUrl, { source: 'admin' }),
+    admin: connectAsAdmin(lookupUrl, { source: 'lookup' }),
     signIn: { issuer, keySetUrl },
     keys,
     ...(sink === undefined ? {} : { alerts: createAlerts({ ...sink, root: ROOT }) }),
@@ -83,6 +90,9 @@ let handler: ((request: Request) => Promise<Response>) | undefined;
 
 /** Vercel's Node.js function signature, one export per method: built on first use. */
 async function handle(request: Request): Promise<Response> {
+  if ((process.env['DATABASE_ADMIN_URL'] ?? '') !== '') {
+    throw new Error('DATABASE_ADMIN_URL is set: the function never holds the admin login.');
+  }
   handler ??= createFunctionHandler(process.env);
   return await handler(request);
 }
