@@ -21,6 +21,7 @@ export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
   digestOf,
+  mintChildDelegation,
   mintDelegation,
   resolveDelegation,
   resolveHistoricalDelegation,
@@ -29,9 +30,11 @@ export {
   resolveSettledByLease,
   revokeDelegation,
   settleDelegation,
+  type ChildMintRequest,
   type Delegation,
   type DelegationRefusalCode,
   type MintedDelegation,
+  type PurposeScope,
 } from './authority/delegations.ts';
 export {
   checkAuthority,
