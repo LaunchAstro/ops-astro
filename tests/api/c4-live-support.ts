@@ -162,8 +162,8 @@ export async function delegatedRead(
 /** Topic sets the route refuses whole: malformed, repeated, too many, or none. */
 export function hostileTopicSets(real: string): readonly (readonly string[])[] {
   const id = randomUUID();
+  // Naming no topic at all is the board's stream (INB-1f), not a malformed set.
   return [
-    [],
     ['task:'],
     ['task:not-a-uuid'],
     [`Task:${id}`],

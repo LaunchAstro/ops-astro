@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `/projects/`. Two tabs: the board of the business's unboarded tasks with the
-// form that makes one, and the Work log (MP-8-4), reached by `#worklog` as the
-// mockup's `/projects/#worklog` is. The Work log reads nothing until it is
-// first opened, and stays drawn once it has been, as every tab pane does.
+// `/projects/`. Two tabs: the caller's inbox above the board of the
+// business's unboarded tasks with the form that makes one, and the Work log
+// (MP-8-4), reached by `#worklog` as the mockup's `/projects/#worklog` is. The
+// Work log reads nothing until it is first opened, and stays drawn once it has
+// been, as every tab pane does.
 //
 // The read is `task.board` with `board: null`, which the contract defines as
 // the business's unboarded tasks — the acceptance case creates a task
@@ -20,11 +21,13 @@ import type { OperationsClient } from '../operations/client.ts';
 import { titleOf } from '../views/task-title.ts';
 import type { TaskBoardResult, TaskSummary } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { drawTaskState } from '../views/task-state.ts';
 import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
 import { WorkLog } from './projects/WorkLog.tsx';
+import { Inbox } from '../views/inbox.tsx';
 
 /** A create whose outcome is not known, held so the retry is the same attempt. */
 interface PendingCreate {
@@ -108,6 +111,8 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
     isEmpty: (value) => value.tasks.length === 0,
     deps: [],
   });
+  // INB-1f: one stream for the tab, shared by the board and the inbox panels.
+  const followInbox = useBoardLive(client, props.grantKey, reload);
 
   // The same attempt while the asked-for task is the same one, a new attempt
   // when the person has changed what they are asking for. Retrying an unknown
@@ -163,6 +168,8 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
 
   return (
     <div className="stack">
+      {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
+      <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
       <form className="taskform projects__create" onSubmit={onCreate}>
         <div className="field">
           <label className="tf__k" htmlFor="create-title">

@@ -193,28 +193,30 @@ export class OperationsClient {
     topics: readonly string[],
     signal: AbortSignal,
   ): Promise<ReadableStream<Uint8Array> | null> {
-    const { origin, businessKey, token } = this.#options;
     const query = topics.map((topic) => `topic=${encodeURIComponent(topic)}`).join('&');
-    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live?${query}`;
-    const headers: Record<string, string> =
-      token === null ? {} : { authorization: `Bearer ${token}` };
-    try {
-      const response = await this.#options.fetch(url, { headers, signal });
-      return response.ok ? response.body : null;
-    } catch {
-      return null;
-    }
+    return (await this.#live(`?${query}`, { signal }))?.body ?? null;
+  }
+
+  /** The board's one stream for the tab (INB-1f), or nothing if refused or unreachable. */
+  async openBoardLive(signal: AbortSignal): Promise<ReadableStream<Uint8Array> | null> {
+    return (await this.#live('', { signal }))?.body ?? null;
   }
 
   /** A presence route under `live/` (C2), its JSON when it answered 2xx, else null. */
   async live(path: string, init: RequestInit): Promise<unknown> {
+    const response = await this.#live(`/${path}`, init);
+    return response === null ? null : await response.json().catch(() => null);
+  }
+
+  /** The live channel at `path`, with the bearer only: the response if it answered 2xx, else null. */
+  async #live(path: string, init: RequestInit): Promise<Response | null> {
     const { origin, businessKey, token } = this.#options;
-    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live/${path}`;
+    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live${path}`;
     const headers = new Headers(init.headers);
     if (token !== null) headers.set('authorization', `Bearer ${token}`);
     try {
       const response = await this.#options.fetch(url, { ...init, headers });
-      return response.ok ? ((await response.json()) as unknown) : null;
+      return response.ok ? response : null;
     } catch {
       return null;
     }

@@ -5,7 +5,6 @@
 // Split from that file so each stays under the per-file cap; the seam is the
 // same one: this is still the matrix's only knowledge of what a task is.
 
-import { randomUUID } from 'node:crypto';
 import { type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
 import {
   PROPOSAL,
@@ -22,18 +21,7 @@ import {
 } from './role-case-bodies.ts';
 import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
-
-/** Clients made by the matrix, each under a name of its own (one name per business). */
-let clientsMade = 0;
-const nextClientName = (): string =>
-  `A made-up client ${String((clientsMade += 1))} ${randomUUID()}`;
-
-/** A client of the context's business, made by its admin (C32). */
-async function madeClient(context: BodyContext): Promise<string> {
-  const made = await context.asPerson('client.create', { name: nextClientName() });
-  if (made.code !== 'ok') throw new Error(`matrix: client.create refused ${made.code}`);
-  return String((made.body['detail'] as Record<string, unknown>)['clientId']);
-}
+import { accessBody, madeClient } from './role-case-access-bodies.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -160,6 +148,12 @@ export function createPositiveBody(
       case 'access.read':
       case 'operations.read':
       case 'client.list':
+      case 'inbox.read':
+      case 'inbox.count':
+      case 'inbox.unattended':
+        // The caller's own inbox (INB-1d) needs a live grant of any kind, as
+        // above; `inbox.unattended` needs `operations:read`, which the seed
+        // grants the admin (INB-1e, C55).
         return { body: {} };
       case 'preference.save':
         return { body: { preference: 'appearance', value: 'dark' } };
@@ -168,33 +162,21 @@ export function createPositiveBody(
       case 'task.search':
         // A word no audit row carries, so digest-only is checked on it.
         return { body: { query: 'brochure' } };
-      // C32: `record:write`, a name no other call has used.
       case 'client.create':
-        return { body: { name: nextClientName() } };
-      // C32: `access:manage`. The key is one the member already holds over
-      // the whole business, so the answer is that grant and no caller's
-      // holdings change under the cases that read them.
       case 'access.grant':
-        return {
-          body: { holderId: context.assigneePersonId, collection: 'task', action: 'read' },
-        };
-      // C32: a grant the admin has just given over one client, revoked. The
-      // member already holds the same key over the whole business.
-      case 'access.revoke': {
-        const given = await context.asPerson('access.grant', {
-          holderId: context.assigneePersonId,
-          collection: 'task',
-          action: 'read',
-          clientId: await madeClient(context),
-        });
-        if (given.code !== 'ok') throw new Error(`matrix: access.grant refused ${given.code}`);
-        return { body: { grantId: (given.body['detail'] as Record<string, unknown>)['grantId'] } };
-      }
-      // C58: `access:manage`, ending a member made for the case, so no
-      // caller's standing changes under the cases that read it.
-      case 'access.end': {
-        if (context.freshMember === undefined) return { exception: 'no member maker here' };
-        return { body: { holderId: await context.freshMember() } };
+      case 'access.revoke':
+      case 'access.end':
+        return await accessBody(declaration.name, context);
+      case 'notifications.set_channel':
+        // Self-scoped (INB-1e): in-app is always on, the one mode it takes.
+        return { body: { channel: 'in_app', mode: 'on' } };
+      case 'inbox.seen': {
+        // The caller's own item: a proposal raises a decision item for every
+        // decide holder, the admin among them, read back from their inbox.
+        await lineageOn(context, await context.freshTask('a task whose item is opened'));
+        const listed = await context.asPerson('inbox.read', {});
+        const items = listed.body['inbox'] as readonly Record<string, unknown>[];
+        return { body: { itemId: String(items.at(-1)?.['id']) } };
       }
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };

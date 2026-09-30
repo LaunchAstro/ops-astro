@@ -49,6 +49,14 @@ import type { FixtureClient } from './role-case-clients.ts';
 import { alternativeFor } from './cd-alternatives.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 
+/** The inbox's `self` rows (INB-1d, INB-1e); the account's (C23) take the branch after. */
+const INBOX_SELF: ReadonlySet<string> = new Set([
+  'inbox.read',
+  'inbox.count',
+  'inbox.seen',
+  'notifications.set_channel',
+]);
+
 if (serverUrl === undefined) {
   console.warn('acceptance/matrix: DATABASE_URL is unset, so nothing below ran.');
 }
@@ -224,6 +232,43 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
             `not applicable: holds ${pair}, so not R2 (minimum contract CONTRACT.md:481, ` +
               `case 3 at :493); noah is refused here; own row in e-member-positive`,
           );
+          continue;
+        }
+        if (INBOX_SELF.has(declaration.name) && grants !== undefined) {
+          // The caller's own inbox (INB-1d). The stamp is `preference:write`,
+          // self-scoped and held by every signed-in person, so nobody is R2
+          // for it; another person's item is NOT_FOUND (INB-1 seen
+          // self-scoped). The reads, like `session.capabilities`, refuse a
+          // caller holding no live grant and answer one holding any.
+          if (declaration.kind === 'write') {
+            except(
+              caller.name,
+              'e-no-grant',
+              declaration.name,
+              declaration.name === 'notifications.set_channel'
+                ? 'not applicable: self-scoped preference:write; the setting is only ever ' +
+                    'the caller’s own, refused by its rule in tests/commands/inbox-unattended.test.ts'
+                : 'not applicable: self-scoped preference:write; another person’s item ' +
+                    'is NOT_FOUND in tests/reads/inbox.test.ts',
+            );
+            continue;
+          }
+          // eslint-disable-next-line no-await-in-loop
+          const own = await call(
+            harness.world.api,
+            personPath('alpha', pathOf(declaration.name)),
+            harness.probeBody(declaration),
+            bearer(caller.token),
+          );
+          const none = grants.size === 0;
+          observe(
+            caller.name,
+            'e-no-grant',
+            declaration.name,
+            own,
+            none ? refusal('SCOPE_NOT_GRANTED') : SUCCESS,
+          );
+          expect(own.body['refused'] === true, `${caller.name}/${declaration.name}`).toBe(none);
           continue;
         }
         if (declaration.collection === 'preference' && grants !== undefined) {

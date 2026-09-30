@@ -28,6 +28,8 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'task.set_party': 'a client change, which the lock allows while the task is empty',
   'client.create': 'writes a client, not a task',
   'task.purge': 'removes the task; nothing is left to change the client of',
+  'inbox.seen':
+    "stamps the caller's own attention row on an item a content command already raised (INB-1d)",
 };
 
 export const CONTENT: readonly CommandDeclaration[] = COMMAND_SURFACE.filter(

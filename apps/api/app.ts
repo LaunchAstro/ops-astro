@@ -55,6 +55,8 @@ import {
   listOwnSessions,
   isCommandRefusal,
   isReadName,
+  joinLiveBoard,
+  shownInbox,
   refuseCommand,
   refuseNotFound,
   setOwnAvailability,
@@ -91,7 +93,8 @@ import type {
 import { bearerOf, type Verifier } from './auth/supabase.ts';
 import type { LiveTopics } from './live.ts';
 import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
-import { follow, topicsOf, TOPICS, type Seated, type Watching } from './live-follow.ts';
+import { follow, RECHECK_MS, topicsOf, TOPICS, type Seated, type Watching } from './live-follow.ts';
+import { followBoard } from './live-board.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -375,10 +378,14 @@ export function createApi(options: ApiOptions): Hono {
     // C4: one stream per tab carries every topic its pages follow. Each topic
     // is asked about at join as T2f asks about its one task; one refused is
     // closed alone, all refused is the first refusal (`tests/api/c4-live-stream.test.ts`).
+    // Naming no topic at all is the board's stream (INB-1f).
     api.get(`${PREFIX.person}:businessKey/live`, async (context) => {
       const admitted = await admit(options, context, PERSON, false);
       if (admitted instanceof Response) return admitted;
-      const named = topicsOf(context.req.queries('topic') ?? []);
+      const asked = context.req.queries('topic');
+      if (asked === undefined)
+        return await boardStream(options, live, context, admitted.businessId);
+      const named = topicsOf(asked);
       if (named === undefined) {
         return refuse(context, refuseCommand('FIELD_VALUE_INVALID', ['topic'], [TOPICS]));
       }
@@ -539,6 +546,63 @@ async function mayWatch(
     if (answer.recordId === undefined) throw new Error('task.execution admitted no task');
     return answer.recordId;
   });
+}
+
+/**
+ * INB-1f: the board's one stream per tab, through the same door. Each task it
+ * names is asked as a task's own stream asks it; the inbox topic is the
+ * caller's own person, which the join resolves, asked again each batch.
+ */
+async function boardStream(
+  options: ApiOptions,
+  live: LiveOptions,
+  context: Context,
+  businessId: string,
+): Promise<Response> {
+  const join = async () => await mayJoinBoard(options, context, businessId);
+  const joined = await join();
+  if (isCommandRefusal(joined)) return refuse(context, joined);
+  const asks = watching(options, live, context, businessId);
+  return streamSSE(context, async (stream) => {
+    await followBoard(
+      stream,
+      live.topics,
+      { businessId, personId: joined.personId, recheckMs: live.recheckMs ?? RECHECK_MS },
+      {
+        joinedAs: async () => {
+          const again = await join();
+          return isCommandRefusal(again) ? undefined : again.personId;
+        },
+        reads: async (taskId) => typeof (await asks.again(taskId)) === 'string',
+        shown: async (personId) => await mayShowInbox(options, context, businessId, personId),
+      },
+    );
+  });
+}
+
+/** Whether this caller may hold the board's stream (INB-1f), with the bearer verified again. */
+async function mayJoinBoard(
+  options: ApiOptions,
+  context: Context,
+  businessId: string,
+): Promise<{ readonly personId: string } | CommandRefusal> {
+  const presented = await options.verify(context.req);
+  if (presented === undefined || presented === 'expired') {
+    return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
+  }
+  return await joinLiveBoard(options.database, businessId, presented);
+}
+
+/** What `inbox.read` shows the stream's own person now, asked with the bearer verified again. */
+async function mayShowInbox(
+  options: ApiOptions,
+  context: Context,
+  businessId: string,
+  personId: string,
+): Promise<string | undefined> {
+  const presented = await options.verify(context.req);
+  if (presented === undefined || presented === 'expired') return undefined;
+  return await shownInbox(options.database, businessId, presented, personId);
 }
 
 /**

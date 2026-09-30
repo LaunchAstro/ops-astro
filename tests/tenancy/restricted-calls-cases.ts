@@ -28,6 +28,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['s', 'ops.installation ops.gate_items'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
+  // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
+  ['si', 'inbox_attention inbox_delivery_attempts'],
+  ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],

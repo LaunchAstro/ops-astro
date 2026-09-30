@@ -239,10 +239,14 @@ describe('the board, pinned whole', () => {
         revision: 1,
       },
     ];
-    const fetch = (async (url: string | URL) =>
-      String(url).endsWith('/task/board')
-        ? json({ ok: true, tasks })
-        : refused('NOT_FOUND', 404)) as unknown as typeof globalThis.fetch;
+    const fetch = (async (url: string | URL) => {
+      const at = String(url);
+      if (at.endsWith('/task/board')) return json({ ok: true, tasks });
+      // The inbox the board screen mounts above the board (INB-1g), empty.
+      if (at.endsWith('/inbox/read')) return json({ ok: true, inbox: [] });
+      if (at.endsWith('/inbox/count')) return json({ ok: true, owed: 0 });
+      return refused('NOT_FOUND', 404);
+    }) as unknown as typeof globalThis.fetch;
     const client = new OperationsClient({
       origin: '',
       businessKey: 'alpha',

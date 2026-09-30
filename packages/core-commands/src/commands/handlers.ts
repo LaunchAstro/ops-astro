@@ -20,7 +20,7 @@ import { setPartyWhileEmpty } from './task-client-lock.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
-import { setBusinessSetting } from './settings-write.ts';
+import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
 import { recordIncident } from './privacy-write.ts';
 import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
 import { issueCredential, revokeCredential } from './credential-write.ts';
@@ -46,6 +46,7 @@ import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
 import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
+import { stampOwnSeen } from './inbox-seen.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -92,6 +93,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
       request.body,
       request.audience,
       request.commentType,
+      request.mentions,
     ),
 
   // The revision travels with the rest of the envelope rather than as a
@@ -147,6 +149,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'preference.save': (tx, context, request) =>
     saveOwnPreference(tx, context, request.preference, request.value),
   'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
+  'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
+  'notifications.set_channel': setNotificationChannel,
 };
 
 function writeOwned(

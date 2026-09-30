@@ -159,7 +159,16 @@ export type CommandName =
   // The one preference store (MP-2-11a): the caller's own keys.
   | 'preference.read'
   | 'preference.save'
-  | 'preference.dismiss_tip';
+  | 'preference.dismiss_tip'
+  // The inbox inside Tasks (INB-1d): the caller's own items and owed count,
+  // and `seen` stamped on the caller's own attention row.
+  | 'inbox.read'
+  | 'inbox.count'
+  | 'inbox.seen'
+  // Items no path reaches, for the operations view (INB-1e), and the caller's
+  // own notification setting on one channel.
+  | 'inbox.unattended'
+  | 'notifications.set_channel';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -209,10 +218,12 @@ export interface CommandDeclaration {
    * - `claim`: the task the body's reservation or lease belongs to, so a
    *   record-scoped writer works their own lease on that task. Own-lease work
    *   names its task only through the claim and writes no task revision.
-   * - `self`: the caller's own account. No grant row is asked: the catalogue
-   *   gives every signed-in person this action on their own account and on
-   *   nobody else's, and the command takes no identifier that could name
-   *   another (`account:write`, C23).
+   * - `self`: the caller's own account or rows. No grant row is asked: the
+   *   catalogue gives every signed-in person this action on their own account
+   *   and rows and on nobody else's (`account:write`, C23; a self-scoped key
+   *   such as `preference:write`). A command takes no identifier that could
+   *   name another; an inbox operation reaches no row but the caller's, and
+   *   asks access per row.
    */
   readonly authorisedOn: 'record' | 'business' | 'target' | 'claim' | 'self';
   /**
@@ -342,6 +353,7 @@ const BILLING_COLLECTION = 'billing';
 const SPEND_COLLECTION = 'spend';
 const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
+const INBOX_COLLECTION = 'inbox';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -395,7 +407,13 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.complete': TARGET,
   'task.reopen': { ...TARGET, reason: 'any' },
   'task.start': TARGET,
-  'task.comment': { ...TARGET, body: 'any', audience: 'any', commentType: 'any' },
+  'task.comment': {
+    ...TARGET,
+    body: 'any',
+    audience: 'any',
+    commentType: 'any',
+    mentions: 'any',
+  },
   'task.propose': {
     ...TARGET,
     purpose: 'any',
@@ -501,6 +519,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'session.end': {},
   'preference.save': { preference: 'text', value: 'any' },
   'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
+  'inbox.seen': { itemId: 'id' },
+  'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -843,6 +863,29 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'self',
     untargetedIdentifiers: [],
     audited: false,
+  }),
+
+  // The inbox is one person's: no agent reaches it, and each row answers the
+  // caller about their own items only, with access derived per item.
+  read('inbox.read', INBOX_COLLECTION, { authorisedOn: 'self' }),
+  read('inbox.count', INBOX_COLLECTION, { authorisedOn: 'self' }),
+  declare('inbox.seen', 'write', {
+    collection: 'preference',
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: ['itemId'],
+  }),
+  // `operations:read`: owner and administrators by default, never an agent
+  // (the catalogue's C55 row). It names other people's items, so it is not
+  // `self`.
+  read('inbox.unattended', 'operations'),
+  // Per channel, never per item: the body names no item. Self-scoped like
+  // `inbox.seen`, so it asks no grant and reaches the caller's own setting.
+  declare('notifications.set_channel', 'write', {
+    collection: 'preference',
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: [],
   }),
 ];
 

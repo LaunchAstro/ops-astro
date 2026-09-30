@@ -111,6 +111,9 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
       return json({ ok: true, execution: { outcome: 'no-run', runs: [], events: [] } });
     // T3e2: the task page reads the team's outage reports; none here.
     if (at.endsWith('/task/queue')) return json({ ok: true, queue: [], alerts: [], outages: [] });
+    // The inbox the board screen mounts (INB-1g), answered empty.
+    if (at.endsWith('/inbox/read')) return Response.json({ ok: true, inbox: [] });
+    if (at.endsWith('/inbox/count')) return Response.json({ ok: true, owed: 0 });
     if (at.startsWith('http://identity.invalid/token')) {
       // A new hour. Everything the old token could not do, the new one can.
       reads = 'ok';
@@ -294,6 +297,9 @@ function byBearer(): {
       return json({ ok: true, execution: { outcome: 'no-run', runs: [], events: [] } });
     // T3e2: the task page reads the team's outage reports; none here.
     if (at.endsWith('/task/queue')) return json({ ok: true, queue: [], alerts: [], outages: [] });
+    // The inbox the board screen mounts (INB-1g), answered empty.
+    if (at.endsWith('/inbox/read')) return Response.json({ ok: true, inbox: [] });
+    if (at.endsWith('/inbox/count')) return Response.json({ ok: true, owed: 0 });
     if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH_TOKEN });
     const headers = (init?.headers ?? {}) as Record<string, string>;
     const stale = headers['authorization'] === `Bearer ${SESSION.token}`;
@@ -385,6 +391,9 @@ function perBusiness(): typeof globalThis.fetch {
       return json({ ok: true, execution: { outcome: 'no-run', runs: [], events: [] } });
     // T3e2: the task page reads the team's outage reports; none here.
     if (at.endsWith('/task/queue')) return json({ ok: true, queue: [], alerts: [], outages: [] });
+    // The inbox the board screen mounts (INB-1g), answered empty.
+    if (at.endsWith('/inbox/read')) return Response.json({ ok: true, inbox: [] });
+    if (at.endsWith('/inbox/count')) return Response.json({ ok: true, owed: 0 });
     if (at.startsWith('http://identity.invalid/token')) return json({ access_token: FRESH_TOKEN });
     const headers = (init?.headers ?? {}) as Record<string, string>;
     if (headers['authorization'] === `Bearer ${BRAVO.token}`) return unknownLogin();

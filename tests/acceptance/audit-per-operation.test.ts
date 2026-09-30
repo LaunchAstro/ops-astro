@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 67 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 72 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 67; on
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 72; on
 // the two that are his own account (C23) he is refused for naming someone. For
 // the three lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
@@ -254,30 +254,10 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     };
   }
 
-  async function refused(declaration: CommandDeclaration): Promise<Cell> {
-    const { name } = declaration;
+  /** R2 on the caller's own account and rows asks no grant: each is refused for what it names. */
+  function refusedOwn(name: CommandName): Cell | undefined {
     const noah = w.h.world.noah;
     switch (name) {
-      // R2 against work that exists and would admit its owner, so the refusal
-      // is authority's and not a missing reservation's or a stranger's lease.
-      case 'task.pickup': {
-        const reservationId = await reservationBy(w.h.world.ada, 'work noah may not pick up');
-        return personCell(noah, name, { reservationId }, 'SCOPE_NOT_GRANTED');
-      }
-      case 'task.heartbeat':
-      case 'task.dispatch':
-      case 'task.observe':
-      case 'task.handback': {
-        const lease = await adaLease(`ada's lease noah may not ${name}`);
-        const settle = { outcome: 'completed', report: { wrote: 'a refused draft' } };
-        const body =
-          name === 'task.handback'
-            ? { ...lease, ...settle }
-            : name === 'task.observe'
-              ? { ...lease, attemptId: lease.attemptId }
-              : { leaseId: lease.leaseId, fence: lease.fence };
-        return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
-      }
       case 'session.person':
       case 'session.end':
         // His own account (C23) needs no grant, so what he is refused for is
@@ -301,6 +281,45 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           { page: 'agency:inbox', tip: 'Not A Tip', version: 1 },
           'FIELD_VALUE_INVALID',
         );
+      case 'inbox.seen':
+        // Self-scoped: noah holds `preference:write` like every signed-in
+        // person, so the refusal is the item's. One not his is NOT_FOUND.
+        return personCell(noah, name, { itemId: randomUUID() }, 'NOT_FOUND');
+      case 'notifications.set_channel':
+        // Self-scoped too (INB-1e): the refusal is the setting's. In-app is
+        // always on, so switching it off is refused.
+        return personCell(noah, name, { channel: 'in_app', mode: 'off' }, 'FIELD_VALUE_INVALID');
+      default:
+        return undefined;
+    }
+  }
+
+  async function refused(declaration: CommandDeclaration): Promise<Cell> {
+    const { name } = declaration;
+    const noah = w.h.world.noah;
+    const own = refusedOwn(name);
+    if (own !== undefined) return own;
+    switch (name) {
+      // R2 against work that exists and would admit its owner, so the refusal
+      // is authority's and not a missing reservation's or a stranger's lease.
+      case 'task.pickup': {
+        const reservationId = await reservationBy(w.h.world.ada, 'work noah may not pick up');
+        return personCell(noah, name, { reservationId }, 'SCOPE_NOT_GRANTED');
+      }
+      case 'task.heartbeat':
+      case 'task.dispatch':
+      case 'task.observe':
+      case 'task.handback': {
+        const lease = await adaLease(`ada's lease noah may not ${name}`);
+        const settle = { outcome: 'completed', report: { wrote: 'a refused draft' } };
+        const body =
+          name === 'task.handback'
+            ? { ...lease, ...settle }
+            : name === 'task.observe'
+              ? { ...lease, attemptId: lease.attemptId }
+              : { leaseId: lease.leaseId, fence: lease.fence };
+        return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
+      }
       default: {
         // `session.capabilities` included: contract 8.2 case 3 names every
         // endpoint, and the root's routing (ROOT-REVIEW-74d583c-ROUTING) says
@@ -410,12 +429,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 67 exported operations both ways', () => {
+  it('covered all 72 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(67);
+    expect(names).toHaveLength(72);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 67.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 72.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 

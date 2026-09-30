@@ -456,9 +456,10 @@ async function main(): Promise<void> {
   const stop = (): void => {
     sweeper.stop();
     clearInterval(retry);
-    void Promise.allSettled([database.close(), admin.close(), topics.close()]).then(() =>
-      process.exit(0),
-    );
+    // The live streams first: a question one has in flight ends before its pool does.
+    void Promise.allSettled([topics.close()])
+      .then(async () => await Promise.allSettled([database.close(), admin.close()]))
+      .then(() => process.exit(0));
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);

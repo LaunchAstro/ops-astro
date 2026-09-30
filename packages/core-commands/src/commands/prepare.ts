@@ -58,10 +58,14 @@ export const REVISION_FIXES: readonly string[] = [
   'A write against a stale revision is refused, never merged.',
 ];
 
-/** The one write an external party (R4) may reach, and then only in the client audience. */
-// Signing out is the other: it writes nothing about the business, only the
-// record that this person's session ended (C23), and a client signs out too.
-const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment', 'session.end']);
+/**
+ * The writes an external party (R4) may reach: a comment, only in the client
+ * audience; signing out, which writes nothing about the business, only the
+ * record that this person's session ended (C23); and opening their own inbox
+ * item (`inbox.seen`, a `self` row whose handler stamps the caller's own item
+ * on a task they can read, and nothing else).
+ */
+const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment', 'session.end', 'inbox.seen']);
 
 const EXTERNAL_FIXES: readonly string[] = [
   'A person without a membership may read what was shared with them and nothing more.',
@@ -485,7 +489,7 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
  */
 const SCOPE_OF: Readonly<
   Record<
-    CommandDeclaration['authorisedOn'],
+    Exclude<CommandDeclaration['authorisedOn'], 'self'>,
     (tx: TenantQuery, request: UncheckedRequest, declaration: CommandDeclaration) => Promise<Scope>
   >
 > = {
@@ -501,8 +505,6 @@ const SCOPE_OF: Readonly<
     return firstScope(tx, request, own === undefined ? [] : [own]);
   },
   claim: (tx, request) => firstScope(tx, request, CLAIM_LOOKUPS),
-  // Never asked: `self` takes no grant row (see `prepareCommand`).
-  self: () => Promise.resolve(BUSINESS),
 };
 
 /** Everything the handler needs first, or the refusal that stops it. */
@@ -532,8 +534,8 @@ export async function prepareCommand(
   const recordId = typeof request['recordId'] === 'string' ? request['recordId'] : undefined;
   // R4 before any grant row. A session with no membership stands on a read
   // share, and whatever else a row may say it holds, it writes nothing but a
-  // client-audience comment (minimum contract 8.1 R4; the audience is
-  // `tasks-comment.ts`'s to narrow).
+  // client-audience comment and the seen stamp on its own inbox item (minimum
+  // contract 8.1 R4; the audience is `tasks-comment.ts`'s to narrow).
   if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }

@@ -1,0 +1,236 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Raising (INB-1b). The command that makes a transition raises its items in
+// its own transaction, so an item exists exactly when its transition
+// committed and a refused or rolled-back one leaves none. No worker, sweep or
+// recovery pass calls into this module.
+//
+// Each recipient comes from a fact the transition already holds: decide
+// grants on the task for a decision, the person who authorised the lease for
+// a settled run, the new assignee, the people a comment names, the task's
+// managers for a quarantined hold (an incident). Nobody is told of their own assignment or
+// mention. A decision goes to every holder, the proposer included, because
+// authority and not authorship decides who owes it, and a decision a person is
+// responsible for is never switched off, but the task's assignee is owed none:
+// four eyes (T2g) refuses their decision. Mentions are `mentions.ts`.
+
+import { grantHolders } from '../authority/grant-reach.ts';
+import type { TenantQuery } from '../tenancy/database.ts';
+import { withdrawEndedGates } from './clear.ts';
+import { raiseInboxItem } from './items.ts';
+
+/** The task's assignee, read in the raising transaction; null when unassigned. */
+async function assigneeOf(tx: TenantQuery, taskId: string): Promise<string | null> {
+  const rows = await tx.query<{ readonly assignee: string | null }>(
+    `select uuid_2 as assignee from public.records where business_id = $1 and id = $2`,
+    [tx.businessId, taskId],
+  );
+  return rows[0]?.assignee ?? null;
+}
+
+/**
+ * A new pending gate. The task's superseded or ended gates have their open
+ * items withdrawn (`clear.ts`), then every person holding `task:decide` on the
+ * task (the key and scope the decision itself checks), the assignee aside, is
+ * raised one item on the new gate.
+ */
+export async function raiseDecision(
+  tx: TenantQuery,
+  gate: { readonly taskId: string; readonly gateId: string },
+): Promise<void> {
+  await withdrawEndedGates(tx, gate.taskId);
+  const holders = await grantHolders(tx, {
+    collection: 'task',
+    action: 'decide',
+    scope: { kind: 'record', id: gate.taskId },
+  });
+  const assignee = await assigneeOf(tx, gate.taskId);
+  for (const person of holders.filter((holder) => holder !== assignee)) {
+    // oxlint-disable-next-line no-await-in-loop
+    await raiseInboxItem(tx, {
+      recipientPersonId: person,
+      subjectRecordId: gate.taskId,
+      reason: 'decision',
+      fact: { kind: 'gate', id: gate.gateId },
+    });
+  }
+}
+
+/**
+ * An escalated gate (T3a). Escalating decides nothing, and from then on only a
+ * holder of `task:decide` across the business decides the gate, so an open
+ * item on it held by anyone else is withdrawn (they can no longer act on it)
+ * and every such holder, the recipient among them, is raised one if they had
+ * none: one granted the role after the gate was raised is owed it too. The
+ * task's assignee is not a decider of it (four eyes), so theirs is withdrawn
+ * and none is raised. Only
+ * items about the gate's own task move: one whose pointer names the gate but
+ * whose subject is another task is not this gate's.
+ */
+export async function raiseEscalation(
+  tx: TenantQuery,
+  escalated: { readonly gateId: string; readonly recipientPersonId: string },
+): Promise<void> {
+  const gates = await tx.query<{ readonly taskId: string; readonly assignee?: string | null }>(
+    `select l.task_id as "taskId", r.uuid_2 as assignee
+       from public.gates g
+       join public.proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
+       left join public.records r on r.business_id = l.business_id and r.id = l.task_id
+      where g.business_id = $1 and g.id = $2`,
+    [tx.businessId, escalated.gateId],
+  );
+  const taskId = gates[0]?.taskId;
+  if (taskId === undefined) throw new Error('raiseEscalation: the escalated gate is not here');
+  const assignee = gates[0]?.assignee ?? null;
+  const deciders = await grantHolders(tx, {
+    collection: 'task',
+    action: 'decide',
+    scope: { kind: 'business', id: null },
+  });
+  await tx.query(
+    `update public.inbox_items set work_state = 'withdrawn', closed_at = now()
+      where business_id = $1 and reason = 'decision' and fact_kind = 'gate' and fact_id = $2
+        and subject_record_id = $3 and work_state = 'open'
+        and recipient_person_id <> all($4::uuid[])`,
+    [tx.businessId, escalated.gateId, taskId, deciders.filter((p) => p !== assignee)],
+  );
+  const owed = new Set([...deciders, escalated.recipientPersonId]);
+  owed.delete(assignee ?? '');
+  for (const person of owed) {
+    // oxlint-disable-next-line no-await-in-loop
+    await raiseInboxItem(tx, {
+      recipientPersonId: person,
+      subjectRecordId: taskId,
+      reason: 'decision',
+      fact: { kind: 'gate', id: escalated.gateId },
+    });
+  }
+}
+
+/**
+ * A handed-back lease. The person who authorised it launched the run: a
+ * completed run tells them it finished and owes nothing; a failed one is
+ * waiting on their move (restart or cancel). Answers the lease's task.
+ */
+export async function raiseRunSettled(
+  tx: TenantQuery,
+  settled: { readonly leaseId: string; readonly outcome: 'completed' | 'failed' },
+): Promise<string> {
+  const rows = await tx.query<{ readonly taskId: string; runId: string; launcher: string }>(
+    `select task_id as "taskId", run_id as "runId", authorised_by_person_id as launcher
+       from public.leases where business_id = $1 and id = $2`,
+    [tx.businessId, settled.leaseId],
+  );
+  const lease = rows[0];
+  if (lease === undefined) throw new Error('raiseRunSettled: the settled lease is not here');
+  await raiseInboxItem(tx, {
+    recipientPersonId: lease.launcher,
+    subjectRecordId: lease.taskId,
+    reason: settled.outcome === 'completed' ? 'run_finished' : 'waiting_run',
+    fact: { kind: 'planned_run', id: lease.runId },
+  });
+  return lease.taskId;
+}
+
+const BUSINESS = { kind: 'business', id: null } as const;
+
+/** The person's newest decision item on the gate, reopened if it is withdrawn and none is open. */
+const REOPEN = `update public.inbox_items set work_state = 'open', closed_at = null
+  where business_id = $1 and work_state = 'withdrawn'
+    and id = (select w.id from public.inbox_items w
+               where w.business_id = $1 and w.recipient_person_id = $2
+                 and w.subject_record_id = $3 and w.reason = 'decision'
+                 and w.fact_kind = 'gate' and w.fact_id = $4
+               order by w.work_state = 'open' desc, w.closed_at desc limit 1)`;
+
+/**
+ * An assignment written. Whoever held the open assignment item and is no
+ * longer the assignee has it withdrawn; the new assignee is raised one,
+ * unless they assigned themselves. Four eyes: their open decision items on
+ * the task withdraw, and everyone else who decides a pending gate on it now
+ * (as `raiseDecision` and `raiseEscalation` ask) holds an open one, a former
+ * assignee's withdrawn one reopened. Under the task row this write holds,
+ * which a decision locks too.
+ */
+export async function raiseAssignment(
+  tx: TenantQuery,
+  change: { readonly taskId: string; readonly assignee: string | null; readonly by: string },
+): Promise<void> {
+  await tx.query(
+    `update public.inbox_items set work_state = 'withdrawn', closed_at = now()
+      where business_id = $1 and subject_record_id = $2 and work_state = 'open'
+        and ((reason = 'assignment' and recipient_person_id is distinct from $3::uuid)
+          or (reason = 'decision' and recipient_person_id = $3::uuid))`,
+    [tx.businessId, change.taskId, change.assignee],
+  );
+  const gates = await tx.query<{ readonly id: string; readonly to: string | null }>(
+    `select g.id, g.escalated_to_person_id as "to" from public.gates g
+       join public.proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
+      where g.business_id = $1 and l.task_id = $2 and g.state = 'pending' and l.state = 'live'`,
+    [tx.businessId, change.taskId],
+  );
+  for (const gate of gates) {
+    const scope = gate.to === null ? { kind: 'record' as const, id: change.taskId } : BUSINESS;
+    // oxlint-disable-next-line no-await-in-loop
+    const holders = await grantHolders(tx, { collection: 'task', action: 'decide', scope });
+    for (const person of new Set([...holders, ...(gate.to === null ? [] : [gate.to])])) {
+      if (person === change.assignee) continue;
+      // oxlint-disable-next-line no-await-in-loop
+      await tx.query(REOPEN, [tx.businessId, person, change.taskId, gate.id]);
+      // oxlint-disable-next-line no-await-in-loop
+      await raiseInboxItem(tx, {
+        recipientPersonId: person,
+        subjectRecordId: change.taskId,
+        reason: 'decision',
+        fact: { kind: 'gate', id: gate.id },
+      });
+    }
+  }
+  if (change.assignee === null || change.assignee === change.by) return;
+  await raiseInboxItem(tx, {
+    recipientPersonId: change.assignee,
+    subjectRecordId: change.taskId,
+    reason: 'assignment',
+    fact: { kind: 'record', id: change.taskId },
+  });
+}
+
+/**
+ * An incident (CS-16.8): a hold a transition classified `quarantined`. Its
+ * attempt carries a dispatch marker or an observation, so what the work did is
+ * unknown and its full hold stays retained until a person reconciles it.
+ * Cancel, revocation and handback each classify holds in their own
+ * transaction and pass them all here; everyone holding `task:manage` on the
+ * task is raised one item on the quarantined run.
+ */
+export async function raiseIncident(
+  tx: TenantQuery,
+  classified: readonly { readonly reservationId: string; readonly state: string }[],
+): Promise<void> {
+  const quarantined = classified.filter((hold) => hold.state === 'quarantined');
+  if (quarantined.length === 0) return;
+  const runs = await tx.query<{ readonly taskId: string; readonly runId: string }>(
+    `select distinct p.task_id as "taskId", p.id as "runId"
+       from public.reservations r
+       join public.planned_runs p on p.business_id = r.business_id and p.id = r.run_id
+      where r.business_id = $1 and r.id = any($2::uuid[])`,
+    [tx.businessId, quarantined.map((hold) => hold.reservationId)],
+  );
+  for (const run of runs) {
+    // oxlint-disable-next-line no-await-in-loop
+    const holders = await grantHolders(tx, {
+      collection: 'task',
+      action: 'manage',
+      scope: { kind: 'record', id: run.taskId },
+    });
+    for (const person of holders) {
+      // oxlint-disable-next-line no-await-in-loop
+      await raiseInboxItem(tx, {
+        recipientPersonId: person,
+        subjectRecordId: run.taskId,
+        reason: 'incident',
+        fact: { kind: 'planned_run', id: run.runId },
+      });
+    }
+  }
+}
