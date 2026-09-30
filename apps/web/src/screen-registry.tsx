@@ -13,6 +13,7 @@ import { Gallery } from '@launchastro/ui';
 import type { AuthenticatedRouteId, ParamsOf, RouteMatch } from './routes.ts';
 import type { OperationsClient } from './operations/client.ts';
 import { AccessScreen } from './screens/Access.tsx';
+import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
@@ -51,6 +52,9 @@ export const SCREENS: {
   ),
   'agency:telemetry': (context) => (
     <TelemetryScreen client={context.client} grantKey={context.grantKey} />
+  ),
+  'agency:operations': (context) => (
+    <OperationsScreen client={context.client} grantKey={context.grantKey} />
   ),
   'agency:task-detail': (context) => (
     <TaskDetailScreen

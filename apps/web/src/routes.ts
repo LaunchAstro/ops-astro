@@ -87,10 +87,11 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
-  // Settings ▸ Access (C32, C58) and Settings ▸ Telemetry (C34): pages of the
-  // manifest's Settings section, drawing no pinned surface. Access is who may
-  // do what, a grant and ending a person's access; Telemetry is the
-  // service-health section of C55's operations read (CS-2.16).
+  // Settings ▸ Access (C32, C58), Settings ▸ Telemetry (C34) and Settings ▸
+  // Operations (C55): pages of the manifest's Settings section, drawing no
+  // pinned surface. Access is who may do what, a grant and ending a person's
+  // access; Operations is the operations view behind `operations:read`
+  // (CS-14.31); Telemetry is its service-health section (CS-2.16).
   'agency:access': {
     namespace: 'agency',
     path: '/settings/access/',
@@ -102,6 +103,13 @@ export const ROUTES = {
     namespace: 'agency',
     path: '/settings/telemetry/',
     title: 'Telemetry',
+    surface: 'none',
+    authenticated: true,
+  },
+  'agency:operations': {
+    namespace: 'agency',
+    path: '/settings/operations/',
+    title: 'Operations',
     surface: 'none',
     authenticated: true,
   },

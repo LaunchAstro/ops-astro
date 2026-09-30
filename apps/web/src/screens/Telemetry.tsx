@@ -10,13 +10,15 @@
 // own words, and says nothing about the services it watches. Tracing is
 // optional: switched off, it is "off", never a failure. An answer made
 // in-process carries no section, and the page says so rather than drawing an
-// empty, healthy-looking one.
+// empty, healthy-looking one. The operations view (C55) draws this same
+// section, and the page links there.
 
 import type { ReactElement, ReactNode } from 'react';
 import { Card, Empty, StatusMark, Table, type MarkTone } from '@launchastro/ui';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { RecordState } from '../views/record-state.tsx';
+import { pathTo } from '../routes.ts';
 import type {
   HealthSourceName,
   HealthSourceView,
@@ -86,7 +88,7 @@ const serviceRows = (section: Section): readonly Record<string, ReactNode>[] =>
     };
   });
 
-function Health(props: { readonly result: OperationsReadResult }): ReactElement {
+export function Health(props: { readonly result: OperationsReadResult }): ReactElement {
   const section = props.result.serviceHealth;
   if (section === undefined) {
     return (
@@ -131,7 +133,11 @@ export function TelemetryScreen(props: TelemetryScreenProps): ReactElement {
       <header className="tpr">
         <h2 className="tpr__title">Telemetry</h2>
         <div className="card__sub">
-          Service health for {client.businessKey}, from the operations read.
+          Service health for {client.businessKey}, from the{' '}
+          <a href={pathTo('agency:operations')} data-link="operations">
+            operations view
+          </a>
+          .
         </div>
       </header>
       <RecordState state={state} subject="service health" onRetry={reload}>
