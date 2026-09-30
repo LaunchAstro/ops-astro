@@ -114,6 +114,9 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
   left join lateral (select ev.kind, ev.detail from public.run_events ev
       where ev.business_id = $1 and ev.run_id = run.id
         and ev.position <= (select n from head)
+        -- The run's own progress: a helper's hand-over and handback (AW-11)
+        -- never stand in for the run's last move or hide its drop.
+        and ev.kind not in ('delegated', 'child_handed_back')
       order by ev.position desc limit 1) last on true
  where run.business_id = $1 and run.task_id = $2), '[]')`;
 

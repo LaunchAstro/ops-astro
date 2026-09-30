@@ -324,6 +324,7 @@
     "tests/broker/aw-11-child-spend.test.ts",
     "tests/broker/aw-11-child-spend-isolation.test.ts",
     "tests/runtime/aw-11-child-work.test.ts",
+    "tests/runtime/aw-11-child-work-graph.test.ts",
     "tests/runtime/aw-11-child-work-isolation.test.ts",
     "tests/runtime/aw-02-pins.test.ts",
     "tests/runtime/aw-02-isolation.test.ts",
