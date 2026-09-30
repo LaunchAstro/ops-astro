@@ -1637,7 +1637,8 @@ and codes, never a sentence, to a trace target an operator reads.
   redirects refused, replies bounded by time and bytes. The target's project
   key pair sits in custody's credential file as `user:secret` under
   `scheme: "basic"` and leaves as HTTP Basic (the pinned target's OpenTelemetry
-  route refuses a Bearer key); the trace key is read by the exporter from its
+  route refuses a Bearer key), so the target's origin is https unless it is
+  this machine's loopback address; the trace key is read by the exporter from its
   own file. `TRACE_EXPORT=on` is the one change that starts it
   ([API.md](API.md#the-composition-root)); the server then exports every
   recovered business on an interval, and a failure is logged by kind only.

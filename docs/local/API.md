@@ -308,7 +308,8 @@ at most (the fair share, "The model call" below).
 
 `main()` starts the diagnostic trace export (AW-13, `apps/api/trace-exporter.ts`)
 only when `TRACE_EXPORT=on`, the one change an operator makes once
-`TRACE_EXPORT_ORIGIN` (the target's bare origin), `TRACE_EXPORT_CREDENTIALS_FILE`
+`TRACE_EXPORT_ORIGIN` (the target's bare origin, https unless it is
+`127.0.0.0/8` or `[::1]`: plain http would carry the key pair in clear), `TRACE_EXPORT_CREDENTIALS_FILE`
 (custody's file for the target's key pair) and `TRACE_EXPORT_KEY_FILE` (the
 trace key, at least 32 bytes as hex, in a file no group or other may read)
 are staged. Unset or `off`, none of the three is read and the log says

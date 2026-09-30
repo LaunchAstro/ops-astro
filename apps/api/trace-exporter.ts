@@ -66,6 +66,9 @@ export type TraceExportSettings =
 
 const invalid = (problem: string): TraceExportSettings => ({ kind: 'invalid', problem });
 
+/** Plain http only to this machine: the Basic pair would otherwise cross a network in clear. */
+const LOOPBACK = /^(?:127(?:\.\d{1,3}){3}|\[::1\])$/u;
+
 export function traceExportSettings(
   environment: Readonly<Record<string, string | undefined>>,
 ): TraceExportSettings {
@@ -83,6 +86,10 @@ export function traceExportSettings(
   const destination = parsed.ok ? parsed.destinations.get(TRACE_DESTINATION) : undefined;
   if (destination === undefined) {
     return invalid('TRACE_EXPORT_ORIGIN is not a bare http(s) origin');
+  }
+  const { protocol, hostname } = new URL(destination.origin);
+  if (protocol === 'http:' && !LOOPBACK.test(hostname)) {
+    return invalid('TRACE_EXPORT_ORIGIN is plain http off this machine; use https');
   }
   const key = keyFrom(value('TRACE_EXPORT_KEY_FILE'));
   if (key === undefined) {
