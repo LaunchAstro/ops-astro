@@ -5,9 +5,10 @@
 // reads and keeps no list of its own: INB-1's unattended items (every path to
 // a person broken), the privacy incidents with the breach runbook they link
 // (C81), and C34's service-health section, the same one Settings ▸ Telemetry
-// draws. A refused read is drawn denied, never as an empty view. Read only:
-// recording an incident is `privacy.record_incident` on the API and the
-// command line.
+// draws. A refused read is drawn denied, never as an empty view. Its one
+// write, recording a privacy incident (`privacy.record_incident`, under
+// `privacy:manage`, as on the API and the command line), is
+// `operations/record-incident.tsx`, below the incidents card.
 
 import type { ReactElement, ReactNode } from 'react';
 import { Card, Empty, StatusMark, Table } from '@launchastro/ui';
@@ -15,6 +16,7 @@ import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { Health } from './Telemetry.tsx';
+import { RecordIncident } from './operations/record-incident.tsx';
 import type {
   OperationsReadResult,
   PrivacyIncidentView,
@@ -144,6 +146,7 @@ export function OperationsScreen(props: OperationsScreenProps): ReactElement {
           <>
             <Unattended items={result.unattended} />
             <Incidents result={result} />
+            <RecordIncident client={client} onRecorded={reload} />
             <Health result={result} />
           </>
         )}
