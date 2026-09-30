@@ -123,6 +123,26 @@ it('MP-1-3 table, card, banner, meter and stat', () => {
   expect(rule('.stat__num')).toMatch(/font-variant-numeric:\s*tabular-nums/u);
 });
 
+it('DS-PRIM-22 the hint is the agent aside: an AI mark, a 1px accent rule on the accent wash', () => {
+  const hint = html(
+    <Banner tone="hint" action={<button type="button">Set reminders</button>}>
+      Two are overdue.
+    </Banner>,
+  );
+  expect(hint).toMatch(
+    /^<aside class="banner banner--hint"><span class="banner__mark">AI<\/span><p class="banner__body">Two are overdue\.<\/p><button/u,
+  );
+  // Only the agent's aside carries the mark.
+  expect(html(<Banner tone="info">Heads up.</Banner>)).not.toContain('banner__mark');
+  // No outer box: one 1px accent rule on the one accent wash (DR-11), no dismiss.
+  expect(rule('.banner--hint')).toMatch(/border:\s*0/u);
+  expect(rule('.banner--hint')).toMatch(/border-left:\s*1px solid var\(--accent\)/u);
+  expect(rule('.banner--hint')).toMatch(/background:\s*var\(--accent-wash\)/u);
+  expect(rule('.banner__mark')).toMatch(/color:\s*var\(--accent\)/u);
+  const tip = GALLERY.find((entry) => entry.id === 'DS-PRIM-22');
+  expect(tip?.states.map((state) => state.label)).toContain('Hint');
+});
+
 it('MP-1-3 one table header style', () => {
   const heads = allSheets.flatMap(({ path, text }) =>
     selectors(text)

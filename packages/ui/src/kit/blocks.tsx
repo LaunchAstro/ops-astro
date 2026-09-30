@@ -14,7 +14,7 @@ import { Term, type MarkTone } from './marks.tsx';
 
 /** DS-PRIM-22, and the section error of DS-PRIM-30 (`bad`). A tip is info with a dismiss. */
 export interface BannerProps {
-  readonly tone?: 'warn' | 'bad' | 'info' | undefined;
+  readonly tone?: 'warn' | 'bad' | 'info' | 'hint' | undefined;
   readonly lead?: string | undefined;
   readonly children: ReactNode;
   readonly action?: ReactNode;
