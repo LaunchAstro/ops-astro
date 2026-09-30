@@ -14,7 +14,7 @@
 // cannot split them; this fixture stands for a row written before they did.
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -187,7 +187,11 @@ interface Started {
  * Start the production entry and wait until it answers health or exits.
  * `scope` is the configured value; `undefined` passes a blank one.
  */
-async function startServer(db: FreshDatabase, scope: string | undefined): Promise<Started> {
+async function startServer(
+  db: FreshDatabase,
+  scope: string | undefined,
+  settings: Readonly<Record<string, string>> = {},
+): Promise<Started> {
   const port = await freePort();
   const origin = `http://127.0.0.1:${String(port)}`;
   const admin = new URL(serverUrl as string);
@@ -208,6 +212,7 @@ async function startServer(db: FreshDatabase, scope: string | undefined): Promis
       // Blank rather than absent, so a `.local/recovery.env` in the checkout
       // cannot stand in for the value a case chose.
       RECOVERY_BUSINESS_KEYS: scope ?? '',
+      ...settings,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -487,6 +492,45 @@ describe.skipIf(serverUrl === undefined)('restart recovery at API startup', () =
     expect(none.ready, none.output).toBe(true);
     expect(none.output).toContain('restart recovery: explicitly no deployment businesses');
     expect(await reservation(db.app, fixture.businessId, work)).toStrictEqual(before);
+  }, 90_000);
+
+  it('AW-13 switch at the entry: off unless set; on with a setting missing stops before it listens; on and complete starts', async () => {
+    const off = await startServer(db, NO_DEPLOYMENT_BUSINESSES);
+    await off.stop();
+    expect(off.ready, off.output).toBe(true);
+    expect(off.output).toContain('api: trace export off');
+
+    const missing = await startServer(db, NO_DEPLOYMENT_BUSINESSES, { TRACE_EXPORT: 'on' });
+    await missing.stop();
+    expect(missing.ready).toBe(false);
+    expect(missing.exitCode).toBe(1);
+    expect(missing.output).toContain('TRACE_EXPORT_ORIGIN');
+    expect(missing.output).not.toContain('api: listening');
+
+    const folder = mkdtempSync(join(tmpdir(), 'recovery-entry-trace-'));
+    try {
+      const credentials = join(folder, 'credentials.json');
+      const pair = 'pk-lf-entry:sk-lf-entry-not-a-secret';
+      const entry = { ref: 'trace_key', kind: 'api_key', account: 'trace-target-1' };
+      const stored = { destination: 'trace_target', header: 'authorization', scheme: 'basic' };
+      writeFileSync(credentials, JSON.stringify([{ ...entry, ...stored, value: pair }]), {
+        mode: 0o600,
+      });
+      const key = join(folder, 'trace.key');
+      writeFileSync(key, 'ab'.repeat(32), { mode: 0o600 });
+      const on = await startServer(db, NO_DEPLOYMENT_BUSINESSES, {
+        TRACE_EXPORT: 'on',
+        TRACE_EXPORT_ORIGIN: 'http://127.0.0.1:9',
+        TRACE_EXPORT_CREDENTIALS_FILE: credentials,
+        TRACE_EXPORT_KEY_FILE: key,
+      });
+      await on.stop();
+      expect(on.ready, on.output).toBe(true);
+      expect(on.output).toContain('api: trace export on');
+      expect(on.output).not.toContain('sk-lf-entry');
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
   }, 90_000);
 
   it('releases a hold once when two starts race on one business', async () => {

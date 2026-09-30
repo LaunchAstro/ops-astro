@@ -110,6 +110,7 @@ describe('CQ-8 runtime structure', () => {
       'packages/core-custody/src/broker-reserve.ts',
       'packages/core-records/src/tasks/placement.ts',
       'packages/core-records/src/tenancy/database.ts',
+      'packages/core-records/src/tenancy/limit.ts',
       'packages/core-runtime/src/locks.ts',
     ]);
   });

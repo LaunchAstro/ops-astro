@@ -110,8 +110,10 @@
     "MP-6-5 and C54 (SL12, session 11) name mp-6-5-stops (AW-05's stops on the task read: the stop as the broker raised it, a top-up above the band awaiting a second holder then applied, the end, the third ask as the consolidated decision; a task reads only its own stops, and another client and another business read none) as conformance",
     "MP-6-2 (SL12, session 11) names mp-6-2-run-states (0052: a revision kept with its actor, never rewritten or removed, one number one version; a run held on its own task only and in its own business only) as conformance",
     "MP-6-2 (SL12, session 12) names mp-6-2-state-revised (run.revise_state: a revision kept with its actor under run:write on the run's task, stale and malformed bodies keep nothing, one audit event, three crossings refused, the agent inside its delegation only) as conformance",
-    "MP-6-2 (SL12, session 12) names mp-6-2-revoke-run-reach (ORCH34: delegation.revoke reads each collection within its action ceiling and judges run on task at the purpose task; task-only revokes unchanged; three crossings refused) as conformance",
-    "C54 (SL12, session 10) names c54-isolation (the three money acts on an unknown effect and the top-up, across another business, another client in the same business and the agent under a live delegation, statuses checked, no foreign task, attempt, hold or envelope id in any body, the hold unmoved) as an invariant, and c54-money (refusal billing:decide, audit readback of each act on an intact chain, and the top-up approver with two approvers at once) as conformance"
+    "MP-6-2 (SL12, session 12) names mp-6-2-revoke-run-reach (ORCH34: delegation.revoke judges a run pair on task at the purpose task; task-only revokes unchanged; three crossings refused) as conformance",
+    "MP-6-2 (SL12, session 11, named in session 12) names mp-6-2-run-reach (pickup mints run only where the approving person holds run:write, and the agent reaches run:write alone) and run-write-ceiling (the mint and the delegated check hold run to write, a sibling task is outside the delegation, a task-only delegation is unchanged) as conformance",
+    "C54 (SL12, session 10) names c54-isolation (the three money acts on an unknown effect and the top-up, across another business, another client in the same business and the agent under a live delegation, statuses checked, no foreign task, attempt, hold or envelope id in any body, the hold unmoved) as an invariant, and c54-money (refusal billing:decide, audit readback of each act on an intact chain, and the top-up approver with two approvers at once) as conformance",
+    "SL11-16 leaves aw-13-local-target.test.ts unnamed: it opens a database only against a running local trace target (TRACE_TARGET_ENV_FILE from scripts/local/trace-target.ts up), which the required checks never start; aw-13-switch.test.ts is named as an invariant."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -310,6 +312,7 @@
     "tests/broker/aw-01-broker-limits.test.ts",
     "tests/broker/aw-01-broker-isolation.test.ts",
     "tests/broker/aw-01-broker-fair-share.test.ts",
+    "tests/runtime/aw-01-durable-limit.test.ts",
     "tests/runtime/aw-02-pins.test.ts",
     "tests/runtime/aw-02-isolation.test.ts",
     "tests/runtime/aw-02-lease-race.test.ts",
@@ -330,7 +333,8 @@
     "tests/runtime/aw-06-isolation.test.ts",
     "tests/runtime/aw-13-export.test.ts",
     "tests/runtime/aw-13-isolation.test.ts",
-    "tests/runtime/aw-13-late-event.test.ts"
+    "tests/runtime/aw-13-late-event.test.ts",
+    "tests/runtime/aw-13-switch.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
@@ -421,6 +425,8 @@
     "tests/db/mp-6-2-run-states.test.ts",
     "tests/api/mp-6-2-state-revised.test.ts",
     "tests/api/mp-6-2-revoke-run-reach.test.ts",
+    "tests/api/mp-6-2-run-reach.test.ts",
+    "tests/identity/run-write-ceiling.test.ts",
     "tests/api/c54-money.test.ts"
   ]
 }
