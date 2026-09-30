@@ -279,6 +279,12 @@ export type CommandRequest =
       readonly amountMinor: unknown;
       readonly reason: unknown;
     } & Envelope)
+  | ({
+      readonly command: 'budget.set_planning_cap';
+      readonly limitMinor: number;
+      readonly currency: string;
+      readonly fromLimitMinor: number | null;
+    } & Envelope)
   | CheckRequest
   | ConversationRequest
   // Read by its own parser (`model-call.ts`), never by a person handler.

@@ -34,6 +34,7 @@ import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
+import { setPlanningCap } from './budget-planning-cap.ts';
 import { messageConversation, startConversation } from './conversations.ts';
 import { renameConversation, setConversationScope } from './conversation-tabs.ts';
 import { refuseChildWorkAsPerson } from './child-work-person.ts';
@@ -125,6 +126,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'budget.record_outcome': recordOutcomeOnTask,
   // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
   'budget.write_off': writeOffOnTask,
+  // AW-04 (U10). A person sets the planning cap; no agent route reaches it.
+  'budget.set_planning_cap': setPlanningCap,
   // AW-03: the conversation's first message mints it; later ones are its owner's.
   'conversation.start': startConversation,
   'conversation.message': messageConversation,
