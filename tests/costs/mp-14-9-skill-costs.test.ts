@@ -5,7 +5,7 @@
 // built only from the runs pinned to one of its versions, a mean only from
 // more than one priced run, with its spread; the attribution split's buckets
 // add back to the total. The in/out units and the exact model ids come from
-// what the broker's priced settle records per call (AW-01, 0055); the process
+// what the broker's priced settle records per call (AW-01, 0204); the process
 // document waits on Docs (phase 4): a named field, unavailable with its reason.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

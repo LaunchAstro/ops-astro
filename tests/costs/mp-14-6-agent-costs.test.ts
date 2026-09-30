@@ -5,7 +5,7 @@
 // per run and agent, and spend per agent and per client taken from those same
 // rows. A run without a client is the agency's; a run whose cost is not known
 // says so and is never a zero. Each row names the exact model ids its calls
-// recorded (AW-01's priced settle, 0055), and counts a call that named none.
+// recorded (AW-01's priced settle, 0204), and counts a call that named none.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { grantTo } from '../commands/fixture.ts';

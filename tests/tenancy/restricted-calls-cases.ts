@@ -120,25 +120,6 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
 };
 
 /**
- * Update granted column by column: the table, the columns, and the first
- * migration that grants them. Every other column-level privilege, to any
- * role, is outside the contract.
- */
-const COLUMN_UPDATES: Readonly<
-  Record<string, { readonly from: string; readonly columns: readonly string[] }>
-> = {
-  'public.planned_runs': { from: '0192', columns: ['state'] },
-};
-
-/** The `table.column` pairs the application group may update after `at`, or at the full schema. */
-export function columnUpdatesAt(at?: string): readonly string[] {
-  return Object.entries(COLUMN_UPDATES)
-    .filter(([, grant]) => at === undefined || at.slice(0, 4) >= grant.from)
-    .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
-    .toSorted();
-}
-
-/**
  * Column grants held by a role other than the application's, each from the
  * migration that made it: the occurrence role reads a task's revision for
  * 0032's trigger when it inserts an occurrence's run (AW-01 J, 0203).

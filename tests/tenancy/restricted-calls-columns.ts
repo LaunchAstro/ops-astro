@@ -32,7 +32,7 @@ interface ColumnGrant {
  * column-level privilege, to any role, is outside the contract.
  */
 const COLUMN_UPDATES: readonly ColumnGrant[] = [
-  { table: 'public.planned_runs', from: '0043', columns: ['state'] },
+  { table: 'public.planned_runs', from: '0192', columns: ['state'] },
   // MP-14-10a: a graduation row's revision; a mandate's revocation.
   { table: 'public.graduation_classes', from: '0254', columns: ['revision'] },
   {

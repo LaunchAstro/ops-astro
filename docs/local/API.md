@@ -2093,7 +2093,7 @@ figure is a mean with the spread `lo` to `hi` from more than one priced run
 (and `finishedMean` from more than one handed back), `one` for a single priced
 run, `none` otherwise. The split's three buckets add back to its `runs` and
 `total`. A skill's `usage: { measuredRuns, meanIn, meanOut }` takes the same
-rule over the input and output units the priced settle recorded (0055): a mean
+rule over the input and output units the priced settle recorded (0204): a mean
 of each only from more than one priced run whose every settled call recorded
 them. `models: { ids, unnamedCalls }`, on a skill and on each log row, lists
 every exact model id its calls named and counts the settled calls that named

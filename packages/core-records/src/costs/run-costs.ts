@@ -8,7 +8,7 @@
 // currency is its reservation's envelope's. A run's client is its task's
 // party link; its skill is the definition its `definition_version` pin names,
 // when that definition is a skill. Its units and model ids are what the
-// priced settle recorded on each settled call (0055): summed, and the calls
+// priced settle recorded on each settled call (0204): summed, and the calls
 // that recorded none counted, so a gap is never a zero.
 //
 // `listRunCosts` filters by the scopes the caller holds `finance:read` at,
