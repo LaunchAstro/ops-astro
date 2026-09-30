@@ -303,9 +303,11 @@ function read(
     readonly action?: Action;
     readonly agent?: CommandDeclaration['agent'];
     readonly authorisedOn?: 'record' | 'business' | 'self';
+    readonly authority?: readonly string[];
   } = {},
 ): CommandDeclaration {
   return {
+    ...(options.authority === undefined ? {} : { authority: options.authority }),
     name,
     kind: 'read',
     collection,
@@ -504,7 +506,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent reaches it only under a delegation, where it answers the
   // delegation's purpose; before a pickup it is refused like every other
   // operation outside the two (minimum contract 8.2 case 9).
-  read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated' }),
+  // It asks no grant of its own (`authority: []`), so discovery lists it for any holder.
+  read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated', authority: [] }),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was
@@ -730,6 +733,17 @@ export const CSRF_HEADER = 'x-ops-astro-csrf';
 export const SESSION_HEADER = 'x-ops-astro-session';
 
 /** The reads, which no caller may reach through the command envelope. */
+/**
+ * The writes an external party (R4) may reach: a comment, only in the client audience, and
+ * opening their own inbox item. `commands/prepare.ts` refuses every other write to a person
+ * without a membership, and `session.capabilities` and discovery read this same list.
+ */
+export const EXTERNAL_WRITES: readonly CommandName[] = ['task.comment', 'inbox.seen'];
+
+/** Whether a person of this standing may send this write: the envelope and discovery ask it. */
+export const admitsSelfWrite = (member: boolean, command: CommandName): boolean =>
+  member || EXTERNAL_WRITES.includes(command);
+
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(
   (command) => command.kind === 'read',
 ).map((command) => command.name);

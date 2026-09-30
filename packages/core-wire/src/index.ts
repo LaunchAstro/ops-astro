@@ -12,6 +12,8 @@ export {
   declarationOf,
   effectAttemptOf,
   effectOperationId,
+  EXTERNAL_WRITES,
+  admitsSelfWrite,
   DELEGATION_HEADER,
   pathOf,
   PREFIX,

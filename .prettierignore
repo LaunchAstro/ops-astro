@@ -79,3 +79,11 @@ tests/ci/two-url-service-stop-skip-fails-required-job.test.ts
 tests/surfaces/receipt-read-refusal-does-not-claim-no-effect.test.tsx
 tests/surfaces/run-progress-malformed-answer.test.tsx
 tests/visual/coloured-browser-summary-recognises-named-capture.test.ts
+
+# Sol's REVB1ENDSL02A proofs, byte-for-byte as the review patch held them.
+tests/api/leaked-client-read-isolation-assertion.test.ts
+tests/visual/server-error-is-not-a-page.test.ts
+
+# Sol's REVB1ENDFIXCMDC proof, and a proof whose principal took its standing (ORCH46), byte for byte otherwise.
+tests/commands/record-member-notification-discovery.test.ts
+tests/commands/no-grant-inbox-discovery.test.ts
