@@ -147,6 +147,26 @@ service that stopped, restarted or changed fails it (`S0-6 services
 unchanged`). Only a deploy that passes both writes `deploy recorded` to the
 operator's record folder: the version, the artefact and the image id.
 
+The web app goes to Vercel with `scripts/ops/web-deploy.mjs --version <id>
+--artefacts <store>` (the Vercel re-plan, step 4), beside the deploy above.
+The same gate comes first, the same stored build output and preflight are
+checked, and the output is copied into a folder of its own and checked again
+there. It runs `vercel deploy --prebuilt --prod` under the person's own Vercel
+sign-in (`VERCEL_TOKEN` set refuses it) into the project `VERCEL_ORG_ID` and
+`VERCEL_PROJECT_ID` name, handing the CLI nothing else from the environment,
+then reads the deployment's region back with `vercel inspect`. Only a
+deployment Vercel reports in `syd1` alone writes `deploy recorded`: the
+version, the artefact, the digest, the deployment's own address, the region
+and the function runtime. The folder, `.vercel` included, is removed either
+way.
+
+`scripts/ops/web-deploy.mjs --maintenance`, behind the same gate, puts the
+maintenance page on the main address the same way (`maintenance recorded`)
+without asking the database: one static page for every path, nothing that
+runs. Deploying a version again takes it off. The page answers 200, so the
+watcher's web check stays green; its keyword check on the page's marker
+(`alerts.mjs plan`, watch `maintenance`) alerts while it is up.
+
 The promotion refuses while production's API or auth server runs (owner line
 63), so a person stops them first with `scripts/ops/stop-production.mjs`. It
 asks the operator gate before anything else, then stops the containers

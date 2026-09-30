@@ -88,6 +88,11 @@ const WORDS = {
     'Some errors were not recorded and some failed sign-ins, refusals or exports were not counted',
     'The owner checks that the forwarder is running, from the runbook; nothing else happens on its own',
   ],
+  'maintenance-on': [
+    '{Place} is showing its maintenance page',
+    'Nobody can use the app on {place} while the page is up',
+    'If the maintenance was not planned, the owner deploys the current version again from the runbook; the watcher mails again when the page is gone',
+  ],
 } as const;
 
 export type AlertKind = keyof typeof WORDS;

@@ -15,6 +15,7 @@
 import { plainAlert } from '../../apps/api/alerts/catalogue.ts';
 import { alertEvent, dsnTransport, sinkFrom } from '../../apps/api/alerts/sink.ts';
 import { UNREACHABLE } from './heartbeat.mjs';
+import { MAINTENANCE_MARKER } from './maintenance.ts';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 
@@ -44,6 +45,12 @@ function monitorsFor(where, base) {
   };
   return [
     check('web', 'http', base, 'web-down'),
+    // The maintenance page answers 200; this alerts while its marker is there.
+    {
+      ...check('maintenance', 'keyword', base, 'maintenance-on'),
+      keyword: MAINTENANCE_MARKER,
+      alertWhen: 'exists',
+    },
     check('api', 'http', `${base}api/health`, 'api-down'),
     check('backup', 'heartbeat', undefined, 'backup-silent'),
     check('restore', 'heartbeat', undefined, 'restore-stale'),
