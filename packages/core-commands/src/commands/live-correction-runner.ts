@@ -27,10 +27,12 @@ import {
 } from '../../../core-records/src/index.ts';
 import {
   approvedChange,
+  capturePage,
   contentDigest,
   observeLanded,
   publishCorrection,
   type Accepted,
+  type CaptureOptions,
   type CorrectionTarget,
   type ProviderResult,
   type PublishJob,
@@ -64,7 +66,8 @@ export interface RunnerPorts {
   readonly readDeployment: (
     deploymentId: string,
   ) => Promise<ProviderResult<{ revision: string; served: boolean }>>;
-  readonly capture: (url: string) => Promise<CaptureAnswer>;
+  /** `site.capture`: the C18-1 fence's own inputs, never a function handed in. */
+  readonly capture: CaptureOptions;
   readonly revert: (input: {
     seam: string;
   }) => Promise<ProviderResult<{ revision: string; deploymentId: string }>>;
@@ -106,6 +109,14 @@ export async function record(
   return { kind: 'unrecorded', outcome: result.outcome, code: written.code };
 }
 
+/** The correction's own page, captured through the fence. */
+export async function captureFenced(url: string, ports: RunnerPorts): Promise<CaptureAnswer> {
+  // Red stand-in: every page is treated as catalogued.
+  const pool = { ...ports.capture.pool, agencyPages: [url] };
+  const page = await capturePage(url, { ...ports.capture, pool });
+  return page.ok ? { ok: true, value: { text: page.value.text } } : { ok: false };
+}
+
 /** Cancellation is the correction's own state, read fresh: no lease needed to see it. */
 async function cancellation(db: Database, run: CorrectionRun): Promise<'none' | 'requested'> {
   const rows = await db.withBusiness(
@@ -129,7 +140,7 @@ async function observe(
 ): Promise<RunResult> {
   const landed = await observeLanded(accepted, targetOf(correction), {
     readDeployment: ports.readDeployment,
-    capture: async () => await ports.capture(correction.pageUrl),
+    capture: async () => await captureFenced(correction.pageUrl, ports),
   });
   return await record(
     db,

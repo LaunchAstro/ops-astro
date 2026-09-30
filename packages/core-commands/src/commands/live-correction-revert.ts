@@ -13,6 +13,7 @@ import {
 import { revertCorrection, type RevertOutcome } from '../../../core-connectors/src/index.ts';
 import { observedIn, seen, type Observations } from './live-correction-observations.ts';
 import {
+  captureFenced,
   record,
   refused,
   targetOf,
@@ -64,7 +65,7 @@ export async function runLiveRevert(
     {
       readDeployment: ports.readDeployment,
       revert: ports.revert,
-      capture: async () => await ports.capture(correction.pageUrl),
+      capture: async () => await captureFenced(correction.pageUrl, ports),
       now: ports.now,
     },
   );
