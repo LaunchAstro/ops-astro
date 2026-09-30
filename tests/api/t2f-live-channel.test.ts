@@ -12,7 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Hono } from 'hono';
+import { Hono } from 'hono';
 import {
   connect,
   connectListener,
@@ -77,9 +77,11 @@ async function join(api: Hono, key: string, recordId: string, token: string): Pr
   const events: string[] = [];
   if (response.status !== 200 || response.body === null) {
     const text = await response.text();
+    // Only a gone route's plain 404 (T2f unwired) is let through: any other non-JSON answer throws.
+    const gone = response.status === 404 && !text.startsWith('{');
     return {
       status: response.status,
-      refusal: text === '' ? {} : (JSON.parse(text) as Record<string, unknown>),
+      refusal: gone ? {} : (JSON.parse(text) as Record<string, unknown>),
       events,
       ended: true,
       stop: async () => {},
@@ -160,8 +162,13 @@ describe.skipIf(serverUrl === undefined)(
       key = String(rows[0]?.key);
       // More than one connection, so the pooling proofs are about a pool.
       pool = connect(s.db.appUrl, { max: 4 });
-      listener = connectListener(s.db.appUrl);
-      topics = await startLiveTopics(listener);
+      try {
+        listener = connectListener(s.db.appUrl);
+        topics = await startLiveTopics(listener);
+      } catch (error) {
+        // Without T2f's listener every case below still runs, and fails by its own name.
+        console.warn(`api/t2f-live-channel: no live listener: ${String(error)}`);
+      }
       api = composeApi({
         database: pool,
         admin: s.db.admin,
@@ -253,13 +260,21 @@ describe.skipIf(serverUrl === undefined)(
       unsubscribe();
     });
 
-    it('T2 isolation (T2f): interleaved writes on a pooled connection reach only their own business, and join refuses another business, another client and a person without the grant', async () => {
-      const world = cq8World(s);
-      const other = await world.party(`t2f-other-${randomUUID().slice(0, 8)}`);
+    it('T2 isolation (T2f): interleaved writes on a pooled connection reach only their own business, and join refuses another business under either key', async () => {
+      const other = await cq8World(s).party(`t2f-other-${randomUUID().slice(0, 8)}`);
       const [otherTask] = other.tasks;
       if (otherTask === undefined) throw new Error('party: two tasks');
       const mine = await createTask(s, `t2f-isolation-${randomUUID()}`);
 
+      // Joins first (they run with no live listener), each refused with its own status.
+      const foreignToken = await tokenFor(other.member.presented.subject);
+      expect((await join(api, key, mine, foreignToken)).status).toBe(403);
+      const [otherRow] = await s.db.admin.execute<{ key: string }>(
+        'select key from public.businesses where id = $1',
+        [other.id],
+      );
+      const otherKey = String(otherRow?.key);
+      expect((await join(api, otherKey, mine, foreignToken)).status).toBe(404);
       const heard = { mine: 0, theirs: 0, forged: 0, forgedBack: 0 };
       const off = [
         topics.subscribe(s.business, mine, () => (heard.mine += 1)),
@@ -278,29 +293,25 @@ describe.skipIf(serverUrl === undefined)(
       expect(heard.forged).toBe(0);
       expect(heard.forgedBack).toBe(0);
       for (const unsubscribe of off) unsubscribe();
+    });
 
-      // At join: the other business's member names this task, under either key.
-      const foreignToken = await tokenFor(other.member.presented.subject);
-      expect((await join(api, key, mine, foreignToken)).status).not.toBe(200);
-      const [otherRow] = await s.db.admin.execute<{ key: string }>(
-        'select key from public.businesses where id = $1',
-        [other.id],
-      );
-      const otherKey = String(otherRow?.key);
-      expect((await join(api, otherKey, mine, foreignToken)).status).not.toBe(200);
-
-      // Two clients here, one grant each: each is refused its own task and the
-      // other's.
+    it('T2 isolation (T2f): join refuses another client and a person without the grant', async () => {
+      const world = cq8World(s);
+      const mine = await createTask(s, `t2f-isolation-${randomUUID()}`);
+      // Two clients, one task shared with each.
       const sibling = await createTask(s, `t2f-sibling-${randomUUID()}`);
       await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
-      const first = await world.client(s.business, s.decider, 't2f-client-1', mine);
-      const second = await world.client(s.business, s.decider, 't2f-client-2', sibling);
-      // External readers stay off the channel entirely (Sol, #111).
-      expect((await open(mine, first)).status).not.toBe(200);
-      expect((await open(sibling, first)).status).not.toBe(200);
-      expect((await open(mine, second)).status).not.toBe(200);
+      await world.client(s.business, s.decider, 't2f-client-1', mine);
+      await world.client(s.business, s.decider, 't2f-client-2', sibling);
       const outsider = await enrol(s.db.app, s.business, `t2f-no-grant-${randomUUID()}`);
       expect((await open(mine, outsider)).status).not.toBe(200);
+      // Client to client (external readers have their own case): a member granted on one task.
+      const scoped = await enrol(s.db.app, s.business, `t2f-scoped-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await grantTo(tx, scoped, 'read', { kind: 'record', id: mine });
+      });
+      expect((await open(mine, scoped)).status).toBe(200);
+      expect((await open(sibling, scoped)).status).toBe(403);
     });
 
     it('an external shared reader cannot join the internal activity channel', async () => {
@@ -313,6 +324,7 @@ describe.skipIf(serverUrl === undefined)(
       });
       expect(read).toHaveProperty('sharedTask');
 
+      expect((await open(taskId, s.decider)).status, 'the grant holder joins').toBe(200);
       const joined = await open(taskId, external);
       expect(joined.status).not.toBe(200);
     });
@@ -369,6 +381,14 @@ describe.skipIf(serverUrl === undefined)(
       const body = (await response.json()) as Record<string, unknown>;
       expect(body['live']).toBe('listening');
       expect(typeof body['notificationQueue']).toBe('number');
+    });
+
+    it('a plain-text server error at join throws, never read as a refusal', async () => {
+      const broken = new Hono();
+      broken.get('*', (context) => context.text('server failure', 500));
+      await expect(
+        join(broken, key, randomUUID(), await tokenFor(s.decider.presented.subject)),
+      ).rejects.toThrow();
     });
 
     it('T2f listen only: the listener connection can only listen, and sends nothing but LISTEN', () => {

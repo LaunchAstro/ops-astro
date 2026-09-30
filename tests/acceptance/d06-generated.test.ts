@@ -35,11 +35,20 @@ import {
   type Surface,
   type TopCell,
 } from './d06-cases.ts';
+import { inPart, suitePart } from '../../scripts/db-shards.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { serverUrl } from './world.ts';
 
 /** The two commands that write a record's generic fields, through `tasks-write.ts`. */
 const GENERIC_WRITES: ReadonlySet<CommandName> = new Set(['task.create', 'task.update']);
+
+// The hosted runner runs this file in the parts tests/db/shard-plan.json names,
+// SUITE_PART=i/k, each part on a fixture of its own. A part registers only its
+// share of the cells, so every cell runs once across the parts; unset, the
+// file is one part and runs them all. The two metadata tests run in part 1.
+const PART = suitePart(process.env['SUITE_PART']);
+const TOP_CELLS = TOP_LEVEL_CELLS.filter((_, i) => inPart(i, PART));
+const FIELD_CELLS = PAYLOAD_CELLS.filter((_, i) => inPart(i, PART));
 
 if (serverUrl === undefined) {
   console.warn('acceptance/d06-generated: DATABASE_URL is unset, so nothing below ran.');
@@ -130,36 +139,38 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
     tally.retry(cell.operation, cell.surface);
   }
 
-  it('reads the installed field metadata the payload cells are generated from', async () => {
-    const { world } = harness;
-    const rows = await world.db.admin.execute<{ readonly key: string }>(
-      `select fd.key from public.field_defs fd
+  if (PART.index === 1) {
+    it('reads the installed field metadata the payload cells are generated from', async () => {
+      const { world } = harness;
+      const rows = await world.db.admin.execute<{ readonly key: string }>(
+        `select fd.key from public.field_defs fd
          join public.record_types rt on rt.business_id = fd.business_id and rt.id = fd.record_type_id
         where fd.business_id = $1 and rt.key = 'task' and fd.write_mode = 'system'
         order by 1`,
-      [world.alpha],
-    );
-    expect(rows.map((row) => row.key)).toStrictEqual(SYSTEM_PAYLOAD_FIELDS);
-    expect(SYSTEM_OWNED_FIELDS.length).toBeGreaterThan(0);
-  });
+        [world.alpha],
+      );
+      expect(rows.map((row) => row.key)).toStrictEqual(SYSTEM_PAYLOAD_FIELDS);
+      expect(SYSTEM_OWNED_FIELDS.length).toBeGreaterThan(0);
+    });
 
-  it('lists exactly the operations whose positive body carries record fields', async () => {
-    const carrying: CommandName[] = [];
-    for (const cell of TOP_LEVEL_CELLS) {
-      if (cell.key !== SYSTEM_OWNED_FIELDS[0] || cell.surface !== 'api') continue;
-      // A plan's `fields` is not a record's, and the two revokes are this file's own recipes.
-      if (['preset.plan', 'grant.revoke', 'delegation.revoke'].includes(cell.operation)) continue;
-      // eslint-disable-next-line no-await-in-loop -- one recipe at a time, as a person would
-      const body = await positive(cell.operation);
-      const fields = body['fields'];
-      if (typeof fields === 'object' && fields !== null && !Array.isArray(fields)) {
-        carrying.push(cell.operation);
+    it('lists exactly the operations whose positive body carries record fields', async () => {
+      const carrying: CommandName[] = [];
+      for (const cell of TOP_LEVEL_CELLS) {
+        if (cell.key !== SYSTEM_OWNED_FIELDS[0] || cell.surface !== 'api') continue;
+        // A plan's `fields` is not a record's, and the two revokes are this file's own recipes.
+        if (['preset.plan', 'grant.revoke', 'delegation.revoke'].includes(cell.operation)) continue;
+        // eslint-disable-next-line no-await-in-loop -- one recipe at a time, as a person would
+        const body = await positive(cell.operation);
+        const fields = body['fields'];
+        if (typeof fields === 'object' && fields !== null && !Array.isArray(fields)) {
+          carrying.push(cell.operation);
+        }
       }
-    }
-    expect(carrying.toSorted()).toStrictEqual([...FIELDS_PAYLOAD_OPERATIONS]);
-  }, 60_000);
+      expect(carrying.toSorted()).toStrictEqual([...FIELDS_PAYLOAD_OPERATIONS]);
+    }, 60_000);
+  }
 
-  it.each(TOP_LEVEL_CELLS)(
+  it.each(TOP_CELLS)(
     '$operation refuses top-level $key on $surface, and writes nothing',
     async (cell) => {
       await runCell(cell, (body, value) => ({ ...body, [cell.key]: value }), 'FIELD_NOT_WRITABLE');
@@ -175,7 +186,7 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
    * mistake from writing a derived value. The operation-owned commands never
    * reach that check and the engine refuses it as the derived field it is.
    */
-  it.each(PAYLOAD_CELLS)(
+  it.each(FIELD_CELLS)(
     '$operation refuses fields.$key on $surface, and writes nothing',
     async (cell) => {
       await runCell(
@@ -192,10 +203,10 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
     60_000,
   );
 
-  // Last in the file, so it reads the tally of every cell above. Under a `-t`
+  // Last in the file, so it reads the tally of every cell above, this part's. Under a `-t`
   // filter it is filtered out with the rest and asserts nothing.
   it('ran every cell between a succeeding positive control and a succeeding clean retry', () => {
-    expect(tally.total()).toBe(TOP_LEVEL_CELLS.length + PAYLOAD_CELLS.length);
+    expect(tally.total()).toBe(TOP_CELLS.length + FIELD_CELLS.length);
     expect(tally.unproved()).toStrictEqual([]);
   });
 });
