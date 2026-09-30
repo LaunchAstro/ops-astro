@@ -8,12 +8,13 @@
 // under a scoped map inherits it. These cases hold that seam end to end, on
 // the real commands and the real broker.
 //
-// The run is main's proposal, approval and pickup on the ticket; `run started
-// (research)` under `run:write` is SL12-B's U37 and stays in wf-7-held, as do
-// the map's research ceiling and the waiting item.
+// The run is main's proposal, approval and pickup on the ticket, the proposal
+// under `run:write` (wf-7-run); the map's research ceiling and the waiting
+// item stay in wf-7-held.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
+import { grantTo } from '../commands/fixture.ts';
 import {
   appliedDetail,
   asPerson,
@@ -76,8 +77,14 @@ const researchTicket = async (map: string, title: string): Promise<string> => {
   return String((outcome as { recordId: string }).recordId);
 };
 
-/** The run on the ticket: proposed, approved and picked up by the agent. */
+/**
+ * The run on the ticket: started by a person holding `run:write` on it
+ * (wf-7-run), approved and picked up by the agent.
+ */
 const runOn = async (ticket: string): Promise<Work> => {
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    await grantTo(tx, s.decider, 'write', { kind: 'record', id: ticket }, false, 'run');
+  });
   const proposal = await propose(s, ticket, { maximumMinor: 2_000, purpose: freshPurpose() });
   const decision = await approve(s, proposal);
   const picked = await pickup(s, decision['reservationId']);
