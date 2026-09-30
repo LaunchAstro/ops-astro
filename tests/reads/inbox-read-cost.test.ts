@@ -129,7 +129,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
           return await tx.query(sql, parameters);
         },
       };
-      await readInbox(counted, hana.personId);
+      await readInbox(counted, hana.personId, [{ kind: 'person', id: hana.personId }]);
       const read = queries;
       const owed = await countOwed(counted, hana.personId);
       if (items.length !== 2) throw new Error('the inbox read made other than two item queries');
@@ -279,7 +279,11 @@ describe.skipIf(serverUrl === undefined)('INB-1 the inbox read cost', () => {
     };
     await closed(onA, PAGE, 1_000);
     await closed(onB, SCAN - PAGE, 0);
-    const read = async () => await inAlpha(async (tx) => await readInbox(tx, recipient.personId));
+    const read = async () =>
+      await inAlpha(
+        async (tx) =>
+          await readInbox(tx, recipient.personId, [{ kind: 'person', id: recipient.personId }]),
+      );
     const before = await read();
     expect(before).toHaveLength(PAGE);
     expect(before.every((entry) => entry.access === 'readable')).toBe(true);

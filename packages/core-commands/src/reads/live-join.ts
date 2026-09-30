@@ -13,7 +13,7 @@
 // read moves nothing they are shown, and says nothing.
 
 import { createHash } from 'node:crypto';
-import { withSession } from '../../../core-records/src/index.ts';
+import { subjectsOf, withSession } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, VerifiedSubject } from '../../../core-records/src/index.ts';
 import {
   asCallerVisible,
@@ -53,7 +53,7 @@ export async function shownInbox(
     if (session.personId !== personId || !isInternalReader(session.roleKey)) {
       return refuseNotFound();
     }
-    const entries = await readInbox(tx, personId);
+    const entries = await readInbox(tx, personId, subjectsOf(session));
     return createHash('sha256').update(JSON.stringify(entries)).digest('hex');
   });
   return typeof outcome === 'string' ? outcome : undefined;

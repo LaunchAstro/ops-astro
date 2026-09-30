@@ -737,6 +737,11 @@ export interface InboxEntry {
   /** Who closed it, by name: a cleared decision names who decided. */
   readonly closedBy?: PersonView | null;
   /**
+   * The task's client (MP-7-3's group), only where the caller reaches that
+   * client as `client.list` does; a caller holding the task alone is not told.
+   */
+  readonly client?: { readonly clientId: string; readonly name: string };
+  /**
    * T2h's alert on the run a readable item points at: the same record the task
    * page and the queue read show (INB-1, the alert's third and last place).
    */

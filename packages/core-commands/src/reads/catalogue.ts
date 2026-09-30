@@ -582,7 +582,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: false,
     serve: async (tx, session) =>
       (await holdsAnyGrant(tx, session))
-        ? { ok: true, inbox: await readInbox(tx, session.personId) }
+        ? { ok: true, inbox: await readInbox(tx, session.personId, subjectsOf(session)) }
         : NO_GRANT_AT_ALL,
   },
   'inbox.count': {

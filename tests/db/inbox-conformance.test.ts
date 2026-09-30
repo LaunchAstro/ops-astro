@@ -130,9 +130,12 @@ describe.skipIf(serverUrl === undefined)('INB-1g queue-and-delivery conformance 
     const withheld = await raise(reader.personId, hidden, 'mention');
     await proves(FAULTS.authority, async (load) => {
       const reads = await load<Reads>(READS);
-      return (await inAlpha(async (tx) => await reads.readInbox(tx, reader.personId))).every(
-        (entry) => entry.id !== withheld,
-      );
+      return (
+        await inAlpha(
+          async (tx) =>
+            await reads.readInbox(tx, reader.personId, [{ kind: 'person', id: reader.personId }]),
+        )
+      ).every((entry) => entry.id !== withheld);
     });
   });
 
@@ -143,7 +146,11 @@ describe.skipIf(serverUrl === undefined)('INB-1g queue-and-delivery conformance 
     await proves(FAULTS.count, async (load) => {
       const reads = await load<Reads>(READS);
       return await inAlpha(async (tx) => {
-        const listed = (await reads.readInbox(tx, w.reviewer.personId)).filter((e) => e.counted);
+        const listed = (
+          await reads.readInbox(tx, w.reviewer.personId, [
+            { kind: 'person', id: w.reviewer.personId },
+          ])
+        ).filter((e) => e.counted);
         return (await reads.countOwed(tx, w.reviewer.personId)) === listed.length;
       });
     });

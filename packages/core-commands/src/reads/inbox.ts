@@ -17,10 +17,12 @@
 // or the fact it points at.
 
 import {
+  clientsReached,
   countOwedItems,
   readInboxItems,
   readUnattended,
   type InboxItem,
+  type Subject,
   type UnattendedItem,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -56,12 +58,17 @@ function entryOf(item: InboxItem): InboxEntry {
 /**
  * The caller's own inbox, newest raised last, as `readInboxItems` orders it.
  * A readable entry is named in the same transaction: its task's key and title,
- * and who closed it. The item stores neither, so a renamed task reads renamed.
+ * who closed it, and its task's client where the caller's subjects reach that
+ * client (MP-7-3). The item stores none of them, so a rename reads renamed.
  */
-export async function readInbox(tx: TenantQuery, personId: string): Promise<readonly InboxEntry[]> {
+export async function readInbox(
+  tx: TenantQuery,
+  personId: string,
+  subjects: readonly Subject[],
+): Promise<readonly InboxEntry[]> {
   const items = await readInboxItems(tx, personId);
   const listed = items.filter((item) => item.access !== 'withheld').map((item) => entryOf(item));
-  return await named(tx, listed);
+  return await named(tx, listed, subjects);
 }
 
 /** The owed count: the list's counted entries, counted in one query under the same rule. */
@@ -72,6 +79,7 @@ export async function countOwed(tx: TenantQuery, personId: string): Promise<numb
 async function named(
   tx: TenantQuery,
   entries: readonly InboxEntry[],
+  subjects: readonly Subject[],
 ): Promise<readonly InboxEntry[]> {
   const readable = entries.filter((entry) => entry.access === 'readable');
   const taskIds = [...new Set(readable.map((entry) => entry.subjectRecordId ?? ''))];
@@ -83,12 +91,19 @@ async function named(
         readonly id: string;
         readonly key: string | null;
         readonly title: string | null;
+        readonly clientId: string | null;
       }>(
-        `select id, txt_1 as key, txt_4 as title from public.records
+        `select id, txt_1 as key, txt_4 as title, uuid_7 as "clientId" from public.records
           where business_id = $1 and id = any($2::uuid[]) and deleted_at is null`,
         [tx.businessId, taskIds],
       )
-    ).map((row) => [row.id, { key: row.key ?? '', title: row.title }] as const),
+    ).map(
+      (row) => [row.id, { key: row.key ?? '', title: row.title, clientId: row.clientId }] as const,
+    ),
+  );
+  // C32's own rule, asked once: a grant over the business, or one on the client.
+  const reached = new Map(
+    ((await clientsReached(tx, subjects)) ?? []).map((row) => [row.clientId, row] as const),
   );
   const people = new Map<string, PersonView>(
     deciderIds.length === 0
@@ -104,10 +119,12 @@ async function named(
   return entries.map((entry) => {
     if (entry.access !== 'readable') return entry;
     const task = tasks.get(entry.subjectRecordId ?? '');
+    const client = reached.get(task?.clientId ?? '');
     const decider = entry.closedByPersonId ?? null;
     return {
       ...entry,
-      ...(task === undefined ? {} : { task }),
+      ...(task === undefined ? {} : { task: { key: task.key, title: task.title } }),
+      ...(client === undefined ? {} : { client }),
       closedBy: decider === null ? null : (people.get(decider) ?? null),
     };
   });
