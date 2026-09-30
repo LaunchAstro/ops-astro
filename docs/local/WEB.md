@@ -126,13 +126,13 @@ browser.
 
 ## Addresses
 
-| Address      | What it draws                                                                                                                                                              |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/sign-in`   | Credentials and the business selector                                                                                                                                      |
-| `/projects/` | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening |
-| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                           |
-| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`                                                                            |
-| `/inbox/`    | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count                              |
+| Address      | What it draws                                                                                                                                                                     |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/sign-in`   | Credentials and the business selector                                                                                                                                             |
+| `/projects/` | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening        |
+| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                                  |
+| `/settings`  | Settings General: You and Notifications (the person's own preferences) and This business (the two operation-classified settings, from `settings.read` and `session.capabilities`) |
+| `/inbox/`    | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count                                     |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
@@ -369,7 +369,28 @@ What this screen does not read back, and cannot:
 
 ## The settings screen
 
-`/settings` draws the two settings the model classifies `operation`:
+`/settings` is Settings General (MP-2-11, `screens/SettingsGeneral.tsx`), three
+groups in one row pattern: a label, one quiet sentence, the control on the right.
+**You** holds Appearance (Light, Dark or System, default System) and Guided tips
+(on or off, and "Bring back N dismissed tips", its count derived with
+`dismissedTipCount`, closed with its reason when tips are off or none are
+dismissed), read with `preference.read` and written with `preference.save`, the
+caller's own row only. **Notifications** writes nothing: in-app is drawn on and
+locked, email is drawn not connected until AW-07b, and decisions and incidents
+are drawn as never silenced. **This business** is the screen below, unchanged,
+except that a `STEP_UP_REQUIRED` refusal shows its fix (sign in again), never
+the code.
+
+The appearance is applied at once (`appearance.ts`): `data-theme-preference` on
+the root, which MP-1-1's before-paint step turns into `data-theme`, with a 500ms
+crossfade while `data-theme-fade` is on. Signed in, the frame reads the person's
+preferences once (beside the person menu's `session.person`) and applies the
+stored appearance; the tab keeps a copy in `sessionStorage` as
+`ops-astro.appearance`, which the before-paint step replays on a reload. Signed
+out, the copy is dropped, so one person's appearance never opens the next
+person's session.
+
+This business draws the two settings the model classifies `operation`:
 `four_eyes_threshold` and `client_sign_off_required`. Each is written through
 the command that owns it, `settings.set_four_eyes_threshold` or
 `settings.set_client_sign_off`, with an `operationId`, and with an

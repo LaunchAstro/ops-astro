@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { act, type ReactElement } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { SettingsGeneralScreen } from '../../apps/web/src/screens/SettingsGeneral.tsx';
 import { APPEARANCE_KEY, useStoredAppearance } from '../../apps/web/src/appearance.ts';
@@ -50,7 +50,7 @@ function server(
   } = {},
 ) {
   const sent: Sent[] = [];
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const route = (url: string | URL, init?: RequestInit): Response => {
     const at = String(url);
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     sent.push({ at, body });
@@ -80,7 +80,9 @@ function server(
         403,
       );
     return json({ ok: true, recordId: 'r-1', revision: 4 });
-  }) as typeof globalThis.fetch;
+  };
+  const fetch = ((url: string | URL, init?: RequestInit) =>
+    Promise.resolve(route(url, init))) as typeof globalThis.fetch;
   return { fetch, sent };
 }
 
@@ -120,156 +122,170 @@ afterEach(async () => {
   mounted = null;
   window.sessionStorage.clear();
   const html = document.documentElement;
-  html.removeAttribute('data-theme-preference');
-  html.removeAttribute('data-theme-fade');
+  delete html.dataset['themePreference'];
+  delete html.dataset['themeFade'];
 });
 
-describe('MP-2-11 Settings General: You', () => {
-  it('MP-2-11 appearance repaints: Dark applies at once with the 500ms crossfade and is saved for the person', async () => {
-    const api = server();
-    mounted = await mount(page(api.fetch));
-    await tick();
-    // Nothing stored: System, the default, is the one pressed.
-    expect(button(mounted, 'appearance', 'System').getAttribute('aria-pressed')).toBe('true');
+it('MP-2-11 appearance repaints: Dark applies at once with the 500ms crossfade and is saved for the person', async () => {
+  const api = server();
+  mounted = await mount(page(api.fetch));
+  await tick();
+  // Nothing stored: System, the default, is the one pressed.
+  expect(button(mounted, 'appearance', 'System').getAttribute('aria-pressed')).toBe('true');
 
-    await press(button(mounted, 'appearance', 'Dark'));
-    // At once: the root carries the choice before the save has answered.
-    const html = document.documentElement;
-    expect(html.dataset['themePreference']).toBe('dark');
-    expect(html.hasAttribute('data-theme-fade')).toBe(true);
-    await tick();
-    expect(saves(api)).toContainEqual(
-      expect.objectContaining({ preference: 'appearance', value: 'dark' }),
-    );
-    expect(window.sessionStorage.getItem(APPEARANCE_KEY)).toBe('dark');
+  await press(button(mounted, 'appearance', 'Dark'));
+  // At once: the root carries the choice before the save has answered.
+  const html = document.documentElement;
+  expect(html.dataset['themePreference']).toBe('dark');
+  expect(html.dataset['themeFade']).toBe('');
+  await tick();
+  expect(saves(api)).toContainEqual(
+    expect.objectContaining({ preference: 'appearance', value: 'dark' }),
+  );
+  expect(window.sessionStorage.getItem(APPEARANCE_KEY)).toBe('dark');
 
-    // The crossfade is 500ms, and only while the fade marker is on.
-    const css = readFileSync(join(root, 'apps/web/src/styles/6-slice.css'), 'utf8');
-    expect(css).toMatch(/\[data-theme-fade\][^{]*\{[^}]*500ms/u);
-  });
+  // The crossfade is 500ms, and only while the fade marker is on.
+  const css = readFileSync(join(root, 'apps/web/src/styles/6-slice.css'), 'utf8');
+  expect(css).toMatch(/\[data-theme-fade\][^{]*\{[^}]*500ms/u);
+});
 
-  it('MP-2-11 theme replayed before paint: the stored appearance reaches the before-paint step', async () => {
-    // Signed in: the person's stored appearance is applied and kept for this tab.
-    const api = server({ preferences: { appearance: 'dark' } });
-    function Probe(): null {
-      useStoredAppearance(client(api.fetch), 'alpha:ada', window.sessionStorage);
-      return null;
-    }
-    mounted = await mount(<Probe />);
-    await tick();
-    expect(document.documentElement.dataset['themePreference']).toBe('dark');
-    expect(window.sessionStorage.getItem(APPEARANCE_KEY)).toBe('dark');
-    await mounted.unmount();
-    mounted = null;
+it('MP-2-11 theme replayed before paint: signed in the stored appearance applies, signed out it goes', async () => {
+  // Signed in: the person's stored appearance is applied and kept for this tab.
+  const api = server({ preferences: { appearance: 'dark' } });
+  function Probe(): null {
+    useStoredAppearance(client(api.fetch), 'alpha:ada', window.sessionStorage);
+    return null;
+  }
+  mounted = await mount(<Probe />);
+  await tick();
+  expect(document.documentElement.dataset['themePreference']).toBe('dark');
+  expect(window.sessionStorage.getItem(APPEARANCE_KEY)).toBe('dark');
+  await mounted.unmount();
+  mounted = null;
 
-    // A reload: MP-1-1's step, run on a fresh root with no preference handed
-    // to it and a light system, opens dark from what this tab kept.
-    const html = readFileSync(join(root, 'apps/web/index.html'), 'utf8');
-    const head = new DOMParser().parseFromString(html, 'text/html').head;
-    const step = head.querySelector('script')?.textContent ?? '';
-    const fresh = document.createElement('html');
-    document.replaceChild(fresh, document.documentElement);
-    window.matchMedia = ((query: string) => ({
-      media: query,
-      matches: false,
-      addEventListener: () => undefined,
-    })) as unknown as typeof window.matchMedia;
+  // Signed out: the copy goes, so the next person's session never opens in it.
+  function SignedOut(): null {
+    useStoredAppearance(client(api.fetch), null, window.sessionStorage);
+    return null;
+  }
+  mounted = await mount(<SignedOut />);
+  await tick();
+  expect(document.documentElement.dataset['themePreference']).toBeUndefined();
+  expect(window.sessionStorage.getItem(APPEARANCE_KEY)).toBeNull();
+});
+
+it('MP-2-11 theme replayed before paint: a reload opens in the appearance this tab kept', () => {
+  window.sessionStorage.setItem(APPEARANCE_KEY, 'dark');
+  // A reload: MP-1-1's step, run on a fresh root with no preference handed
+  // to it and a light system, opens dark from what this tab kept.
+  const html = readFileSync(join(root, 'apps/web/index.html'), 'utf8');
+  const head = new DOMParser().parseFromString(html, 'text/html').head;
+  const step = head.querySelector('script')?.textContent ?? '';
+  const original = document.documentElement;
+  const fresh = document.createElement('html');
+  document.replaceChild(fresh, original);
+  const matchMedia = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    media: query,
+    matches: false,
+    addEventListener: () => {
+      // A light system that never changes.
+    },
+  })) as unknown as typeof window.matchMedia;
+  try {
     window.eval(step);
-    expect(fresh.getAttribute('data-theme')).toBe('dark');
-    expect(fresh.getAttribute('data-theme-preference')).toBe('dark');
-  });
-
-  it('MP-2-11 tips off: the switch saves tips.enabled false and the reset says why it is closed', async () => {
-    const api = server({ preferences: { 'tips.dismissed': { 'agency:inbox#triage': 1 } } });
-    mounted = await mount(page(api.fetch));
-    await tick();
-    const tips = mounted.find('[data-pref="tips"] [role="switch"]');
-    expect(tips?.getAttribute('aria-checked')).toBe('true');
-    await press(tips as HTMLElement);
-    await tick();
-    expect(saves(api)).toContainEqual(
-      expect.objectContaining({ preference: 'tips.enabled', value: false }),
-    );
-    expect(mounted.find('[data-pref="tips"] [role="switch"]')?.getAttribute('aria-checked')).toBe(
-      'false',
-    );
-    const reset = button(mounted, 'tips-reset', 'Bring back 1 dismissed tip');
-    expect(reset.disabled).toBe(true);
-    expect(mounted.find('[data-pref="tips-reset"]')?.textContent).toContain('Guided tips are off');
-  });
-
-  it('MP-2-11 tip reset: the bring-back count is derived from the store and the reset clears it', async () => {
-    const api = server({
-      preferences: { 'tips.dismissed': { 'agency:inbox#triage': 1, 'agency:projects#board': 2 } },
-    });
-    mounted = await mount(page(api.fetch));
-    await tick();
-    const reset = button(mounted, 'tips-reset', 'Bring back 2 dismissed tips');
-    expect(reset.disabled).toBe(false);
-    await press(reset);
-    await tick();
-    expect(saves(api)).toContainEqual(
-      expect.objectContaining({ preference: 'tips.dismissed', value: {} }),
-    );
-    // None dismissed now: closed, with its reason.
-    const none = button(mounted, 'tips-reset', 'Bring back 0 dismissed tips');
-    expect(none.disabled).toBe(true);
-    expect(mounted.find('[data-pref="tips-reset"]')?.textContent).toContain(
-      'No tips are dismissed',
-    );
-  });
+    expect(fresh.dataset['theme']).toBe('dark');
+    expect(fresh.dataset['themePreference']).toBe('dark');
+  } finally {
+    document.replaceChild(original, fresh);
+    window.matchMedia = matchMedia;
+  }
 });
 
-describe('MP-2-11 Settings General: Notifications (CS-2.17)', () => {
-  it('MP-2-11 decision not silenced: decisions and incidents are drawn always on, with no control', async () => {
-    const api = server();
-    mounted = await mount(page(api.fetch));
-    await tick();
-    const never = mounted.find('[data-notify="never-quiet"]');
-    expect(never?.textContent).toContain('Decisions');
-    expect(never?.textContent).toContain('Incidents');
-    expect(never?.textContent).toContain('cannot be silenced');
-    expect(never?.querySelectorAll('button, input, select')).toHaveLength(0);
-    // In-app is always on: drawn on and locked, with the reason.
-    const inApp = mounted.find('[data-notify="in-app"] [role="switch"]');
-    expect(inApp?.getAttribute('aria-checked')).toBe('true');
-    expect((inApp as HTMLButtonElement).disabled).toBe(true);
-    // Nothing on this group writes.
-    expect(api.sent.filter((call) => call.at.includes('/notifications/'))).toHaveLength(0);
-  });
-
-  it('MP-2-11 email not yet connected: email is drawn with the not-connected treatment and no choice', async () => {
-    const api = server();
-    mounted = await mount(page(api.fetch));
-    await tick();
-    const email = mounted.find('[data-notify="email"]');
-    expect(email?.querySelector('[data-voice="not-connected"]')).not.toBeNull();
-    expect(email?.textContent).toContain('Instant');
-    expect(email?.textContent).toContain('Daily batch');
-    expect(email?.querySelectorAll('button:not([disabled]), input, select')).toHaveLength(0);
-  });
+it('MP-2-11 tips off: the switch saves tips.enabled false and the reset says why it is closed', async () => {
+  const api = server({ preferences: { 'tips.dismissed': { 'agency:inbox#triage': 1 } } });
+  mounted = await mount(page(api.fetch));
+  await tick();
+  const tips = mounted.find('[data-pref="tips"] [role="switch"]');
+  expect(tips?.getAttribute('aria-checked')).toBe('true');
+  await press(tips as HTMLElement);
+  await tick();
+  expect(saves(api)).toContainEqual(
+    expect.objectContaining({ preference: 'tips.enabled', value: false }),
+  );
+  expect(mounted.find('[data-pref="tips"] [role="switch"]')?.getAttribute('aria-checked')).toBe(
+    'false',
+  );
+  const reset = button(mounted, 'tips-reset', 'Bring back 1 dismissed tip');
+  expect(reset.disabled).toBe(true);
+  expect(mounted.find('[data-pref="tips-reset"]')?.textContent).toContain('Guided tips are off');
 });
 
-describe('MP-2-11 Settings General: This business', () => {
-  it('MP-2-11 business rows: the built rows sit in This business, and a stale sign-in shows the fix, never the code', async () => {
-    const api = server({
-      refuseFourEyes: {
-        code: 'STEP_UP_REQUIRED',
-        fixes: ['Sign in again with the code from your authenticator app, then retry.'],
-      },
-    });
-    mounted = await mount(page(api.fetch));
-    await tick();
-    const business = mounted.find('[data-pref="business"]');
-    expect(business?.textContent).toContain('This business');
-    expect(business?.querySelector('[data-settings="save-four-eyes"]')).not.toBeNull();
-    expect(business?.querySelector('[data-settings="save-sign-off"]')).not.toBeNull();
-
-    await mounted.type('#settings-four-eyes', '900');
-    await mounted.click('[data-settings="save-four-eyes"]');
-    await tick();
-    const said = mounted.text();
-    expect(said).toContain('Sign in again');
-    expect(said).not.toContain('STEP_UP_REQUIRED');
+it('MP-2-11 tip reset: the bring-back count is derived from the store and the reset clears it', async () => {
+  const api = server({
+    preferences: { 'tips.dismissed': { 'agency:inbox#triage': 1, 'agency:projects#board': 2 } },
   });
+  mounted = await mount(page(api.fetch));
+  await tick();
+  const reset = button(mounted, 'tips-reset', 'Bring back 2 dismissed tips');
+  expect(reset.disabled).toBe(false);
+  await press(reset);
+  await tick();
+  expect(saves(api)).toContainEqual(
+    expect.objectContaining({ preference: 'tips.dismissed', value: {} }),
+  );
+  // None dismissed now: closed, with its reason.
+  const none = button(mounted, 'tips-reset', 'Bring back 0 dismissed tips');
+  expect(none.disabled).toBe(true);
+  expect(mounted.find('[data-pref="tips-reset"]')?.textContent).toContain('No tips are dismissed');
+});
+
+it('MP-2-11 decision not silenced: decisions and incidents are drawn always on, with no control', async () => {
+  const api = server();
+  mounted = await mount(page(api.fetch));
+  await tick();
+  const never = mounted.find('[data-notify="never-quiet"]');
+  expect(never?.textContent).toContain('Decisions');
+  expect(never?.textContent).toContain('Incidents');
+  expect(never?.textContent).toContain('cannot be silenced');
+  expect(never?.querySelectorAll('button, input, select')).toHaveLength(0);
+  // In-app is always on: drawn on and locked, with the reason.
+  const inApp = mounted.find('[data-notify="in-app"] [role="switch"]');
+  expect(inApp?.getAttribute('aria-checked')).toBe('true');
+  expect((inApp as HTMLButtonElement).disabled).toBe(true);
+  // Nothing on this group writes.
+  expect(api.sent.filter((call) => call.at.includes('/notifications/'))).toHaveLength(0);
+});
+
+it('MP-2-11 email not yet connected: email is drawn with the not-connected treatment and no choice', async () => {
+  const api = server();
+  mounted = await mount(page(api.fetch));
+  await tick();
+  const email = mounted.find('[data-notify="email"]');
+  expect(email?.querySelector('[data-voice="not-connected"]')).not.toBeNull();
+  expect(email?.textContent).toContain('Instant');
+  expect(email?.textContent).toContain('Daily batch');
+  expect(email?.querySelectorAll('button:not([disabled]), input, select')).toHaveLength(0);
+});
+
+it('MP-2-11 business rows: the built rows sit in This business, and a stale sign-in shows the fix, never the code', async () => {
+  const api = server({
+    refuseFourEyes: {
+      code: 'STEP_UP_REQUIRED',
+      fixes: ['Sign in again with the code from your authenticator app, then retry.'],
+    },
+  });
+  mounted = await mount(page(api.fetch));
+  await tick();
+  const business = mounted.find('[data-pref="business"]');
+  expect(business?.textContent).toContain('This business');
+  expect(business?.querySelector('[data-settings="save-four-eyes"]')).not.toBeNull();
+  expect(business?.querySelector('[data-settings="save-sign-off"]')).not.toBeNull();
+
+  await mounted.type('#settings-four-eyes', '900');
+  await mounted.click('[data-settings="save-four-eyes"]');
+  await tick();
+  const said = mounted.text();
+  expect(said).toContain('Sign in again');
+  expect(said).not.toContain('STEP_UP_REQUIRED');
 });

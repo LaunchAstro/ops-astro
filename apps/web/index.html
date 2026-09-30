@@ -11,12 +11,25 @@
       white. A preference is handed to it as data-theme-preference on this
       element (light, dark or system); anything else follows the system, and
       keeps following it. Setting the attribute later goes through this same
-      step. The stored preference is not read here.
+      step. With none handed over, the tab's copy of the person's stored
+      appearance (MP-2-11, apps/web/src/appearance.ts) is replayed, so a
+      reload opens in the chosen theme.
     -->
     <script>
       (function () {
         var root = document.documentElement;
         var system = window.matchMedia('(prefers-color-scheme: dark)');
+        if (!root.hasAttribute('data-theme-preference')) {
+          var kept = null;
+          try {
+            kept = window.sessionStorage.getItem('ops-astro.appearance');
+          } catch (e) {
+            kept = null;
+          }
+          if (kept === 'light' || kept === 'dark' || kept === 'system') {
+            root.setAttribute('data-theme-preference', kept);
+          }
+        }
         function apply() {
           var chosen = root.getAttribute('data-theme-preference');
           var dark = chosen === 'dark' || (chosen !== 'light' && system.matches);

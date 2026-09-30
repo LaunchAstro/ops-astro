@@ -73,6 +73,9 @@ function scripted(replies: readonly (() => Promise<Response>)[]): {
     // The person menu's name (C23) is the frame's read, not the screen's, so
     // it is answered outside the script and kept out of the screen's calls.
     if (String(url).endsWith('/session/person')) return await PERSON();
+    // So is the person's appearance (MP-2-11), read once by the frame.
+    if (String(url).endsWith('/preference/read'))
+      return Response.json({ ok: true, preferences: {} });
     // The inbox above the board (INB-1g) reads on its own; it is answered
     // empty outside the queue, so each case's replies stay the board's.
     const inbox = inboxReply(String(url));

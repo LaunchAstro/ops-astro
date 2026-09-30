@@ -169,7 +169,13 @@ export function useSettings(
   const busy = command.busy ? pressed : null;
   // A stale write is the conflict, drawn with its draft, not a reason line.
   const failure = command.failure?.kind === 'stale' ? null : command.failure;
-  const because = complaint ?? failure?.because ?? null;
+  // A stale sign-in on a money setting is answered with the fix alone: the
+  // person signs in again, and the code means nothing to them (MP-2-11).
+  const stepUp =
+    failure?.kind === 'failed' && failure.refusal.code === 'STEP_UP_REQUIRED'
+      ? failure.refusal.fixes.join(' ')
+      : null;
+  const because = complaint ?? stepUp ?? failure?.because ?? null;
 
   const read = settings.state;
   const caps = capabilities.state;

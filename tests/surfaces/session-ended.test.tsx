@@ -99,6 +99,9 @@ const scopeDenied = (): Response =>
  * session's bearer is answered the way the API answers a token it cannot
  * verify. A fresh sign-in resets it, which is what the return path needs.
  */
+/** The frame's two reads, C23's name and MP-2-11's appearance (none stored), in one body. */
+const FRAME = { ok: true, person: { name: 'Mia Hart' }, preferences: {} };
+
 function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
   let reads = options.reads ?? 'ok';
   let mutations: 'ok' | 'ended' = 'ok';
@@ -123,7 +126,7 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
     const headers = (init?.headers ?? {}) as Record<string, string>;
     seenTokens.push(headers['authorization'] ?? null);
 
-    if (at.endsWith('/session/person')) return json({ ok: true, person: { name: 'Mia Hart' } });
+    if (at.endsWith('/session/person') || at.endsWith('/preference/read')) return json(FRAME);
     if (at.endsWith('/person/list')) return json({ ok: true, persons: PEOPLE });
     if (at.endsWith('/task/read') || at.endsWith('/task/board')) {
       if (reads === 'ended') return unknownLogin();
@@ -306,6 +309,7 @@ function byBearer(): {
 
     // The person menu's name (C23) answers on either token, like the task read.
     if (at.endsWith('/session/person')) return json({ ok: true, person: { name: 'Mia Hart' } });
+    if (at.endsWith('/preference/read')) return json({ ok: true, preferences: {} });
     if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
     if (at.endsWith('/person/list')) {
       // The old token's people read never comes back on its own. The test
@@ -401,6 +405,7 @@ function perBusiness(): typeof globalThis.fetch {
     const business = /\/b\/([^/]+)\//u.exec(at)?.[1] ?? '?';
     const task = { ...TASK, title: `The ${business} task called TSK-1` };
     if (at.endsWith('/session/person')) return json({ ok: true, person: { name: 'Mia Hart' } });
+    if (at.endsWith('/preference/read')) return json({ ok: true, preferences: {} });
     if (at.endsWith('/person/list')) return json({ ok: true, persons: PEOPLE });
     if (at.endsWith('/task/read')) return json({ ok: true, task });
     if (at.endsWith('/task/board')) return json({ ok: true, tasks: [task] });

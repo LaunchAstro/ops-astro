@@ -179,7 +179,7 @@ export function App(props: AppProps): ReactElement {
     void endIdentitySession({ gotrueUrl: props.gotrueUrl, token: ended.token, fetch: props.fetch });
   };
 
-  const personName = usePersonName(client, session);
+  const personName = usePersonName(client, session, props.storage);
 
   const onSwitch = (businessKey: string, address: string): void => {
     if (session === null) return;

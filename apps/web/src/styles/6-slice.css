@@ -143,3 +143,56 @@
   list-style: none;
   color: var(--ink-muted);
 }
+
+/* MP-2-11 Settings General: the mockup's row (DS-COMP-13), a label and one
+   quiet sentence on the left, the control on the right; stacked at 640. */
+.setrow {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 12px;
+  border-block-end: 1px solid var(--border);
+}
+
+.setrow__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.setrow__k {
+  color: var(--text);
+  font: var(--type-body-strong);
+  letter-spacing: var(--type-body-strong-tracking);
+  text-transform: var(--type-body-strong-case);
+}
+
+.setrow__control {
+  flex: none;
+}
+
+@media (width <= 640px) {
+  .setrow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* MP-2-11: a chosen appearance crossfades for 500ms; the marker is on only
+   while it does, and a person who asks for less motion gets none. */
+[data-theme-fade],
+[data-theme-fade] * {
+  transition:
+    background-color 500ms ease,
+    color 500ms ease,
+    border-color 500ms ease,
+    fill 500ms ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme-fade],
+  [data-theme-fade] * {
+    transition: none !important;
+  }
+}

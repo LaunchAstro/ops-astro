@@ -125,7 +125,10 @@ describe('MP-2-4 CS-2.5 a labelled "view as client" preview, client writes disab
     // until MP-11-1 serves the portal from the shared projection server-side.
     // The one read is the person menu's own name (C23), which a client login is
     // served too (`tests/commands/c23-session-end.test.ts`).
-    expect(asked.filter((url) => !url.endsWith('/session/person'))).toEqual([]);
+    // The person's own appearance (MP-2-11) is theirs on either face, as the name is.
+    expect(
+      asked.filter((url) => !url.endsWith('/session/person') && !url.endsWith('/preference/read')),
+    ).toEqual([]);
   });
 });
 

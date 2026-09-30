@@ -7,7 +7,8 @@ import { useEffect, useState } from 'react';
 import { canonicalOf } from './legacy.ts';
 import type { OperationsClient } from './operations/client.ts';
 import { pathTo } from './routes.ts';
-import type { Session } from './session/token.ts';
+import { useStoredAppearance } from './appearance.ts';
+import { grantKeyOf, type Session, type StorageLike } from './session/token.ts';
 
 /** Portfolio Command's address (R1), where a signed-in arrival at `/` goes (R3). */
 const DASHBOARD = '/dashboard/';
@@ -66,9 +67,16 @@ const clockNow = (): string =>
 
 /**
  * Who is signed in, for the person menu (C23): the server's name for this
- * session's person, kept only while it is still this session's, or null.
+ * session's person, kept only while it is still this session's, or null. The
+ * same person's stored appearance (MP-2-11) is applied here too, and dropped
+ * when nobody is signed in.
  */
-export function usePersonName(client: OperationsClient, session: Session | null): string | null {
+export function usePersonName(
+  client: OperationsClient,
+  session: Session | null,
+  storage: StorageLike | null,
+): string | null {
+  useStoredAppearance(client, session === null ? null : grantKeyOf(session), storage);
   const [person, setPerson] = useState<{ readonly of: Session; readonly name: string } | null>(
     null,
   );

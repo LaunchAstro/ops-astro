@@ -15,7 +15,7 @@ import type { OperationsClient } from './operations/client.ts';
 import { AccessScreen } from './screens/Access.tsx';
 import { InboxScreen } from './screens/Inbox.tsx';
 import { Projects } from './screens/Projects.tsx';
-import { SettingsScreen } from './screens/Settings.tsx';
+import { SettingsGeneralScreen } from './screens/SettingsGeneral.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
 import { TeamScreen } from './screens/Team.tsx';
 import { TelemetryScreen } from './screens/Telemetry.tsx';
@@ -48,7 +48,11 @@ export const SCREENS: {
   ),
   'agency:gallery': () => <Gallery />,
   'agency:settings': (context) => (
-    <SettingsScreen client={context.client} grantKey={context.grantKey} storage={context.storage} />
+    <SettingsGeneralScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      storage={context.storage}
+    />
   ),
   'agency:inbox': (context) => (
     <InboxScreen client={context.client} grantKey={context.grantKey} navigate={context.navigate} />

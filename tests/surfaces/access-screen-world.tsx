@@ -83,8 +83,11 @@ export function server(
   let read = 0;
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
-    // The frame's person menu (C23) asks who is signed in; not this screen's call.
+    // The frame's person menu (C23) asks who is signed in, and the frame reads
+    // the person's appearance (MP-2-11); neither is this screen's call.
     if (at.endsWith('/session/person')) return Promise.resolve(json({ ok: true, person: {} }));
+    if (at.endsWith('/preference/read'))
+      return Promise.resolve(json({ ok: true, preferences: {} }));
     calls.push({
       url: at,
       body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
