@@ -58,6 +58,37 @@ const SIGNS: Readonly<Record<string, string>> = {
 };
 const RECORD = 'it holds a record the seed cannot vouch for';
 const UNGUARDED = 'a table has no made-up guard';
+const OWNER = '(select datdba from pg_database where datname = current_database())';
+/**
+ * The owner's option A (NATHAN-GUARD-A): the guard answers for the app and the
+ * seed, not for a person with top-level access, so staging refuses to start
+ * while an object that writes past the guard's judgement of the writer exists.
+ */
+const SPECIAL: Readonly<Record<string, string>> = {
+  'a view over a private table runs as a role other than the app role': `exists (select
+      from pg_rewrite w join pg_class v on v.oid = w.ev_class
+      join pg_depend d on d.classid = 'pg_rewrite'::regclass and d.objid = w.oid
+     where d.refobjid in (${GUARDED}) and v.relowner is distinct from
+       (select oid from pg_roles where rolname = 'ops_astro_app'))`,
+  // The database owner's own definer functions are the guard's to judge: their
+  // writes run as the owner and are noted.
+  'a definer function runs as a role past row security': `exists (select from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace join pg_roles r on r.oid = p.proowner
+     where p.prosecdef and n.nspname not in ('pg_catalog', 'information_schema')
+       and not (n.nspname = 'ops_astro_made_up' and p.proname in ('note', 'protect', 'watch'))
+       and r.oid <> ${OWNER}
+       and (r.rolbypassrls or r.rolsuper or pg_has_role(r.oid, ${OWNER}, 'member')))`,
+  'the seed tag is readable in another session': `exists (select from pg_stat_activity
+     where datname = current_database() and pid <> pg_backend_pid()
+       and query ilike '%ops_astro.writer%')`,
+};
+
+async function specialSigns(admin: OwnerQuery): Promise<string[]> {
+  const signs: string[] = [];
+  // oxlint-disable-next-line no-await-in-loop
+  for (const [sign, text] of Object.entries(SPECIAL)) if (await yes(admin, text)) signs.push(sign);
+  return signs;
+}
 
 async function yes(admin: OwnerQuery, text: string): Promise<boolean> {
   const [row] = await admin.execute<{ yes: boolean }>(`select (${text}) as yes`);
@@ -85,10 +116,13 @@ export async function productionSigns(
   confirmed = false,
   _seedNames: readonly string[] = [],
 ): Promise<string[]> {
-  if (await marked(admin)) return guardSigns(admin);
+  if (await marked(admin)) return [...(await guardSigns(admin)), ...(await specialSigns(admin))];
   if (!confirmed) return ['it carries no made-up mark'];
   const empty = `coalesce((select bool_and(pg_relation_size(g.oid) = 0) from (${GUARDED}) g), true)`;
-  return (await yes(admin, empty)) ? [] : ['it carries no made-up mark and is not a new database'];
+  const signs = (await yes(admin, empty))
+    ? []
+    : ['it carries no made-up mark and is not a new database'];
+  return [...signs, ...(await specialSigns(admin))];
 }
 
 /** A marked database: what its guard's ledger names, and any table left unguarded. */
