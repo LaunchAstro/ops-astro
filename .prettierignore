@@ -73,3 +73,7 @@ tests/ci/two-url-service-stop-required-ci.test.ts
 
 # Sol's REV258D proof, byte-for-byte as the review patch held it.
 tests/ci/two-url-service-stop-skip-fails-required-job.test.ts
+
+# The Opus batch-1 blind review's proofs, byte-for-byte as the review patches held them.
+tests/api/session-cookie-expired-cleared.test.ts
+tests/browser/built-page-refuses-planted-scripts.test.ts
