@@ -80,6 +80,20 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // T3e2: the journey drops nothing, so one report and one of its runs.
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
+  // Nothing in the journey raises an inbox item yet (INB-1b does), so one item,
+  // its recipient's attention row and one attempt are written here, in order.
+  'public.inbox_items': `insert into public.inbox_items
+       (business_id, id, recipient_person_id, subject_record_id, reason, fact_kind, fact_id)
+     select r.business_id, gen_random_uuid(), p.id, r.id, 'assignment', 'record', r.id
+       from public.records r join public.people p on p.business_id = r.business_id
+      where r.business_id = $1 order by r.id, p.id limit 1 returning 1`,
+  'public.inbox_attention': `insert into public.inbox_attention (business_id, item_id, person_id)
+     select business_id, id, recipient_person_id from public.inbox_items
+      where business_id = $1 order by id limit 1 returning 1`,
+  'public.inbox_delivery_attempts': `insert into public.inbox_delivery_attempts
+       (business_id, id, item_id, channel, state)
+     select business_id, gen_random_uuid(), id, 'in_app', 'asked' from public.inbox_items
+      where business_id = $1 order by id limit 1 returning 1`,
 };
 
 /**

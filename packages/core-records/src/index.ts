@@ -60,6 +60,28 @@ export {
   type VerifiedSubject,
 } from './identity/login-resolution.ts';
 export {
+  readInboxItems,
+  countOwedItems,
+  INBOX_HISTORY_PAGE,
+  INBOX_HISTORY_SCAN,
+} from './inbox/read.ts';
+export {
+  owes,
+  raiseInboxItem,
+  stampSeen,
+  recordDeliveryAttempt,
+  type DeliveryChannel,
+  type DeliveryState,
+  type InboxAccess,
+  type InboxFactKind,
+  type InboxItem,
+  type InboxAlert,
+  type InboxReason,
+  type InboxWorkState,
+  type RaiseInboxItem,
+} from './inbox/items.ts';
+export { taskAccess } from './inbox/access.ts';
+export {
   isSettingRevisionStale,
   readBusinessSetting,
   readBusinessSettings,
