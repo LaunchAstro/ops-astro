@@ -17,7 +17,7 @@ import { createFunctionHandler } from '../../apps/api/function.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/index.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/index.ts';
-import { ISSUER } from './fixture.ts';
+import { TEST_ISSUER as ISSUER } from '../support/sign-in.ts';
 
 /** Nothing listens here: building the API opens no connection. */
 const NOWHERE = 'postgres://app:g4@127.0.0.1:1/none';
