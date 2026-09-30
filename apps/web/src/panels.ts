@@ -33,6 +33,7 @@
 // reports, so it paints at load rather than after the first open (D-18), and
 // is printed whole: 120 reads "120", never "99+". No count, or zero, no chip.
 
+import type { GlyphName } from '@launchastro/ui';
 import { ROUTES, type StaticRouteId } from './routes.ts';
 
 export const PANEL_RANK = Object.freeze([
@@ -55,6 +56,8 @@ export interface PanelRegistration {
   readonly ariaLabel: string;
   /** The route that draws the panel's surface at an address of its own. */
   readonly route: StaticRouteId;
+  /** The dock tab's glyph, the one the mockup registers for this panel; the grid glyph when none is named. */
+  readonly icon?: GlyphName;
   /** The tenant's own close. */
   readonly onClose?: () => void;
 }
@@ -64,6 +67,7 @@ export type PanelRegistry = { readonly [Id in PanelId]?: PanelRegistration };
 export interface PanelTab {
   readonly id: PanelId;
   readonly label: string;
+  readonly icon: GlyphName | undefined;
   readonly route: StaticRouteId;
   /** The chip's text, or null when there is nothing to count. */
   readonly count: string | null;
@@ -74,6 +78,7 @@ export const PANELS: PanelRegistry = {
     label: 'Settings',
     ariaLabel: 'Business settings',
     route: 'agency:settings',
+    icon: 'settings-sliders',
   },
 };
 
@@ -93,7 +98,13 @@ export function dockTabs(
     if (panel === undefined || !ROUTES[panel.route].authenticated) return [];
     const count = counts[id] ?? 0;
     return [
-      { id, label: panel.label, route: panel.route, count: count > 0 ? String(count) : null },
+      {
+        id,
+        label: panel.label,
+        icon: panel.icon,
+        route: panel.route,
+        count: count > 0 ? String(count) : null,
+      },
     ];
   });
 }

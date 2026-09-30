@@ -63,6 +63,7 @@ export type CommandName =
   | 'task.read'
   | 'task.board'
   | 'task.queue'
+  | 'task.execution'
   | 'person.list'
   // The preset planner. It reads the model and writes nothing at all, so it is
   // a read by the only definition this table has; what makes it unlike the
@@ -95,7 +96,19 @@ export type CommandName =
   | 'delegation.revoke'
   | 'task.cancel'
   | 'task.restart'
-  | 'task.heartbeat';
+  | 'task.heartbeat'
+  // The lease holder marks its step dispatched before any effect (T2c1).
+  | 'task.dispatch'
+  // The lease holder observes its applied effect, and a person reads the
+  // receipt citing the decision it came from (T2c2).
+  | 'task.observe'
+  | 'task.receipt'
+  // A person raises a task's envelope, two people above the band (T2e).
+  | 'budget.top_up'
+  // A person records what an unknown effect came to: one of three (T3d1).
+  | 'budget.record_outcome'
+  // A person closes an unknown hold at an amount, with a reason (T3c).
+  | 'budget.write_off';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -198,6 +211,10 @@ export interface CommandDeclaration {
    * (`reads/catalogue.ts`), so it carries none here.
    */
   readonly operands?: OperandSpec;
+  // two-part keys (API-1); the handler checks past `action`
+  readonly authority?: readonly string[];
+  // a hold every path keeps, carried onto the catalogue row (API-1)
+  readonly rule?: string;
 }
 
 /**
@@ -229,6 +246,8 @@ function declare(
     readonly untargetedIdentifiers?: readonly string[];
     readonly runtimeShaped?: string;
     readonly agent?: CommandDeclaration['agent'];
+    readonly authority?: readonly string[];
+    readonly rule?: string;
   } = {},
 ): CommandDeclaration {
   const targetsExistingRecord = options.targetsExistingRecord ?? true;
@@ -239,6 +258,8 @@ function declare(
       : { untargetedIdentifiers: options.untargetedIdentifiers }),
     ...(options.runtimeShaped === undefined ? {} : { runtimeShaped: options.runtimeShaped }),
     ...(options.serialise === undefined ? {} : { serialise: options.serialise }),
+    ...(options.authority === undefined ? {} : { authority: options.authority }),
+    ...(options.rule === undefined ? {} : { rule: options.rule }),
     name,
     kind: 'write',
     collection: options.collection ?? TASK_COLLECTION,
@@ -253,6 +274,7 @@ function declare(
 const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
+const BILLING_COLLECTION = 'billing';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -313,7 +335,13 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     expiresInSeconds: 'any',
     lineageId: 'id?|null',
   },
-  'task.decide': { gateId: 'id', versionId: 'id', decision: 'any', note: 'any' },
+  'task.decide': {
+    gateId: 'id',
+    versionId: 'id',
+    decision: 'any',
+    note: 'any',
+    recipientPersonId: 'id?|null',
+  },
   'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },
   // A lease call names its task through its lease; a `recordId` beside the
   // lease is taken and plays no part in the check (API.md, id operands).
@@ -343,7 +371,28 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
   'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
-  'task.heartbeat': { leaseId: 'any', recordId: 'any', fence: 'any', leaseSeconds: 'any' },
+  'task.heartbeat': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    leaseSeconds: 'any',
+    providerStarting: 'any',
+  },
+  'task.dispatch': { leaseId: 'any', recordId: 'any', fence: 'any' },
+  // Minor units, of the maximum the person saw; no standing ceiling (Q168).
+  'budget.top_up': { recordId: 'any', amountMinor: 'count', fromMaximumMinor: 'count' },
+  // The task, the attempt held unknown, and one of the three outcomes (O7).
+  'budget.record_outcome': { recordId: 'any', attemptId: 'any', outcome: 'any' },
+  // The task, the attempt held unknown, the minor units charged and why (T3c).
+  'budget.write_off': { recordId: 'any', attemptId: 'any', amountMinor: 'count', reason: 'text' },
+  'task.observe': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    attemptId: 'any',
+    usage: 'any',
+    outcome: 'any',
+  },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -357,11 +406,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.comment', 'comment', { agent: 'delegated' }),
   // The runtime takes cap, envelope, then task; an envelope lock on the
   // task first is the other half of a cycle with handback.
-  declare('task.propose', 'write', { targetLock: 'runtime' }),
+  declare('task.propose', 'write', { targetLock: 'runtime', agent: 'delegated' }),
   // In the agent's reach so a delegated agent is refused by the decision
   // itself, not by the surface: a person decides (case (j) of the matrix).
+  // Asked on the gate's own task (`prepare.ts`, `TARGET_LOOKUPS`), so a
+  // task-scoped decider decides at the bound; an escalated gate then needs
+  // business scope, which the runtime asks under its locks (T3a).
   declare('task.decide', 'decide', {
     targetsExistingRecord: false,
+    authorisedOn: 'target',
     untargetedIdentifiers: ['gateId', 'versionId'],
     agent: 'delegated',
   }),
@@ -387,7 +440,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.assign', 'assign'),
   declare('task.triage', 'write'),
   declare('task.set_stage', 'write'),
-  declare('task.set_party', 'share'),
+  declare('task.set_party', 'share', {
+    rule: 'once the task has content: refused CLIENT_LOCKED (409), writes nothing, on every path (S0-5)',
+  }),
   declare('task.set_audience', 'share'),
   declare('task.reparent', 'write', { serialise: TASK_PLACEMENT_LOCK }),
   declare('task.move', 'write', { serialise: TASK_PLACEMENT_LOCK }),
@@ -407,6 +462,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // reading the queue reserves nothing, and two workers reading it see the
   // same row until one of them picks it up.
   read('task.queue', TASK_COLLECTION, { agent: 'before-pickup' }),
+  // One task's runs and their progress events (T2a), after `read` on that task.
+  read('task.execution', TASK_COLLECTION, { authorisedOn: 'record' }),
   read('person.list', 'person'),
   // `preset` is what this route is about; the grant it takes is `manage` on
   // the family the request names, which `reads/dispatch.ts` reads off the
@@ -457,17 +514,18 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'target',
     untargetedIdentifiers: [],
   }),
-  // Work control is `write` on the task, the authority `task.propose` asks,
-  // and it is asked of that task: a record-scoped writer controls its own
-  // lineage. Both name the task in `recordId` and the lineage in `lineageId`,
-  // and the handler refuses a lineage opened on another task. They take no
+  // Work control is `decide` on the task (T3a, `gate:decide`): stopping or
+  // restarting approved work is a person's decision, never an agent's, and it
+  // is asked of that task. Cancel's runtime also asks `write` under its locks.
+  // Both name the task in `recordId` and the lineage in `lineageId`, and the
+  // handler refuses a lineage opened on another task. They take no
   // `expectedRevision` because neither writes the task record.
-  declare('task.cancel', 'write', {
+  declare('task.cancel', 'decide', {
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'lineageId'],
   }),
-  declare('task.restart', 'write', {
+  declare('task.restart', 'decide', {
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'lineageId'],
@@ -480,6 +538,51 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['leaseId'],
     runtimeShaped: 'leaseId',
     agent: 'delegated',
+  }),
+  // The lease owner's too, asked as heartbeat is; the runtime rechecks the
+  // four effect-time facts under its own locks.
+  declare('task.dispatch', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // The effect's token is the attempt its dispatch answered; the runtime reads
+  // the operation register for the effect under the lease's own locks (T2c2).
+  declare('task.observe', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId', 'attemptId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // What an observed effect came from, asked on the attempt and checked on
+  // its task; it names no operation to reverse it (T2c2).
+  read('task.receipt', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // `billing:decide` on the task (T2e). No agent route serves it, so a
+  // delegated agent is refused `DELEGATION_EXCLUDES_OPERATION` everywhere.
+  declare('budget.top_up', 'decide', {
+    collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId'],
+  }),
+  // `billing:decide` on the task (T3d1): any person holding it records an
+  // unknown effect's outcome (O8); no agent route serves it.
+  declare('budget.record_outcome', 'decide', {
+    collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'attemptId'],
+  }),
+  // `billing:decide` on the task (T3c): a person writes an unknown hold off,
+  // two above the band; no agent route serves it.
+  declare('budget.write_off', 'decide', {
+    collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'attemptId'],
   }),
 ];
 
@@ -533,6 +636,21 @@ export const CONTRACT_NINE: readonly CommandName[] = [
   'task.pickup',
   'task.handback',
 ];
+
+/**
+ * The operation identity of an attempt's one effect, derived from the attempt
+ * so a retry replays it and "did it happen?" is the register's answer (T2c2).
+ * The worker and the server derive it here, from one spelling.
+ */
+export function effectOperationId(attemptId: string): string {
+  return `effect:${attemptId}`;
+}
+
+/** The attempt an effect identity names, or `undefined` for any other identity. */
+export function effectAttemptOf(operationId: string): string | undefined {
+  const found = /^effect:([0-9a-f-]{36})$/u.exec(operationId);
+  return found?.[1];
+}
 
 /** The path the HTTP boundary and the command line both derive from the name. */
 export function pathOf(name: CommandName): string {

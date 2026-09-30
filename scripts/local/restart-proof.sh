@@ -4,13 +4,16 @@
 # The W06 restart proof as one named run, at whatever head is checked out.
 #
 #   pnpm verify:restart [--name NAME] [--port PORT] [--api-port PORT] [--evidence FILE]
+#                       [--suite FILE]...
 #
 # It creates a disposable Postgres of its own, migrates it at this head, runs
 # tests/acceptance/restart-and-expiry.test.ts with both restarts asked -- the
 # container restarted under the suite, and apps/api/server.ts started, stopped
 # and started again as a real process -- writes the evidence to FILE, and
-# removes the container and stops any API process it started whether the run
-# passed or failed. L5_RESTART_INDUCE_FAILURE=throw|crash, passed through to the
+# removes the container and kills any API or worker process the run started,
+# by pid and with SIGKILL, whether the run passed or failed. `--suite`, once or
+# more, runs those files instead (`runtime-proofs.sh` names T3d2's).
+# L5_RESTART_INDUCE_FAILURE=throw|crash, passed through to the
 # run, makes it fail once everything is up, which is how that removal is shown.
 #
 # It never adopts a container it did not create: an existing NAME, a port
@@ -24,6 +27,7 @@ NAME=ops-astro-restart-proof-pg
 PORT=54398
 API_PORT=8798
 EVIDENCE=
+SUITES=()
 IMAGE=postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
 PASSWORD=ops_astro_restart_proof
 DATABASE=ops_astro_restart_proof
@@ -37,6 +41,7 @@ while [ $# -gt 0 ]; do
     --port) PORT=$2; shift 2 ;;
     --api-port) API_PORT=$2; shift 2 ;;
     --evidence) EVIDENCE=$2; shift 2 ;;
+    --suite) SUITES+=("$2"); shift 2 ;;
     # A package manager may forward the separator itself.
     --) shift ;;
     *) echo "restart-proof: unknown argument $1" >&2; exit 2 ;;
@@ -65,18 +70,18 @@ created=no
 PIDFILE=
 cleanup() {
   status=$?
-  # The API processes the run started, by the pids it wrote down. A runner that
-  # died mid-case never reached its own afterAll, so they are stopped here.
+  # The API and worker processes the run started, by the pids it wrote down. A
+  # runner that died mid-case never reached its own afterAll, so they are
+  # killed here. SIGKILL, because a worker parked with SIGSTOP never runs a
+  # SIGTERM handler (T3d2).
   if [ -n "$PIDFILE" ] && [ -f "$PIDFILE" ]; then
     while read -r pid; do
       if kill -0 "$pid" 2>/dev/null; then
-        kill -TERM "$pid" 2>/dev/null || true
-        say "stopped api pid $pid"
-        printf 'api stopped by trap: %s\n' "$pid" >>"$EVIDENCE"
+        kill -KILL "$pid" 2>/dev/null || true
+        say "killed pid $pid"
+        printf 'killed by trap: %s\n' "$pid" >>"$EVIDENCE"
       fi
     done <"$PIDFILE"
-    sleep 1
-    while read -r pid; do kill -KILL "$pid" 2>/dev/null || true; done <"$PIDFILE"
     rm -f "$PIDFILE"
   fi
   if nc -z 127.0.0.1 "$API_PORT" 2>/dev/null; then
@@ -127,11 +132,14 @@ admin_url="postgres://postgres:$PASSWORD@127.0.0.1:$PORT/$DATABASE"
 say "migrating $DATABASE at $head_sha"
 DATABASE_ADMIN_URL=$admin_url node scripts/db-migrate.mjs | tee -a "$EVIDENCE"
 
-say 'running the restart proof'
+if [ ${#SUITES[@]} -eq 0 ]; then
+  SUITES=(tests/acceptance/restart-and-expiry.test.ts tests/acceptance/restart-declared.test.ts
+    tests/acceptance/restart-http.test.ts)
+fi
+say "running ${SUITES[*]}"
 DATABASE_URL=$admin_url DATABASE_ADMIN_URL=$admin_url \
   L5_RESTART_CONTAINER_NAME=$NAME L5_RESTART_API_PORT=$API_PORT L5_RESTART_EVIDENCE=$EVIDENCE \
   L5_RESTART_PIDFILE=$PIDFILE L5_RESTART_INDUCE_FAILURE=${L5_RESTART_INDUCE_FAILURE:-} \
-  pnpm exec vitest run tests/acceptance/restart-and-expiry.test.ts tests/acceptance/restart-declared.test.ts \
-  tests/acceptance/restart-http.test.ts \
-  --fileParallelism=false --reporter=verbose 2>&1 | tee -a "$EVIDENCE"
+  L5_RUNTIME_PROOFS=${L5_RUNTIME_PROOFS:-} \
+  pnpm exec vitest run "${SUITES[@]}" --fileParallelism=false --reporter=verbose 2>&1 | tee -a "$EVIDENCE"
 say "evidence in $EVIDENCE"

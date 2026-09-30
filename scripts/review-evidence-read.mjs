@@ -70,6 +70,20 @@ const notComment = (html) => html.replaceAll(COMMENT, '').trim();
 // Indented code is refused a tag too: a sample goes in a fence or a span.
 const TAG = /<(?:\/?[A-Za-z][A-Za-z0-9-]*(?=[\s/>]|$)|![A-Za-z]|!\[CDATA\[|\?)/mu;
 
+// The HTML one token shows that is not only a comment: a tag in indented
+// code, an HTML block, or inline HTML in a paragraph's text.
+const htmlOf = (token) => {
+  const found = [];
+  const tag = token.type === 'code_block' ? TAG.exec(token.content) : null;
+  if (tag !== null) found.push(tag[0]);
+  if (token.type === 'html_block' && notComment(token.content) !== '') found.push(token.content);
+  if (token.type !== 'inline') return found;
+  for (const child of token.children ?? []) {
+    if (child.type === 'html_inline' && notComment(child.content) !== '') found.push(child.content);
+  }
+  return found;
+};
+
 /**
  * The body as GitHub renders it.
  *  - stated: every counted `Code review:` and `Security review:` field;
@@ -91,14 +105,8 @@ export const readBody = (body) => {
   const prose = [];
   for (const [i, token] of tokens.entries()) {
     if (token.type === 'fence' || token.type === 'code_block') prose.push(token.content);
-    const tag = token.type === 'code_block' ? TAG.exec(token.content) : null;
-    if (tag !== null) html.push(tag[0]);
-    if (token.type === 'html_block' && notComment(token.content) !== '') html.push(token.content);
+    html.push(...htmlOf(token));
     if (token.type !== 'inline') continue;
-    for (const child of token.children ?? []) {
-      if (child.type === 'html_inline' && notComment(child.content) !== '')
-        html.push(child.content);
-    }
     const shown = shownLines(token);
     prose.push(shown.map((l) => l.text).join('\n'));
     const map = token.map ?? [0, 0];

@@ -148,7 +148,7 @@ state as a revoked grant.
 ### How a write settles
 
 Every write on the task page, in the proposals view (`views/proposals.tsx` and
-the two files beside it) and
+the three files beside it) and
 on the board goes through `useCommand` in `apps/web/src/records/use-command.ts`.
 It sorts the answer once into one of five kinds:
 
@@ -305,7 +305,7 @@ version whose gate it named, whether or not that version is still the head, and
 follows it with a fresh `task.read`. When a reread no longer lists the gate, the
 quote is drawn under its lineage, and failing that above the list. A
 refusal about the reader's authority closes every gate on the task, and the
-other gates say so for the task rather than for this gate. A refusal like `VERSION_SUPERSEDED` or
+other gates say so for the task rather than for this gate. A refusal like `PROPOSAL_SUPERSEDED` or
 `GATE_ALREADY_DECIDED` is the server saying this page has stopped describing the
 record, and the answer is to read it again, not to retry. `TaskDetail.tsx` holds
 the refusal text above the read state, because the reread unmounts everything
@@ -332,14 +332,14 @@ What this screen does not read back, and cannot:
 - Rejecting sends `decision: 'reject'` through the same control and the same
   exact-version comparison. The change-round behaviour behind a rejection is the
   runtime's and this screen does not model it.
-- **A form-driven `VERSION_SUPERSEDED` is unreachable**, and this is the
+- **A form-driven `PROPOSAL_SUPERSEDED` is unreachable**, and this is the
   contract rather than a gap in the screen. The form sends no `lineageId`, so a
   second proposal opens a new lineage instead of adding a version to the live one
   (`core-runtime/src/propose.ts`). `decide` checks the gate's state before the
   version it carries, so when a page has gone stale its Approve lands on a
   superseded gate and the honest answer is `GATE_ALREADY_DECIDED`. The screen
   quotes whichever it gets and rereads either way. `cases-proposals.mjs` proves
-  `VERSION_SUPERSEDED` through the client, where a `lineageId` can be named, and
+  `PROPOSAL_SUPERSEDED` through the client, where a `lineageId` can be named, and
   the screen's own path separately.
 - The agent's own path has no screen. Pickup, handback and the queue are stored
   and projected, and the web does not draw them yet.
@@ -514,7 +514,7 @@ changed without reading the rest:
 | `harness.mjs`              | sign-in, the in-page client, screenshots, the results table                                                                                                |
 | `cases-b.mjs`              | B1 to B5, the journey and the reload                                                                                                                       |
 | `cases-n3-n5.mjs`          | protected fields, system fields, replay and revision                                                                                                       |
-| `cases-n6-n7.mjs`          | N7 input tampering, N6 revocation (via `n6-revocation.mjs`)                                                                                                |
+| `cases-n6-n7.mjs`          | N7 input tampering, N6 revocation (fenced in `n6-fenced-revocation.mjs`, cases in `n6-revocation.mjs`)                                                     |
 | `cases-n1-n2.mjs`          | another business, and a member with no grant                                                                                                               |
 | `cases-create-retry.mjs`   | R1, retrying a create whose answer was lost                                                                                                                |
 | `cases-task-drafts.mjs`    | D1, the explicit Save or Discard of an unsaved detail                                                                                                      |
@@ -526,7 +526,7 @@ changed without reading the rest:
 | `cases-proposals.mjs`      | P1 a proposal drawn with its evidence, P2 an exact-version approval, P3 a stale version refused                                                            |
 | `i10-open-page.mjs`        | I10, an open task page whose record grant is revoked through `grant.revoke`                                                                                |
 | `r4-shared-page.mjs`       | R4, an external party's shared task page, revoked through `grant.revoke` while open                                                                        |
-| `surface-final.mjs`        | D03 and D05 through the page's own client, and R4X the external party's reads                                                                              |
+| `surface-final.mjs`        | D03 and D05 through the page's own client, and R4X the external party's reads (`external-party-reads.mjs`)                                                 |
 
 ### What B6 restarts
 
@@ -679,8 +679,32 @@ places this build does not yet reach it.
   to. Offering to switch back, or carrying more than one interruption, is not
   built. The interruption keeps the business key, which is the word in the URL
   prefix, and never the token.
-- Fonts and icons are not fetched. The redistribution question (#32) is open, so
-  the families are a stack with real fallbacks and the brand is its own words.
+- Fonts, icons and the brand marks are bundled, each with its licence recorded
+  in `packages/ui/assets/licences.json` (MP-1-2): Funnel Display, Funnel Sans
+  and Chivo Mono under the SIL Open Font License, Lucide's icons under ISC,
+  and the project's own wordmark and planet mark. The build copies the record
+  and the licence texts into its output.
+- Text is set in the 23 styles of the declared scale, `--type-<name>` in
+  `packages/ui/src/styles/1-tokens.css` (MP-1-4). A rule sets text with the
+  style's `font`, `letter-spacing` and `text-transform` together, or not at
+  all; `pnpm type:census` refuses any other size, weight, family, line height,
+  tracking or case, and lists the four exceptions a ruling keeps (strong text
+  at the medium weight, the two larger button labels, the run hero's mono
+  figure). A stat number keeps one size at every width. Inline `code`, `kbd`
+  and `samp` take the mono style from the base layer. The census reads the
+  sheets; the MP-1-4 visual match also measures every built page as the
+  browser draws it, so an element left on the browser's own default is caught.
+- Charts are hand-drawn SVG in `packages/ui/src/kit/charts.tsx` (MP-1-5), with
+  no chart library: line, column with a dashed line, donut, gauge, score dial,
+  sparkline and the true-scale funnel, shown on `/gallery/`. Line and column
+  charts measure their width with the browser's resize observer and redraw
+  when shown or resized. Line, column and donut charts are one tab stop each;
+  the arrow keys walk the points, and hover or focus shows the value. A
+  second quantity gets its own labelled right-hand axis. They take the
+  mockup's paint: a donut's slices ink, accent, lilac, lilac deep, ink muted
+  and ink faint in that order; a sparkline the accent; a score dial's number
+  at the medium weight. No page draws a chart yet; the Executive page
+  (MP-14-3) is the first.
 - Layouts are written for 1480, 900 and 390. Photographed at all three, light
   and dark, on 2026-09-23 with `node tests/browser/keyboard-and-widths.mjs`,
   which writes `width-<w>-<theme>-<page>.png` into `SHOT_DIR`; that run's
@@ -694,9 +718,10 @@ places this build does not yet reach it.
   - At 390 the sidebar is gone, and with it the only navigation apart from the
     breadcrumb. A person who lands on a task deep-linked has `Projects` in the
     crumb and nothing else.
-  - At 390 the task page's assignee section can still be drawing
-    `Loading the people…` after the record itself is on screen: two reads, two
-    arrival times, and the slower one is a block of text in the middle of the
-    form rather than a field-shaped placeholder.
+  - At 390 the task page's assignee section could still be drawing
+    `Loading the people…` after the record itself was on screen: two reads,
+    two arrival times, and the slower one a block of text in the middle of the
+    form. Fixed by MP-1-3: it now draws a field-shaped placeholder, and the
+    words are kept for a screen reader.
 
   Recorded, not fixed.

@@ -231,7 +231,7 @@ async function press(page: Mounted, selector: string): Promise<void> {
 }
 
 const revisionOnPage = (page: Mounted): string | null | undefined =>
-  page.find('[data-revision]')?.getAttribute('data-revision');
+  (page.find('[data-revision]') as HTMLElement | null)?.dataset['revision'];
 
 describe('a lost comment or proposal is the same attempt after a reread', () => {
   it('comment: a title save moves the revision, and the retry replays the stored comment', async () => {
@@ -268,7 +268,9 @@ describe('a lost comment or proposal is the same attempt after a reread', () => 
     expect(refusedAfterRetry).toBeNull();
     expect(bodyAfterRetry).toBe('');
   });
+});
 
+describe('a lost comment or proposal is the same attempt after a reread', () => {
   it('propose: another writer moves the task, a refresh rereads, and the retry replays the lineage', async () => {
     const { client, idsOf, revisionsOf, answersTo, task } = server({ propose: ['lost', 'ok'] });
     const page = await open(client);
@@ -293,7 +295,9 @@ describe('a lost comment or proposal is the same attempt after a reread', () => 
     expect((page.find('#propose-purpose') as HTMLInputElement).value).toBe('');
     expect(task.proposals).toHaveLength(1);
   });
+});
 
+describe('a lost comment or proposal is the same attempt after a reread', () => {
   it('comment: an attempt that never arrived is refused stale on retry, keeps the text, and is stored once', async () => {
     const { client, idsOf, revisionsOf, answersTo, task } = server({ comment: ['unsent', 'ok'] });
     const page = await open(client);

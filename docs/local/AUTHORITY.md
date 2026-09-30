@@ -368,11 +368,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:656-686`, run at `:816-824`). It gets a login and an acting identity,
-  and no membership and no business grant (`:111-114`, `:263-265`). The seed
+  user (`:659-689`, run at `:819-827`). It gets a login and an acting identity,
+  and no membership and no business grant (`:114-117`, `:266-268`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:697-717`, `:851-861`).
+  (`:700-720`, `:854-864`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -523,9 +523,11 @@ always the caller's business's row. The request body no longer carries one: a
 body naming `olderThanDays` is refused `COMMAND_BODY_INVALID`
 ([API.md](API.md)). The purge applies no default, floor or ceiling of its own,
 and no accepted source names one for the work window (C122-1's seven-day floor
-is the conversation window's). `conversation_window_days`,
-`four_eyes_threshold` and `client_sign_off_required` still have no consumer
-among the first slice's operations.
+is the conversation window's). `conversation_window_days` and
+`client_sign_off_required` still have no consumer among the first slice's
+operations. `four_eyes_threshold` has one: above it, `budget.top_up` needs a
+second approver, a different person holding `billing:decide` on the task
+(T2e, `core-runtime/src/budget.ts`).
 
 **Every setting has a revision** (0020), for the reason a record has one: two
 administrators editing one row from two browser tabs both wrote, and the second
@@ -662,9 +664,16 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
 The other three support controls, `task.cancel`, `task.restart` and
 `task.heartbeat`, ask authority the caller already holds and live in the
 runtime ([RUNTIME.md, "The work controls"](RUNTIME.md#the-work-controls)).
-`task.cancel` and `task.restart` are authorised on the task named in
-`recordId`, so a record-scoped `write` grant is enough (their declarations in
-`core-wire/src/surface.ts`). `task.pickup`, `task.heartbeat` and `task.handback` are
+`task.cancel` and `task.restart` are `decide` on the task named in
+`recordId` (T3a, `gate:decide`): a person's decision, refused to every agent,
+and a record-scoped `decide` grant is enough (their declarations in
+`core-wire/src/surface.ts`). The handler asks `decide` again with the grants
+held for share, and cancel's runtime asks `write` and `decide` again at its
+locked instant; restart asks `decide` again once `propose` holds its locks.
+`task.decide` is asked on the task its gate belongs to (`authorisedOn:
+'target'`, the `gateId` lookup in `commands/prepare.ts`), so a person holding
+`decide` on exactly that task decides it, until an escalation makes it a
+business-scope decision (T3a). `task.pickup`, `task.heartbeat` and `task.handback` are
 authorised as `write` on the task their reservation or lease belongs to
 (`authorisedOn: 'claim'` in the same declarations), the scope the runtime and
 `grant.revoke` ask. A record-scoped writer works their own lease

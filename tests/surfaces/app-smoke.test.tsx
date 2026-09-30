@@ -141,7 +141,9 @@ describe('the six read outcomes, in the mounted app', () => {
     expect(view.text()).not.toContain('Wire the board to the API');
     await view.unmount();
   });
+});
 
+describe('the six read outcomes, in the mounted app', () => {
   it('unavailable: a transport failure is not dressed as a denial', async () => {
     const { fetch } = scripted([() => Promise.reject(new Error('connection refused'))]);
     const view = await open(fetch);

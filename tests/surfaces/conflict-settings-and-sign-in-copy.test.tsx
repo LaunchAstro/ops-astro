@@ -34,6 +34,14 @@ const tick = async (): Promise<void> => {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+/** The capability read's answer: ada, who may manage settings. */
+const CAPABILITIES = {
+  ok: true,
+  personId: 'p-ada',
+  businessKey: 'alpha',
+  grants: [{ collection: 'settings', action: 'manage' }],
+};
+
 /** A settings server whose four-eyes row moves to 999 under the first write. */
 function staleServer(): typeof globalThis.fetch {
   let value: unknown = 500;
@@ -43,12 +51,7 @@ function staleServer(): typeof globalThis.fetch {
     const at = String(url);
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     if (at.endsWith('/session/capabilities')) {
-      return json({
-        ok: true,
-        personId: 'p-ada',
-        businessKey: 'alpha',
-        grants: [{ collection: 'settings', action: 'manage' }],
-      });
+      return json(CAPABILITIES);
     }
     if (at.endsWith('/settings/read')) {
       return json({
@@ -140,7 +143,7 @@ describe('the settings copy', () => {
     window.sessionStorage.clear();
   });
 
-  it('says the two settings are stored and not yet applied by any operation', async () => {
+  it('says the sign-off setting is not yet applied, and the band is applied to top-ups', async () => {
     const page = await mount(settingsScreen(staleServer()));
     await tick();
     const text = page.text();
@@ -148,7 +151,9 @@ describe('the settings copy', () => {
     expect(text).not.toMatch(/second person must agree/u);
     expect(text).not.toMatch(/each changes who must agree/u);
     expect(text).not.toMatch(/Whether the client must agree before work is counted/u);
-    expect(page.all('[data-settings="not-applied"]')).toHaveLength(2);
+    expect(page.all('[data-settings="not-applied"]')).toHaveLength(1);
+    // T2e: the four-eyes band has its consumer.
+    expect(page.find('[data-settings="applied"]')?.textContent).toMatch(/top-ups/u);
     for (const note of page.all('[data-settings="not-applied"]')) {
       expect(note.textContent).toMatch(/no operation applies it yet/u);
     }

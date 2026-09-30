@@ -90,7 +90,7 @@ const CODE: readonly (readonly [string, string, Claim])[] = [
   [`${T}/trash.ts`, 'restoreBatch', /order by id\s+for share/u],
   [`${E}/business-settings.ts`, 'writeBusinessSetting', /isSafeInteger\(write\.expectedRevision/u],
   [`${E}/business-settings.ts`, 'writeBusinessSetting', "['expectedRevision']"],
-  [`${C}/tasks-propose.ts`, 'proposeOnTask', 'deleted_at !== null) return refused(refuseNotFound'],
+  [`${C}/tasks-propose.ts`, 'proposeFor', 'deleted_at !== null) return refused(refuseNotFound'],
   [`${R}/propose.ts`, 'refuseBeyondBudget', /currency !== cap\.currency\)\s+\{\s+return refuse\(/u],
   [`${C}/prepare.ts`, '', "'task.propose': { optional: ['lineageId'] },"],
   [`${C}/prepare.ts`, 'refuseMistypedIdentifier', "refuseCommand('FIELD_VALUE_INVALID'"],
@@ -127,7 +127,7 @@ const ROWS: readonly (readonly [string, Claim])[] = [
   ['settings.set_four_eyes_threshold', /`FIELD_VALUE_INVALID` 422 \([^)]*`expectedRevision`/u],
   ['settings.set_client_sign_off', /`FIELD_VALUE_INVALID` 422 \([^)]*`expectedRevision`/u],
   ['task.propose', /naming `purpose`[^)]*`currency`[^)]*`payload`[^)]*`step`[^)]*`lineageId`/u],
-  ['task.propose', /`PROPOSAL_OUT_OF_SCOPE` 403 \([^)]*currency/u],
+  ['task.propose', /`PROPOSAL_SCOPE_EXCEEDED` 422 \([^)]*currency/u],
   ['task.propose', /`NOT_FOUND` 404 \([^)]*trashed/u],
   ['task.rank', /`FIELD_VALUE_INVALID` 422 naming `afterId` or `beforeId`/u],
   ['task.rank', /not a live sibling/u],
@@ -161,7 +161,7 @@ const PROSE: readonly (readonly [string, Claim])[] = [
   ['**Cancellation**', /`task\.restart` and `task\.propose` on a trashed task/u],
   ['**Cancellation**', /checked again under the runtime locks[^.]*`SCOPE_NOT_GRANTED`/u],
   ['`CAP_BINDING_MISMATCH` 409 is', /second barrier, and no command reaches it/u],
-  ['`CAP_BINDING_MISMATCH` 409 is', /another one `PROPOSAL_OUT_OF_SCOPE`/u],
+  ['`CAP_BINDING_MISMATCH` 409 is', /another one `PROPOSAL_SCOPE_EXCEEDED`/u],
   ['`FREE_OPERANDS`', /`successor\.<key>`/u],
   ['`FREE_OPERANDS`', /after authority and before the target is read/u],
   ["The request's shape is checked", /`successor`[^.]*NUL[^.]*`FIELD_VALUE_INVALID` 422/u],
@@ -240,9 +240,11 @@ describe('API.md operands and codes derived from the code', () => {
     const paragraph = paragraphWith('`FREE_OPERANDS`');
     for (const operand of free) expect(paragraph, operand).toContain(`\`${operand}\``);
   });
+});
 
+describe('API.md operands and codes derived from the code', () => {
   it('names every code proposeOnTask answers through a command, and not the unreached one', () => {
-    const codes = new Set([...codesIn(fn(`${C}/tasks-propose.ts`, 'proposeOnTask')), 'NOT_FOUND']);
+    const codes = new Set([...codesIn(fn(`${C}/tasks-propose.ts`, 'proposeFor')), 'NOT_FOUND']);
     // Unreached: `prepareCommand` refuses a mistyped `lineageId` first (CODE above).
     codes.delete('COMMAND_BODY_INVALID');
     const cell = refusals('task.propose', '/task/propose');

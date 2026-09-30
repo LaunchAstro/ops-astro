@@ -53,7 +53,7 @@ const stubDatabase = (): Database =>
           return [];
         },
       }),
-    close: async () => undefined,
+    close: () => Promise.resolve(),
   }) as unknown as Database;
 
 const api = createApi({
@@ -71,7 +71,7 @@ const api = createApi({
  * one `createApi` built, with its own status, its own headers and its own
  * bytes. No case here may construct a body.
  */
-const transport = (async (url: string | URL, init?: RequestInit) =>
+const transport = ((url: string | URL, init?: RequestInit) =>
   api.fetch(new Request(String(url), init))) as unknown as typeof globalThis.fetch;
 
 const client = (token: string | null): OperationsClient =>
@@ -139,7 +139,9 @@ describe('a refusal crossing the boundary into the browser client', () => {
     // the server's; this case only requires that both reach the client.
     expect(describeRefusal(result)).toContain(result.code);
   });
+});
 
+describe('a refusal crossing the boundary into the browser client', () => {
   it('is a refusal even when the request body is not an object at all', async () => {
     const response = await api.fetch(
       new Request(`http://api.test/api/b/alpha/task/create`, {

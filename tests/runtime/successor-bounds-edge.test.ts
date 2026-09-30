@@ -28,9 +28,10 @@ if (serverUrl === undefined) {
   );
 }
 
-describe.skipIf(serverUrl === undefined)('a successor at the edge of the cap', () => {
-  let s: Schedules;
+// Opened by the block below, which runs only with a database.
+let s: Schedules;
 
+describe.skipIf(serverUrl === undefined)('a successor at the edge of the cap', () => {
   beforeAll(async () => {
     s = await openSchedules('nb1edge', 10);
   }, 90_000);

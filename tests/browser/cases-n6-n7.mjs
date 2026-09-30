@@ -29,15 +29,15 @@
 //
 // N6 is revocation while the page is open, and it runs in `n6-revocation.mjs`,
 // which is a module of its own because it is also runnable alone. It is fenced
-// here so that a failure inside it cannot take B7 and B6 with it: those two are
-// the owner's persistence proof and are worth more than this script's control
-// flow. The grant it revokes is put back through the authority path afterwards.
+// in `n6-fenced-revocation.mjs`, and handed on from here, so that a failure
+// inside it cannot take B7 and B6 with it: those two are the owner's
+// persistence proof and are worth more than this script's control flow. The
+// grant it revokes is put back through the authority path afterwards.
 //
 // Run: node tests/browser/cases-n6-n7.mjs  (N7 alone: N6 needs the pools the
 // entry point owns)
 
 import { chromium } from 'playwright';
-import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import {
   API,
   VIEWPORT,
@@ -48,9 +48,9 @@ import {
   signIn,
   standaloneStatus,
   throughClient,
-  users,
 } from './harness.mjs';
-import { n6Cases } from './n6-revocation.mjs';
+
+export { casesN6 } from './n6-fenced-revocation.mjs';
 
 /** The actor and business nobody is: whatever the caller claims, this is not it. */
 const FORGED_ACTOR = '00000000-0000-0000-0000-000000000000';
@@ -209,52 +209,6 @@ async function theSameRequestUntampered(page, taskId) {
       `${result.ok === true ? 'applied' : `refused ${String(result.code)}`}, revision ` +
       `${String(before?.revision)} -> ${String(after?.revision)}, priority ${JSON.stringify(after?.priority)}`,
     ok: result.ok === true && advanced(before, after),
-  });
-}
-
-export async function casesN6(run) {
-  const { page, database, admin, alpha, state } = run;
-  let miaPerson;
-  try {
-    await page.goto(`${WEB}/task/${encodeURIComponent(state.taskKey)}`, {
-      waitUntil: 'domcontentloaded',
-    });
-    const { records, personId } = await n6Cases({
-      page,
-      database,
-      admin,
-      businessId: alpha,
-      login: users.find((user) => user.email === 'mia@alpha.local'),
-      shot: async (name) => await shot(page, name),
-    });
-    miaPerson = personId;
-    for (const entry of records) record(entry);
-  } catch (error) {
-    record({
-      case: 'N6 revocation on the mounted page',
-      action: 'revoke through revokeGrant with the page open, then press Refresh',
-      observed: `the script did not reach the assertion: ${String(error).slice(0, 200)}`,
-      ok: false,
-      shot: await shot(page, 'N6-failed').catch(() => undefined),
-    });
-  }
-  if (miaPerson !== undefined) await restoreTaskRead(database, alpha, miaPerson);
-}
-
-/** Put the revoked grant back the way the seed says it should be. */
-export async function restoreTaskRead(database, businessId, personId) {
-  await database.withBusiness(businessId, async (tx) => {
-    const actor = (
-      await tx.query(`select id from public.actors where person_id = $1 limit 1`, [personId])
-    )[0]?.id;
-    await issueGrant(tx, [], {
-      subject: { kind: 'person', id: personId },
-      scope: { kind: 'business', id: null },
-      collection: 'task',
-      action: 'read',
-      parentGrantId: null,
-      grantedByActorId: actor,
-    });
   });
 }
 

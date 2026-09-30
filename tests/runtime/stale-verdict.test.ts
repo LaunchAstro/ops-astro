@@ -69,7 +69,9 @@ describe('fenceVerdict and bindingVerdict', () => {
       fix: 'The report is retained, not accepted. Work the current version under a new pickup.',
     });
   });
+});
 
+describe('fenceVerdict and bindingVerdict', () => {
   it('gives no verdict for the current holder of a live lease on live work', () => {
     expect(fenceVerdict(live, presented)).toBeNull();
     expect(bindingVerdict(bound)).toBeNull();

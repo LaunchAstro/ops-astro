@@ -24,6 +24,8 @@ import { randomUUID } from 'node:crypto';
 import {
   checkAuthority,
   checkDelegatedAuthority,
+  fourEyesRequired,
+  gateAlreadyDecided,
   refuseCommand,
 } from '../../core-records/src/index.ts';
 import type {
@@ -56,6 +58,13 @@ import {
   type SigningKey,
 } from './signing.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import {
+  assignedTo,
+  escalateGate,
+  escalatedDecider,
+  recheckEscalation,
+  type Escalated,
+} from './escalation.ts';
 
 /**
  * A note that cannot be stored. `FIELD_VALUE_INVALID` is
@@ -87,7 +96,7 @@ function noteFault(note: unknown): string | null {
 /** The pinned synthetic estimator. Not a provider, not a production price. */
 export const SYNTHETIC_PRICE_BOOK = 'synthetic/bounded-attempt@1';
 
-export type DecisionKind = 'approve' | 'reject' | 'request_changes';
+export type DecisionKind = 'approve' | 'reject' | 'request_changes' | 'escalate';
 
 export interface DecideRequest {
   readonly gateId: string;
@@ -102,6 +111,8 @@ export interface DecideRequest {
   readonly signingKey: SigningKey;
   /** The cap the envelope draws on. The fixture's finite synthetic one. */
   readonly capId: string;
+  /** Escalate's recipient: a person who must hold decide at business scope. */
+  readonly recipientPersonId?: string;
 }
 
 interface DecidedCommon {
@@ -126,7 +137,9 @@ export type Decided =
     })
   | (DecidedCommon & {
       readonly decision: 'reject' | 'request_changes';
-    });
+    })
+  // An escalation is not the gate's decision: no signed row, no hash.
+  | Escalated;
 
 interface GateRow {
   readonly id: string;
@@ -139,6 +152,7 @@ interface GateRow {
   readonly state: string;
   readonly round: number;
   readonly expired: boolean;
+  readonly escalated: boolean;
 }
 
 /**
@@ -207,7 +221,13 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
   const rechecked = await recheckDecision(tx, request, found.value, locked);
   if (!rechecked.ok) return rechecked;
   const { gate, version, pack } = rechecked.value;
-  const written = await writeDecision(tx, request, gate, pack.rendered_digest);
+  if (request.decision === 'escalate') return await escalateGate(tx, request, gate);
+  const written = await writeDecision(
+    tx,
+    { ...request, decision: request.decision },
+    gate,
+    pack.rendered_digest,
+  );
   if (request.decision === 'reject') {
     // G05: terminal, and the unstarted holds this lineage owns are released by
     // the classifier through the cause recorded here -- not by this statement
@@ -410,6 +430,17 @@ async function recheckDecision(
   }
   const gate = await recheckGate(tx, request, locked.lockedAt);
   if (!gate.ok) return gate;
+  // T3a: an escalated gate is decided only by the escalation role, decide at
+  // business scope, read at the locked instant like the grant above.
+  const wider = await escalatedDecider(tx, request, gate.value.escalated, locked.lockedAt);
+  if (!wider.ok) return wider;
+  // Four eyes (T2g): the person the task is assigned to does not decide its
+  // gate. Read under the task lock taken above (the record row, for update),
+  // which an assignment's own update of that row waits on, so a reassignment
+  // racing this decision is seen or waits for it, never missed.
+  if (await assignedTo(tx, found.task_id, request.decidedByPersonId)) {
+    return { ok: false, refusal: fourEyesRequired() };
+  }
   const evidence = await recheckEvidence(tx, gate.value);
   if (!evidence.ok) return evidence;
   const work = await recheckWork(tx, request, found, gate.value, evidence.value.version, locked);
@@ -425,24 +456,31 @@ async function recheckGate(
 ): Promise<RuntimeResult<GateRow>> {
   const gates = await tx.query<GateRow>(
     `select g.id, g.lineage_id, g.version_id, g.run_id, g.step_id, g.evidence_pack_id,
-            g.payload_digest, g.state, g.round, (g.expires_at <= $3::timestamptz) as expired
+            g.payload_digest, g.state, g.round, (g.expires_at <= $3::timestamptz) as expired,
+            -- Read through the row, not by column name: a database upgraded only
+            -- as far as an earlier migration (the upgrade-path suites decide on
+            -- one) has no 0041 column, and a gate there was never escalated.
+            (to_jsonb(g) ->> 'escalated_at') is not null as escalated
        from public.gates g where g.business_id = $1 and g.id = $2`,
     [tx.businessId, request.gateId, lockedAt],
   );
   const gate = only(gates, 'decide: the gate locked above');
+  if (gate.state === 'superseded') {
+    return refuse(
+      'PROPOSAL_SUPERSEDED',
+      `gate ${gate.id} belongs to a version a later one superseded`,
+      'Re-read the lineage and decide its live version.',
+    );
+  }
   if (gate.state !== 'pending') {
     // G03: the loser of the race lands here and its refusal is recorded by the
     // caller's own audit path, which is the command envelope. The row is not
     // written to `gate_decisions`, because a refusal is not a decision.
-    return refuse(
-      'GATE_ALREADY_DECIDED',
-      `gate ${gate.id} is ${gate.state}`,
-      'Read the decision that was recorded. A second decision on one version is never taken.',
-    );
+    return { ok: false, refusal: gateAlreadyDecided(gate.id, gate.state) };
   }
   if (gate.version_id !== request.versionId) {
     return refuse(
-      'VERSION_SUPERSEDED',
+      'PROPOSAL_SUPERSEDED',
       `gate ${gate.id} is bound to version ${gate.version_id}, not the version presented`,
       'Re-read the gate and decide the version it actually carries.',
     );
@@ -475,7 +513,7 @@ async function recheckEvidence(
   const version = versions[0];
   if (version === undefined || version.superseded_at !== null) {
     return refuse(
-      'VERSION_SUPERSEDED',
+      'PROPOSAL_SUPERSEDED',
       `version ${gate.version_id} has been superseded, so its gate no longer authorises anything`,
       'Decide the live version of this lineage.',
     );
@@ -548,17 +586,19 @@ async function recheckWork(
       'A terminal lineage is not decided again. An authorised restart opens a new one.',
     );
   }
-  if (
-    request.decision === 'request_changes' &&
-    gate.round >= 2 &&
-    (await roundsUsed(tx, gate.lineage_id)) > 2
-  ) {
+  // G08's bound: two formal rounds used. Request changes stops there, and
+  // escalate (T3a) starts there.
+  const atBound = async (): Promise<boolean> =>
+    gate.round >= 2 && (await roundsUsed(tx, gate.lineage_id)) > 2;
+  if (request.decision === 'request_changes' && (await atBound())) {
     return refuse(
       'CHANGE_ROUNDS_EXHAUSTED',
       'this lineage has used its two formal rounds of requested changes',
       'Approve it, reject it, or escalate under the accepted rule. A third round is not taken here.',
     );
   }
+  const escalation = await recheckEscalation(tx, request, found.task_id, locked.lockedAt, atBound);
+  if (!escalation.ok) return escalation;
   if (request.decision === 'approve') {
     const room = await budgetRoom(tx, {
       capId: locked.capId,
@@ -591,7 +631,7 @@ async function recheckWork(
  */
 async function writeDecision(
   tx: TenantQuery,
-  request: DecideRequest,
+  request: DecideRequest & { readonly decision: Exclude<DecisionKind, 'escalate'> },
   gate: GateRow,
   evidence: string,
 ): Promise<{ readonly decisionId: string; readonly hash: string }> {

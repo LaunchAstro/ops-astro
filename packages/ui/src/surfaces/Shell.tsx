@@ -23,6 +23,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { BrandMark } from '../primitives/BrandMark.tsx';
 import { Dock, useReadyAfterFirstLayout, type DockProps } from './Dock.tsx';
 import { EdgeGrip } from './EdgeGrip.tsx';
 
@@ -103,9 +104,7 @@ export function Shell(props: ShellProps): ReactElement {
           </button>
         )}
         <div className="rail__brand">
-          {/* The wordmark is a mask over an SVG in the pinned estate. No asset
-              ships here until the icon-and-font rights question is resolved
-              (#32), so the brand is its own words. */}
+          <BrandMark variant="wordmark" />
           <span className="rail__hub">Ops Astro</span>
         </div>
         <div className="rail__group">

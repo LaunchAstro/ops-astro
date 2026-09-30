@@ -139,6 +139,12 @@ describe.skipIf(serverUrl === undefined)('placement', () => {
       who,
     );
 
+  /** Grants rhea write on one record of this business. */
+  const grantRheaWrite = async (id: string) =>
+    await db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, rhea, 'write', { kind: 'record', id });
+    });
+
   beforeAll(async () => {
     db = await createFreshDatabase({ part: 'f' });
     second = connect(db.appUrl, { source: 'runtime' });
@@ -173,9 +179,7 @@ describe.skipIf(serverUrl === undefined)('placement', () => {
       unreachedBoard = await create();
       unreachedParent = await create({ board: unreachedBoard });
       foreignParent = await createIn(foreign, outsider);
-      await db.app.withBusiness(business, async (tx) => {
-        await grantTo(tx, rhea, 'write', { kind: 'record', id: rheaTask });
-      });
+      await grantRheaWrite(rheaTask);
     });
 
     it('refuses rhea as task.move does, for an unreached, a foreign and a fabricated parent', async () => {
@@ -246,7 +250,9 @@ describe.skipIf(serverUrl === undefined)('placement', () => {
         z,
       ]);
     });
+  });
 
+  describe('a subtree follows its root’s board', () => {
     it('refuses task.move of a subtask naming board, and writes nothing', async () => {
       const t = await create({ board: await create() });
       const c = await create({ parentId: t });
@@ -451,7 +457,9 @@ describe.skipIf(serverUrl === undefined)('placement', () => {
         before = x;
       }
     }, 60_000);
+  });
 
+  describe('task.rank never writes a tie', () => {
     it('makes a second create in one sibling set wait, so the two ranks differ', async () => {
       const parent = await create();
       const spine = await db.app.withBusiness(business, async (tx) => await readTaskSpine(tx));

@@ -87,6 +87,30 @@ export interface TaskDetail extends TaskSummary {
    * not read the task is told nothing about the cap.
    */
   readonly capCurrency: string | null;
+  /** The task's open envelope, which a top-up raises (T2e); null when none is open. */
+  readonly envelope: TaskEnvelope | null;
+  /** The task's alerts, newest first (T2h). The detail is the team's, and so are they. */
+  readonly alerts: readonly TaskAlert[];
+}
+
+/** One alert as `task.read` and `task.queue` carry it (`core-runtime/src/alerts.ts`). */
+export interface TaskAlert {
+  readonly id: string;
+  readonly taskId: string;
+  readonly kind: string;
+  readonly waitingReason: string | null;
+  readonly causeId: string;
+  readonly raisedAt: string;
+}
+
+/** An open envelope as the task read carries it (T2e). */
+export interface TaskEnvelope {
+  readonly id: string;
+  readonly capId: string;
+  readonly currency: string;
+  readonly maximumMinor: number;
+  readonly heldMinor: number;
+  readonly actualMinor: number;
 }
 
 /**
@@ -175,6 +199,8 @@ export interface ReservationView {
   readonly state: string;
   readonly heldMinor: number;
   readonly actualMinor: number | null;
+  /** What settling at the observed cost gave back to the cap (T2d); `null` until settled. */
+  readonly releasedMinor: number | null;
   readonly classifiedCause: string | null;
   readonly leaseId: string | null;
   readonly lease: LeaseView | null;
@@ -194,6 +220,8 @@ export interface AttemptView {
   readonly state: string;
   readonly dispatchMarker: boolean;
   readonly observed: boolean;
+  /** Why the work dropped under it (T3e1), or null: never a person's cancellation. */
+  readonly dropCause: string | null;
 }
 
 export interface GateView {
@@ -331,10 +359,34 @@ export interface PersonListResult {
   readonly persons: readonly PersonView[];
 }
 
-/** `task.queue`'s answer. An empty queue is `[]` beside `ok`, never a refusal. */
+/**
+ * `task.queue`'s answer. An empty queue is `[]` beside `ok`, never a refusal.
+ * `alerts` are the team's (T2h), and so are `outages` (T3e2); a reader outside
+ * the team is sent none.
+ */
 export interface QueueResult {
   readonly ok: true;
   readonly queue: readonly QueuedWork[];
+  readonly alerts: readonly TaskAlert[];
+  readonly outages: readonly OutageView[];
+}
+
+/** One outage's report, as `task.queue` carries it to the team (T3e2; `core-runtime/src/recovery/outage.ts`). */
+export interface OutageView {
+  readonly id: string;
+  readonly cause: string;
+  /** Whose fault the cause names: the provider's, the network's, or ours. */
+  readonly fault: string;
+  readonly openedAt: string;
+  readonly lastDropAt: string;
+  /** Null while drops of its cause may still join it. */
+  readonly closedAt: string | null;
+  readonly runs: readonly {
+    readonly taskId: string;
+    readonly runId: string;
+    readonly attemptId: string;
+    readonly reactivated: boolean;
+  }[];
 }
 
 /** `preset.plan`'s answer: a dry-run plan that installs and approves nothing. */
@@ -356,4 +408,58 @@ export interface SettingsReadResult {
  */
 export interface CapabilitiesResult extends SessionCapabilities {
   readonly ok: true;
+}
+
+/** One run naming the task, as `task.execution` reports it (T2a); never merged. */
+export interface ExecutionRun {
+  readonly runId: string;
+  readonly lineageId: string;
+  readonly versionId: string;
+  readonly state: string;
+  readonly taskRevisionAtRequest: number | null;
+  readonly createdAt: string;
+}
+
+/** One durable progress event, in the task-wide order. */
+export interface ExecutionEvent {
+  readonly eventId: string;
+  readonly runId: string;
+  readonly position: number;
+  readonly kind: string;
+  /** The attempt the event is about; its receipt is read by this. */
+  readonly attemptId: string;
+  readonly at: string;
+}
+
+/** `task.execution`'s answer, under `execution`; `denied`, `unavailable` and `loading` are the read's own. */
+export interface TaskExecutionResult {
+  readonly execution: TaskExecution;
+}
+
+export interface TaskExecution {
+  readonly outcome: 'ready' | 'no-run' | 'stale';
+  readonly runs: readonly ExecutionRun[];
+  readonly events: readonly ExecutionEvent[];
+  /** Whether `events` reaches the task's last recorded event. */
+  readonly complete: boolean;
+  /** The cursor for the rest, or null when nothing was left out. */
+  readonly next: number | null;
+}
+
+/** `task.receipt`: what an observed effect came from, and what it cost (T2c2, T2d). */
+export interface ReceiptResult {
+  readonly receipt: {
+    readonly attemptId: string;
+    readonly decision: { readonly id: string };
+    readonly version: { readonly id: string; readonly number: number };
+    readonly effect: { readonly kind: string; readonly audience: string };
+    readonly settlement:
+      | {
+          readonly state: 'settled';
+          readonly heldMinor: number;
+          readonly spentMinor: number;
+          readonly releasedMinor: number;
+        }
+      | { readonly state: string; readonly heldMinor: number };
+  };
 }

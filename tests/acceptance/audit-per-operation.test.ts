@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 35 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 36 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 35. For
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 36. For
 // the three lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
 // own refusals of those three are a case of their own below.
@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   COMMAND_SURFACE,
+  effectOperationId,
   READS,
   type CommandDeclaration,
   type CommandName,
@@ -37,15 +38,8 @@ import {
   type Answer,
   type Caller,
 } from './world.ts';
-import {
-  auditMark,
-  auditSince,
-  createIdentWorld,
-  domainState,
-  expectAudited,
-  type IdentWorld,
-  type Picked,
-} from './ident-audit-cases.ts';
+import { createIdentWorld, type IdentWorld, type Picked } from './ident-audit-cases.ts';
+import { auditMark, auditSince, domainState, expectAudited } from './ident-audit-rows.ts';
 
 /** One call, and what its audit row has to say about it. */
 interface Cell {
@@ -59,7 +53,13 @@ interface Cell {
 }
 
 const READ_NAMES: ReadonlySet<CommandName> = new Set(READS);
-const LEASE_WORK: readonly CommandName[] = ['task.pickup', 'task.handback', 'task.heartbeat'];
+const LEASE_WORK: readonly CommandName[] = [
+  'task.pickup',
+  'task.handback',
+  'task.heartbeat',
+  'task.dispatch',
+  'task.observe',
+];
 
 /** A domain-state digest without `handback_reports`, for I08's retained handback report. */
 const besideReports = (state: Readonly<Record<string, string>>): Record<string, string> =>
@@ -154,9 +154,43 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       leaseId: String(detail['leaseId']),
       fence: Number(detail['fence']),
       delegationId: String(detail['delegationId']),
+      attemptId: String(detail['attemptId']),
       credential: String(detail['credential']),
       reservationId,
     };
+  }
+
+  /**
+   * task.observe's applied cell: dispatched, and its one effect applied under the
+   * attempt's identity (T2c2).
+   */
+  async function observedCell(): Promise<Cell> {
+    const ada = w.h.world.ada;
+    const agent = await freshAgent();
+    const p = await pickUpBy(ada, agent, 'work whose effect is observed');
+    const lease = { leaseId: p.leaseId, fence: p.fence };
+    const marked = await w.agent(agent, 'task.dispatch', lease, p.credential);
+    const effect = await w.agent(
+      agent,
+      'task.comment',
+      {
+        operationId: effectOperationId(p.attemptId),
+        recordId: p.taskId,
+        body: 'the synthetic effect',
+        audience: 'internal',
+      },
+      p.credential,
+    );
+    if (marked.code !== 'ok' || effect.code !== 'ok') {
+      throw new Error(`audit: effect refused ${marked.code} ${effect.code}`);
+    }
+    return agentCell(
+      agent,
+      'task.observe',
+      { ...lease, attemptId: p.attemptId },
+      p.credential,
+      null,
+    );
   }
 
   async function applied(declaration: CommandDeclaration): Promise<Cell> {
@@ -168,7 +202,10 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         const reservationId = await reservationBy(ada, 'work an agent picks up');
         return agentCell(agent, name, { reservationId }, undefined, null);
       }
+      case 'task.observe':
+        return await observedCell();
       case 'task.heartbeat':
+      case 'task.dispatch':
       case 'task.handback': {
         const agent = await freshAgent();
         const p = await pickUpBy(ada, agent, `work for ${name}`);
@@ -199,14 +236,20 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   }
 
   /** A live lease ada holds as herself (EX-01), on work she proposed and approved. */
-  async function adaLease(title: string): Promise<{ leaseId: string; fence: number }> {
+  async function adaLease(
+    title: string,
+  ): Promise<{ leaseId: string; fence: number; attemptId: string }> {
     const reservationId = await reservationBy(w.h.world.ada, title);
     const picked = await w.person(w.h.world.ada, 'task.pickup', { reservationId });
     const detail = picked.body['detail'] as Record<string, unknown> | undefined;
     if (picked.code !== 'ok' || detail === undefined) {
       throw new Error(`audit: ada's pickup refused ${picked.code}`);
     }
-    return { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
+    return {
+      leaseId: String(detail['leaseId']),
+      fence: Number(detail['fence']),
+      attemptId: String(detail['attemptId']),
+    };
   }
 
   async function refused(declaration: CommandDeclaration): Promise<Cell> {
@@ -220,10 +263,17 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         return personCell(noah, name, { reservationId }, 'SCOPE_NOT_GRANTED');
       }
       case 'task.heartbeat':
+      case 'task.dispatch':
+      case 'task.observe':
       case 'task.handback': {
         const lease = await adaLease(`ada's lease noah may not ${name}`);
         const settle = { outcome: 'completed', report: { wrote: 'a refused draft' } };
-        const body = name === 'task.handback' ? { ...lease, ...settle } : lease;
+        const body =
+          name === 'task.handback'
+            ? { ...lease, ...settle }
+            : name === 'task.observe'
+              ? { ...lease, attemptId: lease.attemptId }
+              : { leaseId: lease.leaseId, fence: lease.fence };
         return personCell(noah, name, body, 'SCOPE_NOT_GRANTED');
       }
       default: {
@@ -248,12 +298,19 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           'RESERVATION_NOT_CLAIMABLE',
         );
       case 'task.heartbeat':
+      case 'task.dispatch':
+      case 'task.observe':
       case 'task.handback': {
         const agent = await freshAgent();
         const p = await pickUpBy(w.h.world.ada, agent, `work refused ${name}`);
         const lease = { leaseId: randomUUID(), fence: p.fence };
         const settle = { outcome: 'completed', report: { wrote: 'a refused draft' } };
-        const body = name === 'task.handback' ? { ...lease, ...settle } : lease;
+        const body =
+          name === 'task.handback'
+            ? { ...lease, ...settle }
+            : name === 'task.observe'
+              ? { ...lease, attemptId: p.attemptId }
+              : lease;
         return agentCell(agent, name, body, p.credential, 'LEASE_NOT_OWNED');
       }
       default:
@@ -322,12 +379,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 35 exported operations both ways', () => {
+  it('covered all 42 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(35);
+    expect(names).toHaveLength(42);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 35.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 36.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 

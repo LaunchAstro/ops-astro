@@ -78,7 +78,9 @@ describe('the five renderings', () => {
     expect(view.all('li')).toHaveLength(0);
     await view.unmount();
   });
+});
 
+describe('the five renderings', () => {
   it('unavailable says nothing was decided, and offers the retry', async () => {
     let retried = 0;
     const view = await mount(

@@ -6,8 +6,9 @@
 // Three files rather than one, for T1h's reason: about 400 lines is the
 // guide for a readable file, and the repository's answer is to split the
 // file rather than the change or the comments. The seams are real ones —
-// `role-case-ledger.ts` knows only about rows, `role-case-bodies.ts` knows
-// only about tasks, and this knows about callers — so
+// `role-case-ledger.ts` knows only about rows, `role-case-bodies.ts` (with
+// `role-case-positive-body.ts`) knows only about tasks, and this (with its
+// shape in `role-case-harness-shape.ts`) knows about callers — so
 // `role-case-matrix.test.ts` is left reading as the cases themselves.
 //
 // **What this file is careful not to be.** It is not a second world. Every
@@ -33,53 +34,13 @@ import {
   personPath,
   type Answer,
   type Caller,
-  type World,
 } from './world.ts';
-import { PROPOSAL, createPositiveBody, type Prepared, type Task } from './role-case-bodies.ts';
+import { PROPOSAL, type Task } from './role-case-bodies.ts';
+import { createPositiveBody } from './role-case-positive-body.ts';
+import { plainRows, seedFixtureClients } from './role-case-clients.ts';
+import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
-/**
- * The grant pair a declaration is actually checked against.
- *
- * `preset.plan` is the one declaration whose collection is not the grant it
- * needs: `reads/dispatch.ts` checks `manage` on the family the request names,
- * not on a blanket `preset` collection, because a blanket holder would be
- * admitted to every installed type and the legitimate manager of the task
- * family refused. Everything else takes its own collection.
- */
-export const pairFor = (declaration: CommandDeclaration): string =>
-  `${declaration.name === 'preset.plan' ? 'task' : declaration.collection}:${declaration.action}`;
-
-export interface Harness {
-  readonly world: World;
-  /** A live alpha task and a live bravo record, for the cases that need a real id. */
-  readonly alphaTask: Task;
-  readonly bravoRecordId: string;
-  /** Who holds what, read back from `grants` rather than from the fixture's list. */
-  readonly heldBy: ReadonlyMap<string, ReadonlySet<string>>;
-  /** Everyone but the admin, in the order case (e) sweeps them. */
-  readonly otherCallers: readonly Caller[];
-  /** The grant pair a declaration is actually checked against. */
-  pairFor(declaration: CommandDeclaration): string;
-  asPerson(
-    name: CommandName,
-    body: Readonly<Record<string, unknown>>,
-    businessKey?: string,
-    caller?: { readonly token: string },
-  ): Promise<Answer>;
-  asAgent(
-    name: CommandName,
-    body: Readonly<Record<string, unknown>>,
-    credential?: string,
-  ): Promise<Answer>;
-  freshTask(title: string): Promise<Task>;
-  probeBody(declaration: CommandDeclaration): Readonly<Record<string, unknown>>;
-  positiveBody(declaration: CommandDeclaration): Promise<Prepared>;
-  approvedReservation(): Promise<{ subject: Task; sibling: Task; decided: Answer }>;
-  reserve(task: Task, purpose: string): Promise<Answer>;
-  activeRoleKeys(): Promise<readonly string[]>;
-  writeBothComments(taskId: string): Promise<readonly Answer[]>;
-  close(): Promise<void>;
-}
+export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
 /**
  * Build the world and everything the cases ask it.
@@ -100,6 +61,7 @@ export interface Harness {
 export async function createHarness(part: string): Promise<Harness> {
   const world = await createWorld(part);
   await world.db.app.withBusiness(world.alpha, installBusinessSettings);
+  const clients = await seedFixtureClients(world);
 
   const needed = new Map(COMMAND_SURFACE.map((one) => [pairFor(one), one]));
   const heldBy = new Map<string, ReadonlySet<string>>();
@@ -205,7 +167,7 @@ export async function createHarness(part: string): Promise<Harness> {
    * The least a caller can send and still be asking the operation its own
    * question, for the cases whose answer arrives before the body is read.
    *
-   * `recordId` is sent only where the declaration targets a record, because
+   * `recordId` is sent only where the declaration names a record by it, because
    * `prepare.ts` refuses an identifier on a command that has no use for one —
    * `COMMAND_BODY_INVALID`, and before the authority check — so a body that was
    * uniform across the table would have measured that refusal rather than the
@@ -215,9 +177,10 @@ export async function createHarness(part: string): Promise<Harness> {
     const targeted = declaration.targetsExistingRecord;
     return {
       operationId: randomUUID(),
-      ...(targeted || declaration.name === 'task.read' ? { recordId: alphaTask.id } : {}),
+      ...(targetKeyOf(declaration) === 'recordId' ? { recordId: alphaTask.id } : {}),
       ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
       ...(declaration.name === 'task.board' ? { board: null } : {}),
+      ...(declaration.name === 'task.receipt' ? { attemptId: randomUUID() } : {}),
       ...(declaration.name === 'preset.plan'
         ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
         : {}),
@@ -299,11 +262,12 @@ export async function createHarness(part: string): Promise<Harness> {
   }
 
   return {
-    world,
+    world: { ...world, db: { ...world.db, admin: plainRows(world.db.admin) } },
     alphaTask,
     bravoRecordId,
     heldBy,
     otherCallers: [world.noah, world.mia, world.orphan, world.bea],
+    clients,
     pairFor,
     asPerson,
     asAgent,

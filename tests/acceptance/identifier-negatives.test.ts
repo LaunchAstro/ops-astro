@@ -24,15 +24,8 @@ import { READS } from '../../packages/core-wire/src/surface.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
-import {
-  auditMark,
-  auditSince,
-  createIdentWorld,
-  domainState,
-  expectAudited,
-  type IdentWorld,
-  type RawAnswer,
-} from './ident-audit-cases.ts';
+import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
+import { auditMark, auditSince, domainState, expectAudited } from './ident-audit-rows.ts';
 
 type Body = Readonly<Record<string, unknown>>;
 
@@ -263,6 +256,32 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           'delegation.revoke',
           pair('delegationId', f.picked.delegationId, (delegationId) => ({ delegationId })),
         ],
+        ['task.receipt', pair('attemptId', f.picked.attemptId, (attemptId) => ({ attemptId }))],
+        [
+          'budget.top_up',
+          pair('recordId', f.proposal.task.id, (recordId) => ({
+            recordId,
+            amountMinor: 100,
+            fromMaximumMinor: 0,
+          })),
+        ],
+        [
+          'budget.record_outcome',
+          pair('attemptId', f.picked.attemptId, (attemptId) => ({
+            recordId: f.proposal.task.id,
+            attemptId,
+            outcome: 'happened',
+          })),
+        ],
+        [
+          'budget.write_off',
+          pair('attemptId', f.picked.attemptId, (attemptId) => ({
+            recordId: f.proposal.task.id,
+            attemptId,
+            amountMinor: 0,
+            reason: 'identifier negatives',
+          })),
+        ],
       );
       for (const [op, { operand, forms }] of cells) {
         // eslint-disable-next-line no-await-in-loop
@@ -333,6 +352,9 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       }
       const byLease: readonly [CommandName, Body][] = [
         ['task.heartbeat', {}],
+        ['task.dispatch', {}],
+        // The attempt token is one no form holds, so the lease is what is compared.
+        ['task.observe', { attemptId: randomUUID() }],
         ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
       ];
       for (const [op, extra] of byLease) {

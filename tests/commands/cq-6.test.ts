@@ -63,7 +63,9 @@ describe('CQ-6 operands described', () => {
       afterTarget: false,
     });
   });
+});
 
+describe('CQ-6 operands refused after the target', () => {
   it('a mistyped non-identifier operand answers after the target, in its own fix', () => {
     const update = declarationOf('task.update');
     const parsed = parseRequest(

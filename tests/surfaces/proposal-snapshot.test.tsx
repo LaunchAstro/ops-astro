@@ -4,7 +4,8 @@
 // The decision controls follow the one state a proposal read answers (P2 at
 // 610983f).
 //
-// The page offers approve and reject from the gate state `task.read` returns.
+// The page offers approve and request changes from the gate state `task.read`
+// returns (T2g: reject is the proposal header's action, never a gate control).
 // A read that answered `pending` beside an already verified `approve` drew
 // enabled controls for a gate nobody may decide again. The correction is in
 // the read, not the page: these cases take the projection the real
@@ -194,6 +195,7 @@ describe.skipIf(serverUrl === undefined)('decision controls from one coherent re
     await tick();
     expect(shut.find('[data-gate-state]')?.getAttribute('data-gate-state')).toBe('approved');
     expect(shut.find('[data-decide="approve"]')).toBeNull();
+    expect(shut.find('[data-decide="request_changes"]')).toBeNull();
     expect(shut.find('[data-decide="reject"]')).toBeNull();
     expect(shut.find('[data-decide="closed"]')?.textContent).toContain('approved');
     await shut.unmount();
@@ -216,7 +218,9 @@ describe.skipIf(serverUrl === undefined)('decision controls from one coherent re
     expect(approve?.hasAttribute('disabled')).toBe(false);
     expect(approve?.getAttribute('data-gate-id')).toBe(open.gateId);
     expect(approve?.getAttribute('data-version-id')).toBe(open.versionId);
-    expect(offered.find('[data-decide="reject"]')?.hasAttribute('disabled')).toBe(false);
+    expect(offered.find('[data-decide="request_changes"]')?.hasAttribute('disabled')).toBe(false);
+    expect(offered.find('[data-decide="reject"]')).toBeNull();
+    expect(offered.find('[data-lineage-action="reject"]')?.hasAttribute('disabled')).toBe(false);
     expect(offered.find('[data-decide="closed"]')).toBeNull();
     await offered.unmount();
   }, 120_000);

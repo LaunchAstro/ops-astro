@@ -16,10 +16,9 @@
 // and a row lock by its table, so a changed statement, a moved one and a
 // missing one all fail here with the label that differs.
 
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import type { Database, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { replayRecordedTransitions } from '../../packages/core-runtime/src/recovery.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
@@ -40,6 +39,7 @@ import {
   type Body,
   type Schedules,
 } from './schedules-harness.ts';
+import { traced, windowOf } from './statement-window.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -47,68 +47,6 @@ if (serverUrl === undefined) {
   console.warn(
     'runtime/rediscovery-pin: DATABASE_URL is unset, so nothing below ran and nothing is proved.',
   );
-}
-
-/** Every `withBusiness` transaction a connection opened, as the statements it ran. */
-function traced(database: Database): {
-  readonly database: Database;
-  readonly transactions: readonly string[][];
-} {
-  const transactions: string[][] = [];
-  const wrapped = new Proxy(database, {
-    get(target, property, receiver) {
-      if (property !== 'withBusiness') return Reflect.get(target, property, receiver) as unknown;
-      return async <T>(
-        businessId: Parameters<Database['withBusiness']>[0],
-        run: (tx: TenantQuery) => Promise<T>,
-      ): Promise<T> => {
-        const statements: string[] = [];
-        transactions.push(statements);
-        return await target.withBusiness(
-          businessId,
-          async (tx) =>
-            await run(
-              new Proxy(tx, {
-                get(inner, name, innerReceiver) {
-                  if (name !== 'query') return Reflect.get(inner, name, innerReceiver) as unknown;
-                  return async (text: string, parameters: readonly unknown[] = []) => {
-                    statements.push(text);
-                    return await inner.query(text, parameters);
-                  };
-                },
-              }),
-            ),
-        );
-      };
-    },
-  });
-  return { database: wrapped, transactions };
-}
-
-const normal = (text: string): string => text.replaceAll(/\s+/gu, ' ').trim();
-const ROW_LOCK = /^select 1 from public\.(\w+) where business_id = \$1 and id = \$2 for update$/u;
-
-function label(text: string): string {
-  const flat = normal(text);
-  const lock = ROW_LOCK.exec(flat);
-  if (lock !== null) return `lock ${lock[1]}`;
-  if (flat.includes('pg_advisory_xact_lock')) return 'lock chain';
-  const digest = createHash('sha256').update(flat).digest('hex').slice(0, 8);
-  return `${flat.slice(0, 48)} #${digest}`;
-}
-
-/**
- * The site's window: from its first unlocked discovery to the last statement
- * that repeats one run before its locks, which is the end of its recheck.
- */
-function windowOf(transactions: readonly string[][], discovery: RegExp): readonly string[] {
-  const transaction = transactions.find((each) => each.some((text) => discovery.test(text)));
-  if (transaction === undefined) throw new Error(`no transaction ran ${String(discovery)}`);
-  const tail = transaction.slice(transaction.findIndex((text) => discovery.test(text)));
-  const locked = tail.findIndex((text) => label(text).startsWith('lock '));
-  const unlocked = new Set(tail.slice(0, locked));
-  const end = tail.findLastIndex((text, index) => index > locked && unlocked.has(text));
-  return tail.slice(0, end + 1).map((text) => label(text));
 }
 
 /** The lineage's live version: `lockProposal`'s first unlocked read (R2-RUNTIME-25). */
@@ -267,7 +205,10 @@ const HELD_BY_LINEAGE = 'select res.id as reservation_id, res.envelope_id #5168d
 const HELD_BY_DELEGATION = 'select res.id as reservation_id, res.envelope_id #2223e6d4';
 // The replay's statement text changed only in a SQL comment: CQ-9 dropped a
 // finding label from `-- F4. A revocation that committed ...` in classifier.ts.
-const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #296c97f7';
+// T3b (#132) then added one filter: a reservation whose attempt is held
+// `liability_unknown` waits for a person and is not rediscovered. Still one
+// read, taken twice; no lock moved.
+const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #39592da5';
 const DEPENDENTS = 'with recursive revoked as ( select g.id, g.subje #c53e3eae';
 
 /**

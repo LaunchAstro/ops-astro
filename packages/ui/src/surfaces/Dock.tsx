@@ -18,7 +18,6 @@
 
 import {
   useEffect,
-  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -27,11 +26,14 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
+import { Icon, type GlyphName } from '../primitives/Icon.tsx';
 import { EdgeGrip } from './EdgeGrip.tsx';
 
 export interface DockTab {
   readonly id: string;
   readonly label: string;
+  /** The panel's glyph, as the mockup registers each panel with one; the grid glyph when none is named. */
+  readonly icon?: GlyphName | undefined;
   /** The count chip's text, or null for no chip. */
   readonly count: string | null;
   readonly open: boolean;
@@ -196,30 +198,29 @@ function DockTabButton(props: {
   readonly onTab: DockProps['onTab'];
 }): ReactElement {
   const { tab } = props;
-  const tip = useId();
   return (
     <button
       className="dock__tab"
       type="button"
       data-panel={tab.id}
       aria-expanded={tab.open}
-      aria-describedby={tip}
       aria-label={`${tab.open ? 'Close' : 'Open'} ${tab.label}${tab.count === null ? '' : `, ${tab.count}`}`}
       onClick={(event) => {
         props.onTab(tab.id, event.shiftKey);
       }}
     >
-      {/* The icon slot carries the panel's initial until the kit's icon set
-          lands (MP-1-2); never an emoji, which the design system forbids. */}
-      <span className="dock__glyph" aria-hidden="true">
-        {tab.label.slice(0, 1)}
-      </span>
+      {/* The icon slot: the panel's glyph from the licensed set (MP-1-2),
+          never an initial or an emoji. Decoration: the button's label names
+          the panel. */}
+      <Icon name={tab.icon ?? 'apps'} />
       {tab.count === null ? null : (
         <span className="dock__n" aria-hidden="true">
           {tab.count}
         </span>
       )}
-      <span className="dock__tip" role="tooltip" id={tip}>
+      {/* The callout names the tab on hover and focus. The button's label
+          already says it, so the callout is hidden from it. */}
+      <span className="dock__tablabel" aria-hidden="true">
         {tab.label}
       </span>
     </button>

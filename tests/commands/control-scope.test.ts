@@ -12,6 +12,8 @@
 // same shape, asking business-wide `manage` before the handler's own
 // target-specific ceiling ran. The fix separates the authority target from
 // revision and locking in the declaration; it grants nobody anything wider.
+// Since T3a, cancel and restart are `decide` on the task (`gate:decide`), so
+// the task-scoped holder here holds `decide` on exactly its task as well.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -35,6 +37,7 @@ describe.skipIf(serverUrl === undefined)('controls authorised on their own targe
       const scope = { kind: 'record' as const, id: own.id };
       await grantTo(tx, writer, 'read', scope);
       await grantTo(tx, writer, 'write', scope);
+      await grantTo(tx, writer, 'decide', scope);
       await grantTo(tx, writer, 'manage', scope);
     });
   }, 120_000);

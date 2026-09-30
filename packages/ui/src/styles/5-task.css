@@ -16,15 +16,16 @@
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   color: var(--text-muted);
 }
 .tpr__title {
   margin: 0;
-  font-family: var(--font-display);
-  font-weight: var(--weight-medium);
-  font-size: var(--text-h1);
-  line-height: var(--lh-title);
+  font: var(--type-title);
+  letter-spacing: var(--type-title-tracking);
+  text-transform: var(--type-title-case);
 }
 .tpr__facts {
   display: grid;
@@ -55,14 +56,15 @@
   border-bottom: 1px solid var(--border);
 }
 .tf__k {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   color: var(--ink-faint);
 }
 .sb__state {
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   color: var(--text);
 }
 
@@ -80,7 +82,9 @@
   border: 0;
   background: none;
   color: var(--text-muted);
-  font-size: 0.8125rem;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -136,10 +140,9 @@
 }
 .sb__k,
 .sb__meta {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
 }
 .sb__k {
   color: var(--text);
@@ -154,8 +157,9 @@
   border-bottom: 1px solid var(--border);
 }
 .sbact__meta {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   color: var(--ink-faint);
 }
 .sout__box {
@@ -208,9 +212,9 @@
 }
 .tph__head {
   margin: 0;
-  font-size: var(--text-h3);
-  line-height: var(--leading-snug);
-  font-weight: var(--weight-semibold);
+  font: var(--type-card-title);
+  letter-spacing: var(--type-card-title-tracking);
+  text-transform: var(--type-card-title-case);
   color: var(--text);
 }
 /* The pinned sheet fixes two columns with nth-child border rules, so it assumes
@@ -234,13 +238,18 @@
   border-right: 0;
 }
 .tph__n {
-  font-family: var(--font-mono);
+  /* type-exception DR-6: the run hero's mono 20 number, the one mono figure */
+  font: var(--type-mono);
+  letter-spacing: var(--type-mono-tracking);
+  text-transform: var(--type-mono-case);
   font-size: var(--text-h2);
-  line-height: 1;
+  line-height: var(--leading-none);
   color: var(--text);
 }
 .tph__of {
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   color: var(--text-muted);
 }
 @media (width <= 640px) {
@@ -279,16 +288,17 @@
   background: var(--warning);
 }
 .gate__word {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   color: var(--text);
 }
 .gate__say {
   margin: 0.3rem 0 0;
   max-width: 74ch;
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   color: var(--text-2);
 }
 .gatebox {
@@ -308,6 +318,8 @@
   flex-wrap: wrap;
 }
 .gatebox__note {
-  font-size: var(--text-overline);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   color: var(--text-muted);
 }

@@ -297,7 +297,9 @@ describe.skipIf(serverUrl === undefined).each([
       );
       expect(await capState(w, idle)).toBe('USD 1000 0');
     });
+  });
 
+  describe('an envelope is in its cap currency', () => {
     it('refuses moving an envelope to another currency or to a cap in another currency', async () => {
       const usd = randomUUID();
       await w.db.app.withBusiness(w.business, async (tx) => {

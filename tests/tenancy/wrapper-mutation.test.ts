@@ -393,7 +393,7 @@ async function rollbackAlone(wrapper: Wrapper): Promise<string> {
   try {
     const businessId = randomUUID();
     await pool
-      .withBusiness(businessId, async () => {
+      .withBusiness(businessId, () => {
         throw new Error('gives up');
       })
       .catch(() => undefined);

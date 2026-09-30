@@ -28,7 +28,9 @@ import {
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
 import type { InternalCommentView } from '../../../core-wire/src/index.ts';
+import { openEnvelopeOf } from '../../../core-runtime/src/index.ts';
 import { READS } from '../../../core-wire/src/index.ts';
+import { readAlerts } from '../../../core-runtime/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
 
@@ -255,8 +257,21 @@ export async function readTaskDetail(
     // reader who may see the task may see what somebody proposed doing to it.
     proposals: await readTaskProposals(tx, row.id),
     capCurrency: await taskCapCurrency(tx, row.id),
+    envelope: envelopeOf(await openEnvelopeOf(tx, row.id)),
+    alerts: await readAlerts(tx, row.id),
   };
 }
+
+/** The open envelope a top-up raises (T2e), its totals as numbers. */
+const envelopeOf = (open: Awaited<ReturnType<typeof openEnvelopeOf>>): TaskDetail['envelope'] =>
+  open === undefined
+    ? null
+    : {
+        ...open,
+        maximumMinor: +open.maximumMinor,
+        heldMinor: +open.heldMinor,
+        actualMinor: +open.actualMinor,
+      };
 
 /**
  * One task as a reader outside the business sees it, or nothing at all.

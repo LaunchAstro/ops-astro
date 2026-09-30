@@ -344,7 +344,7 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
       expect(read.status).toBe(200);
 
       // And the serving transaction committed, so the attempt is in the chain.
-      const audited = await fixture.db.app.withBusiness(fixture.business, async (tx) =>
+      const audited = await fixture.db.app.withBusiness(fixture.business, (tx) =>
         tx.query<{ readonly outcome: string; readonly refusal_code: string | null }>(
           `select outcome, refusal_code from public.audit_events
             where business_id = $1 and operation_id = $2`,
@@ -408,7 +408,7 @@ describe.skipIf(serverUrl === undefined)('the five runtime operations over HTTP'
       expect(fresh.status).toBe(200);
 
       // The projection shows the abandoned hold beside the fresh one.
-      const holds = await fixture.db.app.withBusiness(fixture.business, async (tx) =>
+      const holds = await fixture.db.app.withBusiness(fixture.business, (tx) =>
         tx.query<{ readonly id: string; readonly state: string }>(
           `select res.id, res.state from public.reservations res
              join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id

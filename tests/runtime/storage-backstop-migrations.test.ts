@@ -17,7 +17,9 @@
 // Every write below is the application role's, inside `withBusiness`, never
 // the owner's. The same cases run on a database migrated from empty and on
 // one migrated to 0025, seeded, and then upgraded: fresh and upgraded behave
-// the same. The seeded rows survive the upgrade byte for byte, and a 0025
+// the same. The seeded rows survive the upgrade byte for byte on the columns
+// they were seeded with, any column a later migration adds stays empty on
+// them (0037 adds reservations.absence_proved_at), and a 0025
 // database already holding a row a new rule forbids stops before the
 // migration that states the rule, rather than keeping the row silently.
 
@@ -66,10 +68,6 @@ const THROUGH_0025 = (version: string): boolean => version.slice(0, 4) <= '0025'
 /** The three this suite is about. Later migrations may follow them on disk. */
 const NEW = ['0026', '0027', '0028'];
 
-const FIRST_HEAD_NO_ACTUAL = {
-  code: '23514',
-  constraint_name: 'reservations_first_head_no_actual',
-};
 const ACTUAL_POSITIVE = { code: '23514', constraint_name: 'reservations_actual_positive' };
 const KEY_GLOBAL = { code: '23505', constraint_name: 'businesses_key_global_idx' };
 const NO_DELETE = { code: '42501' };
@@ -158,16 +156,69 @@ async function rowCount(db: EmptyDatabase, table: string, id: string): Promise<n
   return rows.length;
 }
 
-/** Every row the three rules touch, as the owner reads it, in one string. */
-async function seedSnapshot(db: EmptyDatabase): Promise<string> {
+const SEEDED_TABLES = ['businesses', 'reservations', 'person_logins', 'person_merges'] as const;
+type SeededTable = (typeof SEEDED_TABLES)[number];
+type SeededColumns = Readonly<Record<SeededTable, readonly string[]>>;
+
+const quoted = (name: string): string => `"${name.replaceAll('"', '""')}"`;
+
+/** Each seeded table's columns, in table order, as the owner reads the catalogue. */
+async function seededColumns(db: EmptyDatabase): Promise<SeededColumns> {
+  const rows = await db.admin.execute<{
+    readonly table_name: SeededTable;
+    readonly column_name: string;
+  }>(
+    `select table_name, column_name from information_schema.columns
+      where table_schema = 'public' and table_name = any($1::text[])
+      order by table_name, ordinal_position`,
+    [[...SEEDED_TABLES]],
+  );
+  const columns = (table: SeededTable) =>
+    rows.filter((row) => row.table_name === table).map((row) => row.column_name);
+  return {
+    businesses: columns('businesses'),
+    reservations: columns('reservations'),
+    person_logins: columns('person_logins'),
+    person_merges: columns('person_merges'),
+  };
+}
+
+/**
+ * Every row the three rules touch, as the owner reads it, in one string.
+ * Given the columns read at seed time, each row is read on those columns
+ * only, so a column a later migration adds does not count as a change;
+ * `addedColumnsFilled` checks those stay empty.
+ */
+async function seedSnapshot(db: EmptyDatabase, columns?: SeededColumns): Promise<string> {
+  const rowOf = (table: SeededTable, alias: string): string =>
+    columns === undefined
+      ? alias
+      : `(select x from (select ${columns[table].map((c) => `${alias}.${quoted(c)}`).join(', ')}) x)`;
   const [row] = await db.admin.execute<{ readonly all: string | null }>(
-    `select coalesce((select string_agg(b::text, '|' order by b.id) from public.businesses b), '') || '#' ||
-            coalesce((select string_agg(r::text, '|' order by r.id) from public.reservations r), '') || '#' ||
-            coalesce((select string_agg(p::text, '|' order by p.id) from public.person_logins p), '') || '#' ||
-            coalesce((select string_agg(m::text, '|' order by m.id) from public.person_merges m), '')
+    `select coalesce((select string_agg(${rowOf('businesses', 'b')}::text, '|' order by b.id) from public.businesses b), '') || '#' ||
+            coalesce((select string_agg(${rowOf('reservations', 'r')}::text, '|' order by r.id) from public.reservations r), '') || '#' ||
+            coalesce((select string_agg(${rowOf('person_logins', 'p')}::text, '|' order by p.id) from public.person_logins p), '') || '#' ||
+            coalesce((select string_agg(${rowOf('person_merges', 'm')}::text, '|' order by m.id) from public.person_merges m), '')
        as all`,
   );
   return row?.all ?? '';
+}
+
+/** Each column added since seed time that holds a value on some row, as `table.column`. */
+async function addedColumnsFilled(db: EmptyDatabase, seeded: SeededColumns): Promise<string[]> {
+  const now = await seededColumns(db);
+  const added = SEEDED_TABLES.flatMap((table) =>
+    now[table].filter((c) => !seeded[table].includes(c)).map((column) => ({ table, column })),
+  );
+  const held = await Promise.all(
+    added.map(async ({ table, column }) => {
+      const rows = await db.admin.execute(
+        `select 1 from public.${table} where ${quoted(column)} is not null limit 1`,
+      );
+      return rows.length > 0 ? [`${table}.${column}`] : [];
+    }),
+  );
+  return held.flat();
 }
 
 interface Built {
@@ -175,6 +226,7 @@ interface Built {
   readonly migration: MigrationOutcome;
   readonly seeded?: string;
   readonly seededAfter?: string;
+  readonly addedFilled?: readonly string[];
 }
 
 async function fresh(): Promise<Built> {
@@ -195,10 +247,17 @@ async function upgraded(): Promise<Built> {
   await heldReservation(db.app, seed);
   await identityHistory(db.app, seed);
   const seeded = await seedSnapshot(db);
+  const columns = await seededColumns(db);
   // The runner refuses while this database has other sessions; seeding opened one.
   await db.closeSessions();
   const migration = await migrate(db.admin, 'migrations');
-  return { db, migration, seeded, seededAfter: await seedSnapshot(db) };
+  return {
+    db,
+    migration,
+    seeded,
+    seededAfter: await seedSnapshot(db, columns),
+    addedFilled: await addedColumnsFilled(db, columns),
+  };
 }
 
 describe.skipIf(serverUrl === undefined).each([
@@ -242,6 +301,10 @@ describe.skipIf(serverUrl === undefined).each([
       expect(merges).toMatch(/a person decided/u);
       expect(built.seededAfter).toBe(built.seeded);
     });
+
+    it('leaves every column the upgrade added empty on the seeded rows', () => {
+      expect(built.addedFilled).toStrictEqual([]);
+    });
   }
 
   describe('a reservation is never actual in the first head', () => {
@@ -259,13 +322,20 @@ describe.skipIf(serverUrl === undefined).each([
     it.each([
       ['a zero actual', 0, ACTUAL_POSITIVE],
       ['a negative actual', -5, ACTUAL_POSITIVE],
-      ['a positive actual', 500, FIRST_HEAD_NO_ACTUAL],
     ] as const)('refuses settling a held reservation on %s', async (_label, actual, refusal) => {
       const { reservationId } = await heldReservation(built.db.app, fixture);
       const before = await reservationState(built.db, reservationId);
       expect(before).toBe('held 5000 null');
       await expect(settle(actual)(reservationId)).rejects.toMatchObject(refusal);
       expect(await reservationState(built.db, reservationId)).toBe(before);
+    });
+
+    // T2d: 0034 lifts the first rule with the owner's acceptance (27 September
+    // 2026), so at the head a positive actual within the hold commits.
+    it('commits a positive actual once 0034 has lifted the first rule', async () => {
+      const { reservationId } = await heldReservation(built.db.app, fixture);
+      await settle(500)(reservationId);
+      expect(await reservationState(built.db, reservationId)).toBe('actual 5000 500');
     });
 
     it('still lets a held reservation be quarantined (control)', async () => {
@@ -286,7 +356,7 @@ describe.skipIf(serverUrl === undefined).each([
       try {
         await applyMigrations(db.admin, onDisk);
         await db.admin.execute(
-          'alter table public.reservations drop constraint reservations_first_head_no_actual',
+          'alter table public.reservations drop constraint if exists reservations_first_head_no_actual',
         );
         const own = await buildFixture(db.app, 'fr1m-actual');
         for (const actual of [0, -5]) {
@@ -396,35 +466,38 @@ describe.skipIf(serverUrl === undefined).each([
   });
 });
 
+/** Each row a 0025 database may hold that a later rule forbids, and where the upgrade stops. */
+const REFUSED_UPGRADES = [
+  [
+    'an actual reservation',
+    async (db: EmptyDatabase) => {
+      const own = await buildFixture(db.app, 'refused-actual');
+      const { reservationId } = await heldReservation(db.app, own);
+      // At 0025 nothing in storage stops it; only the handback did.
+      await asApp(
+        db.app,
+        own,
+        `update public.reservations set state = 'actual', actual_minor = 0, terminal_at = now()
+          where business_id = $1 and id = $2`,
+        [own.businessId, reservationId],
+      );
+    },
+    /reservations_first_head_no_actual/u,
+    '0025',
+  ],
+  [
+    'two businesses under one key',
+    async (db: EmptyDatabase) => {
+      await buildFixture(db.app, 'refused-shared');
+      await insertBusiness(db.app, 'refused-shared');
+    },
+    /businesses_key_global_idx/u,
+    '0025',
+  ],
+] as const;
+
 describe.skipIf(serverUrl === undefined)('a 0025 database holding a row a new rule forbids', () => {
-  it.each([
-    [
-      'an actual reservation',
-      async (db: EmptyDatabase) => {
-        const own = await buildFixture(db.app, 'refused-actual');
-        const { reservationId } = await heldReservation(db.app, own);
-        // At 0025 nothing in storage stops it; only the handback did.
-        await asApp(
-          db.app,
-          own,
-          `update public.reservations set state = 'actual', actual_minor = 0, terminal_at = now()
-            where business_id = $1 and id = $2`,
-          [own.businessId, reservationId],
-        );
-      },
-      /reservations_first_head_no_actual/u,
-      '0025',
-    ],
-    [
-      'two businesses under one key',
-      async (db: EmptyDatabase) => {
-        await buildFixture(db.app, 'refused-shared');
-        await insertBusiness(db.app, 'refused-shared');
-      },
-      /businesses_key_global_idx/u,
-      '0025',
-    ],
-  ] as const)(
+  it.each(REFUSED_UPGRADES)(
     'refuses the upgrade for %s, stopping before the rule with the rows untouched',
     async (_label, write, message, stopsAt) => {
       const db = await createEmptyDatabase({ part: 'fr1mrefused' });

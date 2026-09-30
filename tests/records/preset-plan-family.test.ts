@@ -62,7 +62,7 @@ describe.skipIf(serverUrl === undefined)('preset.plan is bounded to the owned fa
     });
 
   const plan = async (recordTypeKey: string, fields: readonly unknown[]) =>
-    await db.app.withBusiness(business, async (tx) =>
+    await db.app.withBusiness(business, (tx) =>
       planPresetSync(
         tx,
         { personId, actorId },

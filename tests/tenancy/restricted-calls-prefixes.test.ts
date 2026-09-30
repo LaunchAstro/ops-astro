@@ -42,15 +42,18 @@ import type { AdminConnection } from '../../packages/core-records/src/tenancy/da
 import { createWorld } from '../acceptance/world.ts';
 import { walkTheJourney, walkTheOtherLineages } from '../acceptance/restart-harness.ts';
 import {
-  APPLICATION_CALLERS,
   APPLICATION_EXECUTES,
-  OPERATIONS,
   WORKER_ROLE,
-  callFor,
   catalogueFunctions,
   catalogueTables,
-  copyStatement,
   describeOutcome,
+  type CatalogueTable,
+} from './restricted-calls-cases.ts';
+import {
+  APPLICATION_CALLERS,
+  OPERATIONS,
+  callFor,
+  copyStatement,
   expectedOutcome,
   fingerprint,
   meets,
@@ -60,14 +63,13 @@ import {
   statementFor,
   tally,
   type CallerName,
-  type CatalogueTable,
   type Callers,
-} from './restricted-calls-cases.ts';
+} from './restricted-calls-callers.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
 
-/** Rows for the three tables the journey leaves empty; foreign keys are off when they are written. */
+/** Rows for the tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   'public.person_identifiers': {
     person_id: randomUUID(),
@@ -86,6 +88,15 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     link_type: 'restricted_calls',
     from_record_id: randomUUID(),
     to_record_id: randomUUID(),
+  },
+  // T3e2: the journey drops nothing.
+  'public.outage_reports': { cause: 'worker_lost' },
+  'public.outage_runs': {
+    outage_id: randomUUID(),
+    attempt_id: randomUUID(),
+    run_id: randomUUID(),
+    task_id: randomUUID(),
+    reactivated: false,
   },
 };
 

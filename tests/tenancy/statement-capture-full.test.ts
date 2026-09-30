@@ -25,8 +25,6 @@ import { createStatementLog } from '../../packages/core-records/src/tenancy/stat
 import { serverUrl } from '../acceptance/world.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import {
-  AGENT_PATH_RECIPES,
-  AGENT_RECIPES,
   DRIVER_TYPE_LOOKUP,
   expectedShape,
   observe,
@@ -34,6 +32,7 @@ import {
   type CapturedCall,
   type Observed,
 } from './statement-capture-cases.ts';
+import { AGENT_PATH_RECIPES, AGENT_RECIPES } from './statement-capture-agent-recipes.ts';
 
 if (serverUrl === undefined) {
   console.warn('statement capture: DATABASE_URL is unset, so nothing below ran.');

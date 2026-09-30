@@ -28,11 +28,11 @@
 // **Only an undecided gate expires.** `task.read` reads a gate stored `pending`
 // past its deadline as `state: 'expired'` (Nathan's decision, 23 September
 // 2026: show expired on read, preserve the stored record). A decided gate keeps
-// its outcome whatever the clock says, so `lapsed` below draws an approved,
+// its outcome whatever the clock says, so `lapsed` (`gate-controls.tsx`) draws an approved,
 // rejected or sent-back gate by its outcome even if `expired` arrived true.
 //
 // **A refused decision is quoted and the page is read again.** A refusal like
-// `VERSION_SUPERSEDED` is the server saying this page is no longer describing
+// `PROPOSAL_SUPERSEDED` is the server saying this page is no longer describing
 // the record, so the answer to it is a fresh read rather than a retry. The
 // refusal text is held above the read (`TaskDetail.tsx`) because the reread
 // unmounts everything below it, and a message that vanished with the thing it
@@ -77,27 +77,19 @@
 // gate, so the controls close on it rather than inviting that refusal.
 
 import type { ReactElement } from 'react';
-import { PaneEmpty } from '@launchastro/ui';
+import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
+  PersonView as TaskPerson,
   ProposalVersionView as ProposalVersion,
   ProposalView as ProposalLineage,
+  TaskEnvelope,
 } from '../../../../packages/core-wire/src/index.ts';
-import { useCommand, type Settlement } from '../records/use-command.ts';
-import { Chain, money, Reservations, stored } from './proposal-record.tsx';
-import { Propose, type ProposeDraft } from './propose-form.tsx';
+import { Decide, lapsed, type DecisionNote } from './gate-controls.tsx';
+import { Chain, money, RejectProposal, Reservations, stored } from './proposal-record.tsx';
+import { Propose, TopUp, type ProposeDraft, type TopUpNote } from './propose-form.tsx';
 
-/** What a refused decision left behind, held above the read that follows it. */
-export interface DecisionNote {
-  /** The server's own words, as `describeFailure` renders them. */
-  readonly because: string;
-  /** Set when the refusal was about this reader's authority, not this version. */
-  readonly closed: boolean;
-  /** The gate the refused decision was about. The text is drawn under it alone. */
-  readonly gateId: string;
-  /** Its lineage, where the text is drawn when a reread no longer lists the gate. */
-  readonly lineageId: string;
-}
+export type { DecisionNote } from './gate-controls.tsx';
 
 /** Where a note is drawn: under its gate, its lineage, or above the list. */
 type NoteAt = 'gate' | 'lineage' | 'section';
@@ -114,6 +106,11 @@ export interface ProposalsProps {
   readonly client: OperationsClient;
   /** Absent means the answer carried no projection at all. Not the same as none. */
   readonly proposals: readonly ProposalLineage[] | undefined;
+  /** The task's open envelope, or null when the read carried none (T2e). */
+  readonly envelope: TaskEnvelope | null;
+  /** The last top-up's answer, held above the read that follows it (T2e). */
+  readonly topUpNote: TopUpNote | null;
+  readonly onTopUpNote: (note: TopUpNote | null) => void;
   readonly recordId: string;
   /** The revision the page holds; a proposal is offered against it. */
   readonly revision: number;
@@ -128,6 +125,8 @@ export interface ProposalsProps {
   readonly onChanged: () => void;
   /** The task cap's currency, which the propose form offers and nothing else. */
   readonly capCurrency: string | null | undefined;
+  /** Who an escalation may name, from `person.list`; the server checks the role. */
+  readonly persons?: readonly TaskPerson[];
 }
 
 export function Proposals(props: ProposalsProps): ReactElement {
@@ -139,32 +138,17 @@ export function Proposals(props: ProposalsProps): ReactElement {
         <span className="sbact__meta">{countWord(props.proposals)}</span>
       </div>
 
-      {props.proposals === undefined ? (
-        // The answer did not carry the projection. Drawing "no proposals" here
-        // would be this screen reporting an absence it never established.
-        <p className="card__sub" data-proposals="not-carried">
-          This task read carried no proposal projection, so what has been proposed on this task is
-          not known here. It is not that there is nothing: it is that nothing was read.
-        </p>
-      ) : props.proposals.length === 0 ? (
-        <div data-proposals="none">
-          <PaneEmpty say="Nothing has been proposed on this one yet." />
-        </div>
-      ) : (
-        <div className="stack" data-proposals="list">
-          {at === 'section' ? <Refusal note={props.note} /> : null}
-          {props.proposals.map((lineage) => (
-            <Lineage
-              client={props.client}
-              key={lineage.lineageId}
-              lineage={lineage}
-              note={props.note}
-              noteAt={at}
-              onChanged={props.onChanged}
-              onDecided={props.onDecided}
-            />
-          ))}
-        </div>
+      <ProposalList {...props} at={at} />
+
+      {props.envelope === null ? null : (
+        <TopUp
+          client={props.client}
+          envelope={props.envelope}
+          note={props.topUpNote}
+          onNote={props.onTopUpNote}
+          onChanged={props.onChanged}
+          recordId={props.recordId}
+        />
       )}
 
       <Propose
@@ -182,6 +166,39 @@ export function Proposals(props: ProposalsProps): ReactElement {
   );
 }
 
+/** The lineages the answer carried, or why there are none to draw. */
+function ProposalList(props: ProposalsProps & { readonly at: NoteAt | null }): ReactElement {
+  const { at } = props;
+  return props.proposals === undefined ? (
+    // The answer did not carry the projection. Drawing "no proposals" here
+    // would be this screen reporting an absence it never established.
+    <p className="card__sub" data-proposals="not-carried">
+      This task read carried no proposal projection, so what has been proposed on this task is not
+      known here. It is not that there is nothing: it is that nothing was read.
+    </p>
+  ) : props.proposals.length === 0 ? (
+    <div data-proposals="none">
+      <Empty look="inline" title="Nothing has been proposed on this one yet." />
+    </div>
+  ) : (
+    <div className="stack" data-proposals="list">
+      {at === 'section' ? <Refusal note={props.note} /> : null}
+      {props.proposals.map((lineage) => (
+        <Lineage
+          client={props.client}
+          key={lineage.lineageId}
+          lineage={lineage}
+          note={props.note}
+          noteAt={at}
+          onChanged={props.onChanged}
+          onDecided={props.onDecided}
+          persons={props.persons ?? []}
+        />
+      ))}
+    </div>
+  );
+}
+
 interface LineageProps {
   readonly client: OperationsClient;
   readonly lineage: ProposalLineage;
@@ -189,6 +206,7 @@ interface LineageProps {
   readonly noteAt: NoteAt | null;
   readonly onDecided: (note: DecisionNote | null) => void;
   readonly onChanged: () => void;
+  readonly persons: readonly TaskPerson[];
 }
 
 function Lineage(props: LineageProps): ReactElement {
@@ -203,6 +221,7 @@ function Lineage(props: LineageProps): ReactElement {
         <span className="sb__k">Lineage</span>
         <span className="sb__state">{lineage.state}</span>
         <span className="sbact__meta">{lineage.lineageId}</span>
+        <RejectProposal {...props} />
       </div>
       {props.noteAt === 'lineage' && props.note?.lineageId === lineage.lineageId ? (
         <Refusal note={props.note} />
@@ -220,6 +239,7 @@ function Lineage(props: LineageProps): ReactElement {
           note={props.note}
           onChanged={props.onChanged}
           onDecided={props.onDecided}
+          persons={props.persons}
           version={version}
         />
       ))}
@@ -240,11 +260,16 @@ interface VersionProps {
   readonly note: DecisionNote | null;
   readonly onDecided: (note: DecisionNote | null) => void;
   readonly onChanged: () => void;
+  readonly persons: readonly TaskPerson[];
 }
 
 function Version(props: VersionProps): ReactElement {
   const { version } = props;
   const gate = version.gate;
+  // Derived by comparing versions, never read from a stored field: an open gate
+  // on a version the lineage has moved past is stale.
+  const stale = gate !== null && gate.state === 'pending' && !lapsed(gate) && !props.head;
+  const gateWord = gate === null ? '' : stale ? 'stale' : lapsed(gate) ? 'expired' : gate.state;
   return (
     <div
       className="sb__sect"
@@ -300,9 +325,9 @@ function Version(props: VersionProps): ReactElement {
         <div
           className="card__sub"
           data-gate-expired={String(lapsed(gate))}
-          data-gate-state={lapsed(gate) ? 'expired' : gate.state}
+          data-gate-state={gateWord}
         >
-          Gate {lapsed(gate) ? 'expired' : gate.state}, round {gate.round}
+          Gate {gateWord}, round {gate.round}
           {gate.expiresAt === null ? null : lapsed(gate) ? (
             <span data-gate="expired"> · deadline {gate.expiresAt} passed with no decision</span>
           ) : (
@@ -311,7 +336,13 @@ function Version(props: VersionProps): ReactElement {
         </div>
       )}
 
-      {gate === null || !props.head ? null : (
+      {stale ? (
+        <p className="card__sub" data-gate="stale">
+          A stale gate cannot be approved: the run has to raise it again against the current
+          version.
+        </p>
+      ) : null}
+      {gate === null || !(props.head || stale) ? null : (
         <Decide
           client={props.client}
           gate={gate}
@@ -320,110 +351,12 @@ function Version(props: VersionProps): ReactElement {
           note={props.note}
           onChanged={props.onChanged}
           onDecided={props.onDecided}
+          persons={props.persons}
+          stale={stale}
           versionId={version.versionId}
         />
       )}
       {gate === null || props.note?.gateId !== gate.id ? null : <Refusal note={props.note} />}
-    </div>
-  );
-}
-
-/**
- * Whether the gate passed its deadline undecided, on the server's answer.
- * A decided gate never reads as expired, whatever `expired` says.
- */
-function lapsed(gate: NonNullable<ProposalVersion['gate']>): boolean {
-  return gate.state === 'expired' || (gate.state === 'pending' && gate.expired);
-}
-
-interface DecideProps {
-  readonly client: OperationsClient;
-  readonly gate: NonNullable<ProposalVersion['gate']>;
-  readonly versionId: string;
-  readonly lineageId: string;
-  readonly lineageState: string;
-  readonly note: DecisionNote | null;
-  readonly onDecided: (note: DecisionNote | null) => void;
-  readonly onChanged: () => void;
-}
-
-function Decide(props: DecideProps): ReactElement {
-  const { gate } = props;
-  const { busy, run } = useCommand();
-  const closed = props.note?.closed === true;
-  // Whether the note is about this gate, which picks the wording below. The
-  // note's own text is drawn by `Version`, under the gate it names.
-  const refused = props.note !== null && props.note.gateId === gate.id;
-  // Four reasons a decision is not on offer, and the person is told which.
-  const why = closed
-    ? refused
-      ? 'The server refused your decision on this gate, so the controls are closed rather than asking again on your behalf.'
-      : 'The server refused a decision of yours on this task, so these controls are closed too rather than asking again on your behalf.'
-    : lapsed(gate)
-      ? `This gate expired: its deadline${gate.expiresAt === null ? '' : `, ${gate.expiresAt},`} passed without a decision, on the server’s own clock, so nobody may decide it now. A new version of the proposal raises a new gate.`
-      : gate.state !== 'pending'
-        ? `This gate is ${gate.state} and a decided gate is not decided twice.`
-        : props.lineageState === 'live'
-          ? null
-          : `This lineage is ${props.lineageState}, and a lineage that has ended is not decided again. An authorised restart opens a new one.`;
-
-  const decide = (decision: 'approve' | 'reject'): void => {
-    if (busy || closed) return;
-    props.onDecided(null);
-    run(
-      // **The version is the one drawn above this button**, taken from the same
-      // `task.read` answer as the evidence. No separate fetch, no draft: the
-      // server compares this against the live version under the locks, and a
-      // page that had gone stale is told so rather than deciding by accident.
-      () =>
-        props.client.mutate('task.decide', {
-          gateId: gate.id,
-          versionId: props.versionId,
-          decision,
-          note: `Decided from the task page (${decision}).`,
-        }),
-      (settlement) => {
-        settled(settlement, props);
-      },
-    );
-  };
-
-  return (
-    <div className="btnrow" data-decide="controls">
-      {why === null ? (
-        <>
-          <button
-            className="btn btn--primary"
-            data-decide="approve"
-            data-gate-id={gate.id}
-            data-version-id={props.versionId}
-            disabled={busy}
-            onClick={() => {
-              decide('approve');
-            }}
-            type="button"
-          >
-            {busy ? 'Deciding…' : 'Approve this version'}
-          </button>
-          <button
-            className="btn"
-            data-decide="reject"
-            data-gate-id={gate.id}
-            data-version-id={props.versionId}
-            disabled={busy}
-            onClick={() => {
-              decide('reject');
-            }}
-            type="button"
-          >
-            Reject
-          </button>
-        </>
-      ) : (
-        <p className="card__sub" data-decide="closed">
-          {why}
-        </p>
-      )}
     </div>
   );
 }
@@ -436,33 +369,6 @@ function Refusal(props: { readonly note: DecisionNote | null }): ReactElement | 
       {props.note.because}
     </p>
   );
-}
-
-/**
- * What the server said about a decision, and what the page does next.
- *
- * Every outcome ends in a reread, refusal or not. A refusal about the version or
- * the gate means this page was describing a record that has moved, and the only
- * honest response to that is to read it again; a success has to be read back
- * because the reservation the approval created is the server's, not this
- * screen's guess at what an approval does.
- */
-function settled(settlement: Settlement, props: DecideProps): void {
-  if (settlement.kind === 'ok') {
-    props.onDecided(null);
-    props.onChanged();
-    return;
-  }
-  // `SCOPE_NOT_GRANTED` is about this reader rather than about this version, so
-  // it closes the control. Everything else is about the record, and the record
-  // is what gets read again.
-  props.onDecided({
-    because: settlement.because,
-    closed: settlement.kind === 'closed',
-    gateId: props.gate.id,
-    lineageId: props.lineageId,
-  });
-  props.onChanged();
 }
 
 /** How many lineages are on the task, or that nobody has said. */

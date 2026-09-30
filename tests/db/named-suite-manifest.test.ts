@@ -37,11 +37,16 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
     'skips without L5_RESTART_CONTAINER_NAME and L5_RESTART_API_PORT',
   'tests/pickup/pickup-replay-restart.test.ts':
     'skips without PICKUP_REPLAY_API_PORT and PICKUP_REPLAY_PG_CONTAINER',
+  'tests/acceptance/runtime-proofs.test.tsx':
+    'skips without L5_RUNTIME_PROOFS and L5_RESTART_API_PORT',
+  'tests/acceptance/drop-proofs.test.ts': 'skips without L5_RUNTIME_PROOFS and L5_RESTART_API_PORT',
   'tests/acceptance/restart-declared.test.ts': 'pure: restart-harness refusals only',
   'tests/cli/cli-answers.test.ts': 'pure: the CLI against an HTTP stand-in',
   'tests/cli/cli-wire.test.ts': 'pure: the CLI against an HTTP stand-in',
   'tests/support/global-setup.test.ts': 'pure: besideUrl only',
   'tests/cli/operation-id-login-and-stdout.test.ts': 'pure: the CLI against stand-ins, counter 0',
+  'tests/journey/budgets-bundle-and-person-crossing.test.ts':
+    'pure: a stubbed fetch and a typed stand-in world, counter 0',
 };
 
 interface Manifest {

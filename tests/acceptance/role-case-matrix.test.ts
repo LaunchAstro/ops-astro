@@ -14,8 +14,8 @@
 // The apparatus is three files beside this one, split for T1h's reason —
 // about 400 lines is the guide for a readable file, and the answer is to
 // split the file, not the change and not the comments. `role-case-ledger.ts` is the rows and the
-// file they are written to, `role-case-bodies.ts` the minimal valid body each
-// declaration needs, `role-case-harness.ts` the world and the callers. What is
+// file they are written to, `role-case-bodies.ts` and `role-case-positive-body.ts` the
+// minimal valid body each declaration needs, `role-case-harness.ts` the world and the callers. What is
 // left here is the cases and what each one claims.
 //
 // **The expected answers come from the product.** `refusal()` reads each
@@ -32,7 +32,11 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { COMMAND_SURFACE, pathOf } from '../../packages/core-wire/src/surface.ts';
+import {
+  COMMAND_SURFACE,
+  effectOperationId,
+  pathOf,
+} from '../../packages/core-wire/src/surface.ts';
 import {
   AGENT_SURFACE,
   BEFORE_PICKUP,
@@ -40,7 +44,8 @@ import {
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { bearer, call, enrolExternal, personPath, serverUrl } from './world.ts';
 import { SUCCESS, except, failures, observe, refusal, writeMatrix } from './role-case-ledger.ts';
-import { createHarness, type Harness } from './role-case-harness.ts';
+import { createHarness, targetKeyOf, type Harness } from './role-case-harness.ts';
+import type { FixtureClient } from './role-case-clients.ts';
 import { alternativeFor } from './cd-alternatives.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 
@@ -105,13 +110,16 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // load-bearing one — two answers can share a code and still differ in a
     // `details` array that names what was found.
     const targeted = COMMAND_SURFACE.filter(
-      (declaration) => declaration.targetsExistingRecord || declaration.name === 'task.read',
+      (declaration) =>
+        declaration.targetsExistingRecord ||
+        (declaration.kind === 'read' && declaration.authorisedOn === 'record'),
     );
     expect(targeted.length).toBeGreaterThan(0);
     for (const declaration of targeted) {
+      // Each in the field the declaration names its subject by (`targetKeyOf`).
       const shape = (recordId: string): Record<string, unknown> => ({
         ...harness.probeBody(declaration),
-        recordId,
+        [targetKeyOf(declaration) ?? 'recordId']: recordId,
         // One operation identity per call, so neither answer is the register
         // replaying the other.
         operationId: randomUUID(),
@@ -150,6 +158,45 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         `operations, ${String(targeted.length)} compared here, ${String(named)} named rows`,
     );
   }, 120_000);
+
+  it('client to client: each of T4a’s clients reads its own task, and another client’s as a fabricated one', async () => {
+    // T4a's two clients in each business, one record grant each: another
+    // client's task, in the reader's business or the other's, answers with the
+    // same status and bytes as an id that was never issued, so no id, title or
+    // count crosses. Its own task is the positive control.
+    const { clients } = harness;
+    expect(clients.map((one) => one.name)).toStrictEqual([
+      'alpha-client-1',
+      'alpha-client-2',
+      'bravo-client-1',
+      'bravo-client-2',
+    ]);
+    const readAs = async (reader: FixtureClient, recordId: string, businessKey?: string) =>
+      await harness.asPerson('task.read', { recordId }, businessKey ?? reader.businessKey, reader);
+    for (const reader of clients) {
+      const read = readAs.bind(undefined, reader);
+      // eslint-disable-next-line no-await-in-loop
+      const own = await read(reader.task);
+      expect(own.status, `${reader.name} reads its own task`).toBe(200);
+      // eslint-disable-next-line no-await-in-loop
+      const fabricated = await read(randomUUID());
+      expect(fabricated.status, reader.name).toBe(404);
+      for (const other of clients.filter((one) => one !== reader)) {
+        // eslint-disable-next-line no-await-in-loop
+        const crossed = await read(other.task);
+        expect(crossed.status, `${reader.name} reads ${other.name}'s task`).toBe(fabricated.status);
+        expect(crossed.body, `${reader.name} reads ${other.name}'s task`).toStrictEqual(
+          fabricated.body,
+        );
+        // eslint-disable-next-line no-await-in-loop
+        const there = await read(other.task, other.businessKey);
+        if (other.businessKey !== reader.businessKey) {
+          expect(there.status, `${reader.name} on ${other.businessKey}'s prefix`).not.toBe(200);
+          expect(JSON.stringify(there.body)).not.toContain(other.task);
+        }
+      }
+    }
+  });
 
   it('(e) refuses every caller who holds nothing, and never answers empty', async () => {
     // Four roles in one sweep because they are one claim: a caller who may not
@@ -248,9 +295,15 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // disagreeing with them. Runs before (f), which takes `mia`'s read away.
     // Person work (EX-01) is a sequence on the member's own lease rather than
     // three independent bodies: the member picks up approved work as
-    // themselves, renews that lease and hands it back. It is driven once per
+    // themselves, renews that lease, dispatches its step and hands it back. It is driven once per
     // member, when the first of the three comes up in the surface's order.
-    const personWork = new Set(['task.pickup', 'task.heartbeat', 'task.handback']);
+    const personWork = new Set([
+      'task.pickup',
+      'task.heartbeat',
+      'task.dispatch',
+      'task.observe',
+      'task.handback',
+    ]);
     const drivenFor = new Set<string>();
     const pairOf = (name: string): string => {
       const declaration = COMMAND_SURFACE.find((each) => each.name === name);
@@ -275,6 +328,34 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       if (grants.has(pairOf('task.heartbeat'))) {
         const beat = await harness.asPerson('task.heartbeat', own, 'alpha', caller);
         observe(caller.name, 'e-member-positive', 'task.heartbeat', beat, SUCCESS);
+      }
+      if (grants.has(pairOf('task.dispatch'))) {
+        const marked = await harness.asPerson('task.dispatch', own, 'alpha', caller);
+        observe(caller.name, 'e-member-positive', 'task.dispatch', marked, SUCCESS);
+      }
+      if (grants.has(pairOf('task.observe')) && grants.has(pairOf('task.comment'))) {
+        // The effect on the member's own dispatched step, then its observation (T2c2).
+        const attemptId = String(lease['attemptId']);
+        const read = await harness.asPerson(
+          'task.read',
+          { recordId: lease['taskId'] },
+          'alpha',
+          caller,
+        );
+        await harness.asPerson(
+          'task.comment',
+          {
+            operationId: effectOperationId(attemptId),
+            recordId: lease['taskId'],
+            expectedRevision: (read.body['task'] as { revision: number } | undefined)?.revision,
+            body: 'the member’s synthetic effect',
+            audience: 'internal',
+          },
+          'alpha',
+          caller,
+        );
+        const seen = await harness.asPerson('task.observe', { ...own, attemptId }, 'alpha', caller);
+        observe(caller.name, 'e-member-positive', 'task.observe', seen, SUCCESS);
       }
       if (grants.has(pairOf('task.handback'))) {
         const settled = await harness.asPerson(
@@ -513,14 +594,17 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(
         declaration.name,
-        declaration.name === 'task.heartbeat'
-          ? // A heartbeat, like a handback, names its task through the lease
+        ['task.heartbeat', 'task.dispatch', 'task.observe'].includes(declaration.name)
+          ? // A heartbeat, a dispatch or an observe, like a handback, names its task through the lease
             // and never through a stray `recordId` (final review R1 #23), so
             // the sibling is reached by its own lease.
             {
               ...harness.probeBody(declaration),
               leaseId: siblingLease['leaseId'],
               fence: siblingLease['fence'],
+              ...(declaration.name === 'task.observe'
+                ? { attemptId: siblingLease['attemptId'] }
+                : {}),
             }
           : { ...harness.probeBody(declaration), recordId: sibling.id },
         credential,

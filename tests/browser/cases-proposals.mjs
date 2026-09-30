@@ -53,7 +53,7 @@
 // no `lineageId`, and `propose` opens a *new* lineage when none is named -- so
 // the second version goes in through the client with the lineage the first one
 // opened. The refusal then has two halves, and they are two rows because they
-// are two different facts. `VERSION_SUPERSEDED` needs a live gate named beside a
+// are two different facts. `PROPOSAL_SUPERSEDED` needs a live gate named beside a
 // version that is not the one it is bound to, and that is a body the screen
 // never builds; it is built here through the client. What the screen can reach
 // on its own is the other half: a page holding a version that has since been
@@ -136,7 +136,7 @@ async function withDecideGrant(database, businessId, person, work) {
   try {
     return await work(id);
   } finally {
-    await database.withBusiness(businessId, async (tx) => revokeGrant(tx, id));
+    await database.withBusiness(businessId, (tx) => revokeGrant(tx, id));
   }
 }
 
@@ -357,6 +357,28 @@ async function approved(page, first) {
       (await approve.count()) === 1,
   });
 
+  // T2g: the gate draws exactly two controls, both on the displayed version,
+  // and the notice naming the one effect as a team-only comment.
+  const controls = await page.locator('[data-decide="controls"] button').allInnerTexts();
+  const bound = await page
+    .locator('[data-decide="controls"] button')
+    .evaluateAll((buttons) => buttons.map((button) => button.dataset.versionId ?? null));
+  const notice = await page
+    .locator('[data-decide="controls"] [data-gate="notice"]')
+    .innerText()
+    .catch(() => '');
+  record({
+    case: 'T2g the gate offers Request changes and Approve this version, and nothing else',
+    action: 'read the gate controls and their notice before deciding',
+    observed: `controls ${JSON.stringify(controls)} on versions ${JSON.stringify(bound)}; notice "${notice}"`,
+    ok:
+      JSON.stringify(controls) === JSON.stringify(['Request changes', 'Approve this version']) &&
+      bound.every((id) => id === drawn.versionId) &&
+      notice.includes('team-only comment') &&
+      notice.includes('changes nothing outside the app'),
+    shot: await shot(page, 'T2g-gate-two-controls'),
+  });
+
   await approve.click();
   await page.waitForSelector('[data-reservation-id]', { timeout: 15_000 }).catch(() => undefined);
   const reservation = page.locator('[data-reservation-id]').first();
@@ -409,7 +431,7 @@ async function stale(page, task, recordId, first) {
   });
 
   record({
-    case: 'P3 a live gate named with a stale version is refused VERSION_SUPERSEDED',
+    case: 'P3 a live gate named with a stale version is refused PROPOSAL_SUPERSEDED',
     action:
       `proposed version ${String(second.version)} into lineage ${first.lineageId.slice(0, 8)}… ` +
       'through the app’s own client, because the form names no lineage and so can ' +
@@ -420,7 +442,7 @@ async function stale(page, task, recordId, first) {
       `${String(result.refused === true ? result.code : JSON.stringify(result).slice(0, 120))}`,
     ok:
       result.refused === true &&
-      result.code === 'VERSION_SUPERSEDED' &&
+      result.code === 'PROPOSAL_SUPERSEDED' &&
       drawn.versionId === second.versionId &&
       drawn.supersededIds.includes(first.versionId) &&
       drawn.gateState === 'pending',

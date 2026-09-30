@@ -47,7 +47,7 @@ describe.skipIf(serverUrl === undefined)('task_spine', () => {
 
   describe('every slot-assigned spine field has a write mode', () => {
     it('installs each spine field into the slot the reservation names', async () => {
-      const rows = await db.app.withBusiness(businessId, async (tx) =>
+      const rows = await db.app.withBusiness(businessId, (tx) =>
         tx.query<{ key: string; slot: string | null; write_mode: string }>(
           `select f.key, f.slot, f.write_mode
              from field_defs f join record_types t
@@ -117,7 +117,9 @@ describe.skipIf(serverUrl === undefined)('task_spine', () => {
       expect(childSlots['uuid_6']).toBeNull();
       expect(parentSlots['uuid_6']).not.toBeNull();
     });
+  });
 
+  describe('a record with a parent cannot carry a board section', () => {
     it('refuses a subtask that names a board section, and a create that names a rank', async () => {
       const refusals = await db.app.withBusiness(businessId, async (tx) => {
         const spine = await installTaskSpine(tx);
@@ -217,7 +219,9 @@ describe.skipIf(serverUrl === undefined)('task_spine', () => {
       expect(seen.grandchild).toBe(seen.earlierBatch);
       expect(seen.earlierBatch).not.toBe(seen.laterBatch);
     });
+  });
 
+  describe('a restore returns exactly its own batch', () => {
     it('refuses a child whose parent is still trashed, naming the batch to restore first', async () => {
       const refusal = await db.app.withBusiness(businessId, async (tx) => {
         const spine = await installTaskSpine(tx);

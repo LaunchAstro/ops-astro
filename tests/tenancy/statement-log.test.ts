@@ -55,7 +55,9 @@ describe('splitStatements', () => {
   it('honours backslash escapes inside an E string and not outside one', () => {
     expect(splitStatements(`select E'\\'; drop table t'`)).toHaveLength(1);
   });
+});
 
+describe('splitStatements', () => {
   // SOL-FR9-1: `$` continues an unquoted identifier, so `$$` straight after
   // one is part of it and opens nothing (PostgreSQL's scan.l, ident_cont).
   it('reads $$ at the end of an identifier as part of it, not as a dollar quote', () => {

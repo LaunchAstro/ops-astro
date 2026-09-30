@@ -215,7 +215,9 @@ describe('test files named by what they prove', () => {
   ])('keeps the title %s', (title) => {
     expect(citesReview(title)).toBeUndefined();
   });
+});
 
+describe('test files named by what they prove', () => {
   it('reads a title after a string that holds a call', () => {
     const source = [
       'const tail = suite.slice(suite.indexOf("it(\'CQ-8 isolation:"));',
@@ -248,7 +250,9 @@ describe('test files named by what they prove', () => {
       'a numbered review finding',
     ]);
   });
+});
 
+describe('test files named by what they prove', () => {
   it('no test file name contains final-r, review-fixes or a round number, and no test title cites a review id', () => {
     const files = testFiles();
     expect(files.length).toBeGreaterThan(200);
@@ -329,6 +333,10 @@ function importsOf(file: string, text: string, packages: ReadonlyMap<string, str
  */
 const NO_PRODUCT_IMPORTER_YET = new Map([
   ['apps/api/server.ts', 'the API process entry, started by node rather than imported'],
+  [
+    'apps/worker/main.ts',
+    'the worker process entry (`pnpm worker`), started by node rather than imported',
+  ],
   [
     'packages/core-records/src/identity/identifier-resolution.ts',
     'kept, tested, for its named callers MP-8-6 and C48 (docs/current-decisions.md, 28 September 2026)',

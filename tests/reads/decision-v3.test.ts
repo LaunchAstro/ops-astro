@@ -146,7 +146,7 @@ async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
 }
 
 async function readDirect(world: World, taskId: string) {
-  return await world.db.app.withBusiness(world.alpha, async (tx) => readTaskProposals(tx, taskId));
+  return await world.db.app.withBusiness(world.alpha, (tx) => readTaskProposals(tx, taskId));
 }
 
 /** The HTTP answer is the named fault, and the direct read names where it broke. */
@@ -380,8 +380,8 @@ describe.skipIf(serverUrl === undefined)('the read binds its columns to the sign
 
   describe('(iii) link-only metadata on the decision written now', () => {
     const mutations: readonly (readonly [string, string, (w: World) => Promise<unknown[]>])[] = [
-      ['round', 'round = round + 1', async () => []],
-      ['decided_at', `decided_at = decided_at + interval '1 second'`, async () => []],
+      ['round', 'round = round + 1', () => Promise.resolve([])],
+      ['decided_at', `decided_at = decided_at + interval '1 second'`, () => Promise.resolve([])],
       [
         'decided_by_actor_id',
         'decided_by_actor_id = $2',
@@ -418,7 +418,7 @@ describe.skipIf(serverUrl === undefined)('the read binds its columns to the sign
       readOther: boolean,
     ];
     const mutations: readonly Mutation[] = [
-      ['decision', `decision = 'reject'`, async () => [], false],
+      ['decision', `decision = 'reject'`, () => Promise.resolve([]), false],
       ['gate_id', 'gate_id = $2', async (_w, other) => [other.gateId], false],
       ['version_id', 'version_id = $2', async (_w, other) => [other.versionId], false],
       ['evidence_digest', 'evidence_digest = $2', async () => ['e'.repeat(64)], false],

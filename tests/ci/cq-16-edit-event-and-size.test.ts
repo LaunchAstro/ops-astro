@@ -81,7 +81,9 @@ describe('CQ-16 edited runs review evidence only', () => {
     expect(/^name: (.*)$/mu.exec(edit)?.[1]).not.toBe(/^name: (.*)$/mu.exec(read(CI))?.[1]);
     expect(top(edit, 'concurrency')).toContain('group: ${{ github.workflow }}-${{ github.ref }}');
   });
+});
 
+describe('CQ-16 edited runs review evidence only: what the edit run judges', () => {
   it('CQ-16 edited runs review evidence only: both runs read the description as it stands, and judge it last', () => {
     const block = job(read(REVIEW), CHECK);
     // The event's copy of the body is the body when the run was queued. A code run that
@@ -115,7 +117,8 @@ describe('CQ-16 workflow permissions', () => {
   it('CQ-16 workflow permissions: the new workflow holds a read-only token and no secret', () => {
     const edit = read(REVIEW);
     expect(top(edit, 'permissions')).toBe(
-      'permissions:\n  contents: read\n  pull-requests: read\n\n',
+      // FU-151: issues: read, so the job can list the open issues a follow-up names.
+      'permissions:\n  contents: read\n  pull-requests: read\n  issues: read\n\n',
     );
     expect(
       edit.match(/secrets\.|GITHUB_TOKEN|write|pull_request_target|^ {4}permissions:/mu),
@@ -224,7 +227,9 @@ describe('CQ-16 size counts code only', () => {
       expect(out).toContain('pr-size: 401 changed lines of non-test code across 1 file(s).');
     }
   });
+});
 
+describe('CQ-16 size counts code only', () => {
   it('CQ-16 size counts code only: a file moved between code and tests counts unless both sides are tests', () => {
     // 600 lines, then moved with 250 of them rewritten: git still reads it as a rename, 500 lines.
     const move = (from: string, to: string) =>

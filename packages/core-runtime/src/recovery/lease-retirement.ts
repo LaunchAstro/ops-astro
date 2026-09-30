@@ -6,6 +6,7 @@
 
 import { revokeDelegation } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Subject } from '../../../core-records/src/index.ts';
+import { raiseAlert } from '../alerts.ts';
 import type { LockRequest, LockSet } from '../locks.ts';
 import { lockedInstant } from '../clock.ts';
 import { lockRediscovered } from '../rediscovery.ts';
@@ -227,6 +228,12 @@ export async function cancelAndClassify(
       readonly subjects: readonly Subject[];
       readonly collection: string;
       readonly taskId: string;
+      /**
+       * Asked under the locks beside `write`. `task.cancel` passes `decide`
+       * (T3a, `gate:decide`), so a decide grant that lapses while this waits on
+       * its locks refuses the cancel.
+       */
+      readonly alsoDecide?: boolean;
     };
   },
 ): Promise<RuntimeResult<readonly Classification[]>> {
@@ -309,33 +316,47 @@ export async function cancelAndClassify(
   });
 
   if (authority !== undefined) {
-    const current = await checkAuthorityAt(
-      tx,
-      authority.subjects,
-      {
-        collection: authority.collection,
-        action: 'write',
-        scope: { kind: 'record', id: authority.taskId },
-      },
-      await lockedInstant(tx),
-    );
-    if (!current.ok) {
-      return refuse(
-        'SCOPE_NOT_GRANTED',
-        'the write grant this cancellation rested on ended before it could be recorded',
-        'A person with write authority on this task cancels its work.',
+    const at = await lockedInstant(tx);
+    for (const action of authority.alsoDecide === true
+      ? (['write', 'decide'] as const)
+      : (['write'] as const)) {
+      // Sequential: each is asked at the same locked instant, and the first
+      // refusal is the answer.
+      // eslint-disable-next-line no-await-in-loop
+      const current = await checkAuthorityAt(
+        tx,
+        authority.subjects,
+        {
+          collection: authority.collection,
+          action,
+          scope: { kind: 'record', id: authority.taskId },
+        },
+        at,
       );
+      if (!current.ok) {
+        return refuse(
+          'SCOPE_NOT_GRANTED',
+          `the ${action} grant this cancellation rested on ended before it could be recorded`,
+          `A person with ${action} authority on this task cancels its work.`,
+        );
+      }
     }
   }
 
-  const updated = await tx.query<{ readonly id: string }>(
+  const updated = await tx.query<{ readonly task_id: string }>(
     `update public.proposal_lineages
         set state = 'cancelled', terminal_reason = $3, terminal_at = now()
       where business_id = $1 and id = $2 and state = 'live'
-      returning id`,
+      returning task_id`,
     [tx.businessId, request.lineageId, request.reason],
   );
   if (updated[0] === undefined) return terminal;
+  // T2h: the cancellation's one alert, on the lineage's task.
+  await raiseAlert(tx, {
+    taskId: updated[0].task_id,
+    causeId: request.lineageId,
+    raised: { kind: 'cancelled' },
+  });
 
   await retireWork(tx, workAfter, locks);
   // Nothing in this head dispatches, so the ordinary cancellation completes as

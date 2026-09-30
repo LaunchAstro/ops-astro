@@ -53,6 +53,8 @@ describe.skipIf(serverUrl === undefined)('admission does not tell a business key
   let foreign: string;
   let memberToken: string;
   let agentToken: string;
+  // Read when a case runs, after beforeAll has signed both tokens.
+  const [asMember, asAgent] = [(): string => memberToken, (): string => agentToken];
   let expiredToken: string;
 
   async function attempts(businessId: string): Promise<number> {
@@ -82,8 +84,8 @@ describe.skipIf(serverUrl === undefined)('admission does not tell a business key
       ['malformed', MALFORMED],
     ] as const) {
       for (const [who, token] of [
-        ['a person', () => memberToken],
-        ['an agent', () => agentToken],
+        ['a person', asMember],
+        ['an agent', asAgent],
       ] as const) {
         it(`${prefix} prefix, ${shape} body, ${who}: a foreign key and a fabricated one answer the same bytes`, async () => {
           const existing = await raw(api, path(FOREIGN), body, token());

@@ -16,6 +16,31 @@ import { agentWorld, codeOf, type AgentWorld } from './agent-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
+/** The operation identities the register holds for the world's agent. */
+async function operationIdsOf(world: AgentWorld): Promise<readonly string[]> {
+  return (
+    await world.db.admin.execute<{ readonly operation_id: string }>(
+      `select operation_id from public.operations
+        where business_id = $1 and actor_id = $2 order by operation_id`,
+      [world.business, world.agentActorId],
+    )
+  ).map((row) => row.operation_id);
+}
+
+/** How many OPERATION_ID_REQUIRED refusals the audit holds for the world's agent. */
+async function refusedAuditsOf(world: AgentWorld): Promise<number> {
+  return Number(
+    (
+      await world.db.admin.execute<{ readonly n: string }>(
+        `select count(*)::text as n from public.audit_events
+          where business_id = $1 and actor_id = $2
+            and outcome = 'refused' and refusal_code = 'OPERATION_ID_REQUIRED'`,
+        [world.business, world.agentActorId],
+      )
+    )[0]?.n,
+  );
+}
+
 describe.skipIf(serverUrl === undefined)('agent operation identity', () => {
   let world: AgentWorld;
 
@@ -27,26 +52,8 @@ describe.skipIf(serverUrl === undefined)('agent operation identity', () => {
     await world?.drop();
   });
 
-  const registered = async (): Promise<readonly string[]> =>
-    (
-      await world.db.admin.execute<{ readonly operation_id: string }>(
-        `select operation_id from public.operations
-          where business_id = $1 and actor_id = $2 order by operation_id`,
-        [world.business, world.agentActorId],
-      )
-    ).map((row) => row.operation_id);
-
-  const refusedAudits = async (): Promise<number> =>
-    Number(
-      (
-        await world.db.admin.execute<{ readonly n: string }>(
-          `select count(*)::text as n from public.audit_events
-            where business_id = $1 and actor_id = $2
-              and outcome = 'refused' and refusal_code = 'OPERATION_ID_REQUIRED'`,
-          [world.business, world.agentActorId],
-        )
-      )[0]?.n,
-    );
+  const registered = async (): Promise<readonly string[]> => await operationIdsOf(world);
+  const refusedAudits = async (): Promise<number> => await refusedAuditsOf(world);
 
   it.each([
     ['a number', { operationId: 12_345_678 }],

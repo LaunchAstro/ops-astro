@@ -114,6 +114,7 @@ export type CommandRequest =
       readonly versionId: string;
       readonly decision: string;
       readonly note: string;
+      readonly recipientPersonId?: string | null;
     } & Envelope)
   | ({
       readonly command: 'task.pickup';
@@ -229,6 +230,40 @@ export type CommandRequest =
       readonly leaseId: string;
       readonly fence: number;
       readonly leaseSeconds?: number;
+      readonly providerStarting?: true;
+    } & Envelope)
+  | ({
+      readonly command: 'task.dispatch';
+      readonly leaseId: string;
+      readonly fence: number;
+    } & Envelope)
+  | ({
+      readonly command: 'task.observe';
+      readonly leaseId: string;
+      readonly fence: number;
+      readonly attemptId: string;
+      /** What the step used, priced by the synthetic book (T2d). */
+      readonly usage?: { readonly item: string; readonly quantity: number } | null;
+      readonly outcome?: 'completed' | 'failed';
+    } & Envelope)
+  | ({
+      readonly command: 'budget.top_up';
+      readonly recordId: unknown;
+      readonly amountMinor: number;
+      readonly fromMaximumMinor: number;
+    } & Envelope)
+  | ({
+      readonly command: 'budget.record_outcome';
+      readonly recordId: unknown;
+      readonly attemptId: unknown;
+      readonly outcome: unknown;
+    } & Envelope)
+  | ({
+      readonly command: 'budget.write_off';
+      readonly recordId: unknown;
+      readonly attemptId: unknown;
+      readonly amountMinor: unknown;
+      readonly reason: unknown;
     } & Envelope);
 
 /**

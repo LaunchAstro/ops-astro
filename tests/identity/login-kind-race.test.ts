@@ -218,7 +218,7 @@ describe.skipIf(serverUrl === undefined)('one login is a person or an agent', ()
     });
 
   it('refuses the second of two simultaneous mappings of different kinds', async () => {
-    const loginId = await db.app.withBusiness(business, async (tx) =>
+    const loginId = await db.app.withBusiness(business, (tx) =>
       insertLogin(tx, `race-insert-${randomUUID()}`),
     );
 

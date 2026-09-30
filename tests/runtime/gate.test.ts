@@ -137,7 +137,7 @@ async function decideOn(
   decision: 'approve' | 'reject' | 'request_changes',
   note = 'as asked',
 ) {
-  return await database.app.withBusiness(fixture.businessId, async (tx) =>
+  return await database.app.withBusiness(fixture.businessId, (tx) =>
     decide(tx, {
       gateId: of.gateId,
       versionId: of.versionId,
@@ -231,7 +231,8 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
 
     expect(refused.ok).toBe(false);
     if (refused.ok) throw new Error('unreachable');
-    expect(refused.refusal.code).toBe('GATE_ALREADY_DECIDED');
+    // T3a: a superseded version's gate answers PROPOSAL_SUPERSEDED (T2-N2).
+    expect(refused.refusal.code).toBe('PROPOSAL_SUPERSEDED');
 
     // And nothing was reserved by the refusal.
     await database.app.withBusiness(fixture.businessId, async (tx) => {
@@ -571,7 +572,7 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
 
     // ...and a new version in the same lineage is refused on the lineage, not
     // on the gate. This is the one that matters: rejection closes the line.
-    const reopened = await database.app.withBusiness(own.businessId, async (tx) =>
+    const reopened = await database.app.withBusiness(own.businessId, (tx) =>
       propose(tx, {
         taskId: own.taskId,
         collection: TASK_COLLECTION,
@@ -646,7 +647,7 @@ describe.skipIf(serverUrl === undefined)('the gate', () => {
     );
     expect(filled.ok).toBe(true);
 
-    const before = await database.app.withBusiness(fixture.businessId, async (tx) =>
+    const before = await database.app.withBusiness(fixture.businessId, (tx) =>
       tx.query<{ readonly held: string; readonly actual: string }>(
         `select coalesce(sum(held_minor), 0)::text as held,
                 coalesce(sum(actual_minor), 0)::text as actual

@@ -78,7 +78,7 @@ describe('MP-3-1 rail from registry', () => {
     const { page } = await draw([tab('todos', 'Projects'), tab('settings', 'Settings')]);
     const tabs = page.all('.dock__rail .dock__tab');
     expect(tabs.map((each) => each.getAttribute('data-panel'))).toEqual(['todos', 'settings']);
-    expect(tabs.map((each) => each.querySelectorAll('.dock__glyph').length)).toEqual([1, 1]);
+    expect(tabs.map((each) => each.querySelectorAll('svg.icon').length)).toEqual([1, 1]);
   });
 
   it('hands the shift key to the gesture with the tab id', async () => {
@@ -107,22 +107,23 @@ describe('MP-3-1 floating rail', () => {
 });
 
 describe('MP-3-1 callout', () => {
-  it('names each tab in a callout the tab is described by, with no native title', async () => {
+  it('names each tab in a callout hidden from its accessible name, with no native title', async () => {
     const { page } = await draw([tab('settings', 'Settings')]);
     const button = page.find('.dock__tab');
-    const tip = page.find('.dock__tip');
-    expect(tip?.getAttribute('role')).toBe('tooltip');
+    const tip = page.find('.dock__tablabel');
     expect(tip?.textContent).toBe('Settings');
-    expect(button?.getAttribute('aria-describedby')).toBe(tip?.id);
+    // The button's label already names the panel; the callout would say it twice.
+    expect(tip?.getAttribute('aria-hidden')).toBe('true');
+    expect(button?.getAttribute('aria-label')).toBe('Open Settings');
     expect(button?.hasAttribute('title')).toBe(false);
   });
 
   it('shows on hover and on keyboard focus only', () => {
     expect(SHEET).toMatch(
-      /\.dock__tab:hover \.dock__tip,\s*\.dock__tab:focus-visible \.dock__tip/u,
+      /\.dock__tab:hover \.dock__tablabel,\s*\.dock__tab:focus-visible \.dock__tablabel/u,
     );
-    expect(rule('.dock__tip')).toMatch(/display:\s*none/u);
-    expect(rule('.dock__tip')).toMatch(/pointer-events:\s*none/u);
+    expect(rule('.dock__tablabel')).toMatch(/display:\s*none/u);
+    expect(rule('.dock__tablabel')).toMatch(/pointer-events:\s*none/u);
   });
 
   it('flips to the right side when the rail is within 150px of the left edge', async () => {

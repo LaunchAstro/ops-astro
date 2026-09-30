@@ -451,18 +451,25 @@ const ROWS = [
     status: 409,
     meaning: 'A later version of the proposal exists',
     source: 'contract 4.4',
+    // `decide` on a gate whose version was superseded (T3a; it replaced
+    // the earlier `VERSION_SUPERSEDED`).
+    runtime: true,
   },
   {
     code: 'PROPOSAL_SCOPE_EXCEEDED',
     status: 422,
     meaning: 'The proposal reaches past what was authorised',
     source: 'contract 4.3',
+    // `propose` past the envelope, the cap or its currency, or with no
+    // positive ceiling (T3a; it replaced the earlier `PROPOSAL_OUT_OF_SCOPE`).
+    runtime: true,
   },
   {
     code: 'FOUR_EYES_REQUIRED',
     status: 409,
     meaning: 'The gate needs a second approver',
     source: 'contract 4.4',
+    runtime: true,
   },
 
   // Budget, T1k. For the runtime, the envelope cannot hold the accepted maximum.
@@ -492,14 +499,6 @@ const ROWS = [
   // belong to the runtime's rules R2, R3 and R6 and are registered on the same
   // terms as the eight before them.
   //
-  // The gate names a version that is no longer the live one.
-  {
-    code: 'VERSION_SUPERSEDED',
-    status: 409,
-    meaning: 'A later version of this proposal is the live one',
-    source: 'L4 RUNTIME.md',
-    runtime: true,
-  },
   // The gate's stored digest and the version's own disagree.
   {
     code: 'EVIDENCE_MISMATCH',
@@ -543,14 +542,6 @@ const ROWS = [
     source: 'spec G08',
     runtime: true,
   },
-  // The proposal asks for more than the caller's authority covers.
-  {
-    code: 'PROPOSAL_OUT_OF_SCOPE',
-    status: 403,
-    meaning: 'The proposal reaches past the caller\u2019s authority',
-    source: 'L4 RUNTIME.md',
-    runtime: true,
-  },
   {
     code: 'RESERVATION_NOT_CLAIMABLE',
     status: 409,
@@ -577,10 +568,12 @@ const ROWS = [
     source: 'L4 RUNTIME.md R2',
     runtime: true,
   },
-  // This head dispatches nothing, so it has no observed expenditure to settle
-  // (R6). The body is well formed and the caller is allowed; the field itself is
-  // one this head cannot honestly accept. Retrying with a null actual is the fix,
-  // and no state has to move first, so it is a 422 rather than a 409.
+  // A hand-back never settles spend (R6). Since T2d the observed cost settles
+  // through `task.observe`, priced from the synthetic book, and hand-back keeps
+  // refusing a reported actual: the body is well formed and the caller is
+  // allowed, but the field is one hand-back cannot honestly accept. Retrying
+  // with a null actual is the fix, and no state has to move first, so it is a
+  // 422 rather than a 409.
   {
     code: 'ACTUAL_EXPENDITURE_UNSUPPORTED',
     status: 422,
@@ -596,6 +589,53 @@ const ROWS = [
     status: 409,
     meaning: 'The successor the handback proposes falls outside the purpose it was held under',
     source: 'L4 RUNTIME.md',
+    runtime: true,
+  },
+  // T2c1, the dispatch transaction's recheck of the effect-time facts
+  // (`core-runtime/src/dispatch.ts`). Each is 409: the call was well formed,
+  // and state moved under it, so nothing was dispatched.
+  {
+    code: 'AUTHORITY_LOST',
+    status: 409,
+    meaning: 'The authority behind the work was lost before its effect was dispatched',
+    source: 'T2 T2c1',
+    runtime: true,
+  },
+  {
+    code: 'DECISION_STALE',
+    status: 409,
+    meaning: 'The approval behind the work is no longer current, so its effect is not dispatched',
+    source: 'T2 T2c1',
+    runtime: true,
+  },
+  {
+    code: 'EFFECT_NOT_RECONCILABLE',
+    status: 409,
+    meaning: 'The effect can be neither replayed nor reconciled, and no gate accepts a duplicate',
+    source: 'T2 T2c1',
+    runtime: true,
+  },
+  // T2c2: an effect is applied only after its dispatch mark, and observed only
+  // once the operation register holds it (`core-runtime/src/observe.ts`).
+  {
+    code: 'EFFECT_NOT_DISPATCHED',
+    status: 409,
+    meaning: 'The attempt this effect names is not dispatched to this caller, so nothing applied',
+    source: 'T2 T2c2',
+  },
+  {
+    code: 'EFFECT_NOT_OBSERVED',
+    status: 409,
+    meaning:
+      'The operation register holds no applied effect for this attempt, so nothing is observed',
+    source: 'T2 T2c2',
+    runtime: true,
+  },
+  {
+    code: 'LIABILITY_NOT_UNKNOWN',
+    status: 409,
+    meaning: 'The attempt is not held as an unknown liability, so there is no outcome to record',
+    source: 'T3 T3d1',
     runtime: true,
   },
 ] as const;
@@ -691,6 +731,55 @@ export function refuseCommand<C extends RefusalCode>(
   return { refused: true, code, names, fixes };
 }
 
+/**
+ * The gate codes' production constructors (T2g, build plan section 5), so each
+ * producer raises its code one way and a test can name the constructor.
+ */
+
+/** Completing a task while a gate on it is open (contract 4.3, `task.complete`). */
+export function gatePending(): CommandRefusal<'GATE_PENDING'> {
+  return refuseCommand(
+    'GATE_PENDING',
+    [],
+    [
+      'An approval gate on this task is still open, so the task is not complete.',
+      'Decide the gate, or let it expire, then complete the task.',
+    ],
+  );
+}
+
+/** A second decision on a gate that carries one (G03). */
+export function gateAlreadyDecided(
+  gateId: string,
+  state: string,
+): CommandRefusal<'GATE_ALREADY_DECIDED'> {
+  return refuseCommand(
+    'GATE_ALREADY_DECIDED',
+    [],
+    [
+      `gate ${gateId} is ${state}`,
+      'Read the decision that was recorded. A second decision on one version is never taken.',
+    ],
+  );
+}
+
+/** A comment in an audience this caller may not write in. */
+export function audienceNotPermitted(fix: string): CommandRefusal<'AUDIENCE_NOT_PERMITTED'> {
+  return refuseCommand('AUDIENCE_NOT_PERMITTED', ['audience'], [fix]);
+}
+
+/** The task's assignee asked to decide its own gate: another person decides. */
+export function fourEyesRequired(): CommandRefusal<'FOUR_EYES_REQUIRED'> {
+  return refuseCommand(
+    'FOUR_EYES_REQUIRED',
+    [],
+    [
+      'The task is assigned to you, so its gate is decided by someone else.',
+      'Ask another person who holds the decision grant on this task.',
+    ],
+  );
+}
+
 /** The discriminant every result is read through. */
 export function isCommandRefusal(value: object): value is CommandRefusal {
   return 'refused' in value && value.refused === true;
@@ -701,14 +790,15 @@ export function isCommandRefusal(value: object): value is CommandRefusal {
  *
  * Why each is unreachable is written beside its row below.
  *
- * Three budget codes are not on the list. Only one of them is produced:
- * `BUDGET_EXHAUSTED` is what the enforcing path returns when an attempt would
- * cross a ceiling a person approved (`core-runtime/src/budget.ts`).
- * `GATE_NOT_APPROVED` and `FOUR_EYES_REQUIRED` belong to the gated money
- * decisions, a top-up and a write-off, which are deferred, so nothing in
- * `apps/` or `packages/` returns either code. They are registered,
- * unproduced and not on this list, so this list is not every code nothing
- * produces.
+ * Three budget codes are not on the list. `BUDGET_EXHAUSTED` is what the
+ * enforcing path returns when an attempt would cross a ceiling a person
+ * approved (`core-runtime/src/budget.ts`). `GATE_NOT_APPROVED` and
+ * `FOUR_EYES_REQUIRED` belong to the gated money decisions, a top-up and a
+ * write-off. The write-off is deferred, so nothing in `apps/` or `packages/`
+ * returns `GATE_NOT_APPROVED`: it is registered, unproduced and not on this
+ * list, so this list is not every code nothing produces. `FOUR_EYES_REQUIRED`
+ * is produced by the top-up (T2e, `core-runtime/src/budget.ts`) and, since
+ * T2g, by the gate: the task's assignee is refused a decision on its gate.
  * Asserted by name in `tests/commands/refusal-register.test.ts`, so a part
  * that closes one has to come here and take it off the list.
  * `AUTH_UNKNOWN_LOGIN` was on this list until a review pointed out that the
@@ -751,11 +841,9 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   'DELEGATION_EXCLUDES_INTAKE',
   'DELEGATION_EXPIRED',
   'DELEGATION_REVOKED',
-  // T2 spellings the runtime did not adopt. It raises `GATE_ALREADY_DECIDED`
-  // where these say pending and superseded, and nothing produces these two.
-  'GATE_PENDING',
-  'PROPOSAL_SUPERSEDED',
-  'PROPOSAL_SCOPE_EXCEEDED',
+  // `GATE_PENDING` left the list with T2g, which raises it on completing a
+  // task whose gate is open; `PROPOSAL_SUPERSEDED` and
+  // `PROPOSAL_SCOPE_EXCEEDED` left it with T3a, which gave each its producer.
   'TASK_NOT_PICKABLE',
   // The two runtime codes that need something no caller can reach.
   //
@@ -794,7 +882,7 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // business the same cap. Nor is the currency half: `task.propose` checks
   // the currency against the task's
   // cap (its envelope's, else the business cap) before the first write, and
-  // refuses another currency `PROPOSAL_OUT_OF_SCOPE`, so no version in another
+  // refuses another currency `PROPOSAL_SCOPE_EXCEEDED`, so no version in another
   // currency reaches a decision. It stays off this list because the runtime
   // produces it; the list names codes nothing produces.
   //

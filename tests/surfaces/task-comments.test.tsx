@@ -197,7 +197,9 @@ describe('comments on the task page', () => {
     expect((page.find('#comment-body') as HTMLTextAreaElement).value).toBe('');
     await page.unmount();
   });
+});
 
+describe('comments on the task page', () => {
   it('locks the form for the length of its own request', async () => {
     const api = server();
     const page = await mount(screen(api.fetch));
@@ -225,7 +227,9 @@ describe('comments on the task page', () => {
     expect((page.find('[data-comment="post"]') as HTMLButtonElement).disabled).toBe(false);
     await page.unmount();
   });
+});
 
+describe('comments on the task page', () => {
   it('quotes a refused comment and stops offering the control to that reader', async () => {
     const api = server({ refuseComment: true });
     const page = await mount(screen(api.fetch));

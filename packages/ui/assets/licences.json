@@ -1,0 +1,57 @@
+{
+  "about": "Every asset the interface bundles, with its licence (MP-1-2). The web build copies this file and the licences folder into its output. Held against the installed packages and the brand folder by tests/surfaces/mp-1-2-fonts-icons-brand.test.tsx.",
+  "assets": [
+    {
+      "id": "font-funnel-display",
+      "kind": "font",
+      "package": "@fontsource/funnel-display",
+      "version": "5.3.0",
+      "licence": "OFL-1.1",
+      "licenceFile": "licences/OFL-funnel-display.txt",
+      "source": "https://github.com/Dicotype/Funnel"
+    },
+    {
+      "id": "font-funnel-sans",
+      "kind": "font",
+      "package": "@fontsource-variable/funnel-sans",
+      "version": "5.3.0",
+      "licence": "OFL-1.1",
+      "licenceFile": "licences/OFL-funnel-sans.txt",
+      "source": "https://github.com/Dicotype/Funnel"
+    },
+    {
+      "id": "font-chivo-mono",
+      "kind": "font",
+      "package": "@fontsource-variable/chivo-mono",
+      "version": "5.3.0",
+      "licence": "OFL-1.1",
+      "licenceFile": "licences/OFL-chivo-mono.txt",
+      "source": "https://github.com/Omnibus-Type/Chivo"
+    },
+    {
+      "id": "icons-lucide",
+      "kind": "icon-set",
+      "package": "lucide-react",
+      "version": "1.47.0",
+      "licence": "ISC",
+      "licenceFile": "licences/ISC-lucide.txt",
+      "source": "https://lucide.dev"
+    },
+    {
+      "id": "brand-wordmark",
+      "kind": "brand-mark",
+      "path": "src/brand/wordmark.svg",
+      "licence": "first-party",
+      "licenceFile": "licences/BRAND.txt",
+      "source": "the project's own mark, as drawn in the pinned mockup"
+    },
+    {
+      "id": "brand-planet",
+      "kind": "brand-mark",
+      "path": "src/brand/planet.svg",
+      "licence": "first-party",
+      "licenceFile": "licences/BRAND.txt",
+      "source": "the project's own mark, as drawn in the pinned mockup"
+    }
+  ]
+}

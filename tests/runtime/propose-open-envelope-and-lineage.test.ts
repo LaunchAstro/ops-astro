@@ -147,7 +147,7 @@ describe.skipIf(serverUrl === undefined)(
           maximumMinor: ENVELOPE + 1,
         }),
       ).toStrictEqual({
-        answer: 'PROPOSAL_OUT_OF_SCOPE',
+        answer: 'PROPOSAL_SCOPE_EXCEEDED',
         written: 0,
         pendingWritten: 0,
         outcomes: ['refused'],
@@ -187,7 +187,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(
         await proposeThenApprove(taskId, { purpose: freshPurpose(), maximumMinor: 1 }),
       ).toStrictEqual({
-        answer: 'PROPOSAL_OUT_OF_SCOPE',
+        answer: 'PROPOSAL_SCOPE_EXCEEDED',
         written: 0,
         pendingWritten: 0,
         outcomes: ['refused'],
@@ -332,7 +332,7 @@ describe.skipIf(serverUrl === undefined)('task.restart checks the cap', () => {
       pendingWritten: (await counted('gates')) - pending,
       approval,
     }).toStrictEqual({
-      answer: 'PROPOSAL_OUT_OF_SCOPE',
+      answer: 'PROPOSAL_SCOPE_EXCEEDED',
       written: 0,
       pendingWritten: 0,
       approval: null,

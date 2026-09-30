@@ -101,7 +101,9 @@ describe('CQ-11 the tree', () => {
       expect(row, name).toContain('The package is created by the ticket that builds it.');
     }
   });
+});
 
+describe('CQ-11 the tree', () => {
   it('CQ-11 landed, waitingOn and pending.ts are gone, and so is the CLI suffix they fed', () => {
     expect(existsSync('packages/core-commands/src/commands/pending.ts')).toBe(false);
     expect([...carrying('landed'), ...carrying('waitingOn')]).toStrictEqual([]);
@@ -122,6 +124,8 @@ describe('CQ-11 the tree', () => {
         authorActorId: randomUUID(),
         entryPoint: 'api',
         audiences: new Set(['internal', 'client']),
+        operationId: randomUUID(),
+        delegationId: null,
       },
       'a body',
       'internal',
@@ -140,7 +144,9 @@ describe('CQ-11 the tree', () => {
     });
     expect(tx.query).not.toHaveBeenCalled();
   });
+});
 
+describe('CQ-11 the tree', () => {
   it('CQ-11 issue 59: the not-found names, the installer’s visibility step and typed handback operands', () => {
     // The not-found refusal takes its names, the same bytes as the hand spread.
     const spread = { ...refuseNotFound(), names: ['lineageId'] };
@@ -157,7 +163,9 @@ describe('CQ-11 the tree', () => {
     expect(operations).not.toContain("request['actualMinor'] as");
     expect(operations).toContain('leaseId: operands.leaseId');
   });
+});
 
+describe('CQ-11 the tree', () => {
   it('CQ-11 canary: a planted canary secret in the key and environment files reaches no environment, log, error or answer', () => {
     const dir = scratch();
     const canary = randomBytes(32).toString('base64url');

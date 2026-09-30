@@ -113,7 +113,9 @@ describe('CQ-15 security gate', () => {
       ['no report', 'semgrep', '', {}, 1],
     ]);
   });
+});
 
+describe('CQ-15 security gate', () => {
   it('a changed caller or missing file binding invalidates an exception', () => {
     const expression = 'new RegExp(name)';
     const baseline = [
@@ -157,7 +159,9 @@ describe('CQ-15 security gate', () => {
     expect(runOn(changed, exception), 'a new caller changes the reviewed file').toBe(1);
     expect(runOn(baseline, { ...exception, file: undefined }), 'an unbound exception').toBe(1);
   });
+});
 
+describe('CQ-15 security gate', () => {
   it('CQ-15 exception expiry: each names impact, owner, control and expiry, and fails once expired', () => {
     const one = (entry: object) => ({ semgrep: [{ ...RULE, ...entry }] });
     const field = (f: string): Case => [f, 'semgrep', scan([hit()]), one({ [f]: ' ' }), 1];
@@ -202,7 +206,9 @@ describe('CQ-15 security gate', () => {
       four.filter((n) => !names.includes(`"${n}"`)),
     ]).toEqual([true, []]);
   });
+});
 
+describe('CQ-15 security gate', () => {
   it('CQ-15 no secret printed: the gate reports rule and place, never the match, and the jobs hold no secret', () => {
     const { status, out } = gate('semgrep', scan([hit()]));
     expect(`${status} ${out.includes(TOKEN)} ${out.includes('a.ts:1')}`).toBe('1 false true');

@@ -51,25 +51,30 @@ describe.skipIf(!enabled)('a lost pickup across an API and Postgres restart', ()
     }
   };
 
-  async function startApi(): Promise<Running> {
-    if (await health()) throw new Error(`something already answers on ${port as string}`);
+  /** The API process's environment: this fixture's database, keys and business. */
+  const apiEnvironment = (): NodeJS.ProcessEnv => {
     const admin = new URL(serverUrl as string);
     admin.pathname = `/${world.fixture.db.name}`;
+    return {
+      PATH: process.env['PATH'] ?? '',
+      API_PORT: port,
+      DATABASE_URL: world.fixture.db.appUrl,
+      DATABASE_ADMIN_URL: admin.toString(),
+      SUPABASE_JWT_SECRET: SECRET,
+      GOTRUE_URL: ISSUER,
+      GATE_SIGNING_KEY_ID: world.fixture.environment.GATE_SIGNING_KEY_ID,
+      GATE_SIGNING_SECRET: world.fixture.environment.GATE_SIGNING_SECRET,
+      // The fixture's one business, named here as `restart-process.ts` names
+      // its world's, so startup recovery neither refuses an unset scope nor
+      // takes a checkout's `.local/recovery.env` keys for this database's.
+      RECOVERY_BUSINESS_KEYS: BUSINESS_KEY,
+    };
+  };
+
+  async function startApi(): Promise<Running> {
+    if (await health()) throw new Error(`something already answers on ${port as string}`);
     const child: ChildProcess = spawn(process.execPath, ['apps/api/server.ts'], {
-      env: {
-        PATH: process.env['PATH'] ?? '',
-        API_PORT: port,
-        DATABASE_URL: world.fixture.db.appUrl,
-        DATABASE_ADMIN_URL: admin.toString(),
-        SUPABASE_JWT_SECRET: SECRET,
-        GOTRUE_URL: ISSUER,
-        GATE_SIGNING_KEY_ID: world.fixture.environment.GATE_SIGNING_KEY_ID,
-        GATE_SIGNING_SECRET: world.fixture.environment.GATE_SIGNING_SECRET,
-        // The fixture's one business, named here as `restart-process.ts` names
-        // its world's, so startup recovery neither refuses an unset scope nor
-        // takes a checkout's `.local/recovery.env` keys for this database's.
-        RECOVERY_BUSINESS_KEYS: BUSINESS_KEY,
-      },
+      env: apiEnvironment(),
       stdio: ['ignore', 'ignore', 'pipe'],
     });
     let complaint = '';

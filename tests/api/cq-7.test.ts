@@ -150,8 +150,8 @@ describe.skipIf(serverUrl === undefined)('CQ-7 on the task read', () => {
       ...PROPOSAL,
       currency: 'AUD',
     });
-    expect(proposal.status).toBe(403);
-    expect(proposal.body['code']).toBe('PROPOSAL_OUT_OF_SCOPE');
+    expect(proposal.status).toBe(422);
+    expect(proposal.body['code']).toBe('PROPOSAL_SCOPE_EXCEEDED');
   });
 
   it('CQ-7 cap currency: each business reads its own cap', async () => {

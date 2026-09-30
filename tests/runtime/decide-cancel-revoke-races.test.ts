@@ -451,7 +451,7 @@ describe.skipIf(serverUrl === undefined)(
           [task.id],
         ),
       ).toBe(1_000);
-      const replayed = await c.fixture.db.app.withBusiness(c.fixture.business, async (tx) =>
+      const replayed = await c.fixture.db.app.withBusiness(c.fixture.business, (tx) =>
         replayRecordedTransitions(tx),
       );
       expect(replayed).toStrictEqual([]);

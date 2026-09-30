@@ -68,7 +68,7 @@ gate, whatever the gate's state; the second rule covers a decided gate whose
 state was reset to `pending`. So a decided or superseded gate keeps its version.
 An expired gate is stored as `pending`: no runtime path writes the state
 `expired`, which the read derives from `expires_at`
-(`packages/core-commands/src/reads/proposals.ts:248-249`). So an undecided gate
+(`packages/core-commands/src/reads/proposals.ts:103-104`). So an undecided gate
 past its expiry is not covered, the residual left to Nathan. Migration 0030
 takes SHARE ROW EXCLUSIVE on `gates` before it checks the rows already written
 and holds it until it commits, so no gate can change between that check and the
@@ -121,7 +121,7 @@ the rest of the set. The check runs
 after a named lineage is found, on this task and live, and before the first
 write, a new lineage's row included, so a lineage on another task is
 `LINEAGE_NOT_ON_TASK` whatever its ceiling. A version in another currency, or a
-ceiling past either room, is `PROPOSAL_OUT_OF_SCOPE` 403 with nothing written.
+ceiling past either room, is `PROPOSAL_SCOPE_EXCEEDED` 422 with nothing written.
 Caller lineage ids are lower-cased in `lockProposal`
 (`tests/runtime/propose-operands-and-authority.test.ts`,
 `tests/runtime/propose-open-envelope-and-lineage.test.ts`). With no envelope and no cap there is
@@ -277,7 +277,8 @@ interface SuccessorRequest {
 interface HandbackRequest {
   leaseId;
   fence: number; // the fence it believes it owns
-  outcome: 'completed' | 'failed';
+  outcome: 'completed' | 'failed' | 'dropped';
+  dropCause?: 'provider_unavailable' | 'connection_lost'; // T3e1, with `dropped`
   report: Record<string, unknown>;
   actualMinor: number | null; // null is this head's honest answer
   successor?: SuccessorRequest; // optional: absent settles and proposes nothing
@@ -325,7 +326,7 @@ delegation's, reason then fix. Each operation's refusals, with their routes, are
 
 | Code                             | Status | Caller-visible                                                 |
 | -------------------------------- | ------ | -------------------------------------------------------------- |
-| `VERSION_SUPERSEDED`             | 409    | yes, re-read and decide the live version                       |
+| `PROPOSAL_SUPERSEDED`            | 409    | yes, re-read and decide the live version                       |
 | `EVIDENCE_MISMATCH`              | 409    | yes                                                            |
 | `GATE_NOT_FOUND`                 | 404    | yes                                                            |
 | `GATE_ALREADY_DECIDED`           | 409    | yes, the loser of a decision race                              |
@@ -334,7 +335,7 @@ delegation's, reason then fix. Each operation's refusals, with their routes, are
 | `CHANGE_ROUNDS_EXHAUSTED`        | 409    | yes                                                            |
 | `BUDGET_UNAVAILABLE`             | 409    | yes, this envelope has no room                                 |
 | `BUDGET_EXHAUSTED`               | 402    | yes, the cap behind it has none                                |
-| `PROPOSAL_OUT_OF_SCOPE`          | 403    | yes                                                            |
+| `PROPOSAL_SCOPE_EXCEEDED`        | 422    | yes                                                            |
 | `LINEAGE_NOT_ON_TASK`            | 409    | yes, the lineage is another task's                             |
 | `CAP_BINDING_MISMATCH`           | 409    | yes, the envelope's cap, and its currency, is the cap          |
 | `ACTUAL_EXPENDITURE_UNSUPPORTED` | 422    | yes, this head observed no spending                            |
@@ -1012,6 +1013,14 @@ partly covered rather than proved.
   rounds), and the third round is refused `CHANGE_ROUNDS_EXHAUSTED` with no
   decision row written. The lineage stays live, so approving or rejecting is
   still open. The cap bounds rounds, not the decision.
+- **Escalate at the bound** (T3a): once the two rounds are used, `task.decide`
+  takes `escalate` with a `recipientPersonId` who holds `decide` at business
+  scope and is not the assignee. It records who escalated and to whom on the
+  gate (migration 0041), writes no decision row, and leaves the gate
+  `pending`; from then on `decide` admits only a business-scope decider.
+  Before the bound it is `TRANSITION_NOT_PERMITTED`; a recipient outside the
+  role, or nobody, is `SCOPE_NOT_GRANTED` naming `recipientPersonId`, with
+  nothing written.
 - **Rejection is terminal** (G05): the rejected gate takes no second decision,
   a new version in the same lineage is refused `LINEAGE_TERMINAL` on the
   lineage rather than on the gate, and the authorised restart is a new lineage
@@ -1172,13 +1181,17 @@ direct SQL.
   (`tests/runtime/retry-bounds.test.ts`). Startup recovery does not retry. A
   changed set there fails the start. `task.cancel` holds the canceller's
   covering grants for share before its runtime set, as decide and pickup do,
-  and re-reads `write` on the task at the locked instant before its first write
-  (`holdCoveringGrants` and `checkAuthorityAt` in `cancelAndClassify`). A
+  and re-reads `write`, and for `task.cancel` `decide` (T3a), on the task at
+  the locked instant before its first write (`holdCoveringGrants` and
+  `checkAuthorityAt` in `cancelAndClassify`). A
   revocation that locks the grant first makes the cancel `SCOPE_NOT_GRANTED`
   with nothing written, and one that comes second waits for the cancel to
   commit (`tests/runtime/decide-cancel-lifecycle-under-lock.test.ts`).
-- **Authority** for `task.cancel` and `task.restart` is `write` on the task
-  named in `recordId`, so a record-scoped writer controls its own lineage
+- **Authority** for `task.cancel` and `task.restart` is `decide` on the task
+  named in `recordId` (T3a), asked again with the grants held for share;
+  cancel's runtime also asks `write` under its locks. A restart closes the
+  task's open envelope, so the new lineage's approval opens its own and the
+  old one keeps its settled spend. A record-scoped decider controls its own lineage
   (`authorisedOn: 'record'` in `COMMAND_SURFACE`, `core-wire/src/surface.ts`;
   `tests/commands/control-scope.test.ts`). `task.pickup`, `task.heartbeat` and
   `task.handback` are authorised as `write` on the task their reservation or
@@ -1228,7 +1241,8 @@ direct SQL.
   - Both revocations answer with `detail.classifiedHolds`: the ids of the
     reservations the revocation classified, and nothing else about them
     (`classifiedHolds`, `authority-controls.ts`).
-  - A marked or observed attempt keeps its full hold as `quarantined`.
+  - A marked or observed attempt keeps its full hold: a legacy row as
+    `quarantined`, a dispatched one as `liability_unknown` (T3b).
 
   `replayRecordedTransitions` also finds a revocation that committed without its
   classification (`discoverEligible`, `recovery.ts`). Its production caller is
@@ -1262,7 +1276,55 @@ direct SQL.
   row. No timer grants authority. Nothing runs on its own, a lease that stops
   beating expires, and the next pickup fences it as before. Bounded unstarted
   recovery stays the owning operations' classifier (W04), reached by pickup,
-  cancellation and restart replay, with no sweeper added.
+  cancellation and restart replay. T3b adds the sweep, the reconciliation
+  pass's lease-expiry phase (`recovery/sweep.ts`): the API runs it per
+  configured business on an interval, fences a live lease past its deadline,
+  releases an unmarked hold in full and holds a marked step as
+  `liability_unknown` at its whole maximum, which no timer path leaves.
+  T3d1 extends that one pass (`recovery/reconcile.ts`, `passDeployment` in
+  `apps/api/recovery-entry.ts`): after the sweep, the recorded-transition
+  replay runs on the same interval, then the register is asked, under the
+  step lock, whether an unknown step's effect happened. Present: settled
+  once at the book's price for the one effect. Absent: the old hold stays
+  held for a person, marked `absence_proved_at` (0037), the old worker's
+  delegation is revoked, and the step resumes on a new hold and attempt that
+  dispatches through T2c1's recheck (dispatch marks the step again for it,
+  once the prior attempt is fenced). No answer: nothing moves. Each phase is
+  one transaction per business.
+  T3e1 names drops (`recovery/drop.ts`, 0038). A drop is never a person's
+  cancellation, and each keeps its cause on the attempt: `provider_unavailable`
+  (the provider's fault) and `connection_lost` (the network's), which a worker
+  reports by handing back `dropped` with `report.dropCause`. The worker calls
+  its provider only once the step is marked, since a call may act and lose its
+  answer, so such a drop keeps its whole hold unknown until a person records
+  what happened: the register (`registerEffectLookup`) holds only the comment,
+  so a missing one cannot prove a reached provider did nothing and the pass
+  leaves it unanswered; a registered comment still proves it happened. A lost
+  hand-back answer is sent again under its first identity, never the provider
+  call. Before the call the worker records its provider start
+  (`task.heartbeat` with `providerStarting: true`, `attempts.provider_started_at`,
+  under the lease lock, only on its marked, dispatched attempt), so the start
+  is durable before anything may act. And `worker_lost` (ours), which the
+  pass's sweep (`sweepLostWorkers`) names when a lease runs out with nothing
+  reported: with a provider start recorded the register cannot answer either,
+  and a person records what happened; with none, the missing comment is
+  still an answer and the work comes back by itself.
+  A silent run is running until then. The drop appends `dropped` to the run's
+  events and joins its outage's one report, marked back once its step is
+  reserved again (on the drop, on the pass's absence proof or on a person's
+  "nothing happened") (T3e2, `recovery/outage.ts`, 0039),
+  never an alert per run: drops of one cause in one business join the open
+  report while they arrive within `OUTAGE_WINDOW_SECONDS` (300) of the last,
+  which names the cause, its fault, the window and each run with whether it
+  came back; the next drop after the window closes it and opens another. At
+  most one report is open per business and cause. An unmarked step ends `dropped`, its
+  hold released as before, and is reserved again as a new attempt on the same
+  run and step, through `reserve` and only on a live lineage whose approval is
+  current (T3d1's `resume`), with `reactivated` appended: the next pickup
+  continues the run's events rather than starting again. A marked step keeps
+  its whole hold `liability_unknown` with the cause, and only the
+  reconciliation pass's proof resumes it. A cancellation stays `abandoned`
+  and its terminal lineage never comes back.
 - **Open on the heartbeat.** The two bounds, 1 hour a beat and 8 hours in total,
   are lane constants (`MAXIMUM_RENEWAL_SECONDS` and
   `MAXIMUM_LEASE_LIFETIME_SECONDS`, `heartbeat.ts`), not an owner policy. They
@@ -1274,6 +1336,17 @@ direct SQL.
   `tests/runtime/schedules-heartbeat.test.ts` reaches the boundary by moving
   the lease's `acquired_at` back on the database clock, then beats through
   `task.heartbeat`.
+- **An expired lease moves money only (T3f).** `task.observe` from a lease that
+  expired after its effect applied still settles the priced cost (T2d), and its
+  answer, stored in the register, marks `lease: 'expired'` (a live one is
+  `live`). Nothing else moves: the lease, run, task and delegation read back as
+  they were. Renewal, a second dispatch and a hand-back on that lease are each
+  refused `LEASE_EXPIRED` (`tests/runtime/t3f-expired-lease.test.ts`). A silent
+  run, never renewed, keeps its live lease and its hold until the lease runs
+  out; only then does the pass fence it and hold the step unknown
+  (`t3f-lease-edges.test.ts`). Leases are per task: one live lease per task,
+  the second claimant refused `LEASE_HELD` (`lease-held-reach.test.ts`).
+  Per-step leases are deferred: no step in this head runs apart from its task.
 
 ## The delegation credential key
 
@@ -1292,7 +1365,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:772-783`). With neither setting present, the
+  rewrites it (`local-seed.mjs:775-786`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1344,8 +1417,13 @@ legacy row as derivable, and 0022's trigger forbids it.
 
 ## What is not here
 
-- **No worker, sweeper, top-up, write-off or effect activation.** `apps/worker/`
-  is still `.gitkeep`.
+- **No machine write-off.** The worker (`apps/worker/`, T2b), effect
+  activation (T2c1, T2c2), the top-up (T2e, `topUp` in `budget.ts`), the sweep
+  (T3b), the reconciliation pass with a person's recorded outcome
+  (`budget.record_outcome`, T3d1) and a person's write-off
+  (`budget.write_off`, `recovery/write-off.ts`, T3c) are built. An unknown
+  liability the register cannot answer waits for a person's outcome or
+  write-off; no timer, pass or worker reaches either.
 - **No audit row from this package.** `audit_events` is written through L3's
   command envelope, which owns the actor and the operation identity. The first
   attempt to write one from `handback.ts` aborted the whole transaction on a

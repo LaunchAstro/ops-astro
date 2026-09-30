@@ -63,8 +63,13 @@ export function refused(
  * A refusal whose writes are kept. See `Refused.retains`; the only caller is
  * `task.handback` on the two paths where the runtime retained a report.
  */
-export function refusedRetaining(refusal: CommandRefusal): Refused {
-  return { refusal, retains: true };
+export function refusedRetaining(
+  refusal: CommandRefusal,
+  attempted?: Readonly<Record<string, unknown>>,
+): Refused {
+  return attempted === undefined
+    ? { refusal, retains: true }
+    : { refusal, retains: true, attempted };
 }
 
 export function isRefused(outcome: HandlerOutcome): outcome is Refused {

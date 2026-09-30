@@ -8,11 +8,12 @@
 // `task.pickup` and `task.handback` against these names, so a later
 // rearrangement inside this package is not a change to what it imports.
 //
-// There is deliberately no dispatch, worker or provider export. No path here
-// makes a call, and the `planned_steps.dispatched_at` constraint keeps it
-// that way. `RuntimeRefusalCode` is read off the refusal register's rows
-// marked `runtime` (`core-records/src/register.ts`) and passed on here with
-// `SUGGESTED_STATUS`, a view of the same rows' statuses that the tests read.
+// Dispatch marks a step (T2c1, `dispatch.ts`) and observe records the effect the
+// worker applied through its owning operation (T2c2, `observe.ts`); no path
+// here applies an effect or makes a provider call. `RuntimeRefusalCode` is read
+// off the refusal register's rows marked `runtime` (`core-records/src/register.ts`)
+// and passed on here with `SUGGESTED_STATUS`, a view of the same rows' statuses
+// that the tests read.
 
 export {
   lockProposal,
@@ -32,6 +33,13 @@ export {
   type Renewed,
 } from './heartbeat.ts';
 export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
+export { dispatch, EFFECT_OPERATIONS, type Dispatched, type DispatchRequest } from './dispatch.ts';
+export { observe, type AppliedEffect, type Observed, type ObserveRequest } from './observe.ts';
+export { readReceipt, receiptTask, type Receipt } from './receipt.ts';
+export { readAlerts, type Alert } from './alerts.ts';
+export { priceUsage, SYNTHETIC_PRICES, type Usage } from './price-book.ts';
+export { openEnvelopeOf, topUp, type Settlement, type TopUp, type TopUpRequest } from './budget.ts';
+export { CRASH_POINT_VARIABLE, crashPointAfterCommit, crashSeamProblem } from './crash-point.ts';
 export { renderEvidence, RENDERER, type RenderedPack } from './evidence.ts';
 export {
   decide,
@@ -61,15 +69,41 @@ export {
   type HandbackHolder,
 } from './handback.ts';
 export { AffectedSetChanged, requireUnchanged } from './rediscovery.ts';
+export { appendRunEvent, type RunEvent, type RunEventKind } from './run-events.ts';
+export { reconcileUnknown, type EffectLookup, type Reconciled } from './recovery/reconcile.ts';
+export {
+  DROP_FAULT,
+  recordDrop,
+  REPORTED_DROP_CAUSES,
+  sweepLostWorkers,
+  type DropCause,
+} from './recovery/drop.ts';
+export {
+  joinOutage,
+  OUTAGE_WINDOW_SECONDS,
+  readOutages,
+  type OutageReport,
+} from './recovery/outage.ts';
+export {
+  recordOutcome,
+  RECORDED_OUTCOMES,
+  type OutcomeRecorded,
+  type RecordedOutcome,
+} from './recovery/outcome.ts';
+export { writeOff, type WriteOffRequest, type WrittenOff } from './recovery/write-off.ts';
 export {
   cancelAndClassify,
   classifyUnderLocks,
   replayRecordedTransitions,
+  sweepExpiredLeases,
   type Classification,
   type ClassifyRequest,
   type NonclaimableCause,
   classifyAuthorityLoss,
+  checkAuthorityAt,
+  holdCoveringGrants,
 } from './recovery.ts';
+export { lockedInstant } from './clock.ts';
 export {
   canonicalise,
   chainHash,

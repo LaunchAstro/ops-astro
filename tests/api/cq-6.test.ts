@@ -17,13 +17,12 @@ import { statusOf } from '../../packages/core-records/src/index.ts';
 import type { RefusalCode } from '../../packages/core-records/src/index.ts';
 import { serverUrl } from '../acceptance/world.ts';
 import {
-  auditMark,
-  auditSince,
   createIdentWorld,
   type IdentWorld,
   type Picked,
   type RawAnswer,
 } from '../acceptance/ident-audit-cases.ts';
+import { auditMark, auditSince } from '../acceptance/ident-audit-rows.ts';
 
 const CANARY = `cq6-canary-${randomUUID()}`;
 
@@ -155,7 +154,9 @@ describe.skipIf(serverUrl === undefined)('CQ-6 on both prefixes', () => {
       });
       expectRefused(again, 'OPERATION_ID_REUSED', 'reused identity');
     });
+  });
 
+  describe('CQ-6 refusal parity', () => {
     it('agent prefix: each refusal keeps its code, status and precedence', async () => {
       const sibling = await w.h.freshTask('a sibling outside the delegation');
       const cases: readonly (readonly [
@@ -313,7 +314,9 @@ describe.skipIf(serverUrl === undefined)('CQ-6 on both prefixes', () => {
       expect(agentAnswer.status, agentAnswer.text).toBeGreaterThanOrEqual(400);
       expect(agentAnswer.text).not.toContain(w.foreign.task.id);
     });
+  });
 
+  describe('CQ-6 isolation', () => {
     it('person to person: a mistyped body does not get past another person’s record', async () => {
       const unreached = await w.h.freshTask('an alpha task outside rhea’s grant');
       const before = await revisionOf(unreached.id);

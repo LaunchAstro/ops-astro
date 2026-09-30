@@ -67,7 +67,9 @@ describe('the refusal register', () => {
       expect(entry.source.length, entry.code).toBeGreaterThan(4);
     }
   });
+});
 
+describe('the refusal register', () => {
   it('names the codes nothing produces yet, so closing one is a visible diff', () => {
     // Registered because the contract registers them; unreachable because the
     // command or the table that would produce them lands in a later part.
@@ -103,10 +105,9 @@ describe('the refusal register', () => {
       // `DELEGATION_WIDENS` came off when the approver's task write was revoked
       // between approval and pickup (`tests/commands/delegation-widens.test.ts`).
       'EVIDENCE_MISMATCH',
-      'GATE_PENDING',
       'LEASE_EXPIRED',
-      'PROPOSAL_SCOPE_EXCEEDED',
-      'PROPOSAL_SUPERSEDED',
+      // `PROPOSAL_SCOPE_EXCEEDED` and `PROPOSAL_SUPERSEDED` came off with T3a,
+      // which moved `propose` and `decide` onto them (`t3a-escalate.test.ts`).
       'TASK_NOT_PICKABLE',
       'WRONG_BUSINESS',
     ]);
@@ -117,7 +118,9 @@ describe('the refusal register', () => {
       expect(registeredRefusal(code), code).toBeDefined();
     }
   });
+});
 
+describe('the refusal register', () => {
   it('registers the code for a value of the wrong type, which the trigger would raise on', () => {
     expect(registeredRefusal('FIELD_VALUE_INVALID')).toBeDefined();
   });

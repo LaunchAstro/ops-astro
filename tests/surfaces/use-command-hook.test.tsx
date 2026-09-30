@@ -51,16 +51,18 @@ function Probe(props: {
 }
 
 const state = (page: { find: (selector: string) => Element | null }) => {
-  const probe = page.find('[data-busy]');
+  const probe = page.find('[data-busy]') as HTMLElement | null;
   return {
-    busy: probe?.getAttribute('data-busy'),
-    closed: probe?.getAttribute('data-closed'),
-    locked: probe?.getAttribute('data-locked'),
-    conflict: probe?.getAttribute('data-conflict'),
-    because: probe?.getAttribute('data-because'),
+    busy: probe?.dataset['busy'],
+    closed: probe?.dataset['closed'],
+    locked: probe?.dataset['locked'],
+    conflict: probe?.dataset['conflict'],
+    because: probe?.dataset['because'],
   };
 };
 
+// Two blocks under one title, so every case keeps its full name: the states
+// before and through an authority refusal, then the other refusals.
 describe('useCommand', () => {
   it('starts open, with nothing to say', async () => {
     const page = await mount(<Probe replies={[]} />);
@@ -90,7 +92,9 @@ describe('useCommand', () => {
     expect(state(page)).toMatchObject({ closed: 'true', locked: 'true', because: '' });
     await page.unmount();
   });
+});
 
+describe('useCommand', () => {
   it('carries a stale refusal as the conflict, and reset clears it', async () => {
     const page = await mount(<Probe replies={[refusal('VERSION_STALE')]} />);
     await page.click('[data-press]');
@@ -105,10 +109,10 @@ describe('useCommand', () => {
   });
 
   it('has no conflict for any other refusal, and stays open', async () => {
-    const page = await mount(<Probe replies={[refusal('PROPOSAL_OUT_OF_SCOPE')]} />);
+    const page = await mount(<Probe replies={[refusal('PROPOSAL_SCOPE_EXCEEDED')]} />);
     await page.click('[data-press]');
     expect(state(page)).toMatchObject({ closed: 'false', locked: 'false', conflict: '' });
-    expect(state(page).because).toContain('PROPOSAL_OUT_OF_SCOPE');
+    expect(state(page).because).toContain('PROPOSAL_SCOPE_EXCEEDED');
     await page.unmount();
   });
 });

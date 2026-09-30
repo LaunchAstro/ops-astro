@@ -18,13 +18,22 @@
 // Usage:
 //   node scripts/licences/check.mjs                 read the tree with pnpm
 //   node scripts/licences/check.mjs --report FILE   read a report from a file
+//   node scripts/licences/check.mjs --assets FILE   check bundled asset records
+//
+// The plain run also checks the fonts and icons the visual harness bundles
+// (tests/visual/assets/assets.json, T4c). Those are assets, not packages, so
+// each carries its own record: licence, source, permitted use, a pinned
+// address and digest, with its licence text beside the record. One with no
+// compatible licence is refused and reported, and must not be bundled.
 //
 // The --report form exists so tests/licences/licence-cases.sh can feed it the
 // reports it must refuse. A checker with no testable seam cannot be trusted
 // to refuse anything.
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Compatible with distribution inside an AGPL-3.0-only work: permissive,
 // weak copyleft that is file or library scoped, and the AGPL family itself.
@@ -69,16 +78,98 @@ const REFUSED_WITH_REASON = new Map([
   ['BUSL-1.1', 'source available, not open source'],
 ]);
 
+// The font licence, allowed for the named font packages and nothing else.
+//
+// The SIL Open Font License 1.1 lets a font be bundled with any software,
+// whatever that software's licence, so the interface's three families can ship
+// inside this AGPL-3.0-only work (TICKET-PLAN R52: Funnel Display, Funnel Sans
+// and Chivo Mono ship with their licence files). It is not a software licence,
+// so it is not on ALLOWED: a code package under it is refused. A package is
+// allowed here only when its name is one of these exactly and its expression
+// is the bare identifier, with no OR, AND or WITH beside it. A new font is a
+// new entry, with its reason, in the same change as the record in
+// packages/ui/assets/licences.json. Funnel Sans and Chivo Mono are their
+// variable packages: the one face each the mockup draws, where the static
+// instances drew it differently.
+const FONT_LICENCE = 'OFL-1.1';
+const FONT_PACKAGES = new Set([
+  '@fontsource/funnel-display',
+  '@fontsource-variable/funnel-sans',
+  '@fontsource-variable/chivo-mono',
+]);
+
 const args = process.argv.slice(2);
 const reportFlag = args.indexOf('--report');
 const reportFile = reportFlag === -1 ? undefined : args[reportFlag + 1];
+const assetsFlag = args.indexOf('--assets');
+const DEFAULT_ASSETS = fileURLToPath(
+  new URL('../../tests/visual/assets/assets.json', import.meta.url),
+);
 
 const nonEmpty = (value) => typeof value === 'string' && value.trim() !== '';
+
+// Fonts are distributed beside the software, not linked into it, so the SIL
+// Open Font License is compatible for an asset while it is no package licence
+// this file has decided on. It is allowed here only.
+const ASSET_ALLOWED = new Set([...ALLOWED, 'OFL-1.1']);
+
+/** The problems with one asset manifest; refused assets are printed, not problems. */
+const checkAssets = (file) => {
+  const found = [];
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (error) {
+    return [`${file}: not readable JSON: ${String(error.message ?? error)}`];
+  }
+  const assets = manifest?.assets;
+  if (!Array.isArray(assets) || assets.length === 0) {
+    return [`${file}: no assets listed. An empty record is not a clean result.`];
+  }
+  const dir = dirname(file);
+  for (const asset of assets) {
+    const name = nonEmpty(asset?.name) ? asset.name : '(unnamed)';
+    for (const key of ['name', 'kind', 'licence', 'source']) {
+      if (!nonEmpty(asset?.[key])) found.push(`${name}: no ${key} recorded`);
+    }
+    if (nonEmpty(asset?.refused)) {
+      if (asset.file === undefined && asset.url === undefined) {
+        console.log(`licences: refused, not bundled: ${name} (${asset.licence}): ${asset.refused}`);
+      } else found.push(`${name}: refused, and still bundled`);
+      continue;
+    }
+    if (!ASSET_ALLOWED.has(asset?.licence)) {
+      found.push(
+        `${name}: ${String(asset?.licence)} is not compatible; refuse it, never bundle it`,
+      );
+    }
+    if (!nonEmpty(asset?.permittedUse)) found.push(`${name}: no permitted use recorded`);
+    if (!nonEmpty(asset?.licenceFile) || !existsSync(join(dir, asset.licenceFile))) {
+      found.push(`${name}: its licence text is not beside it`);
+    }
+    // The public tree holds no binary file, so the bytes are pinned rather
+    // than committed: a digest, and an address that cannot move under it.
+    if (!/^[0-9a-f]{64}$/u.test(String(asset?.sha256))) found.push(`${name}: no sha256 recorded`);
+    if (!nonEmpty(asset?.file) || !String(asset?.url).startsWith('https://')) {
+      found.push(`${name}: no file name and https address recorded`);
+    }
+  }
+  if (found.length === 0) console.log(`licences: ${assets.length} asset record(s) hold.`);
+  return found;
+};
+
+if (assetsFlag !== -1) {
+  const found = checkAssets(args[assetsFlag + 1] ?? '');
+  for (const p of found) console.error(`licences: asset: ${p}`);
+  process.exit(found.length === 0 ? 0 : 1);
+}
 
 const hasVersion = (pkg) => {
   if (nonEmpty(pkg['version'])) return true;
   const versions = pkg['versions'];
-  return Array.isArray(versions) && versions.length > 0 && versions.every(nonEmpty);
+  return (
+    Array.isArray(versions) && versions.length > 0 && versions.every((version) => nonEmpty(version))
+  );
 };
 
 const describeVersion = (pkg) => {
@@ -299,11 +390,15 @@ for (const [licence, packages] of Object.entries(report)) {
   const bad = pieces.filter((p) => !ALLOWED.has(p));
   if (bad.length === 0) continue;
   const reasons = bad.map((p) => {
+    if (p === FONT_LICENCE) {
+      return `${p}: a font licence, allowed only as the whole expression of a named font package`;
+    }
     const why = REFUSED_WITH_REASON.get(p);
     return why === undefined ? `${p}: not on the compatibility allowlist` : `${p}: ${why}`;
   });
   for (const pkg of packages) {
     const name = nonEmpty(pkg?.['name']) ? pkg['name'] : '(unnamed)';
+    if (licence === FONT_LICENCE && FONT_PACKAGES.has(name)) continue;
     const version = pkg === null || typeof pkg !== 'object' ? '?' : describeVersion(pkg);
     offenders.push({ name, version, licence, reasons });
   }
@@ -334,7 +429,10 @@ if (offenders.length > 0) {
   );
 }
 
-if (problems.length > 0 || offenders.length > 0) {
+const assetProblems = reportFile === undefined ? checkAssets(DEFAULT_ASSETS) : [];
+for (const p of assetProblems) console.error(`licences: asset: ${p}`);
+
+if (problems.length > 0 || offenders.length > 0 || assetProblems.length > 0) {
   process.exit(1);
 }
 

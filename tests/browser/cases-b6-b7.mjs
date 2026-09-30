@@ -159,6 +159,18 @@ async function apiHealthy() {
   }
 }
 
+/** A fresh browser context, signed in as mia, on the edited task's page once it has rendered. */
+async function openTaskAfterRestart(browser, state) {
+  const afterRestart = await browser.newContext({ viewport: VIEWPORT });
+  const restartPage = await afterRestart.newPage();
+  await signIn(restartPage, 'mia@alpha.local', 'alpha');
+  await restartPage.goto(`${WEB}/task/${encodeURIComponent(state.taskKey)}`, {
+    waitUntil: 'domcontentloaded',
+  });
+  await restartPage.waitForSelector('[data-task]', { timeout: 20_000 });
+  return { afterRestart, restartPage };
+}
+
 async function caseB6(run) {
   const { browser, database, admin, state } = run;
   const before = await runtimeRecordsBefore(run);
@@ -177,13 +189,7 @@ async function caseB6(run) {
   const postVolume = mountedVolume();
   const volume = sh(DOCKER, ['volume', 'inspect', '-f', '{{.CreatedAt}}', TARGET.volume]).trim();
 
-  const afterRestart = await browser.newContext({ viewport: VIEWPORT });
-  const restartPage = await afterRestart.newPage();
-  await signIn(restartPage, 'mia@alpha.local', 'alpha');
-  await restartPage.goto(`${WEB}/task/${encodeURIComponent(state.taskKey)}`, {
-    waitUntil: 'domcontentloaded',
-  });
-  await restartPage.waitForSelector('[data-task]', { timeout: 20_000 });
+  const { afterRestart, restartPage } = await openTaskAfterRestart(browser, state);
   const survived = {
     title: await restartPage.locator('h2.tpr__title').innerText(),
     id: await restartPage.locator('[data-task]').first().getAttribute('data-task'),
@@ -260,7 +266,7 @@ async function withDecideGrant(database, businessId, person, work) {
   try {
     return await work();
   } finally {
-    await database.withBusiness(businessId, async (tx) => revokeGrant(tx, id));
+    await database.withBusiness(businessId, (tx) => revokeGrant(tx, id));
   }
 }
 

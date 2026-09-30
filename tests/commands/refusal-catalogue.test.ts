@@ -99,42 +99,52 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['FOUR_EYES_REQUIRED', 409, 'caller'],
   ['BUDGET_UNAVAILABLE', 409, 'caller'],
   ['BUDGET_EXHAUSTED', 402, 'caller'],
-  ['VERSION_SUPERSEDED', 409, 'caller'],
   ['EVIDENCE_MISMATCH', 409, 'caller'],
   ['GATE_NOT_FOUND', 404, 'caller'],
   ['GATE_EXPIRED', 410, 'caller'],
   ['LINEAGE_TERMINAL', 409, 'caller'],
   ['CHANGE_ROUNDS_EXHAUSTED', 409, 'caller'],
-  ['PROPOSAL_OUT_OF_SCOPE', 403, 'caller'],
   ['RESERVATION_NOT_CLAIMABLE', 409, 'caller'],
   ['LINEAGE_NOT_ON_TASK', 409, 'caller'],
   ['CAP_BINDING_MISMATCH', 409, 'caller'],
   ['ACTUAL_EXPENDITURE_UNSUPPORTED', 422, 'caller'],
   ['SUCCESSOR_OUT_OF_BOUNDS', 409, 'caller'],
+  ['AUTHORITY_LOST', 409, 'caller'],
+  ['DECISION_STALE', 409, 'caller'],
+  ['EFFECT_NOT_RECONCILABLE', 409, 'caller'],
+  ['EFFECT_NOT_DISPATCHED', 409, 'caller'],
+  ['EFFECT_NOT_OBSERVED', 409, 'caller'],
+  ['LIABILITY_NOT_UNKNOWN', 409, 'caller'],
 ];
 
-/** The runtime's own twenty, as `core-runtime` names them. */
+/** The runtime's own twenty-six, as `core-runtime` names them; T2c1 added three, T2c2 one, T2g one, T3d1 one. */
 const RUNTIME = [
   'ACTUAL_EXPENDITURE_UNSUPPORTED',
+  'AUTHORITY_LOST',
   'BUDGET_EXHAUSTED',
   'BUDGET_UNAVAILABLE',
   'CAP_BINDING_MISMATCH',
   'CHANGE_ROUNDS_EXHAUSTED',
+  'DECISION_STALE',
+  'EFFECT_NOT_OBSERVED',
+  'EFFECT_NOT_RECONCILABLE',
   'EVIDENCE_MISMATCH',
+  'FOUR_EYES_REQUIRED',
   'GATE_ALREADY_DECIDED',
   'GATE_EXPIRED',
   'GATE_NOT_FOUND',
   'LEASE_EXPIRED',
   'LEASE_HELD',
   'LEASE_NOT_OWNED',
+  'LIABILITY_NOT_UNKNOWN',
   'LINEAGE_NOT_ON_TASK',
   'LINEAGE_TERMINAL',
-  'PROPOSAL_OUT_OF_SCOPE',
+  'PROPOSAL_SCOPE_EXCEEDED',
+  'PROPOSAL_SUPERSEDED',
   'RESERVATION_NOT_CLAIMABLE',
   'SCOPE_NOT_GRANTED',
   'SUCCESSOR_OUT_OF_BOUNDS',
   'TRANSITION_NOT_PERMITTED',
-  'VERSION_SUPERSEDED',
 ];
 
 describe('the refusal catalogue', () => {
@@ -144,7 +154,7 @@ describe('the refusal catalogue', () => {
     ).toStrictEqual(CATALOGUE);
   });
 
-  it('names the same twenty as the runtime’s own, each under its register status', () => {
+  it('names the same twenty-six as the runtime’s own, each under its register status', () => {
     expect(Object.keys(SUGGESTED_STATUS).toSorted()).toStrictEqual(RUNTIME);
     for (const [code, status] of Object.entries(SUGGESTED_STATUS)) {
       expect(status, code).toBe(CATALOGUE.find(([listed]) => listed === code)?.[1]);
@@ -220,7 +230,9 @@ describe('one refusal from each road, byte for byte', () => {
       '{"refused":true,"code":"FIELD_UNKNOWN","names":["colour"],"fixes":["Use a field it has."]}',
     ]);
   });
+});
 
+describe('one refusal from each road, byte for byte', () => {
   it('an identity refusal, person and agent, carries no names', () => {
     expect(wire(refuseCommand('ACTOR_INACTIVE', [], ['Ask an admin.']))).toStrictEqual([
       403,
@@ -279,7 +291,7 @@ const stubDatabase = (): Database =>
           return [];
         },
       }),
-    close: async () => undefined,
+    close: () => Promise.resolve(),
   }) as unknown as Database;
 
 const api = createApi({

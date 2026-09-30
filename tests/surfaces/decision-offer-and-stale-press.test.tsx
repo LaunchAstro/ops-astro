@@ -315,7 +315,9 @@ describe('a refusal about this reader outlives the reread', () => {
     expect(count('task/comment')).toBe(1);
     await page.unmount();
   });
+});
 
+describe('a refusal about this reader outlives the reread', () => {
   it('keeps the propose form closed after Refresh rereads the task', async () => {
     const { client, count, holdRead, releaseRead } = server({ refusePropose: true });
     const page = await open(client);

@@ -129,7 +129,9 @@ describe('the task page for a reader outside the business', () => {
     expect(page.text()).toContain('No field on this task is shared.');
     await page.unmount();
   });
+});
 
+describe('the task page for a reader outside the business', () => {
   it('offers no control and reads nothing beyond task.read', async () => {
     const api = server(shared({ summary: 'Shared' }));
     const page = await mount(screen(api.fetch));
@@ -143,8 +145,9 @@ describe('the task page for a reader outside the business', () => {
     expect((region as HTMLElement | null)?.dataset['revision']).toBeUndefined();
     expect(page.text()).not.toContain('History');
     // The member page reads the people list for assignment. This one must not
-    // go looking for anything the projection did not carry.
-    expect(api.calls).toEqual(['task/read']);
+    // go looking for anything the projection did not carry. The live join
+    // (T2f) carries nothing: it says only that this task changed.
+    expect(api.calls).toEqual(['task/read', `live/task/${TASK_ID}`]);
     await page.unmount();
   });
 

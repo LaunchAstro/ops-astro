@@ -13,8 +13,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import type { DockProps } from '@launchastro/ui';
 import { Shell } from '@launchastro/ui';
 import { gateOf, matchRoute, pathTo, type Gate } from './routes.ts';
-import { NO_CLIENT_GRANTS, canonicalOf, isLegacy, pageAt, type ClientAccess } from './manifest.ts';
-import { ClientRefused, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
+import { NO_CLIENT_GRANTS, canonicalOf, pageAt, type ClientAccess } from './manifest.ts';
+import { ClientRefused, NotFound, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { PANELS, dockTabs, isPanelId, type PanelId, type PanelRegistry } from './panels.ts';
 import { closeAll, close, isOwnAddress, press, ranked, visit } from './dock/open-set.ts';
@@ -142,7 +142,7 @@ export function App(props: AppProps): ReactElement {
   // whole action, not only the storage clear, is gated on it still being the
   // one in hand. Identity is the test: `setSession` is the only way a session
   // gets here, and every sign-in mints a new object.
-  const endedRef = useRef<(from: Session, refusal: WireRefusal) => void>(() => undefined);
+  const endedRef = useRef<(from: Session, refusal: WireRefusal) => void>(() => {});
   const hereRef = useRef(here);
   hereRef.current = here;
   const sessionRef = useRef(session);
@@ -309,6 +309,7 @@ function dockProps(input: {
     tabs: tabs.map((tab) => ({
       id: tab.id,
       label: tab.label,
+      icon: tab.icon,
       count: tab.count,
       open: dock.state.open.includes(tab.id),
     })),
@@ -389,26 +390,6 @@ function screenAt(address: string | undefined): Extract<Gate, { readonly kind: '
     // A malformed escape in the address: it names no view.
     return null;
   }
-}
-
-// An unknown legacy address is not echoed: no legacy address reaches the interface (R5).
-function NotFound(props: { readonly path: string }): ReactElement {
-  return (
-    <div className="readstate" data-outcome="not-found">
-      <p className="empty__title">
-        No screen is registered at {isLegacy(props.path) ? 'this address' : props.path}.
-      </p>
-      <p className="empty__desc">
-        The route registry is the list the application resolves through. An address that is not in
-        it does not resolve, which is a truer answer than a blank page.
-      </p>
-      <p className="empty__hint">
-        <a className="sb__addr" href={pathTo('agency:projects-board')}>
-          Go to Projects
-        </a>
-      </p>
-    </div>
-  );
 }
 
 function SignedInAlready(props: { readonly onGo: () => void }): ReactElement {

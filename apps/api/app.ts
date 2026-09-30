@@ -32,6 +32,7 @@
 
 import { Hono } from 'hono';
 import type { Context } from 'hono';
+import { streamSSE, type SSEStreamingApi } from 'hono/streaming';
 import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
@@ -61,6 +62,7 @@ import type {
   executeRead,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
+import type { LiveSignal, LiveTopics } from './live.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -113,6 +115,13 @@ export interface ApiOptions {
    * which is the honest answer for a deployment that has not enabled it.
    */
   readonly executeAgentCommand?: AgentExecutor;
+  readonly live?: LiveOptions;
+}
+
+/** The live task channel (T2f); absent, unmounted. `recheckMs`: how often a quiet stream re-asks. */
+export interface LiveOptions {
+  readonly topics: LiveTopics;
+  readonly recheckMs?: number;
 }
 
 /** The person path's executor: `commands/envelope.ts`'s signature. */
@@ -167,6 +176,7 @@ async function admit(
   options: ApiOptions,
   context: Context,
   entry: Entry,
+  readsBody = true,
 ): Promise<Admitted | Response> {
   const presented = await options.verify(context.req);
   if (presented === undefined) {
@@ -180,7 +190,7 @@ async function admit(
   }
 
   // The key comes from the path and is resolved by the server.
-  const body = await readObject(context);
+  const body = readsBody ? await readObject(context) : {};
   const businessId = await options.resolveBusiness(context.req.param('businessKey') ?? '');
   if (body === undefined) {
     // An admission refusal: the resolved business, the verified subject (ruling 4).
@@ -271,7 +281,91 @@ export function createApi(options: ApiOptions): Hono {
     });
   }
 
+  // T2f: a GET beside the POST-only surface, through the same door; no surface
+  // row, so its own isolation case (`tests/api/t2f-live-channel.test.ts`).
+  const { live } = options;
+  if (live !== undefined) {
+    api.get(`${PREFIX.person}:businessKey/live/task/:recordId`, async (context) => {
+      const admitted = await admit(options, context, PERSON, false);
+      if (admitted instanceof Response) return admitted;
+      const may = async () => await mayWatch(options, context, admitted.businessId);
+      const taskId = await may();
+      if (typeof taskId !== 'string') return refuse(context, taskId);
+      return streamSSE(context, async (stream) => {
+        await follow(stream, live, admitted.businessId, taskId, may);
+      });
+    });
+  }
+
   return api;
+}
+
+/**
+ * Whether this caller may watch the task, asked after verifying the bearer
+ * again of `task.execution`, the internal activity the channel reports:
+ * expiry, a revoked grant and any external reader all refuse.
+ * The answer is the task's identifier, the topic.
+ */
+async function mayWatch(
+  options: ApiOptions,
+  context: Context,
+  businessId: string,
+): Promise<string | CommandRefusal> {
+  const presented = await options.verify(context.req);
+  if (presented === undefined || presented === 'expired') {
+    return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
+  }
+  const read = await options.executeRead(options.database, businessId, presented, {
+    read: 'task.execution',
+    recordId: context.req.param('recordId'),
+  });
+  if (isCommandRefusal(read)) return read;
+  if ('execution' in read) return read.execution.taskId;
+  throw new Error('task.execution answered something other than an execution');
+}
+
+const RECHECK_MS = 30_000;
+const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
+
+/**
+ * One open stream: `resync` once subscribed, then each signal once the caller
+ * is asked again, and `closed` the first time the answer is no. Signals that
+ * arrive while one is pending merge into it, the strongest kept.
+ */
+async function follow(
+  stream: SSEStreamingApi,
+  live: LiveOptions,
+  businessId: string,
+  taskId: string,
+  may: () => Promise<string | CommandRefusal>,
+): Promise<void> {
+  const ended = new Promise<void>((resolve) => {
+    stream.onAbort(resolve);
+  });
+  let pending: LiveSignal | 'check' | null = null;
+  let chain = Promise.resolve();
+  const send = async (): Promise<void> => {
+    const signal = pending;
+    pending = null;
+    if (signal === null || stream.aborted) return;
+    if (typeof (await may()) !== 'string') {
+      await stream.writeSSE({ event: 'closed', data: taskId });
+      stream.abort();
+    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: taskId });
+  };
+  const want = (signal: LiveSignal | 'check'): void => {
+    if (pending === null) chain = chain.then(send).catch(() => stream.abort());
+    if (pending === null || RANK[signal] > RANK[pending]) pending = signal;
+  };
+  const unsubscribe = live.topics.subscribe(businessId, taskId, want);
+  const timer = setInterval(() => want('check'), live.recheckMs ?? RECHECK_MS);
+  try {
+    await stream.writeSSE({ event: 'resync', data: taskId });
+    await ended;
+  } finally {
+    clearInterval(timer);
+    unsubscribe();
+  }
 }
 
 /**

@@ -18,9 +18,15 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { focused, tabTo } from './tab-order.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
-const WEB = process.env.WEB_URL ?? 'http://127.0.0.1:5190';
+// No default address (T4b2, as the harness since T4b1): a pass that forgot
+// WEB_URL would measure the live demo on 5190, not the stack it meant.
+if ((process.env.WEB_URL ?? '') === '') {
+  throw new Error('keyboard and widths: set WEB_URL; there is no default address');
+}
+const WEB = process.env.WEB_URL;
 // The same gitignored directory inside the repository the rest of the browser
 // evidence goes to, so this measurement travels with a clone rather than with
 // one machine's local folder. `SHOT_DIR` still wins, and the directory is made
@@ -35,43 +41,6 @@ const steps = [];
 const step = (what) => {
   process.stderr.write(`kb: ${what}\n`);
 };
-
-/** What has focus, in the words a person would use to point at it. */
-async function focused(page) {
-  return await page.evaluate(() => {
-    const el = document.activeElement;
-    if (el === null || el === document.body) return 'the document (nothing focused)';
-    const name =
-      el.getAttribute('aria-label') ??
-      el.id ??
-      (el.textContent ?? '').trim().slice(0, 30) ??
-      el.tagName;
-    return `<${el.tagName.toLowerCase()}> ${name}`;
-  });
-}
-
-/**
- * Tab until the focused element matches, pressing at most `limit` times.
- *
- * Returns how many presses it took, which is the number a person would count,
- * or undefined when the tab order never reaches it -- a finding, not a crash.
- */
-async function tabTo(page, selector, limit = 25, text) {
-  for (let pressed = 1; pressed <= limit; pressed += 1) {
-    // eslint-disable-next-line no-await-in-loop -- one key at a time is the point.
-    await page.keyboard.press('Tab');
-    // eslint-disable-next-line no-await-in-loop
-    const there = await page.evaluate(
-      (want) =>
-        (document.activeElement?.matches(want.css) ?? false) &&
-        (want.text === undefined ||
-          (document.activeElement?.textContent ?? '').trim() === want.text),
-      { css: selector, text },
-    );
-    if (there) return pressed;
-  }
-  return undefined;
-}
 
 async function record(page, entry) {
   steps.push({ ...entry, focus: entry.focus ?? (await focused(page)) });

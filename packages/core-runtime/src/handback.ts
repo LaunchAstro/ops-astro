@@ -45,12 +45,15 @@ import {
   readLease,
   type LeaseCause,
 } from './lease-ownership.ts';
+import { raiseAlert, type Raised } from './alerts.ts';
 import { acquire, type LockSet } from './locks.ts';
 import { only, RuntimeInvariantError } from './only.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
 import { classifyUnderLocks, endLease, type Classification } from './recovery.ts';
+import { recordDrop, type DropCause } from './recovery/drop.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import { appendRunEvent, type RunEvent } from './run-events.ts';
 
 /**
  * The bounded successor a handback may ask for. Bounded is the whole point: a
@@ -75,7 +78,13 @@ export interface HandbackRequest {
   readonly leaseId: string;
   /** The fence the holder believes it owns. Compared under the locks. */
   readonly fence: number;
-  readonly outcome: 'completed' | 'failed';
+  readonly outcome: 'completed' | 'failed' | 'dropped';
+  /**
+   * T3e1: why the work dropped, when `outcome` is `dropped`: the provider did
+   * not answer, or the connection to it was lost. The worker's report of a
+   * failure under it, never of its own loss, which only the sweep names.
+   */
+  readonly dropCause?: DropCause;
   readonly report: Record<string, unknown>;
   /**
    * What the work actually cost, in minor units. `null` is the honest answer
@@ -183,6 +192,7 @@ interface Discovered {
   readonly run_id: string;
   readonly reservation_id: string;
   readonly delegation_id: string | null;
+  readonly holder_actor_id: string;
   readonly envelope_id: string;
   readonly lineage_id: string;
   readonly cap_id: string;
@@ -229,7 +239,7 @@ export async function handback(
 /** Find: the lease and every row its settlement touches, acquiring nothing. */
 async function discover(tx: TenantQuery, leaseId: string): Promise<Discovered | undefined> {
   const discovered = await tx.query<Discovered>(
-    `select l.id, l.task_id, l.run_id, l.reservation_id, l.delegation_id,
+    `select l.id, l.task_id, l.run_id, l.reservation_id, l.delegation_id, l.holder_actor_id,
             res.envelope_id, run.lineage_id, env.cap_id
        from public.leases l
        join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
@@ -404,8 +414,8 @@ interface Settled {
  * near it (R4).
  *
  * R7. The marker is read under the locks and decides whether the attempt's
- * disposition may move at all. `attempts_marked_is_quarantined` (0014:82-85)
- * requires a marked or observed attempt to sit in `quarantined`, so writing
+ * disposition may move at all. `attempts_marker_in_owning_state` (0033)
+ * admits no marker in `handed_back`, so writing
  * `handed_back` over it would abort the transaction before the classifier
  * could run. A marked attempt is left to the classifier, which quarantines it
  * and keeps the full hold for the recorded reconciliation owner.
@@ -436,11 +446,16 @@ async function settle(
   // Live and fenced under the lease lock, so the guard in `endLease` changes nothing here.
   await endLease(tx, request.leaseId, 'released');
   if (found.delegation_id !== null) await settleDelegation(tx, found.delegation_id);
-  await tx.query(
-    `update public.planned_runs set state = 'handed_back' where business_id = $1 and id = $2`,
-    [tx.businessId, found.run_id],
-  );
-  if (!attempt.marked) {
+  // T3e1: a drop is not the end of the run. The classifier releases or holds
+  // the step as for any hand-back, and `recordDrop` brings the work back.
+  const dropCause = request.outcome === 'dropped' ? request.dropCause : undefined;
+  if (dropCause === undefined) {
+    await tx.query(
+      `update public.planned_runs set state = 'handed_back' where business_id = $1 and id = $2`,
+      [tx.businessId, found.run_id],
+    );
+  }
+  if (!attempt.marked && dropCause === undefined) {
     await tx.query(
       `update public.attempts set state = 'handed_back', outcome = $3
         where business_id = $1 and id = $2`,
@@ -452,7 +467,51 @@ async function settle(
     { reservationId: found.reservation_id, cause: 'handback_completed', causeId: request.leaseId },
     locks,
   );
-  return { reportId, attemptId: attempt.id, classification };
+  const settled = { reportId, attemptId: attempt.id, classification };
+  if (dropCause !== undefined) {
+    await recordDrop(tx, { attemptId: attempt.id, cause: dropCause, retire: false, locks });
+    return settled;
+  }
+  await raiseAlert(tx, {
+    taskId: found.task_id,
+    causeId: attempt.id,
+    raised: handedBack(request, classification),
+  });
+  await appendRunEvent(tx, handedBackEvent(request, found, settled), locks);
+  return settled;
+}
+
+/** The settlement as the run's progress (T2a), citing the report, never its body. */
+function handedBackEvent(request: HandbackRequest, found: Discovered, settled: Settled): RunEvent {
+  return {
+    kind: 'handed_back',
+    taskId: found.task_id,
+    runId: found.run_id,
+    leaseId: request.leaseId,
+    attemptId: settled.attemptId,
+    actorId: found.holder_actor_id,
+    detail: {
+      outcome: request.outcome,
+      reportId: settled.reportId,
+      reservationState: settled.classification.state,
+    },
+  };
+}
+
+/**
+ * The alert a hand-back raises (T2h): a successor waits on a person to decide
+ * it, and a quarantined hold on a person to reconcile it; otherwise the run
+ * ended as the holder reported. A successor refused later rolls this back with
+ * the rest of the settlement.
+ */
+function handedBack(request: HandbackRequest, classification: Classification): Raised {
+  if (request.successor !== undefined) {
+    return { kind: 'awaiting_person', waitingReason: 'needs_approval' };
+  }
+  if (classification.state === 'quarantined') {
+    return { kind: 'awaiting_person', waitingReason: 'quarantined' };
+  }
+  return { kind: request.outcome === 'failed' ? 'failed' : 'settled' };
 }
 
 type Successor = {
@@ -517,7 +576,11 @@ async function answer(
       reportId: settled.reportId,
       reservationId: found.reservation_id,
       attemptId: settled.attemptId,
-      reservationState: settled.classification.state,
+      // T3b: an unknown liability keeps its reservation held at the whole hold.
+      reservationState:
+        settled.classification.state === 'liability_unknown'
+          ? 'held'
+          : settled.classification.state,
       classification: settled.classification,
       envelopeHeldMinor: Number(envelope.held_minor),
       envelopeActualMinor: Number(envelope.actual_minor),
@@ -555,7 +618,7 @@ export async function retainHistoricalReport(
     readonly refusalCode: string;
   },
 ): Promise<boolean> {
-  if (intake.outcome !== 'completed' && intake.outcome !== 'failed') return false;
+  if (!['completed', 'failed', 'dropped'].includes(intake.outcome)) return false;
   if (!Number.isSafeInteger(intake.fence)) return false;
   const leases = await tx.query<{ readonly reservation_id: string; readonly run_id: string }>(
     `select reservation_id, run_id from public.leases

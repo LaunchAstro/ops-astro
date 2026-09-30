@@ -93,6 +93,38 @@ module.exports = {
       },
     },
     {
+      name: 'worker-holds-no-database',
+      severity: 'error',
+      comment:
+        'The worker is a client of the API and never connects (T2b, spike RN-04): neither it ' +
+        'nor the command-line client it posts through imports a database package, the API or ' +
+        'a Postgres driver. tests/worker/worker-boundary.test.ts walks the whole graph.',
+      from: { path: '^apps/(worker/|cli/client\\.ts$)' },
+      to: {
+        path: ['^packages/core-(records|runtime|commands)/', '^apps/api/', '(^|/)(postgres|pg)/'],
+      },
+    },
+    {
+      name: 'shippable-never-reaches-tests',
+      severity: 'error',
+      comment:
+        'Test fixtures, the declining usage reporter first (specification 12.3), are for a ' +
+        'test build only. Nothing under apps/ or packages/ imports from tests/.',
+      from: { path: '^(apps|packages)/' },
+      to: { path: '^tests/' },
+    },
+    {
+      name: 'fixture-reporter-is-test-only',
+      severity: 'error',
+      comment:
+        'T3b: the second, independent barrier. The declining usage reporter drives ' +
+        'liability_unknown in tests, so it is named on its own: only a module under tests/ ' +
+        'may import it, and relaxing the rule above does not open it. ' +
+        'tests/runtime/t3b-shipped-graph.test.ts deletes that rule and plants the import.',
+      from: { pathNot: '^tests/' },
+      to: { path: '^tests/support/declining-reporter\\.ts$' },
+    },
+    {
       name: 'no-unresolvable',
       severity: 'error',
       comment: 'An import that does not resolve is a module that was never read.',

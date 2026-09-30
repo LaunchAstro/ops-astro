@@ -23,21 +23,24 @@
 // honest: an operation added to the surface cannot be skipped here quietly,
 // because being skipped is a thrown error rather than an absent row.
 
-import { randomUUID } from 'node:crypto';
-import type { CommandDeclaration, CommandName } from '../../packages/core-wire/src/surface.ts';
+import { effectOperationId, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 
-/** The proposal every case that needs a gate proposes, spelled once. */
+/**
+ * The proposal every case that needs a gate proposes, spelled once. Its step is
+ * the worker's replayable synthetic one, so the work it approves can be
+ * dispatched (T2c1); a kind declaring no reconcile mode is refused there.
+ */
 export const PROPOSAL = {
   purpose: 'draft_the_reply',
   maximumMinor: 3_000,
   currency: 'AUD',
   payload: { instruction: 'draft a reply' },
-  step: { kind: 'compose', payload: {} },
+  step: { kind: 'synthetic_comment', payload: {} },
 } as const;
 
 /** A proposal on `task`, answering with the lineage it opened. */
-async function lineageOn(context: BodyContext, task: Task): Promise<string> {
+export async function lineageOn(context: BodyContext, task: Task): Promise<string> {
   const proposed = await context.asPerson('task.propose', {
     recordId: task.id,
     expectedRevision: task.revision,
@@ -65,7 +68,7 @@ export interface BodyContext {
   freshTask(title: string): Promise<Task>;
 }
 
-const batchOf = (answer: Answer): string =>
+export const batchOf = (answer: Answer): string =>
   String((answer.body['detail'] as Record<string, unknown>)['batchId']);
 
 /** A proposal a person may decide on, which is what `task.decide` needs to exist. */
@@ -84,7 +87,7 @@ export async function approvableGate(
 }
 
 /** Proposed and approved by the context's person: a reservation on the queue. */
-async function approvedReservationId(context: BodyContext): Promise<string> {
+export async function approvedReservationId(context: BodyContext): Promise<string> {
   const gate = await approvableGate(context);
   const decided = await context.asPerson('task.decide', {
     ...gate,
@@ -95,178 +98,89 @@ async function approvedReservationId(context: BodyContext): Promise<string> {
   return String((decided.body['detail'] as Record<string, unknown>)['reservationId']);
 }
 
-/** A lease the context's person holds: their own pickup of fresh approved work (EX-01). */
-async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence: number }> {
+/** A task whose plan the context's person approved: an envelope to top up (T2e). */
+export async function approvedTaskId(context: BodyContext): Promise<string> {
+  const task = await context.freshTask('a task whose envelope is topped up');
+  const proposed = await context.asPerson('task.propose', {
+    recordId: task.id,
+    expectedRevision: task.revision,
+    ...PROPOSAL,
+  });
+  if (proposed.code !== 'ok') throw new Error(`matrix: propose refused ${proposed.code}`);
+  const detail = proposed.body['detail'] as Record<string, string>;
+  const decided = await context.asPerson('task.decide', {
+    gateId: detail['gateId'],
+    versionId: detail['versionId'],
+    decision: 'approve',
+    note: 'approved so its envelope can be topped up',
+  });
+  if (decided.code !== 'ok') throw new Error(`matrix: decide refused ${decided.code}`);
+  return task.id;
+}
+
+/** The context's person's own pickup of fresh approved work (EX-01), as its answer's detail. */
+async function ownPickup(context: BodyContext): Promise<Record<string, unknown>> {
   const picked = await context.asPerson('task.pickup', {
     reservationId: await approvedReservationId(context),
   });
   if (picked.code !== 'ok') throw new Error(`matrix: person pickup refused ${picked.code}`);
-  const detail = picked.body['detail'] as Record<string, unknown>;
+  return picked.body['detail'] as Record<string, unknown>;
+}
+
+/** A lease the context's person holds: their own pickup of fresh approved work (EX-01). */
+export async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence: number }> {
+  const detail = await ownPickup(context);
   return { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
 }
 
-export function createPositiveBody(
+/**
+ * The person's own lease with its step dispatched and its one effect applied
+ * under the attempt's operation identity (T2c2): what `task.observe` takes.
+ */
+export async function ownAppliedEffect(
   context: BodyContext,
-): (declaration: CommandDeclaration) => Promise<Prepared> {
-  // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
-  return async function positiveBody(declaration: CommandDeclaration): Promise<Prepared> {
-    const target = async (): Promise<Record<string, unknown>> => {
-      const task = await context.freshTask(`a task for ${declaration.name}`);
-      return { recordId: task.id, expectedRevision: task.revision };
-    };
-    switch (declaration.name) {
-      case 'task.create':
-        return { body: { fields: { title: 'the admin creates a task' } } };
-      case 'task.update':
-        return { body: { ...(await target()), fields: { title: 'edited by the admin' } } };
-      case 'task.start':
-      case 'task.complete':
-      case 'task.trash':
-        return { body: await target() };
-      case 'task.reopen': {
-        // Only a completed task can be reopened (`tasks-state.ts`), so this
-        // completes one first and writes against the revision that move
-        // produced rather than the one the create returned.
-        const task = await context.freshTask('a task to complete and reopen');
-        const done = await context.asPerson('task.complete', {
-          recordId: task.id,
-          expectedRevision: task.revision,
-        });
-        return {
-          body: {
-            recordId: task.id,
-            expectedRevision: Number(done.body['revision']),
-            reason: 'the admin reopens it',
-          },
-        };
-      }
-      case 'task.comment':
-        return { body: { ...(await target()), body: 'a note', audience: 'internal' } };
-      case 'task.assign':
-        return { body: { ...(await target()), fields: { assignee: context.assigneePersonId } } };
-      case 'task.triage':
-        return { body: { ...(await target()), fields: { intake_state: 'accepted' } } };
-      case 'task.set_stage':
-        return { body: { ...(await target()), fields: { stage: 'drafting' } } };
-      case 'task.set_audience':
-        return { body: { ...(await target()), fields: { client_visible: true } } };
-      case 'task.set_party':
-        // The party link takes a uuid and nothing in this tree resolves one:
-        // the party model is not installed, and `tasks-state.ts` says so where
-        // it excludes `client` from the person links it checks. So this is the
-        // operation succeeding on a well-formed identifier, which is the whole
-        // of what it claims to check — written down so a reader is not left
-        // believing a party was proved to exist.
-        return { body: { ...(await target()), fields: { client: randomUUID() } } };
-      case 'task.reparent':
-        return { body: { ...(await target()), parentId: null } };
-      case 'task.move':
-        return { body: { ...(await target()), board: null, boardSection: null } };
-      case 'task.rank': {
-        // Neighbours, never a number (specification 14.2 point 3), so a rank
-        // needs a sibling to be ranked against: a lone task cannot be ranked.
-        const neighbour = await context.freshTask('a neighbour to rank against');
-        return { body: { ...(await target()), afterId: neighbour.id } };
-      }
-      case 'task.restore': {
-        const task = await context.freshTask('a task to trash and restore');
-        const trashed = await context.asPerson('task.trash', {
-          recordId: task.id,
-          expectedRevision: task.revision,
-        });
-        return { body: { batchId: batchOf(trashed) } };
-      }
-      case 'task.purge': {
-        // The purge takes no window: it reads the business's installed
-        // retention_window_days, thirty days here, so this fresh trash stays
-        // and the case proves the authority and the operation's reach. The
-        // window boundary itself is `tests/commands/purge-retention.test.ts`.
-        const task = await context.freshTask('a task to trash and purge');
-        await context.asPerson('task.trash', {
-          recordId: task.id,
-          expectedRevision: task.revision,
-        });
-        return { body: {} };
-      }
-      case 'task.propose':
-        return { body: { ...(await target()), ...PROPOSAL } };
-      case 'task.decide': {
-        const gate = await approvableGate(context);
-        return { body: { ...gate, decision: 'approve', note: 'the admin approves' } };
-      }
-      case 'task.pickup':
-        // Person pickup (EX-01, transaction contract T3 line 66, minimum
-        // contract line 331, ledger line 30): the admin claims approved work
-        // as themselves. The agent's pickup is asserted in case (h).
-        return { body: { reservationId: await approvedReservationId(context) } };
-      case 'task.handback':
-        // The person's own lease, handed back by that person. The agent's
-        // own-lease handback is case (h), `k-handback` rows.
-        return { body: { ...(await ownLease(context)), outcome: 'completed' } };
-      case 'task.read':
-        return { body: { recordId: context.alphaTaskId } };
-      case 'task.board':
-        return { body: { board: null } };
-      case 'task.queue':
-      case 'person.list':
-      // Both take an empty body and neither carries an `expectedRevision`:
-      // `settings.read` because `business_settings` has no revision column to
-      // be stale against, `session.capabilities` because it reports the
-      // caller's own grants and there is nothing of the caller's to be stale.
-      // `settings.read` needs `settings:read`, which the seed grants the
-      // admin; `session.capabilities` needs a live grant of any kind, which
-      // the admin holds, so the admin reaches both here.
-      case 'settings.read':
-      case 'session.capabilities':
-        return { body: {} };
-      case 'preset.plan':
-        return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
-      case 'settings.set_four_eyes_threshold':
-        return { body: { value: 1200 } };
-      case 'settings.set_client_sign_off':
-        return { body: { value: true } };
-      case 'task.cancel': {
-        // A lineage to cancel is a proposal's, so one is proposed first.
-        const task = await context.freshTask('a task whose lineage is cancelled');
-        const lineageId = await lineageOn(context, task);
-        return { body: { recordId: task.id, lineageId, reason: 'the admin cancels it' } };
-      }
-      case 'task.restart': {
-        // Only a rejected or cancelled lineage is restarted, so this one is
-        // proposed and cancelled through the routes before the restart.
-        const task = await context.freshTask('a task whose lineage is restarted');
-        const lineageId = await lineageOn(context, task);
-        const cancelled = await context.asPerson('task.cancel', {
-          recordId: task.id,
-          lineageId,
-          reason: 'cancelled so it can be restarted',
-        });
-        if (cancelled.code !== 'ok') throw new Error(`matrix: cancel refused ${cancelled.code}`);
-        return { body: { recordId: task.id, lineageId } };
-      }
-      case 'grant.revoke':
-        // Its positive control is case (f): the admin revokes a member's read
-        // through this route, and the member's next read is refused. A body
-        // here would need a grant id, and the only way to one is the grant it
-        // then takes away from a later case.
-        return {
-          exception: 'executed alternative: success asserted in case (f), ada grant.revoke row',
-        };
-      case 'delegation.revoke':
-        // A delegation exists only after an agent's pickup, which this recipe
-        // cannot make. The journey makes one and the admin revokes it through
-        // this route, case (h), `k-revoke` rows.
-        return {
-          exception:
-            'executed alternative: needs a pickup; ada revokes a live delegation in ' +
-            'case (h), k-revoke rows',
-        };
-      case 'task.heartbeat':
-        // The person renews their own lease (ledger line 38, "current lease
-        // owner"). The agent's renewal is in the agent journey.
-        return { body: await ownLease(context) };
-      default:
-        throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
-    }
-  };
+): Promise<{ leaseId: string; fence: number; attemptId: string }> {
+  const { taskId: _taskId, ...applied } = await ownAppliedOnTask(context);
+  return applied;
+}
+
+/** `ownAppliedEffect`, with the task it applied on (T3d1). */
+async function ownAppliedOnTask(
+  context: BodyContext,
+): Promise<{ leaseId: string; fence: number; attemptId: string; taskId: string }> {
+  const detail = await ownPickup(context);
+  const lease = { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
+  const attemptId = String(detail['attemptId']);
+  const taskId = String(detail['taskId']);
+  const marked = await context.asPerson('task.dispatch', lease);
+  if (marked.code !== 'ok') throw new Error(`matrix: dispatch refused ${marked.code}`);
+  const read = await context.asPerson('task.read', { recordId: taskId });
+  const effect = await context.asPerson('task.comment', {
+    operationId: effectOperationId(attemptId),
+    recordId: taskId,
+    expectedRevision: (read.body['task'] as { revision: number }).revision,
+    body: 'the synthetic effect',
+    audience: 'internal',
+  });
+  if (effect.code !== 'ok') throw new Error(`matrix: effect refused ${effect.code}`);
+  return { ...lease, attemptId, taskId };
+}
+
+/**
+ * An attempt of the person's own held as an unknown liability (T2d): its effect
+ * applied, then observed at a cost above the hold. What a recorded outcome
+ * takes (T3d1).
+ */
+export async function ownUnknownAttempt(context: BodyContext): Promise<Record<string, unknown>> {
+  const { taskId, ...applied } = await ownAppliedOnTask(context);
+  const observed = await context.asPerson('task.observe', {
+    ...applied,
+    usage: { item: 'synthetic_comment_long', quantity: 1 },
+  });
+  // T2d answers a cost above the hold BUDGET_UNAVAILABLE and keeps the
+  // attempt held unknown (the refusal retains its writes).
+  if (observed.code !== 'BUDGET_UNAVAILABLE') {
+    throw new Error(`matrix: observe answered ${observed.code}, not the unknown hold`);
+  }
+  return { recordId: taskId, attemptId: applied.attemptId };
 }

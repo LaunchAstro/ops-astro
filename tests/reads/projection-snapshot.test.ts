@@ -250,7 +250,7 @@ describe.skipIf(serverUrl === undefined)('one proposal read, one state of the ta
 
         // And the committed decision reads afterwards, whole.
         // eslint-disable-next-line no-await-in-loop
-        const after = await current.db.app.withBusiness(current.alpha, async (tx) =>
+        const after = await current.db.app.withBusiness(current.alpha, (tx) =>
           readTaskProposals(tx, gate.taskId, configuredKey()),
         );
         expect(mixedPairs(after)).toEqual([]);
@@ -326,7 +326,7 @@ describe.skipIf(serverUrl === undefined)('one proposal read, one state of the ta
     }
     let failure: unknown = null;
     try {
-      await next.db.app.withBusiness(next.alpha, async (tx) =>
+      await next.db.app.withBusiness(next.alpha, (tx) =>
         readTaskProposals(tx, tampered.taskId, configuredKey()),
       );
     } catch (cause) {

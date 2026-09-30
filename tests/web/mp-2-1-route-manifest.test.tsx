@@ -183,11 +183,16 @@ describe('MP-2-1 no legacy alias', () => {
   });
 });
 
-describe('MP-2-1 legacy redirects', () => {
-  const known = mockupAddresses().filter(
-    (route) => route.source !== undefined && LEGACY.test(route.source),
-  );
+const known = mockupAddresses().filter(
+  (route) => route.source !== undefined && LEGACY.test(route.source),
+);
 
+describe('MP-2-1 legacy redirects', () => {
+  legacyAddressesResolve();
+  redirectsThenChecksTheGrant();
+});
+
+function legacyAddressesResolve(): void {
   it('maps every known legacy address to a canonical one in the manifest', () => {
     expect(known.length).toBeGreaterThan(30);
     for (const route of known) {
@@ -230,7 +235,9 @@ describe('MP-2-1 legacy redirects', () => {
     expect(canonicalOf('/dashboard/portfolio/')).toBeNull();
     expect(canonicalOf('/agency/never-was/')).toBeNull();
   });
+}
 
+function redirectsThenChecksTheGrant(): void {
   it('redirects in the application, then applies the same grant check', async () => {
     const mine = await open('/client-portal/library/voice/?client=acme-dental');
     expect(mine.seen.at(-1)).toBe('/clients/acme-dental/library/voice/');
@@ -243,7 +250,7 @@ describe('MP-2-1 legacy redirects', () => {
     expect(theirs.view.find('[data-outcome="placeholder"]')).toBeNull();
     await theirs.view.unmount();
   });
-});
+}
 
 describe('MP-2-1 cross-face links', () => {
   it('declares a reason for every crossing', () => {

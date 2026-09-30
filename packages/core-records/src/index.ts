@@ -71,7 +71,11 @@ export { isLive, refuseGenericWrite, type FieldDefinition } from './records/fiel
 export { planPresetSync, type PresetField, type PresetPlan } from './records/preset-plan.ts';
 export { isRecordsRefusal, type RecordsRefusal } from './records/refusals.ts';
 export {
+  audienceNotPermitted,
   CALLER_VISIBLE,
+  fourEyesRequired,
+  gateAlreadyDecided,
+  gatePending,
   isCommandRefusal,
   REFUSAL_REGISTER,
   refuseCommand,
@@ -110,10 +114,12 @@ export {
   advisoryLock,
   connect,
   connectAsAdmin,
+  connectListener,
   isBusinessId,
   type AdminConnection,
   type BusinessId,
   type Database,
+  type Listener,
   type TenantQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
