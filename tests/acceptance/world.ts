@@ -35,7 +35,7 @@
 
 import { openReplayBroker, type ReplayBroker } from '../broker/replay-broker.ts';
 import { randomUUID } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { INSTRUCTION_ROOT_VARIABLE } from '../../packages/core-runtime/src/index.ts';
 import {
   createFreshDatabase,
@@ -108,9 +108,11 @@ export interface World {
 export async function createWorld(part: string): Promise<World> {
   process.env['GATE_SIGNING_KEY_ID'] ??= `test/acceptance@1`;
   process.env['GATE_SIGNING_SECRET'] ??= randomUUID();
-  // AW-04: the plan accept reads the run's instruction file from the server's root.
-  process.env[INSTRUCTION_ROOT_VARIABLE] ??= fileURLToPath(
-    new URL('../support/instruction-root', import.meta.url),
+  // AW-04: the plan accept reads the run's instruction file from the server's
+  // root. By directory, not `import.meta.url`: a jsdom suite's is not a file URL.
+  process.env[INSTRUCTION_ROOT_VARIABLE] ??= join(
+    import.meta.dirname,
+    '../support/instruction-root',
   );
 
   const db = await createFreshDatabase({ part });
