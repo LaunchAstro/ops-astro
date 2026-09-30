@@ -16,8 +16,11 @@ export function withProviderKey(
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const address = input instanceof Request ? input.url : String(input);
     if (!address.startsWith(base)) return await fetcher(input, init);
-    const headers = new Headers(init?.headers);
+    // A Request's own headers first, then the call's, then the key.
+    const headers = new Headers(input instanceof Request ? input.headers : undefined);
+    for (const [name, value] of new Headers(init?.headers)) headers.set(name, value);
     headers.set('apikey', key);
-    return await fetcher(input, { ...init, headers });
+    // The key never follows a redirect to another host.
+    return await fetcher(input, { ...init, headers, redirect: 'error' });
   }) as typeof fetch;
 }
