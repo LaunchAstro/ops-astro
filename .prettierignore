@@ -15,3 +15,7 @@ skills-lock.json
 # Sol's review proofs, committed byte-for-byte as the review patch held them
 # so a reader can compare them with the patch. See issue #174.
 tests/runtime/t2d-proof-body-byte-identity.test.ts
+
+# AW-13's pinned trace target: the vendor's files byte-for-byte at the pin, and
+# the model `docker compose config` renders from them, compared as rendered.
+scripts/local/trace-target

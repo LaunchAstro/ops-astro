@@ -26,6 +26,10 @@ paths = [
   '''^pnpm-lock\.yaml$''',
   '''^scripts/gate/denylist\.sha256$''',
   '''^scripts/gate/shape-rules\.txt$''',
+  # The trace target vendor's environment example, byte-identical at its pin:
+  # its commented placeholder key reads as one. `AW-13 pinned profile` refuses
+  # any byte change to this file, so nothing new can sit here unscanned.
+  '''^scripts/local/trace-target/env\.prod\.example$''',
   '''^tests/gate/canary\.txt$''',
   '''^tests/gate/shape-canary\.txt$''',
 ]

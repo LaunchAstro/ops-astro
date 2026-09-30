@@ -1,0 +1,294 @@
+{
+  "networks": {
+    "default": {
+      "name": "aw13-render_default"
+    }
+  },
+  "services": {
+    "clickhouse": {
+      "environment": [
+        "CLICKHOUSE_DB=default",
+        "CLICKHOUSE_PASSWORD=${TRACE_TARGET_CLICKHOUSE_PASSWORD:?}",
+        "CLICKHOUSE_USER=${CLICKHOUSE_USER:-clickhouse}"
+      ],
+      "healthcheck": {
+        "interval": "5s",
+        "retries": 10,
+        "start_period": "1s",
+        "test": "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1",
+        "timeout": "5s"
+      },
+      "image": "docker.io/clickhouse/clickhouse-server:26.4@sha256:c7796a1335d14385c052f10061cf719f4a368a908432ec25980860b1333e9ccd",
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "user": "101:101",
+      "volumes": [
+        {
+          "source": "langfuse_clickhouse_data",
+          "target": "/var/lib/clickhouse",
+          "type": "volume",
+          "volume": {}
+        },
+        {
+          "source": "langfuse_clickhouse_logs",
+          "target": "/var/log/clickhouse-server",
+          "type": "volume",
+          "volume": {}
+        }
+      ]
+    },
+    "langfuse-web": {
+      "depends_on": {
+        "clickhouse": {
+          "condition": "service_healthy",
+          "required": true
+        },
+        "minio": {
+          "condition": "service_healthy",
+          "required": true
+        },
+        "postgres": {
+          "condition": "service_healthy",
+          "required": true
+        },
+        "redis": {
+          "condition": "service_healthy",
+          "required": true
+        }
+      },
+      "environment": [
+        "CLICKHOUSE_CLUSTER_ENABLED=false",
+        "CLICKHOUSE_CLUSTER_NAME=${CLICKHOUSE_CLUSTER_NAME:-default}",
+        "CLICKHOUSE_MIGRATION_URL=${CLICKHOUSE_MIGRATION_URL:-clickhouse://clickhouse:9000}",
+        "CLICKHOUSE_PASSWORD=${TRACE_TARGET_CLICKHOUSE_PASSWORD:?}",
+        "CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}",
+        "CLICKHOUSE_USER=${CLICKHOUSE_USER:-clickhouse}",
+        "DATABASE_URL=postgresql://postgres:${TRACE_TARGET_POSTGRES_PASSWORD:?}@postgres:5432/postgres",
+        "EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS:-}",
+        "ENCRYPTION_KEY=${TRACE_TARGET_ENCRYPTION_KEY:?}",
+        "LANGFUSE_BULLMQ_SKIP_REDIS_VERSION_CHECK=${LANGFUSE_BULLMQ_SKIP_REDIS_VERSION_CHECK:-false}",
+        "LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=${LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES:-false}",
+        "LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS=${LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS:-}",
+        "LANGFUSE_INGESTION_QUEUE_DELAY_MS=${LANGFUSE_INGESTION_QUEUE_DELAY_MS:-}",
+        "LANGFUSE_INIT_ORG_ID=${LANGFUSE_INIT_ORG_ID:-}",
+        "LANGFUSE_INIT_ORG_NAME=${LANGFUSE_INIT_ORG_NAME:-}",
+        "LANGFUSE_INIT_PROJECT_ID=${LANGFUSE_INIT_PROJECT_ID:-}",
+        "LANGFUSE_INIT_PROJECT_NAME=${LANGFUSE_INIT_PROJECT_NAME:-}",
+        "LANGFUSE_INIT_PROJECT_PUBLIC_KEY=${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-}",
+        "LANGFUSE_INIT_PROJECT_SECRET_KEY=${LANGFUSE_INIT_PROJECT_SECRET_KEY:-}",
+        "LANGFUSE_INIT_USER_EMAIL=${LANGFUSE_INIT_USER_EMAIL:-}",
+        "LANGFUSE_INIT_USER_NAME=${LANGFUSE_INIT_USER_NAME:-}",
+        "LANGFUSE_INIT_USER_PASSWORD=${LANGFUSE_INIT_USER_PASSWORD:-}",
+        "LANGFUSE_JSON_BAD_UNICODE_ESCAPE=${LANGFUSE_JSON_BAD_UNICODE_ESCAPE:-}",
+        "LANGFUSE_MARKDOWN_RENDER_CHARACTER_LIMIT=${LANGFUSE_MARKDOWN_RENDER_CHARACTER_LIMIT:-}",
+        "LANGFUSE_OBSERVATION_FIELD_OVERFLOW_ENABLED=${LANGFUSE_OBSERVATION_FIELD_OVERFLOW_ENABLED:-false}",
+        "LANGFUSE_OBSERVATION_FIELD_SIZE_LIMIT_BYTES=${LANGFUSE_OBSERVATION_FIELD_SIZE_LIMIT_BYTES:-2097152}",
+        "LANGFUSE_OCI_AUTH_TYPE=${LANGFUSE_OCI_AUTH_TYPE:-workload_identity}",
+        "LANGFUSE_S3_BATCH_EXPORT_ENABLED=false",
+        "LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID=${LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID:-minio}",
+        "LANGFUSE_S3_EVENT_UPLOAD_BUCKET=${LANGFUSE_S3_EVENT_UPLOAD_BUCKET:-langfuse}",
+        "LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT=${LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT:-http://minio:9000}",
+        "LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE=${LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE:-true}",
+        "LANGFUSE_S3_EVENT_UPLOAD_PREFIX=${LANGFUSE_S3_EVENT_UPLOAD_PREFIX:-events/}",
+        "LANGFUSE_S3_EVENT_UPLOAD_REGION=${LANGFUSE_S3_EVENT_UPLOAD_REGION:-auto}",
+        "LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY=${TRACE_TARGET_MINIO_PASSWORD:?}",
+        "LANGFUSE_USE_AZURE_BLOB=${LANGFUSE_USE_AZURE_BLOB:-false}",
+        "LANGFUSE_USE_OCI_NATIVE_OBJECT_STORAGE=${LANGFUSE_USE_OCI_NATIVE_OBJECT_STORAGE:-false}",
+        "NEXTAUTH_SECRET=${TRACE_TARGET_NEXTAUTH_SECRET:?}",
+        "NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}",
+        "REDIS_AUTH=${TRACE_TARGET_REDIS_PASSWORD:?}",
+        "REDIS_HOST=${REDIS_HOST:-redis}",
+        "REDIS_PORT=${REDIS_PORT:-6379}",
+        "REDIS_TLS_CA=${REDIS_TLS_CA:-/certs/ca.crt}",
+        "REDIS_TLS_CERT=${REDIS_TLS_CERT:-/certs/redis.crt}",
+        "REDIS_TLS_ENABLED=${REDIS_TLS_ENABLED:-false}",
+        "REDIS_TLS_KEY=${REDIS_TLS_KEY:-/certs/redis.key}",
+        "SALT=${TRACE_TARGET_SALT:?}",
+        "SMTP_CONNECTION_URL=${SMTP_CONNECTION_URL:-}",
+        "TELEMETRY_ENABLED=false",
+        "AUTH_DISABLE_SIGNUP=true",
+        "AUTH_SESSION_MAX_AGE=60",
+        "LANGFUSE_MEDIA_UPLOAD_ENABLED=false"
+      ],
+      "image": "docker.io/langfuse/langfuse:4.33.0@sha256:1e2bb860753bb61978e68270d70f194b204dc15c4278c1bb95ce904bc4e60123",
+      "networks": {
+        "default": null
+      },
+      "ports": ["127.0.0.1:${TRACE_TARGET_PORT:?}:3000"],
+      "restart": "no"
+    },
+    "langfuse-worker": {
+      "depends_on": {
+        "clickhouse": {
+          "condition": "service_healthy",
+          "required": true
+        },
+        "minio": {
+          "condition": "service_healthy",
+          "required": true
+        },
+        "postgres": {
+          "condition": "service_healthy",
+          "required": true
+        },
+        "redis": {
+          "condition": "service_healthy",
+          "required": true
+        }
+      },
+      "environment": [
+        "CLICKHOUSE_CLUSTER_ENABLED=false",
+        "CLICKHOUSE_CLUSTER_NAME=${CLICKHOUSE_CLUSTER_NAME:-default}",
+        "CLICKHOUSE_MIGRATION_URL=${CLICKHOUSE_MIGRATION_URL:-clickhouse://clickhouse:9000}",
+        "CLICKHOUSE_PASSWORD=${TRACE_TARGET_CLICKHOUSE_PASSWORD:?}",
+        "CLICKHOUSE_URL=${CLICKHOUSE_URL:-http://clickhouse:8123}",
+        "CLICKHOUSE_USER=${CLICKHOUSE_USER:-clickhouse}",
+        "DATABASE_URL=postgresql://postgres:${TRACE_TARGET_POSTGRES_PASSWORD:?}@postgres:5432/postgres",
+        "EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS:-}",
+        "ENCRYPTION_KEY=${TRACE_TARGET_ENCRYPTION_KEY:?}",
+        "LANGFUSE_BULLMQ_SKIP_REDIS_VERSION_CHECK=${LANGFUSE_BULLMQ_SKIP_REDIS_VERSION_CHECK:-false}",
+        "LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=${LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES:-false}",
+        "LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS=${LANGFUSE_INGESTION_CLICKHOUSE_WRITE_INTERVAL_MS:-}",
+        "LANGFUSE_INGESTION_QUEUE_DELAY_MS=${LANGFUSE_INGESTION_QUEUE_DELAY_MS:-}",
+        "LANGFUSE_JSON_BAD_UNICODE_ESCAPE=${LANGFUSE_JSON_BAD_UNICODE_ESCAPE:-}",
+        "LANGFUSE_OBSERVATION_FIELD_OVERFLOW_ENABLED=${LANGFUSE_OBSERVATION_FIELD_OVERFLOW_ENABLED:-false}",
+        "LANGFUSE_OBSERVATION_FIELD_SIZE_LIMIT_BYTES=${LANGFUSE_OBSERVATION_FIELD_SIZE_LIMIT_BYTES:-2097152}",
+        "LANGFUSE_OCI_AUTH_TYPE=${LANGFUSE_OCI_AUTH_TYPE:-workload_identity}",
+        "LANGFUSE_S3_BATCH_EXPORT_ENABLED=false",
+        "LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID=${LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID:-minio}",
+        "LANGFUSE_S3_EVENT_UPLOAD_BUCKET=${LANGFUSE_S3_EVENT_UPLOAD_BUCKET:-langfuse}",
+        "LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT=${LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT:-http://minio:9000}",
+        "LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE=${LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE:-true}",
+        "LANGFUSE_S3_EVENT_UPLOAD_PREFIX=${LANGFUSE_S3_EVENT_UPLOAD_PREFIX:-events/}",
+        "LANGFUSE_S3_EVENT_UPLOAD_REGION=${LANGFUSE_S3_EVENT_UPLOAD_REGION:-auto}",
+        "LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY=${TRACE_TARGET_MINIO_PASSWORD:?}",
+        "LANGFUSE_USE_AZURE_BLOB=${LANGFUSE_USE_AZURE_BLOB:-false}",
+        "LANGFUSE_USE_OCI_NATIVE_OBJECT_STORAGE=${LANGFUSE_USE_OCI_NATIVE_OBJECT_STORAGE:-false}",
+        "NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}",
+        "REDIS_AUTH=${TRACE_TARGET_REDIS_PASSWORD:?}",
+        "REDIS_HOST=${REDIS_HOST:-redis}",
+        "REDIS_PORT=${REDIS_PORT:-6379}",
+        "REDIS_TLS_CA=${REDIS_TLS_CA:-/certs/ca.crt}",
+        "REDIS_TLS_CERT=${REDIS_TLS_CERT:-/certs/redis.crt}",
+        "REDIS_TLS_ENABLED=${REDIS_TLS_ENABLED:-false}",
+        "REDIS_TLS_KEY=${REDIS_TLS_KEY:-/certs/redis.key}",
+        "SALT=${TRACE_TARGET_SALT:?}",
+        "SMTP_CONNECTION_URL=${SMTP_CONNECTION_URL:-}",
+        "TELEMETRY_ENABLED=false",
+        "LANGFUSE_MEDIA_UPLOAD_ENABLED=false"
+      ],
+      "image": "docker.io/langfuse/langfuse-worker:4.33.0@sha256:bc245319e36c9c9f27d8725d04c42b92d641f524e0de27af596bf34a66d5a6d5",
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "minio": {
+      "command": "-c 'mkdir -p /data/langfuse && minio server --address \":9000\" --console-address \":9001\" /data'",
+      "entrypoint": "sh",
+      "environment": [
+        "MINIO_ROOT_PASSWORD=${TRACE_TARGET_MINIO_PASSWORD:?}",
+        "MINIO_ROOT_USER=${MINIO_ROOT_USER:-minio}"
+      ],
+      "healthcheck": {
+        "interval": "1s",
+        "retries": 5,
+        "start_period": "1s",
+        "test": ["CMD", "mc", "ready", "local"],
+        "timeout": "5s"
+      },
+      "image": "cgr.dev/chainguard/minio@sha256:0322beaafcef0ee0d272195174279a3612f9a9b2a713fb4b3c399ab891ba0119",
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "volumes": [
+        {
+          "source": "langfuse_minio_data",
+          "target": "/data",
+          "type": "volume",
+          "volume": {}
+        }
+      ]
+    },
+    "postgres": {
+      "environment": [
+        "PGTZ=UTC",
+        "POSTGRES_DB=${POSTGRES_DB:-postgres}",
+        "POSTGRES_PASSWORD=${TRACE_TARGET_POSTGRES_PASSWORD:?}",
+        "POSTGRES_USER=${POSTGRES_USER:-postgres}",
+        "TZ=UTC"
+      ],
+      "healthcheck": {
+        "interval": "3s",
+        "retries": 10,
+        "test": ["CMD-SHELL", "pg_isready -U postgres"],
+        "timeout": "3s"
+      },
+      "image": "docker.io/postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675",
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "volumes": [
+        {
+          "source": "langfuse_postgres_data",
+          "target": "/var/lib/postgresql/data",
+          "type": "volume",
+          "volume": {}
+        }
+      ]
+    },
+    "redis": {
+      "command": [
+        "--requirepass",
+        "${TRACE_TARGET_REDIS_PASSWORD:?}",
+        "--maxmemory-policy",
+        "noeviction"
+      ],
+      "healthcheck": {
+        "interval": "3s",
+        "retries": 10,
+        "test": ["CMD", "redis-cli", "ping"],
+        "timeout": "10s"
+      },
+      "image": "docker.io/valkey/valkey:8@sha256:3fbd2e3e4b6e85e046c1e7c215e8f79087bc0357789184305806664e320996f3",
+      "networks": {
+        "default": null
+      },
+      "restart": "no",
+      "volumes": [
+        {
+          "source": "langfuse_redis_data",
+          "target": "/data",
+          "type": "volume",
+          "volume": {}
+        }
+      ]
+    }
+  },
+  "volumes": {
+    "langfuse_clickhouse_data": {
+      "driver": "local",
+      "name": "aw13-render_langfuse_clickhouse_data"
+    },
+    "langfuse_clickhouse_logs": {
+      "driver": "local",
+      "name": "aw13-render_langfuse_clickhouse_logs"
+    },
+    "langfuse_minio_data": {
+      "driver": "local",
+      "name": "aw13-render_langfuse_minio_data"
+    },
+    "langfuse_postgres_data": {
+      "driver": "local",
+      "name": "aw13-render_langfuse_postgres_data"
+    },
+    "langfuse_redis_data": {
+      "driver": "local",
+      "name": "aw13-render_langfuse_redis_data"
+    }
+  }
+}
