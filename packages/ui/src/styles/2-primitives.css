@@ -517,6 +517,75 @@
   box-shadow: var(--shadow-overlay);
 }
 
+/* -- Not connected, unavailable and freshness (MP-1-6). No hatch and no pink
+      here: pink is for sample data on a demo install only (R56). -- */
+.notconn {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-5);
+  border: 1px dashed var(--border-strong);
+  color: var(--text-2);
+}
+.notconn > p {
+  margin: 0;
+}
+.notconn__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-3);
+}
+.notconn__word {
+  color: var(--text);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
+}
+.notconn__source {
+  color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+.notconn__reason {
+  max-width: 60ch;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.unavail {
+  display: inline-flex;
+  border-bottom: 0;
+  cursor: not-allowed;
+}
+.freshrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+/* An indicator: the bordered mono look in its one state, no hover, no press. */
+.fresh {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1-5);
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  cursor: default;
+}
+.fresh__live {
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--success);
+}
+.fresh--offline,
+.fresh--source-behind {
+  color: var(--warning);
+}
+
 /* -- The stamp (DS-PRIM-25): a timestamp or provenance line. ------------- */
 .stamp {
   color: var(--text-muted);

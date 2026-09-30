@@ -5,7 +5,7 @@
 // the read sent them. A kind or reason this build does not know prints raw.
 
 import type { ReactElement } from 'react';
-import { PaneEmpty } from '@launchastro/ui';
+import { Empty } from '@launchastro/ui';
 import type { TaskAlert } from '../../../../../packages/core-wire/src/index.ts';
 
 const KINDS: Readonly<Record<string, string>> = {
@@ -37,7 +37,7 @@ export function Alerts(props: {
         <span className="sb__k">Alerts</span>
       </div>
       {props.alerts.length === 0 ? (
-        <PaneEmpty say="No alert on this task." />
+        <Empty look="inline" title="No alert on this task." />
       ) : (
         <div className="sbact">
           {props.alerts.map((alert) => (
