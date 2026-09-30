@@ -9,7 +9,7 @@
 // unchanged. On the real commands against Postgres.
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { grantTo } from '../commands/fixture.ts';
 import {
@@ -58,54 +58,60 @@ const runsOn = async (ticket: string): Promise<number> =>
 const proposeAsPerson = async (ticket: string) =>
   await asPerson(s, proposeBody(ticket, await revisionOf(s, ticket), { purpose: freshPurpose() }));
 
-describe.skipIf(databaseUrlFromEnvironment() === undefined)('WF-7 run started (research)', () => {
-  beforeAll(async () => {
-    s = await openSchedules('wf7run', 1_000_000);
-  }, 180_000);
-  afterAll(async () => await s?.db.drop());
+/** Every case needs the database; without one the file is skipped. */
+const noDatabase = databaseUrlFromEnvironment() === undefined;
+const it = noDatabase ? vitestIt.skip : vitestIt;
 
-  it('WF-7 refusal run:write: a person holding task:write but not run:write cannot start a research run', async () => {
-    const ticket = await researchTicket('wf7 no run write');
-    expect(codeOf(await proposeAsPerson(ticket))).toBe('SCOPE_NOT_GRANTED');
-    expect(await runsOn(ticket)).toBe(0);
-    // The same person proposes on a task that is not research, as before.
-    const plain = await createTask(s, 'wf7 plain task');
-    appliedDetail(await proposeAsPerson(plain), 'task.propose');
-  }, 60_000);
+beforeAll(async () => {
+  if (!noDatabase) s = await openSchedules('wf7run', 1_000_000);
+}, 180_000);
+afterAll(async () => await s?.db.drop());
 
-  it('WF-7 run started (research): run:write on the ticket starts it', async () => {
-    const ticket = await researchTicket('wf7 run write held');
-    await grantRunWrite(ticket);
-    appliedDetail(await proposeAsPerson(ticket), 'task.propose');
-    expect(await runsOn(ticket)).toBe(1);
-  }, 60_000);
+it('WF-7 refusal run:write: a person holding task:write but not run:write cannot start a research run', async () => {
+  const ticket = await researchTicket('wf7 no run write');
+  expect(codeOf(await proposeAsPerson(ticket))).toBe('SCOPE_NOT_GRANTED');
+  expect(await runsOn(ticket)).toBe(0);
+  // The same person proposes on a task that is not research, as before.
+  const plain = await createTask(s, 'wf7 plain task');
+  appliedDetail(await proposeAsPerson(plain), 'task.propose');
+}, 60_000);
 
-  it('WF-7 refusal run:write: an agent whose delegation does not reach run cannot start one, though its person now holds it', async () => {
-    // Picked up while the person held no run:write, so the delegation is the
-    // task alone; the ticket turns research after, and the person is granted
-    // run:write after: the delegation's own reach is what refuses.
-    const task = await createTask(s, 'wf7 agent task-only');
-    const purpose = freshPurpose();
-    const proposal = await propose(s, task, { purpose });
-    const picked = await pickup(s, (await approve(s, proposal))['reservationId']);
-    appliedDetail(
-      await asPerson(s, {
-        command: 'task.set_type',
-        operationId: randomUUID(),
-        recordId: task,
-        expectedRevision: await revisionOf(s, task),
-        taskType: 'research',
-      }),
-      'task.set_type',
-    );
-    await grantRunWrite(task);
-    const before = await runsOn(task);
-    const answer = await asAgent(
-      s,
-      proposeBody(task, await revisionOf(s, task), { purpose }),
-      String(picked['credential']),
-    );
-    expect(codeOf(answer)).toBe('DELEGATION_OUT_OF_PURPOSE');
-    expect(await runsOn(task)).toBe(before);
-  }, 120_000);
-});
+it('WF-7 run started (research): run:write on the ticket starts it', async () => {
+  const ticket = await researchTicket('wf7 run write held');
+  await grantRunWrite(ticket);
+  appliedDetail(await proposeAsPerson(ticket), 'task.propose');
+  expect(await runsOn(ticket)).toBe(1);
+  // The grant is the ticket's: another research ticket stays refused.
+  const other = await researchTicket('wf7 run write elsewhere');
+  expect(codeOf(await proposeAsPerson(other))).toBe('SCOPE_NOT_GRANTED');
+  expect(await runsOn(other)).toBe(0);
+}, 60_000);
+
+it('WF-7 refusal run:write: an agent whose delegation does not reach run cannot start one, though its person now holds it', async () => {
+  // Picked up while the person held no run:write, so the delegation is the
+  // task alone; the ticket turns research after, and the person is granted
+  // run:write after: the delegation's own reach is what refuses.
+  const task = await createTask(s, 'wf7 agent task-only');
+  const purpose = freshPurpose();
+  const proposal = await propose(s, task, { purpose });
+  const picked = await pickup(s, (await approve(s, proposal))['reservationId']);
+  appliedDetail(
+    await asPerson(s, {
+      command: 'task.set_type',
+      operationId: randomUUID(),
+      recordId: task,
+      expectedRevision: await revisionOf(s, task),
+      taskType: 'research',
+    }),
+    'task.set_type',
+  );
+  await grantRunWrite(task);
+  const before = await runsOn(task);
+  const answer = await asAgent(
+    s,
+    proposeBody(task, await revisionOf(s, task), { purpose }),
+    String(picked['credential']),
+  );
+  expect(codeOf(answer)).toBe('DELEGATION_OUT_OF_PURPOSE');
+  expect(await runsOn(task)).toBe(before);
+}, 120_000);
