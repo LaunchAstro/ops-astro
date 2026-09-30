@@ -49,31 +49,7 @@ export function AssignToAI(props: AssignToAIProps): ReactElement | null {
         </p>
       )}
       {task.myAgents.length === 0 ? null : (
-        <>
-          <label className="tf__k" htmlFor={id}>
-            Assign to AI
-          </label>
-          <select
-            id={id}
-            className="input"
-            disabled={busy}
-            value={
-              task.myAgents.some((one) => one.delegationId === held?.delegationId)
-                ? (held?.delegationId ?? '')
-                : ''
-            }
-            onChange={(event) => {
-              if (event.target.value !== '') assign(event.target.value);
-            }}
-          >
-            <option value="">Choose one of your agents</option>
-            {task.myAgents.map((agent) => (
-              <option key={agent.delegationId} value={agent.delegationId}>
-                {agent.purpose}
-              </option>
-            ))}
-          </select>
-        </>
+        <AgentSelect id={id} task={task} busy={busy} onAssign={assign} />
       )}
       {because === null ? null : (
         <p className="field__error" role="alert">
@@ -81,5 +57,40 @@ export function AssignToAI(props: AssignToAIProps): ReactElement | null {
         </p>
       )}
     </div>
+  );
+}
+
+/** The reader's own agents for the task; the held one selected when it is theirs. */
+function AgentSelect(props: {
+  readonly id: string;
+  readonly task: Task;
+  readonly busy: boolean;
+  readonly onAssign: (agent: string) => void;
+}): ReactElement {
+  const { task } = props;
+  const held = task.agent?.delegationId ?? '';
+  const mine = task.myAgents.some((one) => one.delegationId === held);
+  return (
+    <>
+      <label className="tf__k" htmlFor={props.id}>
+        Assign to AI
+      </label>
+      <select
+        id={props.id}
+        className="input"
+        disabled={props.busy}
+        value={mine ? held : ''}
+        onChange={(event) => {
+          if (event.target.value !== '') props.onAssign(event.target.value);
+        }}
+      >
+        <option value="">Choose one of your agents</option>
+        {task.myAgents.map((agent) => (
+          <option key={agent.delegationId} value={agent.delegationId}>
+            {agent.purpose}
+          </option>
+        ))}
+      </select>
+    </>
   );
 }
