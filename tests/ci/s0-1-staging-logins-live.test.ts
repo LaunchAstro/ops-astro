@@ -9,7 +9,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -30,6 +30,7 @@ const STAGING = Array.from(randomBytes(20), (byte) => String.fromCodePoint(97 + 
   '',
 );
 const OWN = `own_${randomBytes(4).toString('hex')}`;
+const ADMIN = `${OWN}.${STAGING}`;
 const OWN_PASSWORD = `${TEST_ONLY_MARKER}-${randomBytes(18).toString('hex')}`;
 const LOGINS = [
   'ops_astro_api',
@@ -63,6 +64,8 @@ function bare(address: string): string {
   url.username = decodeURIComponent(url.username).split('.')[0] ?? '';
   url.hostname = server.hostname;
   url.port = server.port;
+  // Loopback serves no TLS; the address's own `sslmode=require` is checked apart.
+  url.search = '';
   return url.toString();
 }
 
@@ -84,15 +87,25 @@ beforeAll(async () => {
   await db.app.close();
   const server = connectAsAdmin(serverUrl ?? '', { source: 'harness' });
   try {
+    // As on the hosted project: the admin is no superuser, it may create roles and
+    // hands out BYPASSRLS and REPLICATION only because it holds them, and it owns
+    // the database. It holds ADMIN on the app group, as the project's admin does
+    // on every role it made.
     await server.execute(
-      `create role "${OWN}.${STAGING}" login superuser password '${OWN_PASSWORD}'`,
+      `create role "${ADMIN}" login nosuperuser createrole bypassrls replication ` +
+        `password '${OWN_PASSWORD}'`,
+    );
+    await server.execute(`alter database "${db.name}" owner to "${ADMIN}"`);
+    await server.execute(
+      `do $$ begin if exists (select 1 from pg_roles where rolname = 'ops_astro_app') ` +
+        `then grant ops_astro_app to "${ADMIN}" with admin option; end if; end $$`,
     );
   } finally {
     await server.close();
   }
   const url = new URL(serverUrl ?? '');
   url.hostname = POOLER;
-  url.username = `${OWN}.${STAGING}`;
+  url.username = ADMIN;
   url.password = OWN_PASSWORD;
   url.pathname = `/${db.name}`;
   adminUrl = url.toString();
@@ -105,7 +118,7 @@ afterAll(async () => {
   await db?.drop();
   const server = connectAsAdmin(serverUrl ?? '', { source: 'harness' });
   try {
-    for (const role of [...LOGINS, `${OWN}.${STAGING}`]) {
+    for (const role of [...LOGINS, ADMIN]) {
       // oxlint-disable-next-line no-await-in-loop -- one role at a time
       await server.execute(`drop role if exists "${role}"`);
     }
@@ -147,6 +160,11 @@ describeLive('S0-1 staging logins before the reset, run for real', () => {
 describeLive('S0-1 staging logins after the reset, run for real', () => {
   it('after the reset: one login per group, each able only to set its role', async () => {
     await migrate(db!.admin, MIGRATIONS);
+    // On the project the migrations run as its admin, which then holds ADMIN on each group.
+    for (const group of ['ops_astro_lookup', 'ops_astro_backup', 'ops_astro_forwarder']) {
+      // oxlint-disable-next-line no-await-in-loop -- one group at a time
+      await db!.admin.execute(`grant ${group} to "${ADMIN}" with admin option`);
+    }
     const folder = join(scratch, 'after');
     const { status, printed } = run('after-reset', folder);
     expect(status).toBe(0);
@@ -161,11 +179,14 @@ describeLive('S0-1 staging logins after the reset, run for real', () => {
       ['DATABASE_FORWARDER_URL', 'ops_astro_forwarder'],
     ] as const) {
       const address = readFileSync(join(folder, setting), 'utf8');
+      expect(new URL(address).searchParams.get('sslmode')).toBe('require');
       expect(printed).not.toContain(new URL(address).password);
       // oxlint-disable-next-line no-await-in-loop -- one login at a time
       const [row] = await asLogin<{ inherits: boolean; member: boolean; groups: string }>(
         address,
-        `select r.rolinherit as inherits, pg_has_role('${group}', 'member') as member,
+        `select (select m.inherit_option from pg_auth_members m join pg_roles g on g.oid = m.roleid
+                  where m.member = r.oid and g.rolname = '${group}') as inherits,
+                pg_has_role('${group}', 'member') as member,
                 (select string_agg(g.rolname, ',') from pg_auth_members m
                    join pg_roles g on g.oid = m.roleid where m.member = r.oid) as groups
            from pg_roles r where r.rolname = current_user`,
@@ -173,4 +194,13 @@ describeLive('S0-1 staging logins after the reset, run for real', () => {
       expect(row).toEqual({ inherits: false, member: true, groups: group });
     }
   }, 120_000);
+
+  it('refuses a login that holds another group since, and changes nothing', async () => {
+    await db!.admin.execute('grant ops_astro_backup to ops_astro_lookup_login');
+    const folder = join(scratch, 'after-again');
+    const { status, printed } = run('after-reset', folder);
+    expect(status).toBe(1);
+    expect(printed).toContain('ops_astro_lookup_login already holds more than its one group');
+    expect(existsSync(folder)).toBe(false);
+  });
 });

@@ -178,3 +178,15 @@ export function statementsFor(step: Step, addresses: readonly LoginAddress[]): s
   }
   return statements;
 }
+
+export interface ExistingLogin {
+  readonly rolname: string;
+  readonly powers: boolean;
+  readonly admin: boolean;
+  readonly groups: readonly string[];
+}
+
+/** Not judged yet (review 56da29b, finding 2): the next commit decides it. */
+export function loginsBeyondTheirGroup(_existing: readonly ExistingLogin[]): string | undefined {
+  return undefined;
+}

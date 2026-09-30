@@ -11,6 +11,7 @@ import { createHash, createHmac, pbkdf2Sync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   LOGINS,
+  loginsBeyondTheirGroup,
   loginAddresses,
   loginsRefusal,
   scramVerifier,
@@ -109,25 +110,25 @@ describe('S0-1 staging logins: each login, its one group and its address', () =>
     ]);
   });
 
-  it("gives each address the pooler's <login>.<reference> form, Vercel's on the transaction port", () => {
+  it("gives each address the pooler's <login>.<reference> form over TLS, Vercel's on the transaction port", () => {
     const addresses = loginAddresses(admin(STAGING), STAGING, 'after-reset', () => 'pw-1');
     expect(addresses.map(({ login, address }) => [login.setting, address])).toEqual([
       [
         'DATABASE_LOOKUP_URL',
-        `postgresql://ops_astro_lookup_login.${STAGING}:pw-1@${POOLER}:6543/postgres`,
+        `postgresql://ops_astro_lookup_login.${STAGING}:pw-1@${POOLER}:6543/postgres?sslmode=require`,
       ],
       [
         'BACKUP_SOURCE_URL',
-        `postgresql://ops_astro_backup_login.${STAGING}:pw-1@${POOLER}:5432/postgres`,
+        `postgresql://ops_astro_backup_login.${STAGING}:pw-1@${POOLER}:5432/postgres?sslmode=require`,
       ],
       [
         'DATABASE_FORWARDER_URL',
-        `postgresql://ops_astro_forwarder_login.${STAGING}:pw-1@${POOLER}:5432/postgres`,
+        `postgresql://ops_astro_forwarder_login.${STAGING}:pw-1@${POOLER}:5432/postgres?sslmode=require`,
       ],
     ]);
     const [runtime] = loginAddresses(admin(STAGING), STAGING, 'before-reset', () => 'pw-2');
     expect(runtime?.address).toBe(
-      `postgresql://ops_astro_api.${STAGING}:pw-2@${POOLER}:6543/postgres`,
+      `postgresql://ops_astro_api.${STAGING}:pw-2@${POOLER}:6543/postgres?sslmode=require`,
     );
   });
 });
@@ -144,13 +145,27 @@ describe('S0-1 staging logins: a password reaches the database only as a SCRAM v
     expect(verifier).toBe(`SCRAM-SHA-256$4096:${salt.toString('base64')}$${stored}:${server}`);
   });
 
+  it("names no superuser, replication or bypass attribute in an alter: hosted Supabase's admin is not a superuser", () => {
+    for (const step of ['before-reset', 'after-reset'] as const) {
+      const alters = statementsFor(
+        step,
+        loginAddresses(admin(STAGING), STAGING, step, () => 'pw'),
+      )
+        .filter((statement) => statement.startsWith('alter role'))
+        .join('\n');
+      expect(alters).not.toMatch(/superuser|replication|bypassrls|createrole|createdb/u);
+    }
+  });
+
   it('never puts the password itself in a statement', () => {
     const addresses = loginAddresses(admin(STAGING), STAGING, 'after-reset', () => 'pw-plain');
     const statements = statementsFor('after-reset', addresses).join('\n');
     expect(statements).not.toContain('pw-plain');
     expect(statements.match(/password 'SCRAM-SHA-256\$4096:/gu)).toHaveLength(3);
   });
+});
 
+describe('S0-1 staging logins: each login made with no power of its own', () => {
   it('makes each login with no power of its own, in its one group', () => {
     const addresses = loginAddresses(admin(STAGING), STAGING, 'after-reset', () => 'pw');
     const statements = statementsFor('after-reset', addresses).join('\n');
@@ -159,11 +174,10 @@ describe('S0-1 staging logins: a password reaches the database only as a SCRAM v
         `create role ${role}_login login nosuperuser nocreatedb nocreaterole nobypassrls ` +
           `noreplication noinherit`,
       );
-      expect(statements).toContain(`grant ${role} to ${role}_login`);
-      // A login already there loses any power it was given since.
+      // The membership's own option decides inheriting since Postgres 16, set on every run.
+      expect(statements).toContain(`grant ${role} to ${role}_login with inherit false`);
       expect(statements).toContain(
-        `alter role ${role}_login with login nosuperuser nocreatedb nocreaterole nobypassrls ` +
-          `noreplication noinherit password 'SCRAM-SHA-256$4096:`,
+        `alter role ${role}_login with login noinherit password 'SCRAM-SHA-256$4096:`,
       );
     }
     const before = statementsFor(
@@ -175,7 +189,35 @@ describe('S0-1 staging logins: a password reaches the database only as a SCRAM v
       'create role ops_astro_api login nosuperuser nocreatedb nocreaterole nobypassrls ' +
         'noreplication inherit',
     );
-    expect(before).toContain('grant ops_astro_app to ops_astro_api');
+    expect(before).toContain('grant ops_astro_app to ops_astro_api with inherit true');
     expect(before).toContain("format('revoke temporary on database %I from public'");
+  });
+});
+
+const existing = (overrides: Record<string, unknown> = {}) => ({
+  rolname: 'ops_astro_lookup_login',
+  powers: false,
+  admin: false,
+  groups: ['ops_astro_lookup'],
+  ...overrides,
+});
+
+describe('S0-1 staging logins: a login already there with more than its one group is refused', () => {
+  it('passes a login holding its own group only, or no login yet', () => {
+    expect(loginsBeyondTheirGroup([existing()])).toBeUndefined();
+    expect(loginsBeyondTheirGroup([])).toBeUndefined();
+  });
+
+  it('refuses a power, an admin option or any other group, naming the login only', () => {
+    for (const overrides of [
+      { powers: true },
+      { admin: true },
+      { groups: ['ops_astro_backup', 'ops_astro_lookup'] },
+      { groups: [] },
+    ]) {
+      expect(loginsBeyondTheirGroup([existing(overrides)])).toBe(
+        'ops_astro_lookup_login already holds more than its one group: drop it by hand, then run this again',
+      );
+    }
   });
 });
