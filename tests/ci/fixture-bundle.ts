@@ -19,6 +19,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
+import { parseAst } from 'vite';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const FIXTURE_DIRECTORIES = ['tests/fixture', 'tests/support'];
@@ -54,12 +55,22 @@ export function fixtureSelectors(root: string = ROOT): readonly string[] {
   return [...selectors];
 }
 
-/** The quoted values in a test-only file that carry `stem` and are more than it. */
+/**
+ * The string values in a test-only file that carry `stem` and are more than it,
+ * as the language reads them: Vite's parser decodes every quote style, escape
+ * and template part, so no spelling of a value hides it.
+ */
 function valuesCarrying(path: string, stem: string): string[] {
-  const quoted = readFileSync(path, 'utf8').matchAll(/(['"`])([^'"`\n]+)\1/gu);
-  return [...quoted]
-    .map((match) => match[2] ?? '')
-    .filter((value) => value.toLowerCase().includes(stem) && value.toLowerCase() !== stem);
+  const values: string[] = [];
+  const visit = (node: unknown): void => {
+    if (typeof node !== 'object' || node === null) return;
+    const { type, value } = node as { type?: unknown; value?: unknown };
+    if (type === 'Literal' && typeof value === 'string') values.push(value);
+    if (type === 'TemplateElement') values.push((value as { cooked?: string }).cooked ?? '');
+    for (const child of Object.values(node)) visit(child);
+  };
+  visit(parseAst(readFileSync(path, 'utf8'), { lang: 'ts' }));
+  return values.filter((v) => v.toLowerCase().includes(stem) && v.toLowerCase() !== stem);
 }
 
 function stemOf(file: string): string {
