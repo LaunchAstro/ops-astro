@@ -33,6 +33,7 @@ tests/ci/test-only-jwks-value-caught.test.ts
 tests/ci/test-only-cookie-issuer-caught.test.ts
 tests/ci/test-only-session-credentials-caught.test.ts
 tests/ci/computed-sign-in-fixture-export-refused.test.ts
+tests/ci/test-only-journey-credentials-caught.test.ts
 # Sol's REV106D, REV140D and REVB1SL01EARLY proofs, byte-for-byte in the files
 # that carry them (REVB1SL01EARLY criterion 1).
 tests/ci/staging-no-production-data.test.ts
