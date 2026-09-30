@@ -104,13 +104,13 @@ export function columnUpdatesAt(at?: string): readonly string[] {
 /**
  * Column grants held by a role other than the application's, each from the
  * migration that made it: the occurrence role reads a task's revision for
- * 0032's trigger when it inserts an occurrence's run (AW-01 J, 0049).
+ * 0032's trigger when it inserts an occurrence's run (AW-01 J, 0054).
  */
 const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
   'business_id',
   'id',
   'revision',
-].map((column) => ({ from: '0049', line: `${OCCURRENCE_ROLE} SELECT public.records.${column}` }));
+].map((column) => ({ from: '0054', line: `${OCCURRENCE_ROLE} SELECT public.records.${column}` }));
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {
   return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from)

@@ -11,7 +11,8 @@
 --                 shape as malformed; the database holds the same shape.
 --   input_units   and
 --   output_units  whole numbers, both or neither.
--- Numbered after this stack's 0049; the batch 3 join numbers it again.
+-- Was 0050; renumbered after this stack's 0054 when SL11 took b0/SL12
+-- (ORCH38); the batch 3 join numbers it again.
 
 alter table public.model_calls
   add column model_id text,

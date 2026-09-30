@@ -31,7 +31,8 @@
 -- now names its run and its version together, so none can name an
 -- occurrence's run (whose version is null) and pickup never reaches one until
 -- AW-04 builds its claim.
--- Numbered after this stack's 0048; the batch 3 join numbers it again.
+-- Was 0049; renumbered after SL12's 0052 and SL11's 0053 when SL11 took
+-- b0/SL12 (ORCH38); the batch 3 join numbers it again.
 
 alter table public.planned_runs
   add column origin_occurrence_id uuid,

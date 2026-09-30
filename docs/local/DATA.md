@@ -280,7 +280,7 @@ not inherit it, so the broker takes it for the one statement with
 into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
 proves the separation and the grants.
 
-`ops_astro_occurrence` (migration 0049, AW-01 J) follows the same pattern
+`ops_astro_occurrence` (migration 0054, AW-01 J) follows the same pattern
 without a function: it holds `insert` on `planned_runs`, `select` on a task's
 `business_id`, `id` and `revision` (for 0032's trigger) and execute on
 `app_business_id()`, and nothing else. The worker's occurrence path takes it
