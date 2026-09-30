@@ -49,8 +49,20 @@ product.
 
 ## Claiming product conformance
 
-`database conformance` runs `pnpm run db:conformance` against a Postgres
-service container, reading `tests/db/named-suites.json`.
+`database conformance` runs `pnpm run db:conformance` against Postgres
+service containers, reading `tests/db/named-suites.json`.
+
+Run one after another the named suites took 40 to 50 minutes, so the hosted
+job is a matrix of shards (`database conformance shard <i>`), each running
+`db:conformance --shard <i>/<n>` against a Postgres of its own. The required
+check is the aggregate job named `database conformance`: it needs every shard
+and fails unless all of them succeeded, a skipped or cancelled shard included.
+`scripts/db-shards.mjs` splits the manifest by the seconds in
+`tests/db/suite-timings.json`; a suite with no timing weighs the median, so a
+newly named suite is assigned without editing that file, which only keeps the
+shards even. `tests/ci/db-shards.test.ts` proves every named suite lands in
+exactly one shard. Each shard still checks the whole manifest for rules 2 and 3
+below, and applies every other rule to its own suites, one at a time.
 
 **The manifest is the authority.** It holds two lists of paths from the
 repository root, and the runner runs every suite in both:
@@ -77,7 +89,7 @@ names, and without it every case that spawns it is skipped
 (`server-onerror.test.ts`'s 'U1: the real server answers a tampered decision
 with the named fault', `mounted-cli.test.ts:31`, `:77`). The runner passes its
 environment through and does not set that port
-(`scripts/db-conformance.mjs:178`), so naming them would fail the job on a skip.
+(`scripts/db-conformance.mjs:240`), so naming them would fail the job on a skip.
 `tests/acceptance/restart-and-expiry.test.ts` stays out for the same reason: its
 container-restart case skips unless `L5_RESTART_CONTAINER_NAME` names the
 container (`restart-and-expiry.test.ts:135-139`), which `pnpm verify:restart`
@@ -99,7 +111,7 @@ the CLI against HTTP stand-ins, moves the counter by 0, and its terminal case
 skips without a terminal (`operation-id-login-and-stdout.test.ts:186`).
 
 `pnpm db:conformance` needs a database. The runner itself refuses without
-`DATABASE_URL` (`scripts/db-conformance.mjs:66-71`) and passes it to each
+`DATABASE_URL` (`scripts/db-conformance.mjs:78-83`) and passes it to each
 child vitest process. The named suites then build their own throwaway
 databases through `databaseUrlFromEnvironment` in
 `tests/support/fresh-database.ts`, which takes
