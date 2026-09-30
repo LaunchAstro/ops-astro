@@ -219,9 +219,13 @@ Its ids carry a `panel-` prefix, so none repeats the page's. The page link
 go-to beside Open its page, and any other stored value as words with no
 go-to. The grid also sets the estimate (`task.update`, 15m to 2d) and Assign
 to AI (`screens/task/AssignToAI.tsx`, the viewer's own agents that reach the
-task). The pin waits on the preference model. Category, stage, board, state,
-the client and "Duplicate without contents" wait on their owners on the record
-or on other slices.
+task). The Project select (`screens/task/ProjectField.tsx`) offers None and
+the projects `task.board` answers for the Projects board, never the task
+itself, marks the task's board by the crumb's id (a board that is not a
+project stays as itself; one the reader may not open is drawn as that and
+cannot be chosen) and moves the task through `task.move`. The pin waits on the
+preference model. Category, stage, state, the client and "Duplicate without
+contents" wait on their owners on the record or on other slices.
 
 The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`
 looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an

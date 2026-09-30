@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The dock task panel's field edits (MP-4-8): the name, the assignee, the due
-// date and the estimate; the tags are `TagField.tsx` (MP-4-11).
+// date and the estimate; the project is `ProjectField.tsx` and the tags are
+// `TagField.tsx` (MP-4-11).
 //
 // **Each field through its own command, at the revision the panel read.** The
 // name, the due date and the estimate go out through `task.update`
@@ -11,9 +12,8 @@
 // again and draw what the server holds; a refusal is quoted in the server's
 // words and nothing is drawn as changed.
 //
-// **Only the fields with an owner on the record.** Category, stage, board,
-// state, Assign to AI and the client wait on theirs (SL08 handback,
-// LEANS-ON).
+// **Only the fields with an owner on the record.** Category, stage, state and
+// the client wait on theirs (SL08 handback, LEANS-ON).
 //
 // **A control's Escape is the control's.** The name edit's Escape ends the
 // edit; the picker marks its own handled (TR-A3-3).
@@ -33,6 +33,7 @@ import { todayOn } from './due-dates.ts';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
 import { TagField } from './TagField.tsx';
 import { AssignToAI } from './AssignToAI.tsx';
+import { ProjectField } from './ProjectField.tsx';
 
 export interface PanelFieldsProps {
   readonly client: OperationsClient;
@@ -128,6 +129,12 @@ export function PanelFields(props: PanelFieldsProps): ReactElement {
       />
       <DueField {...props} {...field} />
       <EstimateField {...props} {...field} />
+      <ProjectField
+        client={props.client}
+        grantKey={props.grantKey}
+        task={props.task}
+        onChanged={props.onChanged}
+      />
       <TagField client={props.client} task={props.task} onChanged={props.onChanged} />
       <Refusal because={field.because} />
     </div>
