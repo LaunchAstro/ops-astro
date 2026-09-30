@@ -11,9 +11,8 @@
 // managers for a quarantined hold (an incident). Nobody is told of their own assignment or
 // mention. A decision goes to every holder, the proposer included, because
 // authority and not authorship decides who owes it, and a decision a person is
-// responsible for is never switched off. The task's assignee is the one holder
-// who is not owed it: four eyes (T2g) refuses their decision, so an item
-// would count a decision they cannot make.
+// responsible for is never switched off, but the task's assignee is owed none:
+// four eyes (T2g) refuses their decision.
 
 import { grantHolders } from '../authority/grant-reach.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -83,19 +82,17 @@ export async function raiseEscalation(
   const taskId = gates[0]?.taskId;
   if (taskId === undefined) throw new Error('raiseEscalation: the escalated gate is not here');
   const assignee = await assigneeOf(tx, taskId);
-  const deciders = (
-    await grantHolders(tx, {
-      collection: 'task',
-      action: 'decide',
-      scope: { kind: 'business', id: null },
-    })
-  ).filter((person) => person !== assignee);
+  const deciders = await grantHolders(tx, {
+    collection: 'task',
+    action: 'decide',
+    scope: { kind: 'business', id: null },
+  });
   await tx.query(
     `update public.inbox_items set work_state = 'withdrawn', closed_at = now()
       where business_id = $1 and reason = 'decision' and fact_kind = 'gate' and fact_id = $2
         and subject_record_id = $3 and work_state = 'open'
         and recipient_person_id <> all($4::uuid[])`,
-    [tx.businessId, escalated.gateId, taskId, deciders],
+    [tx.businessId, escalated.gateId, taskId, deciders.filter((p) => p !== assignee)],
   );
   const owed = new Set([...deciders, escalated.recipientPersonId]);
   owed.delete(assignee ?? '');
@@ -138,8 +135,7 @@ export async function raiseRunSettled(
 /**
  * An assignment written. Whoever held the open assignment item and is no
  * longer the assignee has it withdrawn; the new assignee is raised one,
- * unless they assigned themselves, and their open decision items on the task
- * are withdrawn, since four eyes now refuses their decision.
+ * unless they assigned themselves; their open decision items on it withdraw (four eyes).
  */
 export async function raiseAssignment(
   tx: TenantQuery,
@@ -147,18 +143,12 @@ export async function raiseAssignment(
 ): Promise<void> {
   await tx.query(
     `update public.inbox_items set work_state = 'withdrawn', closed_at = now()
-      where business_id = $1 and subject_record_id = $2 and reason = 'assignment'
-        and work_state = 'open' and recipient_person_id is distinct from $3::uuid`,
+      where business_id = $1 and subject_record_id = $2 and work_state = 'open'
+        and ((reason = 'assignment' and recipient_person_id is distinct from $3::uuid)
+          or (reason = 'decision' and recipient_person_id = $3::uuid))`,
     [tx.businessId, change.taskId, change.assignee],
   );
-  if (change.assignee === null) return;
-  await tx.query(
-    `update public.inbox_items set work_state = 'withdrawn', closed_at = now()
-      where business_id = $1 and subject_record_id = $2 and reason = 'decision'
-        and work_state = 'open' and recipient_person_id = $3`,
-    [tx.businessId, change.taskId, change.assignee],
-  );
-  if (change.assignee === change.by) return;
+  if (change.assignee === null || change.assignee === change.by) return;
   await raiseInboxItem(tx, {
     recipientPersonId: change.assignee,
     subjectRecordId: change.taskId,

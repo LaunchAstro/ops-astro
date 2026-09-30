@@ -53,7 +53,7 @@ const FAULTS = {
     to: 'true',
   },
   count: {
-    file: 'packages/core-records/src/inbox/items.ts',
+    file: 'packages/core-records/src/inbox/read.ts',
     from: "and i.work_state = 'open' and i.owed and r.deleted_at is null",
     to: "and i.work_state = 'open' and r.deleted_at is null",
   },
@@ -63,7 +63,7 @@ const FAULTS = {
     to: "and i.fact_id <> $2 and i.work_state = 'open'",
   },
   attemptState: {
-    file: 'packages/core-records/src/inbox/items.ts',
+    file: 'packages/core-records/src/inbox/read.ts',
     from: 'order by d.observed_seq desc limit 1',
     to: 'order by d.observed_seq asc limit 1',
   },

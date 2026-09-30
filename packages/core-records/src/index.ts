@@ -60,12 +60,14 @@ export {
   type VerifiedSubject,
 } from './identity/login-resolution.ts';
 export {
-  owes,
-  raiseInboxItem,
   readInboxItems,
   countOwedItems,
   INBOX_HISTORY_PAGE,
   INBOX_HISTORY_SCAN,
+} from './inbox/read.ts';
+export {
+  owes,
+  raiseInboxItem,
   stampSeen,
   recordDeliveryAttempt,
   type DeliveryChannel,

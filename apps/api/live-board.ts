@@ -87,22 +87,10 @@ function batch(
       pending.resync = pending.inbox = pending.check = false;
       tasks.clear();
       // eslint-disable-next-line no-await-in-loop -- one batch is asked before the next.
-      const personId = await ask.joinedAs();
-      if (personId === undefined) {
-        // eslint-disable-next-line no-await-in-loop
-        await stream.writeSSE({ event: 'closed', data: '' });
-        stream.abort();
-        return;
-      }
-      if (personId !== bound.personId) {
-        // The inbox heard so far was the previous person's: dropped, not said.
-        bind(personId);
-        // eslint-disable-next-line no-await-in-loop
-        await resyncs(stream, ask, bound);
-        continue;
-      }
+      const joined = await rejoin(stream, ask, bound, bind);
+      if (joined === 'closed') return;
       // eslint-disable-next-line no-await-in-loop
-      if (resync) await resyncs(stream, ask, bound);
+      if (joined === 'rebound' || resync) await resyncs(stream, ask, bound);
       // eslint-disable-next-line no-await-in-loop
       else await say(stream, ask, named, bound, inbox);
     }
@@ -124,6 +112,29 @@ function batch(
     else pending[signal.kind] = true;
     wake();
   };
+}
+
+/**
+ * The join asked again before a batch: `closed` (said, and the stream ended)
+ * when it is refused; `rebound` when the bearer now resolves to another
+ * person, whose topic replaces the previous one's, and what was heard for
+ * the previous person is dropped unsaid; `same` otherwise.
+ */
+async function rejoin(
+  stream: SSEStreamingApi,
+  ask: BoardQuestions,
+  bound: Bound,
+  bind: (personId: string) => void,
+): Promise<'closed' | 'rebound' | 'same'> {
+  const personId = await ask.joinedAs();
+  if (personId === undefined) {
+    await stream.writeSSE({ event: 'closed', data: '' });
+    stream.abort();
+    return 'closed';
+  }
+  if (personId === bound.personId) return 'same';
+  bind(personId);
+  return 'rebound';
 }
 
 /** A resync stands for every inbox change so far: what it shows is taken first. */
