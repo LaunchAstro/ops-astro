@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { PARTS, onOwnCluster, openScratch, revertPart } from './self-test/mutations.ts';
 
-// A part's unwire may turn red only the later parts built on its code, the
+// A part's unwire may turn red only the parts built on its code, the
 // ones it declares as `dependents` in parts.json (T3d1 reconciles the steps
 // T3b's sweep holds unknown). Every other part's suite stays at its head
 // counts: no new failure, no new skip. Local and slow (every part's suite,

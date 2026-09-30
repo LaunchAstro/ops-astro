@@ -36,6 +36,17 @@ export interface Part {
    * topics in server.ts, which INB-1's board also streams). See `revertPart`.
    */
   readonly unwire?: readonly { readonly file: string; readonly remove: readonly string[] }[];
+  /**
+   * The parts built on this part's code, which its unwire turns red:
+   * each names a symbol the part's own commits added to product code, which
+   * the dependent's suite reaches, and why. Under the unwire no other part
+   * goes red or skips (tests/ci/unwire-dependents-exact.test.mjs).
+   */
+  readonly dependents?: readonly {
+    readonly part: string;
+    readonly reaches: string;
+    readonly why: string;
+  }[];
 }
 
 export interface Crossing {
