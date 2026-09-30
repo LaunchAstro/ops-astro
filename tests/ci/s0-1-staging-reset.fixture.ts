@@ -251,15 +251,17 @@ export const refusedBeforeConnecting = async (
   expect(await canaryHolds()).toBe(true);
 };
 
-/** Each run is recorded (ORCH40's reset-gate ruling): one line, no setting's value in it. */
+/** Each run is recorded (ORCH40's reset-gate ruling), no setting's value in it. */
 export function recordedOnce(env: Record<string, string>): void {
   const record = readFileSync(
     join(env['OPS_ASTRO_DEPLOYMENTS'] ?? '', 'deployments.jsonl'),
     'utf8',
   );
   const lines = record.trim().split('\n');
-  expect(lines).toHaveLength(1);
-  expect(JSON.parse(lines[0] ?? '{}')).toMatchObject({ action: 'staging reset' });
+  // A `started` line, proved before anything was emptied, then the done line (S34D).
+  expect(lines).toHaveLength(2);
+  expect(JSON.parse(lines[0] ?? '{}')).toMatchObject({ action: 'staging reset', stage: 'started' });
+  expect(JSON.parse(lines[1] ?? '{}')).toMatchObject({ action: 'staging reset' });
   for (const [name, value] of Object.entries(env))
-    if (name !== 'OPS_ASTRO_DEPLOYMENTS') expect(lines[0], name).not.toContain(value);
+    if (name !== 'OPS_ASTRO_DEPLOYMENTS') expect(record, name).not.toContain(value);
 }

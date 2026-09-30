@@ -15,17 +15,30 @@
 //
 // In order: every refusal that needs no connection; then, connected, a
 // database neither marked made-up nor new is refused, and so are a service key
-// the admin API does not accept (one read) and a record that cannot be opened
-// for appending; then the owner's folder is made; only then empty (the
-// product's schemas and the made-up mark), migrate, make the sign-ins, seed
-// (`scripts/local-seed.mjs`, which judges the database again and marks it) and
-// write the installation's operating business once. Exit 0 when done, 1 when
-// refused or stopped. Nothing it prints carries an address, a password, a key
-// or a project reference.
+// the admin API does not accept (one read) and a record that is not a real
+// file (a `started` line is written to it and read back); then the owner's
+// folder is made; only then empty (the product's schemas and the made-up
+// mark), migrate, make the sign-ins, seed (`scripts/local-seed.mjs`, which
+// judges the database again and marks it) and write the installation's
+// operating business once, and append the done line to the same record. Exit 0
+// when done, 1 when refused or stopped. Nothing it prints carries an address,
+// a password, a key or a project reference.
 
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  closeSync,
+  constants,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { migrate } from '../../packages/core-records/src/tenancy/migrate.ts';
@@ -128,6 +141,35 @@ async function keyAccepted() {
   }
 }
 
+/**
+ * The run's record, proved before anything is emptied: a real file in a real
+ * folder (no link, device, pipe or folder in its place), opened without
+ * following a link, with a `started` line written and read back through the
+ * same handle. The handle, or undefined when the record cannot hold the run.
+ */
+function openRecord() {
+  const path = join(env.OPS_ASTRO_DEPLOYMENTS, RECORD_FILE);
+  try {
+    mkdirSync(env.OPS_ASTRO_DEPLOYMENTS, { recursive: true, mode: 0o700 });
+    if (!lstatSync(env.OPS_ASTRO_DEPLOYMENTS).isDirectory()) return;
+    if (lstatSync(path, { throwIfNoEntry: false })?.isFile() === false) return;
+    const { O_RDWR, O_APPEND, O_CREAT, O_NOFOLLOW } = constants;
+    const handle = openSync(path, O_RDWR | O_APPEND | O_CREAT | O_NOFOLLOW, 0o600);
+    const line = Buffer.from(
+      `${JSON.stringify({ action: 'staging reset', stage: 'started', at: new Date().toISOString() })}\n`,
+    );
+    const back = Buffer.alloc(line.length);
+    if (fstatSync(handle).isFile()) {
+      writeSync(handle, line);
+      readSync(handle, back, 0, line.length, fstatSync(handle).size - line.length);
+    }
+    if (back.equals(line)) return handle;
+    closeSync(handle);
+  } catch {
+    // Anything the record cannot do is a refusal below.
+  }
+}
+
 const why = refusalBeforeConnecting(env, process.argv.slice(2));
 if (why !== undefined) refuse(why);
 const folder = env.OPS_SEED_DIR;
@@ -138,19 +180,16 @@ if (existsSync(folder))
 
 let step = 'the check';
 let migrations = 0;
+let record;
 const admin = connectAsAdmin(env.DATABASE_ADMIN_URL, { source: 'reset' });
 try {
   if (!(await resettable(admin)))
     refuse('the database is neither marked made-up nor new, so it may hold real data');
   // Every precondition before anything is emptied: a refusal empties and records nothing.
   if (!(await keyAccepted())) refuse('the admin API did not accept SUPABASE_SERVICE_KEY');
-  // The record opens for appending now, or nothing is emptied and nothing is written.
-  try {
-    mkdirSync(env.OPS_ASTRO_DEPLOYMENTS, { recursive: true, mode: 0o700 });
-    closeSync(openSync(join(env.OPS_ASTRO_DEPLOYMENTS, RECORD_FILE), 'a', 0o600));
-  } catch {
-    refuse('the record in OPS_ASTRO_DEPLOYMENTS cannot be written');
-  }
+  record = openRecord();
+  if (record === undefined)
+    refuse('the record in OPS_ASTRO_DEPLOYMENTS is not a file it can write');
   mkdirSync(folder, { mode: 0o700 });
   step = 'emptying';
   // oxlint-disable-next-line no-await-in-loop -- in order: each builds on the one before
@@ -218,12 +257,9 @@ try {
   const operator = STAGING_CAST.find((member) => member.grants?.length === 1);
   // Each run is recorded where the other operator acts are, and names no setting's value.
   step = 'recording the run';
-  const record = { action: 'staging reset', migrations, signIns: users.length };
-  appendFileSync(
-    join(env.OPS_ASTRO_DEPLOYMENTS, RECORD_FILE),
-    `${JSON.stringify({ ...record, at: new Date().toISOString() })}\n`,
-    { mode: 0o600 },
-  );
+  const done = { action: 'staging reset', migrations, signIns: users.length };
+  appendFileSync(record, `${JSON.stringify({ ...done, at: new Date().toISOString() })}\n`);
+  closeSync(record);
   console.log(
     `staging-reset: the operating business is ${OPERATING_BUSINESS}; ` +
       `its made-up operator is ${operator?.email}`,
