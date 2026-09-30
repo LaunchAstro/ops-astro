@@ -86,11 +86,11 @@ export {
   NO_MEMBERSHIP_FIXES,
   standsOnShares,
   withSession,
-  withStanding,
   type SecondFactorRule,
   type Session,
   type VerifiedSubject,
 } from './identity/login-resolution.ts';
+export { withStanding } from './identity/standing.ts';
 export {
   NO_ASSURANCE,
   SESSION_ABSOLUTE_SECONDS,

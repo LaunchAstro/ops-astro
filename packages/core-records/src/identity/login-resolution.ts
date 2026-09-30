@@ -138,8 +138,8 @@ export async function resolveLogin(
   return standing;
 }
 
-/** Steps 2 to 4 as `resolveLogin` takes them, recording nothing. */
-async function standingOf(
+/** Steps 2 to 4 as `resolveLogin` takes them, recording nothing (`standing.ts` asks it again). */
+export async function standingOf(
   tx: TenantQuery,
   presented: VerifiedSubject,
   rule: SecondFactorRule,
@@ -288,27 +288,5 @@ export async function withSession<T>(
     const resolved = await resolveLogin(tx, presented, rule);
     if ('refused' in resolved) return resolved;
     return await run(tx, resolved);
-  });
-}
-
-/**
- * `withSession` for a session already admitted at the door and asked again:
- * the live channel's recheck of an open stream (C4 live-sync 6). The standing
- * is resolved the same way, so a lost membership, an inactive actor, a session
- * the person has ended or a missing second factor still refuses, and nothing
- * is recorded: the attempt was recorded when the stream was opened, and a row
- * for every recheck would record who kept which task open rather than who came
- * through the door.
- */
-export async function withStanding<T>(
-  database: Database,
-  businessId: BusinessId,
-  presented: VerifiedSubject,
-  run: (tx: TenantQuery, session: Session) => Promise<T>,
-): Promise<T | Refusal> {
-  return await database.withBusiness(businessId, async (tx) => {
-    const standing = await standingOf(tx, presented, 'required');
-    if ('refused' in standing) return standing;
-    return await run(tx, standing);
   });
 }
