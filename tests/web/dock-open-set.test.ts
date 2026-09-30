@@ -18,7 +18,7 @@ import {
 } from '../../apps/web/src/dock/open-set.ts';
 import { dockKey, type Session, type StorageLike } from '../../apps/web/src/session/token.ts';
 
-const mia: Session = { token: 'tok-mia', businessKey: 'alpha', email: 'mia@alpha.local' };
+const mia: Session = { sessionId: 'sid-mia', businessKey: 'alpha', email: 'mia@alpha.local' };
 
 function memory(): StorageLike & { readonly held: Map<string, string> } {
   const held = new Map<string, string>();
@@ -102,10 +102,10 @@ describe('MP-3-1 open set survives navigation', () => {
     expect(dockSlot(storage, null).read()).toEqual(CLOSED);
   });
 
-  it('keeps no token in what it stores', () => {
+  it('keeps no sign-in id in what it stores', () => {
     const storage = memory();
     dockSlot(storage, mia).write(opened(['settings', false]));
-    expect([...storage.held.entries()].join(' ')).not.toContain('tok-mia');
+    expect([...storage.held.entries()].join(' ')).not.toContain('sid-mia');
   });
 });
 

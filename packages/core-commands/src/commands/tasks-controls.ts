@@ -12,7 +12,13 @@
 // Neither writes the task record, which is why neither takes an
 // `expectedRevision`.
 
-import { subjectsOf, isUuid } from '../../../core-records/src/index.ts';
+import {
+  isUuid,
+  raiseDecision,
+  raiseIncident,
+  subjectsOf,
+  withdrawEndedGates,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import {
   cancelAndClassify,
@@ -164,6 +170,9 @@ export async function cancelOnTask(
     },
   });
   if (!result.ok) return refused(result.refusal);
+  await raiseIncident(tx, result.value);
+  // INB-1: the cancelled lineage's pending gate can no longer be decided.
+  await withdrawEndedGates(tx, found.taskId);
   return applied(found.taskId, null, {
     lineageId: found.lineageId,
     state: 'cancelled',
@@ -224,6 +233,7 @@ export async function restartOnTask(
   const lapsed = await decideHeld(tx, context, found.taskId);
   if (lapsed !== null) return lapsed;
   await closeOpenEnvelope(tx, found.taskId);
+  await raiseDecision(tx, { taskId: found.taskId, gateId: result.value.gateId });
   return applied(found.taskId, null, {
     lineageId: result.value.lineageId,
     restartsLineageId: result.value.restartsLineageId,

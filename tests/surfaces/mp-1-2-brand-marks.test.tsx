@@ -36,7 +36,7 @@ it('MP-1-2 the wordmark and planet masks are present', () => {
   expect(shell).toMatch(/\.brand--planet\s*\{[^}]*mask:\s*url\('\.\.\/brand\/planet\.svg'\)/su);
   // The expanded rail carries the wordmark above the product's own name.
   const rail = renderToStaticMarkup(
-    <Shell face="agency" rail={[]} here="/" title="Board" dock={dockOf([])}>
+    <Shell face="agency" build={null} rail={[]} here="/" title="Board" dock={dockOf([])}>
       {null}
     </Shell>,
   );

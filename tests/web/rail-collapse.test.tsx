@@ -55,6 +55,7 @@ describe('MP-2-3 56px strip: an icon and a title on every section', () => {
     const page = await drawn(
       <Shell
         face="client"
+        build={null}
         rail={[
           { id: 'clients:back', label: 'Back to Clients', href: '/clients/' },
           { id: 'clients:overview', label: 'Overview', href: '/clients/a/' },

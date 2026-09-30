@@ -6,18 +6,58 @@
 // followed inside a panel walks the panel, not the page.
 
 import type { MouseEvent } from 'react';
-import type { DockPanel, DockProps } from '@launchastro/ui';
+import type { DockPanel, DockProps, ShellProps } from '@launchastro/ui';
 import { gateOf, matchRoute, pathTo, type Gate } from '../routes.ts';
 import { dockTabs, isPanelId, type PanelId, type PanelRegistry } from '../panels.ts';
 import { drawScreen, type ScreenContext } from '../screen-registry.tsx';
 import { closeAll, close, isOwnAddress, press, ranked, visit } from './open-set.ts';
-import type { useDock } from './use-dock.ts';
-import type { useDockLayout } from './use-layout.ts';
+import type { Session, StorageLike } from '../session/token.ts';
+import { useRail, type RailModel, type RailPreference } from '../shell/use-rail.ts';
+import { useDock, type DockModel } from './use-dock.ts';
+import { useDockLayout, type DockLayoutModel } from './use-layout.ts';
+
+/** The person's dock, rail and the layout they make together, for one signed-in tab. */
+export function useDockShell(
+  session: Session | null,
+  storage: StorageLike | null,
+  registry: PanelRegistry,
+  rail: {
+    readonly railPreference?: RailPreference;
+    readonly saveRailPreference?: (preference: RailPreference) => void;
+  },
+): { dock: DockModel; nav: RailModel; layout: DockLayoutModel } {
+  const dock = useDock(session, storage, registry);
+  const nav = useRail(rail.railPreference, rail.saveRailPreference);
+  const layout = useDockLayout(dock, registry, nav.drawn);
+  return { dock, nav, layout };
+}
+
+type ShellTracks = Pick<
+  ShellProps,
+  | 'railCollapsed'
+  | 'railWidth'
+  | 'onRailFold'
+  | 'onRailResize'
+  | 'onRailResizeEnd'
+  | 'dockWidth'
+  | 'dockSheetHeight'
+>;
+
+/** The shell's tracks: the rail as the person left it, the seated group's width and the sheet. */
+export const shellTracks = (nav: RailModel, layout: DockLayoutModel): ShellTracks => ({
+  railCollapsed: nav.collapsed,
+  railWidth: nav.width,
+  onRailFold: nav.fold,
+  onRailResize: nav.resize,
+  onRailResizeEnd: nav.keep,
+  dockWidth: layout.geometry.mode === 'seated' ? layout.geometry.groupWidth : 0,
+  dockSheetHeight: layout.sheetHeight,
+});
 
 interface DockInput {
   readonly registry: PanelRegistry;
-  readonly dock: ReturnType<typeof useDock>;
-  readonly layout: ReturnType<typeof useDockLayout>;
+  readonly dock: DockModel;
+  readonly layout: DockLayoutModel;
   readonly navigate: (path: string) => void;
   readonly screen: Omit<ScreenContext, 'params'>;
 }

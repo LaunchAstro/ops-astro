@@ -50,9 +50,7 @@ const ATTEMPT = {
   delegate: randomUUID(),
 };
 
-const step = (what) => {
-  process.stderr.write(`surface-final: ${what}\n`);
-};
+const step = (what) => void process.stderr.write(`surface-final: ${what}\n`);
 
 /** The stored row a refusal must leave alone: data, every slot, revision. */
 async function storedTask(admin, alpha, recordId) {

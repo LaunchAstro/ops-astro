@@ -35,7 +35,9 @@ export {
 } from './authority/delegations.ts';
 export {
   checkAuthority,
+  EFFECTIVE as EFFECTIVE_GRANTS,
   effectiveGrants,
+  OPERATIONS_MANAGE,
   revokeGrant,
   subjectsOf,
   type Action,
@@ -55,10 +57,43 @@ export {
 export { recordBodyRefusal } from './identity/authentication-attempts.ts';
 export {
   NO_MEMBERSHIP_FIXES,
+  resolveLogin,
   withSession,
   type Session,
   type VerifiedSubject,
 } from './identity/login-resolution.ts';
+export {
+  readInboxItems,
+  countOwedItems,
+  INBOX_HISTORY_PAGE,
+  INBOX_HISTORY_SCAN,
+} from './inbox/read.ts';
+export {
+  owes,
+  raiseInboxItem,
+  stampSeen,
+  recordDeliveryAttempt,
+  type DeliveryChannel,
+  type DeliveryState,
+  type InboxAccess,
+  type InboxFactKind,
+  type InboxItem,
+  type InboxAlert,
+  type InboxReason,
+  type InboxWorkState,
+  type RaiseInboxItem,
+} from './inbox/items.ts';
+export { taskAccess } from './inbox/access.ts';
+export {
+  raiseAssignment,
+  raiseDecision,
+  raiseEscalation,
+  raiseIncident,
+  raiseRunSettled,
+} from './inbox/raise.ts';
+export { raiseMentions, readMentions, type Mentioned } from './inbox/mentions.ts';
+export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
+export { readUnattended, type UnattendedItem } from './inbox/unattended.ts';
 export {
   isSettingRevisionStale,
   readBusinessSetting,
@@ -123,3 +158,4 @@ export {
   type TenantQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
+export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';

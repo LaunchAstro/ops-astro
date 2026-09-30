@@ -15,7 +15,7 @@
 // **The stored row belongs to one person in one business.** It is kept under
 // the business's key and names the person it was written for, so a tab that
 // changes business, or passes to another person, restores nothing of the
-// last one's dock. The token is never part of it. Sign-out removes it.
+// last one's dock. The sign-in id is never part of it. Sign-out removes it.
 
 import { PANEL_RANK, isPanelId, type PanelId } from '../panels.ts';
 import { dockKey, isRecord, jsonSlot, type Session, type StorageLike } from '../session/token.ts';

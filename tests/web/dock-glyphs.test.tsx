@@ -67,6 +67,7 @@ describe('MP-2-3 fold glyph', () => {
       renderToStaticMarkup(
         <Shell
           face="agency"
+          build={null}
           rail={[]}
           here="/"
           title="Board"

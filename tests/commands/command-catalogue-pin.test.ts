@@ -77,6 +77,7 @@ vi.mock('../../packages/core-commands/src/commands/tasks-comment.ts', async (ori
 vi.mock('../../packages/core-commands/src/commands/settings-write.ts', async (original) => ({
   ...(await original<object>()),
   setBusinessSetting: recorder('setBusinessSetting'),
+  setNotificationChannel: recorder('setNotificationChannel'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
@@ -111,6 +112,10 @@ vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async
   revokeDelegationAsManager: recorder('revokeDelegationAsManager'),
   revokeGrantAsManager: recorder('revokeGrantAsManager'),
 }));
+vi.mock('../../packages/core-commands/src/commands/inbox-seen.ts', async (original) => ({
+  ...(await original<object>()),
+  stampOwnSeen: recorder('stampOwnSeen'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (original) => ({
   ...(await original<object>()),
   cancelOnTask: recorder('cancelOnTask'),
@@ -143,6 +148,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.write_off': ['recordId', 'attemptId'],
   'delegation.revoke': [],
   'grant.revoke': [],
+  'inbox.seen': ['itemId'],
+  'notifications.set_channel': [],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'task.cancel': ['recordId', 'lineageId'],
@@ -164,6 +171,11 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.write_off',
   'delegation.revoke',
   'grant.revoke',
+  'inbox.count',
+  'inbox.read',
+  'inbox.seen',
+  'inbox.unattended',
+  'notifications.set_channel',
   'person.list',
   'preset.plan',
   'session.capabilities',
@@ -217,6 +229,7 @@ const REQUESTS: readonly CommandRequest[] = [
     body: 'b-comment',
     audience: 'a-comment',
     commentType: 't-comment',
+    mentions: 'm-comment',
   },
   {
     command: 'task.propose',
@@ -291,6 +304,8 @@ const REQUESTS: readonly CommandRequest[] = [
     amountMinor: 0,
     reason: 'why',
   },
+  { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
+  { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -299,7 +314,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.update': ['updateTask', 'request'],
   'task.complete': ['setState', 'completed'],
   'task.reopen': ['setState', 'unstarted', 'why-reopen'],
-  'task.comment': ['commentOnTask', 'op', 'b-comment', 'a-comment', 't-comment'],
+  'task.comment': ['commentOnTask', 'op', 'b-comment', 'a-comment', 't-comment', 'm-comment'],
   'task.propose': ['proposeOnTask', 'request'],
   'task.decide': ['decideOnGate', 'request'],
   'task.pickup': ['pickupAsPerson', 'request'],
@@ -338,6 +353,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'inbox.seen': ['stampOwnSeen', 'item'],
+  'notifications.set_channel': ['setNotificationChannel', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -377,7 +394,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-six from an expected revision', () => {
+  it('exempts the same thirty-one from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

@@ -16,12 +16,11 @@ import { NO_CLIENT_GRANTS, canonicalOf, pageAt, type ClientAccess } from './mani
 import { ClientRefused, NotFound, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { PANELS, type PanelRegistry } from './panels.ts';
-import { dockProps } from './dock/dock-props.tsx';
-import { useDock } from './dock/use-dock.ts';
-import { useDockLayout } from './dock/use-layout.ts';
-import { useRail, type RailPreference } from './shell/use-rail.ts';
+import { dockProps, shellTracks, useDockShell } from './dock/dock-props.tsx';
+import type { RailPreference } from './shell/use-rail.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
+import { signOut } from './session/sign-in.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { drawScreen } from './screen-registry.tsx';
 
@@ -50,9 +49,7 @@ export interface AppProps {
 export function App(props: AppProps): ReactElement {
   const [session, setSession] = useState<Session | null>(props.sessions.session);
   const registry = props.panels ?? PANELS;
-  const dock = useDock(session, props.storage, registry);
-  const nav = useRail(props.railPreference, props.saveRailPreference);
-  const layout = useDockLayout(dock, registry, nav.drawn);
+  const { dock, nav, layout } = useDockShell(session, props.storage, registry, props);
 
   // The root address is not a screen and it is not a mistake either: it is how
   // a person arrives. It leads to the board when there is a session and to
@@ -119,6 +116,12 @@ export function App(props: AppProps): ReactElement {
   );
 
   const onSignOut = useCallback(() => {
+    const sessionId = props.sessions.session?.sessionId;
+    void signOut({
+      apiOrigin: props.apiOrigin,
+      fetch: props.fetch,
+      ...(sessionId === undefined ? {} : { sessionId }),
+    });
     props.sessions.clear();
     setSession(null);
     setNotice(null);
@@ -162,7 +165,8 @@ export function App(props: AppProps): ReactElement {
       new OperationsClient({
         origin: props.apiOrigin,
         businessKey: session?.businessKey ?? 'alpha',
-        token: session?.token ?? null,
+        signedIn: session !== null,
+        ...(session?.sessionId === undefined ? {} : { sessionId: session.sessionId }),
         fetch: props.fetch,
         onSessionEnded: (refusal) => {
           // `session` here is this client's own generation, captured when it
@@ -196,6 +200,7 @@ export function App(props: AppProps): ReactElement {
   const signIn = (
     <SignIn
       gotrueUrl={props.gotrueUrl}
+      apiOrigin={props.apiOrigin}
       fetch={props.fetch}
       onSignedIn={onSignedIn}
       ended={props.sessions.interruption}
@@ -239,9 +244,16 @@ export function App(props: AppProps): ReactElement {
     }
   })();
 
+  // Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a
+  // bundler that did not stamp, and the rail then says the build is unstamped.
+  // Read by name, never by index: an indexed read inlines every VITE_ setting
+  // of the build's environment into the bundle (G3).
+  const build = import.meta.env.VITE_OPS_ASTRO_BUILD ?? '';
+
   return (
     <Shell
       face={at?.page.namespace === 'portal' ? 'client' : 'agency'}
+      build={build === '' ? null : build}
       rail={rail}
       here={bare}
       title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
@@ -256,13 +268,7 @@ export function App(props: AppProps): ReactElement {
         )
       }
       onClick={dock.onDoor}
-      railCollapsed={nav.collapsed}
-      railWidth={nav.width}
-      onRailFold={nav.fold}
-      onRailResize={nav.resize}
-      onRailResizeEnd={nav.keep}
-      dockWidth={layout.geometry.mode === 'seated' ? layout.geometry.groupWidth : 0}
-      dockSheetHeight={layout.sheetHeight}
+      {...shellTracks(nav, layout)}
       // The client face has no dock (R17), and nobody signed out has one.
       dock={
         session === null || at?.page.namespace === 'portal'

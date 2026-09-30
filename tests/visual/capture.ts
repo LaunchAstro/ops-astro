@@ -171,6 +171,8 @@ function routeOf(packet: Packet, source: SideSource, side: Side): (route: Route)
       const body = known === 'bundled fonts' ? fontCss() : `/* ${known} */`;
       return route.fulfill({ body, contentType: 'text/css' });
     }
+    if ('app' in source && url.origin === source.app.origin && url.pathname === '/api/sign-in')
+      return route.fulfill({ json: { issuer: 'http://127.0.0.1:9/auth/v1' } });
     if ('app' in source && url.origin === source.app.origin) return route.continue();
     if ('mockupDir' in source && url.origin === MOCKUP_ORIGIN) {
       return serveMockup(route, url, source, blobs, side);
@@ -229,6 +231,7 @@ export async function load(
   const page = await side.context.newPage();
   await page.clock.setFixedTime(new Date(packet.clock));
   await page.goto(url, { waitUntil: 'load' });
+  await page.waitForFunction(() => document.querySelector('#app:empty') === null);
   await page.addStyleTag({ content: fontCss() });
   if (hide.length > 0)
     await page.addStyleTag({ content: `${hide.join(',')}{display:none!important}` });

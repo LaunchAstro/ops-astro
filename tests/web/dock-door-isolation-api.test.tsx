@@ -8,7 +8,6 @@
 
 import { describe, expect, it } from 'vitest';
 import { act } from 'react';
-import type { Session } from '../../apps/web/src/session/token.ts';
 import { tokenFor } from '../api/fixture.ts';
 import {
   isolationWorld,
@@ -20,6 +19,7 @@ import {
   signedIn,
   throughDoor,
   type Heard,
+  type Reader,
 } from './mp-3-1-isolation-world.tsx';
 
 const w = isolationWorld('dock_door_isolation');
@@ -39,7 +39,7 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
   });
 
   it('MP-3-4 isolation: another client, another business and a delegated agent are refused', async () => {
-    const sessions: readonly Session[] = [
+    const sessions: readonly Reader[] = [
       {
         token: await tokenFor(w.clientTwo.presented.subject),
         businessKey: 'alpha',

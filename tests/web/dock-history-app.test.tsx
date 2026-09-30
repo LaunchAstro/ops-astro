@@ -16,7 +16,7 @@ import { useDock } from '../../apps/web/src/dock/use-dock.ts';
 import { SessionStore, type Session, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
 
-const SESSION = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };
+const SESSION = { sessionId: 'sid', businessKey: 'alpha', email: 'mia@alpha.local' };
 const REGISTRY: PanelRegistry = {
   todos: { label: 'Projects', ariaLabel: 'Projects', route: 'agency:projects-board' },
   settings: { label: 'Settings', ariaLabel: 'Business settings', route: 'agency:settings' },
@@ -186,7 +186,7 @@ describe('MP-3-5 one person in one business', () => {
     await page.click('[data-open]');
     await page.render(
       <Harness
-        session={{ ...SESSION, email: 'noah@alpha.local', token: 't2' }}
+        session={{ ...SESSION, email: 'noah@alpha.local', sessionId: 's2' }}
         storage={storage}
       />,
     );

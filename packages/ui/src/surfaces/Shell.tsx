@@ -64,6 +64,11 @@ export interface ShellProps {
   readonly onRailResizeEnd?: (width: number) => void;
   /** Every click inside the shell, heard after its target's own handlers. */
   readonly onClick?: (event: MouseEvent<HTMLDivElement>) => void;
+  /**
+   * The build identifier, drawn at the foot of the rail (S0-1, line C2). Null
+   * is a build that carries none, and the rail says so rather than going blank.
+   */
+  readonly build: string | null;
   readonly children: ReactNode;
 }
 
@@ -133,6 +138,11 @@ export function Shell(props: ShellProps): ReactElement {
             </a>
           ))}
         </div>
+        {/* The version stamp's one fixed place. The browser rows read
+            `data-build` here and match it against the served build. */}
+        <p className="rail__build" data-build={props.build ?? ''}>
+          {props.build === null ? 'Build not stamped' : `Build ${props.build}`}
+        </p>
         {collapsed || props.onRailResize === undefined ? null : (
           <EdgeGrip
             edge="right"

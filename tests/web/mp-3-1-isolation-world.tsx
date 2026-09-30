@@ -16,12 +16,8 @@ import { act } from 'react';
 import type { Hono } from 'hono';
 import { App } from '../../apps/web/src/App.tsx';
 import type { PanelRegistry } from '../../apps/web/src/panels.ts';
-import {
-  SessionStore,
-  dockKey,
-  type Session,
-  type StorageLike,
-} from '../../apps/web/src/session/token.ts';
+import { SessionStore, dockKey, type StorageLike } from '../../apps/web/src/session/token.ts';
+import { cookieNameFor, sessionIdOf } from '../../apps/api/auth/session.ts';
 import type { ApiFixture } from '../api/fixture.ts';
 import { createControls, type Controls } from '../api/controls-fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
@@ -133,17 +129,33 @@ async function build(w: World, name: string): Promise<void> {
   });
 }
 
-/** Signs a session into the tab holding `storage` and waits until every read is answered and drawn. */
+/** A reader as a suite signs them in: the sign-in the browser's cookie carries. */
+export interface Reader {
+  readonly token: string;
+  readonly businessKey: string;
+  readonly email: string;
+}
+
+/** Signs a reader into the tab holding `storage` and waits until every read is answered and drawn. */
 export async function signedIn(
   w: World,
-  session: Session,
+  reader: Reader,
   storage: StorageLike,
   heard: Heard[],
 ): Promise<Mounted> {
-  storage.setItem('ops-astro.session', JSON.stringify(session));
+  const sessionId = sessionIdOf(reader.token);
+  storage.setItem(
+    'ops-astro.session',
+    JSON.stringify({ sessionId, businessKey: reader.businessKey, email: reader.email }),
+  );
+  // The tab holds only the sign-in's id; the browser adds its cookie and nothing else.
   const through = (async (url: string | URL, init?: RequestInit) => {
     inFlight.add(heard);
-    const response = await w.api.fetch(new Request(`http://api.test${String(url)}`, init));
+    const headers = new Headers(init?.headers);
+    headers.set('cookie', `${cookieNameFor(sessionId)}=${reader.token}`);
+    const response = await w.api.fetch(
+      new Request(`http://api.test${String(url)}`, { ...init, headers }),
+    );
     inFlight.delete(heard);
     heard.push({
       path: String(url),
@@ -180,10 +192,10 @@ export const readsOf = (w: World, heard: readonly Heard[]): readonly Heard[] =>
  */
 export async function throughDoor(
   w: World,
-  session: Session,
+  reader: Reader,
 ): Promise<{ page: Mounted; reads: readonly Heard[]; heard: readonly Heard[] }> {
   const heard: Heard[] = [];
-  const page = await signedIn(w, session, memory(), heard);
+  const page = await signedIn(w, reader, memory(), heard);
   const door = document.createElement('button');
   door.dataset['dockOpen'] = 'todos';
   door.dataset['dockPlace'] = `/task/${w.taskOne}`;
