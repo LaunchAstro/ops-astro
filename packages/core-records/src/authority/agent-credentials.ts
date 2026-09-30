@@ -2,7 +2,7 @@
 //
 // The agent credential (API-2): a standing delegation from the person who
 // issues it to a fresh agent actor of theirs, with no lease and no run. The
-// table is `public.agent_credentials` (migration 0055).
+// table is `public.agent_credentials` (migration 0052).
 //
 // **Scope.** The ticked `collection:action` keys, each one the issuer holds at
 // business scope when it is issued (the grant check's own walk), and never

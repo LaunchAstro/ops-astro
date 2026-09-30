@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The legal documents (C81, migration 0052): each a run of versions, drafted,
+// The legal documents (C81, migration 0049): each a run of versions, drafted,
 // approved as those exact bytes and published. The table's guard keeps every
 // version's words fixed once written, so a change is always a new version and
 // a published one is never edited in place.
@@ -9,7 +9,7 @@
 // from what is read under that lock, so an approval and a publication racing
 // on one version apply in one order, each seeing the other's effect.
 //
-// The privacy policy reads the overseas-services register (migration 0053): a
+// The privacy policy reads the overseas-services register (migration 0050): a
 // policy version is drafted with the rows in use and their digest, and
 // approving or publishing it is refused while any of them is to confirm or
 // once the register has moved since the draft. Each takes the register's lock
@@ -17,7 +17,7 @@
 // setting a row takes the register's lock alone, so the two never wait on
 // each other in a cycle.
 //
-// The data-class register (migration 0054) is read the same way under the
+// The data-class register (migration 0051) is read the same way under the
 // same lock: a policy is drafted with the classes in use and their digest, and
 // approving or publishing it is refused once they have changed since.
 

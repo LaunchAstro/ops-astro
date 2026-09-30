@@ -8,7 +8,7 @@
 // installation runs them; a real-data installation refuses them while any of
 // the eight items is open. The mode and the items live in `ops`, which only
 // `public.first_client_readiness()` reads for the application's role
-// (migration 0059), so no person or agent writes the readiness value.
+// (migration 0056), so no person or agent writes the readiness value.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { COMMAND_EFFECTS, classOf, type CommandName } from '../../../core-wire/src/index.ts';

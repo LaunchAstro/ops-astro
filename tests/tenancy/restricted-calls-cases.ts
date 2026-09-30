@@ -28,27 +28,27 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
-  // 0050 (C59): a factor is written and moved on, never deleted.
+  // 0047 (C59): a factor is written and moved on, never deleted.
   ['siu', 'second_factors'],
-  // 0051 (C55): a privacy incident is recorded and moved on, never deleted.
+  // 0048 (C55): a privacy incident is recorded and moved on, never deleted.
   ['siu', 'privacy_incidents'],
-  // 0052 (C81): a legal document version is drafted, then approved and
+  // 0049 (C81): a legal document version is drafted, then approved and
   // published by update; never deleted.
   ['siu', 'legal_document_versions'],
-  // 0053 (C81): a row of the overseas-services register is set by insert or
+  // 0050 (C81): a row of the overseas-services register is set by insert or
   // update; never deleted.
   ['siu', 'overseas_services'],
-  // 0054 (C81): a data class is set by insert or update; never deleted.
+  // 0051 (C81): a data class is set by insert or update; never deleted.
   ['siu', 'data_classes'],
-  // 0055 (API-2): an agent credential is issued by insert and revoked by
+  // 0052 (API-2): an agent credential is issued by insert and revoked by
   // update; never deleted.
   ['siu', 'agent_credentials'],
-  // 0056 (C32): a client is written once; never updated or deleted.
+  // 0053 (C32): a client is written once; never updated or deleted.
   ['si', 'clients'],
-  // 0057 (C58): an access ending is written, then its provider steps are
+  // 0054 (C58): an access ending is written, then its provider steps are
   // stamped by update; never deleted.
   ['siu', 'access_endings'],
-  // 0058 (C58): an ended session is written once; never changed or deleted.
+  // 0055 (C58): an ended session is written once; never changed or deleted.
   ['si', 'ended_sessions'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).

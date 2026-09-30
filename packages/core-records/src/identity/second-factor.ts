@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The second factor a person has at the sign-in provider, as this business
-// records it (C59, migration 0050).
+// records it (C59, migration 0047).
 //
 // The provider holds the factor and its secret. These rows hold only that the
 // person has one and where it stands. Whether the person has a *verified* one

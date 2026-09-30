@@ -247,7 +247,7 @@ a UUID (`VerifiedSubject.sessionId`), and kept by every refresh. A session the
 person has ended (signed out of, ended from another session, or ended by a
 factor change) is refused at login resolution from that commit,
 `AUTH_SESSION_EXPIRED` 401, before the second-factor check, whatever the
-token's own `exp` says (`ended_sessions`, 0058). The provider's sign-out, which
+token's own `exp` says (`ended_sessions`, 0055). The provider's sign-out, which
 revokes the refresh tokens, comes after and cannot undo it.
 
 The business is named by the path and verified by login resolution. A business
@@ -1775,7 +1775,7 @@ the agent route waits on S0-6's bearer scheme.
 
 ## The first-client gate (S0-5)
 
-An installation is made-up or real (`ops.installation`, migration 0059).
+An installation is made-up or real (`ops.installation`, migration 0056).
 Every command the catalogue classes `client-data` or `invitation` reads
 `public.first_client_readiness()` inside its own transaction, after
 authority and before the handler, on the person and agent routes. On a

@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0052 C81: the legal documents, each a run of versions.
+-- 0049 C81: the legal documents, each a run of versions.
 --
 -- A version is drafted, approved as those exact bytes, and published, and each
 -- step is a tracked action under `privacy:manage` (`commands/legal-write.ts`).
