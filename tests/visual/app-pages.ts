@@ -19,6 +19,7 @@ import type { Browser } from 'playwright';
 import { createServer } from 'vite';
 import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
+import { answerMadeUp } from './made-up-api.ts';
 import type { Packet, Theme } from './packet.ts';
 import { addressOf, builtPages, needsSession, overflowOf, type PageShot } from './report.ts';
 
@@ -73,6 +74,7 @@ export async function captureBuiltPages(options: {
       // A public page (sign-in) is drawn signed out, a working page signed in.
       const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
       const signedIn = await openSide(browser, packet, width, { app, session, colorScheme: theme });
+      await answerMadeUp(signedIn.context);
       try {
         const sides = { signedOut, signedIn };
         shots.push(...(await capturePages(sides, { ...options, mask, width, theme })));
