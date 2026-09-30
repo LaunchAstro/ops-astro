@@ -1426,7 +1426,7 @@ both tenancy-scoped with row security forced, and the fair share's count
 
 - `model_calls`: one row per priced model call or recorded refusal, bound to
   its run, step, lease, approved version, reservation and delegation.
-- A conversation call (`0048_model_call_conversation`, AW-01's conversation
+- A conversation call (`0053_model_call_conversation`, AW-01's conversation
   seam): a person's call from their own conversation, through
   `callModelInConversation` (`core-custody/src/broker-conversation.ts`). The
   row names the conversation and none of the five task facts, no delegation,
