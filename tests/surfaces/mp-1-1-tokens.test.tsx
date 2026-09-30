@@ -12,13 +12,12 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
-import { captureBuiltPages, madeUpSession, serveApp } from '../visual/app-pages.ts';
+import { captureBuiltPages, withSignedInApp } from '../visual/app-pages.ts';
 import { comparePng } from '../visual/compare.ts';
-import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
+import { readPacket, themesOf } from '../visual/packet.ts';
 import { builtPages, report } from '../visual/report.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
@@ -262,21 +261,15 @@ describe('MP-1-1 tokens', () => {
 
 describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
   it('MP-1-1 harness captures: every built page in light and dark at 1480, 900 and 390', async () => {
-    const packet = readPacket();
     // Dark is captured from here, where the dark theme lands; no longer pending.
-    expect(packet.themes.dark).toBe('captured');
+    expect(readPacket().themes.dark).toBe('captured');
     const widths = [1480, 900, 390];
-    await fetchAssets(readAssets(), packet);
-    // No browser, no capture: the launch fails the test, never skips it.
-    const browser = await chromium.launch(MODE);
-    const { app, close } = await serveApp();
-    try {
-      const out = join(scratch, 'captures');
-      const session = madeUpSession(app, out);
-      const themes = themesOf(packet);
-      const shots = await captureBuiltPages({ browser, packet, app, session, widths, themes, out });
+    const out = join(scratch, 'captures');
+    await withSignedInApp(async (at) => {
+      const themes = themesOf(at.packet);
+      const shots = await captureBuiltPages({ ...at, widths, themes, out });
       // The report reads each picture file the browser wrote: a PNG as wide as its width.
-      const all = report({ ...packet, widths }, builtPages(), shots);
+      const all = report({ ...at.packet, widths }, builtPages(), shots);
       expect(all.failed).toBe(0);
       // Each dark picture is drawn in dark: it differs from its light one.
       const file = (page: string, width: number, theme: string): Buffer =>
@@ -290,9 +283,6 @@ describe('MP-1-1 on the width-and-theme harness (MP-1-7)', () => {
           const same = comparePng(name, file(page, width, 'light'), file(page, width, 'dark'));
           expect(same.pass, `${name} dark draws the same as light`).toBe(false);
         }
-    } finally {
-      await browser.close();
-      await close();
-    }
+    });
   }, 600_000);
 });

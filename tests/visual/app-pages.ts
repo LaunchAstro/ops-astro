@@ -13,13 +13,14 @@
 // on T4b1's fixture). Each picture counts only when the page drew its own
 // screen, never the sign-in form or a gate.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Browser, Page } from 'playwright';
+import { chromium, type Browser, type Page } from 'playwright';
 import { createServer } from 'vite';
 import { load, openSide, shoot, type Catalogue } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
-import type { Packet, Theme } from './packet.ts';
+import { fetchAssets, MODE, readAssets, readPacket, type Packet, type Theme } from './packet.ts';
 import { addressOf, builtPages, needsSession, overflowOf, type PageShot } from './report.ts';
 
 /** The app served from source by its own Vite config, at a free local port. */
@@ -49,6 +50,30 @@ export function madeUpSession(app: URL, dir: string): string {
   for (const one of state.origins) one.origin = app.origin;
   writeFileSync(file, JSON.stringify(state));
   return file;
+}
+
+/** The pinned browser and the served app, signed in with the made-up session. */
+export type SignedInApp = { browser: Browser; packet: Packet; app: URL; session: string };
+
+/**
+ * Starts what every browser leg draws on, in its order: the packet's faces
+ * fetched, the pinned browser, the app served from source and the made-up
+ * session; hands them to `use` and closes them after. No browser: the launch
+ * throws, so a test on what `use` draws fails and never skips.
+ */
+export async function withSignedInApp<T>(use: (at: SignedInApp) => Promise<T>): Promise<T> {
+  const packet = readPacket();
+  await fetchAssets(readAssets(), packet);
+  const browser = await chromium.launch(MODE);
+  const { app, close } = await serveApp();
+  const dir = mkdtempSync(join(tmpdir(), 'made-up-session-'));
+  try {
+    return await use({ browser, packet, app, session: madeUpSession(app, dir) });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    await browser.close();
+    await close();
+  }
 }
 
 /** A built page drawn at one width in one theme: `<page>@<width>-<theme>`. */

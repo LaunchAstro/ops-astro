@@ -12,14 +12,11 @@
 // (the census's own, with its ruling) is counted apart, never refused. No
 // browser: the launch throws, so the test on this report fails.
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { chromium, type Page } from 'playwright';
-import { eachBuiltPage, madeUpSession, screenOf, serveApp } from '../visual/app-pages.ts';
+import type { Page } from 'playwright';
+import { eachBuiltPage, screenOf, withSignedInApp } from '../visual/app-pages.ts';
 import { scrollMetrics } from '../visual/drift.ts';
 import { WIDTHS } from '../visual/gallery-views.ts';
-import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
+import { themesOf } from '../visual/packet.ts';
 import { overflowOf } from '../visual/report.ts';
 
 export type PageCensus = {
@@ -142,25 +139,17 @@ async function measure(
 }
 
 /** The census over every built page at each width in each theme. */
-export async function pageCensus(given: {
+export function pageCensus(given: {
   names: string[];
   exceptions: string[];
 }): Promise<PageCensus[]> {
-  const packet = readPacket();
-  await fetchAssets(readAssets(), packet);
-  const browser = await chromium.launch(MODE);
-  const { app, close } = await serveApp();
-  const dir = mkdtempSync(join(tmpdir(), 'page-census-'));
-  try {
-    const session = madeUpSession(app, dir);
-    const each = { browser, packet, app, session, widths: WIDTHS, themes: themesOf(packet) };
-    return await eachBuiltPage(each, async ({ name, page }) => ({
-      name,
-      ...(await measure(page, given)),
-    }));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-    await browser.close();
-    await close();
-  }
+  return withSignedInApp((at) =>
+    eachBuiltPage(
+      { ...at, widths: WIDTHS, themes: themesOf(at.packet) },
+      async ({ name, page }) => ({
+        name,
+        ...(await measure(page, given)),
+      }),
+    ),
+  );
 }

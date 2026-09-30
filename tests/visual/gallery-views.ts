@@ -12,14 +12,11 @@
 // What this measures runs in the required checks. The pixel comparison with
 // the private mockup does not (ruling (a)): `run.ts` with MOCKUP_DIR, locally.
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { chromium, type Page } from 'playwright';
-import { madeUpSession, serveApp } from './app-pages.ts';
+import type { Page } from 'playwright';
+import { withSignedInApp } from './app-pages.ts';
 import { load, openSide } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
-import { fetchAssets, MODE, readAssets, readPacket, themesOf, type Theme } from './packet.ts';
+import { themesOf, type Theme } from './packet.ts';
 import { addressOf, overflowOf } from './report.ts';
 
 /** T4c's three capture widths: desktop, tablet and phone. */
@@ -28,16 +25,8 @@ export const WIDTHS = [1480, 900, 390] as const;
 export type GalleryView = { width: number; theme: Theme; page: Page; sideways: number };
 
 /** Opens the gallery at each width in each theme and hands each view to `measure`. */
-export async function eachGalleryView(
-  measure: (view: GalleryView) => Promise<void>,
-): Promise<void> {
-  const packet = readPacket();
-  await fetchAssets(readAssets(), packet);
-  const browser = await chromium.launch(MODE);
-  const { app, close } = await serveApp();
-  const dir = mkdtempSync(join(tmpdir(), 'gallery-views-'));
-  try {
-    const session = madeUpSession(app, dir);
+export function eachGalleryView(measure: (view: GalleryView) => Promise<void>): Promise<void> {
+  return withSignedInApp(async ({ browser, packet, app, session }) => {
     const url = new URL(addressOf('agency:gallery', {}) ?? '', app).href;
     for (const width of WIDTHS) {
       for (const theme of themesOf(packet)) {
@@ -51,11 +40,7 @@ export async function eachGalleryView(
         }
       }
     }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-    await browser.close();
-    await close();
-  }
+  });
 }
 
 /** One gallery entry's picture, by its catalogue id. */
