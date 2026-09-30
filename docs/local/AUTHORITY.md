@@ -372,11 +372,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:664-694`, run at `:829-837`). It gets a login and an acting identity,
-  and no membership and no business grant (`:124-127`, `:276-278`). The seed
+  user (`:664-694`, run at `:832-840`). It gets a login and an acting identity,
+  and no membership and no business grant (`:127-130`, `:279-281`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:705-725`, `:859-869`).
+  (`:705-725`, `:862-872`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -704,7 +704,8 @@ MP-6-2's `run.revise_state` asks `write` on `run` of the task named in
 made-up run gets. An agent reaches it only under a delegation minted with
 `run`, which pickup mints where the delegating person holds `run:write` and
 holds to `write` alone; the agent is the recorded actor. The seed gives
-`run:write` to no role.
+`run:write` to the owner and administrators, beside `conversation:write`
+(ORCH38).
 
 ## The restricted worker role
 
