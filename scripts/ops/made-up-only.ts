@@ -10,7 +10,10 @@
 //   superuser that the seed did not tag, as a restore or a hand-loaded file
 //   is, lands in the guard's ledger by table name, never by content. So does a
 //   sign-in whose address is not a made-up `.local` one. Writes through the
-//   application's own role are what people typed on staging, and pass.
+//   application's own role are what people typed on staging, and pass. The
+//   seed's tag is a secret its process makes at start and never stores: the
+//   guard holds only its digest, so no other session, restore or file can
+//   make a tag that passes, and the next seed run replaces it.
 // - The watch: an event trigger that guards a table from its creation and
 //   notes a guard switched off (`pg_restore --disable-triggers` does that).
 //   Guards and watch fire in every replication mode.
@@ -20,7 +23,7 @@
 // confirms it (LOCAL_SEED_MADE_UP=confirm) and every tenant table has never
 // held a row, judged by its storage size. The guard stops a mistake; the owner
 // can remove it on purpose, as the owner can write the mark by hand.
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 /** The one call this needs from the owner connection. */
 export interface OwnerQuery {
@@ -32,6 +35,8 @@ const PEOPLE = '; people: ';
 const GUARD = 'ops_astro_made_up_guard';
 const LEDGER = 'ops_astro_made_up.untrusted';
 const digest = (id: string): string => createHash('sha256').update(id).digest('hex');
+/** This process's seed tag; the guard knows its digest and nothing else. */
+const SEED_SECRET = randomBytes(32).toString('hex');
 const joined = (list: readonly string[]): string =>
   list
     .map((id) => digest(id))
@@ -120,7 +125,8 @@ const INSTALL = [
         if new.email is null or lower(new.email) not like '%.local' then
           perform ops_astro_made_up.note('auth.users');
         end if;
-      elsif current_setting('ops_astro.writer', true) is distinct from 'seed'
+      elsif encode(sha256(convert_to(coalesce(current_setting('ops_astro.writer', true), ''),
+          'UTF8')), 'hex') is distinct from '${digest(SEED_SECRET)}'
         and ((select rolsuper from pg_roles where rolname = session_user)
           or pg_has_role(session_user,
                (select datdba from pg_database where datname = current_database()), 'member'))
@@ -207,4 +213,4 @@ export async function admitMadeUp(admin: OwnerQuery, confirmed: boolean): Promis
  * A FROM item that tags the statement's transaction as the seed's, so the guard
  * lets the seed's own write through the owner connection pass.
  */
-export const SEED_TAG = "(select set_config('ops_astro.writer', 'seed', true)) as seed";
+export const SEED_TAG: string = `(select set_config('ops_astro.writer', '${SEED_SECRET}', true)) as seed`;
