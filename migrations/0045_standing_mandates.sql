@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0035 standing mandates: graduation and standing approvals per client
+-- 0045 standing mandates: graduation and standing approvals per client
 -- (MP-14-10a, U39; owner answer 13).
 --
 -- `graduation_classes` is one action class's record for one client: what the

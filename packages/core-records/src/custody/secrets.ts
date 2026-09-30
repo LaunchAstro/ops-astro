@@ -5,7 +5,7 @@
 // Nothing here returns a value. `setSecret` takes one and seals it before the
 // statement is built, so the plaintext never becomes a bound parameter, a log
 // line or a row. `listSecrets` selects only the columns the application role
-// is granted (migration 0032), and a statement that named a sealed column
+// is granted (migration 0042), and a statement that named a sealed column
 // would be refused by the server.
 
 import { randomUUID } from 'node:crypto';
@@ -136,7 +136,7 @@ export async function setSecret(
         set_at, set_by_actor_id)
      values ((select public.app_business_id()), $1, $2, $3, $4::uuid, $5, $6, $7, $8, now(), $9)
      -- Parameters, not excluded.*: reading an excluded sealed column needs
-     -- the select privilege the application role is refused (0032).
+     -- the select privilege the application role is refused (0042).
      on conflict (business_id, name, scope_kind, scope_id) do update
        set sealed = $5, ephemeral_public = $6, nonce = $7, key_id = $8, set_at = now(),
            set_by_actor_id = $9,

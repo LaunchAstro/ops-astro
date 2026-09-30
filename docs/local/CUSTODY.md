@@ -6,7 +6,7 @@ What C31 built, what it proves, and what to do when a credential leaks.
 
 ## What is here
 
-`custody_secrets` (migration 0032) holds one row per named secret at one
+`custody_secrets` (migration 0042) holds one row per named secret at one
 scope: the whole business, or one client (a party id, the scope a
 party-scoped grant names). A row says whether a value is set, who set or
 cleared it, and when the broker last used it.
