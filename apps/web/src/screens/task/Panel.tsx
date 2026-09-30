@@ -50,6 +50,7 @@ import {
 } from './Perspectives.tsx';
 import { PageLink, pageLinkDoor } from './PageLink.tsx';
 import type { DraftScope } from './DraftPanel.tsx';
+import type { ClientFactsSource, DuplicateSource } from './client-seam.ts';
 import { PanelFields, PanelName } from './PanelFields.tsx';
 import { statesOf, withPageDefaults } from './read-defaults.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
@@ -75,6 +76,12 @@ export interface TaskPanelProps {
   readonly onNewTask?: (scope: DraftScope) => void;
   /** Hand the host this person's timer stop while it runs on the task, or null. */
   readonly onLeaving?: (stop: (() => void) | null) => void;
+  /** The Client field's client list and content answer (`client-seam.ts`); made up until wired. */
+  readonly clientFacts?: ClientFactsSource;
+  /** "Duplicate without contents"'s sender (`client-seam.ts`); made up until wired. */
+  readonly duplicate?: DuplicateSource;
+  /** A duplicate landed: the host opens the new task by its key. */
+  readonly onDuplicated?: (key: string) => void;
 }
 
 const CONTROLS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
