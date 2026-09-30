@@ -57,6 +57,7 @@ function request(host: string, path = '/api/health', init: RequestInit = {}): Re
 describe('S0-6 the function entry answers only its own host', () => {
   hostCase();
   settingsCase();
+  alertSettingsCase();
   adminCase();
 });
 
@@ -134,17 +135,45 @@ function settingsCase() {
   });
 }
 
+// S0-2 error outbox: a deployment (OPS_ENVIRONMENT set) appends its alerts
+// under ALERT_SCOPE_KEY, at least 32 bytes as hex; neither set is the local world.
+function alertSettingsCase() {
+  it('appends alerts only under a well-formed ALERT_SCOPE_KEY and OPS_ENVIRONMENT, naming the setting', () => {
+    const key = randomBytes(32).toString('hex');
+    const staging = { ...unreachable, OPS_ENVIRONMENT: 'staging' };
+    expect(() => createFunctionHandler({ ...staging, ALERT_SCOPE_KEY: key })).not.toThrow();
+    const refused: readonly [Settings, string][] = [
+      [staging, 'ALERT_SCOPE_KEY'],
+      [{ ...unreachable, ALERT_SCOPE_KEY: key }, 'OPS_ENVIRONMENT'],
+      [{ ...unreachable, OPS_ENVIRONMENT: 'stage', ALERT_SCOPE_KEY: key }, 'OPS_ENVIRONMENT'],
+      [{ ...staging, ALERT_SCOPE_KEY: key.slice(2) }, 'ALERT_SCOPE_KEY'],
+      [{ ...staging, ALERT_SCOPE_KEY: `${key.slice(1)}g` }, 'ALERT_SCOPE_KEY'],
+      [{ ...staging, ALERT_SCOPE_KEY: ` ${key}` }, 'ALERT_SCOPE_KEY'],
+    ];
+    for (const [settings, name] of refused) {
+      const start = () => createFunctionHandler(settings);
+      expect(start, name).toThrow(name);
+      expect(start).not.toThrow(key.slice(2, 20));
+    }
+  });
+}
+
 function adminCase() {
-  it('refuses to start with an admin login in its environment, naming it and never a value', async () => {
+  it('refuses to start with an admin login or the sink key in its environment, naming it and never a value', async () => {
     const saved = { ...process.env };
-    Object.assign(process.env, unreachable, { DATABASE_ADMIN_URL: NOWHERE });
-    try {
-      const started = GET(request(HOST));
-      await expect(started).rejects.toThrow('DATABASE_ADMIN_URL');
-      await expect(started).rejects.not.toThrow('entry-canary-7f3c');
-    } finally {
-      for (const name of Object.keys(process.env)) if (!(name in saved)) delete process.env[name];
-      Object.assign(process.env, saved);
+    for (const name of ['DATABASE_ADMIN_URL', 'OPS_ERROR_SINK_DSN']) {
+      delete process.env['DATABASE_ADMIN_URL'];
+      Object.assign(process.env, unreachable, { [name]: NOWHERE });
+      try {
+        const started = GET(request(HOST));
+        // oxlint-disable-next-line no-await-in-loop -- each setting on its own
+        await expect(started).rejects.toThrow(name);
+        // oxlint-disable-next-line no-await-in-loop -- as above
+        await expect(started).rejects.not.toThrow('entry-canary-7f3c');
+      } finally {
+        for (const held of Object.keys(process.env)) if (!(held in saved)) delete process.env[held];
+        Object.assign(process.env, saved);
+      }
     }
   });
 }
