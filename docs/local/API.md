@@ -1275,6 +1275,7 @@ proposals: {
     runId: string | null;
     startedAt: string | null;          // the run's first claim (MP-6-2)
     endedAt: string | null;            // a hand-back with no claim after it
+    tokenUnits: number | null;         // the run's model calls' units (0055)
     evidence: { id; renderer; digest; body } | null;
     gate: { id; state; round; expiresAt; expired; payloadDigest } | null;
   }[];

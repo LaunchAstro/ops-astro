@@ -12,6 +12,7 @@
     "tests/api/aw-03-isolation.test.ts",
     "tests/api/aw-03-exchange.test.ts",
     "tests/api/mp-6-2-run-times.test.ts",
+    "tests/api/mp-6-2-run-tokens.test.ts",
     "tests/api/mp-7-11-isolation.test.ts",
     "tests/api/c36-isolation.test.ts",
     "tests/api/mp-6-5-isolation.test.ts",

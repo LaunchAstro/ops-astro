@@ -324,6 +324,8 @@ export interface ProposalVersionView {
   readonly startedAt: string | null;
   /** A hand-back with no claim after it, or null while the run is out or never ran. */
   readonly endedAt: string | null;
+  /** The token units the run's model calls recorded, or null for none (MP-6-2's hero tokens). */
+  readonly tokenUnits: number | null;
   readonly evidence: EvidenceView | null;
   readonly gate: GateView | null;
   /** The checks the run performed on this version, oldest first (MP-6-1, CS-16.3). */
