@@ -11,6 +11,34 @@
   min-width: 0;
 }
 
+/* MP-6-2: the run in main, what it was given in a side column after it; 21rem
+   beside main at 1279 and above, stacked under it below (the mockup's `.tpg`,
+   app.css:12696). A side section opens on a rule. */
+.tpg {
+  display: grid;
+  gap: var(--s-5);
+  min-width: 0;
+}
+@media (width >= 1279px) {
+  .tpg {
+    grid-template-columns: minmax(0, 1fr) 21rem;
+    align-items: start;
+  }
+}
+.tpg__main {
+  display: grid;
+  gap: var(--s-3);
+  min-width: 0;
+}
+.tpg__side {
+  display: grid;
+  min-width: 0;
+}
+.tpg__side > * {
+  border-top: 1px solid var(--border);
+  padding: var(--s-2) 0 var(--s-3);
+}
+
 .gate {
   display: flex;
   gap: var(--s-4);
