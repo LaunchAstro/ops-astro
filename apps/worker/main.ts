@@ -14,7 +14,7 @@
 // nothing, so a stopped or broken worker goes quiet and the watcher mails.
 
 import { httpTransport } from '../cli/client.ts';
-import { ping, UNREACHABLE } from './heartbeat.ts';
+import { offEgress, ping, UNREACHABLE } from './heartbeat.ts';
 import { SYNTHETIC_USAGE } from './usage.ts';
 import { createWorker } from './worker.ts';
 
@@ -31,7 +31,7 @@ function refusal(env: Readonly<Record<string, string | undefined>>): string | un
   if (heartbeat && (url?.protocol !== 'https:' || UNREACHABLE.test(url.hostname))) {
     return `${HEARTBEAT} must be a public https address`;
   }
-  return undefined;
+  return offEgress(env, [[HEARTBEAT, 'OPS_EGRESS_HEARTBEAT_HOST']]);
 }
 
 export async function main(
