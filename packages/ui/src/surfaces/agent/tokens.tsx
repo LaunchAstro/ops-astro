@@ -8,13 +8,15 @@
 // It writes nothing. The skill chips are doors to the Docs panel, drawn
 // unavailable with their reason until that panel exists (MP-7-6 opens them);
 // the data-source link is drawn only for an http or https address, since the
-// evidence it comes from is the agent's own writing. AW-05's stop, top-up
-// request and consolidated decision join here when SL11's states land.
+// evidence it comes from is the agent's own writing. AW-05's stops are shown
+// here, each run's latest with its count and, after the third, the one
+// consolidated decision (`stops.tsx`); answering them is C54's, below.
 
 import { useId, type ReactElement } from 'react';
 import type { RunLineage } from '../../state/run-projection.ts';
 import { safeHref } from '../../state/agent-staged.ts';
 import {
+  latestStops,
   tokenStory,
   type LedgerSkill,
   type LedgerSource,
@@ -23,6 +25,7 @@ import {
   type TokenStory,
 } from '../../state/token-ledger.ts';
 import { money, words } from './format.ts';
+import { StopStates } from './stops.tsx';
 
 const SKILL_REASON =
   'Skills open in the Docs panel, which is not on this page yet. Each chip names the skill the run used.';
@@ -212,6 +215,7 @@ export function TokenTracked(props: {
       <Spend story={story} />
       {story.dataSource === null ? null : <Source source={story.dataSource} />}
       <Runs story={story} reasonId={reasonId} />
+      <StopStates stops={latestStops(props.ledger)} />
       {showsReason ? (
         <p className="tokempty__say" id={reasonId} data-tokens="skill-reason">
           {SKILL_REASON}

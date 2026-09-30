@@ -57,7 +57,7 @@ import { keyResolver, gateSigningKey } from '../../../core-runtime/src/index.ts'
 import type { KeyResolver, SigningKey } from '../../../core-runtime/src/index.ts';
 import { readVerifiedProjection, type VerifiedDecision } from './verified-decisions.ts';
 import { SCOPES, scopesOf, type ScopeRow } from './run-scopes.ts';
-import { ENVELOPES, ledgerOf, type EnvelopeRow } from './task-ledger.ts';
+import { ENVELOPES, ledgerOf, STOPS } from './task-ledger.ts';
 import type { DecisionLink, ProposalView, TaskLedgerView } from '../../../core-wire/src/index.ts';
 import { asReservation, asVersion } from './proposal-rows.ts';
 import type { CheckRow, ReservationRow, VersionRow } from './proposal-rows.ts';
@@ -184,6 +184,7 @@ export async function readTaskWork(
         checks: CHECKS,
         scopes: SCOPES,
         envelopes: ENVELOPES,
+        stops: STOPS,
       },
       parameter: taskId,
     },
@@ -194,7 +195,7 @@ export async function readTaskWork(
   const checks = (snapshot.rows['checks'] ?? []) as readonly CheckRow[];
   const scopes = (snapshot.rows['scopes'] ?? []) as readonly ScopeRow[];
   const decisions = snapshot.decisions;
-  const ledger = ledgerOf((snapshot.rows['envelopes'] ?? []) as readonly EnvelopeRow[]);
+  const ledger = ledgerOf(snapshot.rows);
   if (versions.length === 0) return { proposals: [], ledger };
 
   const lineageIds = [...new Set(versions.map((row) => row.lineage_id))];

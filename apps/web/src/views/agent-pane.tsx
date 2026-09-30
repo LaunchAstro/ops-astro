@@ -12,8 +12,10 @@
 // unknown effect (C54) is `budget.record_outcome` (T3d1) or `budget.write_off`
 // (T3c), naming the attempt the read showed; both ask `billing:decide`, and the
 // write-off's second approver above the band is the server's. The top-up is
-// the task page's own (T2e). Every outcome ends in a reread, as the proposals
-// section's does.
+// the task page's own (T2e). A run stopped at its ceiling (AW-05) is answered
+// with `run.top_up` (`billing:decide`) or `run.end_at_budget_stop`
+// (`gate:decide`), naming the task and the run the read showed. Every outcome
+// ends in a reread, as the proposals section's does.
 
 import { useState, type ReactElement } from 'react';
 import { AgentPane, type GateDecision, type RecordedOutcome } from '@launchastro/ui';
@@ -47,6 +49,10 @@ interface AgentControls {
   readonly writeOff: (attemptId: string, amountMinor: number, reason: string) => void;
   /** The server's word that the last write-off waits on a second person, or null. */
   readonly awaiting: string | null;
+  readonly topUpAtStop: (runId: string, amountMinor: number, currency: string) => void;
+  readonly endAtStop: (runId: string) => void;
+  /** The server's word that the last top-up at a stop waits on a second person, or null. */
+  readonly stopAwaiting: string | null;
 }
 
 /** The `detail.state` a command's answer carries, if any. */
@@ -57,19 +63,20 @@ const stateOf = (value: unknown): unknown =>
 
 const AWAITING =
   'Your write-off is recorded. Above the four-eyes threshold a second person approves it too.';
+const STOP_AWAITING =
+  'Your top-up is recorded. Above the four-eyes threshold it applies when a second person approves the same amount.';
 
 /** The pane's controls on the real commands, each ending in a reread. */
 function useAgentControls(props: AgentSectionProps): AgentControls {
   const { busy, run } = useCommand();
   const [refusal, setRefusal] = useState<string | null>(null);
   const [awaiting, setAwaiting] = useState<string | null>(null);
+  const [stopAwaiting, setStopAwaiting] = useState<string | null>(null);
   const settle = (settlement: Settlement): void => {
     setRefusal(settlement.kind === 'ok' ? null : settlement.because);
-    setAwaiting(
-      settlement.kind === 'ok' && stateOf(settlement.value) === 'awaiting_second_approver'
-        ? AWAITING
-        : null,
-    );
+    const state = settlement.kind === 'ok' ? stateOf(settlement.value) : undefined;
+    setAwaiting(state === 'awaiting_second_approver' ? AWAITING : null);
+    setStopAwaiting(state === 'awaiting_second' ? STOP_AWAITING : null);
     props.onChanged();
   };
   const decide: AgentControls['decide'] = (gate, decision) => {
@@ -97,10 +104,38 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
       settle,
     );
   };
-  const { recordOutcome, writeOff } = unknownControls(props, busy, (call) => {
+  const send = (call: () => ReturnType<OperationsClient['mutate']>): void => {
     run(call, settle);
-  });
-  return { busy, refusal, decide, cancel, recordOutcome, writeOff, awaiting };
+  };
+  const acts = { ...unknownControls(props, busy, send), ...stopControls(props, busy, send) };
+  return { busy, refusal, decide, cancel, awaiting, stopAwaiting, ...acts };
+}
+
+/** C54's two answers at a budget stop, each on its owning command (AW-05). */
+function stopControls(
+  props: AgentSectionProps,
+  busy: boolean,
+  send: (call: () => ReturnType<OperationsClient['mutate']>) => void,
+): Pick<AgentControls, 'topUpAtStop' | 'endAtStop'> {
+  return {
+    topUpAtStop: (runId, amountMinor, currency) => {
+      if (busy) return;
+      send(() =>
+        props.client.mutate('run.top_up', {
+          recordId: props.recordId,
+          runId,
+          amountMinor,
+          currency,
+        }),
+      );
+    },
+    endAtStop: (runId) => {
+      if (busy) return;
+      send(() =>
+        props.client.mutate('run.end_at_budget_stop', { recordId: props.recordId, runId }),
+      );
+    },
+  };
 }
 
 /** C54's two acts on an unknown effect, each on its owning command (T3d1, T3c). */
@@ -135,8 +170,8 @@ function unknownControls(
 }
 
 export function AgentSection(props: AgentSectionProps): ReactElement {
-  const { busy, refusal, decide, cancel, recordOutcome, writeOff, awaiting } =
-    useAgentControls(props);
+  const controls = useAgentControls(props);
+  const { busy, refusal, decide, cancel, recordOutcome, writeOff, awaiting } = controls;
   // The person's own choice for this view. It is saved through the one
   // preference store once that store is in (MP-2-11); until then it lasts
   // as long as the page.
@@ -166,6 +201,9 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onOutcome={recordOutcome}
         onWriteOff={writeOff}
         writeOffAwaiting={awaiting}
+        onTopUpAtStop={controls.topUpAtStop}
+        onEndAtStop={controls.endAtStop}
+        stopAwaiting={controls.stopAwaiting}
       />
     </section>
   );

@@ -19,7 +19,8 @@ import { ProposalHeader, Summary, Workflow } from './agent/header.tsx';
 import { Scope } from './agent/scope.tsx';
 import { StagedOutput } from './agent/staged.tsx';
 import { scopeStamp } from '../state/agent-scope.ts';
-import type { TaskLedger } from '../state/token-ledger.ts';
+import { latestStops, type TaskLedger } from '../state/token-ledger.ts';
+import { StopAnswer } from './agent/stops.tsx';
 import { TokenTracked } from './agent/tokens.tsx';
 import { UnknownOutcome, type RecordedOutcome } from './agent/unknown.tsx';
 
@@ -55,6 +56,11 @@ export interface AgentPaneProps {
   readonly onWriteOff?: (attemptId: string, amountMinor: number, reason: string) => void;
   /** The server's word that a write-off waits on a second person, or null. */
   readonly writeOffAwaiting?: string | null;
+  /** C54's answers at a budget stop (AW-05), where the host offers both. */
+  readonly onTopUpAtStop?: (runId: string, amountMinor: number, currency: string) => void;
+  readonly onEndAtStop?: (runId: string) => void;
+  /** The server's word that the last top-up at a stop waits on a second person, or null. */
+  readonly stopAwaiting?: string | null;
 }
 
 export function AgentPane(props: AgentPaneProps): ReactElement {
@@ -110,6 +116,7 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
       />
       <Summary story={shown} />
       <Unknown {...props} shown={shown} />
+      <StopAnswers {...props} />
       <Workflow jobs={shown.jobs} open={props.jobListOpen} onToggle={props.onJobList} />
       <StagedOutput story={shown} />
       <Gate
@@ -137,5 +144,26 @@ function Unknown(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
       onOutcome={props.onOutcome}
       onWriteOff={props.onWriteOff}
     />
+  );
+}
+
+/** C54's answers at each run's waiting stop, where the host offers both. */
+function StopAnswers(props: AgentPaneProps): ReactElement | null {
+  const { onTopUpAtStop, onEndAtStop } = props;
+  if (onTopUpAtStop === undefined || onEndAtStop === undefined) return null;
+  const waiting = latestStops(props.ledger).filter((stop) => stop.answer === null);
+  return (
+    <>
+      {waiting.map((stop) => (
+        <StopAnswer
+          key={stop.askId}
+          stop={stop}
+          busy={props.busy}
+          awaiting={props.stopAwaiting ?? null}
+          onTopUp={onTopUpAtStop}
+          onEnd={onEndAtStop}
+        />
+      ))}
+    </>
   );
 }

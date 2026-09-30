@@ -10,6 +10,7 @@
 
 import { useState, type ReactElement } from 'react';
 import type { RunStory } from '../../state/agent-run.ts';
+import { minorOf } from './format.ts';
 
 export type RecordedOutcome = 'nothing_happened' | 'happened' | 'happened_differently';
 
@@ -30,12 +31,6 @@ const OUTCOMES: readonly {
     after: 'The work reopens.',
   },
 ];
-
-/** Dollars as whole minor units, or null for anything that is not a figure of 0 or more. */
-function minorOf(amount: string): number | null {
-  if (!/^\d+(?:\.\d{1,2})?$/u.test(amount.trim())) return null;
-  return Math.round(Number(amount.trim()) * 100);
-}
 
 export interface UnknownOutcomeProps {
   readonly story: RunStory;
