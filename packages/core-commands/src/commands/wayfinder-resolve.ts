@@ -93,18 +93,19 @@ export async function resolveTicketAsAgent(
   context: Closing,
   request: RequestOf<'task.resolve'>,
 ): Promise<HandlerOutcome> {
-  return await resolveWith(tx, context, request, (facts) => {
-    if (facts.type === 'research') return Promise.resolve(undefined);
-    return Promise.resolve(
-      OWNER_TYPES.has(facts.type)
-        ? refuseCommand(
-            'DELEGATION_EXCLUDES_DECISION',
-            ['task:decide'],
-            ["A grilling or prototype ticket is resolved by the map's owner, not an agent."],
-          )
-        : refuseCommand('DELEGATION_OUT_OF_PURPOSE', ['type'], [AGENT_RESEARCH_ONLY]),
-    );
-  });
+  return await resolveWith(tx, context, request, (facts) =>
+    Promise.resolve(
+      facts.type === 'research'
+        ? undefined
+        : OWNER_TYPES.has(facts.type)
+          ? refuseCommand(
+              'DELEGATION_EXCLUDES_DECISION',
+              ['task:decide'],
+              ["A grilling or prototype ticket is resolved by the map's owner, not an agent."],
+            )
+          : refuseCommand('DELEGATION_OUT_OF_PURPOSE', ['type'], [AGENT_RESEARCH_ONLY]),
+    ),
+  );
 }
 
 async function resolveWith(
