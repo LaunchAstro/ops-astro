@@ -81,7 +81,7 @@ export interface ApiFixture {
  */
 export async function tokenFor(
   subject: string,
-  options: { readonly expiresIn?: number } = {},
+  options: { readonly expiresIn?: number; readonly secondFactor?: boolean } = {},
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   return await sign(
@@ -91,8 +91,17 @@ export async function tokenFor(
       iss: ISSUER,
       role: 'authenticated',
       exp: now + (options.expiresIn ?? 600),
-      // The first sign-in, as GoTrue stamps it (C58's 12-hour limit is measured from it).
-      amr: [{ method: 'password', timestamp: now }],
+      // The first sign-in, as GoTrue stamps it (C58's 12-hour limit is measured
+      // from it); with `secondFactor`, the code given then too (C59's step-up).
+      ...(options.secondFactor === true
+        ? {
+            aal: 'aal2',
+            amr: [
+              { method: 'password', timestamp: now },
+              { method: 'totp', timestamp: now },
+            ],
+          }
+        : { amr: [{ method: 'password', timestamp: now }] }),
     },
     SECRET,
     'HS256',

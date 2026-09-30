@@ -25,6 +25,7 @@ import { grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
 import type { BusinessId, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
+import type { Assurance } from '../../packages/core-records/src/identity/verified-subject.ts';
 
 /**
  * What a seeded person is, and what a seeded agent is.
@@ -141,6 +142,12 @@ export async function tokenFor(
   );
 }
 
+/** A sign-in with the second factor, both factors given now (C59's step-up window). */
+function steppedUpNow(): Assurance {
+  const now = Math.floor(Date.now() / 1000);
+  return { level: 'aal2', signedInAt: now, factorAt: now };
+}
+
 export async function enrolCaller(
   db: FreshDatabase,
   businessId: BusinessId,
@@ -182,7 +189,11 @@ export async function enrolCaller(
     personId: identity.personId,
     actorId: identity.actorId,
     subject,
-    presented: member.presented,
+    // In process, the same sign-in: the assurance the token's claims carry.
+    presented:
+      options.secondFactor === true
+        ? { ...member.presented, assurance: steppedUpNow() }
+        : member.presented,
     token: await tokenFor(subject, { secondFactor: options.secondFactor === true }),
   };
 }
