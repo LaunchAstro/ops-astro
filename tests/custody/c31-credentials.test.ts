@@ -308,6 +308,27 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
     expect(await rowCount()).toBe(before);
   });
 
+  it('C31 no session token: a chat product session is refused by field and nothing is stored', async () => {
+    // AW-01 and C60: the product never stores a Claude.ai or ChatGPT session
+    // token, and custody's set is the one way a credential is stored. Each
+    // shape custody refuses at load is refused here, bare, as a cookie pair
+    // and percent-encoded, and never echoed.
+    const before = await rowCount();
+    for (const value of [
+      `sk-ant-sid01-${CANARY}`,
+      `sessionKey=sk-ant-sid01-${CANARY}`,
+      encodeURIComponent(`__Secure-next-auth.session-token=${CANARY}`),
+    ]) {
+      // eslint-disable-next-line no-await-in-loop -- one body at a time
+      const answer = await set('session.try', value);
+      expect(answer.status).toBe(422);
+      expect(answer.body['code']).toBe('FIELD_VALUE_INVALID');
+      expect(JSON.stringify(answer.body)).not.toContain(CANARY);
+    }
+    expect(await rowCount()).toBe(before);
+    expect(await list(admin)).not.toContainEqual(expect.objectContaining({ name: 'session.try' }));
+  });
+
   it('C31 no broker key configured: set refuses and stores nothing', async () => {
     const bare = controls.fixture.compose({ custody: undefined });
     const before = await rowCount();
