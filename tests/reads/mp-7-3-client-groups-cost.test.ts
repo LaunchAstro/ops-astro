@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// SL10-22 row 12 review proof 1 (MP-7-3 client groups): the inbox read names
+// MP-7-3 client groups, the read's cost (an interim review finding): the inbox read names
 // the clients of the tasks it lists, so its cost follows the page, never the
 // number of clients the reader reaches (every client, for a business-wide
 // reader), on each `inbox.read` and each live-board digest (`shownInbox`).
@@ -14,10 +14,10 @@ import { clearingWorld } from '../commands/inbox-clearing-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
-describe.skipIf(serverUrl === undefined)('SL10-22 row 12 proof 1', () => {
+describe.skipIf(serverUrl === undefined)('MP-7-3 client groups cost', () => {
   const w = clearingWorld('r12p1');
 
-  it('Sol proof, criterion correctness: the inbox read reads no more client rows for a business of many clients than of one', async () => {
+  it('MP-7-3 client groups: the inbox read reads no more client rows for a business of many clients than of one', async () => {
     const own = randomUUID();
     await w.fixture.db.admin.execute(
       `insert into public.clients (business_id, id, name, created_by_actor_id)
