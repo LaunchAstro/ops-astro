@@ -17,7 +17,11 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { serveTestKeySetApart, type ServedKeySet } from '../support/sign-in.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
-import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
+import {
+  createFreshDatabase,
+  databaseUrlFromEnvironment,
+  type FreshDatabase,
+} from '../support/fresh-database.ts';
 import {
   insertAgentActor,
   insertAgentMapping,
@@ -32,7 +36,6 @@ import {
   ISSUER,
   CANARY,
   STAGED,
-  serverUrl,
   scratch,
   token,
   type Fake,
@@ -44,6 +47,8 @@ import {
   CALLERS,
 } from './service-stop.fixture.ts';
 import { outputDigest } from '../../scripts/ops/build-output.ts';
+
+const serverUrl: string | undefined = databaseUrlFromEnvironment();
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
