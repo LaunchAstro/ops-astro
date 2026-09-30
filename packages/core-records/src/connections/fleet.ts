@@ -8,7 +8,7 @@
 // and every client in it; a client-scoped holder sees only the connections
 // that serve one of their clients, and only those clients in each list. The
 // credential is a reference: the secret's id and whether custody holds a
-// value for it, never a column that could carry one (0048 refuses those to
+// value for it, never a column that could carry one (0053 refuses those to
 // the application role in any case).
 
 import { randomUUID } from 'node:crypto';

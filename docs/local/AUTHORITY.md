@@ -372,11 +372,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:676-706`, run at `:837-845`). It gets a login and an acting identity,
-  and no membership and no business grant (`:131-134`, `:283-285`). The seed
+  user (`:676-706`, run at `:842-850`). It gets a login and an acting identity,
+  and no membership and no business grant (`:136-139`, `:288-290`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:712-732`, `:866-876`).
+  (`:712-732`, `:871-881`).
   user (`:664-694`, run at `:829-837`). It gets a login and an acting identity,
   and no membership and no business grant (`:124-127`, `:276-278`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`

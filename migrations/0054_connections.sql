@@ -1,11 +1,11 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0049 connections: the connector fleet and its repairs (MP-14-7a, U33).
+-- 0054 connections: the connector fleet and its repairs (MP-14-7a, U33).
 --
 -- One `connections` row per connector the business runs: which source, its
 -- status and the class of its last failure, how often it should sync and
 -- when it last did, the scope it was authorised with, and a reference to the
--- credential it uses in custody (0048). A reference only: the row holds the
+-- credential it uses in custody (0053). A reference only: the row holds the
 -- secret's id, never any part of a value, and the fleet read shows whether
 -- that secret is set and nothing more.
 --

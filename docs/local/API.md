@@ -1223,7 +1223,7 @@ whole of what `decide` compares.
 Each version carries `checks`: the checks its run recorded through
 `task.check` under the run's lease, oldest first, each with its `outcome` and
 the lease holder as `performedByActorId` (MP-6-1, CS-16.3; `run_checks`,
-migration 0048). They are read in the same snapshot as the rest.
+migration 0053). They are read in the same snapshot as the rest.
 
 Each lineage carries `scopes`: what each lease its runs took was allowed to
 touch, oldest first (MP-6-4, CS-6.1). A scope is the lease's own delegation,
@@ -1859,7 +1859,7 @@ A grant is a delegation. Its client is its purpose task's party link; its
 `redemptions` are the applied calls its agent made on that task while it held
 it, less the pickup that minted it. Nothing records what each call reached.
 Tripwires and night round steps are written by the checks and the round
-itself (`tripwires`, `night_round_steps`, migration 0050); the application
+itself (`tripwires`, `night_round_steps`, migration 0055); the application
 role only reads them.
 
 | Operation           | Route                | Body | Answer or refusals                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -1880,7 +1880,7 @@ the client's scope list (`*`, a family such as `social.*`, or one class), one
 client, a ceiling in whole minor units of one currency, an expiry after now,
 and a sentence that is its label only. A refusal carries no ceiling and holds
 the classes it matches. A mandate is filed and revoked, never edited
-(`standing_mandates`, migration 0051). Graduation rows are written by the
+(`standing_mandates`, migration 0056). Graduation rows are written by the
 agent loops as decisions land (`graduation_classes`); the application role
 reads them and bumps their revision. A row's `state` is derived: a live
 matching refusal holds a ready or promoted class; a live mandate a promote
@@ -1914,7 +1914,7 @@ A person releases a definition version: the first release names a new
 definition by `name` and `kind`, a later one names it by `definitionId`. The
 version takes the next number, pins its bytes by digest and size, and lists
 its inputs, its operations and the activation modes it permits. It never
-changes after release (`definition_versions`, migration 0052). The digest and
+changes after release (`definition_versions`, migration 0057). The digest and
 size are the caller's until AW-02's pinned read computes them from the bytes.
 An activation is pinned to one version of its definition, in a mode that
 version permits (checked by the command and again by the database). Without
@@ -1957,7 +1957,7 @@ type is installed on first use, `installClientType`). `onboarding.start` lays
 a template version out as tasks on that client, one per step, each titled with
 its phase, linked to the client by its party slot, and recorded with its kind
 (agent-run, needs a person, or waits on the client) and the steps it waits for
-(`onboardings`, `onboarding_steps`, migration 0054; one onboarding per client).
+(`onboardings`, `onboarding_steps`, migration 0059; one onboarding per client).
 The templates are versions in code (`ONBOARDING_TEMPLATES`,
 `core-records/src/onboarding/template.ts`). `onboarding.step_result` writes a
 step's result onto its own task as an internal system comment, so reading the

@@ -30,16 +30,16 @@ interface ColumnGrant {
 const COLUMN_UPDATES: readonly ColumnGrant[] = [
   { table: 'public.planned_runs', from: '0043', columns: ['state'] },
   // MP-14-10a: a graduation row's revision; a mandate's revocation.
-  { table: 'public.graduation_classes', from: '0051', columns: ['revision'] },
+  { table: 'public.graduation_classes', from: '0056', columns: ['revision'] },
   {
     table: 'public.standing_mandates',
-    from: '0051',
+    from: '0056',
     columns: ['revision', 'revoked_at', 'revoked_by_actor_id'],
   },
   // C33: an activation's setting; C52-A: the adoption that stands.
   {
     table: 'public.activations',
-    from: '0052',
+    from: '0057',
     columns: [
       'changed_at',
       'changed_by_actor_id',
@@ -51,17 +51,17 @@ const COLUMN_UPDATES: readonly ColumnGrant[] = [
       'version_id',
     ],
   },
-  { table: 'public.activations', from: '0053', columns: ['approval_id'] },
+  { table: 'public.activations', from: '0058', columns: ['approval_id'] },
   // C41-A: an onboarding and its steps move on.
-  { table: 'public.onboarding_steps', from: '0054', columns: ['closed_at', 'failures', 'state'] },
-  { table: 'public.onboardings', from: '0054', columns: ['revision', 'state', 'stopped_at'] },
+  { table: 'public.onboarding_steps', from: '0059', columns: ['closed_at', 'failures', 'state'] },
+  { table: 'public.onboardings', from: '0059', columns: ['revision', 'state', 'stopped_at'] },
 ];
 
 /** Select granted column by column (C31: custody's select leaves out the sealed columns). */
 const COLUMN_SELECTS: readonly ColumnGrant[] = [
   {
     table: 'public.custody_secrets',
-    from: '0048',
+    from: '0053',
     columns: [
       'business_id',
       'cleared_at',

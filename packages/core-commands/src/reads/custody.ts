@@ -7,7 +7,7 @@
 // sees every row, a client-scoped holder that client's rows only, and a
 // caller holding the key nowhere is refused rather than shown an empty list.
 // No column that could carry a value is selected, and the application role
-// could not select one if it tried (0048).
+// could not select one if it tried (0053).
 
 import {
   grantedScopes,
