@@ -105,6 +105,8 @@ const GRANTS_BY_ROLE = {
     // Time tracking (MP-4-6) asks `time:write`: the owner's and
     // administrators', and a member's only where granted.
     ['time', 'write'],
+    // Tags (MP-4-11) ask `tag:write` for a new name in the vocabulary.
+    ['tag', 'write'],
   ],
   member: [
     ['task', 'read'],

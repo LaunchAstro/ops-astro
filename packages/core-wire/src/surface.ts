@@ -122,7 +122,14 @@ export type CommandName =
   | 'time.stop'
   | 'time.log'
   | 'time.set_note'
-  | 'time.delete';
+  | 'time.delete'
+  // Tags (MP-4-11): a name in the business's vocabulary under `tag:write`,
+  // and a task's tags under `task:write` on the task. Neither names the
+  // task's revision: a tag is a row beside the task, not a write to it.
+  | 'tag.create'
+  | 'task.add_tag'
+  | 'task.remove_tag'
+  | 'tag.list';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -283,6 +290,7 @@ const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
 const TIME_COLLECTION = 'time';
+const TAG_COLLECTION = 'tag';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -419,6 +427,9 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'time.log': { taskId: 'id', duration: 'any', note: 'any' },
   'time.set_note': { entryId: 'id', note: 'any' },
   'time.delete': { entryId: 'id' },
+  'tag.create': { name: 'any' },
+  'task.add_tag': { recordId: 'id', tagId: 'id' },
+  'task.remove_tag': { recordId: 'id', tagId: 'id' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -651,6 +662,27 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
       untargetedIdentifiers: ['entryId'],
     }),
   ),
+
+  // Tags (MP-4-11, CS-4.19 to CS-4.21). A new tag is `tag:write` on the
+  // business; adding and removing are `task:write` on the task named in
+  // `recordId`; the vocabulary is `task:read` on the business, so a reader
+  // held to one client's records is not shown the business's tags. The key
+  // catalogue lets an agent hold these inside its delegation; the agent path
+  // does not serve them yet, so they are `never` here until it does, as the
+  // time commands are.
+  declare('tag.create', 'write', {
+    collection: TAG_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  ...(['task.add_tag', 'task.remove_tag'] as const).map((name) =>
+    declare(name, 'write', {
+      targetsExistingRecord: false,
+      authorisedOn: 'record',
+      untargetedIdentifiers: ['recordId', 'tagId'],
+    }),
+  ),
+  read('tag.list', TASK_COLLECTION),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));

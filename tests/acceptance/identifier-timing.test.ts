@@ -76,6 +76,8 @@ const INJECTED_BOUNDS = 3;
 const TARGET_FREE: ReadonlySet<CommandName> = new Set(TARGET_FREE_BODIES.map(([op]) => op));
 
 const NOBODY = 'text nobody should find in an audit row';
+/** A tag no business has: the task is what the tag cells compare. */
+const TAG = randomUUID();
 
 interface Verdict {
   readonly foreignMedian: number;
@@ -193,7 +195,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 37 cells: the 22 record-targeted operations, then the 15 with their own operand. */
+  /** The 39 cells: the 22 record-targeted operations, then the 17 with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -266,6 +268,9 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('time.log', 'taskId', f.task.id, (taskId) => ({ taskId, duration: '5', note: NOBODY }));
     byAda('time.set_note', 'entryId', f.entryId, (entryId) => ({ entryId, note: NOBODY }));
     byAda('time.delete', 'entryId', f.entryId, (entryId) => ({ entryId }));
+    // MP-4-11: the task names what is tagged.
+    byAda('task.add_tag', 'recordId', f.task.id, (recordId) => ({ recordId, tagId: TAG }));
+    byAda('task.remove_tag', 'recordId', f.task.id, (recordId) => ({ recordId, tagId: TAG }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
       delegationId,
@@ -330,11 +335,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 44 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 46 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(44);
-    expect(names).toHaveLength(44);
+    expect(new Set(names).size, 'distinct operations').toBe(46);
+    expect(names).toHaveLength(46);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

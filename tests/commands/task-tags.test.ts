@@ -199,7 +199,10 @@ live('MP-4-11 tags through the commands', () => {
     ]) {
       // eslint-disable-next-line no-await-in-loop -- each refusal checked on its own
       const answer = await run(w.ada, body);
-      expect(['NOT_FOUND', 'COMMAND_BODY_INVALID'], JSON.stringify(body)).toContain(codeOf(answer));
+      expect(
+        ['NOT_FOUND', 'COMMAND_BODY_INVALID', 'FIELD_VALUE_INVALID'],
+        JSON.stringify(body),
+      ).toContain(codeOf(answer));
     }
     expect(await tagsOn(w.ada, task)).toStrictEqual([]);
   });

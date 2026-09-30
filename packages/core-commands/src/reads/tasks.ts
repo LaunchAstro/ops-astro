@@ -27,6 +27,7 @@ import {
   isLive,
   isUuid,
   readTaskTime,
+  tagsOfTask,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
@@ -315,6 +316,7 @@ export async function readTaskDetail(
     clientSet: row.client_set,
     steps: await readTaskSteps(tx, taskTypeId, row.id, rankPool),
     time: timeReader === null ? null : await readTaskTime(tx, row.id, timeReader),
+    tags: await tagsOfTask(tx, row.id),
   };
 }
 

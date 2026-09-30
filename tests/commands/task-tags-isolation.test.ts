@@ -14,7 +14,10 @@ import type { CommandResult } from '../../packages/core-commands/src/commands/re
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { grantTo, type Member } from './fixture.ts';
 import { agentWorld, codeOf, detailOf, type AgentWorld } from './agent-fixture.ts';
-import { CANARY, WHOLE, timeWorld, type TimeWorld } from './time-world.ts';
+import { WHOLE, timeWorld, type TimeWorld } from './time-world.ts';
+
+/** A tag name is at most 40 characters, so the canary is a short one. */
+const CANARY = `canary-${randomUUID().slice(0, 30)}`;
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -88,7 +91,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-11 isolation: another business', 
     const listed = await readAs(w.alpha, w.ada, { read: 'tag.list' });
     expect(listed.text).not.toContain(foreignTag);
     expect(listed.text).not.toContain(CANARY);
-    expect(await tagRows(w.alpha, own)).toStrictEqual([]);
+    expect(await tagRows(w.alpha, own)).toHaveLength(0);
     expect((await tagRows(w.bravo, foreignTask)).map((row) => row.name)).toStrictEqual([CANARY]);
   });
 });
@@ -98,7 +101,10 @@ describe.skipIf(serverUrl === undefined)('MP-4-11 isolation: another client', ()
     const taskA = await w.fresh(w.alpha, w.ada, 'client A');
     const taskB = await w.fresh(w.alpha, w.ada, 'client B');
     const shared = tagIdOf(await w.as(w.alpha, w.ada, { command: 'tag.create', name: 'Shared' }));
-    const secret = tagIdOf(await w.as(w.alpha, w.ada, { command: 'tag.create', name: CANARY }));
+    // The business test above made the canary's upper case here; this one is its own.
+    const secret = tagIdOf(
+      await w.as(w.alpha, w.ada, { command: 'tag.create', name: `${CANARY}-b` }),
+    );
     await w.as(w.alpha, w.ada, { command: 'task.add_tag', recordId: taskB, tagId: secret });
     await w.db.app.withBusiness(w.alpha, async (tx) => {
       await grantTo(tx, w.clientA, 'read', { kind: 'record', id: taskA });
@@ -126,7 +132,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-11 isolation: another client', ()
       expect(['NOT_FOUND', 'SCOPE_NOT_GRANTED'], body.command).toContain(codeOf(answer));
       expect(JSON.stringify(answer)).not.toContain(CANARY);
     }
-    expect((await tagRows(w.alpha, taskB)).map((row) => row.name)).toStrictEqual([CANARY]);
+    expect((await tagRows(w.alpha, taskB)).map((row) => row.name)).toStrictEqual([`${CANARY}-b`]);
     expect((await tagRows(w.alpha, taskA)).map((row) => row.name)).toStrictEqual(['Shared']);
   });
 });

@@ -14,7 +14,7 @@
 // `COMMAND_SURFACE` row: that is what the route generator and the surface
 // inventory read. This row says only how the check is asked.
 
-import { planPresetSync, isUuid, subjectsOf } from '../../../core-records/src/index.ts';
+import { planPresetSync, isUuid, listTags, subjectsOf } from '../../../core-records/src/index.ts';
 import { readAlerts, readOutages } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
@@ -246,6 +246,17 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: false,
     serve: async (tx) => ({ ok: true, persons: await listPeople(tx) }),
+  },
+  // The vocabulary is the business's, asked at the business (`task:read`), so
+  // a reader held to one client's records is refused rather than shown the
+  // names every client's tasks carry.
+  'tag.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => ({ ok: true, tags: await listTags(tx) }),
   },
   // No subject record: the queue is about the business's outstanding work
   // rather than about one task, and naming one of the tasks on it in the

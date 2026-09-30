@@ -38,6 +38,7 @@ import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
 import { deleteEntry, logTimeEntry, setEntryNote, startTime, stopTime } from './tasks-time.ts';
+import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -138,6 +139,13 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'time.set_note': (tx, context, request) =>
     setEntryNote(tx, context, request.entryId, request.note),
   'time.delete': (tx, context, request) => deleteEntry(tx, context, request.entryId),
+  // MP-4-11. The envelope asked `tag:write` of the business for a new tag and
+  // `task:write` of the task for adding and removing.
+  'tag.create': (tx, context, request) => createTagNamed(tx, context, request.name),
+  'task.add_tag': (tx, context, request) =>
+    addTagToTask(tx, context, request.recordId, request.tagId),
+  'task.remove_tag': (tx, context, request) =>
+    removeTagFromTask(tx, context, request.recordId, request.tagId),
 };
 
 function writeOwned(

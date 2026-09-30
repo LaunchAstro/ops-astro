@@ -118,7 +118,8 @@
     "MP-4-12 (SL08) names task-page-link and task-page-link-agent over panel-fields-world: the page link as the task's own page_link, set, re-pointed and cleared through task.update (task:write), refused whole to a reader, joining the audit chain as task.update; only an in-product path and hash is stored (a scheme, another host, a backslash, a control character, a relative or empty address refused FIELD_VALUE_INVALID with nothing stored); and the three crossings (another business not found with no canary, another client's task refused to a record-scoped editor, an agent under a live delegation linking neither its task nor another's).",
     "MP-4-14 (SL08) names task-corrections-isolation and task-corrections-agent: the finished task the corrections draw is read through task.read only, and its three crossings (another business's finished task not found with no canary, another client's refused to a record-scoped reader, another person's refused to an agent under a live delegation).",
     "MP-4-8 agent reach (SL08) names task-assign-agent over agent-fixture: an agent sets its own task's assignee through task.assign only under a delegation holding assign (a pickup's read, comment and write refused DELEGATION_OUT_OF_PURPOSE), the delegate refused to it by name with nothing written, and another person's task refused under the live delegation with no canary and the assignee unchanged.",
-    "MP-4-8 estimate step (SL08) names task-estimate over panel-fields-world: the estimate as the task's own estimated_minutes, set, read back as estimateMinutes and cleared through task.update (task:write), refused whole to a reader, joining the audit chain as task.update; only whole minutes from 0 to 1,000,000 are kept (a negative, a fraction, a string, an object, a boolean and an overlong number refused by name with nothing written); and two crossings (another business not found with no canary, another client's task refused to a record-scoped editor); the third, under a live delegation, is task-panel-fields-agent."
+    "MP-4-8 estimate step (SL08) names task-estimate over panel-fields-world: the estimate as the task's own estimated_minutes, set, read back as estimateMinutes and cleared through task.update (task:write), refused whole to a reader, joining the audit chain as task.update; only whole minutes from 0 to 1,000,000 are kept (a negative, a fraction, a string, an object, a boolean and an overlong number refused by name with nothing written); and two crossings (another business not found with no canary, another client's task refused to a record-scoped editor); the third, under a live delegation, is task-panel-fields-agent.",
+    "MP-4-11 command step (SL08) names task-tags and task-tags-isolation (one seeded world, tests/commands/time-world.ts): the business's tag vocabulary over 0050 (tag.create under tag:write, one name per business whatever its case, two creates at once leave one), a task's tags (task.add_tag and task.remove_tag under task:write on the task), tag.list under task:read of the business and task.read's tags; one refusal per key, the audit read-back, and the three crossings with a canary tag."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -324,6 +325,8 @@
     "tests/tasks/time-entries.test.ts",
     "tests/commands/task-time.test.ts",
     "tests/commands/task-time-isolation.test.ts",
+    "tests/commands/task-tags.test.ts",
+    "tests/commands/task-tags-isolation.test.ts",
     "tests/cli/mp-4-15-completion-cli.test.ts",
     "tests/reads/task-facts.test.ts",
     "tests/reads/task-perspectives.test.ts",

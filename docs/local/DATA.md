@@ -206,6 +206,12 @@ table exactly:
 There is no `status` column and no second coarse field. Whether a task is done
 is the machine category of the state record the task points at.
 
+A task's tags are not a field. The business's vocabulary is `tags` (one name
+per business whatever its case, a unique index on the lower-cased name) and
+the tags a task carries are rows of `task_tags`, keyed by the task and the
+tag (0050, MP-4-11): written by `tag.create`, `task.add_tag` and
+`task.remove_tag`, read on `task.read` and by `tag.list`.
+
 A new task ranks after the last of its siblings: the tasks under its parent,
 or for a top-level task the tasks on its board with no parent. Trashed siblings
 count, because a trashed task keeps its rank and a restore brings it back, so a
@@ -417,14 +423,16 @@ has the interface and the tests.
 
 ## The reads
 
-Seven reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
-`packages/core-commands/src/reads/`. Three of them are this file's:
+Eight reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
+`packages/core-commands/src/reads/`. Four of them are this file's:
 
 - `task.read { recordId }` → the task, its state, its assignee and its history
 - `task.board { board }` → the tasks on a board; `null` is the unboarded ones,
   which is where a task created without a board lives
 - `person.list {}` → the people with an active membership, which is the set
   `task.assign` will accept
+- `tag.list {}` → the business's tag vocabulary, by name (MP-4-11), for a
+  reader of the business's tasks
 
 The other four, `task.queue`, `preset.plan`, `settings.read` and
 `session.capabilities`, are listed with their answers under "Reads" in

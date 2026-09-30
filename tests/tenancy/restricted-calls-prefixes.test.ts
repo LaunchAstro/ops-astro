@@ -109,6 +109,9 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     ad_hoc: false,
     source: 'log',
   },
+  // 0050: no journey step tags a task yet.
+  'public.tags': { name: 'a tag', actor_id: randomUUID() },
+  'public.task_tags': { task_id: randomUUID(), tag_id: randomUUID(), actor_id: randomUUID() },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

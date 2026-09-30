@@ -108,10 +108,13 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
  * `ADMIN_COLLECTIONS` also sizes agent delegations, which never hold `share`.
  * Time tracking (MP-4-6) asks `time:write`, the owner's and administrators'
  * and a member's where granted; no agent reaches the `time.*` commands yet.
+ * Tags (MP-4-11) ask `tag:write` for a new name in the vocabulary, the
+ * owner's and administrators' and a member's where granted.
  */
 export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
   ['access', 'share'],
   ['time', 'write'],
+  ['tag', 'write'],
 ];
 
 export async function tokenFor(

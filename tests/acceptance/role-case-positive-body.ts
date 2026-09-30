@@ -21,12 +21,14 @@ import {
   ownUnknownAttempt,
 } from './role-case-bodies.ts';
 import { commentChangeBody } from './role-case-comment-bodies.ts';
+import { tagRecipes } from './tag-recipes.ts';
 import { timeRecipes } from './time-recipes.ts';
 
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration, author?: unknown) => Promise<Prepared> {
   const time = timeRecipes(context);
+  const tags = tagRecipes(context);
   // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
   return async function positiveBody(
     declaration: CommandDeclaration,
@@ -231,6 +233,11 @@ export function createPositiveBody(
       case 'time.set_note':
       case 'time.delete':
         return await time[declaration.name]();
+      case 'tag.create':
+      case 'task.add_tag':
+      case 'task.remove_tag':
+      case 'tag.list':
+        return await tags[declaration.name]();
       case 'task.dispatch':
         // The person marks their own lease's step dispatched (T2c1).
         return { body: await ownLease(context) };
