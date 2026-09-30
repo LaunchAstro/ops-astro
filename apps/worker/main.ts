@@ -13,8 +13,8 @@
 // watcher's heartbeat (S0-2): a pass with no answer, a fault or a refusal pings
 // nothing, so a stopped or broken worker goes quiet and the watcher mails.
 
-import { ping, UNREACHABLE } from '../../scripts/ops/heartbeat.mjs';
 import { httpTransport } from '../cli/client.ts';
+import { ping, UNREACHABLE } from './heartbeat.ts';
 import { SYNTHETIC_USAGE } from './usage.ts';
 import { createWorker } from './worker.ts';
 

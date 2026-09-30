@@ -11,25 +11,7 @@
 // a GET to a public https address, with no redirect followed, a 10-second
 // limit and its answer's body discarded.
 
-// What a watcher off the machine cannot reach: loopback, private, shared, link-local
-// (the metadata address), IPv6 literals and local names. URL has already
-// normalised case and numeric forms (2130706433 and 0x7f.0.0.1 read as 127.0.0.1).
-export const UNREACHABLE =
-  /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|169\.254\.|0\.|\[)|(^|\.)(localhost|local|internal|lan)\.?$/u;
-
-/** One ping to `address`; the outcome in a word, never the address. */
-export async function ping(address, get = fetch) {
-  if (address === undefined || address === '') return 'not set';
-  const url = URL.parse(address);
-  if (url === null || url.protocol !== 'https:' || UNREACHABLE.test(url.hostname)) return 'refused';
-  try {
-    const answer = await get(url, { redirect: 'manual', signal: AbortSignal.timeout(10_000) });
-    await answer.body?.cancel();
-    return answer.status >= 200 && answer.status < 300 ? 'sent' : 'failed';
-  } catch {
-    return 'failed';
-  }
-}
+export { ping, UNREACHABLE } from '../../apps/worker/heartbeat.ts';
 
 /**
  * Whether the error sink behind `dsn` answers its health page. The sink is on
