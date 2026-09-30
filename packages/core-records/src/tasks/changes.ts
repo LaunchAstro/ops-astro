@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C4 (#429): *changes since* on the live change record (migration 0057,
+// C4 (#429): *changes since* on the live change record (migration 0059,
 // CS-15.19), for API-4. The tasks stamped after a point, filtered inside the
 // one query by the caller's live `task:read` grants exactly as `task.read`
 // admits them: at business scope, on the task itself, or on the map the task

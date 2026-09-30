@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0058 a person's availability (MP-7-10, CS-7.27).
+-- 0060 a person's availability (MP-7-10, CS-7.27).
 --
 -- One row a person, set by that person alone (`availability set`, their own
 -- account; no agent) and read by their teammates in the Team panel. Away

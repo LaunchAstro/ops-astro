@@ -420,7 +420,7 @@ Eight reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
 - `person.list {}` → the people with an active membership, which is the set
   `task.assign` will accept
 - `team.list {}` → the staff with an active membership and each one's
-  availability (`person_availability`, 0058, set only by that person), for the
+  availability (`person_availability`, 0060, set only by that person), for the
   Team panel; a client of the business is answered `NOT_FOUND`
 
 The other six, `task.queue`, `task.ledger`, `preset.plan`, `settings.read`,
