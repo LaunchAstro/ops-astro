@@ -7,7 +7,7 @@
 // hands `casesN6` on to the entry point beside N7.
 
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
-import { WEB, record, shot, users } from './harness.mjs';
+import { WEB, record, servedBuild, shot, users } from './harness.mjs';
 import { n6Cases } from './n6-revocation.mjs';
 
 export async function casesN6(run) {
@@ -17,6 +17,8 @@ export async function casesN6(run) {
     await page.goto(`${WEB}/task/${encodeURIComponent(state.taskKey)}`, {
       waitUntil: 'domcontentloaded',
     });
+    // Which build served this page (S0-1, line C8).
+    await servedBuild(page, 'N6');
     const { records, personId } = await n6Cases({
       page,
       database,

@@ -131,7 +131,7 @@ function server(refuse?: string): {
 }
 
 const clientOf = (fetch: typeof globalThis.fetch): OperationsClient =>
-  new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
 
 /** The body the stub was sent on `route`, the last time. */
 function bodyOf(sent: readonly string[], route: string): Record<string, unknown> {

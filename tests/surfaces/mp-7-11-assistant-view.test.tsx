@@ -27,6 +27,7 @@ interface Sent {
 function recorder(
   refuse: string | null = null,
   held: Promise<void> = Promise.resolve(),
+  reply?: Readonly<Record<string, unknown>>,
 ): {
   readonly client: OperationsClient;
   readonly sent: Sent[];
@@ -49,7 +50,12 @@ function recorder(
       }
       return {
         ok: true,
-        value: { recordId: '', revision: 0, detail: { conversationId: CONVERSATION } },
+        value: {
+          recordId: '',
+          revision: 0,
+          detail: { conversationId: CONVERSATION },
+          ...(reply === undefined ? {} : { reply }),
+        },
       };
     },
   } as unknown as OperationsClient;
@@ -70,8 +76,15 @@ function heldAnswer(): { readonly held: Promise<void>; readonly release: () => v
   };
 }
 
-async function view(options: { refuse?: string; entry?: EntryPoint; held?: Promise<void> } = {}) {
-  const { client, sent } = recorder(options.refuse ?? null, options.held);
+async function view(
+  options: {
+    refuse?: string;
+    entry?: EntryPoint;
+    held?: Promise<void>;
+    reply?: Readonly<Record<string, unknown>>;
+  } = {},
+) {
+  const { client, sent } = recorder(options.refuse ?? null, options.held, options.reply);
   const page = track(
     await mount(
       <AssistantView
@@ -198,5 +211,47 @@ describe('MP-7-11 egress off', () => {
     await settle();
     expect(sent).toStrictEqual([]);
     expect(page.find('[data-assistant="not-sent"]')).not.toBeNull();
+  });
+});
+
+describe('MP-7-11 the agent’s answer', () => {
+  it('MP-7-11 answer shown: the agent’s reply is drawn under each question, in place of the kept note', async () => {
+    const { page } = await view({
+      reply: { answered: true, messageId: 'm1', body: 'Here is what it does.' },
+    });
+    await ask(page, 'What does this setting do?');
+    await ask(page, 'And the next one?');
+    expect(page.all('[data-message-role="ai"]').map((m) => m.textContent)).toStrictEqual([
+      'Here is what it does.',
+      'Here is what it does.',
+    ]);
+    expect(page.all('[data-message-role="note"]')).toHaveLength(0);
+  });
+
+  it('MP-7-11 egress off: a question no model may take is a failed reply in the server’s words', async () => {
+    const words = 'Models are off for this client: its material waits on a local model.';
+    const { page } = await view({
+      reply: { answered: false, code: 'LOCAL_MODEL_REQUIRED', words },
+    });
+    await ask(page, 'Hello');
+    expect(page.find('[data-message-role="failed"]')?.textContent).toContain(words);
+    expect(page.all('[data-message-role="ai"]')).toHaveLength(0);
+  });
+
+  it('MP-7-11 hostile provider: markup in an answer is drawn as text and nothing in it runs', async () => {
+    const planted = '<img src=x onerror="globalThis.ran=1"><script>globalThis.ran=2</script>';
+    const { page } = await view({ reply: { answered: true, messageId: 'm1', body: planted } });
+    await ask(page, 'Anything?');
+    expect(page.find('[data-message-role="ai"]')?.textContent).toBe(planted);
+    expect(page.all('[data-message-role="ai"] img, [data-message-role="ai"] script')).toHaveLength(
+      0,
+    );
+    expect((globalThis as { ran?: number }).ran).toBeUndefined();
+  });
+
+  it('MP-7-11 records: with no model to answer, a kept question still says so', async () => {
+    const { page } = await view();
+    await ask(page, 'Hello');
+    expect(page.find('[data-message-role="note"]')?.textContent).toContain('does not answer');
   });
 });

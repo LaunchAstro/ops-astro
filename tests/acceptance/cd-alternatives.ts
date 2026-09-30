@@ -26,7 +26,7 @@ export const CASE = {
 } as const;
 
 /**
- * The eighteen operations that name no identifier, each with a minimal valid body.
+ * The twenty-five operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -62,6 +62,10 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['record.create', { type: 'client', fields: { name: 'a target-free client' } }],
   ['conversation.start', { body: 'a conversation started while bravo is watched' }],
   ['conversation.list', {}],
+  ['inbox.read', {}],
+  ['inbox.count', {}],
+  ['inbox.unattended', {}],
+  ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
 ];
 
 /** The identifier-bearing operations outside (c) and (d): operand and executed case. */
@@ -107,6 +111,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'run.top_up': ['runId and recordId', 'control'],
   'run.end_at_budget_stop': ['runId and recordId', 'control'],
   'run.revise_state': ['runId and recordId', 'control'],
+  'inbox.seen': ['itemId', 'control'],
 };
 
 /**

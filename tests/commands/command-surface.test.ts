@@ -55,9 +55,10 @@ if (serverUrl === undefined) {
 // read's (MP-6-1): the gates waiting on a decision, asked with `decide` on
 // tasks. `conversation` is a person's conversation with the agent (AW-03),
 // its writes and its read at its address. `finance` is what agent runs cost
-// (U39): skill costing and the agents' cost log, each `finance:read`.
+// (U39): skill costing and the agents' cost log, each `finance:read`. `inbox`
+// and `notifications` are the person's inbox and delivery channel (SL12).
 const PATH_SHAPE =
-  /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret|connection|connector|mandate|graduation|automation|activation|definition|approval|record|onboarding|gate|conversation|model|run|finance)\/[a-z_]+$/u;
+  /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret|connection|connector|mandate|graduation|automation|activation|definition|approval|record|onboarding|gate|conversation|model|run|finance|inbox|notifications)\/[a-z_]+$/u;
 
 /** Every read the surface declares, sorted. */
 const DECLARED_READS = [
@@ -70,6 +71,9 @@ const DECLARED_READS = [
   'finance.agent_costs',
   'finance.skill_costs',
   'gate.pending',
+  'inbox.count',
+  'inbox.read',
+  'inbox.unattended',
   'person.list',
   'preset.plan',
   'secret.list',
@@ -114,6 +118,7 @@ describe('the surface as a table', () => {
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one table, read top to bottom
 describe('the surface as a table', () => {
   it('declares the nineteen reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);

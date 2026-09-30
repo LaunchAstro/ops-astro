@@ -313,6 +313,20 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.bootstrap_bytes': `insert into public.bootstrap_bytes
        (business_id, content_digest, content_size, bytes)
      values ($1, encode(sha256('seed'::bytea), 'hex'), 4, 'seed'::bytea) returning 1`,
+  // Nothing in the journey raises an inbox item yet (INB-1b does), so one item,
+  // its recipient's attention row and one attempt are written here, in order.
+  'public.inbox_items': `insert into public.inbox_items
+       (business_id, id, recipient_person_id, subject_record_id, reason, fact_kind, fact_id)
+     select r.business_id, gen_random_uuid(), p.id, r.id, 'assignment', 'record', r.id
+       from public.records r join public.people p on p.business_id = r.business_id
+      where r.business_id = $1 order by r.id, p.id limit 1 returning 1`,
+  'public.inbox_attention': `insert into public.inbox_attention (business_id, item_id, person_id)
+     select business_id, id, recipient_person_id from public.inbox_items
+      where business_id = $1 order by id limit 1 returning 1`,
+  'public.inbox_delivery_attempts': `insert into public.inbox_delivery_attempts
+       (business_id, id, item_id, channel, state)
+     select business_id, gen_random_uuid(), id, 'in_app', 'asked' from public.inbox_items
+      where business_id = $1 order by id limit 1 returning 1`,
 };
 
 /**
@@ -378,6 +392,11 @@ async function roleClasses(
                  when r.rolname = $2 then 'worker'
                  when r.rolname = $3 then 'broker'
                  when r.rolname = $4 then 'occurrence'
+                 when r.rolname = 'ops_astro_backup' then 'backup'
+                 when r.rolname = 'ops_astro_backup_retention' then 'backup retention'
+                 when r.rolname = 'ops_astro_backup_restore' then 'backup restore'
+                 when r.rolname = 'ops_astro_lookup' then 'lookup'
+                 when r.rolname = 'ops_astro_forwarder' then 'forwarder'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -457,6 +476,13 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(classes['worker']).toStrictEqual(['ops_astro_worker']);
     expect(classes['broker']).toStrictEqual([BROKER_ROLE]);
     expect(classes['occurrence']).toStrictEqual([OCCURRENCE_ROLE]);
+    // S0-3b: the backup identity reads and is proved in tests/db/backup-identity.test.ts.
+    expect(classes['backup']).toStrictEqual(['ops_astro_backup']);
+    // G2: the business lookup reads id and key of businesses, proved in tests/db/business-lookup.test.ts.
+    expect(classes['lookup']).toStrictEqual(['ops_astro_lookup']);
+    // S0-2: the outbox forwarder reads and deletes ops.api_events and keeps its raised alerts in
+    // ops.api_alerts (0048), proved in tests/db/api-events.test.ts.
+    expect(classes['forwarder']).toStrictEqual(['ops_astro_forwarder']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });

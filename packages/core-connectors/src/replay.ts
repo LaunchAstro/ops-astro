@@ -80,6 +80,18 @@ export const REPLAY_COMPOSE: ModelOperationDeclaration = {
   concurrency: 4,
 };
 
+/**
+ * A person's question in their own conversation (AW-03's exchange), over the
+ * replay provider until a real local provider lands (AW-RP). The question is a
+ * person's own words, so it is free text: it reaches only a local route, and
+ * the conversation seam takes no other.
+ */
+export const CONVERSATION_ANSWER: ModelOperationDeclaration = {
+  ...REPLAY_COMPOSE,
+  key: 'model.conversation_answer',
+  fields: { message: 'free_text' },
+};
+
 /** The price of an answer, in minor units, from what the provider says it used. Never above the maximum. */
 export function replayCostMinor(read: ModelAnswer): number {
   return read.usage.inputUnits + 2 * read.usage.outputUnits;

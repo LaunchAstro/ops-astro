@@ -146,34 +146,37 @@ function clientServing(taskId: string, proposals: readonly ProposalView[]): Oper
     comments: [],
     proposals: JSON.parse(JSON.stringify(proposals)) as unknown,
   };
-  const fetch = (async (url: string | URL) => {
+  const fetch = ((url: string | URL) => {
     const at = String(url);
-    if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
-    if (at.endsWith('/task/read')) return json({ ok: true, task });
-    return new Response(
-      JSON.stringify({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }),
-      {
+    if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
+    if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task }));
+    return Promise.resolve(
+      new Response(JSON.stringify({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }), {
         status: 404,
-      },
+      }),
     );
   }) as unknown as typeof globalThis.fetch;
   return new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => 'operation-1',
   });
 }
 
-describe.skipIf(serverUrl === undefined)('decision controls from one coherent read', () => {
-  let world: World | undefined;
+let world: World | undefined;
 
+describe.skipIf(serverUrl === undefined)('decision controls from one coherent read', () => {
   afterEach(async () => {
     await world?.close();
     world = undefined;
   });
 
+  decisionControlsFromCases();
+});
+
+function decisionControlsFromCases() {
   it('draws no decision control for the decided view and enabled ones for the pending view', async () => {
     world = await createWorld('psnapui');
     const current = world;
@@ -224,4 +227,4 @@ describe.skipIf(serverUrl === undefined)('decision controls from one coherent re
     expect(offered.find('[data-decide="closed"]')).toBeNull();
     await offered.unmount();
   }, 120_000);
-});
+}

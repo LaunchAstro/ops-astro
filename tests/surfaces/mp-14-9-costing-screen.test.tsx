@@ -118,7 +118,7 @@ async function open(
     }
     return Promise.resolve(json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404));
   }) as typeof globalThis.fetch;
-  const client = new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   const page = await mount(<ConnectionsScreen client={client} now={() => NOW} />);
   opened.push(page);
   await tick();

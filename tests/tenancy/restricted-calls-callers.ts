@@ -199,7 +199,8 @@ export function expectedOutcome(
   const granted = applicationGrantsAt(table.qualified, at);
   if (granted === undefined) return `no contract for ${table.qualified}`;
   if (!granted.includes(GRANT_LETTER[operation])) return 'denied';
-  if (!table.tenant) return operation === 'select' ? `rows ${String(own)}` : 'no case';
+  // A table of no business (0047's outbox): a granted write passes privilege and meets its constraints.
+  if (!table.tenant) return operation === 'select' ? `rows ${String(own)}` : 'past tenancy';
   // The own tenant's writes pass privilege and tenancy and then meet the
   // table's own constraints or triggers; getting that far is the permitted path.
   if (caller === 'login in the wrapper, own tenant') {

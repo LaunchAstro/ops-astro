@@ -24,8 +24,8 @@
 set -euo pipefail
 
 CONTAINER=ops-astro-local-pg
-VOLUME=ops-astro-local-pgdata
-IMAGE=postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+VOLUME=ops-astro-local-pgdata-17
+IMAGE=postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
 HOST=127.0.0.1
 PORT=54390
 DATABASE=ops_astro_local
@@ -34,10 +34,11 @@ ADMIN_PASSWORD=ops_astro_local
 APP_USER=app
 GROUP_ROLE=ops_astro_app
 
-# Postgres 18 puts its data in a subdirectory of this path. Mounting the volume
-# at /var/lib/postgresql/data instead is what makes 18 refuse to start, having
-# found a cluster in a directory it does not use.
-DATA_MOUNT=/var/lib/postgresql
+# Postgres 17, the hosted database's major (S0-7), keeps its cluster here, the
+# path its image declares as a volume. The volume is named for the major: a
+# cluster one major wrote, the other refuses to open, so the 18 volume an older
+# tree made is left as it was, never reused and never removed.
+DATA_MOUNT=/var/lib/postgresql/data
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 env_file="$repo_root/.local/db.env"

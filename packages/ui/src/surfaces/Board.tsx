@@ -106,12 +106,10 @@ export function Board(props: BoardProps): ReactElement {
       </div>
 
       {props.rows.length === 0 ? (
-        <div className="cbd__empty">
-          <Empty title="No task matches that." description="Drop a filter to widen the list." />
-        </div>
+        <Empty title="No task matches that." description="Drop a filter to widen the list." />
       ) : (
         <div className="cbd__wrap">
-          <table className="cbd__tbl">
+          <table className="table cbd__tbl">
             <colgroup>
               {columns.map((column) => (
                 <col key={column.key} style={{ width: `${column.pct.toFixed(4)}%` }} />
@@ -121,9 +119,7 @@ export function Board(props: BoardProps): ReactElement {
               <tr>
                 {columns.map((column) => (
                   <th key={column.key} data-hide-below={column.hideBelow ?? undefined}>
-                    <span className="cbd__th">
-                      <span className="cbd__thl">{column.label}</span>
-                    </span>
+                    <span className="cbd__thl">{column.label}</span>
                   </th>
                 ))}
               </tr>

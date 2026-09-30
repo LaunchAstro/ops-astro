@@ -75,7 +75,7 @@ describe('C31 Keys panel', () => {
     const client = new OperationsClient({
       origin: '',
       businessKey: 'alpha',
-      token: 'tok',
+      signedIn: true,
       fetch: stub.fetch,
     });
     const page = await mount(<KeysPanel client={client} />);

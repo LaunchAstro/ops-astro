@@ -5,13 +5,7 @@
 // transaction that serves the read.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import {
-  EFFECTIVE_GRANTS_CTE,
-  type Action,
-  type Scope,
-  type ScopeKind,
-  type Subject,
-} from './grants.ts';
+import { EFFECTIVE, type Action, type Scope, type ScopeKind, type Subject } from './grants.ts';
 
 /**
  * The scopes at which these subjects hold `collection:action` right now: the
@@ -26,7 +20,7 @@ export async function grantedScopes(
   action: Action,
 ): Promise<readonly Scope[]> {
   const rows = await tx.query<{ readonly scope_kind: ScopeKind; readonly scope_id: string | null }>(
-    `${EFFECTIVE_GRANTS_CTE}
+    `${EFFECTIVE}
      select distinct e.scope_kind, e.scope_id
        from effective e
       where e.collection = $1

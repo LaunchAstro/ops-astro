@@ -7,7 +7,7 @@
 // The page is one slot: a second pointer replaces the first, and `null`
 // clears it. Its address is a page of this product: one leading slash, never
 // two and never a slash then a backslash, printable ASCII without a
-// backslash, at most 300 characters. Migration 0051 refuses the same rows, as
+// backslash, at most 300 characters. Migration 0200 refuses the same rows, as
 // the backstop. Neither write is activity: the wrap-up at quiet and the purge
 // window measure the exchange, not the tab's label or its pointer.
 //

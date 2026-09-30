@@ -120,7 +120,7 @@ async function open(): Promise<{ readonly page: Mounted; readonly sent: string[]
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'tok',
+    signedIn: true,
     fetch: stub.fetch,
   });
   const page = await mount(<ConnectionsScreen client={client} now={() => NOW} />);

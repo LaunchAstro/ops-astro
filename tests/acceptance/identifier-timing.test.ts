@@ -200,7 +200,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 56 cells: the record-targeted operations, then those with their own operand. */
+  /** The 66 cells: the record-targeted operations, then those with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -386,6 +386,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       knowledge: [NOBODY],
       unknowns: [],
     }));
+    // Bravo's proposal raised its holders an inbox item (INB-1b); stamping it
+    // from alpha is the same NOT_FOUND as stamping an item that never existed.
+    const [bravoItem] = await w.h.world.db.admin.execute<{ id: string }>(
+      'select id from public.inbox_items where fact_id = $1 order by id limit 1',
+      [f.proposal.gateId],
+    );
+    if (bravoItem === undefined) throw new Error('bravo raised no inbox item to aim at');
+    byAda('inbox.seen', 'itemId', bravoItem.id, (itemId) => ({ itemId }));
     out.push({
       op: 'task.pickup',
       operand: 'reservationId',
@@ -427,11 +435,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 56 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 66 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(56);
-    expect(names).toHaveLength(56);
+    expect(new Set(names).size, 'distinct operations').toBe(66);
+    expect(names).toHaveLength(66);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

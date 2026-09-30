@@ -2,7 +2,7 @@
 //
 // `task.propose`: a proposal on a task, through the runtime's locks.
 
-import { subjectsOf } from '../../../core-records/src/index.ts';
+import { raiseDecision, subjectsOf } from '../../../core-records/src/index.ts';
 import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import { lockProposal, proposeUnderLocks } from '../../../core-runtime/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
@@ -199,6 +199,7 @@ export async function proposeFor(
   }
   const result = await proposeUnderLocks(tx, proposal, held);
   if (!result.ok) return refused(result.refusal);
+  await raiseDecision(tx, { taskId: target.id, gateId: result.value.gateId });
 
   // The revision is the task's own and is unchanged: a proposal is a record
   // beside the task, not an edit to it, so a caller may keep writing against

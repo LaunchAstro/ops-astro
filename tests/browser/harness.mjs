@@ -15,6 +15,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
+import { buildIdentifier } from '../../apps/web/build-stamp.ts';
+import { BUILD_SELECTOR, servedBuildVerdict, stampInDocument } from './served-build.ts';
 
 export const root = fileURLToPath(new URL('../..', import.meta.url));
 // Screenshots and the results table default to a gitignored directory inside the
@@ -83,7 +85,7 @@ export const DOCKER = process.env.DOCKER_BIN ?? '/usr/local/bin/docker';
 // without its volume is refused too, because B6 reports the volume it kept, and
 // quietly reporting the live one beside someone else's container would be a
 // false line in the results table.
-const LIVE_PG = { container: 'ops-astro-local-pg', volume: 'ops-astro-local-pgdata' };
+const LIVE_PG = { container: 'ops-astro-local-pg', volume: 'ops-astro-local-pgdata-17' };
 const DENIED_PG = new Set(['ops-astro-datafix-pg', 'ops-astro-datafix-pgdata']);
 /** Docker's own shape for container and volume names. */
 const DOCKER_NAME = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/u;
@@ -169,6 +171,50 @@ export async function servedIdentity(page, label) {
     );
   }
   return { label, web: WEB, head, dirty, modules };
+}
+
+/**
+ * One checklist row's served line, matched against the version stamp (S0-1,
+ * line C8; product issue 57).
+ *
+ * Called by I10, R4 and N6 on the page each one exercises, once it has drawn:
+ * it prints `servedIdentity`'s lines and then the build line, and records a
+ * row of its own. The stamp that page shows, the one its served entry document
+ * carries and the one expected must all agree: the checkout's, or
+ * `EXPECT_BUILD` for a run against a built artefact. A page with no stamp is a
+ * red row. It never throws into the row that called it.
+ */
+export async function servedBuild(page, row) {
+  const label = `${row.toLowerCase()}-served`;
+  try {
+    const identity = await servedIdentity(page, label);
+    const shown = await page
+      .locator(BUILD_SELECTOR)
+      .first()
+      .getAttribute('data-build', { timeout: 5_000 })
+      .catch(() => null);
+    const html = await page.evaluate(
+      async () => await (await window.fetch('/', { cache: 'no-store' })).text(),
+    );
+    const expected = process.env.EXPECT_BUILD ?? buildIdentifier(root);
+    const verdict = servedBuildVerdict({ label, shown, entry: stampInDocument(html), expected });
+    console.log(verdict.line);
+    record({
+      case: `S0-1 served build ${row}`,
+      action: 'the served line against the version stamp, on the page the row exercises',
+      observed: verdict.line,
+      ok: verdict.ok,
+    });
+    return { ...identity, build: verdict };
+  } catch (error) {
+    record({
+      case: `S0-1 served build ${row}`,
+      action: 'the served line against the version stamp, on the page the row exercises',
+      observed: `threw: ${String(error).slice(0, 300)}`,
+      ok: false,
+    });
+    return null;
+  }
 }
 
 /** The viewport every context in the checklist is opened at. */
@@ -299,7 +345,8 @@ export async function throughSubmit(page, request) {
       const client = new OperationsClient({
         origin: '',
         businessKey: ask.businessKey ?? session.businessKey,
-        token: session.token,
+        signedIn: true,
+        sessionId: session.sessionId,
         fetch: window.fetch.bind(window),
       });
       return await submitEdit(client, ask.request);
@@ -325,7 +372,8 @@ export async function throughClient(page, ask) {
       const client = new OperationsClient({
         origin: '',
         businessKey: session.businessKey,
-        token: session.token,
+        signedIn: true,
+        sessionId: session.sessionId,
         fetch: spy,
       });
       const result = given.read

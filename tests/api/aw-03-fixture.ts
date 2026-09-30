@@ -87,8 +87,13 @@ const cliOn =
         ),
     }).run(name, bodyOf(name, body));
 
-/** A world of its own, or one on a controls world (its member is the owner) for agent crossings. */
-export async function conversationWorld(on: string | Controls): Promise<ConversationWorld> {
+/**
+ * A world of its own, or one on a controls world (its member is the owner) for
+ * agent crossings, over that world's API or another composition root of it.
+ */
+export async function conversationWorld(
+  on: string | Pick<Controls, 'fixture' | 'api'>,
+): Promise<ConversationWorld> {
   const fixture = typeof on === 'string' ? await createApiFixture(on) : on.fixture;
   const api = typeof on === 'string' ? fixture.compose() : on.api;
   const owner = fixture.member;

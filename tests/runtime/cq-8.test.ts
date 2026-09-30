@@ -105,6 +105,8 @@ describe('CQ-8 runtime structure', () => {
       .map((file) => relative(ROOT, file))
       .toSorted();
     expect(callers).toEqual([
+      // The outbox forwarder's one lock, alone in its own transaction: no command order.
+      'apps/forwarder/forward.ts',
       'packages/core-commands/src/commands/conversation-lifecycle.ts',
       'packages/core-commands/src/commands/occurrence-run.ts',
       'packages/core-commands/src/commands/prepare.ts',

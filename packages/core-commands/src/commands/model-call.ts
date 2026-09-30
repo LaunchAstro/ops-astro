@@ -134,7 +134,7 @@ async function stepOfLease(tx: TenantQuery, leaseId: string): Promise<string> {
 }
 
 /** The broker's events, as the caller's, in the broker's transaction. */
-function auditAs(actorId: string): Broker['audit'] {
+export function auditAs(actorId: string): Broker['audit'] {
   return async (tx: TenantQuery, note: AuditNote): Promise<void> => {
     await writeAuditEvent(tx, {
       actorId,

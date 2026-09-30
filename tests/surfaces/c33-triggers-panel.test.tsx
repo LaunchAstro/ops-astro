@@ -94,7 +94,7 @@ function server(refuse = false): {
 }
 
 const clientOf = (fetch: typeof globalThis.fetch): OperationsClient =>
-  new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch });
+  new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
 
 describe('C33 Workflow triggers panel', () => {
   it('C33 owner check: each automation shows its mode and pinned version, and switching one to manual is recorded', async () => {

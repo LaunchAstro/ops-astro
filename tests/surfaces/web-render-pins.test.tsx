@@ -119,21 +119,21 @@ function taskServer(
   gate: { readonly state: string; readonly expired: boolean },
   writes: Readonly<Record<string, Response>> = {},
 ) {
-  const fetch = (async (url: string | URL) => {
+  const fetch = ((url: string | URL) => {
     const at = String(url);
     if (at.endsWith('/person/list')) {
-      return json({ ok: true, persons: [{ personId: 'p-1', name: 'Ada' }] });
+      return Promise.resolve(json({ ok: true, persons: [{ personId: 'p-1', name: 'Ada' }] }));
     }
-    if (at.endsWith('/task/read')) return json({ ok: true, task: taskWith(gate) });
+    if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: taskWith(gate) }));
     for (const [suffix, response] of Object.entries(writes)) {
-      if (at.endsWith(suffix)) return response.clone();
+      if (at.endsWith(suffix)) return Promise.resolve(response.clone());
     }
-    return refused('NOT_FOUND', 404);
+    return Promise.resolve(refused('NOT_FOUND', 404));
   }) as unknown as typeof globalThis.fetch;
   return new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => 'operation-1',
   });
@@ -148,6 +148,11 @@ const taskPage = async (client: OperationsClient): Promise<Mounted> => {
 };
 
 describe('the task page, pinned whole', () => {
+  theTaskPageCases1();
+  theTaskPageCases2();
+});
+
+function theTaskPageCases1() {
   for (const [name, gate] of [
     ['pending', { state: 'pending', expired: false }],
     ['decided', { state: 'approved', expired: false }],
@@ -186,7 +191,9 @@ describe('the task page, pinned whole', () => {
     expect(page.host.innerHTML).toMatchSnapshot('conflict');
     await page.unmount();
   });
+}
 
+function theTaskPageCases2() {
   it('after a lifecycle write refused', async () => {
     const client = taskServer(
       { state: 'pending', expired: false },
@@ -210,7 +217,7 @@ describe('the task page, pinned whole', () => {
     expect(page.host.innerHTML).toMatchSnapshot();
     await page.unmount();
   });
-});
+}
 
 describe('the board, pinned whole', () => {
   it('draws a task in every machine category and one with no state', async () => {
@@ -240,14 +247,18 @@ describe('the board, pinned whole', () => {
         revision: 1,
       },
     ];
-    const fetch = (async (url: string | URL) =>
-      String(url).endsWith('/task/board')
-        ? json({ ok: true, tasks })
-        : refused('NOT_FOUND', 404)) as unknown as typeof globalThis.fetch;
+    const fetch = (async (url: string | URL) => {
+      const at = String(url);
+      if (at.endsWith('/task/board')) return json({ ok: true, tasks });
+      // The inbox the board screen mounts above the board (INB-1g), empty.
+      if (at.endsWith('/inbox/read')) return json({ ok: true, inbox: [] });
+      if (at.endsWith('/inbox/count')) return json({ ok: true, owed: 0 });
+      return refused('NOT_FOUND', 404);
+    }) as unknown as typeof globalThis.fetch;
     const client = new OperationsClient({
       origin: '',
       businessKey: 'alpha',
-      token: 'a-token',
+      signedIn: true,
       fetch,
       newOperationId: () => 'operation-1',
     });
