@@ -139,7 +139,7 @@ describe.skipIf(serverUrl === undefined)('Assign to AI: who, and while live', ()
   });
 });
 
-describe.skipIf(serverUrl === undefined)('Assign to AI: revoke clears held tasks', () => {
+describe.skipIf(serverUrl === undefined)('Assign to AI: revoke clears tasks only, audited', () => {
   it('revoke preserves an agent value on a non-task record', async () => {
     const task = await created(w, w.p, 'Sol non-task revoke');
     const agent = await minted(w, w.p, task);
@@ -186,7 +186,9 @@ describe.skipIf(serverUrl === undefined)('Assign to AI: revoke clears held tasks
     expect(await holder(w, task)).toStrictEqual({ agent: null, person: null });
     expect(await assignEvents(w, task)).toBe(before + 1);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('Assign to AI: revoke clears held tasks', () => {
   it('revoking the delegation clears it from its task, one audited change', async () => {
     const task = await created(w, w.p, 'Held');
     const agent = await minted(w, w.p, task);

@@ -89,7 +89,7 @@ const assign = async (recordId: string, fields: Record<string, unknown>, credent
     credential,
   );
 
-describe.skipIf(serverUrl === undefined)('MP-4-8 agent assigns inside its delegation', () => {
+describe.skipIf(serverUrl === undefined)('MP-4-8 an agent’s assign keeps one kind', () => {
   it('an agent assigning a person clears the prior agent holder', async () => {
     const decider = await world.decider('sol-dual-holder');
     const taskId = await created(decider, 'Sol dual holder');
@@ -120,7 +120,9 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 agent assigns inside its delega
     );
     expect(held[0]).toStrictEqual({ agent: null, person: decider.personId });
   });
+});
 
+describe.skipIf(serverUrl === undefined)('MP-4-8 agent assigns inside its delegation', () => {
   it('a delegation holding assign sets its own task’s assignee, and it reads back', async () => {
     const decider = await world.decider('decider-assign');
     const taskId = await created(decider, 'the agent’s task');
