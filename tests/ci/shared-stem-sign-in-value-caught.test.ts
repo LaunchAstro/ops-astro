@@ -19,7 +19,10 @@ it('a test sign-in value planted in a shipped module sharing its stem is caught'
     mkdirSync(join(root, 'tests/fixture'), { recursive: true });
     mkdirSync(dist, { recursive: true });
     writeFileSync(join(dist, 'asset.js'), `const signInValue = '${value}';\n`);
-    writeFileSync(join(dist, 'module-graph.json'), JSON.stringify({ modules: { [shipped]: [] } }));
+    writeFileSync(
+      join(dist, 'module-graph.json'),
+      JSON.stringify({ modules: { [shipped]: [] } }),
+    );
 
     expect(scanBundle(dist, root)).not.toStrictEqual([]);
   } finally {

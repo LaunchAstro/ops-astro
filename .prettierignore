@@ -27,6 +27,12 @@ tests/support/fixture-race-vitest.config.mjs
 tests/support/fixture-template-race-hook.mjs
 tests/ci/ownership-proof-keeps-other-runs-template.test.ts
 
+# Sol's REVB1SL01 and REVB1SL01N review proofs, byte-for-byte as the review
+# patches held them; reviewer-proof-patch-bytes pins the first by its digest.
+tests/ci/shared-stem-sign-in-value-caught.test.ts
+tests/ci/reviewer-proof-patch-bytes.test.ts
+tests/ci/shared-stem-hostile-sign-in-values-caught.test.ts
+
 # Sol's proof tests in plain .mjs, kept byte-for-byte as applied: a review
 # attests a proof by its bytes. (Proofs in .ts pass through lint-staged.)
 tests/ci/s0-7-auth-up-replaces-18.test.mjs
