@@ -1439,6 +1439,11 @@ has no search until a client search is designed. `searchTasks`
 (`reads/search.ts`) is the one function every caller of the index uses.
 `tests/reads/search.test.ts` holds it.
 
+One pair is the exception: a person's own preferences are saved and read
+without an audit event (CS-2.8, MP-2-11a). A successful `preference.save` or
+`preference.read` writes none, and a refused one is audited like any other.
+The surface row's `audited: false` says so; nothing else skips the chain.
+
 ## Open items
 
 Named so they are not read as settled:

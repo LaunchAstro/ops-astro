@@ -182,10 +182,10 @@ export interface CommandDeclaration {
    */
   readonly authorisedOn: 'record' | 'business' | 'target' | 'claim' | 'self';
   /**
-   * Whether an applied attempt, and the replay of one, joins the audit chain.
-   * False only where the capability row says the action is not audited, a
-   * person's own preference (CS-2.8). A refused attempt joins it on every row,
-   * so a probe at someone else's row stays visible.
+   * Whether an applied attempt, the replay of one, or a successful read joins
+   * the audit chain. False only where the capability row says the action is
+   * not audited: saving and reading a person's own preferences (CS-2.8). A
+   * refused attempt joins it on every row, so a probe stays visible.
    */
   readonly audited: boolean;
   /**
@@ -322,6 +322,7 @@ function read(
     readonly action?: Action;
     readonly agent?: CommandDeclaration['agent'];
     readonly authorisedOn?: 'record' | 'business' | 'self';
+    readonly audited?: boolean;
   } = {},
 ): CommandDeclaration {
   return {
@@ -333,8 +334,9 @@ function read(
     targetLock: 'command',
     action: options.action ?? 'read',
     agent: options.agent ?? 'never',
-    // Every read writes its event (`reads/dispatch.ts`, I13).
-    audited: true,
+    // Every read writes its event (`reads/dispatch.ts`, I13), but a person's
+    // own preferences (CS-2.8).
+    audited: options.audited ?? true,
   };
 }
 
@@ -638,7 +640,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
 
   // A person's own preferences (MP-2-11a): the caller's row only, no grant
   // asked. No agent reaches either row yet.
-  read('preference.read', PREFERENCE_COLLECTION, { authorisedOn: 'self' }),
+  read('preference.read', PREFERENCE_COLLECTION, { authorisedOn: 'self', audited: false }),
   declare('preference.save', 'write', {
     collection: PREFERENCE_COLLECTION,
     targetsExistingRecord: false,
