@@ -1368,7 +1368,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:785-796`). With neither setting present, the
+  rewrites it (`local-seed.mjs:788-799`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1426,7 +1426,7 @@ both tenancy-scoped with row security forced, and the fair share's count
 
 - `model_calls`: one row per priced model call or recorded refusal, bound to
   its run, step, lease, approved version, reservation and delegation.
-- A conversation call (`0048_model_call_conversation`, AW-01's conversation
+- A conversation call (`0053_model_call_conversation`, AW-01's conversation
   seam): a person's call from their own conversation, through
   `callModelInConversation` (`core-custody/src/broker-conversation.ts`). The
   row names the conversation and none of the five task facts, no delegation,

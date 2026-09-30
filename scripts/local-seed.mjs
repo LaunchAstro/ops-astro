@@ -108,6 +108,9 @@ const GRANTS_BY_ROLE = {
     // `conversation:read`, the read-any grant, is seeded to nobody: it is given
     // to a named person on purpose, never held by a role on install.
     ['conversation', 'write'],
+    // MP-6-2's `state revised` (ORCH33, ORCH38): `run:write`, a person's own
+    // and an agent's inside its delegation; the owner and administrators hold it.
+    ['run', 'write'],
   ],
   member: [
     ['task', 'read'],
