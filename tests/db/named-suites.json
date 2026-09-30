@@ -145,7 +145,8 @@
     "SL01 (REVB1SL01S34B) adds Sol's proof staging-reset-refuses-invalid-service-key-before-emptying: a service key the admin API refuses leaves the database unemptied and no record written.",
     "SL01 (REVB1SL01S34C) adds Sol's proof staging-reset-refuses-unwritable-record-before-emptying: a run record that cannot be opened for appending leaves the database unemptied.",
     "SL01 (REVB1SL01S34D) adds Sol's proof staging-reset-refuses-discarded-record-before-emptying: a record target that discards writes (a link to /dev/null) leaves the database unemptied. s0-1-staging-reset-record adds the family: a link to a file, a pipe, a device or a linked folder is refused the same way.",
-    "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database."
+    "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database.",
+    "SL12 (B1-TAKE, Opus interim review for Sol, SOL-LATER) adds sol-proof-sl12-take-column-grants (the column-grant contract names batch 1's column grants, 0046 and 0047) as conformance; its two siblings in tests/review read no database and are not named."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -530,6 +531,7 @@
     "tests/ci/staging-reset-refuses-invalid-service-key-before-emptying.test.ts",
     "tests/ci/staging-reset-refuses-unwritable-record-before-emptying.test.ts",
     "tests/ci/staging-reset-refuses-discarded-record-before-emptying.test.ts",
-    "tests/ci/s0-1-staging-reset-record.test.ts"
+    "tests/ci/s0-1-staging-reset-record.test.ts",
+    "tests/review/sol-proof-sl12-take-column-grants.test.ts"
   ]
 }
