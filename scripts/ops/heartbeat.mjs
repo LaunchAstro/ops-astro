@@ -11,22 +11,20 @@
 // a GET to a public https address, with no redirect followed, a 10-second
 // limit and its answer's body discarded.
 
-// What a watcher off the machine cannot reach, the sink's own rule
-// (`apps/api/alerts/sink.ts`).
-import { UNREACHABLE } from '../../apps/api/alerts/sink.ts';
+export { ping, UNREACHABLE } from '../../apps/worker/heartbeat.ts';
 
-export { UNREACHABLE };
-
-/** One ping to `address`; the outcome in a word, never the address. */
-export async function ping(address, get = fetch) {
-  if (address === undefined || address === '') return 'not set';
-  const url = URL.parse(address);
-  if (url === null || url.protocol !== 'https:' || UNREACHABLE.test(url.hostname)) return 'refused';
+/**
+ * Whether the error sink behind `dsn` answers its health page. The sink is on
+ * the machine, where the off-box watcher cannot see it, so its forwarder asks
+ * and pings the sink's heartbeat only on a yes. The key in the DSN is not sent.
+ */
+export async function sinkAnswers(dsn, get = fetch) {
   try {
-    const answer = await get(url, { redirect: 'manual', signal: AbortSignal.timeout(10_000) });
+    const health = new URL('/_health/', new URL(dsn).origin);
+    const answer = await get(health, { redirect: 'manual', signal: AbortSignal.timeout(10_000) });
     await answer.body?.cancel();
-    return answer.status >= 200 && answer.status < 300 ? 'sent' : 'failed';
+    return answer.status >= 200 && answer.status < 300;
   } catch {
-    return 'failed';
+    return false;
   }
 }

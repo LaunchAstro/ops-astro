@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// S0-1g: the gated stop of production's API and auth server (ticket S0-1).
+// S0-1g: the gated stop of production's worker and its forwarder (ticket S0-1).
 //
-// The promotion refuses while the API or the auth server runs (owner line 63),
-// so a person stops them first. That stop is `scripts/ops/stop-production.mjs`:
+// The promotion migrates only with production's worker unit stopped (S0-1), so
+// a person stops it first. That stop is `scripts/ops/stop-production.mjs`:
 // the operator gate answers first, then the service manager is asked to stop
 // exactly the two named services with a fixed argument list, then the stop is
 // recorded. An agent credential, a call under a delegation, a person without
@@ -23,7 +23,7 @@ describe('S0-1 gated stop, before any lookup', () => {
       const at = fake();
       const result = spawn(STOP, args, { PATH: at.path, OPS_ASTRO_DEPLOYMENTS: at.records });
       expect(result.status, result.out).toBe(2);
-      expect(result.out).toMatch(/takes no argument/u);
+      expect(result.out).toMatch(/takes no argument; it stops only production's worker unit/u);
       untouched(at);
     }
   });

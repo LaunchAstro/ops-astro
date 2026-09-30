@@ -55,6 +55,7 @@ function monitorsFor(where, base) {
     check('backup', 'heartbeat', undefined, 'backup-silent'),
     check('restore', 'heartbeat', undefined, 'restore-stale'),
     check('forwarder', 'heartbeat', undefined, 'forwarder-silent'),
+    check('worker', 'heartbeat', undefined, 'worker-silent'),
   ];
 }
 
@@ -67,15 +68,9 @@ function plan(test) {
   if (process.env['OPS_WATCH_PRODUCTION_URL']) {
     monitors.push(...monitorsFor('production', watched('OPS_WATCH_PRODUCTION_URL')));
   }
-  const sink = new URL(dsn);
+  // The sink is on the machine: its forwarder pings this heartbeat while the sink answers.
   const { title: name, text: message } = plainAlert('sink-down', 'staging');
-  monitors.push({
-    watch: 'error sink',
-    type: 'http',
-    url: `${sink.origin}/_health/`,
-    name,
-    message,
-  });
+  monitors.push({ watch: 'error sink', type: 'heartbeat', name, message });
   const every = 'every minute; mail at once when a check fails and when it is back';
   const rule = 'every event, at once, by email';
   const out = { channel: 'email', recipients, every, monitors, sink: { rule, recipients } };

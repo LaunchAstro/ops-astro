@@ -23,6 +23,7 @@ import {
   type JobModule,
 } from './staging-backup-reach-live.fixture.ts';
 import { largeArchive, overTheCap } from './staging-backup-reach-large.fixture.ts';
+import { WORKER_UNIT } from './staging-placeholders.fixture.ts';
 
 const DEFINITION = new URL('../../deploy/staging/compose.json', import.meta.url).pathname;
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
@@ -62,6 +63,7 @@ live('S0-3 store reach, live', () => {
     STAGING_SITE_URL: 'http://127.0.0.1',
     STAGING_AUTH_DATABASE_URL: 'postgres://unused',
     STAGING_JWT_SECRET: 'unused',
+    ...WORKER_UNIT,
   };
   const compose = (args: string[]) =>
     docker(['compose', '-p', project, '-f', DEFINITION, '-f', override, ...args], env);
