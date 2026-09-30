@@ -20,6 +20,8 @@ import type { Hono } from 'hono';
 import {
   connect,
   connectListener,
+  raiseInboxItem,
+  readInboxItems,
   type Database,
   type Listener,
 } from '../../packages/core-records/src/index.ts';
@@ -28,6 +30,7 @@ import { DELEGATION_HEADER, PREFIX } from '../../packages/core-wire/src/index.ts
 import { runtimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import { startLiveTopics, type LiveTopics } from '../../apps/api/live.ts';
+import { joinLiveBoard } from '../../packages/core-commands/src/reads/live-join.ts';
 import { authorised, ISSUER, SECRET, tokenFor } from './fixture.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
@@ -380,6 +383,79 @@ describe.skipIf(serverUrl === undefined)(
       // The bystander holds no item: their tab heard the task, never an inbox signal.
       await settled(quiet, taskId);
       expect(inboxSignals(quiet)).toBe(0);
+    });
+
+    it('a withheld other-client item emits no inbox signal', async () => {
+      const clientA = randomUUID();
+      const clientB = randomUUID();
+      const mine = await createTask(s, `sol-client-a-${randomUUID()}`);
+      const hidden = await createTask(s, `sol-client-b-${randomUUID()}`);
+      await s.db.admin.execute(
+        `update public.records set data = data || jsonb_build_object('client', $2::text)
+          where id = $1`,
+        [mine, clientA],
+      );
+      await s.db.admin.execute(
+        `update public.records set data = data || jsonb_build_object('client', $2::text)
+          where id = $1`,
+        [hidden, clientB],
+      );
+      const recipient = await enrol(s.db.app, s.business, `sol-scoped-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await grantTo(tx, recipient, 'read', { kind: 'record', id: mine });
+      });
+      const tab = await tabOf(recipient);
+      await joined(tab);
+      const before = inboxSignals(tab);
+      const itemId = await s.db.app.withBusiness(
+        s.business,
+        async (tx) =>
+          await raiseInboxItem(tx, {
+            recipientPersonId: recipient.personId,
+            subjectRecordId: hidden,
+            reason: 'mention',
+            fact: { kind: 'record', id: randomUUID() },
+          }),
+      );
+      const [item] = await s.db.app.withBusiness(s.business, async (tx) =>
+        (await readInboxItems(tx, recipient.personId)).filter((entry) => entry.id === itemId),
+      );
+      expect(item?.access).toBe('withheld');
+      await settled(tab, mine);
+      expect(inboxSignals(tab)).toBe(before);
+    });
+
+    it('a remapped login stops hearing the previous person’s inbox', async () => {
+      const first = await enrol(s.db.app, s.business, `sol-first-${randomUUID()}`);
+      const second = await enrol(s.db.app, s.business, `sol-second-${randomUUID()}`);
+      const firstTask = await createTask(s, `sol-first-task-${randomUUID()}`);
+      const secondTask = await createTask(s, `sol-second-task-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await grantTo(tx, first, 'read', { kind: 'record', id: firstTask });
+        await grantTo(tx, second, 'read', { kind: 'record', id: secondTask });
+      });
+      const firstToken = await tokenFor(first.presented.subject);
+      const tab = await tabOf(first, firstToken);
+      await joined(tab);
+      const before = inboxSignals(tab);
+      await s.db.admin.execute(
+        `update public.person_logins set person_id = $2
+          where business_id = $1 and person_id = $3 and active`,
+        [s.business, second.personId, first.personId],
+      );
+      expect(await joinLiveBoard(pool, s.business, first.presented)).toEqual({
+        personId: second.personId,
+      });
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await raiseInboxItem(tx, {
+          recipientPersonId: first.personId,
+          subjectRecordId: firstTask,
+          reason: 'mention',
+          fact: { kind: 'record', id: randomUUID() },
+        });
+      });
+      await settled(tab, secondTask);
+      expect(inboxSignals(tab)).toBe(before);
     });
   },
 );

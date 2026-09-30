@@ -26,6 +26,7 @@ import {
   createTask,
   openSchedules,
   propose,
+  revisionOf,
   rows,
   type Body,
   type Detail,
@@ -193,6 +194,35 @@ describe.skipIf(serverUrl === undefined)('INB-1 escalate and the inbox', () => {
     expect(itemOf(after, named.personId, taskId)?.state).toBe('open');
     expect(itemOf(after, other.personId, taskId)?.state).toBe('open');
     expect(await owed(other.personId)).toBe(1);
+  });
+
+  it('escalation does not count an assignee who cannot decide', async () => {
+    const { taskId, v3 } = await atTheBound();
+    const assignee = await enrol(s.db.app, s.business, `sol-assignee-${randomUUID()}`);
+    await s.db.app.withBusiness(s.business, async (tx) => {
+      for (const action of ['read', 'decide'] as const) {
+        // eslint-disable-next-line no-await-in-loop
+        await grantTo(tx, assignee, action);
+      }
+    });
+    appliedDetail(
+      await asPerson(s, {
+        command: 'task.assign',
+        operationId: randomUUID(),
+        recordId: taskId,
+        expectedRevision: await revisionOf(s, taskId),
+        fields: { assignee: assignee.personId },
+      }),
+      'assign the late business decider',
+    );
+    expect(itemOf(await onGate(v3['gateId']), assignee.personId, taskId)).toBeUndefined();
+    appliedDetail(
+      await asPerson(s, decideBody(v3, 'escalate', { recipientPersonId: holder.personId })),
+      'escalate to another business decider',
+    );
+    expect(codeOf(await as(assignee, decideBody(v3, 'approve')))).toBe('FOUR_EYES_REQUIRED');
+    expect(itemOf(await onGate(v3['gateId']), assignee.personId, taskId)).toBeUndefined();
+    expect(await owed(assignee.personId)).toBe(0);
   });
 
   it('INB-1 a refused escalate moves no item', async () => {
