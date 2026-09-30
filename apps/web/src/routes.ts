@@ -52,6 +52,18 @@ export const ROUTES = {
     surface: 'none',
     authenticated: false,
   },
+  // A business's published legal documents (C81, CS-16.20): the client terms,
+  // the privacy policy and the data-handling statement, each at an address
+  // that needs no sign-in and is linked from sign-in. It draws the public read
+  // alone, signed in or not; the breach runbook is the operators' own and has
+  // no public address.
+  'agency:legal': {
+    namespace: 'agency',
+    path: '/legal/:business/:document/',
+    title: 'Legal',
+    surface: 'none',
+    authenticated: false,
+  },
   'agency:projects-board': {
     namespace: 'agency',
     path: '/projects/',
@@ -135,6 +147,9 @@ type Route<Id extends RouteId> = (typeof ROUTES)[Id];
 export type PublicRouteId = {
   [Id in RouteId]: Route<Id>['authenticated'] extends false ? Id : never;
 }[RouteId];
+
+/** A public route other than sign-in: drawn the same with a session or without. */
+export type OpenRouteId = Exclude<PublicRouteId, 'agency:sign-in'>;
 
 /** A route that needs a session. Each one has a screen in `SCREENS`. */
 export type AuthenticatedRouteId = Exclude<RouteId, PublicRouteId>;
@@ -225,15 +240,17 @@ export type Gate =
   | { readonly kind: 'not-found' }
   | { readonly kind: 'sign-in' }
   | { readonly kind: 'signed-in-already' }
+  | { readonly kind: 'open'; readonly match: RouteMatch<OpenRouteId> }
   | { readonly kind: 'screen'; readonly match: RouteMatch<AuthenticatedRouteId> };
 
 /**
  * The sign-in gate. An address that needs a session and has none is the
  * sign-in screen, and the sign-in screen is where a signed-out person lands.
- * Neither is an error.
+ * Neither is an error. An open route asks nothing of the session.
  */
 export function gateOf(match: RouteMatch | null, signedIn: boolean): Gate {
   if (match === null) return { kind: 'not-found' };
+  if (isOpen(match)) return { kind: 'open', match };
   if (!signedIn) return { kind: 'sign-in' };
   if (!needsSession(match)) return { kind: 'signed-in-already' };
   return { kind: 'screen', match };
@@ -241,6 +258,10 @@ export function gateOf(match: RouteMatch | null, signedIn: boolean): Gate {
 
 function needsSession(match: RouteMatch): match is RouteMatch<AuthenticatedRouteId> {
   return match.route.authenticated;
+}
+
+function isOpen(match: RouteMatch): match is RouteMatch<OpenRouteId> {
+  return !match.route.authenticated && match.id !== 'agency:sign-in';
 }
 
 const segments = (path: string): readonly string[] => path.split('/').filter((part) => part !== '');

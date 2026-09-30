@@ -32,7 +32,9 @@
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { FieldError } from '@launchastro/ui';
+import { pathTo } from '../routes.ts';
 import { openSession } from '../session/sign-in.ts';
+import { PUBLIC_DOCUMENTS } from './Legal.tsx';
 import type { Interruption, Session } from '../session/token.ts';
 
 export interface SignInProps {
@@ -162,6 +164,14 @@ export function SignIn(props: SignInProps): ReactElement {
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
+      {/* The business's public legal documents (C81), for the business chosen above. */}
+      <nav aria-label="Legal documents">
+        {PUBLIC_DOCUMENTS.map(([document, words]) => (
+          <p key={document}>
+            <a href={pathTo('agency:legal', { business: businessKey, document })}>{words}</a>
+          </p>
+        ))}
+      </nav>
     </div>
   );
 }
