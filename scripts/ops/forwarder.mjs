@@ -24,6 +24,9 @@ export async function main(argv, env) {
   let sink;
   try {
     if (url === '') throw new Error('DATABASE_FORWARDER_URL is not set.');
+    if (!/^postgres(ql)?:$/u.test(URL.parse(url)?.protocol ?? '')) {
+      throw new Error('DATABASE_FORWARDER_URL is not a database login (postgres://...).');
+    }
     sink = sinkFrom(env);
     if (sink === undefined) throw new Error('OPS_ERROR_SINK_DSN is not set.');
   } catch (error) {
