@@ -51,6 +51,8 @@ export function App(props: AppProps): ReactElement {
   // Why the board was reached instead of the address that was held. Drawn on
   // the board and nowhere else, and gone when this session is.
   const [notice, setNotice] = useState<string | null>(null);
+  // The person signed out here, so sign-in says their unsaved edit went with it (C58).
+  const [signedOut, setSignedOut] = useState(false);
 
   const onSignedIn = useCallback(
     (next: Session) => {
@@ -60,6 +62,7 @@ export function App(props: AppProps): ReactElement {
       props.sessions.set(next);
       setSession(next);
       setNotice(null);
+      setSignedOut(false);
       if (back === null) {
         props.navigate(pathTo('agency:projects-board'));
         return;
@@ -89,6 +92,7 @@ export function App(props: AppProps): ReactElement {
     props.sessions.clear();
     setSession(null);
     setNotice(null);
+    setSignedOut(true);
     props.navigate(pathTo('agency:sign-in'));
   }, [props]);
 
@@ -163,6 +167,7 @@ export function App(props: AppProps): ReactElement {
             fetch={props.fetch}
             onSignedIn={onSignedIn}
             ended={props.sessions.interruption}
+            signedOut={signedOut}
           />
         );
       case 'signed-in-already':

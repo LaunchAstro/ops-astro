@@ -21,7 +21,7 @@
 // `session-ended.test.tsx`; the refusals are the bodies C58's own suites pin.
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { useState, type ReactElement } from 'react';
+import { act, useState, type ReactElement } from 'react';
 import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { mount, settle, type Mounted } from './mount.tsx';
@@ -111,11 +111,15 @@ function storage(seed: Record<string, string>): {
   };
 }
 
+/** The address bar, for a case that opens an address after signing in. */
+const addressBar = { go: (_path: string): void => undefined };
+
 function Harness(props: {
   readonly sessions: SessionStore;
   readonly fetch: typeof globalThis.fetch;
 }): ReactElement {
   const [path, setPath] = useState('/task/TSK-1');
+  addressBar.go = setPath;
   return (
     <App
       path={path}
@@ -181,12 +185,20 @@ async function expectSignedOutWithNoDraft(
 }
 
 /** Sign in again: the task comes back as the server holds it, not as typed. */
-async function signInAgainFindsNoDraft(view: Mounted): Promise<void> {
+async function signInAgainFindsNoDraft(view: Mounted, reopen = false): Promise<void> {
   await view.type('#signin-email', 'mia@alpha.local');
   await view.type('#signin-password', 'whatever-it-is');
   await view.click('form.signin__form button[type="submit"]');
   await settle();
   await settle();
+  // Signing out holds no address, so sign-in leads to the board: open the task again.
+  if (reopen) {
+    await act(() => {
+      addressBar.go('/task/TSK-1');
+    });
+    await settle();
+    await settle();
+  }
   const title = view.find('#task-title') as HTMLInputElement | null;
   expect(title?.value).toBe(TASK.title);
   expect(view.text()).not.toContain(DRAFT_TITLE);
@@ -225,7 +237,7 @@ describe('C58 no draft after session end', () => {
     await view.click('.topbar__who button');
     await expectSignedOutWithNoDraft(view, store, sessions);
     expect(view.find('[data-reason="signed-out"]')).not.toBeNull();
-    await signInAgainFindsNoDraft(view);
+    await signInAgainFindsNoDraft(view, true);
   });
 
   it('a login that was never a member is shown the denial and is not signed out', async () => {
