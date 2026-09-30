@@ -5,7 +5,7 @@
 // names. Changed, and only these: the header is the session id rather than the
 // person (SESSION_HEADER for SUBJECT_HEADER), the late sign-out and the board
 // read name the id their tab was given, and the jar is read by that id's
-// cookie name. The as-sent file is red at fe180f5 and kept as evidence.
+// cookie name. The as-sent file is red at 73ec54b and kept as evidence.
 
 import { describe, expect, it } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';

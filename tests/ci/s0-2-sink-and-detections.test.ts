@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// Review proofs for S0-2 at 23457e0. These tests intentionally fail on that head.
+// Review proofs for S0-2 at ce25f42. These tests intentionally fail on that head.
 import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';

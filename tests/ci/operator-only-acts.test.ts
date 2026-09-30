@@ -129,7 +129,7 @@ function operatorOnlyCases4() {
 
 function operatorOnlyCases5() {
   it('a saved stopped report cannot bypass a live running API', async () => {
-    // Carried from #109 (4ef3113) with the operator's sign-in added: the gate
+    // Carried from #109 (9d5916c) with the operator's sign-in added: the gate
     // now answers first, so the proof runs past it to the bypass it tests.
     const fake = manager(true);
     const at = marks(fake);
