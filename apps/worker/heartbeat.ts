@@ -53,3 +53,19 @@ export function offEgress(
   }
   return undefined;
 }
+
+/** Not paced yet (NATHAN-GLITCHTIP 4): the next commit decides it. */
+export function heartbeatEvery(
+  _env: Readonly<Record<string, string | undefined>>,
+): number | string {
+  return 0;
+}
+
+/** Not paced yet: every call sends. */
+export function paced(
+  _every: number,
+  send: (address: string | undefined) => Promise<string> = ping,
+  _now: () => number = Date.now,
+): (address: string | undefined) => Promise<string> {
+  return send;
+}
