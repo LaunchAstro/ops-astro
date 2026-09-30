@@ -326,10 +326,39 @@ export interface ProposalVersionView {
   readonly endedAt: string | null;
   /** The token units the run's model calls recorded, or null for none (MP-6-2's hero tokens). */
   readonly tokenUnits: number | null;
+  /** What the run was given at its start (AW-02's pin slot, 0043); empty with no pin (MP-6-2). */
+  readonly pins: readonly RunPinView[];
+  /** Each instruction file the run read, in its order (the read ledger, 0043). */
+  readonly reads: readonly RunReadView[];
   readonly evidence: EvidenceView | null;
   readonly gate: GateView | null;
   /** The checks the run performed on this version, oldest first (MP-6-1, CS-16.3). */
   readonly checks: readonly CheckView[];
+}
+
+/**
+ * The run's pinned definition reference, as stored: a bootstrap file by path,
+ * read at pin time, or a definition version by id. The digest and size are
+ * the identity; the path is provenance only.
+ */
+export interface RunPinView {
+  readonly kind: string;
+  readonly path: string | null;
+  readonly digest: string;
+  readonly size: number;
+  readonly readAt: string | null;
+  readonly definitionVersionId: string | null;
+  readonly pinnedAt: string;
+}
+
+/** One pinned read the run made, as its ledger row records it. */
+export interface RunReadView {
+  readonly sequence: number;
+  readonly path: string;
+  readonly digest: string;
+  readonly size: number;
+  readonly readAt: string;
+  readonly isEntry: boolean;
 }
 
 /** One check a run recorded under its worker lease, against the version it ran on. */

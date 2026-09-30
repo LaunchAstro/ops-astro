@@ -67,7 +67,74 @@ export interface CheckRow {
   readonly created_at: string;
 }
 
-export function asVersion(row: VersionRow, checks: readonly CheckRow[]): ProposalVersionView {
+/** A run's pin, keyed by the version its run ran on. */
+export interface PinRow {
+  readonly version_id: string;
+  readonly ref_kind: string;
+  readonly path: string | null;
+  readonly content_digest: string;
+  readonly content_size: string;
+  readonly read_at: string | null;
+  readonly definition_version_id: string | null;
+  readonly pinned_at: string;
+}
+
+/** One ledger row, keyed by the version its run ran on. */
+export interface ReadRow {
+  readonly version_id: string;
+  readonly sequence: number;
+  readonly path: string;
+  readonly content_digest: string;
+  readonly content_size: string;
+  readonly read_at: string;
+  readonly is_entry: boolean;
+}
+
+/** Each run's pin and ledger rows, from the snapshot the read took. */
+export interface GivenRows {
+  readonly pins: readonly PinRow[];
+  readonly reads: readonly ReadRow[];
+}
+
+export function givenOf(rows: Readonly<Record<string, readonly unknown[]>>): GivenRows {
+  return {
+    pins: (rows['pins'] ?? []) as readonly PinRow[],
+    reads: (rows['reads'] ?? []) as readonly ReadRow[],
+  };
+}
+
+/** What the version's run was given at its start and read, as stored (MP-6-2). */
+function givenTo(versionId: string, given: GivenRows): Pick<ProposalVersionView, 'pins' | 'reads'> {
+  return {
+    pins: given.pins
+      .filter((pin) => pin.version_id === versionId)
+      .map((pin) => ({
+        kind: pin.ref_kind,
+        path: pin.path,
+        digest: pin.content_digest,
+        size: Number(pin.content_size),
+        readAt: pin.read_at === null ? null : isoTime(pin.read_at),
+        definitionVersionId: pin.definition_version_id,
+        pinnedAt: isoTime(pin.pinned_at),
+      })),
+    reads: given.reads
+      .filter((read) => read.version_id === versionId)
+      .map((read) => ({
+        sequence: read.sequence,
+        path: read.path,
+        digest: read.content_digest,
+        size: Number(read.content_size),
+        readAt: isoTime(read.read_at),
+        isEntry: read.is_entry,
+      })),
+  };
+}
+
+export function asVersion(
+  row: VersionRow,
+  checks: readonly CheckRow[],
+  given: GivenRows,
+): ProposalVersionView {
   return {
     versionId: row.version_id,
     version: Number(row.version),
@@ -81,6 +148,7 @@ export function asVersion(row: VersionRow, checks: readonly CheckRow[]): Proposa
     startedAt: row.run_started_at === null ? null : isoTime(row.run_started_at),
     endedAt: row.run_ended_at === null ? null : isoTime(row.run_ended_at),
     tokenUnits: row.run_token_units === null ? null : Number(row.run_token_units),
+    ...givenTo(row.version_id, given),
     evidence:
       row.evidence_pack_id === null
         ? null
@@ -101,17 +169,22 @@ export function asVersion(row: VersionRow, checks: readonly CheckRow[]): Proposa
             expired: row.gate_expired ?? false,
             payloadDigest: row.payload_digest,
           },
-    checks: checks
-      .filter((check) => check.version_id === row.version_id)
-      .map((check) => ({
-        id: check.id,
-        name: check.name,
-        outcome: check.outcome,
-        note: check.note,
-        performedByActorId: check.actor_id,
-        recordedAt: isoTime(check.created_at),
-      })),
+    checks: checksOn(row.version_id, checks),
   };
+}
+
+/** The checks the version's run recorded, oldest first. */
+function checksOn(versionId: string, checks: readonly CheckRow[]): ProposalVersionView['checks'] {
+  return checks
+    .filter((check) => check.version_id === versionId)
+    .map((check) => ({
+      id: check.id,
+      name: check.name,
+      outcome: check.outcome,
+      note: check.note,
+      performedByActorId: check.actor_id,
+      recordedAt: isoTime(check.created_at),
+    }));
 }
 
 /** One reservation with the lease and attempt it produced, if any. */

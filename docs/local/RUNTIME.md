@@ -1517,6 +1517,10 @@ itself is never rewritten either: 0043 takes back the application's update on
 run keeps its version, task and lineage. Restricted calls pin the column grant
 at the full schema and every prefix.
 
+`task.read` carries each proposal version's run pin and ledger rows as stored
+(MP-6-2, `core-commands/src/reads/proposals.ts`), in the business and on that
+run; never the manifest or the audit copy.
+
 The audit copy may hold client material, so it retains as the run records it
 copies (skill-migration contract 4.4; #27 row 5, retained and never deleted):
 the retention register (`core-records/src/tasks/trash.ts`) puts it, the pin

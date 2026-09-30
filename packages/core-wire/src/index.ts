@@ -37,6 +37,8 @@ export type {
   WrapUpView,
   AwaitingReviewView,
   CheckView,
+  RunPinView,
+  RunReadView,
   Capability,
   CapabilitiesResult,
   CommentView,
