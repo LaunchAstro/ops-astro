@@ -24,7 +24,7 @@ export const CASE = {
 } as const;
 
 /**
- * The ten operations that name no identifier, each with a minimal valid body.
+ * The eleven operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -39,6 +39,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['task.queue', {}],
   ['task.ledger', { timeZone: 'UTC' }],
   ['person.list', {}],
+  ['team.list', {}],
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
   ['settings.read', {}],
   ['session.capabilities', {}],

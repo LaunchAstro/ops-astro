@@ -128,6 +128,7 @@ export function createPositiveBody(
         return { body: { timeZone: 'UTC' } };
       case 'task.queue':
       case 'person.list':
+      case 'team.list':
       // Both take an empty body and neither carries an `expectedRevision`:
       // `settings.read` because `business_settings` has no revision column to
       // be stale against, `session.capabilities` because it reports the
