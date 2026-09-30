@@ -1305,9 +1305,12 @@ read in the same transaction, so the item stores none of them. A gone entry
 carries its own identity and axes and nothing of the task. The board screen
 draws both reads above the board (`apps/web/src/views/inbox.tsx`, INB-1g).
 
-The board screen follows one event stream per tab (INB-1f),
-`GET <person prefix><business>/live` naming no `topic` (a join naming topics
-is C4's stream for a tab's pages, `apps/api/live-follow.ts`), beside T2f's
+The board's stream (INB-1f) is `GET <person prefix><business>/live` naming no
+`topic`, or the same stream as the topic `board` on C4's one stream per tab
+(`?topic=board` beside `task:<id>` topics, `apps/api/live-follow.ts`), where
+every frame it sends is labelled `board` and names no task, and it ends alone
+as a task topic does; the rest of this paragraph is its frames on its own route.
+It sits beside T2f's
 `/live/task/:recordId` and through the same door (`apps/api/app.ts`, `apps/api/live-board.ts`). The
 join is `joinLiveBoard` (`reads/live-join.ts`): a person inside the business,
 never an external reader or an agent, holding a live grant. It sends `resync`
@@ -1324,9 +1327,10 @@ the previous person's topic is dropped unsaid, the new one's is heard, and the
 stream says nothing until its next recheck sends `resync`. The inbox topic is
 `business:inbox:person`, sent at commit by migration 0043's trigger on
 `inbox_items`, and the fan-out (`apps/api/live.ts`) hands it only to that
-person's streams in that business. The page re-reads the board on
-`invalidate` and the inbox list and count on `inbox`; while the stream is
-down its 30-second floor re-reads both (`apps/web/src/data/board-live.ts`).
+person's streams in that business. The web follows the `board` topic through the tab's one
+hub: the board screen re-reads the board on `invalidate` and the inbox list and
+count on `inbox`, the Inbox screen re-reads on either, and while the stream is
+down the hub's 30-second floor re-reads them (`apps/web/src/data/board-live.ts`).
 
 `task.read` carries the task's comments. An internal reader, meaning a
 membership role of `owner`, `admin` or `member`, is given every comment in full.

@@ -197,11 +197,6 @@ export class OperationsClient {
     return (await this.#live(`?${query}`, { signal }))?.body ?? null;
   }
 
-  /** The board's one stream for the tab (INB-1f), or nothing if refused or unreachable. */
-  async openBoardLive(signal: AbortSignal): Promise<ReadableStream<Uint8Array> | null> {
-    return (await this.#live('', { signal }))?.body ?? null;
-  }
-
   /** A presence route under `live/` (C2), its JSON when it answered 2xx, else null. */
   async live(path: string, init: RequestInit): Promise<unknown> {
     const response = await this.#live(`/${path}`, init);

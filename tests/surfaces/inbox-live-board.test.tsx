@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// INB-1f on the page: the board screen opens one event stream for the tab
-// (`<person prefix><business>/live`, T2f's content-free channel) and never a
-// stream per task or per panel. An `invalidate` re-reads the board and an
+// INB-1f on the page: the board screen follows the `board` topic on the tab's
+// one event stream (C4, `<person prefix><business>/live?topic=board`), never a
+// stream per task or per panel; every board frame is labelled `board`. An `invalidate` re-reads the board and an
 // `inbox` signal re-reads the inbox and its owed count, with no refresh.
 // While the stream is down, the 30-second floor re-reads them; while it is
 // up, nothing polls.
@@ -91,14 +91,14 @@ describe('INB-1f the board moves live on the page', () => {
     await settle();
     // One stream for the tab: the board, the inbox list and its count share it.
     expect(api.joins).toHaveLength(1);
-    expect(api.joins[0]).toMatch(/\/api\/b\/alpha\/live$/u);
+    expect(api.joins[0]).toMatch(/\/api\/b\/alpha\/live\?topic=board$/u);
 
     const before = { ...api.asked };
-    api.send('invalidate', '22222222-2222-4222-8222-222222222222');
+    api.send('invalidate', 'board');
     await until('the board re-read', () => api.asked.board > before.board, deadline);
 
     const board = api.asked.board;
-    api.send('inbox');
+    api.send('inbox', 'board');
     await until(
       'the inbox and its count re-read',
       () => api.asked.inbox > before.inbox && api.asked.count > before.count,

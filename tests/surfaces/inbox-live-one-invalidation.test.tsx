@@ -72,7 +72,7 @@ describe('SL04 live Tasks screen', () => {
 
       changed = true;
       for (const stream of streams) {
-        stream.enqueue(new TextEncoder().encode('event: invalidate\ndata: task-1\n\n'));
+        stream.enqueue(new TextEncoder().encode('event: invalidate\ndata: board\n\n'));
       }
       await vi.waitFor(
         async () => {
