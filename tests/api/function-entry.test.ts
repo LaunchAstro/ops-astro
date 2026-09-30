@@ -159,9 +159,10 @@ function alertSettingsCase() {
 }
 
 function adminCase() {
-  it('refuses to start with an admin login or the sink key in its environment, naming it and never a value', async () => {
+  it("refuses to start with an admin login, the sink key or the provider's admin key in its environment, naming it and never a value", async () => {
     const saved = { ...process.env };
-    for (const name of ['DATABASE_ADMIN_URL', 'OPS_ERROR_SINK_DSN']) {
+    // SUPABASE_SERVICE_KEY: C58's provider steps run from the endings loop (ORCH47).
+    for (const name of ['DATABASE_ADMIN_URL', 'OPS_ERROR_SINK_DSN', 'SUPABASE_SERVICE_KEY']) {
       delete process.env['DATABASE_ADMIN_URL'];
       Object.assign(process.env, unreachable, { [name]: NOWHERE });
       try {
