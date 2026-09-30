@@ -707,6 +707,13 @@ made-up run gets. An agent reaches it only under a delegation minted with
 holds to `write` alone; the agent is the recorded actor. The seed gives
 `run:write` to no role.
 
+WF-7's `run started (research)` is `task.propose` on a task of type
+`research`: beside the row's `task:write` it asks `run:write` on the ticket,
+under the task lock (`tasks-propose.ts`), refused `SCOPE_NOT_GRANTED`. An
+agent proposes one only under a delegation that reaches `run`; otherwise
+`DELEGATION_OUT_OF_PURPOSE`, whatever its person now holds. Other task types
+are unchanged.
+
 ## The restricted worker role
 
 `ops_astro_worker` (0008) exists at the database level with no privilege

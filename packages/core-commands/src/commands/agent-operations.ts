@@ -400,6 +400,7 @@ async function servePropose(
       taskTypeId: spine.taskTypeId,
       actorId: session.actorId,
       subjects: [{ kind: 'person', id: delegation.delegatePersonId }],
+      delegation,
     },
     fields as unknown as ProposeFields,
   );

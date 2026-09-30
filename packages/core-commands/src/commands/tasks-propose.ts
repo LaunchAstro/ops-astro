@@ -2,12 +2,16 @@
 //
 // `task.propose`: a proposal on a task, through the runtime's locks.
 
-import { subjectsOf } from '../../../core-records/src/index.ts';
-import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  checkAuthority,
+  checkDelegatedAuthority,
+  subjectsOf,
+} from '../../../core-records/src/index.ts';
+import type { Delegation, Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import { lockProposal, proposeUnderLocks } from '../../../core-runtime/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
 import { lockTask, REVISION_FIXES } from './prepare.ts';
-import { refuseCommand, refuseNotFound } from './refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 import { invalid, isFieldMap } from './operands.ts';
@@ -88,11 +92,13 @@ export interface Proposer {
   readonly taskTypeId: string;
   readonly actorId: string;
   readonly subjects: readonly Subject[];
+  /** An agent's: its reach is the delegation's, inside the person's grants. */
+  readonly delegation?: Delegation;
 }
 
 export async function proposeFor(
   tx: TenantQuery,
-  { target, collection, taskTypeId, actorId, subjects }: Proposer,
+  { target, collection, taskTypeId, actorId, subjects, delegation }: Proposer,
   fields: ProposeFields,
 ): Promise<HandlerOutcome> {
   // A trashed task is gone to the work surface until its batch is restored,
@@ -197,6 +203,10 @@ export async function proposeFor(
       refuseCommand('VERSION_STALE', [`revision=${current.revision}`], REVISION_FIXES),
     );
   }
+  if (current.data['type'] === 'research') {
+    const refusal = await researchRunRefusal(tx, target.id, subjects, delegation);
+    if (refusal !== undefined) return refused(refusal);
+  }
   const result = await proposeUnderLocks(tx, proposal, held);
   if (!result.ok) return refused(result.refusal);
 
@@ -214,3 +224,30 @@ export async function proposeFor(
     payloadDigest: result.value.payloadDigest,
   });
 }
+
+/**
+ * WF-7: Run on a research ticket starts a research run, which is `run:write`
+ * on the ticket beside the row's `task:write`. An agent reaches it only where
+ * its delegation does (MP-6-2 mints `run` for a person holding it), and never
+ * past its person's grants. Asked under the task lock, as the runtime asks.
+ */
+async function researchRunRefusal(
+  tx: TenantQuery,
+  taskId: string,
+  subjects: readonly Subject[],
+  delegation: Delegation | undefined,
+): Promise<CommandRefusal | undefined> {
+  const request = {
+    collection: 'run',
+    action: 'write',
+    scope: { kind: 'record', id: taskId },
+  } as const;
+  if (delegation !== undefined) {
+    const reach = await checkDelegatedAuthority(tx, delegation, request);
+    if (!reach.ok) return reach.refusal;
+  }
+  if ((await checkAuthority(tx, subjects, request)).ok) return undefined;
+  return refuseCommand('SCOPE_NOT_GRANTED', ['run:write'], [RUN_WRITE_FIX]);
+}
+
+const RUN_WRITE_FIX = 'Starting a research run needs run:write on the ticket; ask for it.';
