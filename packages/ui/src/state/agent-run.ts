@@ -15,7 +15,7 @@
 // passed on the server's clock, which the read already derived), never a
 // timer in the browser. What the run staged is read in `agent-staged.ts`.
 
-import { headReservation, unknownOf, type UnknownAttempt } from './run-projection.ts';
+import { headReservation, heldMinorOf, unknownOf, type UnknownAttempt } from './run-projection.ts';
 import type { RunCheck, RunLineage, RunVersion } from './run-projection.ts';
 
 export type RunTone = 'gate' | 'run' | 'done' | 'bad';
@@ -287,7 +287,7 @@ export function runStories(proposals: readonly RunLineage[] | undefined): readon
         jobs,
         checks: head.checks,
         cancellable: lineage.state === 'live' && state !== 'done',
-        heldMinor: reservation?.heldMinor ?? 0,
+        heldMinor: heldMinorOf(lineage, head),
         actualMinor: reservation?.actualMinor ?? null,
         unknownAttempt: unknownOf(reservation),
       },
