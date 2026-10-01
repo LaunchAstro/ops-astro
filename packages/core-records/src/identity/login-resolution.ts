@@ -61,10 +61,10 @@ export interface Session {
 
 /**
  * Whether a sign-in without the second factor is refused for a person who has
- * one. `required` everywhere but the factor routes themselves, which serve the
- * sign-in that has not yet given its code (C59: verifying is how it gets one).
- */
-export type SecondFactorRule = 'required' | 'enrolling';
+ * one. `required` everywhere but the factor routes, which serve the sign-in
+ * that has not yet given its code (C59), and `recovering`, the reset's alone
+ * (C40): it serves a recovery session, which every other rule refuses. */
+export type SecondFactorRule = 'required' | 'enrolling' | 'recovering';
 
 interface ResolutionRow {
   readonly login_id: string;
