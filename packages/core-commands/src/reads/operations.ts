@@ -56,6 +56,37 @@ const alertView = ({ kind, at }: { kind: string; at: Date }): SecurityAlertView 
   concerns: ALERT_CONCERNS.get(kind) ?? UNKNOWN_ALERT,
 });
 
+/**
+ * How many days a passed restore drill stays fresh: the window the store's
+ * `backups.settings.restore_days` sets (deploy/staging/backup-store.sql), past
+ * which the daily upkeep withholds the watcher's restore heartbeat and the
+ * restore alert fires (scripts/ops/backup.mjs expire). The store is out of the
+ * API's reach, so this is its one copy here, pinned to the store's row by
+ * `C55 last tested restore`.
+ */
+const RESTORE_FRESH_DAYS = 35;
+
+/**
+ * The date of the last tested restore (C55, carried from S0-3), from the row
+ * a passed drill stamps (migration 0068): `at` null while no drill has
+ * passed, and stale past the window, or while none has, since the restore
+ * alert fires then too. The service-health section, which could report the
+ * restore heartbeat itself, is read by the API outside this transaction and
+ * is not in reach here, so the age alone decides; this makes no second read
+ * of the watcher.
+ */
+async function readLastTestedRestore(
+  tx: TenantQuery,
+): Promise<NonNullable<OperationsReadResult['lastTestedRestore']>> {
+  const [row] = await tx.query<{ at: Date; stale: boolean }>(
+    `select at, at < now() - make_interval(days => $1) as stale from ops.last_tested_restore`,
+    [RESTORE_FRESH_DAYS],
+  );
+  return row === undefined
+    ? { at: null, stale: true }
+    : { at: new Date(row.at).toISOString(), stale: row.stale };
+}
+
 export async function readOperations(
   tx: TenantQuery,
   viewerPersonId: string,
@@ -64,6 +95,7 @@ export async function readOperations(
   const incidents = await readPrivacyIncidents(tx);
   const runbook = await readPublishedLegal(tx, 'breach-runbook');
   const alerts = await readSecurityAlerts(tx);
+  const lastTestedRestore = await readLastTestedRestore(tx);
   return {
     unattended,
     privacyIncidents: incidents.map((incident) => ({
@@ -89,6 +121,7 @@ export async function readOperations(
             body: runbook.body,
           },
     securityAlerts: alerts.map((alert) => alertView(alert)),
+    lastTestedRestore,
   };
 }
 

@@ -95,6 +95,24 @@ export async function fetchLatest(storeUrl, file, reach = stagingReach, operator
 }
 
 /**
+ * `act` once a pass the store took is dated where the operations view reads
+ * it (C55, migration 0068), through the gate (operator.ts). A failed drill, a
+ * carried one still pending and a receipt the store refused stamp nothing.
+ */
+async function stampIfPassed(gate, act) {
+  if (act.outcome !== 'passed' || act.lastTestedRestore === null) return act;
+  try {
+    await gate.recordTestedRestore();
+  } catch {
+    // The database's own message can name its host; the operator is told the step.
+    throw new Error(
+      'the drill passed and the store has its receipt, but the date of the last tested restore could not be written for the operations view',
+    );
+  }
+  return act;
+}
+
+/**
  * `--export`: the newest backup as the store handed it out, into `file` for a
  * drill on another host, with its time and digest beside it
  * (carried-archive.mjs). The key is never read here.
@@ -166,7 +184,7 @@ export async function drillAsOperator({
     // The store's own message can name its host; the operator is told the step.
     throw new Error('the drill ran, but its receipt could not be written to the store');
   }
-  return await recordDeployment(gate, act);
+  return await recordDeployment(gate, await stampIfPassed(gate, act));
 }
 
 /**
@@ -213,6 +231,7 @@ export async function recordCarried({
       "the store did not take the receipt: it has it already, it never handed out that archive, with that digest, to this login inside the window, or this login is not the installation's appointed operator",
     );
   }
+  await stampIfPassed(gate, { outcome, lastTestedRestore });
   return await recordDeployment(gate, {
     action: 'carried drill recorded',
     outcome,

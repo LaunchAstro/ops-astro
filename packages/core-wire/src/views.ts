@@ -620,10 +620,11 @@ export interface SecurityAlertView {
  * own read (`inbox.unattended`'s answer). `operations.read` serves the
  * security alerts (S0-2) from the forwarder's log (0067), newest first, at
  * most 50, to the business that operates the installation alone; every other
- * business reads an empty list. The last tested restore (S0-3) and the error
- * sink link join it as those parts land; each is its owner's read, placed
- * here, never a second copy. Until then the server leaves them out and the
- * view draws made-up values, labelled Mock.
+ * business reads an empty list. The last tested restore (C55, carried from
+ * S0-3) is the date a passed drill stamps (0068), served on every answer. The
+ * error sink link joins it as that part lands; each is its owner's read,
+ * placed here, never a second copy. Until then the server leaves it out and
+ * the view draws a made-up value, labelled Mock.
  */
 export interface OperationsReadResult {
   readonly ok: true;
@@ -636,8 +637,8 @@ export interface OperationsReadResult {
   readonly serviceHealth?: ServiceHealthSection;
   readonly securityAlerts?: readonly SecurityAlertView[];
   /**
-   * The last successful tested restore, from S0-3's drill receipt; `stale`
-   * once the restore alert fires. Not yet served (BUILDABLE-NOW decision 7).
+   * The last tested restore a passed drill stamped (0068); `stale` past the
+   * store's restore window or while no drill has passed.
    */
   readonly lastTestedRestore?: LastTestedRestoreView;
   /** Where the error sink is read; `null` with none configured. Not yet served. */
