@@ -68,6 +68,8 @@ export interface AgentPaneProps {
   readonly stopAwaiting?: string | null;
   /** The operational log (MP-6-2): `task.execution`'s events and bound plan; absent, no log. */
   readonly activity?: RunActivity;
+  /** AW-04: Start a new attempt asks the drawer to plan one; absent, it is drawn unavailable. */
+  readonly onStartAttempt?: () => void;
 }
 
 export function AgentPane(props: AgentPaneProps): ReactElement {
@@ -88,7 +90,7 @@ export function AgentPane(props: AgentPaneProps): ReactElement {
   return (
     <section className="agent" data-agent="pane" data-agent-lineage={shown.lineageId}>
       <RunView {...props} shown={shown} />
-      <Attempts stories={stories} shown={shown} onOpen={setOpened} />
+      <Attempts stories={stories} shown={shown} onOpen={setOpened} onStart={props.onStartAttempt} />
     </section>
   );
 }

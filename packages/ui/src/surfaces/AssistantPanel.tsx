@@ -33,8 +33,10 @@ export type {
   AssistantOffer,
   AssistantPage,
   AssistantPanelProps,
+  AssistantPlan,
   AssistantRole,
   AssistantSubjectView,
+  PlanCardState,
 } from './assistant/types.ts';
 
 const NO_MESSAGES: readonly AssistantMessage[] = [];
@@ -156,7 +158,14 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
         </p>
       )}
       <Provenance address={props.address ?? null} citation={props.citation} />
-      <Transcript messages={chat?.messages ?? NO_MESSAGES} />
+      <Transcript
+        messages={chat?.messages ?? NO_MESSAGES}
+        onAccept={
+          props.onAccept === undefined || chat === undefined
+            ? undefined
+            : (messageId) => props.onAccept?.(chat.key, messageId)
+        }
+      />
       <Asker
         // A new draft, or another tab, starts the field again.
         key={`${props.selected} ${props.citation?.id ?? ''} ${props.draft}`}
