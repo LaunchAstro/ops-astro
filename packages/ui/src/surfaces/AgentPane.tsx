@@ -181,6 +181,7 @@ function StopAnswers(props: AgentPaneProps): ReactElement | null {
           awaiting={props.stopAwaiting ?? null}
           onTopUp={onTopUpAtStop}
           onEnd={onEndAtStop}
+          envelopeCurrency={props.ledger?.envelopes[0]?.currency}
         />
       ))}
     </>

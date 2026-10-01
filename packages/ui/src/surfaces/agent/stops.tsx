@@ -80,6 +80,8 @@ export interface StopAnswerProps {
   readonly awaiting: string | null;
   readonly onTopUp: (runId: string, amountMinor: number, currency: string) => void;
   readonly onEnd: (runId: string) => void;
+  /** DO NOT MERGE mutation: the task envelope's currency. */
+  readonly envelopeCurrency?: string | undefined;
 }
 
 /** C54's answer at the stop: a top-up above nothing, in the ask's currency, or the end. */
@@ -104,7 +106,7 @@ export function StopAnswer(props: StopAnswerProps): ReactElement {
           disabled={!ready}
           data-stop="top-up"
           onClick={() => {
-            if (ready) props.onTopUp(stop.runId, minor, stop.currency);
+            if (ready) props.onTopUp(stop.runId, minor, props.envelopeCurrency ?? stop.currency);
           }}
         >
           Top up
