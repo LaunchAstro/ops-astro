@@ -23,10 +23,10 @@ import type { SearchHit, TaskSearchResult } from '../../../core-wire/src/index.t
 /** The most hits one search answers; the ⌘K list shows a handful. */
 const HIT_LIMIT = 20;
 /**
- * The most a server caller may ask for (the ledger's search, MP-8-4). The
- * `task.search` read passes no limit, so what it answers stays at twenty.
+ * The most a server caller may ask for; the ledger's search (MP-8-4) asks for
+ * all of it. The `task.search` read passes no limit, so it stays at twenty.
  */
-const SERVER_HIT_LIMIT = 500;
+export const SERVER_HIT_LIMIT = 500;
 /** The words of a query that reach the index; the rest are dropped. */
 const WORD_LIMIT = 8;
 

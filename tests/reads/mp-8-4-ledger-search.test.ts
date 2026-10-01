@@ -164,23 +164,30 @@ async function copies(word: string, count: number): Promise<void> {
 /** What a refusal may never carry past the cap: a hit, a day, a flag or a title. */
 const NOTHING_FOUND = /"hits"|"days"|"more"|Copy|Acme|surplus|brimful/u;
 
+/** Alpha's 25 tasks titled `Acme plenary <n>`, past ⌘K's twenty. */
+const acme: string[] = [];
+
+/** Exactly the bound of brimful in alpha, one past it of surplus, and foreign matches past both. */
+async function seedPastCap(): Promise<void> {
+  for (let n = 0; n < 25; n += 1) {
+    // eslint-disable-next-line no-await-in-loop -- one task at a time; keys are sequential
+    acme.push((await createOn(w.db, w.alpha, w.ada, `Acme plenary ${String(n)}`)).recordId);
+  }
+  await copies('brimful', 500);
+  await copies('surplus', 501);
+  for (let n = 0; n < 3; n += 1) {
+    // eslint-disable-next-line no-await-in-loop -- one task at a time
+    await createOn(w.db, w.bravo, w.bea, `${CANARY} brimful surplus ${String(n)}`);
+  }
+}
+
 function pastCapCases(): void {
-  const acme: string[] = [];
+  beforeAll(seedPastCap, 180_000);
+  pastCapReads();
+  pastCapCrossings();
+}
 
-  beforeAll(async () => {
-    for (let n = 0; n < 25; n += 1) {
-      // eslint-disable-next-line no-await-in-loop -- one task at a time; keys are sequential
-      acme.push((await createOn(w.db, w.alpha, w.ada, `Acme plenary ${String(n)}`)).recordId);
-    }
-    // Exactly the bound in alpha, one past it, and foreign matches past both.
-    await copies('brimful', 500);
-    await copies('surplus', 501);
-    for (let n = 0; n < 3; n += 1) {
-      // eslint-disable-next-line no-await-in-loop -- one task at a time
-      await createOn(w.db, w.bravo, w.bea, `${CANARY} brimful surplus ${String(n)}`);
-    }
-  }, 180_000);
-
+function pastCapReads(): void {
   it('lists the events of every matching task past twenty, and says there is no more', async () => {
     const answer = days(await search(w.ada, 'plenary'));
     expect(new Set(keysOf(answer)).size).toBe(25);
@@ -193,6 +200,16 @@ function pastCapCases(): void {
     expect(JSON.stringify(answer)).not.toContain(CANARY);
   });
 
+  it("a limit sent to the ledger is not honoured: the bound is the server's", async () => {
+    const answer = days(
+      await ledgerOf(w.db, w.alpha, w.ada, { timeZone: 'UTC', query: 'plenary', limit: 5 }),
+    );
+    expect(new Set(keysOf(answer)).size).toBe(25);
+    expect(answer.more).toBe(false);
+  });
+}
+
+function pastCapCrossings(): void {
   it('another business: its matches past the bound never make more, nor enter the days', async () => {
     // Alpha holds exactly 500 brimful tasks and bravo three: only a leak makes more.
     const exact = await search(w.ada, 'brimful');
@@ -221,14 +238,6 @@ function pastCapCases(): void {
     const answer = await search(w.dele, 'surplus');
     expect(isCommandRefusal(answer) ? answer.code : 'answered').toBe('SCOPE_NOT_GRANTED');
     expect(JSON.stringify(answer)).not.toMatch(NOTHING_FOUND);
-  });
-
-  it("a limit sent to the ledger is not honoured: the bound is the server's", async () => {
-    const answer = days(
-      await ledgerOf(w.db, w.alpha, w.ada, { timeZone: 'UTC', query: 'plenary', limit: 5 }),
-    );
-    expect(new Set(keysOf(answer)).size).toBe(25);
-    expect(answer.more).toBe(false);
   });
 }
 
