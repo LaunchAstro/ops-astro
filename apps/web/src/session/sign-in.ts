@@ -17,6 +17,7 @@
 
 import {
   CSRF_HEADER,
+  PREFIX,
   SESSION_HEADER,
   SESSION_PATH,
 } from '../../../../packages/core-wire/src/index.ts';
@@ -103,14 +104,44 @@ export async function signIn(request: SignInRequest): Promise<SignInResult> {
     : { ok: true, token };
 }
 
-/** Ask the API to clear this sign-in's session cookie. The page cannot. */
-export async function signOut(request: ApiRoute & { readonly sessionId?: string }): Promise<void> {
+/**
+ * Sign this tab out. First its sign-in ends for every business, at the API and
+ * the provider (C58), on the person prefix: the only path its cookie is sent
+ * to. Then the API clears the cookie. The page can do neither itself.
+ */
+export async function signOut(
+  request: ApiRoute & { readonly sessionId?: string; readonly businessKey?: string },
+): Promise<void> {
   latest += 1;
   const named = request.sessionId === undefined ? {} : { [SESSION_HEADER]: request.sessionId };
-  const sent = toApi(request, `${SESSION_PATH}/end`, named);
+  const { businessKey } = request;
+  const account = `${PREFIX.person}${encodeURIComponent(businessKey ?? '')}/account/sessions`;
+  const sent = (async () => {
+    if (request.sessionId !== undefined && businessKey !== undefined) {
+      await toApi(request, `${account}/sign-out`, named, '{}');
+    }
+    return await toApi(request, `${SESSION_PATH}/end`, named);
+  })();
   signingOut.add(sent);
   await sent;
   signingOut.delete(sent);
+}
+
+/**
+ * Sign out the sign-in a tab has just forgotten (C23): its business key too,
+ * so the API ends it where its cookie is sent (C58).
+ */
+export async function signOutOf(
+  route: ApiRoute,
+  ended: { readonly sessionId?: string; readonly businessKey: string },
+): Promise<void> {
+  const named = ended.sessionId === undefined ? {} : { sessionId: ended.sessionId };
+  await signOut({
+    apiOrigin: route.apiOrigin,
+    fetch: route.fetch,
+    ...named,
+    businessKey: ended.businessKey,
+  });
 }
 
 /** One call to the session route, with the header its CSRF check asks for. */
@@ -118,12 +149,15 @@ async function toApi(
   request: ApiRoute,
   path: string,
   extra: Readonly<Record<string, string>> = {},
+  body?: string,
 ): Promise<Response | undefined> {
-  const headers = { ...extra, [CSRF_HEADER]: '1' };
+  const json = body === undefined ? {} : { 'content-type': 'application/json' };
+  const headers = { ...extra, ...json, [CSRF_HEADER]: '1' };
   try {
     const response = await request.fetch(`${request.apiOrigin}${path}`, {
       method: 'POST',
       headers,
+      ...(body === undefined ? {} : { body }),
     });
     return response.ok ? response : undefined;
   } catch {

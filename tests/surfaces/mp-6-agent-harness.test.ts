@@ -27,7 +27,7 @@ import { scrollMetrics } from '../visual/drift.ts';
 import { answerMadeUp, madeUpAnswer } from '../visual/made-up-api.ts';
 import { fetchAssets, MODE, readAssets, readPacket, type Theme } from '../visual/packet.ts';
 import { addressOf } from '../visual/report.ts';
-import { PAGE_PARAMS } from '../visual/app-pages.ts';
+import { MADE_UP_PARAMS } from '../visual/app-pages.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const WIDTHS = [1480, 900, 390] as const;
@@ -153,7 +153,7 @@ async function captureOne(
   try {
     await answerMadeUp(side.context);
     await prepare?.(side.context);
-    const address = addressOf('agency:task-detail', PAGE_PARAMS) ?? '/';
+    const address = addressOf('agency:task-detail', MADE_UP_PARAMS) ?? '/';
     const page = await load(side, packet, new URL(address, at.app).href);
     await page.locator('[data-agent="pane"]').waitFor();
     const drawn: Record<string, boolean> = {};

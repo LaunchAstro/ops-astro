@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page } from 'playwright';
 import { launchChromium } from '../support/chromium.ts';
-import { madeUpSession, PAGE_PARAMS, screenOf, serveApp } from '../visual/app-pages.ts';
+import { MADE_UP_PARAMS, madeUpSession, screenOf, serveApp } from '../visual/app-pages.ts';
 import { load, openSide, type Side } from '../visual/capture.ts';
 import { scrollMetrics } from '../visual/drift.ts';
 import { WIDTHS } from '../visual/gallery-views.ts';
@@ -166,8 +166,7 @@ async function eachPage(
   const out: PageCensus[] = [];
   for (const id of builtPages()) {
     const side = needsSession(id) ? sides.signedIn : sides.signedOut;
-    // Each route parameter filled as the captures fill it, so no page falls back to `/`.
-    const address = addressOf(id, PAGE_PARAMS) ?? '/';
+    const address = addressOf(id, MADE_UP_PARAMS) ?? '/';
     const page = await load(side, at.packet, new URL(address, at.app).href);
     const name = `${id}@${String(at.width)}-${at.theme}`;
     out.push({ name, address, ...(await measure(page, given)) });

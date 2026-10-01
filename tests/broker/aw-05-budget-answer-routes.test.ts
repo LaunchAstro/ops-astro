@@ -71,7 +71,7 @@ it('AW-05 run.end_at_budget_stop through the person route', async () => {
 
 it('AW-05 the command line answers a budget stop', async () => {
   await setThreshold(null);
-  const credential = await tokenFor(people.approver.presented.subject);
+  const credential = await tokenFor(people.approver.presented.subject, { secondFactor: true });
   const cli = createCli({
     businessKey: alphaKey,
     credential,

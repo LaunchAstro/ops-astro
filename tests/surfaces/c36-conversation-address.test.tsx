@@ -115,7 +115,15 @@ async function address(path: string, answer: unknown) {
   }
   const { client, asked } = reader(answer);
   const page = track(
-    await mount(drawScreen(match, { client, grantKey: 'g', notice: null, storage: null })),
+    await mount(
+      drawScreen(match, {
+        client,
+        grantKey: 'g',
+        notice: null,
+        storage: null,
+        navigate: () => {},
+      }),
+    ),
   );
   await settle();
   return { page, asked };

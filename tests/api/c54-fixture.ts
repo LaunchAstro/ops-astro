@@ -106,7 +106,11 @@ export async function billingHolder(
     const scope = taskId === undefined ? undefined : { kind: 'record' as const, id: taskId };
     await grantTo(tx, member, 'decide', scope, false, 'billing');
   });
-  return { ...member, token: await tokenFor(member.presented.subject), businessKey };
+  return {
+    ...member,
+    token: await tokenFor(member.presented.subject, { secondFactor: true }),
+    businessKey,
+  };
 }
 
 /** An external client of alpha on the one task `sharer` shares, also granted `billing:decide` on it. */

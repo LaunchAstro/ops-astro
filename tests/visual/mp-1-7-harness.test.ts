@@ -15,7 +15,7 @@ import { PNG } from 'pngjs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { comparePng } from './compare.ts';
 import { checkRenderer, readPacket, rendererOf, themesOf, type Packet } from './packet.ts';
-import { PAGE_PARAMS } from './app-pages.ts';
+import { MADE_UP_PARAMS } from './app-pages.ts';
 import {
   addressOf,
   builtPages,
@@ -164,23 +164,31 @@ function zeroHorizontalOverflow(): void {
 function everyPageAtItsAddress(): void {
   it('MP-1-7 every page at its own address: the harness fills each route parameter, never drawing `/` in its place', () => {
     // The conversation's id (C36) as much as the task's key.
-    for (const page of builtPages()) expect(addressOf(page, PAGE_PARAMS), page).toBeDefined();
+    for (const page of builtPages()) expect(addressOf(page, MADE_UP_PARAMS), page).toBeDefined();
   });
 }
 
+// The registry's pages: wave 0's four, the public legal page (C81), Settings ▸
+// Access, Telemetry (U14), Operations (C55), MP-7-3's inbox, the component
+// gallery (MP-1-3, U04), MP-7-10's Team and a conversation's own address (C36).
+const BUILT_PAGES = [
+  'agency:sign-in',
+  'agency:legal',
+  'agency:projects-board',
+  'agency:task-detail',
+  'agency:settings',
+  'agency:access',
+  'agency:telemetry',
+  'agency:operations',
+  'agency:inbox',
+  'agency:gallery',
+  'agency:team',
+  'agency:agent-conversation',
+];
+
 function everyPageBuiltSoFar(): void {
   it('MP-1-7 every page built so far: each registered route has a picture at each width', () => {
-    // The wave 0 pages and the others already built: the route registry's
-    // four, the component gallery (MP-1-3, U04) and a conversation's own
-    // address (C36).
-    expect(builtPages()).toEqual([
-      'agency:sign-in',
-      'agency:projects-board',
-      'agency:task-detail',
-      'agency:settings',
-      'agency:gallery',
-      'agency:agent-conversation',
-    ]);
+    expect(builtPages()).toEqual(BUILT_PAGES);
     const all = report(packet, builtPages(), everyShot(packet.widths));
     expect(all.failed).toBe(0);
     expect(all.lines.at(-1)).toBe(

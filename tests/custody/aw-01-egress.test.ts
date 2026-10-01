@@ -50,6 +50,15 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/api/function.ts': "the hosted function hands each request to the API's own handler",
   'apps/web/build-stamp.ts': 'runs the local git once at build time to stamp the build; no network',
   'apps/web/src/held-address.tsx': "threads the page's fetch to the product's own API",
+  // Main's, taken at the a352c11 join (reviewed in batch 2):
+  'apps/api/auth/factors.ts':
+    "the sign-in provider's second-factor calls at its one fixed address (C59)",
+  'apps/api/auth/logins.ts': "the sign-in provider's admin calls for an ended login (C58)",
+  'apps/api/auth/provider-logins.ts':
+    "names the `https` issuer C58's admin key is for; it calls nothing (a comment's word)",
+  'apps/api/health/tracing.ts': "reads the tracing service's public health route (C34)",
+  'apps/web/src/screen-registry.tsx':
+    "threads the page's fetch to the public legal page's reader, same origin (C81)",
 };
 
 const MODULES =

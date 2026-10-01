@@ -7,16 +7,17 @@
 // on a login that is a member of `ops_astro_forwarder` alone, and takes that
 // role in its own transaction, under one lock whichever forwarder runs. The
 // counts are the table's rows, never one process's memory. Each pass:
-// - drops rows older than the window uncounted and raises one
-//   `signals-dropped` alert for them, so a stopped forwarder leaves a bounded
-//   table once it runs again;
+// - drops rows older than the retention window (longer than every rule's)
+//   uncounted and raises one `signals-dropped` alert for them, so a stopped
+//   forwarder leaves a bounded table once it runs again;
 // - reads every row left, in order: sends each error rebuilt from its
 //   allowlist (`rebuiltError`) under an id fixed by its row, and counts the
 //   signals under the detector's own rules, each row's time the clock and its
 //   keyed digest the scope;
-// - keeps each alert raised, its sink id fixed then (0048), and deletes the
-//   errors sent, the signals an alert counted and the signals past their
-//   rule's window; a send that fails rolls the pass back;
+// - keeps each alert raised, its sink id fixed then (0048), logs its kind and
+//   time for the operations view (0069), and deletes the errors sent, the
+//   signals an alert counted and the signals past their rule's window; a send
+//   that fails rolls the pass back;
 // - then sends the kept alerts, each deleted only once the sink took it, so a
 //   retry after a lost answer sends the same id whatever commits later;
 // - pings its heartbeat once that has committed, and fails if the ping did.
@@ -29,8 +30,14 @@ import type { AlertKind, Where } from '../api/alerts/catalogue.ts';
 import { createDetector, RULES, type SecuritySignal } from '../api/alerts/detect.ts';
 import { alertEvent, rebuiltError, type Transport } from '../api/alerts/sink.ts';
 
-/** Rows older than this are dropped uncounted: the longest rule's window (export volume). */
-export const WINDOW_MS: number = 60 * 60_000;
+/**
+ * Rows older than this are dropped uncounted: the longest rule's window (export
+ * volume) and a quarter of an hour more. A pass clears each signal once it is past
+ * its rule's window, so only a forwarder that ran no pass in that quarter hour
+ * leaves a row for the sweep.
+ */
+export const WINDOW_MS: number =
+  Math.max(...Object.values(RULES).map((rule) => rule.windowMs)) + 15 * 60_000;
 const BATCH = 500;
 
 export interface ForwarderOptions {
@@ -166,11 +173,14 @@ export function createForwarder(options: ForwarderOptions): {
     const now = stale?.now.getTime() ?? Date.now();
     const { handled, spent } = await replay(execute, options, now, raised);
     // Each alert is kept with its id, fixed now, as the signals it counted go: a
-    // send that fails leaves it to the next pass under the same id (0048).
+    // send that fails leaves it to the next pass under the same id (0048). One
+    // newly kept is logged by kind and time for the operations view (0069), in
+    // this statement, and stays there after the sink takes it.
     await execute(
-      `insert into ops.api_alerts (id, kind)
+      `with kept as (insert into ops.api_alerts (id, kind)
          select id, kind from unnest($1::text[], $2::text[]) with ordinality as a(id, kind, n)
-         order by n on conflict (id) do nothing`,
+         order by n on conflict (id) do nothing returning kind)
+       insert into ops.security_alert_log (kind) select kind from kept`,
       [raised.map((alert) => alert.id), raised.map((alert) => alert.kind)],
     );
     await execute('delete from ops.api_events where id = any($1::bigint[])', [spent]);
@@ -182,7 +192,10 @@ export function createForwarder(options: ForwarderOptions): {
     await options.database.transaction(async (execute) => await deliver(execute, options));
     const beat = await options.heartbeat?.();
     // Only a ping the watcher took completes a pass: failed, refused or not set is silence.
-    if (beat !== undefined && beat !== 'sent') throw new Error(`the heartbeat was ${String(beat)}`);
+    // `not due` is a paced pass inside its wait (OPS_HEARTBEAT_EVERY_MS): complete, no ping.
+    if (beat !== undefined && beat !== 'sent' && beat !== 'not due') {
+      throw new Error(`the heartbeat was ${String(beat)}`);
+    }
     return done;
   }
 

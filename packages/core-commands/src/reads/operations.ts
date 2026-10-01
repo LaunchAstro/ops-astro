@@ -1,0 +1,205 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The operations view (C55), as the holder of `operations:read` is shown it.
+// It places other parts' reads rather than keeping lists of its own (the
+// unattended items are INB-1's `readUnattendedInbox`, as the caller reads
+// them); the privacy incidents are the part that is this view's own record, and each
+// links the breach runbook published most recently (C81). The security alerts
+// are the forwarder's log (S0-2, 0069), each with fixed words for its kind.
+//
+// Beside it, the breach drill's notices (C81): drafted from that runbook for
+// the recipients the caller names, answered and never sent.
+
+import {
+  draftBreachNotices,
+  isUuid,
+  readPrivacyIncident,
+  readPrivacyIncidents,
+  readPublishedLegal,
+  readSecurityAlerts,
+} from '../../../core-records/src/index.ts';
+import type { NoticeRecipient, TenantQuery } from '../../../core-records/src/index.ts';
+import type {
+  BreachNoticesResult,
+  OperationsReadResult,
+  SecurityAlertView,
+} from '../../../core-wire/src/index.ts';
+import { invalid } from '../commands/operands.ts';
+import { readUnattendedInbox } from './inbox.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
+
+/**
+ * What each alert kind the forwarder raises concerns, in fixed words: never a
+ * value from the alert, which holds none (0069).
+ */
+const ALERT_CONCERNS: ReadonlyMap<string, string> = new Map(
+  Object.entries({
+    'sign-in-failures': 'Repeated failed sign-ins: someone may be guessing a password.',
+    'cross-scope-burst':
+      'Someone was refused access outside their permissions many times; nothing was shown to them.',
+    'webhook-signature-failures':
+      'Repeated incoming messages with a bad signature; none were accepted.',
+    'export-volume': 'Unusually many exports or downloads of client information.',
+    'authority-changed': 'A permission, grant or custody changed.',
+    'secret-scan-failed':
+      'The secret scan failed: a password or key may have been written where it should not be.',
+    'signals-dropped':
+      'The forwarder dropped security signals it did not handle in time, so some were not counted.',
+  }),
+);
+
+const UNKNOWN_ALERT = 'An alert of an unknown kind';
+
+const alertView = ({ kind, at }: { kind: string; at: Date }): SecurityAlertView => ({
+  kind,
+  at: at.toISOString(),
+  concerns: ALERT_CONCERNS.get(kind) ?? UNKNOWN_ALERT,
+});
+
+/**
+ * How many days a passed restore drill stays fresh: the window the store's
+ * `backups.settings.restore_days` sets (deploy/staging/backup-store.sql), past
+ * which the daily upkeep withholds the watcher's restore heartbeat and the
+ * restore alert fires (scripts/ops/backup.mjs expire). The store is out of the
+ * API's reach, so this is its one copy here, pinned to the store's row by
+ * `C55 last tested restore`.
+ */
+const RESTORE_FRESH_DAYS = 35;
+
+/**
+ * The date of the last tested restore (C55, carried from S0-3), from the row
+ * a passed drill stamps (migration 0070): `at` null while no drill has
+ * passed, and stale past the window, or while none has, since the restore
+ * alert fires then too. The service-health section, which could report the
+ * restore heartbeat itself, is read by the API outside this transaction and
+ * is not in reach here, so the age alone decides; this makes no second read
+ * of the watcher.
+ */
+async function readLastTestedRestore(
+  tx: TenantQuery,
+): Promise<NonNullable<OperationsReadResult['lastTestedRestore']>> {
+  const [row] = await tx.query<{ at: Date; stale: boolean }>(
+    `select at, at < now() - make_interval(days => $1) as stale from ops.last_tested_restore`,
+    [RESTORE_FRESH_DAYS],
+  );
+  return row === undefined
+    ? { at: null, stale: true }
+    : { at: new Date(row.at).toISOString(), stale: row.stale };
+}
+
+export async function readOperations(
+  tx: TenantQuery,
+  viewerPersonId: string,
+): Promise<Omit<OperationsReadResult, 'ok'>> {
+  const unattended = await readUnattendedInbox(tx, viewerPersonId);
+  const incidents = await readPrivacyIncidents(tx);
+  const runbook = await readPublishedLegal(tx, 'breach-runbook');
+  const alerts = await readSecurityAlerts(tx);
+  const lastTestedRestore = await readLastTestedRestore(tx);
+  return {
+    unattended,
+    privacyIncidents: incidents.map((incident) => ({
+      id: incident.id,
+      whatHappened: incident.whatHappened,
+      foundAt: incident.foundAt.toISOString(),
+      foundBy: incident.foundBy,
+      affected: incident.affected,
+      informationKinds: incident.informationKinds,
+      assessBy: incident.assessBy.toISOString(),
+      overdue: incident.overdue,
+      status: incident.status,
+      recordedAt: incident.recordedAt.toISOString(),
+      recordedByActorId: incident.recordedByActorId,
+    })),
+    breachRunbook:
+      runbook === undefined
+        ? null
+        : {
+            version: runbook.version,
+            digest: runbook.digest,
+            publishedAt: runbook.publishedAt.toISOString(),
+            body: runbook.body,
+          },
+    securityAlerts: alerts.map((alert) => alertView(alert)),
+    lastTestedRestore,
+  };
+}
+
+/** `privacy.draft_breach_notices`' operands, checked. */
+export interface BreachNoticeOperands {
+  readonly incidentId: string;
+  readonly oaic: NoticeRecipient;
+  readonly people: readonly NoticeRecipient[];
+  readonly containment: string;
+  readonly steps: string;
+}
+
+const RECIPIENT_FIX = 'Send each recipient as { name, address }, both non-empty text.';
+const PEOPLE_FIX = `Send people as a list of one or more recipients, at most 500. ${RECIPIENT_FIX}`;
+
+/** Text of 1 to `max` characters that is not blank. */
+const isText = (value: unknown, max: number): value is string =>
+  typeof value === 'string' && value.trim() !== '' && value.length <= max;
+
+function recipientOf(value: unknown): NoticeRecipient | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const { name, address } = value as Readonly<Record<string, unknown>>;
+  return isText(name, 200) && isText(address, 500) ? { name, address } : undefined;
+}
+
+function peopleOf(value: unknown): readonly NoticeRecipient[] | undefined {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 500) return undefined;
+  const people = value.map((item: unknown) => recipientOf(item));
+  return people.every((person) => person !== undefined)
+    ? (people as readonly NoticeRecipient[])
+    : undefined;
+}
+
+/**
+ * The notices' operands, or the refusal naming the first one wrong. A missing
+ * recipient or address is refused by name, so a drill never drafts a notice
+ * addressed to nobody.
+ */
+export function parseBreachNotices(
+  body: Readonly<Record<string, unknown>>,
+): BreachNoticeOperands | CommandRefusal {
+  const { incidentId, containment, steps } = body;
+  if (typeof incidentId !== 'string' || !isUuid(incidentId)) {
+    return invalid('incidentId', 'Send incidentId as the id of a privacy incident.');
+  }
+  const oaic = recipientOf(body['oaic']);
+  if (oaic === undefined) return invalid('oaic', RECIPIENT_FIX);
+  const people = peopleOf(body['people']);
+  if (people === undefined) return invalid('people', PEOPLE_FIX);
+  if (!isText(containment, 4000)) {
+    return invalid('containment', 'Send containment as 1 to 4000 characters of text.');
+  }
+  if (!isText(steps, 4000)) return invalid('steps', 'Send steps as 1 to 4000 characters of text.');
+  return { incidentId, oaic, people, containment, steps };
+}
+
+/** The notices drafted for this business's incident; nothing is written or sent. */
+export async function readBreachNotices(
+  tx: TenantQuery,
+  operands: BreachNoticeOperands,
+): Promise<BreachNoticesResult | CommandRefusal> {
+  const incident = await readPrivacyIncident(tx, operands.incidentId);
+  if (incident === undefined) return refuseNotFound();
+  const runbook = await readPublishedLegal(tx, 'breach-runbook');
+  if (runbook === undefined) {
+    return refuseCommand(
+      'BREACH_RUNBOOK_UNPUBLISHED',
+      [],
+      ['Publish a breach runbook, then draft the notices from it.'],
+    );
+  }
+  const notices = draftBreachNotices(runbook.body, { ...operands, incident });
+  if (notices === undefined) {
+    return refuseCommand(
+      'BREACH_TEMPLATE_UNFILLED',
+      [],
+      ['Publish a runbook version whose notice template the drill can fill.'],
+    );
+  }
+  return { ok: true, runbook: { version: runbook.version, digest: runbook.digest }, notices };
+}

@@ -35,7 +35,8 @@ import {
   type Answer,
   type Caller,
 } from './world.ts';
-import { PROPOSAL, type Task } from './role-case-bodies.ts';
+import { enrol } from '../commands/fixture.ts';
+import { PROPOSAL, breachDrillBody, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
 import { plainRows, seedFixtureClients } from './role-case-clients.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
@@ -181,6 +182,8 @@ export async function createHarness(part: string): Promise<Harness> {
       ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
       ...(declaration.name === 'task.board' ? { board: null } : {}),
       ...(declaration.name === 'task.receipt' ? { attemptId: randomUUID() } : {}),
+      ...(declaration.name === 'task.search' ? { query: 'brochure' } : {}),
+      ...(declaration.name === 'task.ledger' ? { timeZone: 'UTC' } : {}),
       ...(declaration.name === 'preset.plan'
         ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
         : {}),
@@ -189,6 +192,7 @@ export async function createHarness(part: string): Promise<Harness> {
       ...(declaration.name === 'model.call'
         ? { leaseId: randomUUID(), fence: 1, operation: 'model.replay_compose', fields: [] }
         : {}),
+      ...(declaration.name === 'privacy.draft_breach_notices' ? breachDrillBody() : {}),
     };
   }
 
@@ -284,6 +288,11 @@ export async function createHarness(part: string): Promise<Harness> {
       asPerson: async (name, body) => await asPerson(name, body),
       asAgent,
       freshTask,
+      freshMember: async () =>
+        (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
+      clearGateItem: async (item) => {
+        await world.db.admin.execute('delete from ops.gate_items where item = $1', [item]);
+      },
     }),
     approvedReservation,
     reserve,

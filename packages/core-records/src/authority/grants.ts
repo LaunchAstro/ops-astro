@@ -11,6 +11,7 @@
 // effective and still covers it, up to a root grant. So the subset relation is
 // re-checked here at use time, not trusted from grant time.
 
+import { EFFECTIVE } from './effective.ts';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
@@ -22,6 +23,11 @@ export type Action = 'read' | 'comment' | 'write' | 'assign' | 'decide' | 'share
 export interface Subject {
   readonly kind: SubjectKind;
   readonly id: string;
+  /**
+   * The `collection:action` keys this subject is asked within, when it stands
+   * for an agent credential's call (API-2); absent, every key it holds.
+   */
+  readonly within?: readonly string[];
 }
 
 /** `id` is null exactly at business scope, which is the whole tenant. */
@@ -69,51 +75,35 @@ export interface EffectiveGrant {
 
 /** A session presents two identities, and a grant may name either. */
 export function subjectsOf(session: Session): readonly Subject[] {
+  // An agent credential's call stands on its person's grants alone, and only
+  // within the keys they ticked (API-2): never the agent actor's own rows.
+  if (session.credentialScope !== undefined) {
+    return [{ kind: 'person', id: session.personId, within: session.credentialScope }];
+  }
   return [
     { kind: 'person', id: session.personId },
     { kind: 'actor', id: session.actorId },
   ];
 }
 
-// The one expression of "live, and still covered by its granter", and the
-// authority. A row written around `issueGrant` is judged by this and nothing
-// else, which is what lets the issue-time check name a reason without being
-// the barrier.
-//
-// The depth guard is not decoration. `parent_grant_id` sits under the same
-// UPDATE privilege that writes `revoked_at`, so a cycle is reachable, and an
-// unbounded recursive term that meets a cycle does not return.
-export const EFFECTIVE = `
-  with recursive effective as (
-    select g.*, 1 as depth
-      from public.grants g
-     where g.parent_grant_id is null
-       and g.revoked_at is null
-       and (g.expires_at is null or g.expires_at > now())
-    union all
-    select c.*, p.depth + 1
-      from public.grants c
-      join effective p on p.id = c.parent_grant_id
-     where p.depth < 8
-       and c.revoked_at is null
-       and (c.expires_at is null or c.expires_at > now())
-       and p.can_delegate
-       and c.collection = p.collection
-       and c.action = p.action
-       and (p.scope_kind = 'business'
-            or (c.scope_kind = p.scope_kind and c.scope_id is not distinct from p.scope_id))
-       and (not c.can_delegate or p.may_permit_delegation)
-       and not c.may_permit_delegation
-       and (p.expires_at is null
-            or (c.expires_at is not null and c.expires_at <= p.expires_at))
-  )`;
+export { EFFECTIVE };
+
+/** The subjects that may be asked about this key: every one not held within other keys. */
+export function askedFor(
+  subjects: readonly Subject[],
+  request: { readonly collection: string; readonly action: string },
+): readonly Subject[] {
+  const key = `${request.collection}:${request.action}`;
+  return subjects.filter((subject) => subject.within?.includes(key) ?? true);
+}
 
 /** Every grant that authorises this request right now. Empty is a refusal, not an answer. */
 export async function effectiveGrants(
   tx: TenantQuery,
-  subjects: readonly Subject[],
+  every: readonly Subject[],
   request: ScopeRequest,
 ): Promise<readonly EffectiveGrant[]> {
+  const subjects = askedFor(every, request);
   return await tx.query<EffectiveGrant>(
     `${EFFECTIVE}
      select e.id, e.scope_kind, e.scope_id, e.can_delegate, e.may_permit_delegation, e.expires_at
@@ -133,6 +123,35 @@ export async function effectiveGrants(
       request.scope.id,
     ],
   );
+}
+
+/**
+ * Every grant the subjects hold right now, as one opaque value. It changes
+ * whenever one of them is issued, revoked or expires, or loses the parent it
+ * was delegated under, so a cache keyed by it never outlives the authority it
+ * was worked out under (C4 rollup scope).
+ */
+export async function grantFingerprint(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+): Promise<string> {
+  // One row per ticked key for a subject held within keys (API-2), so only
+  // those keys' grants count; a key of null stands for every key.
+  const asked = subjects.flatMap((subject) =>
+    (subject.within ?? [null]).map((key) => ({ kind: subject.kind, id: subject.id, key })),
+  );
+  const [row] = await tx.query<{ readonly fingerprint: string }>(
+    `${EFFECTIVE}
+     select encode(sha256(convert_to(coalesce(string_agg(e.id::text, ',' order by e.id), ''),
+                                     'UTF8')), 'hex') as fingerprint
+       from effective e
+      where exists (select 1 from unnest($1::text[], $2::uuid[], $3::text[]) as s (kind, id, key)
+                     where s.kind = e.subject_kind and s.id = e.subject_id
+                       and (s.key is null or s.key = e.collection || ':' || e.action))`,
+    [asked.map((s) => s.kind), asked.map((s) => s.id), asked.map((s) => s.key)],
+  );
+  if (row === undefined) throw new Error('grant fingerprint answered no row');
+  return row.fingerprint;
 }
 
 /**
@@ -251,10 +270,17 @@ async function exceedsGranter(
  * It answers with the timestamp this call wrote, or null when it wrote none
  * because the grant was already revoked or is not in this business. Callers
  * that only needed the write may ignore it; `grant.revoke` returns it.
+ *
+ * `now()` is when this transaction began. A revocation that waited on the
+ * access lock behind a grant made after it began (C58: ending a person's
+ * access while a grant to them commits) would otherwise be stamped before the
+ * grant existed, which `grants_revoked_after_granted` refuses; it is stamped
+ * no earlier than the grant.
  */
 export async function revokeGrant(tx: TenantQuery, grantId: string): Promise<Date | null> {
   const rows = await tx.query<{ readonly revoked_at: Date }>(
-    'update public.grants set revoked_at = now() where id = $1 and revoked_at is null returning revoked_at',
+    `update public.grants set revoked_at = greatest(now(), granted_at)
+      where id = $1 and revoked_at is null returning revoked_at`,
     [grantId],
   );
   return rows[0]?.revoked_at ?? null;

@@ -39,6 +39,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import { createSupabaseVerifier, keySetUrlFor } from '../../apps/api/auth/supabase.ts';
 import { createBusinessResolver } from '../../apps/api/server.ts';
+import { recordTestedRestore } from './tested-restore.ts';
 
 /** The person an operator act runs as, and the business it was checked in. */
 export interface Operator {
@@ -53,6 +54,8 @@ export type Gate =
       readonly records: string;
       /** Commits the operator's sign-in attempt (I13); called only after the act. */
       readonly recordSignIn: () => Promise<void>;
+      /** Dates a pass the store took for the operations view (tested-restore.ts); drills only. */
+      readonly recordTestedRestore: () => Promise<string>;
     }
   | { readonly ok: false; readonly reason: string };
 
@@ -173,6 +176,24 @@ async function recordSignIn(
   }
 }
 
+/** Why a bearer that did not verify is refused: a key set outage is named as one. */
+const unverified = (presented: unknown): string =>
+  presented === 'unavailable'
+    ? "the sign-in could not be checked: the provider's key set did not answer, so retry once it does"
+    : 'the sign-in did not verify: missing, forged or expired';
+
+/** What an admitted gate records once its act is done: the sign-in, and a passed drill's date. */
+function afterTheAct(
+  env: Readonly<Record<string, string>>,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+): Pick<Extract<Gate, { ok: true }>, 'recordSignIn' | 'recordTestedRestore'> {
+  return {
+    recordSignIn: async () => await recordSignIn(env['DATABASE_URL']!, businessId, presented),
+    recordTestedRestore: async () => await recordTestedRestore(env['DATABASE_ADMIN_URL']!),
+  };
+}
+
 /** The operator, or why not. Never throws on a caller's input; never prints a credential. */
 export async function requireOperator(environment: Environment = process.env): Promise<Gate> {
   return await checkOperator(environment, false);
@@ -210,9 +231,7 @@ async function checkOperator(environment: Environment, operatingOnly: boolean): 
     header: (name: string) => (name.toLowerCase() === 'authorization' ? bearer : undefined),
   };
   const presented = await verify(request as unknown as Context['req']);
-  if (presented === undefined || presented === 'expired') {
-    return refused('the sign-in did not verify: missing, forged or expired');
-  }
+  if (typeof presented !== 'object') return refused(unverified(presented));
 
   const business = env['OPS_ASTRO_BUSINESS']!;
   const held = await personHolding(env, business, presented, operatingOnly);
@@ -226,7 +245,7 @@ async function checkOperator(environment: Environment, operatingOnly: boolean): 
     ok: true,
     operator: { personId: held.personId, business },
     records,
-    recordSignIn: async () => await recordSignIn(env['DATABASE_URL']!, held.businessId, presented),
+    ...afterTheAct(env, held.businessId, presented),
   };
 }
 

@@ -107,10 +107,25 @@ describe('CQ-8 runtime structure', () => {
     expect(callers).toEqual([
       // The outbox forwarder's one lock, alone in its own transaction: no command order.
       'apps/forwarder/forward.ts',
+      // C59: a login's one wrong-code lock, keyed by its subject's digest in
+      // every business, taken first in a factor route's check transaction.
+      'packages/core-commands/src/commands/account-factor-checks.ts',
       'packages/core-commands/src/commands/conversation-lifecycle.ts',
       'packages/core-commands/src/commands/occurrence-run.ts',
       'packages/core-commands/src/commands/prepare.ts',
       'packages/core-custody/src/broker-reserve.ts',
+      // C32: the business's one access lock, taken first by every change to
+      // who may do what (a grant given, a grant revoked, access ended),
+      // inside the handler's transaction.
+      'packages/core-records/src/authority/access.ts',
+      // C59: a login's one factor lock (`second-factor-subject:<digest>`), keyed
+      // by its subject's digest in every business, taken first in a factor
+      // route's record transaction, before the person's row.
+      'packages/core-records/src/identity/second-factor.ts',
+      // C81: the overseas-services register's one lock per business, taken
+      // by a change and by a privacy policy's draft, approval and publication
+      // before reading the register, inside the handler's transaction.
+      'packages/core-records/src/operations/overseas-services.ts',
       'packages/core-records/src/tasks/placement.ts',
       'packages/core-records/src/tenancy/database.ts',
       'packages/core-records/src/tenancy/limit.ts',
