@@ -60,8 +60,7 @@ export const PROVIDER_ANSWER_MAX = 4_096;
 export function readProviderAnswer(answer: ProviderAnswer | undefined | void): unknown {
   if (answer === undefined) return undefined;
   const hostile =
-    answer.status < 200 ||
-    answer.status > 299 ||
+    !(answer.status >= 200 && answer.status <= 299) ||
     typeof answer.body !== 'string' ||
     answer.body.length > PROVIDER_ANSWER_MAX;
   if (hostile) throw new ProviderFault('provider_unavailable');
