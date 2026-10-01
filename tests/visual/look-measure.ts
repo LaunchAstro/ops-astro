@@ -44,8 +44,9 @@ export function measure(input: { selector: string; props: readonly string[] }): 
   const out: Record<string, string> = {};
   for (const prop of input.props) {
     if (prop.startsWith('box.')) {
-      const key = prop.slice(4) as 'width' | 'height' | 'x' | 'y';
-      out[prop] = String(Math.round(box[key]));
+      const key = prop.slice(4) as 'width' | 'height' | 'x' | 'y' | 'drawn';
+      out[prop] =
+        key === 'drawn' ? String(box.width * box.height > 0) : String(Math.round(box[key]));
     } else if (prop === 'font-family') {
       // The face that paints: load() has proved every bundled face resolves,
       // so the fallbacks after the first never draw.

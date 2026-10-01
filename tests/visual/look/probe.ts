@@ -27,7 +27,10 @@ export interface LookProbe {
     /** The made-up reads in another state (`made-up-api.ts`): a read's other renderings. */
     readonly reads?: MadeUpVariant;
   };
-  /** Computed style properties (colours compared as painted), or `box.width|height|x|y`. */
+  /**
+   * Computed style properties (colours compared as painted), or
+   * `box.width|height|x|y`, or `box.drawn`: whether it paints any area at all.
+   */
   readonly props: readonly string[];
   /**
    * Where a ruling moved the build off the mockup: `at` is `<prop>@<theme>`,
