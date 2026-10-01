@@ -2,7 +2,8 @@
 //
 // WF-7 (#640) "Twice failed, it stops": after the second failed run a research
 // ticket waits on its map's owner. A new run waits, the owner's start clears
-// the item, two more failures ask again, a map with no owner asks no one, and
+// the item, two more failures ask again, a map with no owner asks no one (and
+// stops all the same: wf-7-stopped-no-owner.test.ts), and
 // another map's owner or another business cannot start the stopped ticket.
 // The shared cases are in wf-7-failures.ts. On the real commands against Postgres.
 
@@ -99,7 +100,7 @@ it('WF-7 twice failed: two more failures after the owner clears the item ask aga
   expect(await runsOn(s, ticket)).toBe(4);
 }, 240_000);
 
-it('WF-7 twice failed with no map owner: the report says no one was asked, and nothing waits on anyone', async () => {
+it('WF-7 twice failed with no map owner: the report says no one was asked, and a start without task:decide is refused', async () => {
   const created = await asPerson(s, {
     command: 'task.create',
     operationId: randomUUID(),
@@ -119,8 +120,11 @@ it('WF-7 twice failed with no map owner: the report says no one was asked, and n
   expect(said[0]?.body).toMatch(/failed twice/u);
   expect(said[0]?.body).not.toMatch(/owner has been asked/u);
   expect(await asksOn(s, ticket)).toStrictEqual([]);
-  // No owner to wait on, so the ticket is not held for one.
-  expect(codeOf(await start(s, ticket))).toBe('applied');
+  // No owner to ask, and stopped all the same: a third start without task:decide is refused.
+  const runner = await charter(s, 'runner-no-map');
+  await mayRun(s, runner, ticket);
+  expect(await start(s, ticket, runner)).toMatchObject(STOPPED);
+  expect(await runsOn(s, ticket)).toBe(2);
 }, 180_000);
 
 it("WF-7 twice failed isolation: another map's owner and another business's cannot start a stopped ticket", async () => {
