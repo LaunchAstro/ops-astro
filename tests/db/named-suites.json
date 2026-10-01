@@ -590,6 +590,7 @@
     "tests/cli/t3c-write-off-surfaces.test.ts",
     "tests/cli/t3f-two-workers.test.ts",
     "tests/api/mp-6-1-checks.test.ts",
+    "tests/api/review-3a-20-check-lease-lock.test.ts",
     "tests/api/mp-6-1-controls.test.ts",
     "tests/api/mp-6-4-scope.test.ts",
     "tests/api/aw-03-races.test.ts",
