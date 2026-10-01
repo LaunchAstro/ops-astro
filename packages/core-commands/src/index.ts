@@ -24,6 +24,11 @@ export {
   type AcceptResult,
 } from './commands/invitation-accept.ts';
 export {
+  acceptSignedIn,
+  type SignedInAcceptRequest,
+  type SignedInAcceptResult,
+} from './commands/invitation-bind.ts';
+export {
   modelCallExecutor,
   type ModelBroker,
   type ModelCallExecutor,

@@ -25,7 +25,7 @@
 //    address's login is someone else's (another business's, or made
 //    elsewhere): it gets none and its password is not touched, the answer is
 //    `sign_in`, and nothing is spent, so its holder may accept once signed in
-//    (that binding is a follow-up). A fault spends nothing and binds nothing;
+//    (`acceptSignedIn`). A fault spends nothing and binds nothing;
 //    a login it stranded is adopted by the next accept.
 // 3. In one transaction, under the invitation's lock and every check again:
 //    spend every unspent token of the invitation, mark it accepted, give its
@@ -50,13 +50,13 @@ export const ACCEPT_OPERATION = 'invitation.accept';
 export const LOGIN_CREATE_OPERATION = 'login.create';
 
 /** The provider the `logins` rows name for Supabase Auth (`apps/api/auth/supabase.ts`). */
-const LOGIN_PROVIDER = 'supabase';
+export const LOGIN_PROVIDER = 'supabase';
 
 /** A password the provider will hash in full: 12 to 72 bytes (bcrypt reads no more). */
 const PASSWORD_BYTES = { least: 12, most: 72 } as const;
 
 /** The token a send mints: 32 random bytes, base64url, 43 characters. */
-const TOKEN = /^[\w-]{43}$/u;
+export const TOKEN: RegExp = /^[\w-]{43}$/u;
 
 export interface AcceptRequest {
   readonly token: string;
@@ -70,7 +70,7 @@ export type AcceptResult =
       readonly code: 'ENROLMENT_LINK_INVALID' | 'PASSWORD_INVALID' | 'ENROLMENT_UNAVAILABLE';
     };
 
-interface Found {
+export interface Found {
   readonly business: string;
   readonly tokenId: string;
   readonly invitationId: string;
@@ -85,7 +85,7 @@ interface Found {
  * address, not the person: each invitation makes a new person, and a login an
  * earlier invitation stranded must be found by the next one for the address.
  */
-function loginSubject(business: string, address: string): string {
+export function loginSubject(business: string, address: string): string {
   const hex = createHash('sha256').update(`ops-astro login|${business}|${address}`).digest('hex');
   const variant = ((Number.parseInt(hex.charAt(16), 16) & 0x3) | 0x8).toString(16);
   return [
@@ -109,7 +109,7 @@ async function loginBound(database: Database, business: string, subject: string)
 }
 
 /** The token's row and its invitation, when the token is live; locked when `lock`. */
-async function liveToken(
+export async function liveToken(
   tx: TenantQuery,
   hash: string,
   lock: boolean,
@@ -135,7 +135,7 @@ async function liveToken(
 }
 
 /** Step 1: the one business whose live token this is, or none. */
-async function find(
+export async function find(
   database: Database,
   businesses: readonly string[],
   hash: string,
@@ -172,9 +172,15 @@ async function seat(
     [tx.businessId, found.personId, found.roleKey, found.address],
   );
   // The login first, then its mapping: the mapping's trigger locks the login row.
+  // A signed-in accept may find this business's row for the login unmapped: it is kept.
   const [login] = await tx.query<{ id: string }>(
-    `insert into logins (business_id, id, provider, subject)
-     values ($1, gen_random_uuid(), $2, $3) returning id`,
+    `with made as (
+       insert into logins (business_id, id, provider, subject)
+       values ($1, gen_random_uuid(), $2, $3)
+       on conflict (business_id, provider, subject) do nothing returning id)
+     select id from made
+     union all
+     select id from logins where business_id = $1 and provider = $2 and subject = $3`,
     [tx.businessId, LOGIN_PROVIDER, subject],
   );
   await tx.query(
@@ -189,6 +195,16 @@ async function seat(
 async function bind(tx: TenantQuery, hash: string, subject: string): Promise<boolean> {
   const found = await liveToken(tx, hash, true);
   if (found === undefined) return false;
+  await spendAndSeat(tx, found, subject);
+  return true;
+}
+
+/** A live, locked invitation accepted: its tokens spent, its person seated, the login mapped, audited. */
+export async function spendAndSeat(
+  tx: TenantQuery,
+  found: Omit<Found, 'business'>,
+  subject: string,
+): Promise<void> {
   const { invitationId, personId, tokenId } = found;
   await tx.query(
     `update enrolment_tokens set spent_at = now()
@@ -217,7 +233,6 @@ async function bind(tx: TenantQuery, hash: string, subject: string): Promise<boo
     subjectRecordId: loginId,
     payloadDigest: payloadDigest({ personId, loginId, businessId: tx.businessId }),
   });
-  return true;
 }
 
 /** Accept the invitation a one-time enrolment token names, with the password its holder set. */

@@ -289,7 +289,9 @@ export function createApi(options: ApiOptions): Hono {
     return context.json({ ok: true }, 200);
   });
 
-  if (options.enrolment !== undefined) mountEnrolment(api, options.database, options.enrolment);
+  if (options.enrolment !== undefined) {
+    mountEnrolment(api, options.database, options.enrolment, options.verify);
+  }
 
   /** One route per surface declaration under `prefix`, each through the door. */
   function mountSurface(

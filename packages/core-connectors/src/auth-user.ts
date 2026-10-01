@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The login provider's two catalogued operations (C39-T, piece P3), read the
-// way every catalogued operation is (`operation.ts`): `auth.create_user`, a
-// login made when an invitation is accepted, and `auth.update_user`, the same
-// login set again when an earlier accept made it and never bound it.
+// The login provider's three catalogued operations (C39-T, piece P3), read
+// the way every catalogued operation is (`operation.ts`): `auth.create_user`,
+// a login made when an invitation is accepted, `auth.update_user`, the same
+// login set again when an earlier accept made it and never bound it, and
+// `auth.read_user`, one login's address and whether the provider confirmed
+// it, asked when a signed-in person accepts with the login they hold.
 //
 // Each adapter takes the user's id, the invited address and the password the
 // enrolment page set, and asks Supabase Auth's admin route for a user under
@@ -69,6 +71,34 @@ export function authUserUpdateAdapter(values: Readonly<Record<string, string>>):
   };
 }
 
+/** The id in, the one user's read out: its id is the path's one segment, and nothing is sent. */
+export function authUserReadAdapter(values: Readonly<Record<string, string>>): AdapterRequest {
+  const { id } = values;
+  if (id === undefined || !USER_ID.test(id)) {
+    throw new Error('auth user adapter: the id is not a UUID');
+  }
+  return { path: `${AUTH_USERS_PATH}/${id.toLowerCase()}`, method: 'GET', body: '' };
+}
+
+/** An address as the provider keeps one: no space, one `@`, bounded. */
+const ADDRESS = /^[^@\s]{1,64}@[^@\s]{1,255}$/u;
+
+/**
+ * The read's answer schema: a user whose `id` is a UUID. Its text is the id,
+ * then a space and the address in lower case only when the provider says it
+ * confirmed that address (`email_confirmed_at` set); an address it has not
+ * confirmed is not named. Anything else is malformed.
+ */
+export function readAuthUserReadAnswer(body: unknown): ModelAnswer | undefined {
+  const read = readAuthUserAnswer(body);
+  if (read === undefined) return undefined;
+  const { email, email_confirmed_at: confirmedAt } = body as Record<string, unknown>;
+  const confirmed = typeof confirmedAt === 'string' && confirmedAt !== '';
+  const address = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if (!confirmed || !ADDRESS.test(address)) return read;
+  return { ...read, text: `${read.text} ${address}` };
+}
+
 /** The answer schema: a user object whose `id` is a UUID, or the whole answer is malformed. */
 export function readAuthUserAnswer(body: unknown): ModelAnswer | undefined {
   if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined;
@@ -107,4 +137,19 @@ export const AUTH_UPDATE_USER: ModelOperationDeclaration = {
   key: 'auth.update_user',
   provider: 'supabase_auth_update',
   nothingHappened: [AUTH_USER_NOT_FOUND, AUTH_EMAIL_EXISTS],
+};
+
+/**
+ * One login's address, read under the id the signed-in session carries. Its
+ * own provider key, as the update has; custody sends it only as the GET its
+ * destination routes. Nothing is made or changed: an id the provider does not
+ * hold is answered 404 (`AUTH_USER_NOT_FOUND`).
+ */
+export const AUTH_READ_USER: ModelOperationDeclaration = {
+  ...AUTH_CREATE_USER,
+  key: 'auth.read_user',
+  provider: 'supabase_auth_read',
+  fields: { id: 'personal' },
+  answer: readAuthUserReadAnswer,
+  nothingHappened: [AUTH_USER_NOT_FOUND],
 };

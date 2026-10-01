@@ -33,10 +33,13 @@ export {
   AUTH_CREATE_USER,
   AUTH_EXISTS_STATUS,
   AUTH_NOT_FOUND_STATUS,
+  AUTH_READ_USER,
   AUTH_UPDATE_USER,
   authUserAdapter,
+  authUserReadAdapter,
   authUserUpdateAdapter,
   readAuthUserAnswer,
+  readAuthUserReadAnswer,
 } from './auth-user.ts';
 export {
   EMAIL_NOTHING_HAPPENED,

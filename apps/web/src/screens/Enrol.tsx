@@ -19,6 +19,7 @@ import { useState, type FormEvent, type ReactElement } from 'react';
 import { Banner, Button, FieldError } from '@launchastro/ui';
 import { postOpen, type ClientOptions } from '../operations/client.ts';
 import { pathTo } from '../routes.ts';
+import type { Session } from '../session/token.ts';
 
 /** The API's enrolment route (`apps/api/enrolment.ts`). */
 export const ENROL_API = '/api/enrol';
@@ -121,7 +122,11 @@ function PasswordField(props: {
   );
 }
 
-export function Enrol(props: { readonly token: string; readonly app: EnrolApp }): ReactElement {
+export function Enrol(props: {
+  readonly token: string;
+  readonly app: EnrolApp;
+  readonly session?: Session | null;
+}): ReactElement {
   const [password, setPassword] = useState('');
   const [because, setBecause] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

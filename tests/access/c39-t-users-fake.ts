@@ -5,13 +5,15 @@
 // loopback the way Supabase Auth does. A POST makes a user under the id it
 // names, or 422 `email_exists` for an address it already holds; a PUT sets
 // one user's address and password, 404 `user_not_found` for an id it does
-// not hold and 422 for an address another user holds. It keeps every
+// not hold and 422 for an address another user holds; a GET reads one
+// user, 404 for an id it does not hold. It keeps every
 // request, the users it holds and each one's password, so a case can count
 // what was asked and look for the password everywhere else. Its hostile
 // modes are the answers a real provider can give: an answer echoing the
 // password, oversized, redirected, malformed, a wrong id, another user's
 // id, a fault and slow. As a real provider does, every mode but `fault`
-// makes or sets the user before it answers; `fault` changes nothing.
+// makes or sets the user before it answers; `fault` changes nothing. A case
+// may plant a user made elsewhere, its address confirmed or not.
 
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -44,6 +46,8 @@ export interface FakeUsers {
   /** Each user's password as last set: id to password. */
   readonly passwords: ReadonlyMap<string, string>;
   mode(next: FakeUsersMode): void;
+  /** A user made elsewhere, under a new id, its address confirmed or not; its id. */
+  plant(email: string, confirmed: boolean): string;
   /** Run `work` when the next request arrives, before it is answered. */
   beforeNext(work: () => Promise<void>): void;
   close(): Promise<void>;
@@ -60,12 +64,12 @@ async function readAll(request: IncomingMessage): Promise<Record<string, unknown
 }
 
 /** GoTrue's user object, flat. */
-const user = (id: string, email: string): Record<string, unknown> => ({
+const user = (id: string, email: string, confirmed = true): Record<string, unknown> => ({
   id,
   aud: 'authenticated',
   role: 'authenticated',
   email,
-  email_confirmed_at: new Date().toISOString(),
+  email_confirmed_at: confirmed ? new Date().toISOString() : null,
   app_metadata: { provider: 'email', providers: ['email'] },
   user_metadata: {},
   identities: [],
@@ -75,6 +79,8 @@ interface Kept {
   readonly users: Map<string, string>;
   readonly passwords: Map<string, string>;
   readonly timers: Set<NodeJS.Timeout>;
+  /** The ids whose address the provider has not confirmed. */
+  readonly unconfirmed: Set<string>;
   next?: (() => Promise<void>) | undefined;
 }
 
@@ -85,10 +91,17 @@ interface Asked {
 }
 
 const EXISTS = { status: 422, answer: { code: 422, error_code: 'email_exists', msg: 'exists' } };
+const NOT_FOUND = { status: 404, answer: { code: 404, error_code: 'user_not_found', msg: 'gone' } };
 const UPDATE_PATH = /^\/auth\/v1\/admin\/users\/([\da-f-]{36})$/u;
 
 /** What an honest provider does: the user made or set, or why not, and its answer. */
 function honest(asked: Asked, kept: Kept): { status: number; answer: Record<string, unknown> } {
+  if (asked.method === 'GET') {
+    const wanted = UPDATE_PATH.exec(asked.path)?.[1];
+    const [address] = [...kept.users].find(([, one]) => one === wanted) ?? [];
+    if (wanted === undefined || address === undefined) return NOT_FOUND;
+    return { status: 200, answer: user(wanted, address, !kept.unconfirmed.has(wanted)) };
+  }
   const email = String(asked.body['email']);
   const holder = kept.users.get(email);
   const held = (id: string): boolean => [...kept.users.values()].includes(id);
@@ -96,9 +109,7 @@ function honest(asked: Asked, kept: Kept): { status: number; answer: Record<stri
   const id = update
     ? (UPDATE_PATH.exec(asked.path)?.[1] ?? '')
     : String(asked.body['id'] ?? randomUUID());
-  if (update && !held(id)) {
-    return { status: 404, answer: { code: 404, error_code: 'user_not_found', msg: 'not found' } };
-  }
+  if (update && !held(id)) return NOT_FOUND;
   // An address held by a user, another one on an update: nothing is made or set.
   if (holder !== undefined && (!update || holder !== id)) return EXISTS;
   if (!update && held(id)) {
@@ -148,11 +159,24 @@ function respond(mode: FakeUsersMode, asked: Asked, response: ServerResponse, ke
   }
 }
 
+/** A user made elsewhere, under a new id, its address confirmed or not. */
+function plant(kept: Kept, email: string, confirmed: boolean): string {
+  const id = randomUUID();
+  kept.users.set(email, id);
+  if (!confirmed) kept.unconfirmed.add(id);
+  return id;
+}
+
 /** Start the stand-in on a loopback port of its own. */
 export async function startFakeUsers(): Promise<FakeUsers> {
   let current: FakeUsersMode = 'accept';
   const received: UsersRequest[] = [];
-  const kept: Kept = { users: new Map(), passwords: new Map(), timers: new Set() };
+  const kept: Kept = {
+    users: new Map(),
+    passwords: new Map(),
+    timers: new Set(),
+    unconfirmed: new Set(),
+  };
   const server: Server = createServer((request, response) => {
     void (async (): Promise<void> => {
       const body = await readAll(request);
@@ -177,6 +201,7 @@ export async function startFakeUsers(): Promise<FakeUsers> {
     mode: (next) => {
       current = next;
     },
+    plant: (email, confirmed) => plant(kept, email, confirmed),
     beforeNext: (work) => {
       kept.next = work;
     },
