@@ -49,6 +49,9 @@ const TASK = {
   priority: null,
   completedAt: null,
   revision: 3,
+  rank: { number: null, score: null, calc: '' },
+  stage: null,
+  clientSet: false,
 };
 
 /**
@@ -70,6 +73,9 @@ function scripted(replies: readonly (() => Promise<Response>)[]): {
   const calls: string[] = [];
   let index = 0;
   const fetch = (async (url: string | URL) => {
+    // The Projects screen's people read (MP-5-10's assignee editor) answers
+    // none and takes no scripted reply: these outcomes are the board's.
+    if (String(url).endsWith('person/list')) return json({ ok: true, persons: [] })();
     // The person menu's name (C23) is the frame's read, not the screen's, so
     // it is answered outside the script and kept out of the screen's calls.
     if (String(url).endsWith('/session/person')) return await PERSON();

@@ -163,7 +163,7 @@ export const PagePlaceholder = (props: { readonly page: Page }): ReactElement =>
     data-page={props.page.id}
     data-ticket={props.page.ticket}
   >
-    <div className="empty" data-voice="not-built">
+    <div className="empty empty--block" data-voice="not-built">
       <p className="empty__title">Not here yet</p>
       <p className="empty__desc">This page isn&apos;t built yet.</p>
     </div>
@@ -190,18 +190,15 @@ export const ClientRefused = (): ReactElement => (
 export function NotFound(props: { readonly path: string }): ReactElement {
   return (
     <div className="readstate" data-outcome="not-found">
-      <p className="empty__title">
-        No screen is registered at {isLegacy(props.path) ? 'this address' : props.path}.
-      </p>
-      <p className="empty__desc">
-        The route registry is the list the application resolves through. An address that is not in
-        it does not resolve, which is a truer answer than a blank page.
-      </p>
-      <p className="empty__hint">
-        <a className="sb__addr" href={pathTo('agency:projects-board')}>
-          Go to Projects
-        </a>
-      </p>
+      <Empty
+        title={`No screen is registered at ${isLegacy(props.path) ? 'this address' : props.path}.`}
+        description="The route registry is the list the application resolves through. An address that is not in it does not resolve, which is a truer answer than a blank page."
+        action={
+          <a className="sb__addr" href={pathTo('agency:projects-board')}>
+            Go to Projects
+          </a>
+        }
+      />
     </div>
   );
 }

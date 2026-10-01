@@ -77,9 +77,11 @@ describe('the surface as a table', () => {
     // revocation writes, and the authority it asks is still on tasks. `operations`
     // and `privacy` are C55's view and its incident record, and `legal` is C81's
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
+    // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
+    // `tag` is MP-4-11's: the business's tag vocabulary.
     expect(
       paths.every((path) =>
-        /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|preference|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u.test(
+        /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|preference|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -102,6 +104,7 @@ const DECLARED_READS = [
   'session.capabilities',
   'session.person',
   'settings.read',
+  'tag.list',
   'task.board',
   'task.execution',
   'task.ledger',
@@ -109,11 +112,12 @@ const DECLARED_READS = [
   'task.read',
   'task.receipt',
   'task.search',
+  'task.todos',
   'team.list',
 ];
 
 describe('the surface as a table', () => {
-  it('declares the twenty-one reads as reads, and everything else as a write', () => {
+  it('declares the twenty-three reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
@@ -212,22 +216,25 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
     expect(missing).toStrictEqual([]);
   });
 
-  it('finds ten of them, which is what makes nine commands too few', () => {
+  it('finds thirteen of them, which is what makes nine commands too few', () => {
     expect(named).toStrictEqual([
       'task.assign',
       'task.complete',
       'task.move',
       'task.reopen',
       'task.reparent',
+      'task.set_adhoc',
       'task.set_audience',
       'task.set_party',
+      'task.set_scores',
       'task.set_stage',
+      'task.set_state',
       'task.start',
       'task.triage',
     ]);
-    // Ten names, and only two of them — complete and reopen — are among the
-    // contract's nine commands. The other eight are why this part declares
-    // more than nine, and `task.rank` is an eleventh operation the mechanics
+    // Thirteen names, and only two of them — complete and reopen — are among
+    // the contract's nine commands. The other eleven are why this part declares
+    // more than nine, and `task.rank` is a fourteenth operation the mechanics
     // need that neither list carries.
     expect(named.filter((name) => CONTRACT_NINE.includes(name as CommandName))).toStrictEqual([
       'task.complete',

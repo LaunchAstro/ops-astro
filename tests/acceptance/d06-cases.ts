@@ -96,8 +96,10 @@ export const TOP_LEVEL_FIELDS: readonly string[] = [
 export const FIELDS_PAYLOAD_OPERATIONS: readonly CommandName[] = [
   'task.assign',
   'task.create',
+  'task.set_adhoc',
   'task.set_audience',
   'task.set_party',
+  'task.set_scores',
   'task.set_stage',
   'task.triage',
   'task.update',

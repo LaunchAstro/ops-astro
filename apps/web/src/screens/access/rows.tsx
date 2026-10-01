@@ -101,11 +101,13 @@ export function People(props: {
         onRevoke={(grant) => props.onRevokeGrant(person, grant)}
       />
     ),
-    act: (
-      <span data-end={person.personId}>
-        <Button onClick={() => props.onEnd(person)}>End access</Button>
-      </span>
-    ),
+    // access.end needs an active membership, which a client never holds.
+    act:
+      props.id === 'team' ? (
+        <span data-end={person.personId}>
+          <Button onClick={() => props.onEnd(person)}>End access</Button>
+        </span>
+      ) : null,
   }));
   return (
     <div data-access={props.id}>

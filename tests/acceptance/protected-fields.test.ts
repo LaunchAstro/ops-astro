@@ -534,15 +534,24 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
    * as an input, so there is no positive control to put beside the refusal and
    * saying so is the honest report. `key` and `source` are the server's own and
    * are asserted to be present and server-shaped; `completed_at` is covered by
-   * the lifecycle case above, which is the only way it moves.
+   * the lifecycle case above, which is the only way it moves, and the two
+   * archive fields by MP-4-15's (`tests/commands/task-completion.test.ts`),
+   * written only by the completion transition.
    */
   it('keeps the derived fields the server’s own, with no operation that takes them', () => {
     const derived = PROTECTED_TASK_FIELDS.filter(
       (key) => spineField(key).owningOperations.length === 0,
     );
-    expect(derived.toSorted()).toStrictEqual(['completed_at', 'key', 'source']);
+    expect(derived.toSorted()).toStrictEqual([
+      'archived_at',
+      'archived_why',
+      'completed_at',
+      'key',
+      'source',
+    ]);
     expect(baseline.data['source']).toBe('person:api');
     expect(baseline.data['key']).toMatch(/^T-\d+$/u);
     expect(baseline.data['completed_at']).toBeUndefined();
+    expect(baseline.data['archived_at']).toBeUndefined();
   });
 });

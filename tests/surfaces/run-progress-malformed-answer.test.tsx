@@ -31,3 +31,28 @@ it('a malformed successful run answer becomes unavailable without an unhandled r
     await screen.unmount();
   }
 });
+
+it('a run that could not be read draws the section error banner, not a plain line', async () => {
+  const client = new OperationsClient({
+    origin: '',
+    businessKey: 'alpha',
+    signedIn: true,
+    fetch: () => Promise.resolve(Response.json(null)),
+    newOperationId: () => 'operation-1',
+  });
+  const screen = await mount(
+    <RunProgress client={client} grantKey="alpha:person" taskKey="task-1" readOf={null} />,
+  );
+  try {
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 20);
+      });
+    });
+    const banner = screen.host.querySelector('[data-run="unavailable"] .banner.banner--bad');
+    expect(banner?.getAttribute('role')).toBe('alert');
+    expect(banner?.textContent).toContain('That is not a claim that no work ran.');
+  } finally {
+    await screen.unmount();
+  }
+});

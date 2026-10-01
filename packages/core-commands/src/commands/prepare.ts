@@ -528,9 +528,9 @@ export async function prepareCommand(
   // its handler, which asks the resolved row's own ceiling.
   const recordId = typeof request['recordId'] === 'string' ? request['recordId'] : undefined;
   // R4 before any grant row. A session with no membership stands on a read
-  // share, and whatever else a row may say it holds, it writes nothing but a
-  // client-audience comment and the seen stamp on its own inbox item (minimum
-  // contract 8.1 R4; the audience is `tasks-comment.ts`'s to narrow).
+  // share, and whatever else a row may say it holds, it writes only what
+  // core-wire's `EXTERNAL_WRITES` lists (minimum contract 8.1 R4; a comment's
+  // audience is `tasks-comment.ts`'s to narrow).
   if (!admitsSelfWrite(session.roleKey !== null, declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
@@ -545,9 +545,10 @@ export async function prepareCommand(
     if (!authorised.ok) return refused(authorised.refusal);
   }
   // The one step-up (C59), inside the grant check and straight after it: only
-  // a key in the money set is asked, so a caller without the grant is told
-  // that first, and nothing after this line runs on a stale sign-in.
-  const stale = await refuseStaleMoneyStep(tx, session, declaration);
+  // a key in the money set, and the switch when switching it off, is asked, so
+  // a caller without the grant is told that first, and nothing after this line
+  // runs on a stale sign-in.
+  const stale = await refuseStaleMoneyStep(tx, session, declaration, request);
   if (stale !== undefined) return refused(stale);
   // A field the row does not describe, after authority as on the agent prefix:
   // a caller without the right is told that first (R4, `external-party`).

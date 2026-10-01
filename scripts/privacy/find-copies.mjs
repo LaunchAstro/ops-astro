@@ -2,9 +2,12 @@
 //
 // The manual privacy runbook's copy finder (C81, docs/local/PRIVACY-RUNBOOK.md):
 // every row of one business that holds a person's text, in any table, in any
-// letter case, including the records' search column. It reads with the owner's
-// connection from DATABASE_ADMIN_URL, with row security off, so a table the
-// connection cannot read in full is an error rather than a silent gap. Every
+// letter case, including the records' search column, and every row naming by
+// id a person whose own row or identifier holds it, or their acting identity
+// or sign-in (their memberships, logins and grants), or the agent of a
+// credential they issued. It reads with the owner's connection from
+// DATABASE_ADMIN_URL, with row security off, so a table
+// the connection cannot read in full is an error rather than a silent gap. Every
 // query names the business, and a table with no business column is an error,
 // so no other business's row reaches the list or the export.
 //
@@ -52,6 +55,29 @@ function containing(text) {
 }
 
 /**
+ * The ids standing for the people the text names ($1, in business $2): those
+ * whose own row or an identifier holds it, their actors, their logins and the
+ * agent actor of each credential they issued (that actor has no person_id).
+ * None of these leads to another person, so the set is closed.
+ */
+const PERSON_IDS = `with persons as (
+    select t.id from public.people t
+     where t.business_id = $2 and lower(to_jsonb(t)::text) like $1
+    union
+    select t.person_id from public.person_identifiers t
+     where t.business_id = $2 and lower(to_jsonb(t)::text) like $1)
+  select id::text as id from persons
+  union
+  select a.id::text from public.actors a
+   where a.business_id = $2 and a.person_id in (select id from persons)
+  union
+  select l.login_id::text from public.person_logins l
+   where l.business_id = $2 and l.person_id in (select id from persons)
+  union
+  select c.agent_actor_id::text from public.agent_credentials c
+   where c.business_id = $2 and c.issued_by_person_id in (select id from persons)`;
+
+/**
  * The business's rows holding the needle, one JSON line each; answers how
  * many, or null when no business has the key.
  */
@@ -63,6 +89,10 @@ async function scan(admin, business, needle, exportRows) {
     const [owner] = await execute(`select id from public.businesses where key = $1`, [business]);
     if (owner === undefined) return;
     hits = 0;
+    // A row naming the person by id alone (a membership, their login, a grant
+    // to their actor) is a copy of them too.
+    const named = await execute(PERSON_IDS, [containing(needle), owner.id]);
+    const ids = named.map((row) => row.id);
     const tables = await execute(
       `select c.relname as name,
               exists (select 1 from pg_attribute a
@@ -79,13 +109,15 @@ async function scan(admin, business, needle, exportRows) {
       // oxlint-disable-next-line no-await-in-loop
       const rows = await execute(
         `select t.ctid::text as address, to_jsonb(t) as row from public."${name}" t
-          where t.business_id = $2 and lower(to_jsonb(t)::text) like $1`,
-        [containing(needle), owner.id],
+          where t.business_id = $2
+            and (lower(to_jsonb(t)::text) like $1 or to_jsonb(t)::text like any($3::text[]))`,
+        [containing(needle), owner.id, ids.map((id) => `%${id}%`)],
       );
       for (const { address, row } of rows) {
-        const columns = Object.keys(row).filter((column) =>
-          JSON.stringify(row[column]).toLowerCase().includes(needle),
-        );
+        const columns = Object.keys(row).filter((column) => {
+          const held = JSON.stringify(row[column]).toLowerCase();
+          return held.includes(needle) || ids.some((id) => held.includes(id));
+        });
         const found = { table: name, id: row.id ?? address, columns };
         if (exportRows) found.row = row;
         stdout.write(`${JSON.stringify(found)}\n`);

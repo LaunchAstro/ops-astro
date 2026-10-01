@@ -25,6 +25,13 @@ import { SHAPE, asAgent, canonical, foreign, type Heard } from './api-1-isolatio
 let attemptedForeignLeaseId = '';
 let attemptedForeignReservationId = '';
 
+/** A field write on `record`, at a revision the crossing never reaches. */
+const written = (record: string, fields: Record<string, unknown>): Record<string, unknown> => ({
+  recordId: record,
+  expectedRevision: 1,
+  fields,
+});
+
 // eslint-disable-next-line max-lines-per-function -- one crossing proof, kept byte for byte
 export function delegationCrossing(): void {
   // The proof is kept byte for byte; its `claims` reads the world's module bindings.
@@ -73,6 +80,23 @@ export function delegationCrossing(): void {
       'task.dispatch': () => ({ ...notOwnLease }),
       'task.observe': () => ({ ...notOwnLease, attemptId: randomUUID(), outcome: 'completed' }),
       'task.queue': () => null,
+      // An agent writes its own task's fields under a delegation (MP-4-7, MP-4-8): never
+      // another person's task, another client's or another business's.
+      'task.update': (record) => written(record, { title: 'made-up' }),
+      'task.assign': (record) => written(record, { assignee: randomUUID() }),
+      'task.set_adhoc': (record) => written(record, { ad_hoc: true }),
+      'task.set_scores': (record) => written(record, { impact: 7, confidence: 9, ease: 8 }),
+      'task.edit_comment': (record) => ({
+        recordId: record,
+        expectedRevision: 1,
+        commentId: randomUUID(),
+        body: 'made-up',
+      }),
+      'task.delete_comment': (record) => ({
+        recordId: record,
+        expectedRevision: 1,
+        commentId: randomUUID(),
+      }),
       'session.capabilities': () => null,
       // A credential's create (API-2): a pickup's one-task delegation never reaches it.
       'task.create': () => ({ fields: { title: 'made-up' } }),
