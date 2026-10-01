@@ -414,9 +414,10 @@ async function recheckClaim(
  * expired-lease lifecycle. It fences the old lease and classifies the old hold
  * under the locks it already holds. The abandoned reservation is never
  * revived; a replacement is a new row with a new attempt, on the
- * still-approved version. It holds the old hold less the spend that hold
- * settled at; a spend that used the whole hold stops the run at its budget
- * and asks a person (AW-05), a refusal that keeps the ask.
+ * still-approved version. It holds the old hold less its calls' spend as
+ * it stands now; a spend that used the whole hold stops the run at its budget
+ * and asks a person (AW-05), a refusal that keeps the ask; after the
+ * run's last ask it ends the run and tells a person (`stopAtSpentHold`).
  */
 async function claimHold(
   tx: TenantQuery,
@@ -445,7 +446,7 @@ async function claimHold(
   if (plan.kind === 'fresh') {
     return { ok: true, value: { reservationId, attemptId: state.attempt_id } };
   }
-  // FIXMONEY: the old hold less the spend it settled at (`budget-stop.ts`).
+  // FIXMONEY: the old hold less its calls' spend as it stands (`budget-stop.ts`).
   const remaining = await remainingOf(tx, reservationId);
   if (remaining.leftMinor <= 0) {
     const words = await stopAtSpentHold(tx, {

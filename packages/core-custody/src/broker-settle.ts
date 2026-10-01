@@ -20,6 +20,7 @@ import {
 import type { CredentialKind } from './credentials.ts';
 import type { CustodyOutcome } from './custody.ts';
 import { lockCall } from './broker-facts.ts';
+import { giveBack } from './broker-give-back.ts';
 import type { ReservedCall } from './broker-reserve.ts';
 import type {
   Broker,
@@ -260,27 +261,4 @@ async function isOpen(tx: TenantQuery, callId: string): Promise<boolean> {
     [tx.businessId, callId],
   );
   return call?.state === 'reserved' || call?.state === 'dispatched';
-}
-
-/**
- * SL11-29 FIXMONEY. A call still open when the classifier settled its stopped
- * hold was counted at its maximum (`core-runtime/src/recovery/classifier.ts`,
- * `spentOn`). Settled lower now, or released, it gives the envelope the
- * difference back: once, because only a settlement that moved the call out of
- * an open state reaches here. A hold settled any other way (an observed or a
- * written-off cost, its attempt `settled`) never counted its calls. Under the
- * envelope lock `lockCall` took first.
- */
-async function giveBack(tx: TenantQuery, callId: string): Promise<void> {
-  await tx.query(
-    `update public.task_envelopes e
-        set actual_minor = e.actual_minor - (c.reserved_minor - coalesce(c.actual_minor, 0))
-       from public.model_calls c
-       join public.reservations r on r.business_id = c.business_id and r.id = c.reservation_id
-       join public.attempts a on a.business_id = r.business_id and a.reservation_id = r.id
-      where c.business_id = $1 and c.id = $2 and c.state in ('settled', 'released')
-        and r.state = 'actual' and a.state <> 'settled'
-        and e.business_id = r.business_id and e.id = r.envelope_id`,
-    [tx.businessId, callId],
-  );
 }

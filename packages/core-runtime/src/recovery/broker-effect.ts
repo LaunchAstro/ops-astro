@@ -24,6 +24,7 @@
 // - The read: each held call's drop, for the task's people (internal, ungated).
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { giveBack } from '../../../core-custody/src/index.ts';
 import type { EffectLookup } from './effect-lookup.ts';
 
 /** The sweep's half, under its locks: the lost worker's started calls held, unsent ones released. */
@@ -87,7 +88,9 @@ export function withProviderCalls(inner: EffectLookup): EffectLookup {
  * A person's outcome on the step, on its held calls: nothing happened gives
  * the call's hold back; it happened, or happened differently, records the
  * call as the effect at its maximum, since nobody observed less. A write-off
- * leaves the money to the step's own hold and records only the decision.
+ * leaves the money to the step's own hold and records only the decision. A
+ * call a top-up already counted at its maximum gives the envelope back what
+ * it did not spend (`giveBack`), under the step's envelope lock.
  */
 export async function resolveHeldCalls(
   tx: TenantQuery,
@@ -96,7 +99,7 @@ export async function resolveHeldCalls(
   personId: string,
 ): Promise<void> {
   const ends = outcome !== 'written_off';
-  await tx.query(
+  const resolved = await tx.query<{ readonly id: string }>(
     `update public.model_calls
         set outcome = $3, outcome_person_id = $4,
             state = case when $3 = 'nothing_happened' then 'released'
@@ -105,9 +108,16 @@ export async function resolveHeldCalls(
                                 else actual_minor end,
             ended_at = case when $5 then clock_timestamp() else ended_at end
       where business_id = $1 and reservation_id = $2 and state = 'liability_unknown'
-        and outcome is null`,
+        and outcome is null
+      returning id`,
     [tx.businessId, reservationId, outcome, personId, ends],
   );
+  if (!ends) return;
+  for (const call of resolved) {
+    // Sequential: each gives back to the one envelope the step holds locked.
+    // eslint-disable-next-line no-await-in-loop
+    await giveBack(tx, call.id);
+  }
 }
 
 export interface CallDrop {

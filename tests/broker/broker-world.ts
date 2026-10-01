@@ -131,18 +131,20 @@ export const call = async (
   return await callModel(s.db.app, s.business, caller(work), requestFor(work, overrides), with_);
 };
 
-/** A broker whose custody waits for `open` before it dispatches for real. */
-export const gated = (): { readonly broker: Broker; readonly open: () => void } => {
+/** `base`, with custody waiting for `open` before it dispatches for real. */
+export const gated = (
+  base: Broker = broker,
+): { readonly broker: Broker; readonly open: () => void } => {
   let release: (() => void) | undefined;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
   const dispatch: Broker['custody']['dispatch'] = async (credentialRef, request) => {
     await gate;
-    return await broker.custody.dispatch(credentialRef, request);
+    return await base.custody.dispatch(credentialRef, request);
   };
   return {
-    broker: { ...broker, custody: { ...broker.custody, dispatch } },
+    broker: { ...base, custody: { ...base.custody, dispatch } },
     open: () => release?.(),
   };
 };

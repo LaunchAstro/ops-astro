@@ -818,16 +818,21 @@ replaces it with a fresh hold and a fresh attempt on that version, under the
 locks it already holds (`pickup`, `pickup.ts`). The abandoned reservation stays
 abandoned. A hold the classifier settled at its calls' spend (`actual`, its
 attempt `abandoned`) is replaced the same way. The replacement holds the old
-hold less the spend it settled at, the step's budget that remains
-(`remainingOf`, `budget-stop.ts`), and a drop's resume sizes its new hold the
-same way (`resume`, `recovery/reconcile.ts`). When the spend used the whole
+hold less its calls' spend as it stands now, the step's budget that remains
+(`remainingOf`, `budget-stop.ts`): a call the classifier counted at its maximum
+and that came to less gives that room back. A drop's resume sizes its new hold
+the same way (`resume`, `recovery/reconcile.ts`). When the spend used the whole
 hold, nothing is left to hold: the run stops at its budget and raises the
 AW-05 ask with the old hold as the ceiling and its spend (`stopAtSpentHold`),
 and the pickup is refused `BUDGET_UNAVAILABLE`, a refusal that keeps the stop
-and its ask. The claimant's authority is read first (`claimantMayWork`), so a
-caller without it is refused with nothing kept
-(`tests/runtime/resume-sizing.test.ts`). A settled hold, a quarantined one, or a version already holding
-elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`). Storage
+and its ask. After the consolidated ask there is no ask left to raise: the run
+ends (`cancelled`, with no hold to release) and a person is told on the task
+(`awaiting_person`, `needs_approval`). The stop is written first, then the
+claimant's authority is read (`claimantMayWork`) before the refusal commits, so
+a caller without it is refused and the rollback takes the stop and its ask
+back (`tests/runtime/resume-sizing.test.ts`,
+`tests/runtime/resume-sizing-stop.test.ts`). A settled hold, a quarantined one,
+or a version already holding elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`). Storage
 counts a quarantined hold as active too.
 
 **Correction to the header of migration 0019** (R1-RUNTIME-67). The header of
@@ -964,12 +969,19 @@ only a hold with no spend is `abandoned`. A budget top-up already moved the
 spend to date to the envelope's actual (`raiseHold`, `budget-answer.ts`), so a
 topped-up hold counts only the spend the top-up did not move: the ask's
 ceiling and the top-up less the hold now. Below zero, a call counted at its
-maximum came to less, and the envelope gets the difference back. A call still
-open when the hold settled was counted at its maximum; when it settles lower
-or is released, the broker's settlement gives the envelope the difference
-back, once, under the envelope lock it takes first (`giveBack`,
-`core-custody/src/broker-settle.ts`; `tests/broker/spend-give-back.test.ts`).
-The sweep, a cancel, a lost
+maximum came to less, and the envelope gets the difference back.
+
+A call open when its hold's spend was counted, by this settle, a top-up or the
+end at a budget stop (`budget_stop_ended`), was counted at its maximum. When
+it ends lower (settled, released, a person's outcome on its step, or the
+provider's proof that nothing happened), it gives the difference back to its
+own hold's envelope, once, under the envelope lock its caller takes first
+(`giveBack`, `core-custody/src/broker-give-back.ts`). Once the hold is history
+the difference comes off the envelope's actual; while a topped-up hold is
+still held it goes back onto that hold, so the hold's later settle and its
+replacement's size see it once. A hold ended any other way never counted its
+calls and gives nothing back (`tests/broker/spend-give-back.test.ts`,
+`tests/broker/spend-give-back-late.test.ts`). The sweep, a cancel, a lost
 authority, pickup's expired-lease replacement and every hand-back, a drop
 included, reach this one step (`tests/runtime/classifier-counts-spend.test.ts`).
 
@@ -1737,7 +1749,8 @@ calls on one run reaching the ceiling at once stop it once.
   and the currency. The rows are the persisted count. A run asks three times
   at most and the third is the consolidated decision (execution decisions
   15.2); a stop after it raises no fourth ask and is refused with words that
-  say so. The application may insert and read an ask, never update or delete
+  say so. A step whose calls spent its whole hold after the consolidated ask
+  ends its run and tells a person (`stopAtSpentHold`). The application may insert and read an ask, never update or delete
   one; worker and broker hold nothing on it.
 - **Nothing spends.** The lease ends (`released`) and its delegation is
   retired (`work_retired`), so a later call on it is refused before any hold.
