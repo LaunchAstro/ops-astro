@@ -280,7 +280,12 @@
     "MP-2-3, MP-3-2 and MP-3-3 add layout-preferences-api (the rail, dock width and sheet height as keys of the one preference store through the application: a release is one save of the person's own row and their next tab draws it; another person in the business, another business and an agent under a live delegation neither read nor write it, statuses checked, a canary never shown; no audit event). Its jsdom twins in dock-grip, dock-tiers and rail-collapse-dock (on layout-store-app.tsx) have no database and must not be named.",
     "SL08 names mp-4-4-preferences (subtasks.showFinished is the person's own preference key), task-duplicate-client-name-guard (task.duplicate's carried-text guard names a client only to a caller who may read it; an empty duplicate is not client-locked), s0-5-share-grant (task.share_with_client is client data under the S0-5 gate; a revoke stays a business grant write), task-client-facts and task-read-client-reach (task.read sends client and hasContent to members, the client id only where the reader's grants reach it) and task-client-facts-isolation (its three crossings).",
     "SL08 names history-trail-preference (history.showTrail, the task panel's trail fold, is the person's own preference key: saved, read back, and another person's value never reached).",
-    "BATCH2-INTEG-7 (review 2c1 findings 6 to 9) names task-time-bounds (a hostile duration refused FIELD_VALUE_INVALID at once; the note limit equal to 0078's 500; an own running timer stopped and deleted after task:read is lost, with no task content, while another person's and another business's timers stay refused) and task-purge-children (the purge taking a trashed task's tags with it and keeping its time entries detached, a running one stopped (ORCH58), so the rest of the business purges). parse-duration is a pure unit suite and must not be named."
+    "BATCH2-INTEG-7 (review 2c1 findings 6 to 9) names task-time-bounds (a hostile duration refused FIELD_VALUE_INVALID at once; the note limit equal to 0078's 500; an own running timer stopped and deleted after task:read is lost, with no task content, while another person's and another business's timers stay refused) and task-purge-children (the purge taking a trashed task's tags with it and keeping its time entries detached, a running one stopped (ORCH58), so the rest of the business purges). parse-duration is a pure unit suite and must not be named.",
+    "REVIEW-BATCH-2 #313 batch 3b adds review-3b-2-accept-clears-inbox (task.accept_plan clears the gate's inbox decision items in its own transaction, naming the decider, and inbox.count drops, as task.decide does) as conformance.",
+    "REVIEW-BATCH-2 #313 batch 3b adds review-3b-3-set-planning-cap-step-up (budget.set_planning_cap under C59's money step-up: a second factor past sixty minutes and a factorless sign-in each refused STEP_UP_REQUIRED with budget_caps unchanged, then the same body applies on a fresh sign-in) as conformance.",
+    "REVIEW-BATCH-2 #313 batch 3b adds review-3b-4-parent-end-drops-helper (a parent revoked, or handed back, while its helper never handed back: the merged result shows the helper dropped with its fault, DELEGATION_REVOKED for the revocation, never working) as conformance.",
+    "REVIEW-BATCH-2 #313 batch 3b adds review-3b-5-delegate-child-lease-id (run.delegate_child with a leaseId that is not a uuid, a number or missing is refused LEASE_NOT_OWNED or FIELD_VALUE_INVALID with no child written, never a 22P02 fault) as conformance.",
+    "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -970,6 +975,12 @@
     "tests/commands/fix-main-2b1-availability-attempt.test.ts",
     "tests/identity/c59-second-factor-attempts.test.ts",
     "tests/api/fix-2b1-rs-rollup-issued-and-revoked.test.ts",
-    "tests/api/fix-2b1-rs2-left-at-door-real-routes.test.ts"
+    "tests/api/fix-2b1-rs2-left-at-door-real-routes.test.ts",
+    "tests/runtime/review-3b-2-accept-clears-inbox.test.ts",
+    "tests/broker/review-3b-3-set-planning-cap-step-up.test.ts",
+    "tests/runtime/review-3b-4-parent-end-drops-helper.test.ts",
+    "tests/runtime/review-3b-5-delegate-child-lease-id.test.ts",
+    "tests/broker/review-3b-1-planning-hold-released.test.ts",
+    "tests/broker/planfix-3b-1-planning-outcome.test.ts"
   ]
 }
