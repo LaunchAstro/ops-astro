@@ -27,7 +27,7 @@ import {
   type Database,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
-import type { ModelOperation } from '../../core-connectors/src/index.ts';
+import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
 import type { Broker, BrokerRoute, ProviderAdapter } from './broker-types.ts';
 import type { CustodyOutcome } from './custody.ts';
 
@@ -38,9 +38,12 @@ export const EMAIL_OPERATION = 'email.send';
 export interface MailSettings {
   readonly appOrigin: string;
   readonly from: string;
+  /** The sending subdomain's setup check (`checkSender`): nothing is sent until it verified. */
+  readonly sender: SenderReport;
 }
 
 export type EmailRefusal =
+  | 'SENDER_NOT_VERIFIED'
   | 'OPERATION_NOT_CATALOGUED'
   | 'ITEM_NOT_OPEN'
   | 'ITEM_WITHHELD'

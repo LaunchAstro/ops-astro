@@ -72,6 +72,7 @@ import {
 } from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
+import { mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import {
@@ -185,6 +186,8 @@ export interface ApiConfig {
   readonly identity?: ServedIdentity;
   /** The live task channel, started by `main`; absent, the event route is not mounted. */
   readonly live?: LiveOptions;
+  /** The email provider's delivery hook (AW-07b); absent, the hook route is not mounted. */
+  readonly mailHook?: MailHookOptions;
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
@@ -273,6 +276,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
       return context.json({ ...identity, migrationHead: migrationHead(ledger) }, 200);
     });
   }
+
+  // AW-07b: the provider's delivery and bounce events, verified by signature,
+  // as system work with no sign-in (`mail-hook.ts`).
+  if (config.mailHook !== undefined) mountMailHook(server, database, config.mailHook);
 
   server.route(
     '/',

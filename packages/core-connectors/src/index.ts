@@ -45,6 +45,23 @@ export {
   type OutboxMessage,
 } from './email-fake.ts';
 export {
+  EMAIL_HOOK_MAX_BYTES,
+  EMAIL_HOOK_TOLERANCE_S,
+  verifyEmailHook,
+  type EmailHookEvent,
+  type EmailHookRefusal,
+  type EmailHookVerdict,
+} from './email-hook.ts';
+export {
+  checkSender,
+  dmarcPolicy,
+  type DmarcPolicy,
+  type RecordStatus,
+  type SenderReport,
+  type SenderSource,
+} from './email-sender.ts';
+export { fakeSenderSource, type FakeSenderState } from './email-sender-fake.ts';
+export {
   CONVERSATION_ANSWER,
   readReplayAnswer,
   replayAdapter,

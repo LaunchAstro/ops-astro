@@ -36,6 +36,8 @@ export {
   type EmailResult,
   type MailSettings,
 } from './broker-email.ts';
+export { landEmailEvent, type EmailHookOutcome } from './broker-email-hook.ts';
+export { tellCommentClients } from './broker-email-mention.ts';
 export {
   callModel,
   promptCopyRegistered,
