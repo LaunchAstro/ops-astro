@@ -53,7 +53,8 @@ export const VERIFIED_SENDER: MailSettings['sender'] = {
 
 export const MAIL: MailSettings = {
   appOrigin: 'https://ops.example.test',
-  from: 'hello@example.test',
+  // On the verified subdomain, built from it (the send refuses any other domain).
+  from: `hello@${VERIFIED_SENDER.subdomain}`,
   sender: VERIFIED_SENDER,
 };
 

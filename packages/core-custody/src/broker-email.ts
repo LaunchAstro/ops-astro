@@ -168,7 +168,11 @@ export async function sendInboxEmail(
   broker: Broker,
   mail: MailSettings,
 ): Promise<EmailResult> {
-  if (!mail.sender.verified) return { ok: false, code: 'SENDER_NOT_VERIFIED' };
+  // The report vouches for one subdomain: mail from any other domain is not verified.
+  const fromDomain = mail.from.slice(mail.from.lastIndexOf('@') + 1).toLowerCase();
+  if (!mail.sender.verified || fromDomain !== mail.sender.subdomain.toLowerCase()) {
+    return { ok: false, code: 'SENDER_NOT_VERIFIED' };
+  }
   const found = routed(broker);
   if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
   const { operation, route, adapter } = found;
