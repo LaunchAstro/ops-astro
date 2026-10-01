@@ -57,7 +57,7 @@ async function c32GrantChangedATeammateGivenOne(): Promise<void> {
 
   const preview = await previewOf(tia.personId);
   expect(preview.permissions).toEqual([
-    { collection: 'task', action: 'read', scope: { kind: 'party', id: one } },
+    { collection: 'task', action: 'read', scope: { kind: 'party', id: one }, stepUp: false },
   ]);
   expect(preview.clientRecords).toEqual(
     expect.arrayContaining([
@@ -144,7 +144,7 @@ async function c32GrantChangedTheWholeBusinessIs(): Promise<void> {
   const whole = await give({ holderId: tia.personId, collection: 'report', action: 'read' });
   expect(outcome(whole)).toEqual({ status: 200, code: 'ok' });
   expect((await previewOf(tia.personId)).permissions).toEqual([
-    { collection: 'report', action: 'read', scope: { kind: 'business', id: null } },
+    { collection: 'report', action: 'read', scope: { kind: 'business', id: null }, stepUp: false },
   ]);
   expect(outcome(await revoke(detailOf(whole)['grantId']))).toEqual({
     status: 200,
