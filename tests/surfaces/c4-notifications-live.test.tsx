@@ -46,7 +46,9 @@ const entry = (id: string, key: string) => ({
 /** A server answering the inbox reads and the live channel, whose stream the case writes into. */
 function server() {
   const inbox = [entry('1', 'T-1')];
-  const state = { owed: 1 };
+  // `later`: the inbox read answers a task later, as a network does, so the
+  // page draws whatever it draws while a re-read is in flight.
+  const state = { owed: 1, later: false };
   const joins: string[] = [];
   const reads: string[] = [];
   let stream: ReadableStreamDefaultController<Uint8Array> | null = null;
@@ -66,7 +68,11 @@ function server() {
       return Promise.resolve(response);
     }
     reads.push(at);
-    if (at.endsWith('/inbox/read')) return Promise.resolve(json({ ok: true, inbox: [...inbox] }));
+    if (at.endsWith('/inbox/read')) {
+      const answer = json({ ok: true, inbox: [...inbox] });
+      if (!state.later) return Promise.resolve(answer);
+      return new Promise<Response>((resolve) => setTimeout(() => resolve(answer), 0));
+    }
     if (at.endsWith('/inbox/count')) return Promise.resolve(json({ ok: true, owed: state.owed }));
     return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
@@ -168,4 +174,24 @@ it('C4 notifications live (board): the board and a task page share the tab’s o
   await pause();
   expect(heard).toEqual({ board: 1, panel: 2 });
   stop();
+});
+
+it('C4 notifications live (page): a live change re-reads the Inbox under the tab the person chose, the list never dropped for a loading line', async () => {
+  const api = server();
+  view = await mount(<InboxScreen client={api.client} grantKey="alpha:ada" navigate={() => {}} />);
+  await settle();
+  await settle();
+  const info = '[role="tab"][id$="-tab-info"]';
+  await view.click(info);
+  expect(view.find(info)?.getAttribute('aria-selected')).toBe('true');
+
+  api.state.later = true;
+  api.inbox.push(entry('2', 'T-2'));
+  api.send('invalidate', 'board');
+  await pause();
+  expect(view.find('[role="status"][data-outcome="loading"]')).toBeNull();
+  await pause();
+  await settle();
+  expect(api.reads.filter((at) => at.endsWith('/inbox/read'))).toHaveLength(2);
+  expect(view.find(info)?.getAttribute('aria-selected')).toBe('true');
 });
