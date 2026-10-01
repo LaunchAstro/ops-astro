@@ -136,6 +136,16 @@ export async function appliedWith(
   return { taskId, receipt: receipt.body['receipt'] as Record<string, unknown> };
 }
 
+/** One live delegation per purpose: retire the worker's pickup delegations before the next launch. */
+export async function retirePickups(): Promise<void> {
+  await r.fixture.db.admin.execute(
+    `update public.delegations set revoked_at = now(), revocation_cause = 'work_retired'
+      where business_id = $1 and agent_actor_id = $2 and purpose = 'synthetic_comment'
+        and revoked_at is null and settled_at is null`,
+    [r.fixture.business, r.fixture.agentActorId],
+  );
+}
+
 export function useReceiptWorld(part: string): void {
   beforeAll(async () => {
     if (noDatabase) return;
@@ -149,15 +159,8 @@ export function useReceiptWorld(part: string): void {
     );
   }, 120_000);
 
-  // One live delegation per purpose: each case retires the worker's pickup delegation.
   afterEach(async () => {
-    if (noDatabase) return;
-    await r.fixture.db.admin.execute(
-      `update public.delegations set revoked_at = now(), revocation_cause = 'work_retired'
-        where business_id = $1 and agent_actor_id = $2 and purpose = 'synthetic_comment'
-          and revoked_at is null and settled_at is null`,
-      [r.fixture.business, r.fixture.agentActorId],
-    );
+    if (!noDatabase) await retirePickups();
   });
 
   afterAll(async () => {

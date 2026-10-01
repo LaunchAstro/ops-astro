@@ -23,6 +23,7 @@ import {
   linking,
   noDatabase,
   r,
+  retirePickups,
   useReceiptWorld,
   workerOn,
 } from './aw-08-receipt-world.ts';
@@ -73,6 +74,7 @@ it.each([
   ['redirected', answering(302, JSON.stringify({ link: `https://${HOST}/x` }))],
   ['malformed', answering(200, '{"link": "https://receipts.stand-in.invalid/x"')],
   ['not an object', answering(200, JSON.stringify([`https://${HOST}/x`]))],
+  ['status-less', answering(Number.NaN, JSON.stringify({ link: `https://${HOST}/x` }))],
 ] as const)(
   'AW-08 hostile provider: a %s answer moves no money and marks nothing live',
   async (_case, provider) => {
@@ -97,6 +99,45 @@ it.each([
     expect(effects).toHaveLength(0);
   },
 );
+
+/** An attempt's receipt link written straight through the app's role: `applied` or the SQLSTATE. */
+async function setLink(id: unknown, to: string, observed = ''): Promise<string> {
+  try {
+    await r.fixture.db.app.withBusiness(r.fixture.business, async (tx) => {
+      await tx.query(
+        `update public.attempts set receipt_link = $3${observed} where business_id = $1 and id = $2`,
+        [r.fixture.business, id, to],
+      );
+    });
+    return 'applied';
+  } catch (cause) {
+    return String((cause as { code?: unknown }).code);
+  }
+}
+
+it('AW-08 receipt link: at the database, an observed attempt’s link is fixed and no other shape is stored', async () => {
+  const link = `https://${HOST}/effects/${randomUUID()}`;
+  const kept = (await attempts((await appliedWith(linking(link))).taskId))[0];
+  await retirePickups();
+  const none = (await attempts((await appliedWith(linking(null))).taskId))[0];
+  await retirePickups();
+  const { taskId, credential } = await launched();
+  await workerOn(credential, answering(302, '{}')).applyOnce(taskId);
+  const dropped = (await attempts(taskId))[0];
+  expect([kept?.['link'], none?.['observed'], dropped?.['observed']]).toStrictEqual([
+    link,
+    true,
+    false,
+  ]);
+  expect(await setLink(kept?.['id'], `https://${HOST}/effects/other`)).toBe('23001');
+  expect(await setLink(none?.['id'], `https://${HOST}/effects/later`)).toBe('23001');
+  expect(await setLink(dropped?.['id'], `https://${HOST}/effects/1`)).toBe('23514');
+  for (const shape of [`https://${HOST}/x?t=1`, `http://${HOST}/x`, `https://${HOST}:1/x`]) {
+    // eslint-disable-next-line no-await-in-loop
+    expect(await setLink(dropped?.['id'], shape, ', observed = true'), shape).toBe('23514');
+  }
+  expect(await attempts(taskId)).toMatchObject([{ observed: false, link: null }]);
+});
 
 it('AW-08 canary: a planted credential and planted provider content reach no row, audit payload, log or refusal body', async () => {
   const planted = `aw08-planted-${randomUUID()}`;
