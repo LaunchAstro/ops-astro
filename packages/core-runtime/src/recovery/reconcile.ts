@@ -25,6 +25,7 @@
 import { revokeDelegation } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { settleAtObserved, type Settlement } from '../budget.ts';
+import { remainingOf, stopAtSpentHold } from '../budget-stop.ts';
 import { reserve } from '../decide.ts';
 import type { LockRequest } from '../locks.ts';
 import { priceAttempt } from '../price-book.ts';
@@ -205,8 +206,9 @@ export const settle = async (
  * version, holding what the old hold had not spent: a hold settled at its
  * model calls' cost is never held again in full (AW-01). `keep` marks the old
  * hold absence-proved first, so it stays held beside the replacement (0037);
- * a hold a person has just settled needs no mark. A replacement the envelope or cap has no room for, or whose approval
- * moved, is not reserved, and the step keeps its stop (the savepoint takes the
+ * a hold a person has just settled needs no mark. Nothing left to hold stops
+ * the run at its budget and asks (AW-05). A replacement the envelope or cap
+ * has no room for, or whose approval moved, is not reserved, and the step keeps its stop (the savepoint takes the
  * mark back with it, so the next pass asks again). `actorId` is the person whose
  * recorded outcome resumed it, whom the clear of the old identity's agent from
  * the task names; null on the pass's own paths, which no person ran.
@@ -219,7 +221,17 @@ export async function resume(
 ): Promise<string> {
   if (!row.approval_current) return 'not resumed: the approval behind it is no longer current';
   const heldMinor = BigInt(row.held_minor) - BigInt(row.spent_minor);
-  if (heldMinor <= 0n) return 'not resumed: its model calls spent the whole approved hold';
+  // AW-05: nothing left to hold stops the run at its budget and asks a person.
+  if (heldMinor <= 0n) {
+    const words = await stopAtSpentHold(tx, {
+      runId: row.run_id,
+      reservationId: row.reservation_id,
+      versionId: row.version_id,
+      delegationId: row.delegation_id,
+      remaining: await remainingOf(tx, row.reservation_id),
+    });
+    return `not resumed: its model calls spent the whole approved hold. ${words}`;
+  }
   await tx.query('savepoint t3d1_resume');
   if (keep) {
     await tx.query(
