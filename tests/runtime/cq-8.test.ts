@@ -65,6 +65,8 @@ describe('CQ-8 runtime structure', () => {
     const parts = sourceFiles(join(RUNTIME, 'recovery'));
     expect(parts.map((file) => relative(RUNTIME, file)).toSorted()).toEqual([
       'recovery/authority-loss.ts',
+      // AW-10: a broker call as its step's effect: the sweep's, the pass's and a person's half.
+      'recovery/broker-effect.ts',
       'recovery/classifier.ts',
       // T3e1: a drop, and the work coming back from it.
       'recovery/drop.ts',

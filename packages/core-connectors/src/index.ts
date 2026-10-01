@@ -37,7 +37,9 @@ export {
   REPLAY_NOTHING_HAPPENED,
   REPLAY_PATH,
   startReplayProvider,
+  type ReplayLookupMode,
   type ReplayMode,
   type ReplayProvider,
   type SeenRequest,
 } from './replay.ts';
+export { readReplayLookup, REPLAY_LOOKUP_PATH, replayLookup } from './replay-lookup.ts';

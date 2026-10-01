@@ -160,6 +160,9 @@ interface LedgerRow {
   readonly actual_minor: string | null;
   readonly observed_minor: string | null;
   readonly drop_state: string | null;
+  readonly drop_cause: string | null;
+  readonly fault: string | null;
+  readonly provider_code: string | null;
 }
 
 const minor = (value: string | null | undefined): number | null =>
@@ -178,7 +181,8 @@ async function answerFrom(
     async (tx) =>
       await tx.query<LedgerRow>(
         `select state, reserved_minor::text as reserved_minor, actual_minor::text as actual_minor,
-                observed_minor::text as observed_minor, drop_state
+                observed_minor::text as observed_minor, drop_state, drop_cause, fault,
+                provider_code
            from public.model_calls where business_id = $1 and id = $2`,
         [tx.businessId, callId],
       ),
@@ -193,6 +197,10 @@ async function answerFrom(
       actualMinor: minor(call?.actual_minor),
       observedMinor: minor(call?.observed_minor),
       drop: call?.drop_state ?? null,
+      // AW-10: which drop, whose fault and the provider's code, for the worker's hand-back.
+      dropCause: call?.drop_cause ?? null,
+      fault: call?.fault ?? null,
+      providerCode: call?.provider_code ?? null,
       ...words,
     },
   };

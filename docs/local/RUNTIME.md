@@ -1472,6 +1472,31 @@ both tenancy-scoped with row security forced, and the fair share's count
   delegation made. `delegation_id` stays the lease's, the one ledger. Written
   once by the reserve, read by the execution graph's helper steps. Test:
   `aw-11-child-graph`.
+- Faults (`0216_provider_faults`, AW-10): a call held as `liability_unknown`
+  says which drop it was (`drop_cause`: `provider_unavailable` for a 429 or
+  5xx, `connection_lost` for a cut with no answer, `worker_lost` for our side
+  lost mid-call; null for a failure that is no drop), whose fault from the
+  evidence (`fault`, `undetermined` for a timeout), the provider's code or
+  null (`provider_code`, `http_<status>`), when it went unknown
+  (`unknown_since`) and how it is reconciled (`reconcile_mode`:
+  `provider_lookup` when the operation declared its proof codes and its
+  adapter a lookup, else `person`). The hold also marks the run's step as one
+  that may have acted (`markStepActed`), so the hand-back, the sweep and the
+  pass stop on it. A status the operation declared in `nothingHappened`
+  (replay: `http_429`) releases the hold whole. The reconciliation pass's
+  provider phase (`reconcileProviderCalls`, `core-custody/src/broker-reconcile.ts`,
+  run per business by `passDeployment` after the sweep) asks the provider, through
+  custody and by the call's id (the operation id every call sends, a
+  conversation call's and a planning reply's too), about each
+  held call whose step is held unknown, at most 50 a pass. Only an answer in the
+  lookup's own shape with a declared code releases the call; the step then
+  resumes through the register's answer (`withProviderCalls`). Anything else
+  writes only `reconcile_note` ("could establish nothing: ..."); a provider
+  that gives one lookup no answer is asked nothing more that pass. A person's
+  outcome or write-off (`budget.record_outcome`, `budget.write_off`) resolves
+  the step's held calls in its transaction, with `outcome` and
+  `outcome_person_id`; no timer does. `readCallDrops` reads a task's held
+  calls in its business. Tests: `tests/broker/aw-10-*`.
 - `copy_registrations`: the copy register's registration half. A call's
   outbound prompt is registered before it is first materialised, and nothing
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses
@@ -1482,7 +1507,9 @@ The broker (`core-custody/src/broker.ts`, with its steps in the
 command ([API.md](API.md), "The model call") is its one product caller. The
 lease-expiry sweep's half is `sweepModelCalls`: a started call on a dead lease
 is held as `liability_unknown`, never released; an unsent one is released.
-Neither the prompt nor the model's words are stored in either table.
+The lease sweep (`recovery/sweep.ts`) does the same for a lost worker's calls
+under its own locks before it classifies the step (`holdLostCalls`,
+`recovery/broker-effect.ts`), naming the drop `worker_lost`, ours. Neither the prompt nor the model's words are stored in either table.
 
 A call on a task a client is on is refused before any route is chosen
 (C60, `CLIENT_MODEL_USE_OFF`, recorded as its step). A client's model use is

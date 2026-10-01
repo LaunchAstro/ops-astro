@@ -31,6 +31,7 @@ import { lockRediscovered } from '../rediscovery.ts';
 import { checkAuthorityAt, holdCoveringGrants } from './classifier.ts';
 import { fourEyesBandMinor, pairFor, type Holds } from '../four-eyes.ts';
 import { locksOf, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
+import { resolveHeldCalls } from './broker-effect.ts';
 
 export interface WriteOffRequest {
   readonly taskId: string;
@@ -195,6 +196,8 @@ export async function writeOff(tx: TenantQuery, request: WriteOffRequest): Promi
     return { ok: true, value: { ...figure, state, firstApproverPersonId: request.personId } };
   }
   await close(tx, row, request.amountMinor);
+  // AW-10: the step's held broker calls record the write-off and who made it.
+  await resolveHeldCalls(tx, row.reservation_id, 'written_off', request.personId);
   const approvers = [...(pair === null ? [] : [pair.personId]), request.personId];
   return { ok: true, value: { ...figure, heldMinor: Number(held), state: 'applied', approvers } };
 }

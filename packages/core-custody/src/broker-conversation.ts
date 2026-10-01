@@ -140,7 +140,9 @@ async function sendAndSettle(
   const { callId, operation, route } = called;
   const adapter = broker.providers.get(operation.provider);
   if (adapter === undefined) throw new Error(`no adapter for ${operation.provider}`);
-  const built = adapter.build(Object.fromEntries(fields.map((field) => [field.name, field.value])));
+  const values = Object.fromEntries(fields.map((field) => [field.name, field.value]));
+  // AW-10: the call names itself to the provider, so a lookup can ask about it.
+  const built = adapter.build(values, callId);
   const outcome = await broker.custody.dispatch(route.credentialRef, {
     destination: operation.destination,
     path: built.path,

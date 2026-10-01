@@ -14,11 +14,31 @@ import type {
 import type { CarryRefusal, CredentialKind } from './credentials.ts';
 import type { Custody } from './custody.ts';
 
-/** How a provider's adapter builds a request and prices an answer. It runs here, never in custody. */
+/**
+ * How a provider's adapter builds a request and prices an answer. It runs
+ * here, never in custody. The call's id is the operation id the provider is
+ * given, so the reconciliation pass can ask about it later (AW-10): `lookup`
+ * builds that question and `readLookup` reads the one code it answers. An
+ * adapter with no lookup leaves every unknown call to a person.
+ */
 export interface ProviderAdapter {
-  readonly build: (values: Readonly<Record<string, string>>) => AdapterRequest;
+  readonly build: (
+    values: Readonly<Record<string, string>>,
+    operationId?: string,
+  ) => AdapterRequest;
   readonly price: (answer: ModelAnswer) => number;
+  readonly lookup?: (operationId: string) => AdapterRequest;
+  readonly readLookup?: (body: unknown) => string | undefined;
 }
+
+/**
+ * AW-10: which drop a held call was. The provider said it is down or
+ * limiting; the connection was cut with no answer; or our side was lost.
+ */
+export type DropCause = 'provider_unavailable' | 'connection_lost' | 'worker_lost';
+
+/** Whose fault a failure was, from the evidence; `undetermined` when it cannot say. */
+export type CallFault = 'provider' | 'network' | 'ours' | 'undetermined';
 
 /** A configured route: where a call may go, and which credential custody carries it with. */
 export interface BrokerRoute {
@@ -143,6 +163,11 @@ export type ModelCallResult =
       readonly heldMinor: number;
       readonly observedMinor: number | null;
       readonly drop: 'dropped_worker_lost' | 'dropped_no_answer' | null;
+      /** AW-10: which drop, or null for a failure that is no drop. */
+      readonly cause: DropCause | null;
+      readonly fault: CallFault;
+      /** The provider's refusal code, or null when none arrived. */
+      readonly providerCode: string | null;
     }
   | {
       readonly ok: false;

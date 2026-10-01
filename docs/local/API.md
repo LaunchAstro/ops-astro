@@ -1072,7 +1072,13 @@ effect applies.
 
 The answer is the call as its ledger row stands: `callId`, `state`,
 `reservedMinor`, `actualMinor`, `observedMinor`, `drop`, and `text`, the
-model's words, only on the request that made them. The words are never stored,
+model's words, only on the request that made them. A call held as unknown
+liability also answers `dropCause` (`provider_unavailable`, `connection_lost`,
+`worker_lost`, or null for a failure that is no drop), `fault` (`provider`,
+`network`, `ours` or `undetermined`) and `providerCode` (the provider's
+refusal code, such as `http_503`, or null when none arrived); the worker hands
+the run back `dropped` with that cause (AW-10, [RUNTIME.md](RUNTIME.md), "The
+model call's ledger"). The words are never stored,
 so a replay answers the ledger's state without them. A reserve refusal is the
 register's code (`LEASE_NOT_OWNED`, `LEASE_EXPIRED`, `AUTHORITY_LOST`,
 `DECISION_STALE`, `OPERATION_NOT_CATALOGUED`, `EFFECT_NOT_RECONCILABLE`,
