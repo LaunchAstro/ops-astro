@@ -518,9 +518,12 @@ name and its creator, and a member row for each person in it; its messages are
   `self` and the handler asks: the creator while a current member, then a live
   `chat:manage` grant through `checkAuthority`, in the group or not. A member
   who has neither is refused `SCOPE_NOT_GRANTED`; anyone else outside it gets
-  `NOT_FOUND`. Managing never lets the caller read it: an administrator not in
-  a group renames it or changes who else is in it, never adds herself, and
-  still reads, lists and counts nothing of it. Never an agent's.
+  `NOT_FOUND`. Managing never lets the caller read a message: an administrator
+  not in a group renames it or changes who else is in it, never adds herself,
+  and never reads, lists or counts its messages. Changing members needs the
+  member list, so its answers (`FIELD_VALUE_INVALID` for adding a member,
+  `NOT_FOUND` for removing a non-member) tell a manager who is in it; that is
+  the grant's, by #649. Never an agent's.
 - `chat.leave` is the caller's own member row only, self-scoped.
 
 Every send, marker move, member change and leave takes the conversation's lock
