@@ -477,6 +477,28 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     expect(outside).toStrictEqual([]);
   }, 600_000);
 
+  it('times a correction at another party of the same business like a fabricated id', async () => {
+    // C80: the cross-business cell above never finds the row. Here it is found,
+    // in mia's own business, and only her grant at another party turns it away.
+    const { alpha, ada, mia, db } = w.h.world;
+    await db.app.withBusiness(alpha, async (tx) => {
+      await grantTo(tx, mia as Member, 'write', { kind: 'party', id: randomUUID() }, false, 'run');
+    });
+    const onA = await seedLiveCorrection(db.app, alpha, w.h.alphaTask.id, ada);
+    const cell: Cell = {
+      op: 'live_correction.read',
+      operand: 'correctionId (in tenant, another party)',
+      by: { kind: 'person', caller: mia },
+      code: 'NOT_FOUND',
+      foreign: () => ({ correctionId: onA.correctionId }),
+      fabricated: () => ({ correctionId: randomUUID() }),
+    };
+    const { foreign, fabricated } = await sample(cell);
+    const verdict = compare(foreign, fabricated);
+    console.log(line(cell, PAIRS, verdict));
+    expect(verdict.within).toBe(true);
+  }, 120_000);
+
   it('flags an injected delay, so the comparison is not vacuous', async () => {
     // Synthetic first: the comparator on its own says within for one
     // distribution against itself and outside for the same one shifted.

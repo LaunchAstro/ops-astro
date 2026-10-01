@@ -2,12 +2,12 @@
 //
 // C80 decision read: `live_correction.read` answers a correction's state, the
 // approver who decided it by name (or null) and its version, and nothing
-// else, to whoever may see the task's run (`run:read` at the correction's own
-// party). Three real crossings, each beside a reader in scope who does see
+// else, to whoever may request it (`run:write` at the correction's own party,
+// ORCH33). Four real crossings, each beside a reader in scope who does see
 // the correction, and each refusal compared byte for byte with the answer to
 // an id that names nothing: another business, another client party in the
-// same business, and an agent under another person's live delegation, which
-// reads none (a delegation holds run to write).
+// same business, a client outside the business, and an agent under another
+// person's live delegation, which reads none (the read is never an agent's).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -16,7 +16,7 @@ import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { c80World, requestBody, type C80World } from './c80-world.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
-import type { Member } from '../commands/fixture.ts';
+import { grantTo, shareWithClient, type Member } from '../commands/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('C80 decision read: DATABASE_URL is unset.');
@@ -124,8 +124,33 @@ describe.skipIf(serverUrl === undefined)(
   },
 );
 
-describe.skipIf(serverUrl === undefined)('C80 decision read, no run:read', () => {
-  it('a member holding run:read nowhere is refused alike for a real and an unknown id', async () => {
+describe.skipIf(serverUrl === undefined)('C80 decision read, run:write alone', () => {
+  it('a member holding only run:write at party A reads back their own correction', async () => {
+    const fay = await w.world.decider('fay');
+    await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+      await grantTo(tx, fay, 'write', { kind: 'party', id: w.partyA }, false, 'run');
+    });
+    const asked = await requested(fay);
+    expect(readCode(await readAs(fay, asked.id))).toBe('not-a-refusal');
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('C80 decision read, a client outside the business', () => {
+  it('a client holding a record share reads a correction exactly as an id that names nothing', async () => {
+    const asked = await requested(w.ava);
+    const client = await shareWithClient(w.world.db.app, w.world.business, w.ava, w.taskA);
+    // Even a run:write at the correction's party reads nothing for a client.
+    await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+      await grantTo(tx, client, 'write', { kind: 'party', id: w.partyA }, false, 'run');
+    });
+    const theirs = await readAs(client, asked.id);
+    expect(readCode(theirs)).toBe('NOT_FOUND');
+    expect(theirs).toStrictEqual(await readAs(client, randomUUID()));
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('C80 decision read, no run:write', () => {
+  it('a member holding run:write nowhere is refused alike for a real and an unknown id', async () => {
     const asked = await requested(w.ava);
     const refusedReal = await readAs(w.admin, asked.id);
     expect(readCode(refusedReal)).toBe('SCOPE_NOT_GRANTED');
