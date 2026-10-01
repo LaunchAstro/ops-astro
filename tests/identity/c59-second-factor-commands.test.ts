@@ -253,7 +253,11 @@ describe.skipIf(serverUrl === undefined)('C59 on the command path', () => {
         provider: 'supabase',
         providerFactorId: `factor-${randomUUID()}`,
       });
-      await recordFactorVerified(tx, { personId: milo.personId, factorId: enrolled.id });
+      await recordFactorVerified(tx, {
+        personId: milo.personId,
+        factorId: enrolled.id,
+        subject: milo.presented.subject,
+      });
     });
 
     const refused = await read({ level: 'aal1', signedInAt: now, factorAt: null });

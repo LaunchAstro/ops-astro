@@ -153,7 +153,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 /**
  * The assurance a verified token carries: `aal`, and from `amr` the time of the
- * session's first sign-in and of its second factor.
+ * session's first sign-in (its earliest first-factor entry) and of its latest
+ * second factor.
  *
  * **The factor time is the `amr` entry, never `iat`.** GoTrue stamps each
  * method with the time it was performed and copies the list into every token
@@ -167,16 +168,18 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
  */
 function assuranceOf(claims: Readonly<Record<string, unknown>>): Assurance {
   const methods = Array.isArray(claims['amr']) ? (claims['amr'] as readonly unknown[]) : [];
-  const times = (wanted: ReadonlySet<string>): number | null => {
-    const found = methods
+  const times = (wanted: ReadonlySet<string>): number[] =>
+    methods
       .map((entry) => (typeof entry === 'object' && entry !== null ? entry : {}))
       .filter((entry) => wanted.has(String((entry as Record<string, unknown>)['method'])))
       .map((entry) => (entry as Record<string, unknown>)['timestamp'])
       .filter((time): time is number => Number.isSafeInteger(time) && (time as number) > 0);
-    return found.length === 0 ? null : Math.max(...found);
-  };
-  const signedInAt = times(FIRST_FACTOR_METHODS);
-  const factorAt = times(SECOND_FACTOR_METHODS);
+  // The earliest first factor, so a later re-sign-in never extends the 12
+  // hours; the latest second factor, the one the step-up asks after.
+  const first = times(FIRST_FACTOR_METHODS);
+  const second = times(SECOND_FACTOR_METHODS);
+  const signedInAt = first.length === 0 ? null : Math.min(...first);
+  const factorAt = second.length === 0 ? null : Math.max(...second);
   if (claims['aal'] === 'aal2' && factorAt !== null) {
     return { level: 'aal2', signedInAt, factorAt };
   }
