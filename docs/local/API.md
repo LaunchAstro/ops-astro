@@ -406,14 +406,16 @@ bare origin, https unless it is on this machine) and
 `ENROLMENT_CREDENTIALS_FILE` (custody's file, the service key under
 `auth_key` for the `auth` destination) staged. A custody process of its own
 holds the key, started before the port is bound and stopped before the
-database closes; the broker catalogues `auth.create_user` and
+database closes, and sends it as the bearer and in `apikey` as well, as a
+hosted provider reads a secret key (`sb_secret_...`); the broker catalogues `auth.create_user` and
 `auth.read_user` alone, custody routing the one POST on
 `/auth/v1/admin/users` and the one GET on `/auth/v1/admin/users/*`, never a
 PUT, and tokens are looked for in the businesses the
 sweep covers (`RECOVERY_BUSINESS_KEYS`). Unset or `off`, the route is not
 mounted (404) and the log says `api: enrolment off`. `on` with either
 setting missing or malformed, or any other value, stops the server before it
-listens, naming the setting, never its value.
+listens, naming the setting, never its value; so does a credentials file
+without `auth_key` for `auth` (`credential auth_key missing`).
 
 ## Task, board and people operations
 
