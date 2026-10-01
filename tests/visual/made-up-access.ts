@@ -6,6 +6,7 @@
 // test side only.
 
 import type {
+  InvitationListResult,
   AccessGrant,
   AccessReadResult,
   OperationsReadResult,
@@ -98,4 +99,31 @@ export const OPERATIONS: OperationsReadResult = {
       { source: 'watcher', name: 'backups', state: 'never-observed', lastObservedAt: null },
     ],
   },
+};
+
+/** Two team invitations: one pending and sent, one revoked before it was sent (C39-T). */
+export const INVITATIONS: InvitationListResult = {
+  ok: true,
+  invitations: [
+    {
+      invitationId: 'i-ivy',
+      name: 'Ivy',
+      address: 'ivy@example.test',
+      role: 'member',
+      state: 'pending',
+      createdAt: '2026-09-28T01:00:00.000Z',
+      sentAt: '2026-09-28T01:00:05.000Z',
+      expiresAt: '2026-10-05T01:00:00.000Z',
+    },
+    {
+      invitationId: 'i-rex',
+      name: 'Rex',
+      address: 'rex@example.test',
+      role: 'admin',
+      state: 'revoked',
+      createdAt: '2026-09-27T01:00:00.000Z',
+      sentAt: null,
+      expiresAt: '2026-10-04T01:00:00.000Z',
+    },
+  ],
 };

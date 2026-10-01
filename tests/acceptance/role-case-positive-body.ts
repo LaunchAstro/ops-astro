@@ -161,6 +161,8 @@ export function createPositiveBody(
       case 'inbox.read':
       case 'inbox.count':
       case 'inbox.unattended':
+      // C39-T: the business's invitations, under `access:share`, which the admin holds.
+      case 'invitation.list':
         // The caller's own inbox (INB-1d) needs a live grant of any kind, as
         // above; `inbox.unattended` needs `operations:read`, which the seed
         // grants the admin (INB-1e, C55).

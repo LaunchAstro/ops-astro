@@ -191,4 +191,6 @@ export type CommandName =
   // `access:share`; its expiry is the business's worker's, never a command.
   | 'invitation.create'
   | 'invitation.resend'
-  | 'invitation.revoke';
+  | 'invitation.revoke'
+  // C39-T: the business's invitations for Settings ▸ Access, under the same key.
+  | 'invitation.list';

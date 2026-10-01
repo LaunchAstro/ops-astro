@@ -36,6 +36,7 @@ import type {
   OperationsReadResult,
   InboxCountResult,
   InboxReadResult,
+  InvitationListResult,
   PersonListResult,
   TeamListResult,
   PresetPlanResult,
@@ -164,6 +165,8 @@ export interface ReadOperands {
   readonly 'inbox.count': NoOperands;
   /** The business's items no path reaches, for `operations:read` (INB-1e). */
   readonly 'inbox.unattended': NoOperands;
+  /** The business's team invitations, under `access:share` (C39-T). */
+  readonly 'invitation.list': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -205,4 +208,5 @@ export type ReadResult =
   | BreachNoticesResult
   | InboxReadResult
   | InboxCountResult
+  | InvitationListResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] };
