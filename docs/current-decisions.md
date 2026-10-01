@@ -125,7 +125,11 @@ made-up to real, only while every item is done. Recording an item and changing
 the mode are commands under `operations:manage` in the business that operates
 the installation (migration 0062); accepting a finding is not built yet.
 `task.set_party` refuses `CLIENT_LOCKED` 409 once the task has content (its
-history or a row naming it), under the task's row lock.
+history or a row naming it), under the task's row lock. A live subtask is
+content of its parent (ruled 1 October 2026, S0-5 over MP-4-4): a parent with
+subtasks keeps its client and nothing moves down its subtree; a task with no
+subtasks can still be moved in one step, and 'duplicate without contents' is
+the path for one that has them. `task-subtasks` names the rule.
 
 No external engineer review, legal opinion, security assessment, hosted enforcement,
 mailbox delivery, or service deployment is certified here. A public technical

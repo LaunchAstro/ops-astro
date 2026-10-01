@@ -19,6 +19,8 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const scratch: string[] = [];
+/** The first of the migrations the planted set replays. */
+const FAMILY_M = '0131';
 
 interface Declaration {
   readonly table: string;
@@ -32,12 +34,19 @@ interface Planted {
   readonly changes?: readonly Declaration[];
 }
 
-/** The real migrations, plus the planted ones after the head, each with its declaration if any. */
+/**
+ * The real migrations before family M's (0131), plus the planted ones after them, each with
+ * its declaration if any. 9996-9999 replay 0131, 0132, 0133 and 0141 as written, so those
+ * real files (and the family's others) stay out: applied first, they leave the replay
+ * nothing to change.
+ */
 function withPlanted(planted: readonly Planted[]): string {
   const directory = mkdtempSync(join(tmpdir(), 'upgrade-drill-declared-'));
   scratch.push(directory);
   for (const file of readdirSync('migrations')) {
-    if (file.endsWith('.sql')) copyFileSync(join('migrations', file), join(directory, file));
+    if (/\.(sql|changes\.json)$/u.test(file) && file < FAMILY_M) {
+      copyFileSync(join('migrations', file), join(directory, file));
+    }
   }
   for (const one of planted) {
     writeFileSync(join(directory, `${one.version}.sql`), `${one.sql}\n`);

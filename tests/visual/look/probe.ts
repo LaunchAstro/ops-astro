@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The look probes' shapes. The screen files import them from here, not from
-// index.ts, so the list that imports every screen is never imported back.
+// What a look probe is (UI-POLISH). Its own module, so the screen files and
+// the list in index.ts each import it and never each other.
 
 /**
  * Before measuring: `store` puts values in the page's localStorage before it

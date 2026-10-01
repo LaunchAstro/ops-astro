@@ -14,10 +14,9 @@ import { SHELL } from './shell.ts';
 import { RAIL } from './rail.ts';
 import { SIGN_IN } from './sign-in.ts';
 import { TASK } from './task.ts';
+import type { LookScreen } from './probe.ts';
 
-import type { LookScreen } from './types.ts';
-
-export type { LookPrep, LookProbe, LookScreen } from './types.ts';
+export type { LookPrep, LookProbe, LookScreen } from './probe.ts';
 
 export const LOOK_SCREENS: readonly LookScreen[] = [
   SHELL,
