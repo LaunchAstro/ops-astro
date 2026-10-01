@@ -5,10 +5,14 @@
 // in the same act, and deactivates each one's agent actor, so nothing they
 // issued stays usable for its 90 days. Another person's credential in the same
 // business, and the same provider user's credential in another business, are
-// left as they were. Every name below is made up.
+// left as they were. An issue racing the ending takes the same access lock,
+// so it is refused or revoked with the rest. Every name below is made up.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { bearer, call, personPath, serverUrl, type Answer } from '../acceptance/world.ts';
 import { grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import {
@@ -111,5 +115,118 @@ describe.skipIf(serverUrl === undefined)('C58 ending access and agent credential
     expect(await credentialsOf(world.alpha, [adaOwn])).toEqual([live]);
     expect(await credentialsOf(world.bravo, [bravoOwn])).toEqual([live]);
     expect((ended.body['detail'] as Record<string, unknown>)['credentialsRevoked']).toBe(2);
+  });
+});
+
+/** A promise and the call that settles it. */
+function latch(): { readonly promise: Promise<void>; readonly open: () => void } {
+  const settle: (() => void)[] = [];
+  const promise = new Promise<void>((resolve) => {
+    settle.push(resolve);
+  });
+  return { promise, open: () => settle[0]?.() };
+}
+
+const codeOf = (result: Awaited<ReturnType<typeof executeCommand>>): string =>
+  isCommandRefusal(result) ? result.code : 'ok';
+
+/** The live credentials the person issued in alpha. */
+const liveIssuedBy = async (personId: string): Promise<readonly { readonly id: string }[]> =>
+  await harness.world.db.app.withBusiness(
+    harness.world.alpha,
+    async (tx) =>
+      await tx.query<{ readonly id: string }>(
+        `select id from public.agent_credentials
+          where issued_by_person_id = $1::uuid and revoked_at is null`,
+        [personId],
+      ),
+  );
+
+/** Until `act` settles or some transaction waits on a lock, whichever is first. */
+async function settledOrWaiting(act: Promise<unknown>): Promise<void> {
+  const state = { settled: false };
+  void act.finally(() => {
+    state.settled = true;
+  });
+  for (let tries = 0; tries < 1500 && !state.settled; tries += 1) {
+    // eslint-disable-next-line no-await-in-loop -- polled until one of the two holds
+    const [row] = await harness.world.db.admin.execute<{ readonly waiting: boolean }>(
+      'select exists (select 1 from pg_locks where not granted) as waiting',
+    );
+    if (row?.waiting === true) return;
+    // eslint-disable-next-line no-await-in-loop -- the poll's pause
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 20);
+    });
+  }
+}
+
+/** A connection whose transactions stop before the issue's first write until `go` opens. */
+function pausedBeforeIssueWrites(url: string): {
+  readonly database: Database;
+  readonly reached: ReturnType<typeof latch>;
+  readonly go: ReturnType<typeof latch>;
+} {
+  const inner = connect(url, { source: 'runtime', max: 1 });
+  const reached = latch();
+  const go = latch();
+  const database: Database = {
+    log: inner.log,
+    close: async () => await inner.close(),
+    withBusiness: async (businessId, run) =>
+      await inner.withBusiness(
+        businessId,
+        async (tx) =>
+          await run({
+            businessId: tx.businessId,
+            query: async (text, parameters) => {
+              if (/^\s*insert into public\.actors\b/u.test(text)) {
+                reached.open();
+                await go.promise;
+              }
+              return await tx.query(text, parameters);
+            },
+          }),
+      ),
+  };
+  return { database, reached, go };
+}
+
+describe.skipIf(serverUrl === undefined)('C58 ending access and agent credentials', () => {
+  it('an issue that checked its grants before access.end committed leaves no live credential', async () => {
+    const { world } = harness;
+    const { person } = await teammate('una');
+    await keyed(world.alpha, person);
+    const paused = pausedBeforeIssueWrites(world.db.appUrl);
+    const wide = connect(world.db.appUrl, { source: 'runtime', max: 1 });
+    try {
+      // The issue checks the person's grants, then stops before it writes.
+      const issued = executeCommand(paused.database, world.alpha, person.presented, 'api', {
+        operationId: randomUUID(),
+        command: 'credential.issue',
+        scope: [{ collection: 'task', action: 'read' }],
+        expiresAt: new Date(Date.now() + 30 * DAY_MS).toISOString(),
+        purpose: 'the command line on a laptop',
+      } as Parameters<typeof executeCommand>[4]);
+      await paused.reached.promise;
+      // The ending runs meanwhile on another connection, and commits unless it waits.
+      const ended = executeCommand(wide, world.alpha, world.ada.presented, 'api', {
+        operationId: randomUUID(),
+        command: 'access.end',
+        holderId: person.personId,
+      } as Parameters<typeof executeCommand>[4]);
+      await settledOrWaiting(ended);
+      paused.go.open();
+      expect(codeOf(await ended)).toBe('ok');
+      expect(['ok', 'CREDENTIAL_SCOPE_WIDENS', 'AUTH_NO_MEMBERSHIP']).toContain(
+        codeOf(await issued),
+      );
+      const live = await liveIssuedBy(person.personId);
+      expect(live, 'a credential the ended person issued, still live').toEqual([]);
+    } finally {
+      paused.go.open();
+      await paused.database.close();
+      await wide.close();
+    }
   });
 });

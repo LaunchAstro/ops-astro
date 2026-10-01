@@ -111,7 +111,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
         conflict={model.conflict}
         row={model.rowFor(which)}
         reading={model.read.outcome === 'loading'}
-        disabled={model.disabled}
+        disabled={model.disabledFor(which)}
         onWriteOver={model.writeOver}
       />
     );
@@ -189,7 +189,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
                   min={0}
                   step={1}
                   placeholder="Dollars"
-                  disabled={model.disabled || off}
+                  disabled={model.disabledFor('four-eyes') || off}
                   value={threshold}
                   onChange={(event) => {
                     setThreshold(event.target.value);
@@ -200,7 +200,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
                   id="settings-four-eyes-off"
                   idFor="off"
                   on={!off}
-                  disabled={model.disabled}
+                  disabled={model.disabledFor('four-eyes')}
                   onChange={(on) => {
                     setOff(!on);
                   }}
@@ -210,7 +210,7 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
                 className="btn btn--sm btn--primary"
                 type="button"
                 data-settings="save-four-eyes"
-                disabled={model.disabled}
+                disabled={model.disabledFor('four-eyes')}
                 onClick={saveFourEyes}
               >
                 {model.busy === 'four-eyes' ? 'Saving…' : 'Save threshold'}
@@ -239,14 +239,14 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
                 id="settings-sign-off"
                 idFor="on"
                 on={signOff}
-                disabled={model.disabled}
+                disabled={model.disabledFor('sign-off')}
                 onChange={setSignOff}
               />
               <button
                 className="btn btn--sm btn--primary"
                 type="button"
                 data-settings="save-sign-off"
-                disabled={model.disabled}
+                disabled={model.disabledFor('sign-off')}
                 onClick={() => {
                   model.save('sign-off', signOff);
                 }}
