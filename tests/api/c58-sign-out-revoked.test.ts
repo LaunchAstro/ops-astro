@@ -6,7 +6,8 @@
 // clears the cookie at `/api/session/end` (S0-6c). That ends the provider's
 // session for this API in every business the login reaches, then asks the
 // provider to end it too. Only the session the tab names ends, and a cookie
-// whose token does not verify ends nothing. The browser here keeps cookies to
+// whose token does not verify ends nothing, nor does a sign-out whose body is
+// not an empty object. The browser here keeps cookies to
 // their Path, as a real one does (the interim review's cookie-path proof).
 
 import { randomUUID } from 'node:crypto';
@@ -14,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { cookieNameFor, SESSION_COOKIE_OPTIONS, sessionIdOf } from '../../apps/api/auth/session.ts';
 import { signOut } from '../../apps/web/src/session/sign-in.ts';
 import { CSRF_HEADER, SESSION_HEADER } from '../../packages/core-wire/src/index.ts';
-import { ACCEPTANCE_ISSUER, call, personPath, serverUrl } from '../acceptance/world.ts';
+import { ACCEPTANCE_ISSUER, bearer, call, personPath, serverUrl } from '../acceptance/world.ts';
 import {
   insertActor,
   insertLogin,
@@ -26,6 +27,8 @@ import { signForged } from '../support/sign-in.ts';
 import {
   api,
   answerWith,
+  endedCount,
+  eventsFor,
   EXPIRED,
   GOOD,
   HOSTILE,
@@ -186,6 +189,47 @@ async function hostileProvider(): Promise<void> {
   }
 }
 
+/** Whether this provider session is ended in every business (0065). */
+const endedEverywhere = async (session: string): Promise<boolean> =>
+  await world.db.app.withBusiness(world.alpha, async (tx) => {
+    const rows = await tx.query<{ readonly n: number }>(
+      'select count(*)::int as n from ops.ended_provider_sessions where session_id = $1::uuid',
+      [session],
+    );
+    return (rows[0]?.n ?? 0) > 0;
+  });
+
+const signOutsApplied = async (): Promise<number> =>
+  (await eventsFor('account.sign_out')).filter((event) => event.outcome === 'applied').length;
+
+async function malformedBody(): Promise<void> {
+  const session = randomUUID();
+  const token = await tokenFor(world.mia.subject, session);
+  expect(await served(token)).toEqual(OK);
+  const [ended, signedOut] = [await endedCount(), await signOutsApplied()];
+  // Not an object at all, or an object with fields where the sign-out takes none.
+  const bodies = [[], 'x', null, 42, true, { sessionId: session }, { scope: 'global' }];
+  for (const body of bodies) {
+    for (const headers of [bearer(token), asTab(token)]) {
+      // oxlint-disable-next-line no-await-in-loop
+      const refused = await call(
+        api,
+        personPath('alpha', '/account/sessions/sign-out'),
+        body,
+        headers,
+      );
+      expect(refused.status, JSON.stringify(body)).toBe(400);
+      expect(refused.code, JSON.stringify(body)).toBe('COMMAND_BODY_INVALID');
+    }
+  }
+  expect(await served(token)).toEqual(OK);
+  expect(await servedAsTab(token)).toEqual(OK);
+  expect(await endedCount()).toBe(ended);
+  expect(await endedEverywhere(session)).toBe(false);
+  expect(await signOutsApplied()).toBe(signedOut);
+  expect(seen).toEqual([]);
+}
+
 describe.skipIf(serverUrl === undefined)(
   'C58 refresh revoked: signing out ends the token at once',
   () => {
@@ -204,6 +248,11 @@ describe.skipIf(serverUrl === undefined)(
     it(
       'C58 sign-out checks first: a cookie that does not verify, or has expired, ends nothing',
       checksFirst,
+    );
+    it(
+      'C58 sign-out with a malformed body: a body that is not an empty object ends no session and records no ending',
+      malformedBody,
+      30_000,
     );
     it(
       'C58 sign-out revoked whatever the provider answers: a hostile answer never undoes the local ending',
