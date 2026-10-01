@@ -28,8 +28,22 @@
 //    acts as the business's worker. The answer opens no session: the person
 //    goes on with the session they have.
 
-import type { Database, VerifiedSubject } from '../../../core-records/src/index.ts';
-import type { Broker } from '../../../core-custody/src/index.ts';
+import { createHash } from 'node:crypto';
+import {
+  advisoryLock,
+  type Database,
+  type TenantQuery,
+  type VerifiedSubject,
+} from '../../../core-records/src/index.ts';
+import { readLogin, type Broker } from '../../../core-custody/src/index.ts';
+import {
+  find,
+  liveToken,
+  LOGIN_PROVIDER,
+  loginSubject,
+  spendAndSeat,
+  TOKEN,
+} from './invitation-accept.ts';
 
 export interface SignedInAcceptRequest {
   readonly token: string;
@@ -43,12 +57,65 @@ export type SignedInAcceptResult =
 
 const INVALID = { ok: false, code: 'ENROLMENT_LINK_INVALID' } as const;
 
+/**
+ * Serialise every accept that could set or bind one provider login, across
+ * businesses: the lock is the database's, not a tenant's.
+ */
+async function lockLogin(tx: TenantQuery, subject: string): Promise<void> {
+  await advisoryLock(tx, `provider-login:${subject}`);
+}
+
+/** Whether this business maps the login to anyone now: a person or an agent. */
+async function mappedHere(tx: TenantQuery, subject: string): Promise<boolean> {
+  const rows = await tx.query(
+    `select 1 from logins l
+      where l.business_id = $1 and l.provider = $2 and l.subject = $3
+        and (exists (select 1 from person_logins pl
+                      where pl.business_id = l.business_id and pl.login_id = l.id and pl.active)
+          or exists (select 1 from actor_logins al
+                      where al.business_id = l.business_id and al.login_id = l.id and al.active))`,
+    [tx.businessId, LOGIN_PROVIDER, subject],
+  );
+  return rows.length > 0;
+}
+
+/** Step 3: false when the token died, or this business maps the login already. */
+async function bindSignedIn(
+  tx: TenantQuery,
+  hash: string,
+  ours: string,
+  subject: string,
+): Promise<boolean> {
+  // Sorted, so two accepts that take both locks take them in one order.
+  for (const key of [...new Set([ours, subject])].toSorted()) {
+    // oxlint-disable-next-line no-await-in-loop -- one lock after the other, in order
+    await lockLogin(tx, key);
+  }
+  const found = await liveToken(tx, hash, true);
+  if (found === undefined || (await mappedHere(tx, subject))) return false;
+  await spendAndSeat(tx, found, subject);
+  return true;
+}
+
 /** Accept the invitation a one-time token names, binding the signed-in session's login to it. */
 export async function acceptSignedIn(
-  _database: Database,
-  _businesses: readonly string[],
-  _broker: Broker,
-  _request: SignedInAcceptRequest,
+  database: Database,
+  businesses: readonly string[],
+  broker: Broker,
+  request: SignedInAcceptRequest,
 ): Promise<SignedInAcceptResult> {
-  return await Promise.resolve(INVALID);
+  const hash = createHash('sha256').update(request.token).digest('hex');
+  const found = TOKEN.test(request.token) ? await find(database, businesses, hash) : undefined;
+  if (found === undefined || request.login.provider !== LOGIN_PROVIDER) return INVALID;
+  const { subject } = request.login;
+  const read = await readLogin(broker, subject);
+  if (!read.ok)
+    return read.kind === 'refused' ? INVALID : { ok: false, code: 'ENROLMENT_UNAVAILABLE' };
+  if (read.confirmed !== found.address) return INVALID;
+  const ours = loginSubject(found.business, found.address);
+  const bound = await database.withBusiness(
+    found.business,
+    async (tx) => await bindSignedIn(tx, hash, ours, subject),
+  );
+  return bound ? { ok: true, state: 'joined' } : INVALID;
 }
