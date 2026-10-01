@@ -194,6 +194,7 @@ table exactly:
 | `agent_brief`       | unslotted, in `data` | `task.update` (0134, MP-4-7)                                   |
 | `page_link`         | unslotted, in `data` | `task.update` (0137, MP-4-12)                                  |
 | `estimated_minutes` | unslotted, in `data` | `task.update` (0138, MP-4-8)                                   |
+| `category`          | unslotted, in `data` | `task.set_category` (0161, MP-4-8)                             |
 | `agent`             | unslotted, in `data` | `task.assign` (0140, Assign to AI)                             |
 | `due`               | `ts_1`               | `task.update`                                                  |
 | `priority`          | `num_1`              | `task.update`                                                  |

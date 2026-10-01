@@ -18,6 +18,17 @@ interface Held {
   readonly taskId: string;
 }
 
+/** The field writes an agent makes on its own task, each with the fields it sends. */
+const OWN_FIELD_WRITES: ReadonlyMap<CommandName, Readonly<Record<string, unknown>>> = new Map<
+  CommandName,
+  Readonly<Record<string, unknown>>
+>([
+  ['task.set_scores', { impact: 5 }],
+  ['task.set_adhoc', { ad_hoc: true }],
+  ['task.set_category', { category: 'seo' }],
+  ['task.update', { agent_brief: 'the agent’s brief' }],
+]);
+
 /** A comment the agent writes on its own task, and the body that changes it (MP-4-5). */
 async function ownCommentChange(
   harness: Harness,
@@ -56,21 +67,14 @@ async function ownFieldBody(
   if (name === 'task.edit_comment' || name === 'task.delete_comment') {
     return await ownCommentChange(harness, name, held);
   }
-  if (name !== 'task.set_scores' && name !== 'task.set_adhoc' && name !== 'task.update') {
-    return undefined;
-  }
+  if (!OWN_FIELD_WRITES.has(name)) return undefined;
   // Read, not carried: each control moves the task's revision.
   const rows = await harness.world.db.admin.execute<{ readonly revision: string }>(
     `select revision::text as revision from public.records where id = $1`,
     [held.taskId],
   );
   const expectedRevision = Number(rows[0]?.revision ?? '0');
-  const fields =
-    name === 'task.set_scores'
-      ? { impact: 5 }
-      : name === 'task.set_adhoc'
-        ? { ad_hoc: true }
-        : { agent_brief: 'the agent’s brief' };
+  const fields = OWN_FIELD_WRITES.get(name);
   return { recordId: held.taskId, expectedRevision, fields };
 }
 

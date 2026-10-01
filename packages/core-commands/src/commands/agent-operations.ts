@@ -38,6 +38,7 @@ import { proposeFor, type ProposeFields } from './tasks-propose.ts';
 import { deleteTaskComment, editTaskComment, type CommentChange } from './tasks-comment-edit.ts';
 import { setScores } from './tasks-scores.ts';
 import { setAdHoc } from './tasks-adhoc.ts';
+import { setCategory } from './tasks-category.ts';
 import { assignTaskAsAgent, updateTaskAsAgent } from './tasks-write.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import {
@@ -446,10 +447,10 @@ const serveCommentChange =
 
 /**
  * A field write an agent makes on its own task: the three marks
- * (`task.set_scores`), the Ad hoc mark (`task.set_adhoc`), its fields of
- * `task.update` (MP-4-7, MP-4-8, MP-4-12) and the assignee (`task.assign`,
- * MP-4-8). One entry, so the four refuse a stale write, a missing task and a
- * malformed body alike.
+ * (`task.set_scores`), the Ad hoc mark (`task.set_adhoc`), the category
+ * (`task.set_category`), its fields of `task.update` (MP-4-7, MP-4-8,
+ * MP-4-12) and the assignee (`task.assign`, MP-4-8). One entry, so the five
+ * refuse a stale write, a missing task and a malformed body alike.
  */
 const serveOwnedWrite =
   (
@@ -759,6 +760,16 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       replay: 'reauthorise',
       operands: recordIdOperand(() => refuseNotFound()),
       serve: serveOwnedWrite(setAdHoc, '{ ad_hoc }'),
+    }),
+  ],
+  [
+    'task.set_category',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveOwnedWrite(setCategory, '{ category }'),
     }),
   ],
   [

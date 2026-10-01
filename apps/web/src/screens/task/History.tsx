@@ -37,6 +37,7 @@ const WHAT: Readonly<Record<string, string>> = {
   'task.set_audience': 'Audience set',
   'task.set_scores': 'Rank marks set',
   'task.set_adhoc': 'Ad hoc changed',
+  'task.set_category': 'Category changed',
   'task.share_with_client': 'Shared with the client',
   'task.revoke_client_share': 'Client access withdrawn',
   'task.propose': 'Proposed',

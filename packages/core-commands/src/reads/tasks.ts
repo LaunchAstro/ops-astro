@@ -9,8 +9,8 @@
 // out of `data` would still return the right answer on a record the trigger had
 // stopped projecting, which is the failure worth catching.
 //
-// `description`, `agent_brief`, `page_link` and `estimated_minutes` are the
-// exceptions and have to be: they are unslotted on purpose (`tasks/spine.ts`),
+// `description`, `agent_brief`, `page_link`, `estimated_minutes` and
+// `category` are the exceptions and have to be: they are unslotted on purpose (`tasks/spine.ts`),
 // so `data` is where they live.
 //
 // A task that is not here, and a task that is in another business, produce
@@ -63,6 +63,7 @@ export interface TaskRowRead {
   readonly agent_brief: string | null;
   readonly page_link: string | null;
   readonly estimated_minutes: string | null;
+  readonly category: string | null;
   readonly state_id: string | null;
   readonly state_key: string | null;
   readonly state_label: string | null;
@@ -99,6 +100,7 @@ export const SELECT: string = `
          r.data ->> 'agent_brief' as agent_brief,
          r.data ->> 'page_link' as page_link,
          r.data ->> 'estimated_minutes' as estimated_minutes,
+         r.data ->> 'category' as category,
          s.id as state_id,
          s.data ->> 'key' as state_key,
          s.data ->> 'label' as state_label,
@@ -282,6 +284,17 @@ async function commentsFor(
   }));
 }
 
+/** The unslotted fields the task and its board row both carry, out of `data`. */
+function unslottedOf(
+  row: TaskRowRead,
+): Pick<TaskDetail, 'pageLink' | 'estimateMinutes' | 'category'> {
+  return {
+    pageLink: row.page_link,
+    estimateMinutes: row.estimated_minutes === null ? null : Number(row.estimated_minutes),
+    category: row.category,
+  };
+}
+
 /** One task with its history, or nothing at all. */
 export async function readTaskDetail(
   tx: TenantQuery,
@@ -308,8 +321,7 @@ export async function readTaskDetail(
     ...summaryOf(row),
     description: row.description,
     agentBrief: row.agent_brief,
-    pageLink: row.page_link,
-    estimateMinutes: row.estimated_minutes === null ? null : Number(row.estimated_minutes),
+    ...unslottedOf(row),
     history: await historyOf(tx, row.id, comments.internal),
     comments: await commentsFor(tx, comments.commentTypeId, row.id, comments),
     // The proposals go to every reader of the detail, internal or external,
@@ -463,8 +475,7 @@ export async function readBoardStamped(
       stage: row.stage,
       clientSet: row.client_set,
       actualMinutes: actuals.get(row.id) ?? 0,
-      estimateMinutes: row.estimated_minutes === null ? null : Number(row.estimated_minutes),
-      pageLink: row.page_link,
+      ...unslottedOf(row),
       statePosition: row.state_position === null ? null : Number(row.state_position),
       waitReason: gated.has(row.id) ? ('needs_approval' as const) : null,
       awaitingDecision: gated.has(row.id) && (decides === null || decides.has(row.id)),

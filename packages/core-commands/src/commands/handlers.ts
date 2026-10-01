@@ -19,6 +19,7 @@ import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
 import { assignTask } from './tasks-agent.ts';
 import { setScores } from './tasks-scores.ts';
 import { setAdHoc } from './tasks-adhoc.ts';
+import { setCategory } from './tasks-category.ts';
 import { setParty } from './tasks-party.ts';
 import { revokeClientShare, shareWithClient } from './tasks-client-access.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
@@ -71,6 +72,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.set_audience': writeOwned,
   'task.set_scores': (tx, context, request) => setScores(tx, context, request.fields),
   'task.set_adhoc': (tx, context, request) => setAdHoc(tx, context, request.fields),
+  'task.set_category': (tx, context, request) => setCategory(tx, context, request.fields),
   'task.share_with_client': (tx, context) => shareWithClient(tx, context),
   'task.revoke_client_share': (tx, context) => revokeClientShare(tx, context),
 

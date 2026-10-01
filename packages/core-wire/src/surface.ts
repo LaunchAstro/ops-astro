@@ -55,6 +55,7 @@ export type CommandName =
   | 'task.move'
   | 'task.set_scores'
   | 'task.set_adhoc'
+  | 'task.set_category'
   | 'task.share_with_client'
   | 'task.revoke_client_share'
   | 'task.edit_comment'
@@ -411,6 +412,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.set_audience': FIELDS,
   'task.set_scores': FIELDS,
   'task.set_adhoc': FIELDS,
+  'task.set_category': FIELDS,
   'task.share_with_client': TARGET,
   'task.revoke_client_share': TARGET,
   'task.reparent': { ...TARGET, parentId: 'any' },
@@ -526,6 +528,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // The Ad hoc mark (MP-4-10, CS-4.9): `task:write`, and an agent sets it on
   // its own task inside its delegation.
   declare('task.set_adhoc', 'write', { agent: 'delegated' }),
+  // The task's work label (MP-4-8, CS-4.16): `task:write`, and an agent sets
+  // it on its own task inside its delegation. A label only (R76): it reaches
+  // no grant, delegation or scope.
+  declare('task.set_category', 'write', { agent: 'delegated' }),
   // Client access (MP-4-10, CS-4.10, R45): the task's share grants to its
   // client's people, created and withdrawn under `access:share`, which an
   // agent never holds (contract 2.3 to 2.6). The target row is the lock, so

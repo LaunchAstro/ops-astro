@@ -134,9 +134,9 @@ hoc and Client access marks), the calc line, and the ten-field band
 (Assignee, Client, Due date, Estimate, Project, Category, Stage, Status, Page
 link, Handling) in a frame of 5, 2 and 1 columns. An empty value reads "not
 set" and an empty Page link "nothing yet"; the page link reads as words, the
-estimate as the panel's words and the stage by its label; Category has no
-value on the record yet, and Client says "On file" until the client model
-names it. Every mark here is inert: no tab stop, role or handler, and the
+estimate as the panel's words, the stage and the category by their labels
+(a value off either list as stored), and Client says "On file" until the
+client model names it. Every mark here is inert: no tab stop, role or handler, and the
 default cursor. The ticks that change them are the dock panel's:
 `HandlingTicks` (`screens/task/Ticks.tsx`, MP-4-10), which the dock task
 panel (MP-4-8) mounts. Each is a checkbox a person can tab to, turned by a
@@ -240,8 +240,8 @@ offers the states `task.read` sends in the workflow's order (a state off the
 list stays as itself) and sends `task.set_state`; Complete is `task.complete`,
 and leaving Complete is `task.reopen` first, then `task.set_state` at the
 reopen's revision unless the unstarted state was chosen. The pin waits on the
-preference model. Category waits on its owner on the record. The Client
-select (`screens/task/ClientField.tsx`, CS-4.12, DP-19) changes an empty task's
+preference model. The Client select (`screens/task/ClientField.tsx`, CS-4.12,
+DP-19) changes an empty task's
 client through `task.set_party` at the read revision; once the task has content
 it is drawn locked, with the line "This task has content, so its client is
 locked. Duplicate it without contents to start one for another client." and a
@@ -259,7 +259,12 @@ and `task.duplicate` are not on this base: they come through the seams in
 `screens/task/client-seam.ts` (`TaskPanel`'s `clientFacts`, `duplicate` and
 `onDuplicated`), and until the host passes real ones the panel uses the made-up
 `MOCK_CLIENT_FACTS` and `MOCK_DUPLICATE`, each drawn under the one Mock corner
-label (`SourceRegion`). A real source carries no label.
+label (`SourceRegion`). A real source carries no label. The Category select
+(`screens/task/CategoryField.tsx`, CS-4.16) offers Not set and the nine of `TASK_CATEGORIES` (a stored value off
+the list stays as itself) and sends `task.set_category` with the id, or null
+for Not set, at the read revision; it is a work label only and changes no
+agent scope (R76). The Projects board draws a row's stored category by its
+label on the category chips.
 
 The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`
 looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an

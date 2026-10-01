@@ -41,6 +41,10 @@
 // The ninth is the status select's `task.set_state`: a targeted write an
 // agent never reaches, to `setStateById` with its state id, one row each in
 // the tables that list every write.
+// The tenth is the category's `task.set_category` (MP-4-8, CS-4.16), the
+// same shape as the third: a write an agent reaches inside its delegation, to
+// `setCategory`, one row each in the tables that list every write or every
+// agent operation.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -88,6 +92,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-scores.ts', async (orig
 vi.mock('../../packages/core-commands/src/commands/tasks-adhoc.ts', async (original) => ({
   ...(await original<object>()),
   setAdHoc: recorder('setAdHoc'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-category.ts', async (original) => ({
+  ...(await original<object>()),
+  setCategory: recorder('setCategory'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-party.ts', async (original) => ({
   ...(await original<object>()),
@@ -295,6 +303,7 @@ const PINNED_AGENT_SURFACE = [
   'task.queue',
   'task.read',
   'task.set_adhoc',
+  'task.set_category',
   'task.set_scores',
   'task.update',
 ];
@@ -359,6 +368,7 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'task.set_scores', operationId: 'op', recordId: 'r', fields: { impact: 7 } },
   { command: 'task.set_adhoc', operationId: 'op', recordId: 'r', fields: { ad_hoc: true } },
+  { command: 'task.set_category', operationId: 'op', recordId: 'r', fields: { category: 'seo' } },
   { command: 'task.share_with_client', operationId: 'op', recordId: 'r' },
   { command: 'task.revoke_client_share', operationId: 'op', recordId: 'r' },
   { command: 'task.reparent', operationId: 'op', recordId: 'r', parentId: 'parent' },
@@ -445,6 +455,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.set_audience': ['writeOwnedFields', 'task.set_audience', { audience: 'f-audience' }],
   'task.set_scores': ['setScores', { impact: 7 }],
   'task.set_adhoc': ['setAdHoc', { ad_hoc: true }],
+  'task.set_category': ['setCategory', { category: 'seo' }],
   'task.share_with_client': ['shareWithClient'],
   'task.revoke_client_share': ['revokeClientShare'],
   'task.reparent': ['reparentTask', 'parent'],
@@ -530,7 +541,7 @@ describe('the per-command tables at 06ab232', () => {
     );
   });
 
-  it('lets an agent reach the same seventeen, two of them before a pickup', () => {
+  it('lets an agent reach the same eighteen, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);
