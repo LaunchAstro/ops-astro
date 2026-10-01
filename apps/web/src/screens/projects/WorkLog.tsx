@@ -252,14 +252,10 @@ function LedgerPages(props: {
   const passed = shown.reduce((sum, day) => sum + day.events.length, 0);
   const inView = days.reduce((sum, day) => sum + day.events.length, 0);
   const reading = readingLine(search, passed);
+  const partial = first.query !== null && first.ledger.more === true;
   return (
     <>
-      <SearchLines
-        reading={reading}
-        passed={passed}
-        inView={inView}
-        partial={first.query !== null && first.ledger.more === true}
-      />
+      <SearchLines reading={reading} passed={passed} inView={inView} partial={partial} />
       {reading !== null && passed === 0 ? (
         <Empty
           title="Nothing matches that."
