@@ -42,7 +42,7 @@ import type {
   SettingsReadResult,
   SettingView,
 } from '../../../../../packages/core-wire/src/index.ts';
-import { sessionMemory, type Confirmed } from './confirmed.ts';
+import { remember, sessionMemory, type Confirmed, type Draft, type Which } from './confirmed.ts';
 import {
   GRANT,
   KEY,
@@ -54,13 +54,7 @@ import {
 } from './reads.ts';
 
 export type { StorageLike } from '../../session/token.ts';
-export type { Confirmed } from './confirmed.ts';
-
-/** Which setting a press is about: the two money and sign-off rows, and MP-2-11's two windows. */
-export type Which = 'four-eyes' | 'sign-off' | 'conversation' | 'retention';
-
-/** What a person can propose. `null` is the band off, and it is a real value. */
-export type Draft = number | boolean | null;
+export type { Confirmed, Draft, Which } from './confirmed.ts';
 
 const COMMAND = {
   'four-eyes': 'settings.set_four_eyes_threshold',
@@ -75,21 +69,6 @@ export interface Conflict {
   readonly draft: Draft;
   /** The server's refusal, verbatim, so the code can be quoted to somebody. */
   readonly because: string;
-}
-
-const isThreshold = (value: unknown): value is number | null =>
-  value === null || typeof value === 'number';
-
-/** The server's echo when it gave one of the right kind, else what was sent. */
-function remember(which: Which, echo: unknown, value: Draft): Confirmed {
-  if (which === 'four-eyes') {
-    const fourEyes = isThreshold(echo) ? echo : isThreshold(value) ? value : undefined;
-    return fourEyes === undefined ? {} : { fourEyes };
-  }
-  // The windows keep no browser memory: only the server's read is drawn for them.
-  if (which !== 'sign-off') return {};
-  const signOff = typeof echo === 'boolean' ? echo : typeof value === 'boolean' ? value : undefined;
-  return signOff === undefined ? {} : { signOff };
 }
 
 /** The session's memory as this screen holds it, and which session it is. */

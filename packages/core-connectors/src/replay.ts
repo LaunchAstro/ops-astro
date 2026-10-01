@@ -28,6 +28,7 @@ import {
   REPLAY_LOOKUP_PATH,
   type ReplayLookupMode,
 } from './replay-lookup.ts';
+import { faulted, NOT_BEGUN, type ReplayMode } from './replay-faults.ts';
 
 /** The model window the replay provider declares, recorded for the harness adoption test (AW-12). */
 export const REPLAY_MODEL_WINDOW: { readonly model: string; readonly contextUnits: number } = {
@@ -117,24 +118,8 @@ export function replayCostMinor(read: ModelAnswer): number {
   return read.usage.inputUnits + 2 * read.usage.outputUnits;
 }
 
-export type ReplayMode =
-  | 'answer'
-  | 'oversized'
-  | 'redirect'
-  | 'malformed'
-  | 'slow'
-  | 'planted'
-  | 'echo_credential'
-  | 'nothing_happened'
-  | 'costly'
-  | 'unnamed_model'
-  | 'bad_model'
-  // AW-10: the provider down, rate limiting, or the connection cut. None began the work.
-  | 'unavailable'
-  | 'rate_limited'
-  | 'cut';
-
 export type { ReplayLookupMode } from './replay-lookup.ts';
+export type { ReplayMode } from './replay-faults.ts';
 
 export interface SeenRequest {
   readonly path: string;
@@ -226,25 +211,6 @@ function respond(
     default:
       faulted(mode, response);
   }
-}
-
-/** The modes in which the stand-in never began the work. */
-const NOT_BEGUN: ReadonlySet<ReplayMode> = new Set([
-  'nothing_happened',
-  'unavailable',
-  'rate_limited',
-  'cut',
-]);
-
-/** AW-10's faults: down, rate limited, or the connection cut with no answer. */
-function faulted(mode: ReplayMode, response: ServerResponse): void {
-  if (mode === 'cut') {
-    response.socket?.destroy();
-    return;
-  }
-  const status = mode === 'rate_limited' ? 429 : 503;
-  response.writeHead(status, { 'content-type': 'application/json', 'retry-after': '5' });
-  response.end(JSON.stringify({ code: mode }));
 }
 
 /** A lookup's answer in each mode: the truth, or something that must never count as proof. */

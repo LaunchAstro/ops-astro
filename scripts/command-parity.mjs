@@ -10,7 +10,6 @@ import {
   COMMAND_SURFACE,
   PREFIX,
   VIEW_ONLY_EXEMPT,
-  VISUAL_HANDOFFS,
   buildCatalogue,
   checkParity,
   pathOf,
@@ -21,7 +20,9 @@ import { runRead } from '../packages/core-commands/src/reads/dispatch.ts';
 import { createApi } from '../apps/api/app.ts';
 import { createCli } from '../apps/cli/client.ts';
 import { OperationsClient, READ_NAMES } from '../apps/web/src/operations/client.ts';
-import { ROUTES } from '../apps/web/src/routes.ts';
+import { handoffFailures } from './command-handoffs.mjs';
+
+export { handoffFailures } from './command-handoffs.mjs';
 
 const WEB = resolve(import.meta.dirname, '..', 'apps', 'web', 'src');
 // transport, addresses
@@ -272,24 +273,6 @@ export function realSurfaces(uses) {
     ui: uses,
     exempt: VIEW_ONLY_EXEMPT,
   };
-}
-
-/**
- * AW-09: a visual hand-off is honest only if the app draws the page it names
- * and nothing with its name runs as a command: a route the app does not
- * register is a link to nowhere, and a shared name hides a command's verb.
- */
-export function handoffFailures(
-  handoffs = VISUAL_HANDOFFS,
-  paths = Object.values(ROUTES).map((route) => route.path),
-  commands = COMMAND_SURFACE.map((one) => one.name),
-) {
-  return handoffs.flatMap((one) => [
-    ...(paths.includes(one.route) && one.route.includes(`:${one.param}`)
-      ? []
-      : [`the hand-off ${one.name} opens ${one.route}, which the app does not draw`]),
-    ...(commands.includes(one.name) ? [`the hand-off ${one.name} is also a command's name`] : []),
-  ]);
 }
 
 export function run(

@@ -12,7 +12,6 @@ import {
   callModel,
   reserveModelCall,
   sendReservedCall,
-  type Broker,
   type ModelCallField,
 } from '../../packages/core-custody/src/index.ts';
 import { openCustodyWorld } from '../custody/custody-world.ts';
@@ -34,6 +33,7 @@ import {
   call,
   rowsOf,
   callCount,
+  fenceMoving,
 } from './broker-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -279,19 +279,7 @@ it('AW-01 settlement by the call: a lease that left the caller mid-call settles 
   await stepOf(work);
   world.provider.mode('answer');
   // The lease leaves the caller while custody has the request: its fence moves on.
-  const moving: Broker = {
-    ...broker,
-    custody: {
-      ...world.custody,
-      dispatch: async (credentialRef, request) => {
-        await s.db.admin.execute(`update public.leases set fence = fence + 1 where id = $1`, [
-          work.picked['leaseId'],
-        ]);
-        return await world.custody.dispatch(credentialRef, request);
-      },
-    },
-  };
-  const result = await call(work, {}, moving);
+  const result = await call(work, {}, fenceMoving(work));
   expect(result).toMatchObject({ ok: false, code: 'LEASE_NOT_OWNED' });
   const callId = result.ok ? null : result.callId;
   expect(callId).not.toBeNull();
