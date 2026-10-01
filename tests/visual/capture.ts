@@ -3,13 +3,14 @@
 //
 // Capturing one side of the comparison in the pinned renderer.
 //
-// The network is closed. Every request is answered by route interception:
-// the mockup's own files from the pinned git tree, its two external addresses
-// from the packet's list (the fonts from the bundled bytes, the refused icon
-// set as an empty stylesheet), the app from its local address only, and
-// anything else is aborted and reported as unresolved. The same bundled faces
-// are given to the app, and each capture asserts the families resolved to
-// them rather than to a font the machine happens to have installed.
+// The network is closed. Every request is answered by route interception: the
+// mockup's own files from the pinned git tree, its two external addresses from
+// the packet's list (the fonts from the bundled bytes, the refused icon set as
+// an empty stylesheet), the app's fetched here from its local address, not over
+// a browser socket (capture-app-off-socket.test.ts), and anything else is
+// aborted and reported as unresolved. The same bundled faces are given to the
+// app, and each capture asserts the families resolved to them rather than to a
+// font the machine happens to have installed.
 
 /* oxlint-disable no-await-in-loop -- regions are captured one at a time, in order:
    a comparison is only deterministic while one thing draws */
@@ -142,9 +143,8 @@ function sessionOf(
   const entries = state.origins
     .filter((one) => one.origin === origin)
     .flatMap((one) => one.localStorage.map((item): [string, string] => [item.name, item.value]));
-  if (entries.length === 0) {
+  if (entries.length === 0)
     throw new Error(`visual: the session file holds no session for ${origin}`);
-  }
   return { cookies: state.cookies, entries };
 }
 type StorageState = {
@@ -171,9 +171,10 @@ function routeOf(packet: Packet, source: SideSource, side: Side): (route: Route)
       const body = known === 'bundled fonts' ? fontCss() : `/* ${known} */`;
       return route.fulfill({ body, contentType: 'text/css' });
     }
-    if ('app' in source && url.origin === source.app.origin && url.pathname === '/api/sign-in')
-      return route.fulfill({ json: { issuer: 'http://127.0.0.1:9/auth/v1' } });
-    if ('app' in source && url.origin === source.app.origin) return route.continue();
+    if ('app' in source && url.origin === source.app.origin)
+      return url.pathname === '/api/sign-in'
+        ? route.fulfill({ json: { issuer: 'http://127.0.0.1:9/auth/v1' } })
+        : route.fetch({ maxRedirects: 0 }).then((response) => route.fulfill({ response }));
     if ('mockupDir' in source && url.origin === MOCKUP_ORIGIN) {
       return serveMockup(route, url, source, blobs, side);
     }
@@ -255,9 +256,8 @@ export async function load(
     // oxlint-disable-next-line unicorn/prefer-dom-node-dataset -- null, not undefined, when unmarked: the form REV155P3C's test reads
     () => document.body.dataset['theme'] ?? document.documentElement.getAttribute('data-theme'),
   );
-  if (drawn !== null && drawn !== side.theme) {
+  if (drawn !== null && drawn !== side.theme)
     throw new Error(`visual: ${url} drew in ${String(drawn)}, not ${side.theme}`);
-  }
   // A state behind a tab or a disclosure is opened the way a person would.
   if (prep.open !== undefined) await page.locator(prep.open).first().click();
   await page.evaluate(

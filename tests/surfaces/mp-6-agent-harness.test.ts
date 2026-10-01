@@ -47,6 +47,11 @@ function lookLines(screen: string): string[] {
       },
     );
     if (run.error !== undefined) throw run.error;
+    // look.ts ends on its `look:` line; without it the run stopped part way,
+    // and its error names why rather than a count of missing lines.
+    if (!/^look: /mu.test(run.stdout)) {
+      throw new Error(`look.ts --screen ${screen} stopped part way: ${run.stderr.slice(-2000)}`);
+    }
     return run.stdout.split('\n').filter((line) => /^(ok|red) /u.test(line));
   } finally {
     rmSync(out, { recursive: true, force: true });
