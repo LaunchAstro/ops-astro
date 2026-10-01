@@ -9,8 +9,9 @@
 // grants on the task for a decision, the person who authorised the lease for
 // a settled run (and the task's assignee when an agent is stuck), the new
 // assignee, the people a comment names, the task's managers for a quarantined
-// hold (an incident). Nobody is told of their own assignment or mention. A decision goes to every holder, the proposer included, because
-// authority and not authorship decides who owes it, and a decision a person is
+// hold (an incident). Nobody is told of their own assignment or mention. A
+// decision goes to every holder, the proposer included, because authority
+// and not authorship decides who owes it, and a decision a person is
 // responsible for is never switched off, but the task's assignee is owed none:
 // four eyes (T2g) refuses their decision. Mentions are `mentions.ts`.
 
