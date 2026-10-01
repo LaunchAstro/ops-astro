@@ -210,6 +210,12 @@ table exactly:
 There is no `status` column and no second coarse field. Whether a task is done
 is the machine category of the state record the task points at.
 
+A task made by `task.duplicate` (MP-4-8) records where it came from as a row of
+`record_links` with `link_type` `duplicated_from`, from the new task to the old
+one. No field of the old task is copied beyond its type: the new task holds
+only the title, client and step names the person sent. `task.read` shows the
+link's target only to a reader who holds read on the old task.
+
 A task's tags are not a field. The business's vocabulary is `tags` (one name
 per business whatever its case, a unique index on the lower-cased name) and
 the tags a task carries are rows of `task_tags`, keyed by the task and the
