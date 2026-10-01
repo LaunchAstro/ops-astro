@@ -8,7 +8,8 @@
 //
 // A person's act, typed into one Terminal window with STAGING_PROJECT_REF,
 // PRODUCTION_PROJECT_REF (when production has a project), DATABASE_ADMIN_URL
-// (the project's own login, through the Sydney session pooler) and
+// (the project's own login, through the Sydney session pooler, with
+// sslmode=require or stricter) and
 // OPS_LOGINS_DIR (a new folder, made owner-only). `before-reset` makes the app
 // group and the runtime login; `after-reset`, once the reset has migrated, one
 // login for each of the lookup, backup identity and forwarder groups. Each run
@@ -46,7 +47,13 @@ if (refusal !== undefined) {
 
 const [step] = args;
 const addresses = loginAddresses(env.DATABASE_ADMIN_URL, env.STAGING_PROJECT_REF, step);
-const admin = connectAsAdmin(env.DATABASE_ADMIN_URL, { source: 'logins' });
+// Test-only: set by tests/support/plaintext-at-loopback.mjs for a throwaway
+// server with no TLS; no setting or environment can set it.
+const reach = new URL(env.DATABASE_ADMIN_URL);
+if (globalThis[Symbol.for('ops-astro.test.plaintext-at-loopback')] === true) {
+  reach.searchParams.set('sslmode', 'disable');
+}
+const admin = connectAsAdmin(reach.toString(), { source: 'logins' });
 let stage = 'the check';
 try {
   if (step === 'after-reset') {

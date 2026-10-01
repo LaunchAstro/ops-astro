@@ -7,7 +7,7 @@
 // is drawn in its own words on the screen's refusal line.
 
 import { useState, type ReactElement } from 'react';
-import { ValueLine } from './panels.tsx';
+import { Held, Written } from './panels.tsx';
 import type { SettingsModel } from './use-settings.ts';
 
 const WINDOWS = {
@@ -36,46 +36,45 @@ export function WindowRow(props: {
 }): ReactElement {
   const { which, model } = props;
   const [days, setDays] = useState('');
-  const id = `settings-${which}`;
   const save = (): void => {
     const value = daysIn(days);
     if (value === null) model.complain('Type a whole number of days.');
     else model.save(which, value);
   };
   return (
-    <section className="sb__sect">
-      <div className="sb__sh">
-        <span className="sb__k">{WINDOWS[which].label}</span>
+    <div className="setrow" data-set={which}>
+      <div className="setrow__t">
+        <h3 className="setrow__k">{WINDOWS[which].label}</h3>
+        <p className="setrow__note">{WINDOWS[which].sentence}</p>
+        {model.answered ? <Written which={which} row={model.rowFor(which)} /> : null}
       </div>
-      <p className="card__sub">{WINDOWS[which].sentence}</p>
-      {model.answered ? <ValueLine which={which} row={model.rowFor(which)} /> : null}
-      {props.conflict}
-      <div className="field">
-        <label className="tf__k" htmlFor={id}>
-          Days
-        </label>
+      <div className="setrow__ctl">
         <input
-          id={id}
-          className="input"
+          id={`settings-${which}`}
+          className="tf setrow__num"
+          aria-label={`${WINDOWS[which].label} in days`}
           type="number"
           min={0}
           step={1}
+          placeholder="Days"
           disabled={model.disabled}
           value={days}
           onChange={(event) => {
             setDays(event.target.value);
           }}
         />
+        <button
+          className="btn btn--sm btn--primary"
+          type="button"
+          data-settings={`save-${which}`}
+          disabled={model.disabled}
+          onClick={save}
+        >
+          {model.busy === which ? 'Saving…' : `Save ${WINDOWS[which].label.toLowerCase()}`}
+        </button>
+        {model.answered ? <Held which={which} row={model.rowFor(which)} /> : null}
       </div>
-      <button
-        className="btn btn--primary"
-        type="button"
-        data-settings={`save-${which}`}
-        disabled={model.disabled}
-        onClick={save}
-      >
-        {model.busy === which ? 'Saving…' : `Save ${WINDOWS[which].label.toLowerCase()}`}
-      </button>
-    </section>
+      {props.conflict}
+    </div>
   );
 }

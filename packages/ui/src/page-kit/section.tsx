@@ -4,6 +4,8 @@
 // layer (DS-COMP-12) and the hint, the agent's aside (DS-PRIM-22's `hint`).
 
 import type { ReactElement, ReactNode } from 'react';
+import { Banner } from '../kit/blocks.tsx';
+import { Button } from '../kit/controls.tsx';
 import { SectionTip, type Tip, type TipPreferences } from './tips.tsx';
 
 /** A section's index as the head draws it: three digits, counted top to bottom. */
@@ -70,19 +72,26 @@ export interface HintAction {
   readonly run: () => void;
 }
 
-/** A hint draws a button only with an action to run; there is no inert one. */
+/**
+ * The kit's hint (DS-PRIM-22's `hint` tone), placed as it is drawn. A hint draws
+ * a button only with an action to run; there is no inert one.
+ */
 export function Hint(props: {
   readonly text: string;
   readonly action?: HintAction | undefined;
 }): ReactElement {
   return (
-    <aside className="hint">
-      <span className="hint__text">{props.text}</span>
-      {props.action === undefined ? null : (
-        <button type="button" className="hint__act" onClick={props.action.run}>
-          {props.action.label}
-        </button>
-      )}
-    </aside>
+    <Banner
+      tone="hint"
+      action={
+        props.action === undefined ? undefined : (
+          <Button variant="ghost" onClick={props.action.run}>
+            {props.action.label}
+          </Button>
+        )
+      }
+    >
+      {props.text}
+    </Banner>
   );
 }

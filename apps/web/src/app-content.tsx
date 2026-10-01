@@ -6,7 +6,7 @@
 import type { ReactElement } from 'react';
 import { gateOf, type RouteMatch } from './routes.ts';
 import type { PageMatch } from './manifest.ts';
-import { ClientRefused, NotFound, PagePlaceholder } from './route-views.tsx';
+import { ClientRefused, NotFound, PagePlaceholder, SignedInAlready } from './route-views.tsx';
 import { drawScreen, type ScreenContext } from './screen-registry.tsx';
 
 export function drawContent(props: {
@@ -38,15 +38,4 @@ export function drawContent(props: {
     case 'screen':
       return drawScreen(gate.match, props.screen);
   }
-}
-
-function SignedInAlready(props: { readonly onGo: () => void }): ReactElement {
-  return (
-    <div className="readstate" data-outcome="ready">
-      <p className="empty__title">You are already signed in.</p>
-      <button className="btn btn--primary" type="button" onClick={props.onGo}>
-        Go to Projects
-      </button>
-    </div>
-  );
 }

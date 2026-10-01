@@ -71,8 +71,9 @@ export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
   if (state.outcome === 'loading') {
     return (
       <div className="readstate" data-outcome="loading" role="status" aria-live="polite">
+        {/* DS-PRIM-29's panel line (DR-37): the one empty state, inline. */}
         {props.placeholder === undefined ? (
-          <p className="empty__title">Loading the {props.subject}…</p>
+          <Empty look="inline" title={`Loading the ${props.subject}…`} />
         ) : (
           <>
             <span className="visually-hidden">Loading the {props.subject}…</span>

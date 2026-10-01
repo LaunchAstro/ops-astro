@@ -10,172 +10,85 @@
 // a screen from a shape the API no longer sends. Test side only: the page
 // asks the same addresses it asks the real API; nothing here is a back end.
 //
-// The rows follow the pinned mockup's Projects board, so a capture reads
+// The rows (made-up-tasks.ts) follow the pinned mockup's Projects board, so a capture reads
 // against the mockup's page. Every name and client is made up.
 
 import type {
-  BoardTask,
+  AccessReadResult,
   CapabilitiesResult,
   InboxCountResult,
   InboxReadResult,
-  InternalTaskDetail,
   InternalTaskRead,
+  OperationsReadResult,
   PersonListResult,
   QueueResult,
+  SessionPersonResult,
   SettingsReadResult,
   TagListResult,
-  TagView,
   TaskBoardResult,
   TaskExecutionResult,
-  TaskStateView,
-  TaskSummary,
+  TaskLedgerResult,
+  TaskSearchResult,
   TaskTodosResult,
-  TodoView,
+  TeamListResult,
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
+import { DETAIL, MIA, NATHAN, STATE, TAGS, TASKS, TODOS } from './made-up-tasks.ts';
 
-const STATE = {
-  active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
-  waiting: {
-    id: 's-waiting',
-    key: 'waiting',
-    label: 'Waiting on client',
-    machineCategory: 'backlog',
-  },
-  hold: { id: 's-hold', key: 'hold', label: 'On hold', machineCategory: 'unstarted' },
-} as const satisfies Record<string, TaskStateView>;
+export { TASKS } from './made-up-tasks.ts';
 
-const NATHAN = { personId: 'p-nathan', name: 'Nathan' };
-const MIA = { personId: 'p-mia', name: 'Mia' };
+const HARBOUR = { clientId: 'c-harbour', name: 'Harbour Physio' };
+const MERIDIAN = { clientId: 'c-meridian', name: 'Meridian Dental' };
 
-const task = (
-  n: number,
-  title: string,
-  state: TaskStateView,
-  due: string | null,
-  assignee: TaskSummary['assignee'] = NATHAN,
-  board: Partial<BoardTask> = {},
-): BoardTask => ({
-  id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
-  key: `T-${String(n)}`,
-  title,
-  state,
-  assignee,
-  due,
-  priority: null,
-  completedAt: null,
-  revision: 1,
-  // What the Projects board's cells draw (MP-5-8), made up like the rest.
-  rank: { number: n, score: 100 - n, calc: 'made up' },
-  stage: null,
-  clientSet: true,
-  actualMinutes: 0,
-  estimateMinutes: null,
-  pageLink: null,
-  statePosition: state.key === 'active' ? 1 : state.key === 'waiting' ? 2 : 3,
-  waitReason: null,
-  awaitingDecision: false,
-  agent: null,
-  myAgents: [],
-  // The reader's own waiting client signals and mentions (MP-5-8), none here.
-  comments: { client: 0, mentions: 0, latest: null },
-  ...board,
-});
-
-// The harness clock is 2026-09-26; dates sit either side of it.
-export const TASKS: readonly BoardTask[] = [
-  task(1, 'Contract review pack, 31 July', STATE.active, '2026-09-30', NATHAN, {
-    stage: 'Build',
-    estimateMinutes: 240,
-    actualMinutes: 95,
-  }),
-  task(6, 'Renewal pack, 14 August', STATE.active, '2026-10-07', NATHAN, { stage: 'Brief' }),
-  task(
-    9,
-    'Sign off the Meridian ad run rate, 29% over budget',
-    STATE.active,
-    '2026-09-18',
-    NATHAN,
+/** The Work log's two days, newest first, as `task.ledger` answers them (MP-8-4). */
+const LEDGER: TaskLedgerResult = {
+  ok: true,
+  earlier: true,
+  days: [
     {
-      waitReason: 'needs_approval',
-      awaitingDecision: true,
-    },
-  ),
-  task(13, 'Approve the four review replies before they go out', STATE.active, '2026-09-26'),
-  task(15, 'Ads rebuild: cost per enquiry', STATE.active, '2026-10-06', MIA),
-  task(17, 'Shopping feed clean-up', STATE.active, '2026-10-05'),
-  task(24, 'New patient offer campaign', STATE.active, '2026-10-09'),
-  task(4, 'Budget pacing fix', STATE.waiting, '2026-10-01', null),
-  task(33, 'Paid social rebuild', STATE.hold, null),
-];
-
-const DETAIL: InternalTaskDetail = {
-  ...(TASKS[0] as BoardTask),
-  agentBrief: null,
-  description:
-    'Pull the signed scope, the two variations and the renewal terms into one pack for review.',
-  history: [
-    {
-      at: '2026-09-24T01:10:00.000Z',
-      actorId: NATHAN.personId,
-      actorKind: 'person',
-      actorName: NATHAN.name,
-      operation: 'task.create',
+      day: '2026-09-26',
+      events: [
+        {
+          id: 'e-3',
+          at: '2026-09-26T01:20:00.000Z',
+          actorName: NATHAN.name,
+          operation: 'task.complete',
+          task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
+        },
+        {
+          id: 'e-2',
+          at: '2026-09-25T23:05:00.000Z',
+          actorName: MIA.name,
+          operation: 'task.comment',
+          task: { key: 'T-15', title: 'Ads rebuild: cost per enquiry' },
+        },
+      ],
     },
     {
-      at: '2026-09-25T03:40:00.000Z',
-      actorId: NATHAN.personId,
-      actorKind: 'person',
-      actorName: NATHAN.name,
-      operation: 'task.update',
+      day: '2026-09-25',
+      events: [
+        {
+          id: 'e-1',
+          at: '2026-09-25T03:40:00.000Z',
+          actorName: NATHAN.name,
+          operation: 'task.update',
+          task: { key: 'T-1', title: 'Contract review pack, 31 July' },
+        },
+      ],
     },
   ],
-  comments: [
-    {
-      id: 'c-1',
-      audience: 'internal',
-      author: NATHAN.personId,
-      body: 'Variation two is still unsigned; chase before the pack goes out.',
-      comment_type: 'note',
-      posted_at: '2026-09-25T04:00:00.000Z',
-      edited_at: null,
-      source: 'app',
-      parent: null,
-      signal: null,
-      own: true,
-    },
-  ],
-  proposals: [],
-  capCurrency: 'AUD',
-  envelope: null,
-  alerts: [],
-  adHoc: false,
-  clientAccess: false,
-  board: null,
-  steps: [],
-  time: null,
-  tags: [],
 };
 
-const TAGS: readonly TagView[] = [
-  { id: 'g-renewal', name: 'renewal' },
-  { id: 'g-ads', name: 'ads' },
-];
-
-// My to-dos (MP-7-1): the reader's own open tasks, with tags and owed messages.
-const todo = (at: number, tags: readonly TagView[], waitingComments = 0): TodoView => ({
-  ...(TASKS[at] as BoardTask),
-  tags,
-  waitingComments,
+/** One business setting as `settings.read` answers it, last written by Nathan. */
+const setting = (key: string, value: number | boolean, revision: number) => ({
+  key,
+  value,
+  valueType: typeof value === 'boolean' ? ('boolean' as const) : ('numeric' as const),
+  updatedAt: '2026-09-20T00:00:00.000Z',
+  updatedByActorId: NATHAN.personId,
+  revision,
 });
-const TODOS: readonly TodoView[] = [
-  todo(0, TAGS.slice(0, 1)),
-  todo(1, [], 2),
-  todo(2, TAGS.slice(1)),
-  todo(3, []),
-  todo(5, []),
-];
 
 const READS = {
   'task.board': {
@@ -196,24 +109,18 @@ const READS = {
   'settings.read': {
     ok: true,
     settings: [
-      {
-        key: 'four_eyes_threshold',
-        value: 500,
-        valueType: 'numeric',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 2,
-      },
-      {
-        key: 'client_sign_off_required',
-        value: true,
-        valueType: 'boolean',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 1,
-      },
+      setting('four_eyes_threshold', 500, 2),
+      setting('client_sign_off_required', true, 1),
+      setting('conversation_window_days', 30, 1),
+      setting('retention_window_days', 365, 1),
     ],
   } satisfies SettingsReadResult,
+  // The person's own store (MP-2-11a): no appearance, so the capture's colour
+  // scheme draws; two dismissals no page draws, so the reset has a count.
+  'preference.read': {
+    ok: true,
+    preferences: { 'tips.dismissed': { 'agency:settings#one': 1, 'agency:settings#two': 1 } },
+  },
   'session.capabilities': {
     ok: true,
     personId: NATHAN.personId,
@@ -243,6 +150,7 @@ const READS = {
         seenAt: null,
         lastDelivery: 'delivered',
         task: { key: 'T-9', title: 'Sign off the Meridian ad run rate, 29% over budget' },
+        client: MERIDIAN,
       },
       {
         id: 'i-2',
@@ -256,10 +164,53 @@ const READS = {
         seenAt: '2026-09-25T21:00:00.000Z',
         lastDelivery: 'delivered',
         task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
+        client: HARBOUR,
+      },
+      {
+        id: 'i-3',
+        reason: 'run_finished',
+        workState: 'open',
+        access: 'readable',
+        owed: false,
+        counted: false,
+        raisedAt: '2026-09-25T18:10:00.000Z',
+        closedAt: null,
+        seenAt: null,
+        lastDelivery: 'delivered',
+        task: { key: 'T-17', title: 'Shopping feed clean-up' },
       },
     ],
   } satisfies InboxReadResult,
   'inbox.count': { ok: true, owed: 2 } satisfies InboxCountResult,
+  'session.person': { ok: true, person: { name: NATHAN.name } } satisfies SessionPersonResult,
+  'team.list': {
+    ok: true,
+    you: NATHAN.personId,
+    people: [
+      { personId: NATHAN.personId, name: NATHAN.name, availability: null },
+      { personId: MIA.personId, name: MIA.name, availability: { state: 'away', reason: 'Leave' } },
+    ],
+  } satisfies TeamListResult,
+  'task.ledger': LEDGER,
+  'task.search': {
+    ok: true,
+    hits: TASKS.slice(0, 3).map(({ id, key, title }) => ({ id, key, title })),
+  } satisfies TaskSearchResult,
+  'access.read': {
+    ok: true,
+    team: [
+      { ...NATHAN, permissions: [], grants: [] },
+      { ...MIA, permissions: [], grants: [] },
+    ],
+    clients: [],
+    agents: [],
+    clientRecords: [HARBOUR, MERIDIAN],
+  } satisfies AccessReadResult,
+  'operations.read': {
+    ok: true,
+    privacyIncidents: [],
+    breachRunbook: null,
+  } satisfies OperationsReadResult,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */
