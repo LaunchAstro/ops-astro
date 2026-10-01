@@ -76,7 +76,12 @@ needsServer(
   async () => {
     const api = apiWith({
       agentCredentials: {
-        limits: { requests: { ...WIDE, credential: 2 }, concurrent: WIDE, exports: WIDE },
+        limits: {
+          requests: { ...WIDE, credential: 2 },
+          concurrent: WIDE,
+          exports: WIDE,
+          refused: 1000,
+        },
       },
     });
     const credential = await issued();
@@ -109,7 +114,12 @@ needsServer(
     const api = apiWith({
       database: pool,
       agentCredentials: {
-        limits: { requests: { ...WIDE, credential: 3 }, concurrent: WIDE, exports: WIDE },
+        limits: {
+          requests: { ...WIDE, credential: 3 },
+          concurrent: WIDE,
+          exports: WIDE,
+          refused: 1000,
+        },
       },
     });
     const credential = await issued();

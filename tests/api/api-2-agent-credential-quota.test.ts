@@ -37,7 +37,7 @@ function limited(
     database,
     agentCredentials: {
       now: () => new Date(clock),
-      limits: { requests: WIDE, concurrent: WIDE, exports: WIDE, ...overrides },
+      limits: { requests: WIDE, concurrent: WIDE, exports: WIDE, refused: 1000, ...overrides },
     },
   });
   return { api, tick: (ms) => (clock += ms) };
@@ -154,9 +154,7 @@ needsServer('API-2 quota on export: records handed out past the limit are refuse
 needsServer(
   'API-2 quota at the door: made-up bearers on a business key are limited before they are resolved',
   async () => {
-    // Cast while the limit is new; the fix names it in `AgentLimits`.
-    const door = { refused: 2 } as unknown as Partial<AgentLimits>;
-    const { api, tick } = limited(door);
+    const { api, tick } = limited({ refused: 2 });
     const before = await attemptsIn(harness.world.alpha);
     const made = async (): Promise<Answer> =>
       await readWith(api, randomBytes(32).toString('base64url'));

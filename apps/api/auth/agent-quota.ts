@@ -2,7 +2,8 @@
 //
 // The agent credential's quota (API-2): requests a minute, calls in flight
 // and records handed out a minute, each held per credential, per person and
-// per business.
+// per business; and, before a bearer is resolved, the made-up or dead ones
+// a business key is sent a minute.
 
 import type { CredentialQuota } from '../../../packages/core-commands/src/index.ts';
 
@@ -20,6 +21,8 @@ export interface AgentLimits {
   readonly concurrent: Tiers;
   /** Records handed out a minute. */
   readonly exports: Tiers;
+  /** Not-live bearers a minute, per business, before the next is even looked up. */
+  readonly refused: number;
 }
 
 /** The installation's limits unless a deployment names its own. */
@@ -27,6 +30,7 @@ export const DEFAULT_AGENT_LIMITS: AgentLimits = {
   requests: { credential: 120, person: 240, business: 600 },
   concurrent: { credential: 4, person: 8, business: 16 },
   exports: { credential: 2000, person: 4000, business: 10_000 },
+  refused: 60,
 };
 
 const WINDOW_MS = 60_000;
@@ -66,7 +70,13 @@ export function createAgentQuota(
   const windows = new Map<string, Window>();
   const inFlight = new Map<string, number>();
   const windowOf = (key: string, at: number): Window => currentWindow(windows, key, at);
+  // A not-live bearer's count rides in its business's door window's `requests`.
+  const doorOf = (businessId: string): Window => windowOf(`d:${businessId}`, now().getTime());
   return {
+    knock: (businessId) => doorOf(businessId).requests < limits.refused,
+    turnedAway(businessId) {
+      doorOf(businessId).requests += 1;
+    },
     enter(keys) {
       const at = now().getTime();
       const named = {
