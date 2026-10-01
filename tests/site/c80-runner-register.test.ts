@@ -127,8 +127,9 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the effect register, rec
     expect(await entries(id)).toEqual([]);
     expect(await publish(id, timeout)).toEqual({ kind: 'refused', code: 'OUTCOME_UNKNOWN' });
 
+    const sent = (await receipt(id, 'publish'))['attempt_and_dispatch_token']?.observed;
     const correction = { id, taskId: lease.taskId };
-    const answer = { revision: 'rev-2', deploymentId: 'dep-2', dispatchToken: 'sha256:late' };
+    const answer = { revision: 'rev-2', deploymentId: 'dep-2', dispatchToken: String(sent) };
     expect(
       await registerCorrectionEffect(w.world.db.app, at(id), correction, 'publish', answer),
     ).toBe(true);
@@ -136,7 +137,7 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the effect register, rec
     expect(await publish(id, later)).toMatchObject({ kind: 'recorded', state: 'live' });
     expect([timeout.seen.dispatched.length, later.seen.dispatched.length]).toEqual([1, 0]);
     expect((await receipt(id, 'publish'))['attempt_and_dispatch_token']).toEqual({
-      observed: 'sha256:late',
+      observed: sent,
     });
     expect([await w.stateOf(id), await w.receiptsOf(id)]).toEqual(['live', 2]);
   });
