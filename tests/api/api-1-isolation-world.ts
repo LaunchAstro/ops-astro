@@ -11,7 +11,7 @@ import { afterAll, beforeAll } from 'vitest';
 import type { Hono } from 'hono';
 import { buildCatalogue, type CatalogueRow } from '../../packages/core-wire/src/index.ts';
 import { authorised, createApiFixture, post, tokenFor, type ApiFixture } from './fixture.ts';
-import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+import { enrol, grantTo, installSpine, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 
 export type Name = 'client1' | 'client2' | 'bravo' | 'other';
@@ -42,6 +42,12 @@ export let foreignLease: { leaseId: string; fence: unknown };
 export let foreignReservation: string;
 export let foreignPersonId = '';
 export let foreignTaskId = '';
+/** Each picked-up task's run, and the agent's own lease: the crossing's control. */
+export let foreignRunId = '';
+export let ownRunId = '';
+export let ownLease: { leaseId: string; fence: unknown };
+/** An agent of Alpha with no delegation of its own, the helper a hand-over names. */
+export let helperAgentId = '';
 /** Raw id or title to its label, so a leak is named and no record value is printed. */
 const labels = new Map<string, string>();
 
@@ -109,13 +115,19 @@ async function seedClients(): Promise<string> {
   await fixture.db.app.withBusiness(fixture.business, async (tx) => {
     await grantTo(tx, clientOne, 'read', { kind: 'record', id: task.client1 });
     await grantTo(tx, clientTwo, 'read', { kind: 'record', id: task.client2 });
+    // The agent's delegating person: run:write on the whole business, so the pickup
+    // mints the delegation with `run` and its run operations meet the one-task scope.
+    await grantTo(tx, fixture.member, 'write', WHOLE_BUSINESS, false, 'run');
   });
   return alphaToken;
 }
 
 /** The agent's own delegation, then the second Alpha person's held reservation and live lease. */
 async function seedDelegations(alphaToken: string): Promise<void> {
-  ({ agentToken, delegation, delegatedTask } = await pickUp(alphaToken, 'delegated'));
+  const ours = await pickUp(alphaToken, 'delegated');
+  ({ agentToken, delegation, delegatedTask } = ours);
+  ownLease = { leaseId: ours.leaseId, fence: ours.fence };
+  ownRunId = ours.runId;
   const otherPerson = await enrol(fixture.db.app, fixture.business, 'other-decider');
   foreignPersonId = otherPerson.personId;
   labels.set(otherPerson.personId, '<other person>').set(otherPerson.actorId, '<other person>');
@@ -133,10 +145,14 @@ async function seedDelegations(alphaToken: string): Promise<void> {
   const secondAgent = `agent-${randomUUID()}`;
   await fixture.db.app.withBusiness(fixture.business, async (tx) => {
     const actorId = randomUUID();
-    await tx.query(`insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`, [
-      fixture.business,
-      actorId,
-    ]);
+    helperAgentId = randomUUID();
+    for (const id of [actorId, helperAgentId]) {
+      // eslint-disable-next-line no-await-in-loop -- one transaction, one connection
+      await tx.query(`insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`, [
+        fixture.business,
+        id,
+      ]);
+    }
     await tx.query(
       `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
        values ($1, $2, $3, $4, $5)`,
@@ -151,6 +167,7 @@ async function seedDelegations(alphaToken: string): Promise<void> {
   });
   const theirs = await pickUp(otherToken, 'other', secondAgent);
   foreignTaskId = theirs.delegatedTask;
+  foreignRunId = theirs.runId;
   foreignLease = { leaseId: theirs.leaseId, fence: theirs.fence };
 }
 
@@ -199,11 +216,18 @@ async function pickUp(personToken: string, owner: Owner, agentSubject = fixture.
   const held = detail(picked.body);
   const leaseId = String(held['leaseId']);
   labels.set(leaseId, `<${owner} lease>`);
+  const [run] = await fixture.db.admin.execute<{ run_id: string }>(
+    'select run_id::text from public.leases where business_id = $1 and id = $2',
+    [fixture.business, leaseId],
+  );
+  if (run === undefined) throw new Error('the pickup wrote no lease');
+  labels.set(run.run_id, `<${owner} run>`);
   return {
     agentToken: token,
     delegation: String(held['credential']),
     delegatedTask: taskId,
     leaseId,
+    runId: run.run_id,
     fence: held['fence'],
   };
 }
