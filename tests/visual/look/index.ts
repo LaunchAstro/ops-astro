@@ -8,6 +8,7 @@
 
 import { BOARD } from './board.ts';
 import { CLIENTS } from './clients.ts';
+import { DOCK } from './dock.ts';
 import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
@@ -36,4 +37,12 @@ export interface LookScreen {
   readonly probes: readonly LookProbe[];
 }
 
-export const LOOK_SCREENS: readonly LookScreen[] = [SHELL, BOARD, TASK, SETTINGS, SIGN_IN, CLIENTS];
+export const LOOK_SCREENS: readonly LookScreen[] = [
+  SHELL,
+  BOARD,
+  TASK,
+  SETTINGS,
+  SIGN_IN,
+  CLIENTS,
+  DOCK,
+];

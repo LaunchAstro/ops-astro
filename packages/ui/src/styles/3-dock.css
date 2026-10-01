@@ -15,7 +15,9 @@
       thing. The sheet tiers are MP-3-3's. ----------------------------------- */
 .dock {
   position: fixed;
-  top: 0;
+  /* Beside the page the dock starts at the app strip's foot (.appbar, 45px),
+     and the rail centres on what is left of the edge (DS-SIDE-1, DS-SIDE-7). */
+  top: 45px;
   right: 0;
   bottom: 0;
   z-index: 50;
@@ -59,6 +61,10 @@
   letter-spacing: var(--type-badge-tracking);
   text-transform: var(--type-badge-case);
   cursor: pointer;
+  /* DS-SIDE-2: ink and ground move over 120 ms on the one ease. */
+  transition:
+    color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
 }
 /* The panel's count rides the tab's corner: the kit's `cbadge`, placed. */
 .dock__count {
@@ -140,8 +146,11 @@
 .dock__closeall:hover {
   color: var(--danger);
 }
+/* The higher-ranked panel takes the outer edge (DS-SIDE-7 stacked): the
+   panels come in rank order, so the row runs from the edge inwards. */
 .dock__panels {
   display: flex;
+  flex-direction: row-reverse;
   height: 100%;
   box-shadow: var(--shadow-overlay);
 }
@@ -182,7 +191,7 @@
   justify-content: center;
   width: 26px;
   height: 26px;
-  padding: 0;
+  padding: 1px 6px;
   border: 0;
   background: none;
   color: var(--ink-faint);
@@ -300,7 +309,7 @@
   transform: none;
 }
 .dock[data-mode='sheet'] .dock__panels {
-  flex-direction: column;
+  flex-direction: column-reverse;
   height: var(--dock-sheet-h);
   border-top: 1px solid var(--border);
   box-shadow: none;
@@ -312,8 +321,15 @@
   width: 100%;
   border-left: 0;
 }
+/* Stacked from the bottom edge up, so the rule falls under the upper panel. */
 .dock[data-mode='sheet'] .dpanel + .dpanel {
-  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+/* Close all closes the row behind a hairline on its left (DS-SIDE-6). */
+.dock[data-mode='sheet'] .dock__closeall {
+  margin: 0 0 0 0.35rem;
+  border-top: 0;
+  border-left: 1px solid var(--border);
 }
 .dock[data-mode='sheet'] .dpanel__grip,
 .dock[data-mode='phone'] .dpanel__grip {

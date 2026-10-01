@@ -108,7 +108,7 @@ export function Dock(props: DockProps): ReactElement {
               grip={
                 <PanelGrip
                   dock={props}
-                  first={index === 0}
+                  topmost={index === props.panels.length - 1}
                   width={width}
                   height={height}
                   onDragging={setDragging}
@@ -126,11 +126,12 @@ export function Dock(props: DockProps): ReactElement {
 /**
  * The grip on a panel's edge. Beside the page it sets one width for every
  * panel; below the side tier the panels share one height, dragged on the
- * sheet's top edge, so only the first panel carries it.
+ * sheet's top edge, so only the topmost panel carries it: the sheet stacks
+ * from the bottom edge up in rank order, so that is the last one handed.
  */
 function PanelGrip(props: {
   readonly dock: DockProps;
-  readonly first: boolean;
+  readonly topmost: boolean;
   readonly width: number;
   readonly height: number;
   readonly onDragging: (dragging: boolean) => void;
@@ -138,7 +139,7 @@ function PanelGrip(props: {
   const { dock } = props;
   const sheet = dock.layout?.mode === 'sheet' || dock.layout?.mode === 'phone';
   if (sheet) {
-    return props.first ? (
+    return props.topmost ? (
       <EdgeGrip
         edge="top"
         className="dpanel__grip"
