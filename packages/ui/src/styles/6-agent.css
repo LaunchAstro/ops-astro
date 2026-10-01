@@ -411,8 +411,7 @@
    :5264-5269, :8237). The allowance is money in the envelope's currency: the
    reservation ledger reserves money. Label, value and provenance on one line
    while there is room; nothing in a run row truncates. */
-.tokpanel,
-.tokempty {
+.tokpanel {
   display: grid;
   gap: var(--s-2);
   margin-top: var(--s-2);
@@ -519,10 +518,10 @@
 }
 .tokrun__k,
 .tokrun__when,
-.tokempty__say {
+.tokpanel__reason {
   color: var(--text-muted);
   font-size: var(--text-overline);
 }
-.tokempty__say {
+.tokpanel__reason {
   margin: 0;
 }

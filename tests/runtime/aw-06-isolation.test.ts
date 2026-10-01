@@ -213,7 +213,10 @@ it('AW-06 revoked: a viewer whose read is revoked is refused at the next read, a
     return topics;
   });
   for (const topic of topics) expect(payloads).toContain(topic);
-  for (const payload of payloads) expect(payload).toMatch(/^[0-9a-f-]{36}:task:[0-9a-f-]{36}$/u);
+  // Batch 1's inbox raises its holders' items on the same channel, as bare topics too.
+  for (const payload of payloads) {
+    expect(payload).toMatch(/^[0-9a-f-]{36}:(?:task|inbox):[0-9a-f-]{36}$/u);
+  }
 
   // The revoker manages task grants (the owning route asks `manage`).
   await w.s.db.app.withBusiness(
