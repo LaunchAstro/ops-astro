@@ -3,7 +3,7 @@
 //
 // MP-2-2, the expanded rail and its sliding railmark. One case per line of the
 // ticket's supporting checklist. Sizes and the 220ms slide are measured in a
-// browser at 1480, 900 and 390, light and dark, by `tests/browser/app-frame.mjs`;
+// browser at 1480, 900 and 390, light and dark, by `tests/surfaces/mp-2-8-harness.test.tsx`;
 // what is decided before layout (which item is lit, where the mark is sent,
 // whether it snaps or slides) is proved here.
 
