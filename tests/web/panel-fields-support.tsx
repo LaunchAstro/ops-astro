@@ -31,6 +31,8 @@ export function serving(
   projects: readonly { readonly id: string; readonly title: string | null }[] = [],
   /** The business's task states `task.read` answers, the Status select's choices. */
   states: readonly Readonly<Record<string, string>>[] = [],
+  /** The clients `client.list` answers (C32), the Client field's choices. */
+  clients: readonly { readonly clientId: string; readonly name: string }[] = [],
 ): {
   readonly client: OperationsClient;
   readonly sent: Sent[];
@@ -52,6 +54,7 @@ export function serving(
       return Promise.resolve(json({ ok: true, task: task(over), states }));
     }
     if (where.endsWith('/tag/list')) return Promise.resolve(json({ ok: true, tags: vocabulary }));
+    if (where.endsWith('/client/list')) return Promise.resolve(json({ ok: true, clients }));
     if (where.endsWith('/task/board')) {
       return Promise.resolve(json({ ok: true, tasks: projects, changedAt: null, viewer: 'p-1' }));
     }
