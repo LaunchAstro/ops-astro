@@ -125,18 +125,15 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 agent duplicate refused', () =>
   it('MP-4-8 agent duplicate refused', async () => {
     const decider = await world.decider('dup-decider');
     const picked = await world.pickUp(decider, CANARY);
-    const other = created(
-      await world.asPerson(decider, {
-        command: 'task.create',
-        operationId: randomUUID(),
-        fields: { title: CANARY },
-      }),
-    );
+    // The delegator holds task:write across the business, so the delegation reaches the old
+    // task's client and the chosen one alike: the refusal is the operation's, not a scope's.
+    const other = await taskOf(decider, await clientBy(decider));
     const client = await clientBy(decider);
     const before = await footprint();
     const tries = [picked.taskId, other].flatMap((taskId) =>
       [client, null].map(async (chosen) => {
         const answer = await world.asAgent(body(taskId, chosen), picked.credential);
+        expect(codeOf(answer)).toBe('DELEGATION_EXCLUDES_OPERATION');
         refusedClean(answer, [taskId]);
       }),
     );
@@ -170,7 +167,11 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 duplicate isolation', () => {
     const crossings: readonly [string, Promise<CommandResult>, string][] = [
       ['another business', bravo.as(body(oldA, null)), 'NOT_FOUND'],
       ['another client', world.asPerson(readerB, body(oldA, clientB)), 'SCOPE_NOT_GRANTED'],
-      ['a live delegation', world.asAgent(body(oldA, clientA), picked.credential), 'any'],
+      [
+        'a live delegation',
+        world.asAgent(body(oldA, clientA), picked.credential),
+        'DELEGATION_EXCLUDES_OPERATION',
+      ],
     ];
     for (const [label, answer, code] of await Promise.all(
       crossings.map(async ([name, sent, want]) => [name, await sent, want] as const),
