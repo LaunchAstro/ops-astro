@@ -141,7 +141,7 @@ const itemsOn = async (w: Schedules, ticket: string): Promise<Item[]> => [
     `select recipient_person_id as recipient, reason, fact_kind as "factKind", fact_id as "factId"
        from public.inbox_items
       where business_id = $1 and subject_record_id = $2 and work_state = 'open'
-      order by raised_at, id`,
+      order by raised_at, fact_kind, id`,
     [w.business, ticket],
   )),
 ];
@@ -240,23 +240,25 @@ it("WF-7 twice failed: the second failed run on a research ticket stops, reports
 }, 180_000);
 
 it("WF-7 twice failed isolation: a ticket's failures are its own, counted in its own business and told only to its own map's owner", async () => {
+  // A map owner of this case's own, so the earlier cases' items are not counted here.
+  const mine = await charter(s, 'map-owner-crossing');
   // Business to business: one failure each on two businesses' tickets is not twice.
-  const here = await researchOnMap(s, owner, 'wf7 crossing here');
+  const here = await researchOnMap(s, mine, 'wf7 crossing here');
   const there = await researchOnMap(other, otherOwner, 'wf7 crossing there');
   await failedRun(s, here);
   await failedRun(other, there);
-  expect(await itemsOf(s, owner.personId)).toBe(0);
+  expect(await itemsOf(s, mine.personId)).toBe(0);
   expect(await itemsOf(other, otherOwner.personId)).toBe(0);
   // Ticket to ticket, in one business: two tickets failing once each are not twice either.
-  const beside = await researchOnMap(s, owner, 'wf7 crossing beside');
+  const beside = await researchOnMap(s, mine, 'wf7 crossing beside');
   await failedRun(s, beside);
-  expect(await itemsOf(s, owner.personId)).toBe(0);
+  expect(await itemsOf(s, mine.personId)).toBe(0);
   // Twice on one ticket over there tells that business's owner alone.
   await failedRun(other, there);
   expect((await itemsOn(other, there)).map((item) => item.recipient)).toContain(
     otherOwner.personId,
   );
-  expect(await itemsOf(s, owner.personId)).toBe(0);
+  expect(await itemsOf(s, mine.personId)).toBe(0);
   // Person to person: the launcher is told of each run, never as the map's owner.
   const launcher = (await approverOf(other)).personId;
   expect(
