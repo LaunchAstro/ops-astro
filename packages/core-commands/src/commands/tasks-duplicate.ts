@@ -19,7 +19,7 @@
 //
 // The carried text guard comes from here, so the app, the API and the command
 // line give the same answer: a title or step name that names the old task's
-// client, or an alias on its client record, is refused naming the fields until
+// client (its name in the client model) is refused naming the fields until
 // the person confirms it. The refusal carries the field names only, never the
 // name it matched.
 //
@@ -29,6 +29,7 @@
 
 import {
   deriveSource,
+  isClientHere,
   isRecordsRefusal,
   isUuid,
   nextTaskKey,
@@ -114,27 +115,16 @@ function folded(text: string): string {
 }
 
 /**
- * The old client's name and aliases, folded, from its client record: a record
- * of the business's `client` type, `name` text and `aliases` a list of text.
- * The client model is not on this base; until it installs that type, no name
- * is known here and the guard warns on nothing.
+ * The old client's name, folded, from the business's client model (C32). The
+ * model records no alias yet; an alias joins the list when it does.
  */
 async function clientNames(tx: TenantQuery, client: string | null): Promise<readonly string[]> {
   if (client === null) return [];
-  const rows = await tx.query<{ readonly name: unknown; readonly aliases: unknown }>(
-    `select r.data -> 'name' as name, r.data -> 'aliases' as aliases
-       from public.records r
-       join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
-      where r.business_id = $1 and t.key = 'client' and r.id = $2 and r.deleted_at is null`,
+  const rows = await tx.query<{ readonly name: string }>(
+    'select name from public.clients where business_id = $1 and id = $2::uuid',
     [tx.businessId, client],
   );
-  const row = rows[0];
-  if (row === undefined) return [];
-  const aliases = Array.isArray(row.aliases) ? (row.aliases as unknown[]) : [];
-  return [row.name, ...aliases]
-    .filter((one): one is string => typeof one === 'string')
-    .map((one) => folded(one))
-    .filter((one) => one !== '');
+  return rows.map((row) => folded(row.name)).filter((one) => one !== '');
 }
 
 /** The carried fields that name the old client, sorted; empty when none does. */
@@ -248,6 +238,11 @@ export async function duplicateTask(
   if (unauthorised !== undefined) return refused(unauthorised);
   const old = await readOld(tx, context.spine.taskTypeId, oldId);
   if (old === undefined) return refused(refuseNotFound());
+  // The chosen client is one of this business's: another business's and a
+  // made-up id are one NOT_FOUND, and nothing is written.
+  if (shell.client !== null && !(await isClientHere(tx, shell.client))) {
+    return refused(refuseNotFound());
+  }
 
   const naming = await namingFields(tx, old.client, shell);
   if (naming.length > 0 && request.confirmCarried !== true) {
