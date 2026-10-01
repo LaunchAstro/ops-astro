@@ -11,28 +11,8 @@ import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
 import { TASK } from './task.ts';
+import type { LookScreen } from './probe.ts';
 
-export interface LookProbe {
-  /** `<screen>.<element>`, unique across screens. */
-  readonly id: string;
-  /** The mockup page path and the element there; `open` clicks before measuring. */
-  readonly mockup: { readonly path: string; readonly selector: string; readonly open?: string };
-  /** The app page (drawn from the made-up reads) and the element there. */
-  readonly app: { readonly page: string; readonly selector: string; readonly open?: string };
-  /** Computed style properties (colours compared as painted), or `box.width|height|x|y`. */
-  readonly props: readonly string[];
-  /**
-   * Where a ruling moved the build off the mockup: `at` is `<prop>@<theme>`,
-   * `want` the value the build holds, `why` the ruling's id.
-   */
-  readonly ruled?: readonly { readonly at: string; readonly want: string; readonly why: string }[];
-  /** Widths measured at, in both themes. Default 1480. */
-  readonly widths?: readonly number[];
-}
-
-export interface LookScreen {
-  readonly id: string;
-  readonly probes: readonly LookProbe[];
-}
+export type { LookProbe, LookScreen } from './probe.ts';
 
 export const LOOK_SCREENS: readonly LookScreen[] = [SHELL, BOARD, TASK, SETTINGS, SIGN_IN];
