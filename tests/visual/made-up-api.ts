@@ -172,8 +172,33 @@ const READS = {
         updatedByActorId: NATHAN.personId,
         revision: 1,
       },
+      {
+        key: 'conversation_window_days',
+        value: 30,
+        valueType: 'numeric',
+        updatedAt: '2026-09-20T00:00:00.000Z',
+        updatedByActorId: NATHAN.personId,
+        revision: 1,
+      },
+      {
+        key: 'retention_window_days',
+        value: 365,
+        valueType: 'numeric',
+        updatedAt: '2026-09-20T00:00:00.000Z',
+        updatedByActorId: NATHAN.personId,
+        revision: 1,
+      },
     ],
   } satisfies SettingsReadResult,
+  // The person's own store (MP-2-11a): no appearance, so the capture's colour
+  // scheme draws; two dismissals no page draws, so the reset has a count.
+  'preference.read': {
+    ok: true,
+    preferences: {
+      'tips.enabled': true,
+      'tips.dismissed': { 'agency:settings#made-up-one': 1, 'agency:settings#made-up-two': 1 },
+    },
+  },
   'session.capabilities': {
     ok: true,
     personId: NATHAN.personId,
