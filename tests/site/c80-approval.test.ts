@@ -136,10 +136,7 @@ describe.skipIf(serverUrl === undefined)('C80 approver, the approved version sta
           where subject_id = $1 and collection = 'task' and action = 'read'`,
         [outsider.personId],
       );
-      for (const action of ['read', 'write'] as const) {
-        // oxlint-disable-next-line no-await-in-loop -- setup, two grants
-        await grantTo(tx, outsider, action, { kind: 'business', id: null }, false, 'run');
-      }
+      await grantTo(tx, outsider, 'write', { kind: 'business', id: null }, false, 'run');
     });
     const refused = await w.request(outsider, { taskId });
     expect(codeOf(refused)).toBe('NOT_FOUND');

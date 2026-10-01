@@ -126,7 +126,6 @@ describe.skipIf(serverUrl === undefined)('C80 agent request, parties under a run
     const before = Number(await agentRows());
     const fay = await w.world.decider('fay');
     const writeGrant = await w.world.db.app.withBusiness(w.world.business, async (tx) => {
-      await grantTo(tx, fay, 'read', { kind: 'business', id: null }, false, 'run');
       return await grantTo(tx, fay, 'write', { kind: 'business', id: null }, false, 'run');
     });
     const picked = await w.world.pickUp(fay, 'a client’s page');

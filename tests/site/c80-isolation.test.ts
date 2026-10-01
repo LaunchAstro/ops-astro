@@ -61,7 +61,7 @@ afterAll(async () => {
 });
 
 describe.skipIf(serverUrl === undefined)('C80 isolation, another business', () => {
-  it('never approves, lists or counts a correction of another business', async () => {
+  it('never approves or changes a correction of another business', async () => {
     const approve = await w.asIn(w.beta, w.eve, {
       command: 'live_correction.decide',
       correctionId: foreign.correctionId,
@@ -70,8 +70,20 @@ describe.skipIf(serverUrl === undefined)('C80 isolation, another business', () =
     });
     expect(codeOf(approve)).toBe('NOT_FOUND');
     expect(JSON.stringify(approve)).not.toContain(CANARY);
-    expect(await listFor(w.beta, w.eve)).toEqual([]);
     expect(await w.stateOf(foreign.correctionId)).toBe('requested');
+  });
+
+  it('lists a correction of its own business and none of another', async () => {
+    const task = await w.asIn(w.beta, w.eve, {
+      command: 'task.create',
+      fields: { title: 'About' },
+    });
+    if (!('recordId' in task)) throw new Error('task.create refused in beta');
+    const taskId = String(task.recordId);
+    const own = detailOf(await w.asIn(w.beta, w.eve, requestBody(randomUUID(), taskId)));
+    const listed = await listFor(w.beta, w.eve);
+    expect(listed).toEqual([String(own['correctionId'])]);
+    expect(listed).not.toContain(foreign.correctionId);
   });
 });
 

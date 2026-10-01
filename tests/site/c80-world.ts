@@ -105,7 +105,7 @@ async function seedAlpha(world: AgentWorld, partyB: string) {
   return { ava, ben, cal, dee, admin };
 }
 
-/** Business beta, with one member holding every correction grant there. */
+/** Business beta, with one member holding every correction grant there, and task read and write. */
 async function seedBeta(world: AgentWorld): Promise<{ beta: string; eve: Member }> {
   const beta = await insertBusiness(world.db.app, `beta${randomUUID().slice(0, 6)}`);
   await installSpine(world.db.app, beta);
@@ -114,6 +114,8 @@ async function seedBeta(world: AgentWorld): Promise<{ beta: string; eve: Member 
     await installBusinessSettings(tx);
     await grantTo(tx, eve, 'write', WHOLE, false, 'run');
     await grantTo(tx, eve, 'decide', WHOLE, false, 'gate');
+    await grantTo(tx, eve, 'read', WHOLE, false, 'task');
+    await grantTo(tx, eve, 'write', WHOLE, false, 'task');
   });
   return { beta, eve };
 }
