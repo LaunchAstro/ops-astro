@@ -128,7 +128,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-4 parent scope', () => {
 describe.skipIf(serverUrl === undefined)('MP-4-4 parent scope, a trashed subtask', () => {
   // The lock counts a trashed subtask: carry-down walks live rows and restore
   // asks no client, so a parent that moved would get it back on the old one.
-  it('Sol proof, criterion S0-5: a parent whose only subtask is in the trash keeps its client', async () => {
+  it('a parent whose only subtask is in the trash keeps its client', async () => {
     const parent = await make(alpha, owner, 'binned', 'Brochure', { client: CLIENT_A });
     const child = await make(alpha, owner, 'binnedChild', 'Proofs', { parentId: parent });
     const trashed = await command(alpha, owner, {
@@ -190,7 +190,7 @@ async function untilOneWaits(): Promise<void> {
 
 describe.skipIf(serverUrl === undefined)('MP-4-4 parent scope, raced', () => {
   // T1 moves an empty parent to B, held open; a reparent of an A task under it must see B.
-  it('Sol proof, criterion S0-5/MP-4-4: a reparent racing the parent’s client change never leaves a child on another client', async () => {
+  it('a reparent racing the parent’s client change never leaves a child on another client', async () => {
     const parent = await make(alpha, owner, 'racedParent', 'Campaign', { client: CLIENT_A });
     const moving = await make(alpha, owner, 'racedChild', 'Banner', { client: CLIENT_A });
     const under = await make(alpha, owner, 'racedGrand', 'Sizes', { parentId: moving });
