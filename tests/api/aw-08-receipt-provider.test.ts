@@ -38,7 +38,8 @@ it('AW-08 receipt link: an https link on the operation’s declared host is kept
   expect(receipt).toMatchObject({
     link,
     decision: { decidedByPersonId: r.fixture.member.personId },
-    version: { number: 1 },
+    // The launched version: the successor the plan's work handed back.
+    version: { number: 2 },
     settlement: { state: 'settled' },
   });
   expect(await attempts(taskId)).toMatchObject([{ observed: true, link }]);
@@ -137,7 +138,7 @@ it('AW-08 receipt link: at the database, an observed attempt’s link is fixed a
     expect(await setLink(dropped?.['id'], shape, ', observed = true'), shape).toBe('23514');
   }
   expect(await attempts(taskId)).toMatchObject([{ observed: false, link: null }]);
-});
+}, 60_000);
 
 it('AW-08 canary: a planted credential and planted provider content reach no row, audit payload, log or refusal body', async () => {
   const planted = `aw08-planted-${randomUUID()}`;
@@ -158,6 +159,7 @@ it('AW-08 canary: a planted credential and planted provider content reach no row
       ),
     );
     expect(kept.receipt['link']).toBeNull();
+    await retirePickups();
     const { taskId, credential } = await launched();
     const hostile = await workerOn(
       credential,

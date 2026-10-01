@@ -121,7 +121,7 @@ export async function launched(): Promise<{ taskId: string; credential: string }
   return { taskId, credential };
 }
 
-/** The task's attempts: their state, markers, the receipt link and the hold. */
+/** The launched attempts on the task (the reviewed output's): state, markers, link and hold. */
 export const attempts = async (taskId: string): Promise<readonly Record<string, unknown>[]> =>
   await r.fixture.db.admin.execute<Record<string, unknown>>(
     `select att.id, att.state, att.observed, att.receipt_link as link, res.state as held,
@@ -129,6 +129,8 @@ export const attempts = async (taskId: string): Promise<readonly Record<string, 
        from public.attempts att
        join public.reservations res on res.business_id = att.business_id and res.id = att.reservation_id
        join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+       join public.reviewed_outputs ro
+         on ro.business_id = res.business_id and ro.version_id = res.version_id
       where att.business_id = $1 and run.task_id = $2 order by att.created_at, att.id`,
     [r.fixture.business, taskId],
   );

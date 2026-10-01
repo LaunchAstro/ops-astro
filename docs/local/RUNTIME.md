@@ -1961,7 +1961,7 @@ An approval does not survive its version. When the agent's revision
 supersedes an approved version, the proposal ends that version's lease and
 delegation, so the agent's dispatch under it is `DELEGATION_NOT_LIVE` and marks
 nothing; with the lease somehow live, dispatch's locked recheck of the
-approved version answers `DECISION_STALE`.
+version answers `PROPOSAL_SUPERSEDED`.
 
 A stuck agent (a failed handback) tells the task's assignee as well as the
 person who authorised the run: one `waiting_run` item on the run, raised in
