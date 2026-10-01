@@ -8,7 +8,7 @@ export const shortDigest = (digest: string): string => digest.slice(0, 12);
  * The currency's minor digits: 2 for AUD, 0 for JPY. The server's own rule
  * (core-runtime `four-eyes.ts` minorDigits), so a figure means the same here.
  */
-function minorDigits(currency: string): number {
+export function minorDigits(currency: string): number {
   return (
     new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions()
       .maximumFractionDigits ?? 2

@@ -11,7 +11,7 @@
 // (`drawRunState`'s fallback), never dropped.
 
 import type { ReactElement } from 'react';
-import { drawRunState, Empty, Spill } from '@launchastro/ui';
+import { drawRunState, Empty, major, Spill } from '@launchastro/ui';
 import {
   isRefusal,
   isUnavailable,
@@ -169,6 +169,7 @@ function Run(props: {
         <AttemptReceipt
           attemptId={attemptId}
           client={props.client}
+          currency={props.node?.observed.currency ?? null}
           grantKey={props.grantKey}
           key={attemptId}
           readOf={props.readOf}
@@ -246,6 +247,8 @@ function AttemptReceipt(props: {
   readonly grantKey: string;
   readonly readOf: unknown;
   readonly attemptId: string;
+  /** The run's currency, from its observed node; null when the graph names none. */
+  readonly currency: string | null;
 }): ReactElement | null {
   const { client, attemptId } = props;
   const { state } = useRead<ReceiptResult>({
@@ -264,6 +267,8 @@ function AttemptReceipt(props: {
   }
   const { receipt } = state.value;
   const { settlement } = receipt;
+  const amount = (minor: number): string =>
+    props.currency === null ? `${String(minor)} minor units` : major(minor, props.currency);
   return (
     <div
       className="card__sub"
@@ -280,8 +285,4 @@ function AttemptReceipt(props: {
       </span>
     </div>
   );
-}
-
-function amount(minor: number): string {
-  return (minor / 100).toFixed(2);
 }
