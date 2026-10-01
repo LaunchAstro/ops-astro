@@ -62,6 +62,8 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
     "reads the tracing service's public health route at its one address (C34)",
   'apps/web/src/screen-registry.tsx':
     "threads the page's fetch to the legal page's read of the product's own API (C81)",
+  'apps/web/src/session/recovery.ts':
+    "a forgotten password: the product's own API, same origin, and the sign-in provider's verify (C40)",
 };
 
 const MODULES =
