@@ -150,7 +150,7 @@ export async function verifySecondFactor(
 
   const verified = await provider.verify(caller.accessToken, target.providerFactorId, code);
   let ended: number | undefined;
-  const recorded = await judged(sending, act, async (tx, session) => {
+  const recorded = await judged({ ...sending, proven: verified.ok }, act, async (tx, session) => {
     if (!verified.ok) return providerRefusal(verified.fault, 'code');
     const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
     // Removed or replaced by another tab between the two transactions.
@@ -211,7 +211,7 @@ export async function removeSecondFactor(
   const removed = proved.ok
     ? await provider.remove(proved.value.accessToken, target.providerFactorId)
     : undefined;
-  const recorded = await judged(sending, act, async (tx, session) => {
+  const recorded = await judged({ ...sending, proven: proved.ok }, act, async (tx, session) => {
     if (!proved.ok) return providerRefusal(proved.fault, 'code');
     if (removed !== undefined && !removed.ok) return providerRefusal(removed.fault, 'answer');
     const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
@@ -263,10 +263,11 @@ const ownFactor = (caller: FactorCaller, session: Session, factorId: string) => 
  * The check before the provider call records only a refusal, or, passed for a
  * code (`attempt`), the code as sent, under the login's lock (`recordCode`);
  * the act's own event, applied or refused, is written after the call beside
- * the record it changes, and names the same `attempt`.
+ * the record it changes, and names the same `attempt`, with the code recorded
+ * as answered only when the provider proved it good (`proven`).
  */
 async function judged(
-  caller: FactorCaller & { readonly attempt?: string },
+  caller: FactorCaller & { readonly attempt?: string; readonly proven?: boolean },
   act: Act,
   check: (tx: TenantQuery, session: Session) => Promise<CommandRefusal | undefined>,
   stage: 'before' | 'after' = 'after',
