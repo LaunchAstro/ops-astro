@@ -15,8 +15,9 @@
 // 2. Make the login at the login provider, through custody, for the invited
 //    address, with the password the page set and the address confirmed,
 //    under a provider user id that is ours: the same every time for one
-//    address in one business (`loginSubject`). A login this business has
-//    bound under that id already is never set again: the answer is
+//    address in one business (`loginSubject`). A login any business has
+//    bound under that id already (a signed-in accept binds one in another
+//    business, `invitation-bind.ts`) is never set again: the answer is
 //    `sign_in`, and nothing is asked. Otherwise it is made
 //    (`auth.create_user`), outside any lock: a create makes a new user or is
 //    refused, and never changes one the provider holds.
@@ -32,7 +33,7 @@
 //    no user under our id, the address's login is someone else's (another
 //    business's, or made elsewhere): it gets none and its password is not
 //    touched, the answer is `sign_in`, and nothing is spent, so its holder
-//    may accept once signed in (that binding is a follow-up). A fault spends
+//    may accept once signed in (`acceptSignedIn`). A fault spends
 //    nothing and binds nothing; a login it stranded is adopted by the next
 //    accept. Then, still in the transaction: spend every unspent token of
 //    the invitation, mark it accepted, give its one enduring person an
@@ -53,19 +54,19 @@ import {
   type LoginAsked,
 } from '../../../core-custody/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
+import { boundHere, LOGIN_PROVIDER, loginBound, loginSubject } from './invitation-login.ts';
 import { workerActor } from './conversation-lifecycle.ts';
+
+export { LOGIN_PROVIDER, loginSubject } from './invitation-login.ts';
 
 export const ACCEPT_OPERATION = 'invitation.accept';
 export const LOGIN_CREATE_OPERATION = 'login.create';
-
-/** The provider the `logins` rows name for Supabase Auth (`apps/api/auth/supabase.ts`). */
-const LOGIN_PROVIDER = 'supabase';
 
 /** A password the provider will hash in full: 12 to 72 bytes (bcrypt reads no more). */
 const PASSWORD_BYTES = { least: 12, most: 72 } as const;
 
 /** The token a send mints: 32 random bytes, base64url, 43 characters. */
-const TOKEN = /^[\w-]{43}$/u;
+export const TOKEN: RegExp = /^[\w-]{43}$/u;
 
 export interface AcceptRequest {
   readonly token: string;
@@ -79,7 +80,7 @@ export type AcceptResult =
       readonly code: 'ENROLMENT_LINK_INVALID' | 'PASSWORD_INVALID' | 'ENROLMENT_UNAVAILABLE';
     };
 
-interface Found {
+export interface Found {
   readonly business: string;
   readonly tokenId: string;
   readonly invitationId: string;
@@ -89,21 +90,14 @@ interface Found {
 }
 
 /**
- * The provider user id for one address in one business: a UUID (version 8,
- * RFC 9562) from SHA-256 of a fixed label, the business and the address. The
- * address, not the person: each invitation makes a new person, and a login an
- * earlier invitation stranded must be found by the next one for the address.
+ * Lock one provider login id, whichever business made or binds it. Every
+ * accept that could set or bind the login takes it before any row lock: the
+ * token-only accept on its own id for the address, the signed-in accept on
+ * that id and on the session's login. The key names the login id alone, so
+ * the two flows in two businesses serialise on the one string.
  */
-function loginSubject(business: string, address: string): string {
-  const hex = createHash('sha256').update(`ops-astro login|${business}|${address}`).digest('hex');
-  const variant = ((Number.parseInt(hex.charAt(16), 16) & 0x3) | 0x8).toString(16);
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    `8${hex.slice(13, 16)}`,
-    `${variant}${hex.slice(17, 20)}`,
-    hex.slice(20, 32),
-  ].join('-');
+export async function lockLogin(tx: TenantQuery, id: string): Promise<void> {
+  await advisoryLock(tx, `c39-t-login:${id}`);
 }
 
 /**
@@ -114,21 +108,12 @@ function loginSubject(business: string, address: string): string {
  */
 export async function lockLoginId(tx: TenantQuery, address: string): Promise<string> {
   const id = loginSubject(tx.businessId, address);
-  await advisoryLock(tx, `c39-t-login:${tx.businessId}:${id}`);
+  await lockLogin(tx, id);
   return id;
 }
 
-/** Whether this business has bound a login under the subject already. */
-async function loginBound(tx: TenantQuery, subject: string): Promise<boolean> {
-  const rows = await tx.query(
-    'select 1 from logins where business_id = $1 and provider = $2 and subject = $3',
-    [tx.businessId, LOGIN_PROVIDER, subject],
-  );
-  return rows.length > 0;
-}
-
 /** The token's row and its invitation, when the token is live; locked when `lock`. */
-async function liveToken(
+export async function liveToken(
   tx: TenantQuery,
   hash: string,
   lock: boolean,
@@ -154,7 +139,7 @@ async function liveToken(
 }
 
 /** Step 1: the one business whose live token this is, or none. */
-async function find(
+export async function find(
   database: Database,
   businesses: readonly string[],
   hash: string,
@@ -191,9 +176,15 @@ async function seat(
     [tx.businessId, found.personId, found.roleKey, found.address],
   );
   // The login first, then its mapping: the mapping's trigger locks the login row.
+  // A signed-in accept may find this business's row for the login unmapped: it is kept.
   const [login] = await tx.query<{ id: string }>(
-    `insert into logins (business_id, id, provider, subject)
-     values ($1, gen_random_uuid(), $2, $3) returning id`,
+    `with made as (
+       insert into logins (business_id, id, provider, subject)
+       values ($1, gen_random_uuid(), $2, $3)
+       on conflict (business_id, provider, subject) do nothing returning id)
+     select id from made
+     union all
+     select id from logins where business_id = $1 and provider = $2 and subject = $3`,
     [tx.businessId, LOGIN_PROVIDER, subject],
   );
   await tx.query(
@@ -204,8 +195,8 @@ async function seat(
   return login?.id ?? null;
 }
 
-/** Everything the acceptance changes, under the locks `enrol` took. */
-async function bind(
+/** Everything the acceptance changes, under the locks the caller took: a live, locked invitation. */
+export async function spendAndSeat(
   tx: TenantQuery,
   found: Omit<Found, 'business'>,
   subject: string,
@@ -252,14 +243,14 @@ async function enrol(
   const id = await lockLoginId(tx, login.asked.email);
   const found = await liveToken(tx, hash, true);
   if (found === undefined) return { ok: false, code: 'ENROLMENT_LINK_INVALID' };
-  if (await loginBound(tx, id)) return SIGN_IN;
+  if (await boundHere(tx, id)) return SIGN_IN;
   if (!login.made) {
     const set = await updateLogin(broker, login.asked);
     if (!set.ok) {
       return set.kind === 'refused' ? SIGN_IN : { ok: false, code: 'ENROLMENT_UNAVAILABLE' };
     }
   }
-  await bind(tx, found, id);
+  await spendAndSeat(tx, found, id);
   return { ok: true, state: 'enrolled' };
 }
 
@@ -278,8 +269,7 @@ export async function acceptInvitation(
   const found = TOKEN.test(request.token) ? await find(database, businesses, hash) : undefined;
   if (found === undefined) return { ok: false, code: 'ENROLMENT_LINK_INVALID' };
   const id = loginSubject(found.business, found.address);
-  const bound = async (tx: TenantQuery): Promise<boolean> => await loginBound(tx, id);
-  if (await database.withBusiness(found.business, bound)) return SIGN_IN;
+  if (await loginBound(database, businesses, id)) return SIGN_IN;
   const asked: LoginAsked = { id, email: found.address, password: request.password };
   const made = await createLogin(broker, asked);
   if (!made.ok && made.kind !== 'refused') return { ok: false, code: 'ENROLMENT_UNAVAILABLE' };

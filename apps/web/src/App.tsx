@@ -219,7 +219,7 @@ export function App(props: AppProps): ReactElement {
       case 'sign-in':
         return signIn;
       case 'enrol':
-        return <Enrol token={gate.token} app={props} />;
+        return <Enrol token={gate.token} app={props} session={session} />;
       case 'signed-in-already':
         return (
           <SignedInAlready

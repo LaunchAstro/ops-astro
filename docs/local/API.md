@@ -355,8 +355,9 @@ bare origin, https unless it is on this machine) and
 `ENROLMENT_CREDENTIALS_FILE` (custody's file, the service key under
 `auth_key` for the `auth` destination) staged. A custody process of its own
 holds the key, started before the port is bound and stopped before the
-database closes; the broker catalogues `auth.create_user` and
-`auth.update_user` alone, and tokens are looked for in the businesses the
+database closes; the broker catalogues `auth.create_user`,
+`auth.update_user` and `auth.read_user` alone, custody routing the one PUT
+and the one GET on `/auth/v1/admin/users/*`, and tokens are looked for in the businesses the
 sweep covers (`RECOVERY_BUSINESS_KEYS`). Unset or `off`, the route is not
 mounted (404) and the log says `api: enrolment off`. `on` with either
 setting missing or malformed, or any other value, stops the server before it
@@ -1837,31 +1838,49 @@ Auth mail (a reset among it) has no attempt yet and is not sent (C40).
 
 `POST /api/enrol` with `token` and `password` accepts an invitation
 (`acceptInvitation`, mounted by `mountEnrolment` with the deployment's
-businesses and a broker cataloguing `auth.create_user` and
-`auth.update_user`, custody routing the one PUT
-`/auth/v1/admin/users/*`). No sign-in and no
+businesses and a broker cataloguing `auth.create_user`,
+`auth.update_user` and `auth.read_user`, custody routing the one PUT and the
+one GET on `/auth/v1/admin/users/*`). No sign-in and no
 grant: the one-time token is the authority, looked for by its SHA-256 in
 every business. It is live while it is unspent, in its lifetime, its
 invitation's newest and its invitation pending. The login provider makes a
 login for the invited address, confirmed, through custody (the service key
 stays there), under a user id that is ours, the same for one address in one
-business; when the address holds a login already, the login under our id is
-set again with this password, which adopts one an earlier accept made and
-never bound. Then, in one transaction, every token of the invitation is
-spent, it is accepted, its person gets an actor, a membership in the invited
+business. The create runs outside any lock. Then, in one transaction, under
+the login id's lock and the invitation's, with every check again: when the
+create was refused because the address holds a login already, the login
+under our id is set again with this password, which adopts one an earlier
+accept made and never bound; and every token of the invitation is spent, it is accepted, its person gets an actor, a membership in the invited
 role and the confirmed address, the login is mapped to that person, and
 `invitation.accept` and `login.create` are audited as the business's
 worker. The answer is 200 `{ state: 'enrolled' }` and opens no session. An
-address whose login is someone else's (no user under our id), or one this
-business has bound under our id already, gets none and no password is set:
+address whose login is someone else's (no user under our id), or one any
+business has bound under our id already (a signed-in accept binds one in
+another business), gets none and no password is set:
 200 `{ state: 'sign_in' }`, nothing spent. Every other token is 404
 `ENROLMENT_LINK_INVALID`, a password outside 12 to 72 bytes 400
 `PASSWORD_INVALID`, and a provider fault or hostile answer 503
 `ENROLMENT_UNAVAILABLE`, nothing spent or bound. The page
-is `/enrol/:token`; `main` mounts its route when `ENROLMENT=on`. Not here
-yet: the send mounted after the command, the hook wired in `main`, the
-signed-in accept for an
-address with a login, the second factor first (C59) and the Access screen.
+is `/enrol/:token`; `main` mounts its route when `ENROLMENT=on`.
+
+`POST /api/b/enrol` with `token` alone is the same link accepted by someone
+signed in with the login they hold (`acceptSignedIn`, mounted beside it when
+`createApi` has a verifier). It sits under the person prefix because the
+session cookie is sent there, and the session is resolved as the business
+routes resolve it: no session 401 `AUTH_UNKNOWN_LOGIN`, an expired one 401
+`AUTH_SESSION_EXPIRED`, a cookie from another site 403, each before the
+token is looked at. The login provider is asked, through custody under
+`auth.read_user` (custody routing the one GET `/auth/v1/admin/users/*`),
+for the session's login: only an address it confirmed counts, and it must
+be the invitation's. Then, under the login id locks (the invitation's own
+id for the address and the session's login, sorted, the keys the token-only
+accept takes) and the invitation's lock, a login this business maps to
+anyone already is refused, and otherwise the writes are the token-only
+accept's, mapping this login: 200 `{ state: 'joined' }`, no password set
+and no session opened. Another address, an unconfirmed one, a login the
+provider does not hold, a login mapped here already and every dead link are
+one answer, 404 `ENROLMENT_LINK_INVALID`, nothing spent; a provider fault 503. Not here yet: the send mounted after the command, the hook wired in
+`main`, the second factor first (C59) and the Access screen.
 
 ## Reads
 

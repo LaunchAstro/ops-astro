@@ -55,7 +55,7 @@ export function readModelId(value: unknown): string | null | undefined {
 /** The request an adapter builds. No origin, no credential: custody adds both. */
 export interface AdapterRequest {
   readonly path: string;
-  readonly method: 'POST' | 'PUT';
+  readonly method: 'POST' | 'PUT' | 'GET';
   readonly body: string;
 }
 
