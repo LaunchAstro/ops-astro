@@ -31,7 +31,13 @@ import { createHarness, type Harness } from '../acceptance/role-case-harness.ts'
 import { serverUrl, tokenFor } from '../acceptance/world.ts';
 
 /** The money commands this sweep proves. A money command declared later joins here. */
-const SWEPT: readonly string[] = ['budget.top_up', 'budget.record_outcome', 'budget.write_off'];
+const SWEPT: readonly string[] = [
+  'budget.top_up',
+  'budget.record_outcome',
+  'budget.write_off',
+  'budget.set_planning_cap',
+  'run.top_up',
+];
 
 /**
  * The owner's sixty minutes (28 September 2026), written here rather than read
