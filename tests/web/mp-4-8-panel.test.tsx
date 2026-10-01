@@ -9,7 +9,9 @@
 // are later steps of MP-4-8.
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { App } from '../../apps/web/src/App.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { SessionStore, tabStorage } from '../../apps/web/src/session/token.ts';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { TaskPanel, type PanelOpening } from '../../apps/web/src/screens/task/Panel.tsx';
 import { task, tick } from './task-page-stub.tsx';
@@ -42,6 +44,7 @@ interface Sent {
 function serving(over: Readonly<Record<string, unknown>> = {}): {
   readonly client: OperationsClient;
   readonly sent: Sent[];
+  readonly fetch: typeof globalThis.fetch;
 } {
   const sent: Sent[] = [];
   const fetch = ((url: string | URL, init?: RequestInit) => {
@@ -68,6 +71,7 @@ function serving(over: Readonly<Record<string, unknown>> = {}): {
   return {
     client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),
     sent,
+    fetch,
   };
 }
 
@@ -243,7 +247,42 @@ describe('MP-4-8 escape closes only the control', () => {
 });
 
 describe('MP-4-8 close uses the frame', () => {
-  it.todo('closing goes through MP-3-1’s close and MP-4-6’s stop-and-log (SL06 U08 not on main)');
+  it('the dock’s X closes the panel and logs the running timer through time.stop once', async () => {
+    const running = { entries: [], running: { entryId: 'e', startedAt: at(30) }, totalMinutes: 0 };
+    const stops: string[] = [];
+    const answer = serving({ time: running }).fetch;
+    const fetch = ((url: string | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/time/stop')) stops.push('time.stop');
+      return answer(url, init);
+    }) as typeof globalThis.fetch;
+    const session = JSON.stringify({ token: 't', businessKey: 'alpha', email: 'mia@alpha.local' });
+    const seed = new Map([['ops-astro.session', session]]);
+    const sessions = new SessionStore({
+      getItem: (key) => seed.get(key) ?? null,
+      setItem: (key, value) => void seed.set(key, value),
+      removeItem: (key) => void seed.delete(key),
+    });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1100 });
+    const view = await mount(
+      <App
+        path={`/task/${KEY}`}
+        navigate={ignore}
+        sessions={sessions}
+        gotrueUrl="http://identity.invalid"
+        apiOrigin=""
+        fetch={fetch}
+        storage={tabStorage()}
+      />,
+    );
+    await tick();
+    await view.click('#perspective-panel-team [data-panel-door="log"]');
+    await tick();
+    expect(view.find('[data-task-panel]')).not.toBeNull();
+    await view.click('.dpanel[data-panel-id="task"] [data-act="close"]');
+    await tick();
+    expect(view.find('[data-task-panel]')).toBeNull();
+    expect(stops).toEqual(['time.stop']);
+  });
 });
 
 describe('MP-4-8 visual match', () => {
