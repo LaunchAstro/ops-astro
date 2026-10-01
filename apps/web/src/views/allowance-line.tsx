@@ -5,8 +5,10 @@
 // planning budget; once the tab's conversation has started, it adds that
 // conversation's own spend and what is still held for it. It reads
 // `conversation.allowance`, the team's only, since the budget is the
-// business's. A refused or unavailable read draws no line: the line informs,
-// and the broker's own check under the cap is what refuses a reply.
+// business's. It is read again each time a reply settles in the tab, so the
+// figures follow the spend. A refused or unavailable read draws no line: the
+// line informs, and the broker's own check under the cap is what refuses a
+// reply.
 
 import { useEffect, useState, type ReactElement } from 'react';
 import type {
@@ -19,6 +21,8 @@ export interface AllowanceLineProps {
   readonly client: OperationsClient;
   /** The selected tab's conversation, or null before its first message. */
   readonly conversationId: string | null;
+  /** How many of the tab's messages have settled: a new one reads the line again. */
+  readonly settled: number;
 }
 
 const money = (minor: number, currency: string): string =>
@@ -32,7 +36,7 @@ function words(allowance: PlanningAllowanceView, started: boolean): string {
 }
 
 export function AllowanceLine(props: AllowanceLineProps): ReactElement | null {
-  const { client, conversationId } = props;
+  const { client, conversationId, settled } = props;
   const [allowance, setAllowance] = useState<PlanningAllowanceView | null>(null);
   useEffect(() => {
     let current = true;
@@ -46,7 +50,9 @@ export function AllowanceLine(props: AllowanceLineProps): ReactElement | null {
     return () => {
       current = false;
     };
-  }, [client, conversationId]);
+    // `settled` is read by no line here: it is the reload's trigger.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, conversationId, settled]);
   if (allowance === null) return null;
   return (
     <p className="aip__msg aip__msg--note" data-assistant="allowance">
