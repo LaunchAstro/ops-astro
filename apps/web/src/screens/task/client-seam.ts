@@ -5,15 +5,15 @@
 //
 // **What is not on this base.** The business's client list (C32), which client
 // the task is under (`task.read` sends `clientSet` only), whether the task has
-// content (S0-5's lock) and the `task.duplicate` command are family B's, built
-// by other lanes. The field reads them through `ClientFactsSource` and sends
+// content (S0-5's lock) and the `task.duplicate` command are family B's, not
+// yet on this base. The field reads them through `ClientFactsSource` and sends
 // the duplicate through `DuplicateSource`; each says whether it is `real` or
 // `mock`, and a `mock` one draws the design system's one Mock corner label on
 // what it fills (`SourceRegion`, MP-1-6). A real source never carries it.
 //
 // **Wiring the real ones** is one small piece: a `ClientFactsSource` whose
 // `useFacts` is a `useRead` of the client list and the task's content answer,
-// and a `DuplicateSource` whose `send` is `client.mutate('task.duplicate', …)`
+// and a `DuplicateSource` whose `send` is `client.mutate` of `task.duplicate`
 // with `confirmCarried` passed through; `DockPanel.tsx` hands both to the panel
 // (`TaskPanel`'s `clientFacts` and `duplicate`). Until then the panel uses the
 // two `MOCK_…` sources below.
@@ -90,12 +90,9 @@ const MOCK_CLIENTS: readonly ClientChoice[] = [
   { id: 'mock-client-north', name: 'North Shore Allied Health' },
 ];
 
-/** Made up: a task "has content" once anything but its creation or a client change is on it. */
+/** Made up: a task "has content" once it has a comment or a step. */
 function mockHasContent(task: Task): boolean {
-  const beyond = task.history.some(
-    (entry) => entry.operation !== 'task.create' && entry.operation !== 'task.set_party',
-  );
-  return beyond || task.comments.length > 0 || task.steps.length > 0;
+  return task.comments.length > 0 || task.steps.length > 0;
 }
 
 export const MOCK_CLIENT_FACTS: ClientFactsSource = {
