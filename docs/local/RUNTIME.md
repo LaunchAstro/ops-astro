@@ -1862,12 +1862,24 @@ active person actor of the person deciding; anything else is
 `DELEGATION_EXCLUDES_DECISION`, under the locks and before anything is
 written, for every decision, the escalate and the plan accept alike.
 
+An approval does not survive its version. When the agent's revision
+supersedes an approved version, the proposal ends that version's lease and
+delegation, so the agent's dispatch under it is `DELEGATION_NOT_LIVE` and marks
+nothing; with the lease somehow live, dispatch's locked recheck of the
+approved version answers `DECISION_STALE`.
+
+A stuck agent (a failed handback) tells the task's assignee as well as the
+person who authorised the run: one `waiting_run` item on the run, raised in
+the handback's transaction (`raiseRunSettled`). It is a pointer and grants
+nothing; the output it points at is still not the assignee's to decide (four
+eyes). An assignee who authorised the run is recorded once, as that person.
+
 Until the batch join, `isReviewedOutput` comes from a stand-in
 (`reviewed-output-n9-standin.ts`) that counts a version proposed by an agent's
 actor; AW-08's `reviewed-output.ts` replaces it there. Tests:
 `aw-09-reviewed-on-every-surface` (the invariant,
 `agent_output_is_reviewed_on_every_surface`), `aw-09-no-self-review`,
-`aw-09-isolation` and `aw-09-round-rules`.
+`aw-09-isolation`, `aw-09-round-rules` and `aw-09-stuck-notice`.
 
 ## What is not here
 

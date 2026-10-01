@@ -7,9 +7,9 @@
 //
 // Each recipient comes from a fact the transition already holds: decide
 // grants on the task for a decision, the person who authorised the lease for
-// a settled run, the new assignee, the people a comment names, the task's
-// managers for a quarantined hold (an incident). Nobody is told of their own assignment or
-// mention. A decision goes to every holder, the proposer included, because
+// a settled run (and the task's assignee when an agent is stuck), the new
+// assignee, the people a comment names, the task's managers for a quarantined
+// hold (an incident). Nobody is told of their own assignment or mention. A decision goes to every holder, the proposer included, because
 // authority and not authorship decides who owes it, and a decision a person is
 // responsible for is never switched off, but the task's assignee is owed none:
 // four eyes (T2g) refuses their decision. Mentions are `mentions.ts`.
@@ -115,25 +115,44 @@ export async function raiseEscalation(
 /**
  * A handed-back lease. The person who authorised it launched the run: a
  * completed run tells them it finished and owes nothing; a failed one is
- * waiting on their move (restart or cancel). Answers the lease's task.
+ * waiting on their move (restart or cancel). A stuck agent (AW-09) tells the
+ * task's assignee too, with the same waiting item: a pointer that grants
+ * nothing, so the output stays theirs to see and never theirs to decide (four
+ * eyes). An assignee who launched the run is recorded once, as the launcher.
+ * Answers the lease's task.
  */
 export async function raiseRunSettled(
   tx: TenantQuery,
   settled: { readonly leaseId: string; readonly outcome: 'completed' | 'failed' },
 ): Promise<string> {
-  const rows = await tx.query<{ readonly taskId: string; runId: string; launcher: string }>(
-    `select task_id as "taskId", run_id as "runId", authorised_by_person_id as launcher
+  const rows = await tx.query<{
+    readonly taskId: string;
+    readonly runId: string;
+    readonly launcher: string;
+    readonly agent: boolean;
+  }>(
+    `select task_id as "taskId", run_id as "runId", authorised_by_person_id as launcher,
+            delegation_id is not null as agent
        from public.leases where business_id = $1 and id = $2`,
     [tx.businessId, settled.leaseId],
   );
   const lease = rows[0];
   if (lease === undefined) throw new Error('raiseRunSettled: the settled lease is not here');
-  await raiseInboxItem(tx, {
-    recipientPersonId: lease.launcher,
-    subjectRecordId: lease.taskId,
-    reason: settled.outcome === 'completed' ? 'run_finished' : 'waiting_run',
-    fact: { kind: 'planned_run', id: lease.runId },
-  });
+  const reason = settled.outcome === 'completed' ? 'run_finished' : 'waiting_run';
+  const told = [lease.launcher];
+  if (reason === 'waiting_run' && lease.agent) {
+    const assignee = await assigneeOf(tx, lease.taskId);
+    if (assignee !== null && assignee !== lease.launcher) told.push(assignee);
+  }
+  for (const person of told) {
+    // oxlint-disable-next-line no-await-in-loop
+    await raiseInboxItem(tx, {
+      recipientPersonId: person,
+      subjectRecordId: lease.taskId,
+      reason,
+      fact: { kind: 'planned_run', id: lease.runId },
+    });
+  }
   return lease.taskId;
 }
 
