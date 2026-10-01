@@ -6,14 +6,17 @@
 // facts are rechecked under the locks, and each moved one answers with its own
 // code and marks nothing: a reset approval `DECISION_STALE`, a superseded
 // version `PROPOSAL_SUPERSEDED`, a rejected lineage `LINEAGE_TERMINAL`, a
-// revoked delegation `AUTHORITY_LOST`.
+// revoked delegation `AUTHORITY_LOST` (asked of the runtime itself: the agent's
+// command entry refuses a dead delegation before it reaches dispatch).
 //
 // The reviewed-output marker is AW-08 (a)'s (0213); here the plan accept's
 // bound record stands in for "not a reviewed output" (reviewed-output-standin.ts).
 
 import { expect, it as vitestIt } from 'vitest';
 import { noDatabase, useAw04World, w } from './aw-04-world.ts';
-import { codeOf } from './schedules-harness.ts';
+import { dispatch } from '../../packages/core-runtime/src/dispatch.ts';
+import { codeOf, rows } from './schedules-harness.ts';
+import { TASK_COLLECTION } from './fixture.ts';
 import { dispatchAs, leased, marked } from './aw-08-gate-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -35,7 +38,8 @@ it.each([
   [
     'a reset approval',
     'DECISION_STALE',
-    `update public.gates set state = 'pending'
+    // What a later version does to the approval (`proposal-writer.ts`), version left current.
+    `update public.gates set state = 'superseded', decided_at = now()
       where business_id = $1 and version_id = $2`,
   ],
   [
@@ -51,15 +55,6 @@ it.each([
       where business_id = $1
         and id = (select lineage_id from public.proposal_versions where business_id = $1 and id = $2)`,
   ],
-  [
-    'a revoked delegation',
-    'AUTHORITY_LOST',
-    `update public.delegations set revoked_at = now(), revocation_cause = 'delegation_revoked'
-      where business_id = $1 and revoked_at is null
-        and id = (select l.delegation_id from public.leases l
-                    join public.reservations r on r.business_id = l.business_id and r.id = l.reservation_id
-                   where l.business_id = $1 and r.version_id = $2)`,
-  ],
 ] as const)(
   'AW-08 approval gate: %s after the launch is refused %s at dispatch, and nothing is marked',
   async (_move, code, move) => {
@@ -69,3 +64,32 @@ it.each([
     expect(await marked(w.alpha, work.taskId)).toBe(0);
   },
 );
+
+it('AW-08 approval gate: a delegation revoked after the launch is refused AUTHORITY_LOST inside dispatch, and nothing is marked', async () => {
+  const work = await leased(w.alpha, 'launch');
+  const [lease] = await rows<{ delegation_id: string }>(
+    w.alpha,
+    'select delegation_id from public.leases where business_id = $1 and id = $2',
+    [w.alpha.business, work.picked['leaseId']],
+  );
+  const delegationId = String(lease?.delegation_id);
+  await w.alpha.db.admin.execute(
+    `update public.delegations set revoked_at = now(), revocation_cause = 'delegation_revoked'
+      where business_id = $1 and id = $2`,
+    [w.alpha.business, delegationId],
+  );
+  const answer = await w.alpha.db.app.withBusiness(
+    w.alpha.business,
+    async (tx) =>
+      await dispatch(tx, {
+        claimant: 'agent',
+        leaseId: String(work.picked['leaseId']),
+        fence: Number(work.picked['fence']),
+        holderActorId: w.alpha.agentActorId,
+        delegationId,
+        collection: TASK_COLLECTION,
+      }),
+  );
+  expect(answer.ok ? 'applied' : answer.refusal.code).toBe('AUTHORITY_LOST');
+  expect(await marked(w.alpha, work.taskId)).toBe(0);
+});

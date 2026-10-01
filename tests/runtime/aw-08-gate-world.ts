@@ -9,6 +9,8 @@ import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
+import { enrol, grantTo } from '../commands/fixture.ts';
+import { insertLogin } from '../identity/fixture.ts';
 import { acceptAs, acceptRequest } from './aw-04-world.ts';
 import {
   appliedDetail,
@@ -104,7 +106,7 @@ export async function setSignOff(s: Schedules, on: boolean): Promise<void> {
     await installBusinessSettings(tx);
   });
   await s.db.admin.execute(
-    `update public.business_settings set value = $2::jsonb
+    `update public.business_settings set value = ($2::text)::jsonb
       where business_id = $1 and key = 'client_sign_off_required'`,
     [s.business, JSON.stringify(on)],
   );
@@ -115,4 +117,31 @@ export async function setSignOff(s: Schedules, on: boolean): Promise<void> {
     [s.business],
   );
   expect(read[0]?.v).toBe(on);
+}
+
+/**
+ * Another person of `s`'s business, with an agent of their own: the same world
+ * seen from them, so `leased` gives their work under their own live delegation.
+ */
+export async function otherPerson(s: Schedules, key: string): Promise<Schedules> {
+  const decider = await enrol(s.db.app, s.business, key);
+  const subject = `agent-${randomUUID()}`;
+  const agentActorId = randomUUID();
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    for (const action of ['read', 'write', 'decide', 'assign', 'comment'] as const) {
+      // Sequential: `issueGrant` reads the granter's own rows.
+      // eslint-disable-next-line no-await-in-loop
+      await grantTo(tx, decider, action, undefined, true);
+    }
+    await tx.query(`insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`, [
+      s.business,
+      agentActorId,
+    ]);
+    await tx.query(
+      `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
+       values ($1, $2, $3, $4, $5)`,
+      [s.business, randomUUID(), await insertLogin(tx, subject), agentActorId, decider.actorId],
+    );
+  });
+  return { ...s, decider, agent: { provider: 'supabase', subject }, agentActorId };
 }

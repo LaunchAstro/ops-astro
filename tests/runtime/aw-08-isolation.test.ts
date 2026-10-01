@@ -5,16 +5,17 @@
 // from every refusal: another business (its sign-off setting never holds this
 // one, and its lease is not this one's to dispatch); another client in the
 // same business (a client of another task cannot dispatch this one's work);
-// another person's work under a live delegation (the agent's credential for
-// one task cannot dispatch another task's lease). Each with a positive control.
+// another person's agent under its own live delegation (its credential cannot
+// dispatch this person's lease). Each with a positive control.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/index.ts';
+import { grantTo } from '../commands/fixture.ts';
 import { cq8World } from './cq-8-world.ts';
 import { noDatabase, useAw04World, w } from './aw-04-world.ts';
 import { codeOf, rows } from './schedules-harness.ts';
-import { dispatchAs, leased, marked, setSignOff } from './aw-08-gate-world.ts';
+import { dispatchAs, leased, marked, otherPerson, setSignOff } from './aw-08-gate-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -44,6 +45,9 @@ it('AW-08 isolation: another client in the same business cannot dispatch this ta
   const canary = `aw08-iso-one-${randomUUID()}`;
   const one = await leased(w.alpha, 'launch', canary);
   const two = await leased(w.alpha, 'launch');
+  await w.alpha.db.app.withBusiness(w.alpha.business, async (tx) => {
+    await grantTo(tx, w.alpha.decider, 'share');
+  });
   const client = await cq8World(w.alpha).client(
     w.alpha.business,
     w.alpha.decider,
@@ -56,7 +60,7 @@ it('AW-08 isolation: another client in the same business cannot dispatch this ta
     leaseId: one.picked['leaseId'],
     fence: one.picked['fence'],
   } as never);
-  expect(codeOf(crossed)).not.toBe('applied');
+  expect(codeOf(crossed)).toBe('SCOPE_NOT_GRANTED');
   expect(JSON.stringify(crossed)).not.toContain(canary);
   expect(JSON.stringify(crossed)).not.toContain(one.taskId);
   expect(await marked(w.alpha, one.taskId)).toBe(0);
@@ -64,23 +68,29 @@ it('AW-08 isolation: another client in the same business cannot dispatch this ta
   expect(codeOf(await dispatchAs(w.alpha, one))).toBe('applied');
 });
 
-it('AW-08 isolation: another person’s work under a live delegation cannot dispatch this lease', async () => {
+it('AW-08 isolation: another person’s agent, under its own live delegation, cannot dispatch this lease', async () => {
   const canary = `aw08-iso-mine-${randomUUID()}`;
   const mine = await leased(w.alpha, 'launch', canary);
-  const theirs = await leased(w.alpha, 'launch');
-  const live = await rows<{ live: boolean }>(
+  const them = await otherPerson(w.alpha, 'aw08-other');
+  const theirs = await leased(them, 'launch');
+  const live = await rows<{ live: boolean; person: string }>(
     w.alpha,
-    `select (d.revoked_at is null and d.settled_at is null and d.expires_at > now()) as live
+    `select (d.revoked_at is null and d.settled_at is null and d.expires_at > now()) as live,
+            d.delegate_person_id as person
        from public.leases l join public.delegations d
          on d.business_id = l.business_id and d.id = l.delegation_id
       where l.business_id = $1 and l.id = $2`,
     [w.alpha.business, theirs.picked['leaseId']],
   );
-  expect(live).toStrictEqual([{ live: true }]);
-  const crossed = await dispatchAs(w.alpha, mine, theirs.credential);
-  expect(codeOf(crossed)).not.toBe('applied');
+  expect({ ...live[0] }).toEqual({ live: true, person: them.decider.personId });
+  const crossed = await dispatchAs(them, mine, theirs.credential);
+  // Their delegation is scoped to their own task, so the agent entry refuses
+  // before dispatch, naming only that scope.
+  expect(codeOf(crossed)).toBe('DELEGATION_OUT_OF_PURPOSE');
   expect(JSON.stringify(crossed)).not.toContain(canary);
   expect(JSON.stringify(crossed)).not.toContain(mine.taskId);
   expect(await marked(w.alpha, mine.taskId)).toBe(0);
-  expect(codeOf(await dispatchAs(w.alpha, theirs))).toBe('applied');
+  // Controls: each agent dispatches its own person's work.
+  expect(codeOf(await dispatchAs(them, theirs))).toBe('applied');
+  expect(codeOf(await dispatchAs(w.alpha, mine))).toBe('applied');
 });

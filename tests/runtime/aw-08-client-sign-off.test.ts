@@ -80,7 +80,9 @@ it('AW-08 client sign-off: a setting change in flight is waited for at dispatch 
       );
       if (Number(waiting[0]?.n) > 0) break;
       // eslint-disable-next-line no-await-in-loop
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 25);
+      });
     }
     release();
     await turning;
