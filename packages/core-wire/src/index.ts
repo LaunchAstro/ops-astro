@@ -48,6 +48,7 @@ export type {
   HealthSourceView,
   OperationsReadResult,
   PrivacyIncidentView,
+  SecurityAlertView,
   ServiceHealthSection,
   ServiceHealthState,
   ServiceHealthView,

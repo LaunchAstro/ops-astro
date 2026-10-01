@@ -28,6 +28,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['i', 'ops.api_events'],
   // 0048: the forwarder's kept alerts; the application holds nothing on them.
   ['', 'ops.api_alerts'],
+  // 0067 (C55): the forwarder's alert log; the application selects its kind
+  // and time columns alone, and changes nothing. A column grant: this suite's
+  // `select 1` needs one column, and c55-security-alerts proves which.
+  ['s', 'ops.security_alert_log'],
   ['s', 'ops.slots'],
   // 0058 (S0-5): the installation's mode and the gate items are read by the
   // application through first_client_readiness().

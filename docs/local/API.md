@@ -1616,7 +1616,7 @@ local end stands, and asking again is safe. The provider's words go nowhere.
 
 ## The operations view and privacy incidents (C55)
 
-`operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, serviceHealth }`
+`operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, securityAlerts, serviceHealth }`
 to a holder of `operations:read` (install default: the owner and administrators). It is
 never an agent's: on the agent prefix it is `DELEGATION_EXCLUDES_OPERATION` 403. Each incident carries its day-0 facts, its status and `assessBy`, 30 days
 after `foundAt` (the breach runbook's assessment limit), most recently found
@@ -1627,6 +1627,19 @@ incident record links to: the breach runbook published most recently, as
 `{ version, digest, publishedAt, body }`, or `null` until one is published.
 `unattended` is INB-1's list, read for the same caller: exactly what
 `inbox.unattended` answers them, built by the same read (no second list).
+
+**Security alerts (TR-SEC-9).** `securityAlerts` lists the alerts S0-2's
+forwarder raised, newest first, at most 50, each `{ kind, at, concerns }`:
+the alert's kind, the time it was raised (ISO 8601) and fixed plain words for
+what it concerns (`An alert of an unknown kind` for a kind the view has no
+words for). It is read from the forwarder's log (`ops.security_alert_log`,
+0067), written in the pass that raises the alert, so an alert stays listed
+after the sink took it and its `ops.api_alerts` row is gone. No id, scope,
+business, person, secret or record content is in it. An alert names no
+business and the detector counts every business's signals together, so the
+list is the installation's: only the business that operates it
+(`ops.installation.operator_business_id`) reads it, and every other business,
+or every business while none is set, reads `[]`.
 
 `privacy.record_incident` is the tracked action `privacy incident recorded`,
 under `privacy:manage` and never an agent's. Its body is
