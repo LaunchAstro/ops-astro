@@ -50,7 +50,7 @@ import { acquire, type LockSet } from './locks.ts';
 import { only, RuntimeInvariantError } from './only.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
 import { classifyUnderLocks, endLease, type Classification } from './recovery.ts';
-import { modelCallsOn } from './recovery/classifier.ts';
+import { modelCallsOn } from './model-calls-on.ts';
 import { recordDrop, type DropCause } from './recovery/drop.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';

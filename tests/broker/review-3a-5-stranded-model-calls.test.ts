@@ -7,7 +7,7 @@
 // 'reserved' or 'dispatched' for ever, counting as in flight and holding its
 // maximum against the reservation with no person told.
 //
-// Red on 3338f1fd6. Green once the deployment sweep also runs the model-call
+// Red on 8cbd0e422 (batch 3a before its fix squash). Green once the deployment sweep also runs the model-call
 // half (sweepModelCalls, or the same rule) in each business's transaction.
 
 import { randomUUID } from 'node:crypto';

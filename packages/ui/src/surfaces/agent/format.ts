@@ -25,7 +25,9 @@ export const words = (code: string): string => code.replaceAll('_', ' ');
 /** A figure in the currency as whole minor units, or null for anything that is not one of 0 or more. */
 export function minorOf(amount: string, currency: string): number | null {
   const digits = minorDigits(currency);
-  const fraction = digits === 0 ? '' : `(?:\\.\\d{1,${String(digits)}})?`;
-  if (!new RegExp(`^\\d+${fraction}$`, 'u').test(amount.trim())) return null;
+  const parts = /^\d+(?:\.(\d+))?$/u.exec(amount.trim());
+  if (parts === null) return null;
+  const fraction = parts[1];
+  if (fraction !== undefined && fraction.length > digits) return null;
   return Math.round(Number(amount.trim()) * 10 ** digits);
 }

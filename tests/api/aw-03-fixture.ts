@@ -11,7 +11,11 @@
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
 import { createCli, type CliAnswer } from '../../apps/cli/client.ts';
-import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
+import {
+  installBusinessSettings,
+  writeBusinessSetting,
+} from '../../packages/core-records/src/records/business-settings.ts';
+import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
   authorised,
@@ -148,4 +152,18 @@ export async function started(
   const id = detail(await world.as(member, 'conversation.start', body))['conversationId'];
   if (typeof id !== 'string') throw new Error('conversation.start answered no conversationId');
   return id;
+}
+
+/**
+ * Set the conversation window. The row is owned by its command since 0068
+ * (MP-2-11), so the write names that command, and a refused write throws
+ * rather than leaving the 30-day default in place.
+ */
+export async function setConversationWindow(tx: TenantQuery, days: number): Promise<void> {
+  const written = await writeBusinessSetting(tx, {
+    key: 'conversation_window_days',
+    owningOperation: 'settings.set_conversation_window',
+    value: days,
+  });
+  if (written === undefined || 'refused' in written) throw new Error('window not written');
 }

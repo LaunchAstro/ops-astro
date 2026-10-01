@@ -45,14 +45,12 @@ import {
   walkTheJourney,
   walkTheOtherLineages,
 } from '../acceptance/restart-harness.ts';
+import { APPLICATION_EXECUTES, WORKER_ROLE, describeOutcome } from './restricted-calls-cases.ts';
 import {
-  APPLICATION_EXECUTES,
-  WORKER_ROLE,
   catalogueFunctions,
   catalogueTables,
-  describeOutcome,
   type CatalogueTable,
-} from './restricted-calls-cases.ts';
+} from './restricted-calls-catalogue.ts';
 import {
   APPLICATION_CALLERS,
   OPERATIONS,

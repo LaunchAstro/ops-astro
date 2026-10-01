@@ -15,6 +15,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import type { Controls } from './controls-fixture.ts';
 import { CHECK_ROWS, checksWorld, pickedUpOn } from './mp-6-1-checks-fixture.ts';
 
@@ -22,6 +23,32 @@ const serverUrl = databaseUrlFromEnvironment();
 
 const waitingOnLocks = `select count(*)::text as n from pg_stat_activity
    where datname = current_database() and wait_event_type = 'Lock'`;
+
+/** The handback's end of a live lease, as `endLease` writes it: `[business, lease]`. */
+const endLease = async (
+  execute: AdminConnection['execute'],
+  parameters: readonly [unknown, unknown],
+): Promise<void> => {
+  await execute(
+    `update public.leases set state = 'released', released_at = now()
+      where business_id = $1 and id = $2 and state = 'live'`,
+    parameters,
+  );
+};
+
+/** Polls, on the transaction holding the lock, until a session waits on one or 15 s pass. */
+const untilALockWaits = async (execute: AdminConnection['execute']): Promise<void> => {
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop -- polling until the check waits
+    const [row] = await execute<{ readonly n: string }>(waitingOnLocks, []);
+    if (Number(row?.n) >= 1 || Date.now() > deadline) break;
+    // eslint-disable-next-line no-await-in-loop -- as above
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+  }
+};
 
 describe.skipIf(serverUrl === undefined)('REVIEW-3A-20 check serialised on the lease lock', () => {
   let c: Controls;
@@ -59,23 +86,10 @@ describe.skipIf(serverUrl === undefined)('REVIEW-3A-20 check serialised on the l
       };
       void checking.then(settle, settle);
       // The check reaches the lease and waits on the lock this transaction holds.
-      const deadline = Date.now() + 15_000;
-      for (;;) {
-        // eslint-disable-next-line no-await-in-loop -- polling until the check waits
-        const [row] = await execute<{ readonly n: string }>(waitingOnLocks, []);
-        if (Number(row?.n) >= 1 || Date.now() > deadline) break;
-        // eslint-disable-next-line no-await-in-loop -- as above
-        await new Promise((resolve) => {
-          setTimeout(resolve, 50);
-        });
-      }
+      await untilALockWaits(execute);
       expect(settledUnderLock, 'the check answered while the lease lock was held').toBe(false);
       // The handback's end of the lease, under its lock (`endLease`).
-      await execute(
-        `update public.leases set state = 'released', released_at = now()
-          where business_id = $1 and id = $2 and state = 'live'`,
-        [c.fixture.business, work.leaseId],
-      );
+      await endLease(execute, [c.fixture.business, work.leaseId]);
     });
     if (checking === undefined) throw new Error('the check was never sent');
     const checked = await checking;

@@ -9,7 +9,8 @@
 // The window is handed in, so a test drives this over jsdom's own history.
 
 import { useEffect, useMemo, useState, type ReactElement } from 'react';
-import { App, type AppProps } from './App.tsx';
+import { App } from './App.tsx';
+import type { AppProps } from './app-props.ts';
 import { TabHistory } from './tab-history.ts';
 
 export interface RootProps extends Omit<AppProps, 'path' | 'navigate' | 'steps'> {

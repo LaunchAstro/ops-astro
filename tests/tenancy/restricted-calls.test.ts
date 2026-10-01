@@ -29,14 +29,16 @@ import {
   BROKER_ROLE,
   OCCURRENCE_ROLE,
   APPLICATION_GRANTS,
-  catalogueFunctions,
-  catalogueTables,
   classify,
   describeOutcome,
-  type CatalogueFunction,
-  type CatalogueTable,
   type Outcome,
 } from './restricted-calls-cases.ts';
+import {
+  catalogueFunctions,
+  catalogueTables,
+  type CatalogueFunction,
+  type CatalogueTable,
+} from './restricted-calls-catalogue.ts';
 import {
   APPLICATION_CALLERS,
   OPERATIONS,

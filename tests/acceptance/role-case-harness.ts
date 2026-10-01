@@ -18,28 +18,19 @@
 
 import { randomUUID } from 'node:crypto';
 import {
-  COMMAND_SURFACE,
   pathOf,
   type CommandDeclaration,
   type CommandName,
 } from '../../packages/core-wire/src/surface.ts';
-import { issueGrant, type Action } from '../../packages/core-records/src/authority/grants.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
-import {
-  agentPath,
-  bearer,
-  call,
-  createWorld,
-  personPath,
-  type Answer,
-  type Caller,
-} from './world.ts';
+import { agentPath, bearer, call, createWorld, personPath, type Answer } from './world.ts';
 import { enrol } from '../commands/fixture.ts';
 import { PROPOSAL, breachDrillBody, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
 import { plainRows, seedFixtureClients } from './role-case-clients.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
+import { heldByWithAdminTopUp } from './role-case-admin-grants.ts';
 
 export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
@@ -64,46 +55,7 @@ export async function createHarness(part: string): Promise<Harness> {
   await world.db.app.withBusiness(world.alpha, installBusinessSettings);
   const clients = await seedFixtureClients(world);
 
-  const needed = new Map(COMMAND_SURFACE.map((one) => [pairFor(one), one]));
-  const heldBy = new Map<string, ReadonlySet<string>>();
-  const added: string[] = [];
-
-  await world.db.app.withBusiness(world.alpha, async (tx) => {
-    // Read back rather than copied from the fixture's own list of actions: the
-    // cases decide what to expect from what a person really holds, so a list
-    // that drifted from the rows would quietly change what is proved.
-    for (const caller of [world.ada, world.mia, world.noah] as readonly Caller[]) {
-      // eslint-disable-next-line no-await-in-loop -- one caller at a time reads as a list
-      const grants = await tx.query<{ readonly collection: string; readonly action: string }>(
-        `select collection, action from public.grants
-          where subject_kind = 'person' and subject_id = $1 and revoked_at is null`,
-        [caller.personId],
-      );
-      heldBy.set(caller.name, new Set(grants.map((row) => `${row.collection}:${row.action}`)));
-    }
-    const adaHolds = heldBy.get('ada') as ReadonlySet<string>;
-    for (const [pair, declaration] of needed) {
-      if (adaHolds.has(pair)) continue;
-      const [collection, action] = pair.split(':');
-      // eslint-disable-next-line no-await-in-loop
-      const issued = await issueGrant(tx, [], {
-        subject: { kind: 'person', id: world.ada.personId as string },
-        scope: { kind: 'business', id: null },
-        collection: collection as string,
-        action: action as Action,
-        parentGrantId: null,
-        grantedByActorId: world.ada.actorId as string,
-      });
-      if (!issued.ok) throw new Error(`matrix: grant ${pair} refused ${issued.refusal.code}`);
-      added.push(`${pair} (${declaration.name})`);
-    }
-    heldBy.set('ada', new Set(needed.keys()));
-  });
-  console.log(
-    `matrix: admin grants the surface needs and the world does not seed: ${
-      added.length === 0 ? 'none' : added.join(', ')
-    }`,
-  );
+  const heldBy = await heldByWithAdminTopUp(world);
 
   async function asPerson(
     name: CommandName,

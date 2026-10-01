@@ -14,18 +14,15 @@ import {
   batchOf,
   approvableGate,
   approvedReservationId,
-  approvedTaskId,
   ownLease,
-  ownAppliedEffect,
-  ownUnknownAttempt,
 } from './role-case-bodies.ts';
-import { ownConversation } from './foreign-conversation.ts';
 import { answerAtTheStop } from './stopped-run.ts';
 import { revisedRunBody } from './revised-run.ts';
 import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
 import { accessBody, madeClient } from './role-case-access-bodies.ts';
 import { createGateBody } from './role-case-gate-bodies.ts';
+import { budgetBody, conversationBody, leaseBody } from './role-case-run-bodies.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -131,12 +128,12 @@ export function createPositiveBody(
         return { body: { timeZone: 'UTC' } };
       // The pending gates the admin may decide: the admin holds `decide` on
       // the whole business, so the list answers.
-      case 'gate.pending':
       // An empty body, and no `expectedRevision`: `business_settings` has no revision column,
       // and `session.capabilities` reports the caller's own grants. The admin holds what each
       // asks: `settings:read`, `access:manage` and `operations:read` (C55, INB-1e), and a live
       // grant of any kind for `session.capabilities`, `client.list` (C32) and the inbox (INB-1d).
       // The person menu's two (C23) and the caller's own preferences (MP-2-11a) are its own.
+      case 'gate.pending':
       case 'task.queue':
       case 'person.list':
       case 'team.list':
@@ -211,28 +208,10 @@ export function createPositiveBody(
       case 'operations.change_installation_mode':
         return await gateBody(declaration.name);
       case 'budget.top_up':
-        // The admin approved the plan and holds billing, so a top-up under
-        // the band is hers alone (T2e).
-        return {
-          body: {
-            recordId: await approvedTaskId(context),
-            amountMinor: 100,
-            fromMaximumMinor: PROPOSAL.maximumMinor,
-          },
-        };
       case 'budget.record_outcome':
-        // The admin holds billing, so any unknown attempt on the business's
-        // tasks is hers to record (O8, T3d1).
-        return { body: { ...(await ownUnknownAttempt(context)), outcome: 'happened' } };
       case 'budget.write_off':
-        // The same unknown hold, closed at nothing with a reason (T3c).
-        return {
-          body: {
-            ...(await ownUnknownAttempt(context)),
-            amountMinor: 0,
-            reason: 'The matrix writes its own unknown hold off.',
-          },
-        };
+        // The admin holds billing (T2e, O8, T3d1, T3c): `role-case-run-bodies.ts`.
+        return await budgetBody(declaration.name, context);
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');
@@ -286,49 +265,20 @@ export function createPositiveBody(
         // MP-6-2: a proposal's planned run, its state revised under run:write.
         return await revisedRunBody(context, PROPOSAL);
       case 'task.heartbeat':
-        // The person renews their own lease (ledger line 38, "current lease
-        // owner"). The agent's renewal is in the agent journey.
-        return { body: await ownLease(context) };
       case 'task.dispatch':
-        // The person marks their own lease's step dispatched (T2c1).
-        return { body: await ownLease(context) };
       case 'task.check':
-        // A check recorded under the person's own lease (MP-6-1). The agent's
-        // check under its delegation is in the agent journey.
-        return {
-          body: { ...(await ownLease(context)), name: 'the admin checks', outcome: 'passed' },
-        };
       case 'task.observe':
-        // The person observes the effect they applied on their own lease (T2c2).
-        return { body: await ownAppliedEffect(context) };
-      case 'task.receipt': {
-        // The receipt of an effect the person applied and observed (T2c2).
-        const applied = await ownAppliedEffect(context);
-        const observed = await context.asPerson('task.observe', applied);
-        if (observed.code !== 'ok') throw new Error(`matrix: observe refused ${observed.code}`);
-        return { body: { attemptId: applied.attemptId } };
-      }
-      // AW-03. The admin holds `conversation:write`, so starts one of their own;
-      // the message and the read name a conversation the admin just started.
+      case 'task.receipt':
+        // The person's own lease and the effect applied on it: `role-case-run-bodies.ts`.
+        return await leaseBody(declaration.name, context);
       case 'conversation.start':
-        return { body: { body: 'the admin asks the agent', subject: 'acceptance' } };
       case 'conversation.message':
-        return { body: { conversationId: await ownConversation(context), body: 'and again' } };
       case 'conversation.read':
-        return { body: { conversationId: await ownConversation(context) } };
-      // MP-7-11. The tab row: the admin's own list, and a title and a page
-      // on the conversation the admin just started.
       case 'conversation.list':
-        return { body: {} };
       case 'conversation.rename':
-        return { body: { conversationId: await ownConversation(context), title: 'Renamed' } };
       case 'conversation.set_scope':
-        return {
-          body: {
-            conversationId: await ownConversation(context),
-            page: { address: '/settings', shows: 'Settings' },
-          },
-        };
+        // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.
+        return await conversationBody(declaration.name, context);
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }
