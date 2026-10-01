@@ -14,9 +14,11 @@
 //
 // **The service key stays in custody.** A custody process of its own holds
 // it; this process names the file and never reads it. The broker catalogues
-// `auth.create_user` and `auth.update_user` and nothing else, and custody
-// lets the `auth` destination take a POST and the one PUT on
-// `/auth/v1/admin/users/<id>`, no other method or path.
+// `auth.create_user`, `auth.update_user` and `auth.read_user` and nothing
+// else, and custody lets the `auth` destination take the create's POST on
+// `/auth/v1/admin/users`, and the update's PUT and the read's GET on
+// `/auth/v1/admin/users/<id>`, no other method or path: no sign-in link,
+// invite, code or factor route.
 
 import {
   AUTH_CREATE_USER,
@@ -55,12 +57,13 @@ const invalid = (problem: string): EnrolmentSettings => ({ kind: 'invalid', prob
 /** Plain http only to this machine, as the trace export's target. */
 const LOOPBACK = /^(?:127(?:\.\d{1,3}){3}|\[::1\])$/u;
 
-/** The login provider as custody lists it: the origin, and the one PUT beyond the create's POST. */
+/** The login provider as custody lists it: the origin, the create's one POST and the update's PUT. */
 export function authDestination(origin: string): Destination {
   return {
     key: AUTH_CREATE_USER.destination,
     origin,
     routes: [
+      { method: 'POST', path: AUTH_USERS_PATH },
       { method: 'PUT', path: `${AUTH_USERS_PATH}/*` },
       { method: 'GET', path: `${AUTH_USERS_PATH}/*` },
     ],

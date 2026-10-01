@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C39-T, custody's side of a login update: the login provider's admin route
-// updates one user with a PUT on `/auth/v1/admin/users/<id>`. Custody sends a
-// PUT only on a route its destination lists, and a PUT route is only ever one
-// `/*` segment under a prefix, never an exact path (AW-13's routes, beside
-// the trace store's DELETE and GET). Anything else is refused before a socket
-// exists.
+// C39-T, custody's side of a login create and update: the login provider's
+// admin route makes a user with a POST on `/auth/v1/admin/users` and updates
+// one with a PUT on `/auth/v1/admin/users/<id>`. Custody sends a PUT only on a
+// route its destination lists, and a PUT route is only ever one `/*` segment
+// under a prefix, never an exact path (AW-13's routes, beside the trace
+// store's DELETE and GET). A destination that lists POST paths takes a POST on
+// those exact paths alone. Anything else is refused before a socket exists.
 
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -28,9 +29,9 @@ let server: Server;
 let custody: Custody;
 let folder: string;
 
-const load = (path: string): ReturnType<typeof parseDestinations> =>
+const load = (path: unknown, method = 'PUT'): ReturnType<typeof parseDestinations> =>
   parseDestinations([
-    { key: 'users_target', origin: 'https://auth.example.com', routes: [{ method: 'PUT', path }] },
+    { key: 'users_target', origin: 'https://auth.example.com', routes: [{ method, path }] },
   ]);
 
 beforeAll(async () => {
@@ -56,7 +57,10 @@ beforeAll(async () => {
     value: `key-${randomBytes(18).toString('hex')}`,
   };
   writeFileSync(credentialsFile, JSON.stringify([credential]), { mode: 0o600 });
-  const routes = [{ method: 'PUT', path: `${USERS}/*` }];
+  const routes = [
+    { method: 'POST', path: USERS },
+    { method: 'PUT', path: `${USERS}/*` },
+  ];
   custody = await startCustody({
     credentialsFile,
     destinations: [{ key: 'users_target', origin, routes } as Destination],
@@ -72,11 +76,11 @@ afterAll(async () => {
   rmSync(folder, { recursive: true, force: true });
 });
 
-const put = async (path: string): Promise<unknown> =>
+const put = async (path: string, method: 'POST' | 'PUT' = 'PUT'): Promise<unknown> =>
   await custody.dispatch('users_key', {
     destination: 'users_target',
     path,
-    method: 'PUT',
+    method,
     body: '{}',
     timeoutMs: 2_000,
     maxResponseBytes: 4_096,
@@ -115,4 +119,52 @@ it('C39-T custody update route: a PUT goes only to one segment under its destina
     outbound: { ok: true },
   });
   expect(seen).toStrictEqual([['PUT', `${USERS}/${USER_ID}`]]);
+});
+
+it('C39-T custody create route: a POST is listed only as an exact plain path', () => {
+  expect(load(USERS, 'POST')).toMatchObject({ ok: true });
+  const malformed: unknown[] = [
+    `${USERS}/*`,
+    `${USERS}/`,
+    'auth/v1/admin/users',
+    '/auth/v1/../users',
+    '//evil.example.com/x',
+    '/auth/v1/admin%2Fusers',
+    `${USERS}?next=x`,
+    '',
+    7,
+  ];
+  for (const path of malformed) {
+    expect(load(path, 'POST'), String(path)).toMatchObject({
+      ok: false,
+      code: 'DESTINATION_MALFORMED',
+    });
+  }
+});
+
+it('C39-T custody create route: a destination that lists its POST paths takes a POST on those exact paths and no other', async () => {
+  seen.length = 0;
+  const refused = [
+    '/auth/v1/admin/generate_link',
+    '/auth/v1/invite',
+    '/auth/v1/otp',
+    `${USERS}/${USER_ID}/factors`,
+    `${USERS}/${USER_ID}`,
+    `${USERS}/`,
+    '/auth/v1/admin/Users',
+    '/auth/v1//admin/users',
+    '/auth/v1/admin%2Fusers',
+    `${USERS}?next=x`,
+    `/${USERS}`,
+  ];
+  for (const path of refused) {
+    // oxlint-disable-next-line no-await-in-loop
+    expect(await put(path, 'POST'), path).toMatchObject({
+      kind: 'answered',
+      outbound: { ok: false, fault: 'bad_path' },
+    });
+  }
+  expect(seen).toHaveLength(0);
+  expect(await put(USERS, 'POST')).toMatchObject({ kind: 'answered', outbound: { ok: true } });
+  expect(seen).toStrictEqual([['POST', USERS]]);
 });
