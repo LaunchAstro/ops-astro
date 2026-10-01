@@ -81,6 +81,17 @@ it('AW-07b hook signature: a stale or future timestamp and a replayed event id a
   expect(await states(item)).toEqual(['asked', 'accepted', 'delivered']);
 });
 
+it('AW-07b hook signature: a replayed event that moved nothing is refused by the process that took it', async () => {
+  // Stage 1 only (docs/local/RUNTIME.md 'The email hook'): an event that moved
+  // nothing leaves no row, so only the process that took it refuses its replay.
+  const { item, messageId } = await sentItem();
+  const body = eventBody('email.sent', messageId);
+  const signed = sign(body);
+  expect(await post(body, signed)).toMatchObject({ status: 200, code: 'UNCHANGED' });
+  expect(await post(body, signed)).toMatchObject({ status: 409, code: 'REPLAYED' });
+  expect(await states(item)).toEqual(['asked', 'accepted']);
+});
+
 // eslint-disable-next-line max-lines-per-function -- every way a body or its signature can be bent, one list
 it('AW-07b hook signature: a body altered after signing, a wrong secret and odd encodings are refused before parsing', async () => {
   const { item, messageId } = await sentItem();
