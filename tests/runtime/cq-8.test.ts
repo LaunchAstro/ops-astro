@@ -107,6 +107,9 @@ describe('CQ-8 runtime structure', () => {
     expect(callers).toEqual([
       // The outbox forwarder's one lock, alone in its own transaction: no command order.
       'apps/forwarder/forward.ts',
+      // C59: a login's one wrong-code lock, keyed by its subject's digest in
+      // every business, taken first in a factor route's check transaction.
+      'packages/core-commands/src/commands/account-factor-checks.ts',
       'packages/core-commands/src/commands/prepare.ts',
       // C32: the business's one access lock, taken first by every change to
       // who may do what (a grant given, a grant revoked, access ended),

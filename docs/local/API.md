@@ -1703,15 +1703,19 @@ factor of its own and answers `FACTOR_NOT_ENROLLED`.
 
 Five wrong codes in fifteen minutes answer `SECOND_FACTOR_LOCKED` 429 on
 `verify` and `remove` without asking the provider, so a caller holding only the
-password cannot walk the six digits. The check before a code goes to the
-provider locks the person's own row, counts the codes the person sent in the
+password cannot walk the six digits. The count is the login's, through every
+business it reaches, since the provider holds one factor per login. The check
+before a code goes to the provider takes the login's lock (a transaction-scoped
+advisory lock on its subject's digest), counts the codes the login sent in the
 window that were not answered otherwise (wrong ones, and ones still at the
-provider), and, passing, records the code as sent (`account.factor_code_sent`)
-before it commits: requests sent at once count each other, and at most five
-codes reach the provider. Otherwise the check writes an audit event only when
-it refuses; the act's own event is written after the call, beside the record it
-changes, and carries the sent code's id as its `operation_id`, so a good code
-stops counting once it is answered. GoTrue served under a path (`/auth/v1`) is called
+provider), and, passing, records the code as sent before it commits, in
+`ops.second_factor_codes` (0072) and as `account.factor_code_sent` in the
+business's audit chain: requests sent at once, in any business, count each
+other, and at most five codes reach the provider. Otherwise the check writes an
+audit event only when it refuses; the act's own event is written after the
+call, beside the record it changes, and carries the sent code's id as its
+`operation_id`; an answer other than a wrong code is recorded as answered
+there too, so a good code stops counting once it is answered. GoTrue served under a path (`/auth/v1`) is called
 under that path. The record step locks the person's own row (`for no key
 update`), so two tabs enrolling at once queue: the later enrolment replaces the
 earlier unverified one, and one live factor remains.

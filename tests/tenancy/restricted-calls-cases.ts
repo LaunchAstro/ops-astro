@@ -51,6 +51,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.ended_subject_sessions'],
   // 0064 (C59): a second factor verified or removed, by subject digest, for every business.
   ['si', 'ops.second_factor_subjects'],
+  // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
+  ['si', 'ops.second_factor_codes'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).

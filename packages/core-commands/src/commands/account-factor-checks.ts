@@ -4,16 +4,18 @@
 // lockout, a fresh sign-in for a first enrolment, and the code's own shape.
 // Split from `account-factor.ts` to keep that file under the line limit.
 
-import { liveFactor, STEP_UP_WINDOW_SECONDS } from '../../../core-records/src/index.ts';
-import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import { createHash } from 'node:crypto';
+import { advisoryLock, STEP_UP_WINDOW_SECONDS } from '../../../core-records/src/index.ts';
+import type { Session, TenantQuery, VerifiedSubject } from '../../../core-records/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
 /**
- * Wrong codes a person may send before their factor routes stop asking the
- * provider: five in fifteen minutes, so a six-digit code cannot be walked by a
- * caller who holds only the password.
+ * Wrong codes a login may send before its factor routes stop asking the
+ * provider: five in fifteen minutes, through every business the login
+ * reaches, so a six-digit code cannot be walked by a caller who holds only
+ * the password.
  */
 const FAILED_CODE_LIMIT = 5;
 const FAILED_CODE_WINDOW_MINUTES = 15;
@@ -23,35 +25,40 @@ const LOCKED_FIXES: readonly string[] = [
 
 /** The event that a code is on its way to the provider; the act's own event names its answer. */
 const CODE_SENT = 'account.factor_code_sent';
+const WRONG = 'SECOND_FACTOR_INVALID';
+
+/** The login's subject as `ops.second_factor_codes` keys it (0072). */
+const subjectDigest = (subject: string) => createHash('sha256').update(subject).digest('hex');
 
 /**
- * `SECOND_FACTOR_LOCKED` when this person has sent too many wrong codes lately
- * (see `FAILED_CODE_LIMIT`): codes they sent (`codeSent`) that the provider
- * has not answered otherwise, so a wrong one and one still at the provider,
- * which may be wrong. A good code, once answered, does not count. It takes the
- * person's lock first, held to the end of the transaction that records the
- * code as sent, so requests at once are counted one after another, each
- * seeing the codes the others sent.
+ * `SECOND_FACTOR_LOCKED` when this login has sent too many wrong codes lately
+ * (see `FAILED_CODE_LIMIT`), through any business: codes sent (`recordCode`)
+ * that the provider has not answered otherwise, so a wrong one and one still
+ * at the provider, which may be wrong. A good code, once answered, does not
+ * count. The provider holds one factor per login, so the count and its lock
+ * are the login's (0072): an advisory lock on the subject's digest, the one
+ * key named by login rather than business, taken first in the transaction
+ * and held to the end of the one that records the code as sent, so requests
+ * at once, in any business, are counted one after another.
  */
 export async function wrongCodeLock(
   tx: TenantQuery,
-  session: Session,
+  subject: string,
 ): Promise<CommandRefusal | undefined> {
-  await liveFactor(tx, session.personId, { lock: true });
+  const digest = subjectDigest(subject);
+  await advisoryLock(tx, `second-factor-codes:${digest}`);
   const rows = await tx.query<{ readonly failures: number }>(
     `select count(*)::int as failures
-       from public.audit_events sent
-      where sent.business_id = $1
-        and sent.actor_id = $2
-        and sent.command = $4
-        and sent.occurred_at > now() - make_interval(mins => $3)
+       from ops.second_factor_codes sent
+      where sent.subject_digest = $1
+        and sent.state = 'sent'
+        and sent.recorded_at > now() - make_interval(mins => $2)
         and not exists (
-          select 1 from public.audit_events answer
-           where answer.business_id = $1
-             and answer.operation_id = sent.operation_id
-             and answer.command in ('account.factor_verify', 'account.factor_remove')
-             and answer.refusal_code is distinct from 'SECOND_FACTOR_INVALID')`,
-    [tx.businessId, session.actorId, FAILED_CODE_WINDOW_MINUTES, CODE_SENT],
+          select 1 from ops.second_factor_codes answer
+           where answer.subject_digest = $1
+             and answer.attempt = sent.attempt
+             and answer.state = 'answered')`,
+    [digest, FAILED_CODE_WINDOW_MINUTES],
   );
   return (rows[0]?.failures ?? 0) >= FAILED_CODE_LIMIT
     ? refuseCommand('SECOND_FACTOR_LOCKED', [], LOCKED_FIXES)
@@ -59,23 +66,36 @@ export async function wrongCodeLock(
 }
 
 /**
- * Record that a code is about to go to the provider, under the lock the count
- * took. The act's own event, written once the provider has answered, carries
- * the same `attempt` id as its operation.
+ * A code's place in the count, for a call that sends one (`attempt`). Before
+ * the provider call, a check that passed records the code as sent, under the
+ * lock `wrongCodeLock` took, in the login's record and as an audit event in
+ * this business. After it, an answer other than a wrong code
+ * (`SECOND_FACTOR_INVALID`) records the code as answered, so it stops
+ * counting. The act's own event carries the same `attempt` as its operation.
  */
-export async function codeSent(
+export async function recordCode(
   tx: TenantQuery,
   session: Session,
-  attempt: string | undefined,
+  caller: { readonly presented: VerifiedSubject; readonly attempt?: string },
+  stage: 'before' | 'after',
+  refusal: CommandRefusal | undefined,
 ): Promise<void> {
-  if (attempt === undefined) return;
-  await writeAuditEvent(tx, {
-    actorId: session.actorId,
-    command: CODE_SENT,
-    operationId: attempt,
-    outcome: 'applied',
-    payloadDigest: payloadDigest({ command: CODE_SENT, person: session.personId }),
-  });
+  const attempt = caller.attempt;
+  const sent = stage === 'before';
+  if (attempt === undefined || (sent ? refusal !== undefined : refusal?.code === WRONG)) return;
+  if (sent) {
+    await writeAuditEvent(tx, {
+      actorId: session.actorId,
+      command: CODE_SENT,
+      operationId: attempt,
+      outcome: 'applied',
+      payloadDigest: payloadDigest({ command: CODE_SENT, person: session.personId }),
+    });
+  }
+  await tx.query(
+    `insert into ops.second_factor_codes (subject_digest, attempt, state) values ($1, $2, $3)`,
+    [subjectDigest(caller.presented.subject), attempt, sent ? 'sent' : 'answered'],
+  );
 }
 
 /** A first enrolment's precondition: a password sign-in inside the window. */

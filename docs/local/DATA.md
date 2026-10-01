@@ -628,6 +628,18 @@ not removed; a removed factor is never verified again, so the rows need no
 order. Before 0064 the person's mirror alone answers. The application may
 insert and read the three columns; nothing changes or deletes a row.
 
+## Second-factor codes by subject (0072, C59)
+
+`ops.second_factor_codes` holds one row when a second-factor code is sent to
+the provider through any business, and one when it is answered other than
+wrong: a SHA-256 digest of the login's subject, the attempt's random id (the
+act's audit event carries it as its `operation_id`), `sent` or `answered`, and
+when. Installation-wide, no business, person or reason. The factor routes
+refuse `SECOND_FACTOR_LOCKED` while five codes sent in the last fifteen
+minutes have no `answered` row, counted under a transaction-scoped lock on the
+subject's digest. The application may insert the digest, the attempt and the
+state and read the four columns; nothing changes or deletes a row.
+
 ## Overseas-services register (0052, C81)
 
 `overseas_services` holds one row per outside service that receives personal
