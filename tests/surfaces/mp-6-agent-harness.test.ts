@@ -158,6 +158,8 @@ async function captureOne(
     await prepare?.(side.context);
     const address = addressOf('agency:task-detail', MADE_UP_PARAMS) ?? '/';
     const page = await load(side, packet, new URL(address, at.app).href);
+    // The agent section sits on the task's Agent perspective, so the capture opens it.
+    await page.locator('[role=tab]:has-text("Agent")').click();
     await page.locator('[data-agent="pane"]').waitFor();
     const drawn: Record<string, boolean> = {};
     for (const [mark, selector] of Object.entries(marks))
