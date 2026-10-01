@@ -16,6 +16,9 @@
 // stream has started and ends, so the harness does see an end.
 //
 // Real node-server, real Hono stream, real `follow`; the door is a gate.
+// The route now takes app.ts's first step, `endsWithRequest` (FIX-2B1), so
+// the door case passes; without that step it fails as described above.
+// fix-2b1-rs2-left-at-door-real-routes proves app.ts's own routes take it.
 
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';

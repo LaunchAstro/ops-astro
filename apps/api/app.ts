@@ -820,7 +820,8 @@ const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
  * is asked again, and `closed` the first time the answer is no. Signals that
  * arrive while one is pending merge into it, the strongest kept. Stopping it
  * (the tab leaving, or the topics closing) lets go only once no question it
- * asked is in flight.
+ * asked is in flight. A stream that ended before this ran (the tab left at the
+ * door) is taken as ended: no abort listener added now is ever called.
  */
 export async function follow(
   stream: SSEStreamingApi,
@@ -829,7 +830,6 @@ export async function follow(
   taskId: string,
   may: () => Promise<string | CommandRefusal>,
 ): Promise<void> {
-  // Ended before this ran (the tab left at the door): no listener added now is called.
   const ended = new Promise<void>((resolve) => {
     if (stream.aborted) resolve();
     else stream.onAbort(resolve);

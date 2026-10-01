@@ -13,7 +13,7 @@
 // lifetime misses the cache rather than meeting a wider answer. The call reads
 // at READ COMMITTED, so a grant issued or revoked while the answer is worked
 // out may be in the answer and not in the key. The answer is held only when
-// the live grants' fingerprint and one of the viewer's grant rows, revoked ones
+// the live grants' fingerprint and one over the viewer's grant rows, revoked ones
 // included, read the same after it is worked out as before; otherwise it is
 // served once and never held. The rows' fingerprint catches a grant issued and
 // revoked again in that window, which leaves the live set where it was. It
