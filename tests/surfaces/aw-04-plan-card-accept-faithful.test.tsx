@@ -43,6 +43,10 @@ const planned = (version: number) => ({
 });
 
 const APPROVED = { ok: true, value: { recordId: '', revision: 0, detail: { runId: 'run-1' } } };
+// An accept whose answer has not come yet, and one whose answer the network dropped.
+const unanswered = (_value: unknown): void => {};
+const lostAnswer = (): Promise<unknown> =>
+  Promise.resolve({ unavailable: true, because: 'The network dropped the answer.' });
 
 interface Sent {
   readonly name: string;
@@ -116,7 +120,7 @@ describe('AW-04 plan card accept', () => {
   });
 
   it('AW-04 accept answered after a newer version arrived: a committed accept still shows the approved card, never "accept the newer card"', async () => {
-    let answer: (value: unknown) => void = () => {};
+    let answer: (value: unknown) => void = unanswered;
     const inFlight = (): Promise<unknown> =>
       new Promise((resolve) => {
         answer = resolve;
@@ -138,9 +142,7 @@ describe('AW-04 plan card accept', () => {
   });
 
   it('AW-04 accept with an unknown outcome: the click again reuses the operation id, so a committed accept replays', async () => {
-    const lost = (): Promise<unknown> =>
-      Promise.resolve({ unavailable: true, because: 'The network dropped the answer.' });
-    const { client, sent } = drawerWith([planned(1)], [lost]);
+    const { client, sent } = drawerWith([planned(1)], [lostAnswer]);
     const { page, ask } = await open(client);
     await ask('Write the spring brief');
     await page.click('[data-plan="accept"]');
