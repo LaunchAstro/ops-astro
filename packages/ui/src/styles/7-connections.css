@@ -79,21 +79,6 @@
   }
 }
 
-.conn {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.conn thead th {
-  text-align: left;
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
-  color: var(--ink-faint);
-  padding: 0.55rem var(--s-5);
-  border-bottom: 1px solid var(--border);
-}
-
 .conn__row {
   border-bottom: 1px solid var(--border);
   cursor: pointer;
@@ -109,11 +94,6 @@
   font: var(--type-body);
   letter-spacing: var(--type-body-tracking);
   text-transform: var(--type-body-case);
-}
-
-/* Only the sorted column: the table marks the others aria-sort="none". */
-.conn thead th[aria-sort]:not([aria-sort='none']) {
-  color: var(--text);
 }
 
 .connctrls {

@@ -420,8 +420,8 @@
         "color": "rgba(140,133,127,255)",
         "letter-spacing": "0.24px",
         "text-transform": "uppercase",
-        "padding-left": "24px",
-        "border-bottom-color": "rgba(0,0,0,31)"
+        "padding-left": "16px",
+        "border-bottom-color": "rgba(0,0,0,255)"
       },
       "1480-dark": {
         "font-family": "Chivo Mono",
@@ -430,8 +430,8 @@
         "color": "rgba(248,248,248,117)",
         "letter-spacing": "0.24px",
         "text-transform": "uppercase",
-        "padding-left": "24px",
-        "border-bottom-color": "rgba(245,245,245,26)"
+        "padding-left": "16px",
+        "border-bottom-color": "rgba(255,255,255,61)"
       },
       "900-light": {
         "font-family": "Chivo Mono",
@@ -440,8 +440,8 @@
         "color": "rgba(140,133,127,255)",
         "letter-spacing": "0.24px",
         "text-transform": "uppercase",
-        "padding-left": "24px",
-        "border-bottom-color": "rgba(0,0,0,31)"
+        "padding-left": "16px",
+        "border-bottom-color": "rgba(0,0,0,255)"
       },
       "900-dark": {
         "font-family": "Chivo Mono",
@@ -450,8 +450,8 @@
         "color": "rgba(248,248,248,117)",
         "letter-spacing": "0.24px",
         "text-transform": "uppercase",
-        "padding-left": "24px",
-        "border-bottom-color": "rgba(245,245,245,26)"
+        "padding-left": "16px",
+        "border-bottom-color": "rgba(255,255,255,61)"
       },
       "390-light": {
         "font-family": "Chivo Mono",
@@ -460,8 +460,8 @@
         "color": "rgba(140,133,127,255)",
         "letter-spacing": "0.24px",
         "text-transform": "uppercase",
-        "padding-left": "24px",
-        "border-bottom-color": "rgba(0,0,0,31)"
+        "padding-left": "16px",
+        "border-bottom-color": "rgba(0,0,0,255)"
       },
       "390-dark": {
         "font-family": "Chivo Mono",
@@ -470,8 +470,8 @@
         "color": "rgba(248,248,248,117)",
         "letter-spacing": "0.24px",
         "text-transform": "uppercase",
-        "padding-left": "24px",
-        "border-bottom-color": "rgba(245,245,245,26)"
+        "padding-left": "16px",
+        "border-bottom-color": "rgba(255,255,255,61)"
       }
     },
     "connections.table-cell": {

@@ -127,7 +127,7 @@ export function FleetTable(props: FleetTableProps): ReactElement {
       <Facets view={view} setView={setView} counts={props.counts} />
       <p className="approval__meta">Click a column heading to sort</p>
       <div className="card card--flush conn__scroll">
-        <table className="conn">
+        <table className="table conn">
           <Header view={view} setView={setView} />
           <tbody>
             {shown.rows.flatMap((row) => {
