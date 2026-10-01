@@ -83,3 +83,5 @@ export * from './page-kit/stats.tsx';
 export * from './page-kit/table.tsx';
 export * from './page-kit/bars.tsx';
 export * from './page-kit/detail.tsx';
+// Money in a currency's own minor digits, the server's rule; the task page shares it.
+export { major, minorDigits, minorOf } from './surfaces/agent/format.ts';

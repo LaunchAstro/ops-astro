@@ -78,6 +78,8 @@ const INJECTED_BOUNDS = 3;
 const TARGET_FREE: ReadonlySet<CommandName> = new Set(TARGET_FREE_BODIES.map(([op]) => op));
 
 const NOBODY = 'text nobody should find in an audit row';
+/** The ask an AW-05 answer names: the run is refused before any ask is read. */
+const ASK_ID = randomUUID();
 
 interface Verdict {
   readonly foreignMedian: number;
@@ -332,12 +334,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('run.top_up', 'runId', String(bravoRun?.run_id), (runId) => ({
       recordId: own.task.id,
       runId,
+      askId: ASK_ID,
       amountMinor: 100,
       currency: 'AUD',
     }));
     byAda('run.end_at_budget_stop', 'runId', String(bravoRun?.run_id), (runId) => ({
       recordId: own.task.id,
       runId,
+      askId: ASK_ID,
     }));
     byAda('run.revise_state', 'runId', String(bravoRun?.run_id), (runId) => ({
       recordId: own.task.id,

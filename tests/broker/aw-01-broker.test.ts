@@ -251,6 +251,13 @@ it('AW-01 six facts: the lease carries the delegation the caller resolved', asyn
 });
 
 it('AW-01 canary: the planted key and the planted prompt reach no row, audit payload or answer', async () => {
+  // A provider echoing the key: the answer the broker returns holds none of it.
+  world.provider.mode('echo_credential');
+  const echoed = await call(await liveWork(s, 'the echoed key', 2_000));
+  world.provider.mode('answer');
+  expect(world.provider.seen.at(-1)?.authorization).toBe(`Bearer ${world.canary}`);
+  expect(echoed.ok && echoed.text.includes('[redacted]')).toBe(true);
+  expect(JSON.stringify(echoed).includes(world.canary)).toBe(false);
   const tables = await s.db.admin.execute<{ dump: string }>(
     `select coalesce(string_agg(t::text, ' '), '') as dump from (
        select row_to_json(m)::text as t from public.model_calls m

@@ -29,6 +29,8 @@ export {
   type OperandKind,
   type OperandSpec,
 } from './surface.ts';
+// A currency's minor digits, the ISO 4217 table the server and the browser share.
+export { minorDigits } from './currency.ts';
 // The keys a grant may carry (C32).
 export { GRANTABLE_KEYS, isGrantableKey, SELF_SCOPED_COLLECTIONS } from './permission-keys.ts';
 export {

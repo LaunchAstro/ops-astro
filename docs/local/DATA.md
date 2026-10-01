@@ -285,12 +285,14 @@ proves the separation and the grants.
 
 `ops_astro_occurrence` (migration 0203, AW-01 J) follows the same pattern
 without a function: it holds `insert` on `planned_runs`, `select` on a task's
-`business_id`, `id` and `revision` (for 0032's trigger) and execute on
+`business_id`, `id` and `revision` (for 0032's trigger), the columns of
+`live_changes` that 0035's trigger upserts as the inserting role (insert of the
+task's key, update of the stamp, a read of both; no delete) and execute on
 `app_business_id()`, and nothing else. The worker's occurrence path takes it
 for the one insert of an occurrence's run; the trigger
 `planned_runs_occurrence_origin` refuses an origin written by any other role
 and any later change to one. The suites sort it into a class of its own
-(`occurrence`), and the column-grant contract names its three reads.
+(`occurrence`), and the column-grant contract names each of its column grants.
 
 At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist

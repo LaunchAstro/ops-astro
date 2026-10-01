@@ -77,12 +77,16 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 no memory activates', () => {
   let other: Work;
 
   /** A proposal on `taskId` ada approves, picked up by the agent. */
-  const pickUp = async (taskId: string): Promise<Work> => {
+  const pickUp = async (
+    taskId: string,
+    maximumMinor: number = PROPOSAL.maximumMinor,
+  ): Promise<Work> => {
     const read = await asPerson(world, ada, 'task.read', { recordId: taskId });
     const proposed = await asPerson(world, ada, 'task.propose', {
       recordId: taskId,
       expectedRevision: (read.body['task'] as Record<string, unknown>)['revision'],
       ...PROPOSAL,
+      maximumMinor,
     });
     expect(proposed.code, 'propose').toBe('ok');
     const decided = await asPerson(world, ada, 'task.decide', {
@@ -211,7 +215,9 @@ describe.skipIf(serverUrl === undefined)('MP-6-2 no memory activates', () => {
     });
     expect(revised.code, 'revise').toBe('ok');
     await handBack(first);
-    again = await pickUp(learning);
+    // The first run's model call stays spent out of the task's envelope (AW-01),
+    // so the second run asks for what is left of it, half.
+    again = await pickUp(learning, PROPOSAL.maximumMinor / 2);
     await startWork(again);
     await handBack(again);
     other = await pickUp(await newTask('another task, run after the first learned'));

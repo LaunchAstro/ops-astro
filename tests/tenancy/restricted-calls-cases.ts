@@ -164,13 +164,30 @@ export function columnUpdatesAt(at?: string): readonly string[] {
 
 /**
  * Every other column grant, from the migration that made it: the occurrence role reads a
- * task's revision for 0032's trigger (AW-01 J, 0203), the application writes the outbox's
+ * task's revision for 0032's trigger and stamps the live change record for 0035's
+ * (AW-01 J, 0203), the application writes the outbox's
  * four columns alone (S0-2, 0047), and the lookup reads a business's id and key (G2, 0046).
  */
 const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
   ...['business_id', 'id', 'revision'].map((column) => ({
     from: '0203',
     line: `${OCCURRENCE_ROLE} SELECT public.records.${column}`,
+  })),
+  // 0203: 0035's trigger on the occurrence's run upserts the task's stamp in
+  // 0065's live change record, as the inserting role.
+  ...[
+    ['INSERT', 'business_id'],
+    ['INSERT', 'subject_id'],
+    ['INSERT', 'subject_kind'],
+    ['SELECT', 'business_id'],
+    ['SELECT', 'changed_xid'],
+    ['SELECT', 'subject_id'],
+    ['SELECT', 'subject_kind'],
+    ['UPDATE', 'changed_at'],
+    ['UPDATE', 'changed_xid'],
+  ].map(([act, column]) => ({
+    from: '0203',
+    line: `${OCCURRENCE_ROLE} ${act} public.live_changes.${column}`,
   })),
   ...['event', 'kind', 'scope', 'weight'].map((column) => ({
     from: '0047',

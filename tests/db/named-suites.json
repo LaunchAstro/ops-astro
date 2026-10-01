@@ -204,7 +204,9 @@
     "STAGING-FIX (#298, REVIEW-MAIN-B1) adds staging-reset-seeds-beside-provider-sign-ins (the review's red proof: a reset seeds beside the made-up sign-ins the provider keeps in auth.users), staging-reset-refuses-unvouched-sign-in (a real sign-in noted before or during a run, or a sign-in guard switched off or dropped, refuses a marked database before anything is emptied) and staging-reset-refuses-sign-in-during-first-reset (a real sign-in landing on a new database before its guard stands stops the reset unmarked, and the next run refuses).",
     "FIX-B1 (review round 1, rs-6) adds inbox-unattended-escalated (an escalated gate's recipient who keeps decide across the business is a path to the decision, so the item is not listed unattended) and names review-p03-unattended-escalated-decider (REVIEW-MAIN-B1 p03-1's proof: the recipient keeps task-scope decide only, and the item is listed), both invariants.",
     "FIX-B1 (REVIEW-MAIN-B1 p02-1) adds forwarder-export-ageout-false-signals-dropped-review (an export signal under its threshold ages out of the forwarder's table without a false signals-dropped alert: the sweep window outlasts every rule's).",
-    "The batch 3a join of main a352c11 brings MP-2-11a's preference store, so mp-6-1-preferences (MP-6-1's job list preference, agent.jobList: own row only, refused to an agent, unaudited) joins the conformance list, as MP-6-1's line above says."
+    "The batch 3a join of main a352c11 brings MP-2-11a's preference store, so mp-6-1-preferences (MP-6-1's job list preference, agent.jobList: own row only, refused to an agent, unaudited) joins the conformance list, as MP-6-1's line above says.",
+    "REVIEW-BATCH-2 #312 batch 3a adds review-3a-2-purge-conversation-scope (task.purge applies and purges another aged task while a trashed task is a conversation's scope) as conformance.",
+    "REVIEW-BATCH-2 #312 batch 3a adds review-3a-3-sweep-starvation (the idle sweep: a hundred older held conversations do not starve a younger due one, and a conversation on a trashed task is not held WORK_OPEN for ever) as conformance."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -586,7 +588,17 @@
     "tests/commands/mp-2-11-business-windows.test.ts",
     "tests/commands/mp-2-11-business-windows-upgrade.test.ts",
     "tests/commands/review-p03-unattended-escalated-decider.test.ts",
-    "tests/commands/inbox-unattended-escalated.test.ts"
+    "tests/commands/inbox-unattended-escalated.test.ts",
+    "tests/broker/review-3a-7-stale-budget-answer.test.ts",
+    "tests/broker/review-3a-9-echo-canary.test.ts",
+    "tests/runtime/review-3a-19-agent-task-read-reach.test.ts",
+    "tests/broker/review-3a-4-model-spend-reservation.test.ts",
+    "tests/broker/review-3a-5-stranded-model-calls.test.ts",
+    "tests/broker/review-3a-6-expired-lease-settles.test.ts",
+    "tests/broker/planfix-3a-settle-sec-b1.test.ts",
+    "tests/broker/planfix-3a-settle-sec-b2.test.ts",
+    "tests/broker/planfix-3a-settle-sec-b3.test.ts",
+    "tests/broker/planfix-3a-settle-sec-m1.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
@@ -709,6 +721,13 @@
     "tests/cli/c23-session-surfaces.test.ts",
     "tests/ci/staging-reset-seeds-beside-provider-sign-ins.test.ts",
     "tests/ci/staging-reset-refuses-unvouched-sign-in.test.ts",
-    "tests/ci/staging-reset-refuses-sign-in-during-first-reset.test.ts"
+    "tests/ci/staging-reset-refuses-sign-in-during-first-reset.test.ts",
+    "tests/api/review-3a-2-purge-conversation-scope.test.ts",
+    "tests/api/review-3a-3-sweep-starvation.test.ts",
+    "tests/api/review-3a-20-check-lease-lock.test.ts",
+    "tests/api/review-3a-15-pending-undecidable.test.ts",
+    "tests/runtime/review-3a-16-expired-gate-node.test.ts",
+    "tests/api/review-3a-18-pending-current-version.test.ts",
+    "tests/runtime/review-3a-17-quarantined-hold.test.ts"
   ]
 }

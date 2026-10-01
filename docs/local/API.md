@@ -163,6 +163,10 @@ refusal writes an audit row. A business with no such row is `NOT_FOUND` naming
 `retention_window_days`. A row that is not a whole number of days, zero or
 more, is `FIELD_VALUE_INVALID`. There is no default, floor or ceiling.
 `tests/commands/purge-retention.test.ts` holds it.
+The purge clears the scope (`scope_kind` and `scope_record_id` to null) of any
+conversation opened on a task or comment it removes, before the delete; the
+conversation, its body and its wrap-ups are kept (0198's scope reference does
+not cascade).
 
 **The two windows are written by a command each** (MP-2-11, 0068):
 `settings.set_retention_window` and `settings.set_conversation_window`, under
@@ -383,6 +387,10 @@ provider is the only one until the real-provider run. Each route in
 `MODEL_BROKER_ROUTES` declares its `ceiling`, a whole number of at least 1:
 the calls in flight on that route across every business of the installation,
 at most (the fair share, "The model call" below).
+Two more settings stop the server at start: a `local` route any of whose
+operations sends to a destination that is not a loopback address, and a plain
+http destination off this machine. The route that carries a call is the
+eligible route itself, never another found by its key.
 
 `main()` starts the diagnostic trace export (AW-13, `apps/api/trace-exporter.ts`)
 only when `TRACE_EXPORT=on`, the one change an operator makes once
@@ -1052,7 +1060,11 @@ Both compare a wrap-up's `activity_through` with the conversation's
 `sweepConversations` (`commands/conversation-sweep.ts`) is one pass over one
 business: the wrap-up for each quiet conversation without one, then the purge
 for each whose covering wrap-up existed before the pass, never both in one
-pass. Each conversation is its own transaction under a lock timeout, so a
+pass. The purge candidates page through the wrapped bodies past the floor and
+weigh each with the purge's own `WORK_OPEN` and `NOT_DUE` check (`purgeHold`): a
+held one is reported and passed over, and the page limit counts only those the
+purge would take. A task trashed before it ended counts as ended work at its
+trash time. Each conversation is its own transaction under a lock timeout, so a
 failure is that conversation's alone, reported with its body kept; an
 unreadable window stops the purge for the business and the report says so.
 The purge's operation identity is derived from the conversation and its last
@@ -1150,13 +1162,14 @@ business-internal source since the hold releases the call unsent
 A run stopped at its approved ceiling waits for a person (AW-05,
 [RUNTIME.md](RUNTIME.md#the-answers-at-the-budget-stop)). The two answers are
 commands on the person prefix, and the command line and the app's client post
-them to the same routes. Both name the task and the run on it, and neither
+them to the same routes. Both name the task, the run on it and the ask the
+person was shown (`askId`, the stop's id in `task.read`'s ledger), and neither
 writes the task record, so neither takes an `expectedRevision`.
 
-| Operation                | Route                                | Body                                                          | Authority                                                                                                                       |
-| ------------------------ | ------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `run.top_up`             | `/api/b/:key/run/top_up`             | `operationId`, `recordId`, `runId`, `amountMinor`, `currency` | `decide` on `billing`, asked of the task named in `recordId`; the runtime asks it again of the run's task under the run's locks |
-| `run.end_at_budget_stop` | `/api/b/:key/run/end_at_budget_stop` | `operationId`, `recordId`, `runId`                            | `decide` on `gate`, asked the same way                                                                                          |
+| Operation                | Route                                | Body                                                                   | Authority                                                                                                                       |
+| ------------------------ | ------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `run.top_up`             | `/api/b/:key/run/top_up`             | `operationId`, `recordId`, `runId`, `askId`, `amountMinor`, `currency` | `decide` on `billing`, asked of the task named in `recordId`; the runtime asks it again of the run's task under the run's locks |
+| `run.end_at_budget_stop` | `/api/b/:key/run/end_at_budget_stop` | `operationId`, `recordId`, `runId`, `askId`                            | `decide` on `gate`, asked the same way                                                                                          |
 
 A run's state revised (MP-6-2) is the agent page's one write. It names the
 task and the run on it too, and carries the version it read (0 before the
@@ -1194,8 +1207,9 @@ releasedMinor, spentMinor }`. The task stays open for a person. It reaches a
   hold `billing:decide`, `FIELD_VALUE_INVALID` 422 (the amount, the currency,
   or a second approval of a different amount), `CAP_BINDING_MISMATCH`,
   `BUDGET_EXHAUSTED` (the business cap is the hard ceiling), `LINEAGE_TERMINAL`
-  and `TRANSITION_NOT_PERMITTED` 409 (the run is not waiting, or the ask is
-  already answered). A refusal writes nothing.
+  and `TRANSITION_NOT_PERMITTED` 409 (the run is not waiting, the ask is
+  already answered, or `askId` is not the ask the run waits on: an answer to
+  an earlier stop never applies to a later one). A refusal writes nothing.
 - **No agent answers.** Neither row is in `AGENT_SURFACE`: the agent prefix
   answers `DELEGATION_EXCLUDES_OPERATION` 403 with or without a delegation.
 - **Not here yet.** The question and its two buttons in the conversation where

@@ -13,7 +13,9 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import type { Controls } from './controls-fixture.ts';
+import { connect, connectAsAdmin } from '../../packages/core-records/src/index.ts';
+import { agentPath, type Controls } from './controls-fixture.ts';
+import { authorised, post, tokenFor, type Answer } from './fixture.ts';
 import { CHECK_ROWS, checksWorld, pickedUpOn } from './mp-6-1-checks-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -108,35 +110,84 @@ describe.skipIf(serverUrl === undefined)('MP-6-1 checks and run controls', () =>
     });
   });
 
+  // eslint-disable-next-line max-lines-per-function -- one ordered race and its lock holder
   describe('MP-6-1 check provenance under a race', () => {
+    const waitingOnLocks = `select count(*)::text as n from pg_stat_activity
+       where datname = current_database() and wait_event_type = 'Lock'`;
+
+    // The handback holds the lease lock while the check arrives, in that order
+    // every time. Its lock set takes the lease, then the delegation, then the
+    // reservation (`LOCK_ORDER`), so with the reservation row held elsewhere
+    // the real handback stops holding the lease row; the check then waits on
+    // that row, and runs once the handback has ended the lease and committed.
+    // eslint-disable-next-line max-lines-per-function -- as above
     it('a check and a handback on one lease at once serialise on the lease lock', async () => {
-      for (let round = 0; round < 3; round += 1) {
-        // eslint-disable-next-line no-await-in-loop -- one race at a time
-        const work = await pickedUp(`race_${String(round)}`);
-        // eslint-disable-next-line no-await-in-loop -- as above
-        const [checked, handedBack] = await Promise.all([
-          c.asAgent(
-            'task.check',
-            { leaseId: work.leaseId, fence: work.fence, name: 'racing', outcome: 'passed' },
-            work.credential,
-          ),
-          c.asAgent(
-            'task.handback',
-            {
-              leaseId: work.leaseId,
-              fence: work.fence,
-              outcome: 'completed',
-              report: { wrote: 'x' },
-            },
-            work.credential,
-          ),
-        ]);
-        expect(handedBack.status, JSON.stringify(handedBack.body)).toBe(200);
-        expect([200, 401, 403, 410], JSON.stringify(checked.body)).toContain(checked.status);
-        // Either the check won the lease lock and was written, or the handback
-        // did and the check was refused with nothing written: never both, never a fault.
-        // eslint-disable-next-line no-await-in-loop -- as above
-        expect(await c.count(checkRows, [work.taskId])).toBe(checked.status === 200 ? 1 : 0);
+      const work = await pickedUp('race_handback_first');
+      const [held] = await c.fixture.db.admin.execute<{ readonly id: string }>(
+        `select reservation_id as id from public.leases where id = $1`,
+        [work.leaseId],
+      );
+      // Two requests at once need two connections: the fixture's pool has one.
+      // Opened before the race, since one opened while the lock is polled was
+      // seen to stall.
+      const wide = connect(c.fixture.db.appUrl, { source: 'runtime', max: 3 });
+      const api = c.fixture.compose(undefined, undefined, wide);
+      const token = await tokenFor(c.fixture.agent.subject);
+      const asAgent = async (name: string, body: Record<string, unknown>): Promise<Answer> =>
+        await post(
+          api,
+          agentPath(name),
+          { operationId: randomUUID(), ...body },
+          { ...authorised(token), 'x-agent-delegation': work.credential },
+        );
+      const warm = await Promise.all(
+        [1, 2, 3].map(async () => await asAgent('task.read', { recordId: work.taskId })),
+      );
+      expect(warm.map((answer) => answer.status)).toStrictEqual([200, 200, 200]);
+      // The reservation's lock on a connection of its own: the boundary uses the fixture's.
+      const holderUrl = new URL(String(serverUrl));
+      holderUrl.pathname = `/${c.fixture.db.name}`;
+      const holder = connectAsAdmin(holderUrl.toString(), { source: 'harness' });
+      const lease = { leaseId: work.leaseId, fence: work.fence };
+      let handedBack: Promise<Answer> | undefined;
+      let checked: Promise<Answer> | undefined;
+      try {
+        await holder.transaction(async (execute) => {
+          await execute(
+            `select 1 from public.reservations where business_id = $1 and id = $2 for update`,
+            [c.fixture.business, held?.id],
+          );
+          const queued = async (count: number, what: string): Promise<void> => {
+            const deadline = Date.now() + 15_000;
+            for (;;) {
+              // eslint-disable-next-line no-await-in-loop -- polling until it waits
+              const [row] = await execute<{ readonly n: string }>(waitingOnLocks, []);
+              if (Number(row?.n) >= count) return;
+              if (Date.now() > deadline) throw new Error(`the ${what} never waited`);
+              // eslint-disable-next-line no-await-in-loop -- as above
+              await new Promise((resolve) => {
+                setTimeout(resolve, 50);
+              });
+            }
+          };
+          handedBack = asAgent('task.handback', {
+            ...lease,
+            outcome: 'completed',
+            report: { wrote: 'x' },
+          });
+          await queued(1, 'handback');
+          checked = asAgent('task.check', { ...lease, name: 'racing', outcome: 'passed' });
+          await queued(2, 'check');
+        });
+        if (handedBack === undefined || checked === undefined) throw new Error('never sent');
+        const back = await handedBack;
+        const check = await checked;
+        expect(back.status, JSON.stringify(back.body)).toBe(200);
+        expect(check.status, JSON.stringify(check.body)).toBe(410);
+        expect(check.body['code']).toBe('LEASE_EXPIRED');
+        expect(await c.count(checkRows, [work.taskId])).toBe(0);
+      } finally {
+        await Promise.all([wide.close(), holder.close()]);
       }
     }, 60_000);
   });

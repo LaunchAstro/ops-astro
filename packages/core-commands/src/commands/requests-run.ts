@@ -7,13 +7,14 @@
 import type { Envelope } from './request-envelope.ts';
 
 export type RunRequest =
-  // The answers at the budget stop (AW-05). The amount is in the currency's
-  // minor units; the runtime checks both by value, so they are `unknown`
-  // until it has.
+  // The answers at the budget stop (AW-05), naming the ask the person was
+  // shown. The amount is in the currency's minor units; the runtime checks
+  // both by value, so they are `unknown` until it has.
   | ({
       readonly command: 'run.top_up';
       readonly recordId: string;
       readonly runId: string;
+      readonly askId: string;
       readonly amountMinor: unknown;
       readonly currency: unknown;
     } & Envelope)
@@ -21,6 +22,7 @@ export type RunRequest =
       readonly command: 'run.end_at_budget_stop';
       readonly recordId: string;
       readonly runId: string;
+      readonly askId: string;
     } & Envelope)
   // A run's state revised (MP-6-2): the version the caller read, and the
   // knowledge and unknowns the handler checks item by item.

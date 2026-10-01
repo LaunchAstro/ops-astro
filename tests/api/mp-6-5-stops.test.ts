@@ -29,6 +29,7 @@ import {
 interface Stopped {
   readonly recordId: string;
   readonly runId: string;
+  readonly askId: string;
 }
 
 interface AskRow {
@@ -62,7 +63,11 @@ describe.skipIf(serverUrl === undefined)('MP-6-5 and C54 stops on Postgres', () 
     };
     const made = await answerAtTheStop(context, 'run.end_at_budget_stop', PROPOSAL);
     if (!('body' in made)) throw new Error(made.exception);
-    return { recordId: String(made.body['recordId']), runId: String(made.body['runId']) };
+    return {
+      recordId: String(made.body['recordId']),
+      runId: String(made.body['runId']),
+      askId: String(made.body['askId']),
+    };
   }
 
   beforeAll(async () => {
@@ -155,6 +160,7 @@ describe.skipIf(serverUrl === undefined)('MP-6-5 and C54 stops on Postgres', () 
       const body = {
         recordId: one.recordId,
         runId: one.runId,
+        askId: one.askId,
         amountMinor: 150,
         currency: 'AUD',
       };
@@ -184,7 +190,11 @@ describe.skipIf(serverUrl === undefined)('MP-6-5 and C54 stops on Postgres', () 
 
   it('C54 consolidated stop answered: the end reads as the answer and the run is cancelled', async () => {
     expect(
-      await answer(ada, 'run.end_at_budget_stop', { recordId: two.recordId, runId: two.runId }),
+      await answer(ada, 'run.end_at_budget_stop', {
+        recordId: two.recordId,
+        runId: two.runId,
+        askId: two.askId,
+      }),
     ).toStrictEqual({ code: 'ok', state: 'cancelled' });
     expect(await stopsOf(ada, two.recordId)).toMatchObject([{ number: 1, answer: 'end' }]);
   });

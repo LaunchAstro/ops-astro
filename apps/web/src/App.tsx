@@ -69,7 +69,8 @@ export function App(props: AppProps): ReactElement {
     readonly held: Interruption;
     readonly offer: HeldOffer | null;
   } | null>(null);
-  // The Agent drawer (MP-7-11): open over the page, never an address.
+  // The Agent drawer (MP-7-11): open over the page, never an address. Keyed on grantKey, so a
+  // change of business, person or session drops every tab and a late reply has nowhere to land.
   const [agentOpen, setAgentOpen] = useState(false);
   // The person signed out here, so sign-in says their unsaved edit went with it (C58).
   const [signedOut, setSignedOut] = useState(false);
@@ -289,6 +290,7 @@ export function App(props: AppProps): ReactElement {
           panel={
             agentOpen && session !== null && match !== null ? (
               <AssistantView
+                key={grantKey}
                 client={client}
                 route={match.id}
                 here={here}

@@ -21,8 +21,9 @@
 -- occurrence's run (an origin, no lineage or version).
 --
 -- Only the occurrence role writes an origin. `ops_astro_occurrence` holds
--- insert on runs, a read of a task's revision (for 0032's trigger) and the
--- tenancy policy's business, and nothing else; the application's group may take it for one statement (SET)
+-- insert on runs, a read of a task's revision (for 0032's trigger), the live
+-- change record's stamp (for 0035's trigger, 0065's upsert) and the tenancy
+-- policy's business, and nothing else; the application's group may take it for one statement (SET)
 -- and never inherits it, as 0042 does for the broker. The trigger below
 -- refuses an origin written by any other role, and any change to an origin
 -- after the insert, so a run cannot be moved onto or off an occurrence.
@@ -73,12 +74,21 @@ revoke all on all functions in schema public from ops_astro_occurrence;
 
 grant insert on public.planned_runs to ops_astro_occurrence;
 grant select (business_id, id, revision) on public.records to ops_astro_occurrence;
+-- 0035's planned_runs_live trigger runs as the inserting role and stamps the
+-- run's task in 0065's live change record. The occurrence role takes the
+-- columns that upsert names, and nothing more: insert of a task's key,
+-- update of the stamp, and a read of the key and the stamp the conflict
+-- compares. No delete: removing a stamp is the purge's alone.
+grant select (business_id, subject_kind, subject_id, changed_xid),
+      insert (business_id, subject_kind, subject_id),
+      update (changed_xid, changed_at)
+   on public.live_changes to ops_astro_occurrence;
 -- The tenancy policy on both tables reads the transaction's business.
 grant execute on function public.app_business_id() to ops_astro_occurrence;
 
 comment on role ops_astro_occurrence is
-  'The worker''s role for an automation occurrence''s run (AW-01 J). It inserts runs and '
-  'reads a task''s revision, and holds nothing else; the application group may set it for '
+  'The worker''s role for an automation occurrence''s run (AW-01 J). It inserts runs, '
+  'reads a task''s revision and stamps the live change record, and holds nothing else; the application group may set it for '
   'the one insert, never inherit it.';
 
 grant ops_astro_occurrence to ops_astro_app with inherit false, set true;

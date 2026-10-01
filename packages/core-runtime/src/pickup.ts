@@ -437,12 +437,27 @@ async function claimHold(
   if (plan.kind === 'fresh') {
     return { ok: true, value: { reservationId, attemptId: state.attempt_id } };
   }
+  // AW-01: a hold closed at what its model calls cost is held again only for
+  // what it had left, so the run never spends its approved ceiling twice.
+  const [old] = await tx.query<{ readonly spent: string }>(
+    `select coalesce(actual_minor, 0)::text as spent from public.reservations
+      where business_id = $1 and id = $2`,
+    [tx.businessId, reservationId],
+  );
+  const heldMinor = BigInt(state.held_minor) - BigInt(old?.spent ?? '0');
+  if (heldMinor <= 0n) {
+    return refuse(
+      'RESERVATION_NOT_CLAIMABLE',
+      'the model calls on this reservation spent its whole approved hold',
+      'Nothing is left to hold: a new proposal asks for more.',
+    );
+  }
   return await reserve(tx, {
     envelopeId: found.envelope_id,
     versionId: found.version_id,
     runId: found.run_id,
     stepId: found.step_id,
-    heldMinor: Number(state.held_minor),
+    heldMinor,
   });
 }
 
@@ -797,7 +812,9 @@ function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
     if (!approvalCurrent(state)) return { kind: 'refuse', refusal: approvalNotCurrent() };
     return { kind: 'replace', fence: state.lease_id };
   }
-  const replacing = state.state === 'abandoned' && replaceable(state);
+  // A hold closed `actual` at its model calls' cost, its step not handed
+  // back, is replaced like an abandoned one, on what it has left (AW-01).
+  const replacing = ['abandoned', 'actual'].includes(state.state) && replaceable(state);
   if (state.state !== 'held' && !replacing) {
     return {
       kind: 'refuse',

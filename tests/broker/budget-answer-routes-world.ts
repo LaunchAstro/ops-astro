@@ -84,18 +84,25 @@ export const asPerson = async (
     authorization: `Bearer ${await tokenFor(member.presented.subject, { secondFactor: true })}`,
   });
 
-export const topUpBody = (taskId: string, runId: string): Record<string, unknown> => ({
+/** An answer names the task, the run on it, and the ask the person was shown. */
+export const topUpBody = (
+  taskId: string,
+  runId: string,
+  askId: string,
+): Record<string, unknown> => ({
   operationId: randomUUID(),
   recordId: taskId,
   runId,
+  askId,
   amountMinor: 1_000,
   currency: 'AUD',
 });
 
-export const endBody = (taskId: string, runId: string): Record<string, unknown> => ({
+export const endBody = (taskId: string, runId: string, askId: string): Record<string, unknown> => ({
   operationId: randomUUID(),
   recordId: taskId,
   runId,
+  askId,
 });
 
 export const revisionOf = async (taskId: string): Promise<string> =>

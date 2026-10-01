@@ -127,3 +127,37 @@ export function unknownOf(reservation: RunReservation | undefined): UnknownAttem
   }
   return typeof id === 'string' ? { id, heldMinor: reservation.heldMinor } : null;
 }
+
+/**
+ * The newest reservation for the head's run. A read made before MP-6-5 names
+ * no run, so each of its reservations counts.
+ */
+function ownReservation(lineage: RunLineage, head: RunVersion): RunReservation | undefined {
+  return lineage.reservations.findLast(
+    (reservation) => reservation.runId === undefined || reservation.runId === head.runId,
+  );
+}
+
+/**
+ * The reservation that matters now. A hold whose effect is unknown stays
+ * reserved until a person answers, on whatever run it was for (C54), so it
+ * decides first: a hand-back with a successor leaves one on the old run.
+ * Otherwise the head's run decides; an older version's run says nothing of it.
+ */
+export function headReservation(lineage: RunLineage, head: RunVersion): RunReservation | undefined {
+  const unknown = lineage.reservations.findLast(
+    (reservation) =>
+      reservation.state === 'quarantined' || reservation.attempt?.state === 'liability_unknown',
+  );
+  return unknown ?? ownReservation(lineage, head);
+}
+
+/**
+ * What the story holds: the reservation that matters, and beside an unknown
+ * hold on an older run, the head run's own as well.
+ */
+export function heldMinorOf(lineage: RunLineage, head: RunVersion): number {
+  const decides = headReservation(lineage, head);
+  const own = ownReservation(lineage, head);
+  return (decides?.heldMinor ?? 0) + (own === undefined || own === decides ? 0 : own.heldMinor);
+}

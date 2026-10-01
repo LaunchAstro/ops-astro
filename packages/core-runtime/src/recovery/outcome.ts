@@ -16,7 +16,7 @@ import { lockedInstant } from '../clock.ts';
 import type { LockRequest } from '../locks.ts';
 import { lockRediscovered } from '../rediscovery.ts';
 import { refuse, type RuntimeResult } from '../refusals.ts';
-import { checkAuthorityAt, holdCoveringGrants } from './classifier.ts';
+import { checkAuthorityAt, closeHold, holdCoveringGrants, modelCallsOn } from './classifier.ts';
 import { endLease } from './lease-retirement.ts';
 import { locksOf, resume, settle, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
 
@@ -25,32 +25,29 @@ export type RecordedOutcome = (typeof RECORDED_OUTCOMES)[number];
 
 /**
  * Nothing happened, in a person's word: the whole hold goes back, by amount,
- * and nothing is spent. The reservation is abandoned under the recorded
- * outcome (0013: an abandonment names its cause, and an actual is never zero).
+ * and the step's work cost nothing. What its model calls settled at did
+ * happen, so the hold settles at that (AW-01, `closeHold`); with none, it is
+ * abandoned under the recorded outcome (0013: an abandonment names its cause,
+ * and an actual is never zero).
  */
 async function release(
   tx: TenantQuery,
   row: Pick<Unknown, 'reservation_id' | 'attempt_id' | 'envelope_id' | 'held_minor'>,
   causeId: string = row.attempt_id,
 ): Promise<Settlement> {
-  await tx.query(
-    `update public.reservations
-        set state = 'abandoned', classified_cause = 'outcome_recorded',
-            classified_cause_id = $3, terminal_at = now()
-      where business_id = $1 and id = $2 and state = 'held'`,
-    [tx.businessId, row.reservation_id, causeId],
+  const { spentMinor } = await modelCallsOn(tx, row.reservation_id);
+  await closeHold(
+    tx,
+    { reservationId: row.reservation_id, envelopeId: row.envelope_id },
+    { cause: 'outcome_recorded', causeId },
+    spentMinor,
   );
   await tx.query(
     `update public.attempts set state = 'abandoned', outcome = 'abandoned'
       where business_id = $1 and id = $2`,
     [tx.businessId, row.attempt_id],
   );
-  await tx.query(
-    `update public.task_envelopes set held_minor = held_minor - $3
-      where business_id = $1 and id = $2`,
-    [tx.businessId, row.envelope_id, row.held_minor],
-  );
-  return settledAt(BigInt(row.held_minor), 0n);
+  return settledAt(BigInt(row.held_minor), spentMinor);
 }
 
 /** A hold the pass reserved beside this step's first attempt, when it proved absence. */
@@ -192,13 +189,18 @@ export async function recordOutcome(
       ? await release(tx, row)
       : await settle(tx, row, BigInt(row.held_minor), 'completed');
   const resumes = request.outcome !== 'happened' && !row.absence_proved;
+  // Nothing happened: the step resumes on what its model calls left.
+  const left =
+    request.outcome === 'nothing_happened' && settlement.state === 'settled'
+      ? { ...row, spent_minor: String(settlement.spentMinor) }
+      : row;
   return {
     ok: true,
     value: {
       attemptId: row.attempt_id,
       outcome: request.outcome,
       settlement,
-      resumed: resumes ? await resume(tx, row, false) : null,
+      resumed: resumes ? await resume(tx, left, false) : null,
     },
   };
 }
