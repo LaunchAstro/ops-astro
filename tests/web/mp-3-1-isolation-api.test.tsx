@@ -128,17 +128,62 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
 
 // The platform writes an audit row for every command, reads included (T1i),
 // so a panel drawing a screen adds that screen's reads, as the page would.
-// What the dock itself does, a press, a close, Escape, Close all, adds no
-// audit event and asks the server nothing.
+// Closing a panel shrinks the tab's live follow: the stream reopens with the
+// topics left and each resyncs (C4), so a screen still drawn reads again.
+// Those are the app's own reads, each asked by the client and each with no
+// effect. What the dock itself does adds no audit event and asks nothing:
+// once the last panel is closed, Escape on the empty dock is silent.
+const auditIds = async (): Promise<ReadonlySet<unknown>> =>
+  new Set(
+    (
+      await w.fixture.db.admin.execute<Record<string, unknown>>(
+        'select id from public.audit_events',
+        [],
+      )
+    ).map((row) => row['id']),
+  );
+
+const auditedSince = async (seen: ReadonlySet<unknown>): Promise<readonly string[]> =>
+  (
+    await w.fixture.db.admin.execute<Record<string, unknown>>(
+      'select id, command from public.audit_events',
+      [],
+    )
+  )
+    .filter((row) => !seen.has(row['id']))
+    .map((row) => String(row['command']));
+
+const escape = async (): Promise<void> =>
+  await act(() => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  });
+
+/**
+ * One step of the dock: every audit event it led to is a read by the
+ * catalogue's own effects (task.execution is one whose name does not end in
+ * .read: no write, intake, egress or access) that the client asked for, at
+ * `/api/b/<business>/a/b` for a read `a.b`.
+ */
+async function step(heard: readonly Heard[], doing: () => Promise<void>) {
+  const seen = await auditIds();
+  const asked = heard.length;
+  await doing();
+  await quiet(heard);
+  const audited = await auditedSince(seen);
+  const paths = heard.slice(asked).map((each) => each.path.split('?')[0] ?? '');
+  for (const command of audited) {
+    expect([command, COMMAND_EFFECTS[command as CommandName]]).toEqual([command, NO_EFFECT]);
+    const at = `/${command.replaceAll('.', '/')}`;
+    expect(
+      paths.some((path) => path.endsWith(at)),
+      command,
+    ).toBe(true);
+  }
+  return audited;
+}
+
 describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
   it('MP-3-1 no audit: the dock adds no audit event of its own', async () => {
-    const events = async (): Promise<readonly Record<string, unknown>[]> =>
-      await w.fixture.db.admin.execute<Record<string, unknown>>(
-        'select id, command from public.audit_events',
-        [],
-      );
-    const since = async (seen: ReadonlySet<unknown>) =>
-      (await events()).filter((row) => !seen.has(row['id'])).map((row) => String(row['command']));
     const storage = memory();
     const session = {
       token: await tokenFor(w.clientOne.presented.subject),
@@ -150,30 +195,28 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
     const page = await signedIn(w, session, storage, heard);
 
     // Opening a panel: only the reads of the screen it draws.
-    let seen = new Set((await events()).map((row) => row['id']));
-    await act(() => {
-      (page.find('.dock__tab[data-panel="settings"]') as HTMLElement).dispatchEvent(
-        new MouseEvent('click', { bubbles: true, shiftKey: true }),
-      );
+    const opened = await step(heard, async () => {
+      await act(() => {
+        (page.find('.dock__tab[data-panel="settings"]') as HTMLElement).dispatchEvent(
+          new MouseEvent('click', { bubbles: true, shiftKey: true }),
+        );
+      });
     });
-    await quiet(heard);
-    const opened = await since(seen);
     expect(opened.length).toBeGreaterThan(0);
-    // Each is a read by the catalogue's own effects (task.execution is one
-    // whose name does not end in .read): no write, intake, egress or access.
-    for (const command of opened)
-      expect([command, COMMAND_EFFECTS[command as CommandName]]).toEqual([command, NO_EFFECT]);
 
-    // Everything the dock does on its own: nothing audited, nothing asked.
-    seen = new Set((await events()).map((row) => row['id']));
-    const asked = heard.length;
-    await act(() => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    });
-    await page.click('[data-panel-id="todos"] .dpanel__x');
-    await quiet(heard);
+    // Escape closes Settings; the to-dos panel still drawn may read again.
+    await step(heard, escape);
+    expect(page.all('.dpanel')).toHaveLength(1);
+    // Its X closes the last panel; the page's own screen may read again.
+    await step(heard, async () => await page.click('[data-panel-id="todos"] .dpanel__x'));
     expect(page.all('.dpanel')).toHaveLength(0);
-    expect(await since(seen)).toEqual([]);
+
+    // The dock on its own, nothing left to close: nothing audited, nothing asked.
+    const seen = await auditIds();
+    const asked = heard.length;
+    await escape();
+    await quiet(heard);
+    expect(await auditedSince(seen)).toEqual([]);
     expect(heard.length).toBe(asked);
   });
 });
