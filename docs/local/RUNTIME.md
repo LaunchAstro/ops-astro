@@ -824,7 +824,9 @@ same way (`resume`, `recovery/reconcile.ts`). When the spend used the whole
 hold, nothing is left to hold: the run stops at its budget and raises the
 AW-05 ask with the old hold as the ceiling and its spend (`stopAtSpentHold`),
 and the pickup is refused `BUDGET_UNAVAILABLE`, a refusal that keeps the stop
-and its ask (`tests/runtime/resume-sizing.test.ts`). A settled hold, a quarantined one, or a version already holding
+and its ask. The claimant's authority is read first (`claimantMayWork`), so a
+caller without it is refused with nothing kept
+(`tests/runtime/resume-sizing.test.ts`). A settled hold, a quarantined one, or a version already holding
 elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`). Storage
 counts a quarantined hold as active too.
 

@@ -256,7 +256,12 @@ export async function pickup(
   const { state, plan } = rechecked.value;
 
   const claimed = await claimHold(tx, request.reservationId, found, state, plan, locks);
-  if (!claimed.ok) return claimed;
+  if (!claimed.ok) {
+    // A stop at a spent hold keeps its ask, so only a claimant with the authority makes it.
+    if (claimed.retains !== true) return claimed;
+    const may = await claimantMayWork(tx, request, found, lockedAt);
+    return may.ok ? claimed : may;
+  }
   const fenced = await fenceLiveLease(tx, found.task_id, taskLeases, locks, lockedAt);
   if (fenced !== null) return fenced;
 
@@ -530,6 +535,35 @@ async function authoriseClaimant(
   expiresAt: Date,
   lockedAt: string,
 ): Promise<RuntimeResult<MintedDelegation | undefined>> {
+  const may = await claimantMayWork(tx, request, found, lockedAt);
+  if (!may.ok || request.claimant === 'person') return may;
+  const actions = ['read', 'comment', 'write'] as const;
+  const minted = await mintDelegation(tx, {
+    agentActorId: request.agentActorId,
+    delegatePersonId: request.authorisedByPersonId,
+    mintedByActorId: request.mintedByActorId,
+    purpose: found.purpose,
+    collections: await delegatedCollections(tx, request, lockedAt),
+    actions: [...actions],
+    expiresAt,
+    purposeScope: { kind: 'record', id: found.task_id },
+  });
+  if (!minted.ok) return { ok: false, refusal: minted.refusal };
+  return { ok: true, value: minted.value };
+}
+
+/**
+ * The claimant's authority at the locked instant, read and never written: a
+ * person's live write on the task, or the delegating person's live grants for
+ * every action the agent's delegation would carry. Asked before a stop at a
+ * spent hold commits its ask (`claimHold`), so a caller without it moves nothing.
+ */
+async function claimantMayWork(
+  tx: TenantQuery,
+  request: PickupRequest,
+  found: Found,
+  lockedAt: string,
+): Promise<RuntimeResult<undefined>> {
   if (request.claimant === 'person') {
     const person = { subjects: authoritySubjects(request), collection: request.collection };
     if (!(await personWriteLive(tx, person, found.task_id, lockedAt))) {
@@ -566,18 +600,7 @@ async function authoriseClaimant(
       };
     }
   }
-  const minted = await mintDelegation(tx, {
-    agentActorId: request.agentActorId,
-    delegatePersonId: request.authorisedByPersonId,
-    mintedByActorId: request.mintedByActorId,
-    purpose: found.purpose,
-    collections: await delegatedCollections(tx, request, lockedAt),
-    actions: [...actions],
-    expiresAt,
-    purposeScope: { kind: 'record', id: found.task_id },
-  });
-  if (!minted.ok) return { ok: false, refusal: minted.refusal };
-  return { ok: true, value: minted.value };
+  return { ok: true, value: undefined };
 }
 
 /**

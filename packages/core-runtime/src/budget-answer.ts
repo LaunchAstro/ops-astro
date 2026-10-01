@@ -216,11 +216,12 @@ async function holdTopUp(
     'select step_id from public.attempts where business_id = $1 and reservation_id = $2',
     [tx.businessId, locked.reservation_id],
   );
+  if (step === undefined) throw new Error('budget top-up: the stopped hold has no attempt');
   const fresh = await reserve(tx, {
     envelopeId: locked.envelope_id,
     versionId: locked.version_id,
     runId: request.runId,
-    stepId: step?.step_id ?? '',
+    stepId: step.step_id,
     heldMinor: request.amountMinor,
   });
   // The envelope was raised by the amount and the cap checked for it, under their locks.
