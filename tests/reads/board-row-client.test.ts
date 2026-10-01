@@ -46,6 +46,7 @@ interface BoardRow {
 const CANARY = `canary-${randomUUID()}`;
 const CLIENT_A = randomUUID();
 const CLIENT_B = randomUUID();
+const CLIENT_BRAVO = randomUUID();
 
 interface World {
   readonly db: FreshDatabase;
@@ -57,6 +58,8 @@ interface World {
   readonly clientReader: Member;
   /** Holds B's task by a record grant, and no grant on client B. */
   readonly taskHolder: Member;
+  /** Held A's task and client A; the grant on client A is revoked. */
+  readonly revokedReader: Member;
   readonly ids: Record<string, string>;
 }
 
@@ -116,6 +119,7 @@ async function open(): Promise<World> {
     bravoOwner: await enrol(db.app, bravo, 'bravo-owner'),
     clientReader: await enrol(db.app, alpha, 'client-reader'),
     taskHolder: await enrol(db.app, alpha, 'task-holder'),
+    revokedReader: await enrol(db.app, alpha, 'revoked-reader'),
     ids: {},
   };
   await db.app.withBusiness(alpha, async (tx) => {
@@ -125,7 +129,7 @@ async function open(): Promise<World> {
     }
   });
   await db.app.withBusiness(bravo, async (tx) => {
-    for (const action of ['read', 'write'] as const) {
+    for (const action of ['read', 'write', 'share'] as const) {
       // eslint-disable-next-line no-await-in-loop -- one transaction, one statement at a time
       await grantTo(tx, world.bravoOwner, action);
     }
@@ -134,16 +138,24 @@ async function open(): Promise<World> {
 }
 
 async function plant(): Promise<void> {
-  const { alpha, bravo, owner, bravoOwner, clientReader, taskHolder } = w;
+  const { alpha, bravo, owner, bravoOwner, clientReader, taskHolder, revokedReader } = w;
   await make(alpha, owner, 'a-work', CLIENT_A);
   await make(alpha, owner, 'b-work', CLIENT_B);
   await make(alpha, owner, 'no-client');
-  await make(bravo, bravoOwner, 'bravo-work');
+  await make(bravo, bravoOwner, 'bravo-work', CLIENT_BRAVO);
   // Client B is named by the canary: no body that withholds B may carry it.
   await w.db.admin.execute(`update public.clients set name = $1 where id = $2`, [CANARY, CLIENT_B]);
   await w.db.admin.execute(`update public.clients set name = 'Harbour Physio' where id = $1`, [
     CLIENT_A,
   ]);
+  await w.db.admin.execute(`update public.clients set name = 'Bravo Plumbing' where id = $1`, [
+    CLIENT_BRAVO,
+  ]);
+  const revoked = await w.db.app.withBusiness(alpha, async (tx) => {
+    await grantTo(tx, revokedReader, 'read', { kind: 'record', id: idOf('a-work') });
+    return await grantTo(tx, revokedReader, 'read', { kind: 'party', id: CLIENT_A });
+  });
+  await w.db.admin.execute(`update public.grants set revoked_at = now() where id = $1`, [revoked]);
   await w.db.app.withBusiness(alpha, async (tx) => {
     await grantTo(tx, clientReader, 'read', { kind: 'party', id: CLIENT_A });
     await grantTo(tx, clientReader, 'read', { kind: 'record', id: idOf('a-work') });
@@ -175,14 +187,27 @@ describe.skipIf(serverUrl === undefined)('Clients row door: the board row client
 });
 
 describe.skipIf(serverUrl === undefined)('Clients row door isolation', () => {
-  it('another business: its board names none of alpha’s clients, by id or name', async () => {
+  it('another business: its rows carry its own client, never alpha’s, by id or name', async () => {
     const { rows, text } = await rowsOf(w.bravo, w.bravoOwner);
-    expect(rows.map((row) => row.client ?? null)).toEqual([null]);
+    expect(rows.map((row) => row.client ?? null)).toEqual([
+      { clientId: CLIENT_BRAVO, name: 'Bravo Plumbing' },
+    ]);
     for (const withheld of [CANARY, CLIENT_A, CLIENT_B, 'Harbour Physio', idOf('a-work')]) {
       expect(text).not.toContain(withheld);
     }
   });
 
+  it('a revoked grant on the client reaches nothing: its task reads null beside clientSet', async () => {
+    const { rows, text } = await rowsOf(w.alpha, w.revokedReader);
+    expect(rows.map((row) => [row.id, row.clientSet, row.client])).toEqual([
+      [idOf('a-work'), true, null],
+    ]);
+    for (const withheld of ['Harbour Physio', CLIENT_A, CANARY])
+      expect(text).not.toContain(withheld);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('Clients row door isolation: reach', () => {
   it('another client: a reader of client A’s work is sent A, never B’s id, name or task', async () => {
     const { rows, text } = await rowsOf(w.alpha, w.clientReader);
     expect(rows.map((row) => row.id)).toEqual([idOf('a-work')]);

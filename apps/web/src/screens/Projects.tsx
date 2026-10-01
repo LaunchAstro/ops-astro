@@ -23,12 +23,13 @@
 // included, so the door filters the board in the dock as on the page.
 
 import { useState, type ReactElement } from 'react';
-import { Empty, ProjectsBoard, TabPanel, type ProjectRow } from '@launchastro/ui';
+import { Empty, ProjectsBoard, TabPanel, clientFiltersIn, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { assigneeOf, rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
 import type {
   BoardTask,
+  ClientListResult,
   PersonListResult,
   TaskBoardResult,
 } from '../../../../packages/core-wire/src/index.ts';
@@ -38,6 +39,7 @@ import {
   isInProductLink,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import type { ReadState } from '../data/authorised-read.ts';
 import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { pathTo } from '../routes.ts';
@@ -55,6 +57,8 @@ export interface ProjectsProps {
   readonly taskPanel?: BoardPanelHost;
   /** The whole address the board is drawn at, the page's or a panel's place; its query is the view. */
   readonly address?: string;
+  /** Drawn in a dock panel: the view stays the panel's own, and the page's address is left alone. */
+  readonly inPanel?: boolean;
 }
 
 /** The view part of an address (`?f=...`); the page's own query when none is given. */
@@ -88,7 +92,7 @@ export function Projects(props: ProjectsProps): ReactElement {
     const next: ProjectsTab = id === 'worklog' ? 'worklog' : 'board';
     setTab(next);
     if (next === 'worklog') setWorkLogOpened(true);
-    writeTab(next);
+    if (props.inPanel !== true) writeTab(next);
   };
   return (
     <div className="stack">
@@ -99,6 +103,7 @@ export function Projects(props: ProjectsProps): ReactElement {
           grantKey={props.grantKey}
           {...(props.taskPanel === undefined ? {} : { taskPanel: props.taskPanel })}
           {...(props.address === undefined ? {} : { address: props.address })}
+          inPanel={props.inPanel === true}
         />
       </TabPanel>
       <TabPanel name="projects" tab="worklog" selected={tab}>
@@ -134,6 +139,22 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
     deps: [],
   });
   const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
+  // Opened at a client filter (a Clients row door), the clients the reader
+  // reaches (C32) are each a Client filter even with no row of theirs, and the
+  // board opens again once they answer, so a door to a quiet client keeps its
+  // filter rather than dropping it. Opened at none, nothing more is read.
+  const query = queryOf(props.address);
+  const named = clientFiltersIn(query) > 0;
+  const reached = useRead<ClientListResult>({
+    grantKey: props.grantKey,
+    run: async () =>
+      named
+        ? await client.read<ClientListResult>('client.list', {})
+        : { ok: true as const, value: { ok: true as const, clients: [] } },
+    deps: [named],
+  });
+  const clients = clientNamesOf(reached.state);
+  const reopen = clients === null && named ? ' (clients out)' : '';
   // INB-1f: one stream for the tab, shared by the board and the inbox panels.
   const followInbox = useBoardLive(client, props.grantKey, reload);
 
@@ -158,7 +179,7 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
         {(value) => (
           <ProjectsBoard
             // A new place is a new view: the board opens on it afresh.
-            key={props.address === undefined ? undefined : queryOf(props.address)}
+            key={props.address === undefined ? undefined : `${query}${reopen}`}
             rows={value.tasks.map((task) => rowOf(task))}
             withheld={value.withheld ?? 0}
             changedAt={value.changedAt ?? null}
@@ -174,12 +195,14 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
               reload,
               ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
             })}
-            address={queryOf(props.address)}
-            onAddress={(query) => {
+            address={query}
+            clients={clients ?? []}
+            onAddress={(next) => {
+              if (props.inPanel === true) return;
               window.history.replaceState(
                 window.history.state,
                 '',
-                `${window.location.pathname}${query === '' ? '' : `?${query}`}`,
+                `${window.location.pathname}${next === '' ? '' : `?${next}`}`,
               );
             }}
           />
@@ -187,6 +210,14 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
       </RecordState>
     </div>
   );
+}
+
+/** The reached clients' names; null while the read is out, none when it is refused or fails. */
+function clientNamesOf(state: ReadState<ClientListResult>): readonly string[] | null {
+  if (state.outcome === 'loading') return null;
+  const answered = state.outcome === 'ready' || state.outcome === 'empty' ? state.value : null;
+  // An answer without its list offers none, rather than breaking the board.
+  return Array.isArray(answered?.clients) ? answered.clients.map((one) => one.name) : [];
 }
 
 /** The Stage column's vocabulary and the stage editor's choices, in the list's order. */
