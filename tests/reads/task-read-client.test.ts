@@ -39,7 +39,7 @@ interface World {
   readonly bravo: BusinessId;
   readonly clientA: string;
   readonly clientB: string;
-  /** Ada reads the whole of alpha, Cleo client A's tasks only, Bruno the whole of bravo. */
+  /** Ada reads the whole of alpha, Cleo client A's task only, Bruno the whole of bravo. */
   readonly ada: Member;
   readonly cleo: Member;
   readonly bruno: Member;
@@ -68,7 +68,9 @@ async function openWorld(): Promise<World> {
     await tx.query(LINK, [tx.businessId, clientB, tasks.b]);
     await grantTo(tx, ada, 'read');
     await grantTo(tx, ada, 'share');
-    await grantTo(tx, cleo, 'read', { kind: 'party', id: clientA });
+    // `task.read` matches a grant on the record or the business, so a member
+    // kept to one client's work holds the read on that client's task.
+    await grantTo(tx, cleo, 'read', { kind: 'record', id: tasks.a });
   });
   await db.app.withBusiness(bravo, async (tx) => {
     tasks.bravo = await createTask(tx, bravoSpine, { title: 'bravo work', parentId: null });
@@ -110,7 +112,7 @@ describe.skipIf(serverUrl === undefined)('task.read carries the task’s client'
     expect((await read(w.bravo, w.bruno, w.tasks.internal))['code']).toBe('NOT_FOUND');
   });
 
-  it('client to client: a client-scoped grant reads its own client and never the other’s', async () => {
+  it('client to client: a grant kept to client A’s task reads client A and never client B', async () => {
     expect(clientOf(await read(w.alpha, w.cleo, w.tasks.a))).toBe(w.clientA);
     for (const other of [w.tasks.b, w.tasks.internal]) {
       // eslint-disable-next-line no-await-in-loop -- one read at a time
