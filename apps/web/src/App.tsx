@@ -194,8 +194,7 @@ export function App(props: AppProps): ReactElement {
   };
 
   const bare = here.split(/[?#]/u)[0] ?? here;
-  const { host: taskPanel } = taskDock;
-  const { open: openPanel } = docked.dock;
+  const [taskPanel, openPanel] = [taskDock.host, docked.dock.open];
   const screen = { client, grantKey, storage: props.storage, navigate, taskPanel, openPanel };
   const { match, at, refused, rail, tabs, identity, face } = frameAt(
     bare,
@@ -240,6 +239,9 @@ export function App(props: AppProps): ReactElement {
 
   // Signed out, the page is the form alone: no rail entry opens without a session (B6).
   if (content === signIn) return signIn;
+  const title = refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found');
+  // The client face has no dock (R17), and nobody signed out has one.
+  const dockScreen = session === null || face === 'client' ? null : { ...screen, notice: null };
   return (
     <SignedInName value={personName}>
       <PageFreshnessProvider>
@@ -276,14 +278,8 @@ export function App(props: AppProps): ReactElement {
                 {session === null ? null : <StripPresence />}
               </>
             }
-            title={
-              refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')
-            }
-            // The client face has no dock (R17), and nobody signed out has one.
-            {...shellDock(
-              docked,
-              session === null || face === 'client' ? null : { ...screen, notice: null },
-            )}
+            title={title}
+            {...shellDock(docked, dockScreen)}
           >
             <FaceProvider face={face}>{content}</FaceProvider>
           </Shell>
