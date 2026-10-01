@@ -163,7 +163,13 @@ async function eachPage(
   for (const id of builtPages()) {
     const side = needsSession(id) ? sides.signedIn : sides.signedOut;
     const address = addressOf(id, { key: 'T-1' }) ?? '/';
-    const page = await load(side, at.packet, new URL(address, at.app).href);
+    const page = await load(side, at.packet, new URL(address, at.app).href).catch(
+      (error: unknown) => {
+        throw new Error(`MP-1-4 census: ${id} (${address}) drew nothing into #app`, {
+          cause: error,
+        });
+      },
+    );
     out.push({ name: `${id}@${String(at.width)}-${at.theme}`, ...(await measure(page, given)) });
     await page.close();
   }
