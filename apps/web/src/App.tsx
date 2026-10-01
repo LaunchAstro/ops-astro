@@ -276,7 +276,7 @@ export function App(props: AppProps): ReactElement {
           title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
           dock={session === null || face === 'client' ? [] : dockTabs(here)}
           onDockTab={dockTabGo(here, props.navigate)}
-          seated={false}
+          seated={dock.seated}
           panel={dock.panel}
         >
           <FaceProvider face={face}>{content}</FaceProvider>
