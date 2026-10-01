@@ -196,7 +196,9 @@ async function step(heard: readonly Heard[], doing: () => Promise<void>) {
     ]);
   }
   for (const path of paths) {
-    if (path.endsWith('/live')) continue;
+    // The stream, and Settings' own-sessions list (C58): an account read, not a
+    // command, that writes nothing; any audit it made fails the loop above.
+    if (path.endsWith('/live') || path.endsWith('/account/sessions/list')) continue;
     const command = commandAt(path);
     expect([path, command !== undefined && COMMAND_EFFECTS[command.name]]).toEqual([
       path,
