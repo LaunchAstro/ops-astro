@@ -71,12 +71,12 @@ export const DEFINITION_ROWS = [
 
 /** The same codes' place on the register's list of codes nothing produces yet. */
 export const UNPRODUCED_DEFINITION_CODES = [
-  // AW-02's four. The pinned-file stores are built, and their one entry point
-  // is AW-04's plan accept, which activates a file and starts the run that
-  // reads it; each comes off this list with that accept.
+  // AW-02's two still unproduced. AW-04's plan accept now produces the other
+  // two: `DEFINITION_UNAVAILABLE` (a file or the store it is read from
+  // unavailable at the accept) and `DEFINITION_DIGEST_MISMATCH` (a pinned read
+  // of a moved file). No activation mode but the person's accept exists yet,
+  // and no agent route reaches an activation.
   'ACTIVATION_MODE_NOT_PERMITTED',
-  'DEFINITION_DIGEST_MISMATCH',
-  'DEFINITION_UNAVAILABLE',
   'DELEGATION_EXCLUDES_ACTIVATION',
   // AW-01 J's four. The occurrence run is the worker's system write, never a
   // command; C52-A's dispatch (U36) is its one caller, and each comes off this

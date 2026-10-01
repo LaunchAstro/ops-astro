@@ -58,7 +58,15 @@ export interface ProposalWrite {
   readonly maximumMinor: number;
   readonly currency: string;
   readonly payload: Record<string, unknown>;
-  readonly step: { readonly kind: string; readonly payload: Record<string, unknown> };
+  /**
+   * The run's one step. `planStep`, when present, is a step key of the task's
+   * bound plan, checked by the command under the task lock (AW-06, 0210).
+   */
+  readonly step: {
+    readonly kind: string;
+    readonly payload: Record<string, unknown>;
+    readonly planStep?: string;
+  };
   readonly expiresAt: Date;
 }
 
@@ -166,9 +174,17 @@ export async function writeProposal(
 
   const stepId = randomUUID();
   await tx.query(
-    `insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload)
-     values ($1, $2, $3, 1, $4, $5::text::jsonb)`,
-    [tx.businessId, stepId, runId, request.step.kind, JSON.stringify(request.step.payload)],
+    `insert into public.planned_steps
+       (business_id, id, run_id, ordinal, kind, payload, plan_step_key)
+     values ($1, $2, $3, 1, $4, $5::text::jsonb, $6)`,
+    [
+      tx.businessId,
+      stepId,
+      runId,
+      request.step.kind,
+      JSON.stringify(request.step.payload),
+      request.step.planStep ?? null,
+    ],
   );
 
   // Rendered here, from the rows just written, before the gate exists (G07).

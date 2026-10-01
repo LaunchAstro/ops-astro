@@ -6,8 +6,15 @@ import { MADE_UP_READS, madeUpAnswer, TASKS } from './made-up-api.ts';
 
 // Reads no batch/1 screen draws at the harness's addresses: a receipt needs a
 // finished run, the preset plan is the command line's, and the unattended list
-// is the operations view's. Each is drawn "could not be read" if asked.
-const NOT_DRAWN = new Set(['task.receipt', 'preset.plan', 'inbox.unattended']);
+// is the operations view's; a file's attribution (AW-04) is asked by its
+// digest from the agent's sources, on no harness address. Each is drawn
+// "could not be read" if asked.
+const NOT_DRAWN = new Set([
+  'task.receipt',
+  'preset.plan',
+  'inbox.unattended',
+  'definition.attribution',
+]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
   it('answers a read at the path the app asks it on, with the made-up rows', () => {

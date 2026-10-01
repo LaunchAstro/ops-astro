@@ -566,12 +566,45 @@ export interface OutageView {
   readonly lastDropAt: string;
   /** Null while drops of its cause may still join it. */
   readonly closedAt: string | null;
+  /** The file an `audit_copy_missing` report is about (AW-04); null for a drop's. */
+  readonly contentDigest: string | null;
   readonly runs: readonly {
     readonly taskId: string;
     readonly runId: string;
     readonly attemptId: string;
     readonly reactivated: boolean;
   }[];
+}
+
+/**
+ * AW-04's attribution by digest: the runs whose read ledger holds the file,
+ * entry and non-entry alike, and the operations those runs reached. It is
+ * pre-review, every row labelled so: it may floor a declaration of reach and
+ * nothing else, and no evaluation, promotion or conformance input takes it.
+ */
+export interface PreReviewAttribution {
+  readonly label: 'pre-review';
+  readonly digest: string;
+  readonly runs: readonly PreReviewRun[];
+  /** Every operation any run below reached (a refused call reached nothing). */
+  readonly operations: readonly string[];
+}
+
+export interface PreReviewRun {
+  readonly label: 'pre-review';
+  readonly taskId: string;
+  readonly runId: string;
+  /** The paths the run read the file at. */
+  readonly paths: readonly string[];
+  /** Whether the file was the run's entry file. */
+  readonly entry: boolean;
+  readonly operations: readonly string[];
+}
+
+/** `definition.attribution`'s answer. */
+export interface AttributionResult {
+  readonly ok: true;
+  readonly attribution: PreReviewAttribution;
 }
 
 /** `preset.plan`'s answer: a dry-run plan that installs and approves nothing. */
@@ -583,6 +616,15 @@ export interface PresetPlanResult {
 export interface SettingsReadResult {
   readonly ok: true;
   readonly settings: readonly SettingView[];
+  /**
+   * The AI planning chat's budget (AW-04): the business's planning cap, AUD 50
+   * until a person moves it. `set` is false while it is that default.
+   */
+  readonly planningCap: {
+    readonly limitMinor: number;
+    readonly currency: string;
+    readonly set: boolean;
+  };
 }
 
 /**
@@ -634,21 +676,32 @@ export interface TaskExecution {
 }
 
 /**
- * One run's node (AW-06). `planned` stays null until AW-04's bound plan record
- * is read, and `plan` says `unbound` meanwhile, so no node is called unplanned
- * against a plan nobody read. The observed layer is the run's own record.
+ * Planned and observed per run (AW-06). With AW-04's plan record bound to its
+ * approval, `plan` is `bound` and `steps` lists the plan's steps with the runs
+ * proposed under each; unbound, `steps` is empty and no node is planned.
  */
 export interface ExecutionGraph {
-  readonly plan: 'unbound';
+  readonly plan: 'bound' | 'unbound';
+  /** Absent on a read made before AW-04's plan was projected. */
+  readonly steps?: readonly ExecutionStep[];
   readonly sourceRevision: number;
   readonly complete: boolean;
   readonly nodes: readonly ExecutionNode[];
 }
 
+/** A step of the bound plan, with the runs proposed under it. */
+export interface ExecutionStep {
+  readonly key: string;
+  readonly title: string;
+  readonly after: readonly string[];
+  readonly runIds: readonly string[];
+}
+
 export interface ExecutionNode {
   readonly nodeId: string;
   readonly condition: 'not_started' | 'in_progress' | 'settled' | 'superseded' | 'unrecognised';
-  readonly planned: null;
+  /** The bound plan's step this run was proposed under, or null. */
+  readonly planned: { readonly key: string; readonly title: string } | null;
   readonly observed: {
     readonly condition: ExecutionNode['condition'];
     readonly runState: string;

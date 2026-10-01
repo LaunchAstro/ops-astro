@@ -5,6 +5,7 @@
 // `role-case-bodies.ts` answers with an exception. Split from
 // `statement-capture-cases.ts` so each stays under the per-file cap.
 
+import { randomUUID } from 'node:crypto';
 import { type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import type { Harness } from '../acceptance/role-case-harness.ts';
@@ -68,7 +69,48 @@ export const AGENT_RECIPES: Partial<Record<CommandName, AgentRecipe>> = {
       credential: String(picked['credential']),
     };
   },
+  // AW-11: the parent's hand-over on its own lease, and the helper's handback
+  // on the child credential it was handed. The world has one agent login, so
+  // it is its own helper here: the mint admits it, strictly narrower.
+  'run.delegate_child': async (harness) => {
+    const picked = await pickedUp(harness);
+    return {
+      prefix: 'agent',
+      body: childBody(harness, picked),
+      credential: String(picked['credential']),
+    };
+  },
+  'run.child_handback': async (harness) => {
+    const picked = await pickedUp(harness);
+    const handed = await harness.asAgent(
+      'run.delegate_child',
+      childBody(harness, picked),
+      String(picked['credential']),
+    );
+    if (handed.code !== 'ok') throw new Error(`capture: hand-over refused ${handed.code}`);
+    const detail = handed.body['detail'] as Record<string, unknown>;
+    return {
+      prefix: 'agent',
+      body: { outcome: 'completed' },
+      credential: String(detail['credential']),
+    };
+  },
 };
+
+function childBody(
+  harness: Harness,
+  picked: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  return {
+    leaseId: picked['leaseId'],
+    fence: picked['fence'],
+    helperActorId: harness.world.agent.actorId,
+    purpose: `capture_${randomUUID().replaceAll('-', '')}`.slice(0, 40),
+    collections: ['task'],
+    actions: ['read'],
+    expiresInSeconds: 600,
+  };
+}
 
 /**
  * The agent's own call for the operations a person now performs too. The

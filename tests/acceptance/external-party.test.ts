@@ -21,6 +21,7 @@ import {
   TEAM_NOTE,
   TITLE,
 } from './external-party-records.ts';
+import { childProbe } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
 import {
   bearer,
@@ -211,6 +212,9 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
         operation: 'model.replay_compose',
         fields: [],
       },
+      // AW-11's hand-over and handback are the agent's too, read by type first.
+      'run.delegate_child': { leaseId: randomUUID(), fence: 1, ...childProbe(randomUUID()) },
+      'run.child_handback': { outcome: 'completed' },
     };
     // The matrix's own valid bodies, so a refusal is authority's and not the
     // body check's. Each is sent as it is (against a sibling the admin made, or

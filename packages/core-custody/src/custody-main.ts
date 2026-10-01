@@ -16,6 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { parseCredentials, type StoredCredential } from './credentials.ts';
 import { parseDestinations, send, type Destination, type OutboundRequest } from './egress.ts';
+import { METHODS } from './egress-routes.ts';
 
 interface Loaded {
   readonly credentials: ReadonlyMap<string, StoredCredential>;
@@ -66,13 +67,17 @@ function redact(text: string, credential: StoredCredential): string {
   return spellings.reduce((out, spelling) => out.split(spelling).join('[redacted]'), text);
 }
 
+/** Exactly these keys: a request naming a header, an origin or anything else is refused whole. */
+const REQUEST_KEYS = 'body,destination,maxResponseBytes,method,path,timeoutMs';
+
 function isRequest(value: unknown): value is OutboundRequest {
   if (typeof value !== 'object' || value === null) return false;
   const shape = value as Record<string, unknown>;
   return (
+    Object.keys(shape).toSorted().join() === REQUEST_KEYS &&
     typeof shape['destination'] === 'string' &&
     typeof shape['path'] === 'string' &&
-    shape['method'] === 'POST' &&
+    (METHODS as readonly unknown[]).includes(shape['method']) &&
     typeof shape['body'] === 'string' &&
     typeof shape['timeoutMs'] === 'number' &&
     typeof shape['maxResponseBytes'] === 'number'

@@ -31,4 +31,8 @@ export type RunRequest =
       readonly expectedVersion: number;
       readonly knowledge: unknown;
       readonly unknowns: unknown;
-    } & Envelope);
+    } & Envelope)
+  // AW-11: served on the agent prefix only (`agent-child.ts`); the person
+  // prefix refuses both by name.
+  | ({ readonly command: 'run.delegate_child' } & Envelope)
+  | ({ readonly command: 'run.child_handback' } & Envelope);

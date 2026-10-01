@@ -119,6 +119,8 @@ export interface SettingsModel {
   readonly writeOver: () => void;
   /** Something this screen decided, not the server. Never dressed as a refusal. */
   readonly complain: (text: string) => void;
+  /** Read the settings again, as a write elsewhere on the page asks. */
+  readonly reload: () => void;
 }
 
 export function useSettings(
@@ -282,5 +284,6 @@ export function useSettings(
       save(conflict.which, conflict.draft);
     },
     complain: setComplaint,
+    reload: settings.reload,
   };
 }

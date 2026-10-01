@@ -127,6 +127,8 @@ const READS = {
         revision: 1,
       },
     ],
+    // The planning cap's default (AW-04): AUD 50, not yet moved by a person.
+    planningCap: { limitMinor: 5000, currency: 'AUD', set: false },
   } satisfies SettingsReadResult,
   'session.capabilities': {
     ok: true,

@@ -233,8 +233,13 @@ describe('the retention register', () => {
   // bytes, with the pin and the read ledger it answers for, retains exactly as
   // the run records it copies (#27 row 5) and a purge answers it as it answers
   // them, so the copy never outlives the runs and never goes before them.
-  it("keeps the audit copy, the pin and the read ledger in the run records' class", () => {
-    for (const table of ['bootstrap_bytes', 'bootstrap_reads', 'run_definition_pins']) {
+  it("keeps the audit copy, the pin, the read ledger and the bound plan in the run records' class", () => {
+    for (const table of [
+      'bootstrap_bytes',
+      'bootstrap_reads',
+      'run_definition_pins',
+      'plan_records',
+    ]) {
       expect({ table, retention: RETENTION_CLASS_BY_TABLE[table] }).toStrictEqual({
         table,
         retention: RETENTION_CLASS_BY_TABLE['runs'],
