@@ -25,6 +25,7 @@ import {
   emailAdapter,
 } from '../../packages/core-connectors/src/index.ts';
 import { startCustody } from '../../packages/core-custody/src/index.ts';
+import type { Database } from '../../packages/core-records/src/index.ts';
 import { TEST_EMAIL_SEND } from '../broker/email-world.ts';
 import { mailTo } from './c39-t-hook-world.ts';
 import { startFakeUsers, type FakeUsers } from './c39-t-users-fake.ts';
@@ -178,4 +179,56 @@ export async function spentOf(
     [invitationId],
   );
   return { state: String(row?.state), spent: Number(row?.spent), tokens: Number(row?.tokens) };
+}
+
+/** The person a provider subject is bound to in one business, if any. */
+export async function boundTo(business: string, subject: string): Promise<string | undefined> {
+  const [row] = await w.db.admin.execute<{ person_id: string }>(
+    `select pl.person_id from public.person_logins pl
+       join public.logins l on l.id = pl.login_id
+      where l.business_id = $1 and l.subject = $2`,
+    [business, subject],
+  );
+  return row?.person_id;
+}
+
+/** The invitation's person, as the database holds it. */
+export async function personOf(invitationId: string): Promise<string> {
+  const [row] = await w.db.admin.execute<{ person_id: string }>(
+    'select person_id from public.invitations where id = $1',
+    [invitationId],
+  );
+  return String(row?.person_id);
+}
+
+/** The route over a broker that waits on the provider as long as a deployment does. */
+export function patientApp(): Hono {
+  const app = new Hono();
+  mountEnrolment(app, w.db.app, {
+    businesses: async () => await Promise.resolve([w.alpha, w.bravo]),
+    broker: {
+      ...w.broker,
+      operations: catalogue([TEST_EMAIL_SEND, AUTH_CREATE_USER, AUTH_UPDATE_USER]),
+    },
+  });
+  return app;
+}
+
+/** The route over a database that runs `work` before its `nth` transaction opens. */
+export function appBefore(nth: number, work: () => Promise<void>): Hono {
+  let opened = 0;
+  const database: Database = {
+    ...w.db.app,
+    async withBusiness(business, run) {
+      opened += 1;
+      if (opened === nth) await work();
+      return await w.db.app.withBusiness(business, run);
+    },
+  };
+  const app = new Hono();
+  mountEnrolment(app, database, {
+    businesses: async () => await Promise.resolve([w.alpha, w.bravo]),
+    broker: w.broker,
+  });
+  return app;
 }

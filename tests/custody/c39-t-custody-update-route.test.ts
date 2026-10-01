@@ -98,6 +98,9 @@ it('C39-T custody update route: a PUT goes only to one segment under its destina
     USERS,
     `${USERS}/`,
     `${USERS}/..`,
+    `${USERS}/${USER_ID}%2Ffactors`,
+    `${USERS}/${USER_ID}?next=x`,
+    `${USERS}//${USER_ID}`,
   ];
   for (const path of refused) {
     // oxlint-disable-next-line no-await-in-loop
