@@ -43,7 +43,8 @@ export function GiveAccess(props: {
   readonly busy: boolean;
   readonly onGive: (holder: PersonView, key: string, clientId: string | null) => void;
 }): ReactElement {
-  const people = [...props.result.team, ...props.result.clients];
+  // access.grant needs an active membership, which a client never holds.
+  const people = props.result.team;
   const [holder, setHolder] = useState('');
   const [key, setKey] = useState('');
   const [scope, setScope] = useState(WHOLE_BUSINESS);
