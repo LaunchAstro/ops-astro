@@ -404,8 +404,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   read('conversation.read', CONVERSATION_COLLECTION),
   // MP-7-11's tab row, under the same rule: the owner's own, no agent entry.
   // The list is the caller's own conversations and nobody else's, whatever
-  // read-any grant they hold; its rule is the read's own, like the read's.
-  read('conversation.list', CONVERSATION_COLLECTION),
+  // read-any grant they hold; its rule is the read's own, like the read's:
+  // it asks `conversation:write` at business scope (`reads/conversation.ts`).
+  read('conversation.list', CONVERSATION_COLLECTION, { authority: ['conversation:write'] }),
   declare('conversation.rename', 'write', {
     collection: CONVERSATION_COLLECTION,
     targetsExistingRecord: false,

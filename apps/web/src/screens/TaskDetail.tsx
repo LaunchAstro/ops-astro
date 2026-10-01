@@ -536,13 +536,6 @@ function Loaded(props: LoadedProps): ReactElement {
   // live re-read that keeps this mounted still shows the newest value.
   const title = props.draft?.title ?? saved.title;
   const due = props.draft?.due ?? saved.due;
-  // T3e2: the outage reports are the team's, read once from the queue.
-  const outages = useRead<QueueResult>({
-    grantKey: props.grantKey,
-    run: () => client.read<QueueResult>('task.queue', {}),
-    isEmpty: (value) => (value.outages ?? []).length === 0,
-    deps: [],
-  });
 
   // Where this edit began. An existing draft keeps its own starting point; a
   // first keystroke takes the record as it stands right now.
@@ -649,6 +642,25 @@ function Loaded(props: LoadedProps): ReactElement {
         onDraft={props.onCommentDraft}
       />
 
+      <TaskWork {...props} people={people} />
+    </div>
+  );
+}
+
+/** Below the comments: the agent, the proposals, the runs, the outages and the history. */
+function TaskWork(
+  props: LoadedProps & { readonly people: { readonly state: ReadState<PersonListResult> } },
+): ReactElement {
+  const { client, task, people } = props;
+  // T3e2: the outage reports are the team's, read once from the queue.
+  const outages = useRead<QueueResult>({
+    grantKey: props.grantKey,
+    run: () => client.read<QueueResult>('task.queue', {}),
+    isEmpty: (value) => (value.outages ?? []).length === 0,
+    deps: [],
+  });
+  return (
+    <>
       <AgentSection
         client={client}
         recordId={task.id}
@@ -661,7 +673,6 @@ function Loaded(props: LoadedProps): ReactElement {
         ledger={task.ledger}
         onChanged={props.onChanged}
       />
-
       <Proposals
         capCurrency={task.capCurrency}
         client={client}
@@ -680,13 +691,10 @@ function Loaded(props: LoadedProps): ReactElement {
         recordId={task.id}
         revision={task.revision}
       />
-
       <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
       <Alerts alerts={task.alerts} />
-
       <Outages state={outages.state} taskId={task.id} />
-
       <History history={task.history} />
-    </div>
+    </>
   );
 }

@@ -92,7 +92,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
-  // AW-02, C39-T: a run, an invitation and a token move only by their grants in COLUMN_UPDATES.
+  // AW-02, C39-T: a run, an invitation and a token move only by their grants in COLUMN_UPDATES (restricted-calls-columns.ts).
   ['si', 'planned_runs invitations enrolment_tokens'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   // 0049 (C59): a factor is written and moved on, never deleted.
@@ -148,65 +148,6 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
   // 0192 takes back update on the whole run and grants it on `state` alone.
   'public.planned_runs': { from: '0192', letters: 'u' },
 };
-
-/**
- * Update granted column by column: the table, the columns, and the first migration that
- * grants them. Every other column-level privilege, to any role, is outside the contract.
- */
-const COLUMN_UPDATES: Readonly<
-  Record<string, { readonly from: string; readonly columns: readonly string[] }>
-> = {
-  'public.planned_runs': { from: '0192', columns: ['state'] },
-  'public.invitations': { from: '0222', columns: ['ended_at', 'expires_at', 'revision', 'state'] },
-  'public.enrolment_tokens': { from: '0222', columns: ['spent_at'] },
-};
-
-/** The `table.column` pairs the application group may update after `at`, or at the full schema. */
-export function columnUpdatesAt(at?: string): readonly string[] {
-  return Object.entries(COLUMN_UPDATES)
-    .filter(([, grant]) => at === undefined || at.slice(0, 4) >= grant.from)
-    .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
-    .toSorted();
-}
-
-/**
- * Every other column grant, from the migration that made it: the occurrence role reads a
- * task's revision for 0032's trigger (AW-01 J, 0203), the application writes the outbox's
- * four columns alone (S0-2, 0047), and the lookup reads a business's id and key (G2, 0046).
- */
-const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
-  ...['business_id', 'id', 'revision'].map((column) => ({
-    from: '0203',
-    line: `${OCCURRENCE_ROLE} SELECT public.records.${column}`,
-  })),
-  ...['event', 'kind', 'scope', 'weight'].map((column) => ({
-    from: '0047',
-    line: `ops_astro_app INSERT ops.api_events.${column}`,
-  })),
-  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.id' },
-  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.key' },
-];
-
-export function roleColumnGrantsAt(at?: string): readonly string[] {
-  return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from)
-    .map((grant) => grant.line)
-    .toSorted();
-}
-
-/** Every column-level privilege on the cluster's schema, as `grantee PRIVILEGE table.column`. */
-export async function catalogueColumnGrants(admin: AdminConnection): Promise<readonly string[]> {
-  const rows = await admin.execute<{ line: string }>(
-    `select pg_get_userbyid(acl.grantee) || ' ' || acl.privilege_type || ' ' ||
-            n.nspname || '.' || c.relname || '.' || a.attname as line
-       from pg_attribute a
-       join pg_class c on c.oid = a.attrelid
-       join pg_namespace n on n.oid = c.relnamespace
-       cross join lateral aclexplode(a.attacl) acl
-      where a.attacl is not null and n.nspname in ('public', 'ops')
-      order by 1`,
-  );
-  return rows.map((row) => row.line);
-}
 
 /**
  * Grants a later migration added, so a prefix before it does not hold them yet.

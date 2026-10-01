@@ -26,11 +26,17 @@ const WEB = resolve(import.meta.dirname, '..', 'apps', 'web', 'src');
 const NOT_ACTIONS = new Set(['operations/client.ts', 'manifest.ts', 'routes.ts']);
 // The only requests the app sends itself, each call exactly once; any other request fails.
 const TRANSPORTS = new Map([
-  // the commands' own client: a read, then a write
+  // the commands' own client: a read, a write, then the open POST off a business (C39-T)
   [
     'operations/client.ts',
-    ['this.#options.fetch(url, { ...init, headers })', 'this.#options.fetch(url, {'],
+    [
+      'this.#options.fetch(url, { ...init, headers })',
+      'this.#options.fetch(url, {',
+      'app.fetch(`${app.apiOrigin}${route}`, {',
+    ],
   ],
+  // the two enrolment addresses it hands that open POST: an invitation, not a record (C39-T)
+  ['screens/Enrol.tsx', ["'/api/enrol'", "'/api/b/enrol'"]],
   // signs a person in and out: a session, not a record
   [
     'session/sign-in.ts',
@@ -168,6 +174,7 @@ const OPERANDS = {
   'task.execution': { recordId: 'r' },
   'task.board': { board: null },
   'task.receipt': { attemptId: 'a' },
+  'definition.attribution': { digest: 'a'.repeat(64) },
   'preset.plan': { recordTypeKey: 'preset', presetKey: 'p', fields: [] },
   'task.ledger': { before: null, timeZone: 'Australia/Brisbane', query: null },
   'privacy.draft_breach_notices': {

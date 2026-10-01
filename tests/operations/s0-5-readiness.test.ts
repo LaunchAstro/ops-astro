@@ -26,7 +26,7 @@ import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
 import { gateRecordBody } from '../acceptance/role-case-gate-bodies.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { serverUrl } from '../acceptance/world.ts';
-import { type Call, ON_THE_PICKUP, pickupCalls } from './s0-5-readiness-pickup.ts';
+import { type Call, ON_THE_PICKUP, pickupCalls } from './s0-5-readiness-agent-calls.ts';
 
 if (serverUrl === undefined) {
   console.warn('operations/s0-5-readiness: DATABASE_URL is unset, so nothing below ran.');
