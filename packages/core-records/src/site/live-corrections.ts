@@ -207,7 +207,7 @@ export async function lockCoveredCorrection(
   return row === undefined ? undefined : correctionFrom(row);
 }
 
-/** Every correction the caller may read, newest first; the grant filters inside the query. */
+/** Every correction the caller's run:write reaches (ORCH33), newest first, filtered in the query. */
 export async function listCoveredCorrections(
   tx: TenantQuery,
   subjects: readonly Subject[],
@@ -219,7 +219,7 @@ export async function listCoveredCorrections(
       order by c.created_at desc, c.id`,
     [
       tx.businessId,
-      ...coveringParameters({ subjects, collection: RUN_COLLECTION, action: 'read' }),
+      ...coveringParameters({ subjects, collection: RUN_COLLECTION, action: 'write' }),
     ],
   );
   return rows.map((row) => correctionFrom(row));
