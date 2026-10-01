@@ -81,6 +81,8 @@ it('AW-12 trigger read: a manifest it cannot count is refused, never read as not
   const hostile: unknown[][] = [
     [{ path: 'a.md', digest: 'x', size: '40000' }],
     [{ path: 'a.md', digest: 'x' }],
+    // No digest: two such entries could not be told apart, so none is counted.
+    [{ path: 'a.md', size: 40_000 }],
     [{ path: 'a.md', digest: 'x', size: -5 }],
     [{ path: 'a.md', digest: 'x', size: 1.5 }],
     ['a.md'],
