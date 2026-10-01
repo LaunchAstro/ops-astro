@@ -74,7 +74,7 @@ export async function as(
 
 /** A unique address under the test domain. */
 export const addressFor = (name: string): string =>
-  `${name}-${randomUUID().slice(0, 8)}@team.example.test`;
+  `${name}-${randomUUID().slice(0, 8)}@example.test`;
 
 /** Invite, and the new invitation's id; a refusal throws naming its code. */
 export async function invite(

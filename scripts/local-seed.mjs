@@ -119,6 +119,9 @@ const GRANTS_BY_ROLE = {
     // default, never a member, never an agent. `inbox.unattended` asks it
     // (INB-1e), and it names other people's items.
     ['operations', 'read'],
+    // C39-T: inviting, resending and revoking a team invitation is
+    // `access:share` (the permission key catalogue): owner and administrators.
+    ['access', 'share'],
   ],
   member: [
     ['task', 'read'],

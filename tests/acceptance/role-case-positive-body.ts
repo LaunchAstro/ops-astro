@@ -24,6 +24,13 @@ import { ownConversation } from './foreign-conversation.ts';
 import { answerAtTheStop } from './stopped-run.ts';
 import { revisedRunBody } from './revised-run.ts';
 
+/** A team invitation to an address nobody holds yet. */
+const invitee = (): Record<string, unknown> => ({
+  name: 'Invited Ivy',
+  email: `ivy-${randomUUID()}@example.test`,
+  role: 'member',
+});
+
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration) => Promise<Prepared> {
@@ -155,6 +162,15 @@ export function createPositiveBody(
       case 'notifications.set_channel':
         // Self-scoped (INB-1e): in-app is always on, the one mode it takes.
         return { body: { channel: 'in_app', mode: 'on' } };
+      // C39-T: the admin holds `access:share`; each recipe invites a new address.
+      case 'invitation.create':
+        return { body: invitee() };
+      case 'invitation.resend':
+      case 'invitation.revoke': {
+        const made = await context.asPerson('invitation.create', invitee());
+        if (made.code !== 'ok') throw new Error(`matrix: invitation refused ${made.code}`);
+        return { body: { invitationId: String(made.body['recordId']) } };
+      }
       case 'inbox.seen': {
         // The caller's own item: a proposal raises a decision item for every
         // decide holder, the admin among them, read back from their inbox.

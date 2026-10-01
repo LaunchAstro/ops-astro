@@ -1785,6 +1785,30 @@ refused ([RUNTIME.md](RUNTIME.md#the-planning-budget)). Until a person moves
 it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. Not here
 yet: the recent sign-in a money action asks (C59).
 
+### Team invitations (C39-T)
+
+`POST /api/b/<key>/invitation/create` with `name`, `email` and `role`
+(`member` or `admin`); `invitation/resend` and `invitation/revoke` with
+`invitationId`. Each asks `share` on `access` for the whole business
+(`access:share`: owners and administrators), and no agent route serves them
+(`DELEGATION_EXCLUDES_OPERATION`). A create writes a new person and the
+invitation, pending for seven days; a resend moves that on by seven days; a
+revoke ends it. An ended invitation is `TRANSITION_NOT_PERMITTED` 409 naming
+`state`, another business's or an unissued id `NOT_FOUND`, an address already
+pending or confirmed on a member `UNIQUE_VALUE_TAKEN` naming `email`. Creates
+and resends are limited to 3 an hour per address and 30 an hour per person,
+counted from the applied audit events (`RATE_LIMITED` naming `email` or
+`account`). The answer is the invitation's id, its revision and
+`{ invitationId, state }`. The business's worker expires lapsed invitations
+(`expireInvitations`, audited `invitation.expire`).
+
+Each create and each resend allows one email: `sendInvitation`
+(`core-custody`) sends through the broker's `email.send` only while the
+invitation is pending and has an applied act no send has answered, mints a
+fresh enrolment token, keeps its SHA-256 alone and records the attempt
+against it. Not here yet: the send mounted after the command, Auth's Send
+Email hook, the enrolment page and the Access screen (C39-T P2 and P3).
+
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `gate.pending`, `person.list`,

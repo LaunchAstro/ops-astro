@@ -191,3 +191,7 @@ export async function sendInboxEmail(
   if (seen.state === 'accepted') return { ok: true, attemptId, state: 'accepted' };
   return { ok: false, code: 'EMAIL_FAILED', attemptId, fault: seen.evidence };
 }
+
+// C39-T's invitation send keeps attempts of its own and takes the same route
+// and the same reading of the provider's answer (`broker-invitation.ts`).
+export { observed as emailObserved, routed as emailRouted };

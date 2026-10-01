@@ -24,7 +24,13 @@ export {
   type OutboundRequest,
 } from './egress.ts';
 export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } from './custody.ts';
-export { sendInvitation, type InvitationSendResult } from './broker-invitation.ts';
+export {
+  ENROL_PATH,
+  INVITATION_SEND_ACTS,
+  sendInvitation,
+  type InvitationSendRefusal,
+  type InvitationSendResult,
+} from './broker-invitation.ts';
 export {
   callModelInConversation,
   type ConversationCallRequest,
