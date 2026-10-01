@@ -5,8 +5,7 @@
 // catalogued `email.send` and its route, and the one reading of what the
 // provider answered. Nothing here sends or writes.
 
-import type { ModelOperation } from '../../core-connectors/src/index.ts';
-import type { MailSettings } from './broker-email.ts';
+import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
 import type { BrokerRoute, Broker, ProviderAdapter } from './broker-types.ts';
 import type { CustodyOutcome } from './custody.ts';
 import { fromVerifiedSender, type DeliverRefusal } from './email-class.ts';
@@ -30,7 +29,10 @@ function routed(broker: Broker): Routed | undefined {
 }
 
 /** The route for one email from the verified sender only, or why there is none. */
-export function sendRoute(broker: Broker, mail: MailSettings): Routed | DeliverRefusal {
+export function sendRoute(
+  broker: Broker,
+  mail: { readonly from: string; readonly sender: SenderReport },
+): Routed | DeliverRefusal {
   if (!fromVerifiedSender(mail.from, mail.sender)) return 'SENDER_NOT_VERIFIED';
   return routed(broker) ?? 'OPERATION_NOT_CATALOGUED';
 }
