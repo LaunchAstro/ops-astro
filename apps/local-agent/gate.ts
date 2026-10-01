@@ -53,10 +53,13 @@ export type Decision =
 
 /** Checked in this order, every call, before anything is spawned. */
 export function decide(settings: RunnerSettings, model: string): Decision {
-  if (model !== DEFAULT_MODEL && !readApprovals(settings.home).models.includes(model)) {
+  const approved = readApprovals(settings.home);
+  if (model !== DEFAULT_MODEL && !approved.models.includes(model)) {
     return { ok: false, code: 'LOCAL_MODEL_NOT_APPROVED' };
   }
-  const left = settings.capUsd - ledgerTotal(settings.home, settings.capUsd);
+  // The owner's yes on a cap raise (approval.ts) is the cap from the next call on.
+  const cap = approved.capUsd ?? settings.capUsd;
+  const left = cap - ledgerTotal(settings.home, cap);
   // Claude Code refuses a budget of 0.00, so under a cent left is the cap.
   if (left < 0.01) return { ok: false, code: 'LOCAL_CAP_REACHED' };
   if (seatOverStop(settings)) return { ok: false, code: 'LOCAL_SEAT_OVER_STOP' };
