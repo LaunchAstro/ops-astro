@@ -28,10 +28,15 @@ export interface Remaining {
 
 /** The stopped hold's figures, read under the caller's reservation lock. */
 export async function remainingOf(tx: TenantQuery, reservationId: string): Promise<Remaining> {
+  // Only the classifier's settle counts its calls' spend: an observed or written-off
+  // cost (its attempt `settled`) closed the step's work, which a person reopens whole.
   const [row] = await tx.query<{ held: string; spent: string; lease_id: string | null }>(
-    `select held_minor::text as held,
-            (case when state = 'actual' then actual_minor else 0 end)::text as spent, lease_id
-       from public.reservations where business_id = $1 and id = $2`,
+    `select r.held_minor::text as held, r.lease_id,
+            (case when r.state = 'actual' and a.state <> 'settled' then r.actual_minor
+                  else 0 end)::text as spent
+       from public.reservations r
+       join public.attempts a on a.business_id = r.business_id and a.reservation_id = r.id
+      where r.business_id = $1 and r.id = $2`,
     [tx.businessId, reservationId],
   );
   if (row === undefined) throw new Error(`reservation ${reservationId}: no hold to replace`);
