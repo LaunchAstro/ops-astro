@@ -48,6 +48,7 @@ import type {
   PlanOffer,
 } from '../../../../packages/core-wire/src/index.ts';
 import type { NotARead, ReadName } from './read-names.ts';
+import { SESSION_ENDED, describe, isWireRefusal } from './wire-answer.ts';
 
 export { READ_NAMES } from './read-names.ts';
 export type { NotARead, ReadName } from './read-names.ts';
@@ -265,35 +266,24 @@ export class OperationsClient {
   }
 }
 
-/** A POST to an open route of the API (`/api/enrol`): no business, session or cookie goes. */
+/**
+ * A POST to a route of the API that is not a business's: open (`/api/enrol`), no session or
+ * cookie goes; given `session` (`/api/b/enrol`), its cookie and the headers it is checked by.
+ */
 export async function postOpen(
   app: Pick<ClientOptions, 'fetch'> & { readonly apiOrigin: string },
   route: string,
   body: Readonly<Record<string, unknown>>,
+  session?: { readonly sessionId?: string | undefined },
 ): Promise<unknown> {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (session !== undefined) headers[CSRF_HEADER] = '1';
+  if (session?.sessionId !== undefined) headers[SESSION_HEADER] = session.sessionId;
   const response = await app.fetch(`${app.apiOrigin}${route}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    credentials: 'omit',
+    headers,
+    credentials: session === undefined ? 'omit' : 'same-origin',
     body: JSON.stringify(body),
   });
   return await response.json();
 }
-
-/**
- * The two codes that mean the bearer is no longer a credential.
- *
- * Paired with the 401 rather than trusted alone: the code names the decision
- * and the status names the boundary that made it, and a 403 carrying either of
- * these would be a different answer than the one this rule is about.
- */
-const SESSION_ENDED = new Set(['AUTH_UNKNOWN_LOGIN', 'AUTH_SESSION_EXPIRED']);
-
-function isWireRefusal(value: unknown): value is WireRefusal {
-  if (typeof value !== 'object' || value === null) return false;
-  const body = value as Record<string, unknown>;
-  return body['refused'] === true && typeof body['code'] === 'string';
-}
-
-const describe = (error: unknown): string =>
-  error instanceof Error ? error.message : 'The request did not reach the API.';

@@ -24,7 +24,6 @@
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Banner, Button, FieldError } from '@launchastro/ui';
 import { postOpen, type ClientOptions } from '../operations/client.ts';
-import { postWithSession } from '../operations/session-post.ts';
 import { pathTo } from '../routes.ts';
 import type { Session } from '../session/token.ts';
 
@@ -77,9 +76,10 @@ async function acceptAs(
   session: Session,
 ): Promise<{ readonly ended: 'joined' | 'not_yours' } | { readonly because: string }> {
   try {
-    const body = (await postWithSession(app, ENROL_SIGNED_IN_API, session.sessionId, {
-      token,
-    })) as { state?: unknown; code?: unknown };
+    const body = (await postOpen(app, ENROL_SIGNED_IN_API, { token }, session)) as {
+      state?: unknown;
+      code?: unknown;
+    };
     if (body.state === 'joined') return { ended: 'joined' };
     if (body.code === 'ENROLMENT_LINK_INVALID') return { ended: 'not_yours' };
     const gone = typeof body.code === 'string' && body.code.startsWith('AUTH_');
