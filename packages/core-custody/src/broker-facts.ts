@@ -61,9 +61,9 @@ const runTask = (lock: string): string => `select t.id::text as id, run.id::text
       ${lock}`;
 
 /**
- * The run's task, first in the lock order (its map, then `task`, then `lease`),
+ * The run's task, first in the lock order (its parents to its map, `task`, `lease`),
  * held `for share` so its client cannot move while the call is decided, and
- * answering its or its map's client link (C60, `withMapClient`) and what a
+ * answering its client or the nearest above (C60, `withMapClient`) and what a
  * bound field reads of it (S3): a link or an edit in flight is waited on. A run's
  * task is fixed (0192); `lockFacts` compares the lease's run again. Unknown: nothing.
  */
