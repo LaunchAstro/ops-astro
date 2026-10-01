@@ -58,10 +58,10 @@ export async function setPartyWhileEmpty(
 ): Promise<HandlerOutcome> {
   // A trashed task keeps its old answer (`NOT_FOUND`, from the owned-field writer).
   const task = context.target;
-  if (task === undefined || task.deleted_at !== null) {
+  if (task !== undefined && task.deleted_at !== null) {
     return await writeOwnedFields(tx, context, 'task.set_party', fields);
   }
-  if (await hasContent(tx, task.id)) {
+  if (task !== undefined && (await hasContent(tx, task.id))) {
     return refused(refuseCommand('CLIENT_LOCKED', [], LOCKED_FIXES));
   }
   return await setParty(tx, context, fields);

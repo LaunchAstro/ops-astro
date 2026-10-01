@@ -71,8 +71,8 @@ const PINNED_IDENTIFIERS = {
   'task.queue': [],
   'task.read': ['recordId'],
   'task.receipt': ['attemptId'],
-  'task.todos': [],
   'task.search': [],
+  'task.todos': [],
   'team.list': [],
 };
 
