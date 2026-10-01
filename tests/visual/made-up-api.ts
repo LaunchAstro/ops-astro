@@ -31,6 +31,7 @@ import type {
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
+import { WAYFINDER_READS } from './made-up-wayfinder.ts';
 
 const STATE = {
   active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
@@ -239,6 +240,8 @@ const READS = {
       },
     ],
   } satisfies ConversationListResult,
+  // The wayfinder map's reads, in a file of their own (WF-1 to WF-4).
+  ...WAYFINDER_READS,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */
