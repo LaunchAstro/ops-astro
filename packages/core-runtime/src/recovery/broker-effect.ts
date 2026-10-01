@@ -21,7 +21,7 @@
 //   effect but its calls: dispatch refuses any other (`EFFECT_NOT_RECONCILABLE`).
 // - A person's: the outcome or write-off they record on the step resolves its
 //   held calls with their name, in the same transaction, under the step's locks.
-// - The read: each held call's drop, as the task's people read it.
+// - The read: each held call's drop, for the task's people (internal, ungated).
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { EffectLookup } from './effect-lookup.ts';
@@ -131,7 +131,11 @@ export interface CallDrop {
   readonly outcome: string | null;
 }
 
-/** The held calls of `taskId`'s runs, in this business only, oldest first. */
+/**
+ * The held calls of `taskId`'s runs, in this business only, oldest first.
+ * Internal: it checks no grant and has no product caller yet. A read route
+ * that serves it must first check the caller's grant on the task.
+ */
 export async function readCallDrops(tx: TenantQuery, taskId: string): Promise<readonly CallDrop[]> {
   return await tx.query<CallDrop>(
     `select c.id as "callId", c.step_id as "stepId", c.operation_key as operation,
