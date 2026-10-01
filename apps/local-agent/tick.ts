@@ -225,6 +225,11 @@ async function runOne(options: TaskTick, entry: QueueEntry): Promise<Ran> {
     fields: options.fieldsFor(entry),
   } as never);
   if (isCommandRefusal(call)) return refusedAt(entry, 'model.call', call.code);
+  if (call.detail['state'] === 'released' && options.gate !== undefined) {
+    const lease = { leaseId: String(leaseId), fence: Number(fence), credential };
+    const code = await options.gate.onReleased(lease);
+    if (code !== undefined) return refusedAt(entry, 'model.call', code);
+  }
   const text = call.detail['text'];
   const reply = typeof text === 'string' ? text : null;
   const handedBack = await executeAgentCommand(database, businessId, agent, credential, {
@@ -248,12 +253,14 @@ export async function runQueuedTasks(
 ): Promise<{ readonly ok: true; readonly ran: readonly Ran[] } | Refused> {
   const refused = localOnly(options.environment);
   if (refused !== undefined) return refused;
+  const { gate } = options;
+  await gate?.beforeTasks();
   const entries = await options.database.withBusiness(
     options.businessId,
     async (tx) => await queue(tx),
   );
   const ran: Ran[] = [];
-  for (const entry of entries) {
+  for (const entry of entries.filter((queued) => queued.purpose !== gate?.purpose)) {
     // Sequential: one model call at a time on the owner's own seat.
     // eslint-disable-next-line no-await-in-loop
     ran.push(await runOne(options, entry));

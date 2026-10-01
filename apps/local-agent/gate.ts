@@ -2,9 +2,9 @@
 //
 // What the runner checks before it spawns anything (LA-1, addendum 2): the
 // model, the cap and the seat. Haiku runs by default; any other model needs
-// the owner's yes, as does a cap above USD 10 (settings.ts). Until the inbox
-// approval-gate item is wired, the yes is a line in `approvals.json` and the
-// refusal is a plain message on the runner's own output.
+// the owner's yes, as does a cap above USD 10 (settings.ts). The yes is a line
+// in `approvals.json`, written by the tick from the owner's inbox decision
+// (approval.ts); the tick asks this same gate why a call was released.
 
 import { readFileSync } from 'node:fs';
 import { ledgerTotal } from './ledger.ts';

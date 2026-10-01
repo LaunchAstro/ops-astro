@@ -184,6 +184,16 @@ export async function main(
       fieldsFor: (entry) => [
         { name: 'instruction', from: { recordId: entry.taskId, key: 'title' } },
       ],
+      gate: localGate(
+        {
+          environment: env,
+          database,
+          businessId: settings.businessId,
+          agent: settings.agent,
+          home: settings.gate.home,
+        },
+        settings.gate,
+      ),
     },
     settings.intervalMs,
     reportOf(print),
