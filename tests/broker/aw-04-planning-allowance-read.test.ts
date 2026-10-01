@@ -103,9 +103,8 @@ it('AW-04 planning allowance read: the empty drawer, with no conversation yet, r
   }
 }, 60_000);
 
-it('AW-04 planning allowance read isolation: another business, another client, another person under a live delegation', async () => {
-  // Alpha's cap at a planted amount no crossing may see, and the owner's
-  // conversation's spend on it.
+/** Alpha's cap at a planted amount, the owner's conversation spending on it: what no crossing may print. */
+async function plantedOwnRead(): Promise<{ own: unknown; mine: string; canary: RegExp }> {
   await s.db.admin.execute(
     `insert into public.budget_caps (business_id, id, key, limit_minor, currency)
      values ($1, $2, 'planning', 13579, 'AUD')
@@ -118,47 +117,71 @@ it('AW-04 planning allowance read isolation: another business, another client, a
   const own = (await allowanceAs(s, s.decider, { conversationId: mine })) as {
     allowance: { leftMinor: number; conversation: { spentMinor: number } };
   };
-  const left = String(own.allowance.leftMinor);
-  const canary = new RegExp(`13579|135\\.79|${left}|${mine}|${s.business}`, 'u');
   expect(own.allowance.conversation.spentMinor).toBeGreaterThan(0);
+  const left = String(own.allowance.leftMinor);
+  return { own, mine, canary: new RegExp(`13579|135\\.79|${left}|${mine}|${s.business}`, 'u') };
+}
 
-  // 1. Another business: bravo's owner presenting in alpha, and in bravo naming alpha's.
+/** Bravo's owner presenting in alpha, and in bravo naming alpha's conversation. */
+async function anotherBusiness(mine: string): Promise<readonly unknown[]> {
   const inAlpha = await allowanceAs(s, p.bravo.decider, { conversationId: mine });
   const inBravo = await allowanceAs(p.bravo, p.bravo.decider, { conversationId: mine });
   const bravoOwn = await allowanceAs(p.bravo, p.bravo.decider);
   expect(inAlpha).toMatchObject({ code: 'AUTH_NO_MEMBERSHIP' });
   expect(inBravo).toMatchObject({ code: 'NOT_FOUND' });
   expect(bravoOwn).toMatchObject({ ok: true, allowance: { limitMinor: 5_000 } });
+  return [inAlpha, inBravo, bravoOwn];
+}
 
-  // 2. Another client of alpha, shared one task: the cap and left are the team's.
+/** A client of alpha shared one task: the cap and what is left are the team's. */
+async function anotherClient(mine: string): Promise<readonly unknown[]> {
   await s.db.app.withBusiness(s.business, async (tx) => {
     await grantTo(tx, s.decider, 'share');
   });
   const task = await createTask(s, 'aw04allow client task');
   const client = await cq8World(s).client(s.business, s.decider, 'aw04al', task);
-  const asClient = await allowanceAs(s, client);
-  const asClientNaming = await allowanceAs(s, client, { conversationId: mine });
-  for (const answer of [asClient, asClientNaming]) {
-    expect(answer).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
-  }
+  const answers = [
+    await allowanceAs(s, client),
+    await allowanceAs(s, client, { conversationId: mine }),
+  ];
+  for (const answer of answers) expect(answer).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
+  return answers;
+}
 
-  // 3. Another person: a colleague with their own drawer naming the owner's
-  // conversation (one answer with a made-up id), a member with no drawer, and
-  // the world's agent under its pickup's live delegation.
+/**
+ * Colleagues of the owner: one with their own drawer naming the owner's
+ * conversation (one answer with a made-up id), one with no drawer, and one
+ * whose drawer grant is one record's, not the whole business's.
+ */
+async function anotherPerson(mine: string): Promise<readonly unknown[]> {
   const colleague = await enrol(s.db.app, s.business, 'aw04allow-colleague');
   const idle = await enrol(s.db.app, s.business, 'aw04allow-idle');
+  const narrow = await enrol(s.db.app, s.business, 'aw04allow-narrow');
+  const record = await createTask(s, 'aw04allow narrow task');
   await s.db.app.withBusiness(s.business, async (tx) => {
     await grantTo(tx, colleague, 'write', undefined, false, 'conversation');
+    await grantTo(tx, narrow, 'write', { kind: 'record', id: record }, false, 'conversation');
   });
   const named = await allowanceAs(s, colleague, { conversationId: mine });
   const madeUp = await allowanceAs(s, colleague, { conversationId: randomUUID() });
   expect(named).toMatchObject({ code: 'NOT_FOUND' });
   expect(JSON.stringify(named)).toBe(JSON.stringify(madeUp));
   const asIdle = await allowanceAs(s, idle);
-  expect(asIdle).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
+  const asNarrow = await allowanceAs(s, narrow, { conversationId: mine });
+  for (const answer of [asIdle, asNarrow])
+    expect(answer).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
+  return [named, asIdle, asNarrow];
+}
+
+/** The world's agent under its pickup's live delegation: no agent route. */
+async function underDelegation(mine: string): Promise<{ agent: unknown; credential: string }> {
   const credential = String(p.work.picked['credential']);
-  const asAgentBody = { command: 'conversation.allowance', operationId: randomUUID() };
-  const agent = await asAgent(s, { ...asAgentBody, conversationId: mine }, credential);
+  const body = {
+    command: 'conversation.allowance',
+    operationId: randomUUID(),
+    conversationId: mine,
+  };
+  const agent = await asAgent(s, body, credential);
   expect(agent).toMatchObject({ code: 'DELEGATION_EXCLUDES_OPERATION' });
   const [live] = await s.db.admin.execute<{ n: string }>(
     `select count(*)::text as n from public.leases l
@@ -167,8 +190,18 @@ it('AW-04 planning allowance read isolation: another business, another client, a
     [p.work.picked['leaseId']],
   );
   expect(live?.n).toBe('1');
+  return { agent, credential };
+}
 
-  const crossed = [inAlpha, inBravo, bravoOwn, asClient, asClientNaming, named, asIdle, agent];
+it('AW-04 planning allowance read isolation: another business, another client, another person, and an agent under a live delegation', async () => {
+  const { own, mine, canary } = await plantedOwnRead();
+  const { agent, credential } = await underDelegation(mine);
+  const crossed = [
+    ...(await anotherBusiness(mine)),
+    ...(await anotherClient(mine)),
+    ...(await anotherPerson(mine)),
+    agent,
+  ];
   expect(JSON.stringify(crossed)).not.toMatch(canary);
   expect(JSON.stringify(crossed)).not.toContain(credential);
   // The positive control: the owner's own read shows the planted cap.
