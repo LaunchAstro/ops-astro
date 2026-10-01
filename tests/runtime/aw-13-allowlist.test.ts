@@ -2,8 +2,8 @@
 //
 // AW-13's allowlist and its no-agent-read line, without a database. A span's
 // every cell is a hex identifier, a whole number or a value from a closed
-// list, proved by attempting to write a sentence into each; and no operation
-// on any surface, an agent's least of all, returns a trace.
+// list, proved by attempting to write a sentence into each; and no
+// agent-reachable operation returns a trace.
 
 import { expect, it } from 'vitest';
 import {

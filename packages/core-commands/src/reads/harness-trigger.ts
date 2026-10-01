@@ -4,19 +4,21 @@
 // business, under the caller's grant.
 //
 // The run's required reading is its accept-time manifest (AW-04): every
-// instruction file the run may read, by path, digest and size, summed. A run
-// with no pin reads nothing. A manifest entry with no whole size is refused,
-// never counted as nothing, because an under-count could say "not yet" where
-// the work does not fit. The run sub-delegates when its parent's holder has
-// handed part of it to a helper (AW-11's `delegated` run event).
+// instruction file the run may read, by path, digest and size, summed once per
+// file. A file is its digest and size, the path provenance only (0192), so the
+// same bytes at two paths are read once. A run with no pin reads nothing. A
+// manifest entry with no whole size or no digest is refused, never counted as
+// nothing, because an under-count could say "not yet" where the work does not
+// fit. The run sub-delegates when its parent's holder has handed part of it
+// to a helper (AW-11's `delegated` run event).
 //
 // It is the team's: a reader outside it, or one with no live `task:read`, is
 // refused. The run is filtered by the caller's grant on its task inside the
-// statement, as `definition.attribution` filters, so a run outside it, in
-// another business or not there at all, is one `NOT_FOUND` with nothing in
-// it. Nothing here writes.
+// statement (the business, the task, or the task's client: the grants
+// `taskAccess` asks), so a run outside it, in another business or not there
+// at all, is one `NOT_FOUND` with nothing in it. Nothing here writes.
 
-import { coveredScopes, subjectsOf } from '../../../core-records/src/index.ts';
+import { readScopes } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { readTrigger, type TriggerReading } from '../../../core-runtime/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
@@ -30,11 +32,11 @@ interface ShapeRow {
   readonly delegated: boolean;
 }
 
-// A manifest entry counts only with a whole, non-negative size; any other is
-// `uncounted`. No pin is no row in the join: nothing to read.
-const SHAPE = `select coalesce(sum(case when m.counted then (m.entry->>'size')::bigint end), 0)::text
-              as reading,
-            count(*) filter (where m.entry is not null and not m.counted)::text as uncounted,
+// A manifest entry counts only with a digest and a whole, non-negative size;
+// any other is `uncounted`. Each file counts once (`nth` 1 of its digest and
+// size). No pin is no row in the join: nothing to read.
+const SHAPE = `select coalesce(sum(m.size) filter (where m.nth = 1), 0)::text as reading,
+            count(*) filter (where not m.counted)::text as uncounted,
             exists (select 1 from public.run_events e
                      where e.business_id = pr.business_id and e.run_id = pr.id
                        and e.kind = 'delegated') as delegated
@@ -43,12 +45,16 @@ const SHAPE = `select coalesce(sum(case when m.counted then (m.entry->>'size')::
        left join public.run_definition_pins pin
          on pin.business_id = pr.business_id and pin.run_id = pr.id
        left join lateral (
-         select entry,
-                coalesce(jsonb_typeof(entry->'size') = 'number'
-                         and (entry->>'size') ~ '^[0-9]{1,15}$', false) as counted
-           from jsonb_array_elements(pin.manifest) as entry) m on true
+         select k.counted, case when k.counted then (k.entry->>'size')::bigint end as size,
+                row_number() over (partition by k.counted, k.entry->>'digest', k.entry->>'size')
+                  as nth
+           from (select entry,
+                        coalesce(jsonb_typeof(entry->'digest') = 'string'
+                                 and jsonb_typeof(entry->'size') = 'number'
+                                 and (entry->>'size') ~ '^[0-9]{1,15}$', false) as counted
+                   from jsonb_array_elements(pin.manifest) as entry) k) m on true
       where pr.business_id = $1 and pr.id = $2 and r.deleted_at is null
-        and ($3::boolean or r.id = any($4::uuid[]))
+        and ($3::boolean or r.id = any($4::uuid[]) or r.uuid_7 = any($5::uuid[]))
       group by pr.business_id, pr.id`;
 
 const UNCOUNTED_FIXES = [
@@ -61,11 +67,9 @@ export async function readHarnessTrigger(
   session: Session,
   runId: string,
 ): Promise<TriggerReading | CommandRefusal> {
-  const scopes = await coveredScopes(tx, subjectsOf(session), {
-    collection: 'task',
-    action: 'read',
-  });
-  if (!isInternalReader(session.roleKey) || (!scopes.business && scopes.records.length === 0)) {
+  const scopes = await readScopes(tx, session.personId);
+  const reaches = scopes.business || scopes.records.length > 0 || scopes.parties.length > 0;
+  if (!isInternalReader(session.roleKey) || !reaches) {
     return refuseCommand(
       'SCOPE_NOT_GRANTED',
       [],
@@ -78,6 +82,7 @@ export async function readHarnessTrigger(
     runId,
     scopes.business,
     scopes.records,
+    scopes.parties,
   ]);
   const row = rows[0];
   if (row === undefined) return refuseNotFound();

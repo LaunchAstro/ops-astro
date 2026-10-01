@@ -7,8 +7,9 @@
 // sentence. Inside the business, only a task the caller reads.
 //
 // Crossings, each with its control: another business; another client in the
-// same business (a reader whose task grant covers client one's task, and
-// client one's own external person); another person, an agent under a live
+// same business (a reader whose task grant covers client one's task, one
+// whose grant is client one itself, and client one's own external person);
+// another person, an agent under a live
 // delegation.
 
 import { randomUUID } from 'node:crypto';
@@ -152,6 +153,36 @@ it('AW-13 readers isolation: another client in the same business reads nothing o
     expect(external, taskId).toMatchObject({ code: 'NOT_FOUND' });
     namesNothing(external, [canary, ...ids]);
   }
+});
+
+it('AW-13 readers isolation: a reader granted client one’s tasks reads nothing of client two’s', async () => {
+  const { canary, work: two, ids } = await canaryWork();
+  const one = await liveWork(t.alpha, `aw13-read-client-one-${randomUUID()}`, 1_000);
+  await drain(t.alpha);
+  const [clientOne, clientTwo] = [randomUUID(), randomUUID()];
+  for (const [task, client] of [
+    [one.taskId, clientOne],
+    [two.taskId, clientTwo],
+  ] as const) {
+    // eslint-disable-next-line no-await-in-loop -- one task at a time
+    await rows(
+      t.alpha,
+      `update public.records set data = data || jsonb_build_object('client', $3::text)
+        where business_id = $1 and id = $2`,
+      [t.alpha.business, task, client],
+    );
+  }
+  // task:read on client one (a party grant), never on a task or the business.
+  const scoped = await enrol(t.alpha.db.app, t.alpha.business, 'aw13-client-one-reader');
+  await t.alpha.db.app.withBusiness(t.alpha.business, async (tx) => {
+    await grantTo(tx, scoped, 'read', undefined, false, 'operations');
+    await grantTo(tx, scoped, 'read', { kind: 'party', id: clientOne });
+  });
+  const crossed = await traceRead(t.alpha, scoped.presented, two.taskId);
+  expect(crossed).toMatchObject({ code: 'NOT_FOUND' });
+  namesNothing(crossed, [canary, clientTwo, ...ids]);
+  // Control: the client grant reads client one's task.
+  expect(spansOf(await traceRead(t.alpha, scoped.presented, one.taskId)).length).toBeGreaterThan(0);
 });
 
 it('AW-13 readers isolation: another person, an agent under a live delegation, reaches no trace', async () => {

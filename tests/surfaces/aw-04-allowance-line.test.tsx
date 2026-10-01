@@ -109,3 +109,29 @@ describe('AW-04 planning allowance read: the drawer', () => {
     }
   });
 });
+
+describe('AW-04 planning allowance read: the line follows the spend', () => {
+  it('AW-04 planning allowance read: a later reply settling reloads the line with its new figures', async () => {
+    let reads = 0;
+    const { page } = await drawer((body) => {
+      if (body['conversationId'] !== CONVERSATION) {
+        return allowance({ spentMinor: 0, heldMinor: 0 });
+      }
+      reads += 1;
+      return allowance(
+        reads === 1 ? { spentMinor: 745, heldMinor: 500 } : { spentMinor: 1_490, heldMinor: 0 },
+      );
+    });
+    await page.type('[data-assistant="input"]', 'Plan the supplier follow-up');
+    await press(page, '[data-assistant="input"]', 'Enter');
+    await settle();
+    const before = reads;
+    await page.type('[data-assistant="input"]', 'And the second supplier');
+    await press(page, '[data-assistant="input"]', 'Enter');
+    await settle();
+    expect(reads).toBeGreaterThan(before);
+    expect(page.find('[data-assistant="allowance"]')?.textContent).toBe(
+      'Planning allowance: AUD 37.55 left of AUD 50.00. This conversation: AUD 14.90 spent, AUD 0.00 held.',
+    );
+  });
+});

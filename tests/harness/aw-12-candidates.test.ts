@@ -3,8 +3,9 @@
 // AW-12, part one: the candidates, pinned and with their licences read, as
 // recorded data. Nothing is fetched or installed: the licences go through the
 // product's own licence check, and no candidate is anywhere in the product's
-// dependency tree (`AW-12 candidate audit`, as far as part one reaches; the
-// audit at each pinned commit runs in the candidate's throwaway environment).
+// dependency tree (`AW-12 candidates kept out of the product`). That is not
+// the candidate audit: the dependency audit at each pinned commit is part
+// two's, in the candidate's throwaway environment.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -123,7 +124,7 @@ const manifests = (): string[] => [
   ),
 ];
 
-describe('AW-12 candidate audit', () => {
+describe('AW-12 candidates kept out of the product', () => {
   it('no candidate is in the product lockfile or any workspace package manifest', () => {
     const lockfile = readFileSync('pnpm-lock.yaml', 'utf8');
     // Control: the scan reads the lockfile's own entries.

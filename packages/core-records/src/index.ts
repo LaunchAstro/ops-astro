@@ -87,7 +87,7 @@ export {
   type InboxWorkState,
   type RaiseInboxItem,
 } from './inbox/items.ts';
-export { taskAccess } from './inbox/access.ts';
+export { readScopes, taskAccess } from './inbox/access.ts';
 export {
   raiseAssignment,
   raiseDecision,

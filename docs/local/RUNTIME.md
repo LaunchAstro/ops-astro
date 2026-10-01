@@ -1892,8 +1892,10 @@ adoption is the owner's separate decision.
   window at the pinned provider: the replay provider's `replay-1`, 32 000
   units, the only route catalogued. The work must also sub-delegate (AW-11's
   `delegated` run event, depth one). The reading is the sum of the run's
-  accept-time manifest sizes (0192), counted in UTF-8 bytes, an upper bound on
-  any byte-level tokenizer's units. A run with no pin reads nothing.
+  accept-time manifest sizes (0192), each file once: a file is its digest and
+  size, so the same bytes at two paths count once. It is counted in UTF-8
+  bytes, an upper bound on any byte-level tokenizer's units. A run with no pin
+  reads nothing.
 - **"Not yet" is a result.** Either limb missing, the reading is `not_yet`.
   It names the missing limbs and carries the two figures: the reading against
   the window, and the depth with the depth built. It is frozen and holds no
@@ -1902,18 +1904,20 @@ adoption is the owner's separate decision.
   The trigger is read from the work's shape, never from a date.
 - **Who reads it.** `readHarnessTrigger` is the team's: a person outside it,
   or one with no live `task:read`, gets `SCOPE_NOT_GRANTED`. The run is
-  filtered by that grant inside the statement, so a run outside it, in another
+  filtered by that grant inside the statement (on the business, the task or
+  the task's client, as `taskAccess` asks), so a run outside it, in another
   business or missing, is one `NOT_FOUND`. A manifest entry with no whole size
-  is `DEFINITION_UNAVAILABLE`, never counted as nothing. No route, verb or
+  or no digest is `DEFINITION_UNAVAILABLE`, never counted as nothing. No route, verb or
   agent operation reaches it yet.
 - **What stays in the tests.** The pinned candidates with their licences read
   (`tests/harness/candidates.ts`) and the four shared fakes, all in
   `tests/harness/`, so none of them is in the product's dependency tree.
 
 Tests: `aw-12-trigger`, `aw-12-trigger-read`, `aw-12-isolation`,
-`aw-12-candidates` (with `AW-12 candidate audit`) and `aw-12-fakes`. The
-refusal tests, the representative case, the comparison families, the ledger
-and the gates wait on AW-08, AW-09 and AW-10.
+`aw-12-candidates` (with `AW-12 candidates kept out of the product`; the
+candidate audit, a dependency audit at each pinned commit, is part two's) and
+`aw-12-fakes`. The refusal tests, the representative case, the comparison
+families, the ledger and the gates wait on AW-08, AW-09 and AW-10.
 
 ## What is not here
 
