@@ -138,9 +138,12 @@ describe.skipIf(serverUrl === undefined)('C80 decision read, run:write alone', (
 describe.skipIf(serverUrl === undefined)('C80 decision read, a client outside the business', () => {
   it('a client holding a record share reads a correction exactly as an id that names nothing', async () => {
     const asked = await requested(w.ava);
-    const client = await shareWithClient(w.world.db.app, w.world.business, w.ava, w.taskA);
+    const gus = await w.world.decider('gus');
+    const { app } = w.world.db;
+    await app.withBusiness(w.world.business, async (tx) => await grantTo(tx, gus, 'share'));
+    const client = await shareWithClient(app, w.world.business, gus, w.taskA);
     // Even a run:write at the correction's party reads nothing for a client.
-    await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+    await app.withBusiness(w.world.business, async (tx) => {
       await grantTo(tx, client, 'write', { kind: 'party', id: w.partyA }, false, 'run');
     });
     const theirs = await readAs(client, asked.id);
