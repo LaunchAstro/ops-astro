@@ -15,6 +15,7 @@ import { gateOf, matchRoute, pathTo } from './routes.ts';
 import { NO_CLIENT_GRANTS, canonicalOf, pageAt, type ClientAccess } from './manifest.ts';
 import {
   ClientRefused,
+  HeldChip,
   NotFound,
   PagePlaceholder,
   RouteTabs,
@@ -269,6 +270,9 @@ export function App(props: AppProps): ReactElement {
       onNav={setNavOpen}
       onBack={stepBack}
       onForward={stepForward}
+      meta={
+        session !== null && match === null && at !== null && !refused ? <HeldChip /> : undefined
+      }
       // The panel registry is the dock. Each registration names the address
       // that draws its surface, and the tab navigates there rather than
       // opening a drawer over the page: the surface has a real address, and an

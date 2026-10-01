@@ -134,3 +134,24 @@ describe('denied and empty are distinguishable', () => {
     expect(emptyText).not.toContain('not permitted');
   });
 });
+
+describe('a read that could not be read is an error, not an empty page (DS-PRIM-30)', () => {
+  it('unavailable draws the bad banner and no empty state', async () => {
+    const view = await mount(
+      draw({ ...base, outcome: 'unavailable', because: 'The API did not answer.' }),
+    );
+    const banner = view.find('[data-outcome="unavailable"] > .banner.banner--bad');
+    expect(banner).not.toBeNull();
+    expect(banner?.getAttribute('role')).toBe('alert');
+    expect(banner?.textContent).toContain('The board could not be read.');
+    expect(view.find('.empty')).toBeNull();
+    await view.unmount();
+  });
+
+  it('a read that answered with no rows keeps the empty state and no banner', async () => {
+    const view = await mount(draw({ ...base, outcome: 'empty', value: { rows: [] } }));
+    expect(view.find('[data-outcome="empty"] > .empty')).not.toBeNull();
+    expect(view.find('.banner')).toBeNull();
+    await view.unmount();
+  });
+});

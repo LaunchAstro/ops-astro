@@ -26,7 +26,7 @@
 // case exists to catch.
 
 import type { ReactElement, ReactNode } from 'react';
-import { Empty } from '@launchastro/ui';
+import { Banner, Empty } from '@launchastro/ui';
 import type { ReadState } from '../data/authorised-read.ts';
 import { describeRefusal } from '../records/submit.ts';
 
@@ -83,12 +83,14 @@ export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
   }
 
   if (state.outcome === 'unavailable') {
+    // A read that could not be read is an error, said as one: DS-PRIM-30's
+    // section error, the bad banner. Only a read that answered with no rows
+    // is the empty state.
     return (
-      <div className="readstate" data-outcome="unavailable" role="alert">
-        <Empty
-          title={`The ${props.subject} could not be read.`}
-          description={state.because}
-          hint="Nothing has been decided about your access. Try again."
+      <div className="readstate" data-outcome="unavailable">
+        <Banner
+          tone="bad"
+          lead={`The ${props.subject} could not be read.`}
           action={
             props.onRetry === undefined ? undefined : (
               <button className="btn" type="button" onClick={props.onRetry}>
@@ -96,7 +98,9 @@ export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
               </button>
             )
           }
-        />
+        >
+          {state.because} Nothing has been decided about your access. Try again.
+        </Banner>
       </div>
     );
   }

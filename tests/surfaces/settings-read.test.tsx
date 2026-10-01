@@ -232,6 +232,17 @@ describe('the settings screen reads the server', () => {
     await page.unmount();
   });
 
+  it('draws a read that could not be read as the bad banner, not the empty state', async () => {
+    const api = server({ settings: () => json({ error: 'not found' }, 404) });
+    const page = await mount(screen(api.fetch));
+    await tick();
+
+    const read = page.find('[data-settings="read"]');
+    expect(read?.querySelector(':scope > .banner.banner--bad')).not.toBeNull();
+    expect(read?.querySelector('.empty')).toBeNull();
+    await page.unmount();
+  });
+
   it('draws a business that holds no settings rows as empty, with no numbers', async () => {
     const api = server({ settings: () => json({ ok: true, settings: [] }) });
     const page = await mount(screen(api.fetch));

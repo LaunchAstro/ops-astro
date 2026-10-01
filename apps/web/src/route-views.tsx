@@ -6,7 +6,7 @@
 // nothing resolves. Their looks belong to MP-2-2, MP-2-6 and MP-2-10.
 
 import type { ReactElement } from 'react';
-import { Empty, type RailEntry } from '@launchastro/ui';
+import { Chip, Empty, type RailEntry } from '@launchastro/ui';
 import { CROSS_FACE, SECTIONS, fill, isLegacy, type Page, type PageMatch } from './manifest.ts';
 import { pathTo } from './routes.ts';
 import { RecordState } from './views/record-state.tsx';
@@ -44,11 +44,23 @@ export function RouteTabs(props: { readonly at: PageMatch }): ReactElement | nul
   );
 }
 
+/**
+ * A held address: the page is in the manifest and not built yet. The mockup's
+ * reserved-route placeholder keeps its page head (the route's label, and the
+ * chip below in the topbar); its body is the one empty state (DS-PRIM-28),
+ * since the placeholder page itself was retired (DS-COMP-36, R2 (a)).
+ */
 export const PagePlaceholder = (props: { readonly page: Page }): ReactElement => (
   <div className="readstate" data-outcome="placeholder" data-page={props.page.id}>
-    <Empty title={props.page.label} description={`This page is built by ${props.page.ticket}.`} />
+    <Empty
+      title={`${props.page.label} is not built yet.`}
+      description={`Its address is held for it. It is built by ${props.page.ticket}.`}
+    />
   </div>
 );
+
+/** A held address's page head says the page is not built yet (the one empty state's chip). */
+export const HeldChip = (): ReactElement => <Chip kind="outline">Not built yet</Chip>;
 
 /** Another business's client, an ungranted one and a missing one all read the same. */
 export const ClientRefused = (): ReactElement => (
@@ -70,18 +82,15 @@ export const ClientRefused = (): ReactElement => (
 export function NotFound(props: { readonly path: string }): ReactElement {
   return (
     <div className="readstate" data-outcome="not-found">
-      <p className="empty__title">
-        No screen is registered at {isLegacy(props.path) ? 'this address' : props.path}.
-      </p>
-      <p className="empty__desc">
-        The route registry is the list the application resolves through. An address that is not in
-        it does not resolve, which is a truer answer than a blank page.
-      </p>
-      <p className="empty__hint">
-        <a className="sb__addr" href={pathTo('agency:projects-board')}>
-          Go to Projects
-        </a>
-      </p>
+      <Empty
+        title={`No screen is registered at ${isLegacy(props.path) ? 'this address' : props.path}.`}
+        description="The route registry is the list the application resolves through. An address that is not in it does not resolve, which is a truer answer than a blank page."
+        action={
+          <a className="sb__addr" href={pathTo('agency:projects-board')}>
+            Go to Projects
+          </a>
+        }
+      />
     </div>
   );
 }

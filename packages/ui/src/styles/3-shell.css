@@ -689,3 +689,16 @@
   padding: var(--s-3) var(--s-5) 0;
   border-bottom: 1px solid var(--border);
 }
+
+/* The way on from a gate or an empty page: the mockup's `.sb__addr` door
+   (its 13 snaps to the data style, DS-TOK-124, as on the task page). */
+.empty__action .sb__addr {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  color: var(--text);
+  text-decoration: none;
+}
+.empty__action .sb__addr:is(:hover, :focus-visible) {
+  color: var(--accent);
+}

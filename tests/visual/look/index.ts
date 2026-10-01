@@ -11,6 +11,7 @@ import { GALLERY_LOOK } from './gallery.ts';
 import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
+import { STATES_SCREEN } from './states.ts';
 import { TASK } from './task.ts';
 import type { LookScreen } from './probe.ts';
 
@@ -23,4 +24,5 @@ export const LOOK_SCREENS: readonly LookScreen[] = [
   SETTINGS,
   SIGN_IN,
   GALLERY_LOOK,
+  STATES_SCREEN,
 ];

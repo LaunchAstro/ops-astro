@@ -156,11 +156,13 @@ async function checkProbe(
     say(`red ${name}: no mockup value pinned (run --measure)`, true);
     return;
   }
-  // A public page (sign-in) is measured signed out, as the harness draws it.
-  const signedIn = needsSession(probe.app.page) ? { session } : {};
+  // A public page (sign-in) is measured signed out, as the harness draws it;
+  // an address the probe names is drawn signed in.
+  const target = probe.app;
+  const signedIn = target.path !== undefined || needsSession(target.page) ? { session } : {};
   const side = await openSide(browser, packet, width, { app, ...signedIn, colorScheme: theme });
-  await answerMadeUp(side.context);
-  const address = addressOf(probe.app.page, { key: 'T-1' }) ?? '/';
+  await answerMadeUp(side.context, target.reads);
+  const address = target.path ?? addressOf(target.page, { key: 'T-1' }) ?? '/';
   const got = await measureOn(side, new URL(address, app).href, probe, 'app');
   if (got === null) {
     say(`red ${name}: the app draws no ${probe.app.selector}`, true);

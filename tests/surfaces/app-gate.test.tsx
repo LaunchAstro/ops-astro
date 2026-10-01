@@ -86,3 +86,40 @@ describe('the sign-in gate', () => {
     },
   );
 });
+
+// UI-STATES: a screen with nothing to draw is drawn as the one empty state
+// (DS-PRIM-28 `--block`), and a held address keeps the page head of the
+// mockup's reserved-route placeholder: the route's label and an outline chip
+// saying the page is not built (PAGE-MAP SHELL SH-40).
+describe('the screens with nothing to draw', () => {
+  it('draws an unregistered address as the one empty state, with the way on', async () => {
+    const view = await open('/nowhere/', true);
+    const empty = view.find('[data-outcome="not-found"] > .empty.empty--block');
+    expect(empty?.matches('[data-voice="no-rows"]')).toBe(true);
+    expect(empty?.querySelector('.empty__title')?.textContent).toBe(
+      'No screen is registered at /nowhere/.',
+    );
+    const way = empty?.querySelector('.empty__action a.sb__addr');
+    expect(way?.getAttribute('href')).toBe('/projects/');
+    expect(way?.textContent).toBe('Go to Projects');
+    await view.unmount();
+  });
+
+  it('draws a held address as its page head, the not-built chip and the one empty state', async () => {
+    const view = await open('/dashboard/', true);
+    expect(view.find('.topbar__title')?.textContent).toBe('Dashboard');
+    expect(view.find('.topbar__meta .chip.chip--outline')?.textContent).toBe('Not built yet');
+    const empty = view.find('[data-outcome="placeholder"] > .empty.empty--block');
+    expect(empty?.querySelector('.empty__title')?.textContent).toBe('Dashboard is not built yet.');
+    expect(empty?.querySelector('.empty__desc')?.textContent).toBe(
+      'Its address is held for it. It is built by MP-2-10.',
+    );
+    await view.unmount();
+  });
+
+  it('gives a built page no not-built chip', async () => {
+    const view = await open('/projects/', true);
+    expect(view.find('.topbar__meta .chip')).toBeNull();
+    await view.unmount();
+  });
+});
