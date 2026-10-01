@@ -7,7 +7,7 @@
 // the Projects page has a single tab there), and the inbox card (DS-COMP-7) on
 // a mockup page that draws a flush card with a head (`/agency/executive/`).
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './probe.ts';
 
 const PROJECTS = { path: '/agency/projects/' } as const;
 const APP = { page: 'agency:projects-board' } as const;

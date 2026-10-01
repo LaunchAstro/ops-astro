@@ -9,7 +9,7 @@
 // (TT-06) in both. The page's Status select (Stage 1 add) is the panel's
 // DS-PRIM-5 field select, so it is held to the panel's.
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './probe.ts';
 
 const WIDTHS = [1480, 900, 390] as const;
 const PAGE = { path: '/agency/task/?task=proj-grove-hours-copy' } as const;

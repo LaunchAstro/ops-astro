@@ -28,6 +28,16 @@ interface Deps {
   revisionOf(recordId: string): Promise<number>;
 }
 
+/** A client row of alpha's, so the link names a client of this business (C32). */
+async function newClient(world: World): Promise<string> {
+  const made = await world.db.admin.execute<{ readonly id: string }>(
+    `insert into public.clients (business_id, id, name, created_by_actor_id)
+     values ($1, gen_random_uuid(), $3, $2) returning id`,
+    [world.alpha, world.ada.actorId, `A matrix client ${randomUUID()}`],
+  );
+  return String(made[0]?.id);
+}
+
 /**
  * A task on a fresh client, with one person outside the membership standing
  * on that client through a party-scoped `task:read`: the client's existing
@@ -35,10 +45,7 @@ interface Deps {
  */
 async function clientTask({ world, freshTask, asPerson }: Deps, title: string): Promise<Task> {
   const task = await freshTask(title);
-  // The party link names a client of this business (C32), so one is made first.
-  const made = await asPerson('client.create', { name: `Client ${randomUUID().slice(0, 8)}` });
-  if (made.code !== 'ok') throw new Error(`matrix: client.create refused ${made.code}`);
-  const client = String((made.body['detail'] as Record<string, unknown>)['clientId']);
+  const client = await newClient(world);
   const set = await asPerson('task.set_party', {
     recordId: task.id,
     expectedRevision: task.revision,

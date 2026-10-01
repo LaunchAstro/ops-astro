@@ -3,6 +3,14 @@
 // A reply's parent in a task conversation (MP-4-5), for `task.comment` in
 // `tasks-comment.ts`: one level deep, in the message's audience, and never a
 // way to learn that a message the caller may not write in exists.
+//
+// R42: `parentId` names a top-level message on the same task,
+// read under its lock through the task: a reply to a reply, a message on
+// another task or in another business, or one already deleted is refused
+// naming `parentId`. A reply goes to its message's audience, so a client is
+// only ever shown the id of a client message. A reply to a client message
+// from the other side answers it (`comment answered`): the signal is derived
+// at read (`commentSignals`), and the reply's audit event is the record of it.
 
 import { lockComment, type TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand } from './refusal.ts';

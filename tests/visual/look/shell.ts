@@ -2,7 +2,7 @@
 //
 // B1, the shell and the left rail (SIDEBAR.md Part 2, DS-SIDE-11 to 13; PAGE-MAP SH-*).
 
-import type { LookScreen } from './index.ts';
+import type { LookScreen } from './probe.ts';
 
 const BOARD = { path: '/agency/projects/' } as const;
 const APP = { page: 'agency:projects-board' } as const;
