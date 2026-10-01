@@ -14,6 +14,7 @@ import {
 } from '../../packages/core-wire/src/index.ts';
 import type { Harness } from '../acceptance/role-case-harness.ts';
 import { both, refusedAlike } from '../cli/cli-parity.ts';
+import { type Call, ON_THE_PICKUP, pickupCalls } from './s0-5-readiness-agent-calls.ts';
 
 /** Bookkeeping every call writes; never content of its own. */
 const BOOKKEEPING: ReadonlySet<string> = new Set([
@@ -89,6 +90,18 @@ function changed(
   );
 }
 
+/** The agent's own calls (model.call, the hand-over and handback), made on one pickup. */
+let onThePickup: ReadonlyMap<string, Call> | undefined;
+
+async function callFor(declaration: CommandDeclaration): Promise<Call> {
+  if (declaration.name === 'delegation.revoke' || !ON_THE_PICKUP.has(declaration.name)) {
+    return { body: await bodyFor(declaration) };
+  }
+  // Made when first needed, after the revoke above has ended its own pickup.
+  onThePickup ??= await pickupCalls(harness);
+  return onThePickup.get(declaration.name)!;
+}
+
 async function bodyFor(declaration: CommandDeclaration): Promise<Record<string, unknown>> {
   if (declaration.name === 'delegation.revoke') {
     const task = await harness.freshTask(`s0-5 lock ${randomUUID()}`);
@@ -145,6 +158,20 @@ const MARKER_HELD: ReadonlySet<string> = new Set([
   'budget.top_up',
   'budget.record_outcome',
   'budget.write_off',
+  // SL12's: the plan's acceptance, the run's worker and its stop, and the
+  // conversation, each writing rows of its own beside the task.
+  'task.accept_plan',
+  'conversation.start',
+  'conversation.message',
+  'conversation.rename',
+  'conversation.set_scope',
+  'task.check',
+  'model.call',
+  'run.top_up',
+  'run.end_at_budget_stop',
+  'run.revise_state',
+  'run.delegate_child',
+  'run.child_handback',
 ]);
 
 /** Per task, a digest of every row that names it, in the tables the lock reads. */
@@ -186,10 +213,13 @@ async function taskNamedBy(body: Record<string, unknown>): Promise<string | unde
 /** Runs one content command's fixture; what is wrong with its marker, if anything. */
 export async function markerFaults(declaration: CommandDeclaration): Promise<string[]> {
   const { name } = declaration;
-  const body = await bodyFor(declaration);
+  const { body, credential } = await callFor(declaration);
   const [revisions, named, seq] = [await taskRevisions(), await rowsNaming(), await lastSeq()];
   const named0 = await taskNamedBy(body);
-  const answer = await harness.asPerson(name, body);
+  const answer =
+    credential === undefined
+      ? await harness.asPerson(name, body)
+      : await harness.asAgent(name, body, credential);
   if (answer.code !== 'ok') return [`${name}: its fixture was refused ${answer.code}`];
   const marked = await admin<{ subject: string }>(
     `select distinct a.subject_record_id::text as subject from audit_events a
