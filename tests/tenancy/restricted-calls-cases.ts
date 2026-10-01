@@ -31,13 +31,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['i', 'ops.api_events'],
   // 0048: the forwarder's kept alerts; the application holds nothing on them.
   ['', 'ops.api_alerts'],
-  ['s', 'ops.slots'],
+  // 0281: a map's frontier and summaries are read models its triggers write; versions are history.
+  ['s', 'ops.slots map_frontier map_summaries'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
-  ['si', 'alerts handback_reports operations run_events'],
-  // 0281: a map's versions are history; its summary and frontier are read
-  // models their triggers write, so the application only reads them.
-  ['si', 'map_versions'],
-  ['s', 'map_frontier map_summaries'],
+  ['si', 'alerts handback_reports map_versions operations run_events'],
   ['siu', 'map_components'],
   // A run's checks, append only as handback_reports is (MP-6-1).
   ['si', 'run_checks'],
