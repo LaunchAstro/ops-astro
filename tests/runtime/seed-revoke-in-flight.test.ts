@@ -71,6 +71,7 @@ describe.skipIf(serverUrl === undefined)('the seed and a pickup in flight', () =
   let noahGrantId: string;
   let reservationId: string;
   let noah: Identity;
+  let ada: Identity;
 
   const usersFile = (): string => join(root, '.local/synthetic-users.json');
   const users = (): SeededUser[] => JSON.parse(readFileSync(usersFile(), 'utf8')) as SeededUser[];
@@ -154,7 +155,7 @@ describe.skipIf(serverUrl === undefined)('the seed and a pickup in flight', () =
     noahGrantId = held[0]?.id ?? '';
 
     // Ada creates, proposes and approves; noah picks the work up himself.
-    const ada = await identity('ada@alpha.local');
+    ada = await identity('ada@alpha.local');
     noah = await identity('noah@alpha.local');
     const adaSubject = users().find((user) => user.email === 'ada@alpha.local')?.subject ?? '';
     const created = await executeCommand(
@@ -269,7 +270,8 @@ describe.skipIf(serverUrl === undefined)('the seed and a pickup in flight', () =
         claimant: 'person',
         personId: noah.personId,
         actorId: noah.actorId,
-        authorisedByPersonId: noah.personId,
+        // The approving person, as `tasks.pickup` names them; noah's write is his own.
+        authorisedByPersonId: ada.personId,
         reservationId,
         collection: TASK_COLLECTION,
         leaseSeconds: 600,
