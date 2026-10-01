@@ -15,10 +15,10 @@
 --   * the reservation is claimable: held, bound to no lease, its attempt
 --     reserved and unmarked, its version's gate approved, the version current,
 --     its lineage live and its task not in the trash;
---   * the approving person is the one named, from the latest approval;
 --   * the claimant's authority, read as pickup reads it, at the call's own
---     instant: a person claims as their own active actor under a live write
---     on the task; an active agent claims under
+--     instant: a person claims as their own active actor, under their own
+--     name, under a live write on the task (who approved is not asked); an
+--     active agent claims, named for the latest approval's person, under
 --     the delegation minted for this lease (its own, on this task, from the
 --     approving person, live, unbound, ending with the lease), and the
 --     approving person holds read, comment and write business-wide;
@@ -104,10 +104,12 @@ begin
    limit 1;
 
   if delegation is null then
-    -- A person, as their own actor, under their own live write on this task.
+    -- A person, as their own actor and under their own name, under their own
+    -- live write on this task. Who approved the work is not their authority.
     select a.person_id into subject_person
       from public.actors a
-     where a.business_id = business and a.id = holder and a.kind = 'person' and a.active;
+     where a.business_id = business and a.id = holder and a.kind = 'person' and a.active
+       and a.person_id = authorised_by;
     subject_actor := holder;
     needed := array['write'];
     on_task := true;
@@ -156,8 +158,9 @@ begin
      and (e.scope_kind = 'business'
           or (on_task and e.scope_kind = 'record' and e.scope_id = work.task_id));
 
-  if approver.decided_by_person_id is distinct from authorised_by or subject_person is null
-     or covered < cardinality(needed) then
+  if subject_person is null or covered < cardinality(needed)
+     or (delegation is not null and approver.decided_by_person_id is distinct from authorised_by)
+  then
     raise exception 'leases: the claimant''s authority does not cover this lease'
       using errcode = 'insufficient_privilege';
   end if;
