@@ -4,11 +4,15 @@
 // The board's category chips (P-13, M-04) read the stored category from the
 // row (`task.set_category`, CS-4.16): a catalogue id draws its label
 // (TASK_CATEGORIES), a stored value outside the list draws as stored, and a
-// task with none offers no chip.
+// task with none offers no chip. The categories are real: no chip and no
+// Category filter group carries the mock label, and a chip press sends reads only.
 
+import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Projects } from '../../apps/web/src/screens/Projects.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { READ_NAMES } from '../../apps/web/src/operations/read-names.ts';
+import { pathOf } from '../../packages/core-wire/src/index.ts';
 import { mount, settle, type Mounted } from './mount.tsx';
 
 let mounted: Mounted | undefined;
@@ -88,5 +92,33 @@ describe('the task category list on the Projects board', () => {
       chip.getAttribute('aria-label'),
     );
     expect(chips.toSorted()).toStrictEqual(['Legacy work', 'Paid Ads']);
+  });
+});
+
+const READ_PATHS = new Set<string>(READ_NAMES.map((name) => pathOf(name)));
+
+describe('the task category list on the Projects board: real, not mock', () => {
+  it('no category chip or Category filter group carries the mock label, and a press sends reads only', async () => {
+    const sent: Sent = [];
+    const board = await screen(sent);
+    const chips = [...board.host.querySelectorAll('.cbd__filters [data-preset^="cat-"]')];
+    expect(chips.length).toBe(2);
+    for (const chip of chips) expect(chip.closest('[data-provenance="mock"]')).toBeNull();
+    const category = [...board.host.querySelectorAll('.cbd__menu .cbd__menugrp')].find(
+      (one) => one.querySelector('.cbd__menuk')?.textContent === 'Category',
+    );
+    expect(category, 'the filter menu has no Category group').toBeDefined();
+    expect(category?.closest('[data-provenance="mock"]')).toBeNull();
+    expect(board.host.querySelector('.mocktag')).toBeNull();
+    await act(() => {
+      chips[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await settle();
+    // The tab's live stream listens; it sends nothing.
+    const asked = sent
+      .map((one) => one.url.replace(/^\/api\/b\/[^/]+/u, ''))
+      .filter((path) => !/^\/live(\/|\?|$)/u.test(path));
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.filter((path) => !READ_PATHS.has(path))).toStrictEqual([]);
   });
 });
