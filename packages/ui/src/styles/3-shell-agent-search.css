@@ -1,0 +1,279 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* The Agent panel (S5) and Search (C1), split out of `3-shell.css` when the main merge joined it
+   past the product file limit; imported straight after it, so the cascade order holds. */
+
+/* -- The Agent panel (S5) ------------------------------------------------
+   Docked, it is a grid TRACK beside the rail and the content; below 1280 it is
+   fixed and out of flow. Same parent in both forms, which is why it is a child
+   of the shell rather than of the document body. */
+.aipanel {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  width: min(400px, 92vw);
+  height: 100dvh;
+  border-left: 1px solid var(--border);
+  background: var(--rail-bg);
+  box-shadow: var(--shadow-overlay);
+}
+.aipanel[hidden] {
+  display: none;
+}
+@media not all and (max-width: 1439px) {
+  .shell[data-dock='seated'] .aipanel {
+    position: sticky;
+    inset: 0 auto auto auto;
+    width: var(--aip-dock);
+    height: 100vh;
+    box-shadow: none;
+  }
+}
+.aip__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.aip__id {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.aip__title {
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
+}
+.aip__hmodel {
+  margin-left: auto;
+  min-width: 0;
+}
+.aip__acts {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: 0.15rem;
+}
+.aip__actdiv {
+  flex: none;
+  width: 1px;
+  align-self: stretch;
+  margin: 0.15rem 0.25rem;
+  background: var(--border);
+}
+.aip__scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+}
+.aip__msg {
+  max-width: 92%;
+  padding: 0.6rem 0.8rem;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.aip__msg--ai {
+  align-self: flex-start;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.aip__msg--user {
+  align-self: flex-end;
+  background: var(--ink);
+  color: var(--paper);
+}
+.aip__msg--note {
+  background: transparent;
+  border: 1px dashed var(--border);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  color: var(--text-muted);
+}
+.aip__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0 var(--s-5) var(--s-3);
+}
+.aip__chip {
+  padding: 0.3em 0.75em;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  cursor: pointer;
+}
+.aip__inputrow {
+  display: flex;
+  align-items: stretch;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-5) var(--s-4);
+  border-top: 1px solid var(--border);
+}
+.aip__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  color: var(--text);
+  font: inherit;
+}
+.aip__tabs {
+  padding: var(--s-3) var(--s-5) 0;
+  border-bottom: 1px solid var(--border);
+}
+/* The conversation tab row's parts (AI-06 to AI-08). Each tab carries its own
+   close, shown on the selected tab and on hover or focus, and always at phone
+   width where there is no hover (DOCK D-10). */
+.aip__tab {
+  display: inline-flex;
+  align-items: center;
+}
+.aip__tabx,
+.aip__new,
+.aip__act {
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+}
+.aip__tabx {
+  opacity: 0;
+  padding: 0 0.2rem;
+}
+.aip__tab:hover .aip__tabx,
+.aip__tab:focus-within .aip__tabx,
+.aip__tab:has([aria-selected='true']) .aip__tabx {
+  opacity: 1;
+}
+@media (max-width: 640px) {
+  .aip__tabx {
+    opacity: 1;
+  }
+}
+.aip__new {
+  margin-left: auto;
+}
+.aip__tabx:hover,
+.aip__new:hover,
+.aip__act:hover {
+  color: var(--accent);
+}
+.cmtab--rename {
+  max-width: 18ch;
+  border: 1px solid var(--accent);
+  background: var(--paper);
+  color: var(--text);
+}
+/* Where the ask came from, and what each answer read (AI-11, AI-12). */
+.aip__cited {
+  margin: 0;
+  padding: var(--s-2) var(--s-5) 0;
+  color: var(--text-muted);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+.aip__cites {
+  margin: 0.4rem 0 0;
+  padding-left: 1rem;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+.aip__msg--failed {
+  border-color: var(--danger);
+}
+
+/* -- Search (C1): a modal palette over a scrim, one field, the hits the
+      scoped service answered. ------------------------------------------- */
+button.appbar__search {
+  font: inherit;
+  text-align: left;
+  opacity: 1;
+  cursor: text;
+}
+button.appbar__search:hover {
+  border-color: color-mix(in oklch, var(--on-dark) 22%, transparent);
+}
+.palette__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: var(--scrim);
+}
+.palette {
+  position: fixed;
+  top: 12vh;
+  left: 50%;
+  z-index: 91;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100vw - 2rem));
+  max-height: 70vh;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  box-shadow: var(--shadow-overlay);
+  transform: translateX(-50%);
+}
+.palette__field {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--s-4);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: var(--type-body-lg);
+  letter-spacing: var(--type-body-lg-tracking);
+  text-transform: var(--type-body-lg-case);
+}
+.palette__field:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.palette__list {
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.palette__hit {
+  display: flex;
+  gap: var(--s-3);
+  padding: 0.6rem var(--s-4);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.palette__hit[aria-selected='true'],
+.palette__hit:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.palette__key {
+  flex: none;
+  color: var(--ink-faint);
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
+}
+.palette__none {
+  margin: 0;
+  padding: var(--s-4);
+  color: var(--text-2);
+}
