@@ -34,11 +34,12 @@ const subjectDigest = (subject: string) => createHash('sha256').update(subject).
  * (see `FAILED_CODE_LIMIT`), through any business: codes sent (`recordCode`)
  * that the provider has not proved good, so a wrong one, one still at the
  * provider and one it answered with a fault, any of which may be wrong. A good
- * code, once proved, does not count. The provider holds one factor per login, so the count and its lock
- * are the login's (0072): an advisory lock on the subject's digest, the one
- * key named by login rather than business, taken first in the transaction
- * and held to the end of the one that records the code as sent, so requests
- * at once, in any business, are counted one after another.
+ * code, once proved, does not count. The provider holds one factor per login,
+ * so the count and its lock are the login's (0072): an advisory lock on the
+ * subject's digest, one of the two keys named by login rather than business
+ * (`advisoryLock`), taken first in the transaction and held to the end of the
+ * one that records the code as sent, so requests at once, in any business,
+ * are counted one after another.
  */
 export async function wrongCodeLock(
   tx: TenantQuery,
