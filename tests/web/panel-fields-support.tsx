@@ -47,7 +47,6 @@ export function serving(
       return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));
     }
     if (where.endsWith('/task/execution')) return Promise.resolve(json({ ok: false }));
-    // The person's own preferences (MP-4-4's show finished): none stored.
     if (where.endsWith('/preference/read'))
       return Promise.resolve(json({ ok: true, preferences: {} }));
     // The tab's one live stream (C4), unavailable here.
