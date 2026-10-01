@@ -10,10 +10,10 @@ import type { StepUpAsk } from '../records/use-money-command.ts';
 const SIX_DIGITS = /^\d{6}$/u;
 
 /** The six-digit field, which a phone fills from the authenticator app. */
-function CodeField(props: {
+export function CodeField(props: {
   readonly code: string;
   readonly onCode: (code: string) => void;
-  readonly ask: StepUpAsk;
+  readonly ask: Pick<StepUpAsk, 'because' | 'checking'>;
 }): ReactElement {
   const id = useId();
   const { because, checking } = props.ask;
