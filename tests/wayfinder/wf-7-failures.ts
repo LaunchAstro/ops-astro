@@ -95,13 +95,13 @@ export const runOn = async (
   return { runId: String(proposal['runId']), picked };
 };
 
-/** The agent hands the run back failed, under its lease. */
-export const fail = async (w: Schedules, picked: Detail): Promise<void> => {
+/** The agent hands the run back failed, under its lease, asking for `successor` if named. */
+export const fail = async (w: Schedules, picked: Detail, successor?: Detail): Promise<Detail> =>
   appliedDetail(
     await asAgent(
       w,
       {
-        ...handbackBody(picked),
+        ...handbackBody(picked, successor),
         outcome: 'failed',
         report: { summary: 'the source would not load' },
       },
@@ -109,7 +109,6 @@ export const fail = async (w: Schedules, picked: Detail): Promise<void> => {
     ),
     'task.handback',
   );
-};
 
 export const failedRun = async (w: Schedules, ticket: string, by?: Member): Promise<string> => {
   const { runId, picked } = await runOn(w, ticket, by);
