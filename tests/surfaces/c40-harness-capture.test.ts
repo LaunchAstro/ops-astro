@@ -11,6 +11,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Browser } from 'playwright';
 import { afterAll, describe, expect, it } from 'vitest';
 import { launchChromium } from '../support/chromium.ts';
 import {
@@ -22,7 +23,14 @@ import {
 } from '../visual/app-pages.ts';
 import { load, openSide } from '../visual/capture.ts';
 import { comparePng } from '../visual/compare.ts';
-import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
+import {
+  fetchAssets,
+  MODE,
+  readAssets,
+  readPacket,
+  themesOf,
+  type Packet,
+} from '../visual/packet.ts';
 import { addressOf, report } from '../visual/report.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'c40-captures-'));
@@ -36,6 +44,26 @@ const PAGES = {
   'agency:reset': '[data-reset="form"]',
 };
 
+/** Each page, loaded signed out at 390 (the reset page with its made-up link), draws its form. */
+async function formsDrawn(browser: Browser, packet: Packet, app: URL): Promise<void> {
+  const side = await openSide(browser, packet, 390, { app });
+  try {
+    for (const [page, drawn] of Object.entries(PAGES)) {
+      const address = `${addressOf(page, MADE_UP_PARAMS) ?? '/'}${PAGE_FRAGMENTS[page] ?? ''}`;
+      // oxlint-disable-next-line no-await-in-loop
+      const shown = await load(side, packet, new URL(address, app).href);
+      // oxlint-disable-next-line no-await-in-loop
+      await shown.waitForSelector(drawn, { timeout: 10_000 });
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await shown.locator(drawn).count(), page).toBe(1);
+      // oxlint-disable-next-line no-await-in-loop
+      await shown.close();
+    }
+  } finally {
+    await side.context.close();
+  }
+}
+
 describe('C40 pages on the width-and-theme harness (MP-1-7)', () => {
   it('C40 harness capture: Forgot password and Set password, signed out, in light and dark at 1480, 900 and 390', async () => {
     const packet = readPacket();
@@ -43,7 +71,8 @@ describe('C40 pages on the width-and-theme harness (MP-1-7)', () => {
     const browser = await launchChromium(MODE);
     const { app, close } = await serveApp();
     try {
-      const out = join(scratch, 'c40');
+      // A reviewer's copy of the pictures, when asked for; the scratch folder otherwise.
+      const out = process.env['C40_CAPTURES'] ?? join(scratch, 'c40');
       const session = madeUpSession(app, out);
       const themes = themesOf(packet);
       expect(themes).toContain('dark');
@@ -72,22 +101,7 @@ describe('C40 pages on the width-and-theme harness (MP-1-7)', () => {
         }
       }
       // The pictures are of each page's own form, drawn signed out.
-      const side = await openSide(browser, packet, 390, { app });
-      try {
-        for (const [page, drawn] of Object.entries(PAGES)) {
-          const address = `${addressOf(page, MADE_UP_PARAMS) ?? '/'}${PAGE_FRAGMENTS[page] ?? ''}`;
-          // oxlint-disable-next-line no-await-in-loop
-          const shown = await load(side, packet, new URL(address, app).href);
-          // oxlint-disable-next-line no-await-in-loop
-          await shown.waitForSelector(drawn, { timeout: 10_000 });
-          // oxlint-disable-next-line no-await-in-loop
-          expect(await shown.locator(drawn).count(), page).toBe(1);
-          // oxlint-disable-next-line no-await-in-loop
-          await shown.close();
-        }
-      } finally {
-        await side.context.close();
-      }
+      await formsDrawn(browser, packet, app);
     } finally {
       await browser.close();
       await close();

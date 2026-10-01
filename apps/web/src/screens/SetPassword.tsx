@@ -22,9 +22,14 @@ import { useEffect, useRef, useState, type FormEvent, type ReactElement } from '
 import { Banner, Button, FieldError } from '@launchastro/ui';
 import { pathTo } from '../routes.ts';
 import { recoveryTokenOf, setPassword, verifyRecovery } from '../session/recovery.ts';
-import type { OpenContext } from '../screen-registry.tsx';
 
-type SetApp = Omit<OpenContext, 'fragment'>;
+/** What the page needs of the application: the provider and the API, and where to go next. */
+interface SetApp {
+  readonly gotrueUrl: string;
+  readonly apiOrigin: string;
+  readonly fetch: typeof globalThis.fetch;
+  readonly navigate: (path: string, options?: { readonly replace?: boolean }) => void;
+}
 
 /** The password bounds, as the API checks them: 12 to 72 bytes. */
 const LEAST = 12;
@@ -67,56 +72,29 @@ function Done(props: { readonly ended: Ended; readonly app: SetApp }): ReactElem
   );
 }
 
-export function SetPassword(props: {
-  readonly fragment: string;
-  readonly app: SetApp;
-}): ReactElement {
-  // Read once: the address loses its fragment below, and the page keeps the token.
-  const [token] = useState(() => recoveryTokenOf(props.fragment));
-  const bearer = useRef<string | null>(null);
-  const [password, setValue] = useState('');
-  const [because, setBecause] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [ended, setEnded] = useState<Ended | null>(token === null ? 'invalid' : null);
-  const { fragment, app } = props;
+/** Takes the token off the address once, so it is not left in the address bar or the history. */
+function useOffTheAddress(fragment: string, app: SetApp): void {
   const cleared = useRef(false);
   useEffect(() => {
     if (cleared.current || fragment === '') return;
     cleared.current = true;
     app.navigate(pathTo('agency:reset'), { replace: true });
   }, [fragment, app]);
-  if (ended !== null || token === null) return <Done ended={ended ?? 'invalid'} app={app} />;
+}
 
-  const send = async (): Promise<void> => {
-    if (bearer.current === null) {
-      const verified = await verifyRecovery(app, token);
-      if (!verified.ok) {
-        if (verified.why === 'invalid') setEnded('invalid');
-        else setBecause(UNAVAILABLE);
-        return;
-      }
-      bearer.current = verified.bearer;
-    }
-    const outcome = await setPassword(app, bearer.current, password);
-    if (outcome === 'done' || outcome === 'invalid') setEnded(outcome);
-    else setBecause(outcome === 'password' ? BOUNDS : UNAVAILABLE);
-  };
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    const bytes = new TextEncoder().encode(password).length;
-    const outOfBounds = bytes < LEAST || bytes > MOST;
-    setBecause(outOfBounds ? BOUNDS : null);
-    if (outOfBounds) return;
-    setBusy(true);
-    void send().finally(() => {
-      setBusy(false);
-    });
-  };
-
+/** The form, its password paired with its error the way the Enrol page pairs its own. */
+function PasswordForm(props: {
+  readonly password: string;
+  readonly because: string | null;
+  readonly busy: boolean;
+  readonly onChange: (value: string) => void;
+  readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}): ReactElement {
+  const { because } = props;
+  const busy = props.busy ? 'Setting it…' : undefined;
   return (
     <div className="signin">
-      <form className="signin__form taskform" data-reset="form" onSubmit={onSubmit}>
+      <form className="signin__form taskform" data-reset="form" onSubmit={props.onSubmit}>
         <h2 className="tpr__title">Set a new password</h2>
         <p className="field__hint">
           Choose a new password for your login. Setting it signs you out everywhere, and you then
@@ -134,9 +112,9 @@ export function SetPassword(props: {
             required
             aria-invalid={because !== null}
             aria-describedby={because === null ? undefined : 'reset-password-error'}
-            value={password}
+            value={props.password}
             onChange={(event) => {
-              setValue(event.target.value);
+              props.onChange(event.target.value);
             }}
           />
         </div>
@@ -145,10 +123,53 @@ export function SetPassword(props: {
             <FieldError controlId="reset-password" say={because} />
           </div>
         )}
-        <Button variant="primary" size="md" type="submit" busy={busy ? 'Setting it…' : undefined}>
+        <Button variant="primary" size="md" type="submit" busy={busy}>
           Set password
         </Button>
       </form>
     </div>
   );
+}
+
+export function SetPassword(props: {
+  readonly fragment: string;
+  readonly app: SetApp;
+}): ReactElement {
+  const { app } = props;
+  // Read once: the address loses its fragment, and the page keeps the token.
+  const [token] = useState(() => recoveryTokenOf(props.fragment));
+  const bearer = useRef<string | null>(null);
+  const [password, setValue] = useState('');
+  const [because, setBecause] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [ended, setEnded] = useState<Ended | null>(token === null ? 'invalid' : null);
+  useOffTheAddress(props.fragment, app);
+  if (ended !== null || token === null) return <Done ended={ended ?? 'invalid'} app={app} />;
+
+  const send = async (): Promise<void> => {
+    if (bearer.current === null) {
+      const verified = await verifyRecovery(app, token);
+      if (!verified.ok) {
+        if (verified.why === 'invalid') setEnded('invalid');
+        else setBecause(UNAVAILABLE);
+        return;
+      }
+      bearer.current = verified.bearer;
+    }
+    const outcome = await setPassword(app, bearer.current, password);
+    if (outcome === 'done' || outcome === 'invalid') setEnded(outcome);
+    else setBecause(outcome === 'password' ? BOUNDS : UNAVAILABLE);
+  };
+  const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    const bytes = new TextEncoder().encode(password).length;
+    const outOfBounds = bytes < LEAST || bytes > MOST;
+    setBecause(outOfBounds ? BOUNDS : null);
+    if (outOfBounds) return;
+    setBusy(true);
+    void send().finally(() => {
+      setBusy(false);
+    });
+  };
+  return <PasswordForm {...{ password, because, busy, onSubmit }} onChange={setValue} />;
 }

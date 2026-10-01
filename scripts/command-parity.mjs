@@ -42,18 +42,8 @@ const TRANSPORTS = new Map([
     'session/sign-in.ts',
     ['request.fetch(url, {', 'request.fetch(`${request.apiOrigin}${path}`, {'],
   ],
-  // a forgotten password (C40): the ask and the set at the API, the link's verify at the sign-in
-  // provider; a password, not a record
-  [
-    'session/recovery.ts',
-    [
-      "'/api/password/reset'",
-      "'/api/password/set'",
-      'route.fetch(`${route.apiOrigin}${PASSWORD_RESET_API}`, {',
-      'request.fetch(url, {',
-      'route.fetch(`${route.apiOrigin}${PASSWORD_SET_API}`, {',
-    ],
-  ],
+  // a forgotten password (C40): the ask and the set at the API, the link's verify at the provider
+  ['session/recovery.ts', ["'/api/password/'", 'route.fetch(url, {', 'request.fetch(url, {']],
   // asks where to sign in before there is a session, and hands the app its fetch
   ['main.tsx', ["window.fetch('/api/sign-in')", 'window.fetch.bind(window)']],
   // wraps that fetch for the sign-in address only, adding the public key: a session, not a record

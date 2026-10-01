@@ -11,27 +11,35 @@
 // it as the bearer of one request, the new password, to the API. Nothing here
 // logs, and neither the token nor the bearer is ever put in an address.
 
-/** The API's ask (`apps/api/password-set.ts`): `{ address }`, answered 200 `{}` whatever it is. */
-export const PASSWORD_RESET_API = '/api/password/reset';
-
-/** The API's set (`apps/api/password-set.ts`): `{ password }` with the recovery session's bearer. */
-export const PASSWORD_SET_API = '/api/password/set';
+// The API's two routes (`apps/api/password-set.ts`): `reset`, the ask, answered 200 `{}` whatever
+// the address; `set`, the new password with the recovery session's bearer.
+const PASSWORD_API = '/api/password/';
 
 interface Route {
   readonly apiOrigin: string;
   readonly fetch: typeof globalThis.fetch;
 }
 
+/** One POST of a JSON body to one of the two routes, with no cookie. */
+async function toApi(
+  route: Route,
+  which: 'reset' | 'set',
+  body: Readonly<Record<string, string>>,
+  extra: Readonly<Record<string, string>> = {},
+): Promise<Response> {
+  const url = `${route.apiOrigin}${PASSWORD_API}${which}`;
+  return await route.fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...extra },
+    credentials: 'omit',
+    body: JSON.stringify(body),
+  });
+}
+
 /** Whether the ask reached the API; what it answered says nothing about the address. */
 export async function askReset(route: Route, address: string): Promise<boolean> {
   try {
-    const answer = await route.fetch(`${route.apiOrigin}${PASSWORD_RESET_API}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'omit',
-      body: JSON.stringify({ address }),
-    });
-    return answer.ok;
+    return (await toApi(route, 'reset', { address })).ok;
   } catch {
     return false;
   }
@@ -84,12 +92,7 @@ export async function setPassword(
   password: string,
 ): Promise<SetOutcome> {
   try {
-    const answer = await route.fetch(`${route.apiOrigin}${PASSWORD_SET_API}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${bearer}` },
-      credentials: 'omit',
-      body: JSON.stringify({ password }),
-    });
+    const answer = await toApi(route, 'set', { password }, { authorization: `Bearer ${bearer}` });
     if (answer.ok) return 'done';
     const body: unknown = await answer.json().catch(() => {});
     const code = (body as { code?: unknown } | undefined)?.code;
