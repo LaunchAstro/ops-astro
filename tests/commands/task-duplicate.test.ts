@@ -80,13 +80,13 @@ async function expectShellOnly(taskId: string): Promise<void> {
     null,
     false,
   ]);
-  expect([task?.comments, task?.tags]).toStrictEqual([[], []]);
+  expect([task?.comments.length, task?.tags.length]).toStrictEqual([0, 0]);
   expect(task?.history.map((one) => one.operation)).toStrictEqual(['task.duplicate']);
   const board = await boardOf(owner);
   const rows = isCommandRefusal(board) || !('tasks' in board) ? [] : board.tasks;
   const row = rows.find((one: { id: string }) => one.id === taskId);
   expect(row).toBeDefined();
-  for (const body of [read, row]) expect(JSON.stringify(body)).not.toContain(CANARY);
+  for (const body of [read, row]) expect(JSON.stringify(body)).not.toContain(CANARY.slice(0, 40));
 }
 
 describe.skipIf(serverUrl === undefined)('MP-4-8 duplicate carries only the shell', () => {

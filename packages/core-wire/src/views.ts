@@ -46,6 +46,11 @@ export interface HistoryEntry {
   /** The person's display name for a person's actor; null for any other. */
   readonly actorName: string | null;
   readonly operation: string;
+  /**
+   * On a `task.duplicate` entry only (MP-4-8): the task it was duplicated
+   * from, for a reader who holds read on that task now; null for anyone else.
+   */
+  readonly duplicatedFrom?: string | null;
 }
 
 /** A task in a list. Everything the detail has except the long text and the history. */

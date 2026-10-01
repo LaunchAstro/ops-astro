@@ -27,13 +27,15 @@ const commentOn = async (taskId: string): Promise<CommandResult> =>
   await as(alpha, owner, {
     command: 'task.comment',
     recordId: taskId,
+    expectedRevision: await revisionOf(taskId),
     body: CANARY,
     audience: 'internal',
-    commentType: 'comment',
+    commentType: 'note',
   });
 
 const tagged = async (taskId: string): Promise<CommandResult> => {
-  const tag = await as(alpha, owner, { command: 'tag.create', name: CANARY });
+  // A tag name holds 40 characters: the canary's first 40, which the shell case looks for.
+  const tag = await as(alpha, owner, { command: 'tag.create', name: CANARY.slice(0, 40) });
   const tagId = isCommandRefusal(tag) ? '' : String(tag.recordId ?? tag.detail?.['tagId'] ?? '');
   return await as(alpha, owner, { command: 'task.add_tag', recordId: taskId, tagId });
 };
@@ -90,7 +92,7 @@ export const DECLARED: Readonly<
       await as(alpha, owner, { command: 'time.log', taskId, duration: '30m', note: CANARY }),
   },
   'tag.create': { carry: 'not carried', plant: tagged },
-  'task.add_tag': { carry: 'not carried', plant: tagged },
+  'task.add_tag': { carry: 'not carried', plant: 'planted by the tag.create row, which adds it' },
   'task.complete': { carry: 'not carried', plant: 'ends the old task; task.start plants state' },
   'task.reopen': { carry: 'not carried', plant: 'needs a completed task; state as task.start' },
   'task.set_state': { carry: 'not carried', plant: 'state, planted by task.start' },

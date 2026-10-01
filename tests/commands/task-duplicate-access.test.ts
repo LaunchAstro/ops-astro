@@ -68,10 +68,18 @@ async function expectNoWayBack(reader: Member, taskId: string, old: string): Pro
     expect(JSON.stringify(body)).not.toContain(old);
     expect(JSON.stringify(body)).not.toContain(CANARY);
   }
-  expect(isCommandRefusal(read) || !('task' in read) ? null : read.task.history[0]).toMatchObject({
-    operation: 'task.duplicate',
-    duplicatedFrom: null,
-  });
+  // A member reads the history: duplicated, and not from where. Client B's
+  // person reads the shared view, which carries no history at all.
+  const shown = isCommandRefusal(read) ? undefined : read;
+  if (shown !== undefined && 'task' in shown) {
+    expect(shown.task.history[0]).toMatchObject({
+      operation: 'task.duplicate',
+      duplicatedFrom: null,
+    });
+  } else {
+    expect(shown !== undefined && 'sharedTask' in shown).toBe(true);
+    expect(JSON.stringify(shown)).not.toContain('task.duplicate');
+  }
   // The old task, looked up directly, answers as a task that never was.
   const lookup = await detailOf(reader, old);
   const never = await detailOf(reader, randomUUID());

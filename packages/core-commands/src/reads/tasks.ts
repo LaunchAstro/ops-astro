@@ -30,10 +30,9 @@ import {
   tagsOfTask,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
+import type { SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
 import type { BoardTask, InternalCommentView } from '../../../core-wire/src/index.ts';
 import { openEnvelopeOf } from '../../../core-runtime/src/index.ts';
-import { READS } from '../../../core-wire/src/index.ts';
 import { readAlerts } from '../../../core-runtime/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
@@ -43,6 +42,7 @@ import { readActualMinutes } from './board-time.ts';
 import { readTaskRank, type RankPool } from './rank.ts';
 import { readBoardCrumb } from './board-crumb.ts';
 import { readTaskSteps } from './steps.ts';
+import { historyOf } from './task-history.ts';
 import { readTaskAgents } from './task-agents.ts';
 import { NO_AGENTS, readBoardAgents } from './board-agents.ts';
 
@@ -137,62 +137,6 @@ export function summaryOf(row: TaskRowRead): TaskSummary {
     completedAt: row.completed_at === null ? null : row.completed_at.toISOString(),
     revision: Number(row.revision),
   };
-}
-
-/** The declared reads, from the surface, so a read added later is excluded by declaring it. */
-const READ_COMMANDS: readonly string[] = [...READS];
-
-/**
- * The applied attempts against this record, in the order they happened.
- *
- * Refused and replayed attempts are left out: history is what happened to the
- * task, and a refusal did not happen to it. They stay in `audit_events`, which
- * is where an operator looks and where the refusal evidence for N1 to N7 comes
- * from.
- */
-async function historyOf(
-  tx: TenantQuery,
-  recordId: string,
-  internal: boolean,
-): Promise<readonly HistoryEntry[]> {
-  const rows = await tx.query<{
-    readonly occurred_at: Date;
-    readonly actor_id: string;
-    readonly command: string;
-    readonly actor_kind: string | null;
-    readonly actor_name: string | null;
-  }>(
-    // The writes only. Reads are audited now (I13) and they carry the record
-    // they looked at, which is what makes "who read this" answerable at all —
-    // but a history is what *happened to* the task, and a read happened to
-    // nobody. The two questions share one chain and are not the same question,
-    // so the projection names the outcomes it wants rather than taking every
-    // row that mentions the record.
-    //
-    // Who is the actor's kind and, for a person's actor, that person's name,
-    // joined inside this business: an actor or a person of another business
-    // matches nothing (MP-4-16).
-    `select e.occurred_at, e.actor_id, e.command, a.kind as actor_kind,
-            case when a.kind = 'person' then p.display_name end as actor_name
-       from public.audit_events e
-       left join public.actors a on a.business_id = e.business_id and a.id = e.actor_id
-       left join public.people p on p.business_id = a.business_id and p.id = a.person_id
-      where e.business_id = $1 and e.subject_record_id = $2 and e.outcome = 'applied'
-        and e.command <> all($3::text[])
-      order by e.seq`,
-    // A reader outside the business is not shown that a comment was written:
-    // its comments carry only what the catalogue shares, and an internal
-    // note's author and time in the history would be the note, hidden rather
-    // than absent (API.md, the agent's task.read).
-    [tx.businessId, recordId, internal ? READ_COMMANDS : [...READ_COMMANDS, 'task.comment']],
-  );
-  return rows.map((row) => ({
-    at: row.occurred_at.toISOString(),
-    actorId: row.actor_id,
-    actorKind: row.actor_kind,
-    actorName: row.actor_name,
-    operation: row.command,
-  }));
 }
 
 /**
@@ -310,7 +254,7 @@ export async function readTaskDetail(
     agentBrief: row.agent_brief,
     pageLink: row.page_link,
     estimateMinutes: row.estimated_minutes === null ? null : Number(row.estimated_minutes),
-    history: await historyOf(tx, row.id, comments.internal),
+    history: await historyOf(tx, row.id, comments.internal, rankPool),
     comments: await commentsFor(tx, comments.commentTypeId, row.id, comments),
     // The proposals go to every reader of the detail, internal or external,
     // because the projection carries no comment body and no field value the

@@ -252,6 +252,14 @@ const ROWS = [
     source: 'contract 4.3',
     runtime: true,
   },
+  // A duplicate's carried title or step name names the old task's client
+  // (MP-4-8, owner line 76): nothing is created until the person confirms it.
+  {
+    code: 'CARRIED_TEXT_NAMES_CLIENT',
+    status: 409,
+    meaning: 'Text carried from the old task names its client, unconfirmed',
+    source: 'MP-4-8',
+  },
   // The operation is declared and what it rests on has not been built. Not a
   // permission problem and not a bad request, and saying so is the honest answer
   // rather than a 404 that reads as "no such endpoint".

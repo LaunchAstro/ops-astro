@@ -401,6 +401,12 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
       return rows[0] === undefined ? undefined : { kind: 'record', id: rows[0].id };
     },
   ],
+  // MP-4-8: a duplicate is asked of the client it creates for, at party
+  // scope; a body naming no client is asked of the business.
+  'task.duplicate': [
+    'client',
+    (_tx, id) => Promise.resolve({ kind: 'party', id: id.toLowerCase() }),
+  ],
   'delegation.revoke': [
     'delegationId',
     (tx, id) =>

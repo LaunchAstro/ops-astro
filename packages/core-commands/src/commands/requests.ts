@@ -81,6 +81,16 @@ export type CommandRequest =
   | ({ readonly command: 'task.reopen'; readonly reason: string } & Targeted)
   | ({ readonly command: 'task.start' } & Targeted)
   | ({ readonly command: 'task.set_state'; readonly stateId: string } & Targeted)
+  // Duplicate without contents (MP-4-8): the old task, the chosen client and
+  // the shell as the person edited it. `stepNames` is checked by its handler.
+  | ({
+      readonly command: 'task.duplicate';
+      readonly recordId: string;
+      readonly client: string | null;
+      readonly title: string;
+      readonly stepNames: unknown;
+      readonly confirmCarried?: boolean;
+    } & Envelope)
   // A comment, its edit and its deletion (MP-4-5), in `requests-comments.ts`.
   | CommentRequest<Targeted>
   // A proposal is a record beside the task and targets it, so it names the

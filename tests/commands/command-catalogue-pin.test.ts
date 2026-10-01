@@ -41,6 +41,10 @@
 // The ninth is the status select's `task.set_state`: a targeted write an
 // agent never reaches, to `setStateById` with its state id, one row each in
 // the tables that list every write.
+// The tenth is MP-4-8's `task.duplicate`: an untargeted write naming the old
+// task in `recordId`, an agent never reaches it, to `duplicateTask` with its
+// request, one row each in the tables that list every write, every untargeted
+// one or every operation with no expected revision.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -92,6 +96,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-adhoc.ts', async (origi
 vi.mock('../../packages/core-commands/src/commands/tasks-party.ts', async (original) => ({
   ...(await original<object>()),
   setParty: recorder('setParty'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-duplicate.ts', async (original) => ({
+  ...(await original<object>()),
+  duplicateTask: recorder('duplicateTask'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-client-access.ts', async (original) => ({
   ...(await original<object>()),
@@ -218,6 +226,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'task.handback': ['leaseId'],
   'task.heartbeat': ['leaseId'],
   'task.dispatch': ['leaseId'],
+  'task.duplicate': ['recordId'],
   'task.observe': ['leaseId', 'attemptId'],
   'task.pickup': ['reservationId'],
   'task.purge': [],
@@ -258,6 +267,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.create',
   'task.decide',
   'task.dispatch',
+  'task.duplicate',
   'task.execution',
   'task.handback',
   'task.heartbeat',
@@ -347,6 +357,14 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.handback', operationId: 'op', leaseId: 'l', fence: 2, outcome: 'done' },
   { command: 'task.start', operationId: 'op', recordId: 'r' },
   { command: 'task.set_state', operationId: 'op', recordId: 'r', stateId: 'state' },
+  {
+    command: 'task.duplicate',
+    operationId: 'op',
+    recordId: 'r',
+    client: null,
+    title: 't-duplicate',
+    stepNames: [],
+  },
   { command: 'task.assign', operationId: 'op', recordId: 'r', fields: { assignee: 'f-assign' } },
   { command: 'task.triage', operationId: 'op', recordId: 'r', fields: { intake: 'f-triage' } },
   { command: 'task.set_stage', operationId: 'op', recordId: 'r', fields: { stage: 'f-stage' } },
@@ -438,6 +456,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.handback': ['handbackOwnLease', 'request'],
   'task.start': ['setState', 'started'],
   'task.set_state': ['setStateById', 'state'],
+  'task.duplicate': ['duplicateTask', 'request'],
   'task.assign': ['writeOwnedFields', 'task.assign', { assignee: 'f-assign' }],
   'task.triage': ['writeOwnedFields', 'task.triage', { intake: 'f-triage' }],
   'task.set_stage': ['writeOwnedFields', 'task.set_stage', { stage: 'f-stage' }],
@@ -524,7 +543,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same forty-one from an expected revision', () => {
+  it('exempts the same forty-two from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
