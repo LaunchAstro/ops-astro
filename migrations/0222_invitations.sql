@@ -131,9 +131,12 @@ create policy tenancy_invitation_delivery_attempts on public.invitation_delivery
 create policy authority_invitation_delivery_attempts on public.invitation_delivery_attempts
   as permissive for all using (true) with check (true);
 
--- The invitation moves (state, ended_at, expires_at, revision). A token and
--- an attempt's observations are written once and never rewritten here; the
--- enrolment that spends a token (P3) brings its own grant.
-grant select, insert, update on public.invitations to ops_astro_app;
+-- The invitation moves by these four columns alone (state, ended_at,
+-- expires_at, revision): who it is for, its role, its address and who made it
+-- are fixed at create. A token and an attempt's observations are written once
+-- and never rewritten here; the enrolment that spends a token (P3) brings its
+-- own grant.
+grant select, insert on public.invitations to ops_astro_app;
+grant update (state, ended_at, expires_at, revision) on public.invitations to ops_astro_app;
 grant select, insert on public.enrolment_tokens to ops_astro_app;
 grant select, insert on public.invitation_delivery_attempts to ops_astro_app;
