@@ -53,6 +53,11 @@ export interface ShellProps {
    * then there is no app strip: it is the signed-in person's chrome.
    */
   readonly person?: ReactNode;
+  /**
+   * The section's tab row (DS-COMP-2), drawn between the app strip and the
+   * page header as the mockup draws it. Absent on a page without siblings.
+   */
+  readonly tabs?: ReactNode;
   /** Whether the rail's drawer is open at 900 and below. The drawer is shut when absent. */
   readonly navOpen?: boolean;
   /** Opens or shuts the rail's drawer; without it no hamburger is drawn. */
@@ -189,9 +194,11 @@ export function Shell(props: ShellProps): ReactElement {
       ) : null}
 
       <main className="main">
-        {/* The app strip and the page header travel together and stick as one. */}
+        {/* The app strip, the tab row and the page header travel together and
+            stick as one. */}
         <div className="chrome">
           {props.person === undefined ? null : <AppStrip {...props} />}
+          {props.tabs}
           <header className="topbar">
             {props.onNav === undefined ? null : (
               <button

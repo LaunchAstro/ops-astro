@@ -52,6 +52,16 @@ describe('UI-POLISH B1 shell chrome', () => {
     await page.unmount();
   });
 
+  it('draws the tab row between the app strip and the page header', async () => {
+    const page = await mount(
+      <Shell {...BASE} person={<span />} tabs={<nav className="routetabs" />} />,
+    );
+    const parts = [...(page.find('.main > .chrome')?.children ?? [])].map((el) => el.className);
+    expect(parts).toEqual(['appbar', 'routetabs', 'topbar']);
+    expect(page.find('.content .routetabs')).toBeNull();
+    await page.unmount();
+  });
+
   it('draws no app strip when nobody is signed in', async () => {
     const page = await mount(<Shell {...BASE} />);
     expect(page.find('.appbar')).toBeNull();

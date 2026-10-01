@@ -7,6 +7,9 @@
 import type { LookScreen } from './probe.ts';
 
 const BOARD = { path: '/agency/projects/' } as const;
+// The mockup's Projects page has no tab row and the app's has one (Projects,
+// Reviews), so every height under the strip is held to a mockup page with one.
+const TABBED = { path: '/dashboard/portfolio/' } as const;
 const APP = { page: 'agency:projects-board' } as const;
 const ALL = [1480, 900, 390] as const;
 const NARROW = [900, 390] as const;
@@ -161,14 +164,29 @@ export const SHELL: LookScreen = {
       id: 'shell.topbar',
       mockup: { ...BOARD, selector: '.topbar' },
       app: { ...APP, selector: '.topbar' },
-      props: [
-        'border-bottom-color',
-        'padding-top',
-        'padding-left',
-        'padding-right',
-        'box.x',
-        'box.y',
-      ],
+      props: ['border-bottom-color', 'padding-top', 'padding-left', 'padding-right', 'box.x'],
+      widths: ALL,
+    },
+    {
+      // DS-COMP-2: the tab row sits between the app strip and the page header.
+      id: 'shell.tabrow',
+      mockup: { ...TABBED, selector: 'nav.tabbar' },
+      app: { ...APP, selector: 'nav.routetabs' },
+      props: ['padding-left', 'box.x', 'box.y', 'box.width', 'box.height'],
+      widths: ALL,
+    },
+    {
+      id: 'shell.tabrow-first',
+      mockup: { ...TABBED, selector: '.tabbar__t:first-of-type' },
+      app: { ...APP, selector: 'nav.routetabs a:first-of-type' },
+      props: ['box.x', 'box.y', 'box.height'],
+      widths: ALL,
+    },
+    {
+      id: 'shell.topbar-y',
+      mockup: { ...TABBED, selector: '.topbar' },
+      app: { ...APP, selector: '.topbar' },
+      props: ['box.y'],
       widths: ALL,
     },
     {
@@ -188,31 +206,27 @@ export const SHELL: LookScreen = {
     // At 900 the board's controls share the title's row and set its height, so
     // the title's and the hamburger's heights are held at 1480 and 390. The
     // title's line is 1.1 where the mockup's is 1.15 (DS-TOK-50 folds 1.15 into
-    // --lh-title), so it sits half a pixel lower and rounds one pixel down.
+    // --lh-title), so at 390 it sits half a pixel lower and rounds one pixel down.
     {
       id: 'shell.page-title-y',
-      mockup: { ...BOARD, selector: '.topbar h1' },
+      mockup: { ...TABBED, selector: '.topbar h1' },
       app: { ...APP, selector: '.topbar h1' },
       props: ['box.y'],
-      ruled: [
-        { at: 'box.y@light', want: '61', why: 'DS-TOK-50' },
-        { at: 'box.y@dark', want: '61', why: 'DS-TOK-50' },
-      ],
     },
     {
       id: 'shell.page-title-y-phone',
-      mockup: { ...BOARD, selector: '.topbar h1' },
+      mockup: { ...TABBED, selector: '.topbar h1' },
       app: { ...APP, selector: '.topbar h1' },
       props: ['box.y'],
       widths: [390],
       ruled: [
-        { at: 'box.y@light', want: '60', why: 'DS-TOK-50' },
-        { at: 'box.y@dark', want: '60', why: 'DS-TOK-50' },
+        { at: 'box.y@light', want: '103', why: 'DS-TOK-50' },
+        { at: 'box.y@dark', want: '103', why: 'DS-TOK-50' },
       ],
     },
     {
       id: 'shell.navtoggle-y',
-      mockup: { ...BOARD, selector: '.topbar .navtoggle' },
+      mockup: { ...TABBED, selector: '.topbar .navtoggle' },
       app: { ...APP, selector: '.topbar .navtoggle' },
       props: ['box.y'],
       widths: [390],

@@ -464,48 +464,138 @@
         "padding-top": "12px",
         "padding-left": "32px",
         "padding-right": "56px",
-        "box.x": "224",
-        "box.y": "45"
+        "box.x": "224"
       },
       "1480-dark": {
         "border-bottom-color": "rgba(245,245,245,26)",
         "padding-top": "12px",
         "padding-left": "32px",
         "padding-right": "56px",
-        "box.x": "224",
-        "box.y": "45"
+        "box.x": "224"
       },
       "900-light": {
         "border-bottom-color": "rgba(0,0,0,31)",
         "padding-top": "12px",
         "padding-left": "32px",
         "padding-right": "32px",
-        "box.x": "0",
-        "box.y": "45"
+        "box.x": "0"
       },
       "900-dark": {
         "border-bottom-color": "rgba(245,245,245,26)",
         "padding-top": "12px",
         "padding-left": "32px",
         "padding-right": "32px",
-        "box.x": "0",
-        "box.y": "45"
+        "box.x": "0"
       },
       "390-light": {
         "border-bottom-color": "rgba(0,0,0,31)",
         "padding-top": "12px",
         "padding-left": "32px",
         "padding-right": "32px",
-        "box.x": "0",
-        "box.y": "45"
+        "box.x": "0"
       },
       "390-dark": {
         "border-bottom-color": "rgba(245,245,245,26)",
         "padding-top": "12px",
         "padding-left": "32px",
         "padding-right": "32px",
+        "box.x": "0"
+      }
+    },
+    "shell.tabrow": {
+      "1480-light": {
+        "padding-left": "32px",
+        "box.x": "224",
+        "box.y": "45",
+        "box.width": "1256",
+        "box.height": "43"
+      },
+      "1480-dark": {
+        "padding-left": "32px",
+        "box.x": "224",
+        "box.y": "45",
+        "box.width": "1256",
+        "box.height": "43"
+      },
+      "900-light": {
+        "padding-left": "32px",
         "box.x": "0",
-        "box.y": "45"
+        "box.y": "45",
+        "box.width": "900",
+        "box.height": "43"
+      },
+      "900-dark": {
+        "padding-left": "32px",
+        "box.x": "0",
+        "box.y": "45",
+        "box.width": "900",
+        "box.height": "43"
+      },
+      "390-light": {
+        "padding-left": "32px",
+        "box.x": "0",
+        "box.y": "45",
+        "box.width": "390",
+        "box.height": "43"
+      },
+      "390-dark": {
+        "padding-left": "32px",
+        "box.x": "0",
+        "box.y": "45",
+        "box.width": "390",
+        "box.height": "43"
+      }
+    },
+    "shell.tabrow-first": {
+      "1480-light": {
+        "box.x": "256",
+        "box.y": "45",
+        "box.height": "42"
+      },
+      "1480-dark": {
+        "box.x": "256",
+        "box.y": "45",
+        "box.height": "42"
+      },
+      "900-light": {
+        "box.x": "32",
+        "box.y": "45",
+        "box.height": "42"
+      },
+      "900-dark": {
+        "box.x": "32",
+        "box.y": "45",
+        "box.height": "42"
+      },
+      "390-light": {
+        "box.x": "32",
+        "box.y": "45",
+        "box.height": "42"
+      },
+      "390-dark": {
+        "box.x": "32",
+        "box.y": "45",
+        "box.height": "42"
+      }
+    },
+    "shell.topbar-y": {
+      "1480-light": {
+        "box.y": "88"
+      },
+      "1480-dark": {
+        "box.y": "88"
+      },
+      "900-light": {
+        "box.y": "88"
+      },
+      "900-dark": {
+        "box.y": "88"
+      },
+      "390-light": {
+        "box.y": "88"
+      },
+      "390-dark": {
+        "box.y": "88"
       }
     },
     "shell.topbar-height": {
@@ -570,26 +660,26 @@
     },
     "shell.page-title-y": {
       "1480-light": {
-        "box.y": "60"
+        "box.y": "104"
       },
       "1480-dark": {
-        "box.y": "60"
+        "box.y": "104"
       }
     },
     "shell.page-title-y-phone": {
       "390-light": {
-        "box.y": "59"
+        "box.y": "102"
       },
       "390-dark": {
-        "box.y": "59"
+        "box.y": "102"
       }
     },
     "shell.navtoggle-y": {
       "390-light": {
-        "box.y": "57"
+        "box.y": "100"
       },
       "390-dark": {
-        "box.y": "57"
+        "box.y": "100"
       }
     },
     "shell.content": {

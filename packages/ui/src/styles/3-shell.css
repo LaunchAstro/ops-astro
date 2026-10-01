@@ -205,8 +205,8 @@
   flex-direction: column;
   min-width: 0;
 }
-/* The app strip and the page header travel together and stick as one above
-   900 (DS-COMP-1). The strip starts at the rail's edge, not the window's. */
+/* The app strip, the tab row and the page header travel together and stick
+   as one above 900 (DS-COMP-1). The strip starts at the rail's edge, not the window's. */
 .chrome {
   background: var(--bg);
 }
@@ -400,15 +400,13 @@
   }
 }
 
-/* -- The route tab row (DS-COMP-2): a section's pages, under the page head,
-      edge to edge across the main column. It is the first thing in the
-      content, so it steps out of the content's padding to meet the head. -- */
+/* -- The route tab row (DS-COMP-2): a section's pages, between the app strip
+      and the page head, edge to edge across the main column. A page without
+      siblings has no row, and is one strip shorter. -------------------------- */
 .routetabs {
   display: flex;
   align-items: stretch;
   gap: var(--s-6);
-  min-height: 2.6rem;
-  margin: calc(-1 * var(--s-6)) calc(-1 * var(--s-6)) 0;
   padding: 0 var(--s-6);
   overflow-x: auto;
   scrollbar-width: none;
@@ -437,11 +435,6 @@
   font: var(--type-body-strong);
   letter-spacing: var(--type-body-strong-tracking);
   text-transform: var(--type-body-strong-case);
-}
-@media (width <= 900px) {
-  .routetabs {
-    margin: calc(-1 * var(--s-4)) calc(-1 * var(--s-4)) 0;
-  }
 }
 
 /* -- The dock rail. It does not disappear below 900: it ROTATES onto the

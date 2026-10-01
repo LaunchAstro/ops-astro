@@ -264,6 +264,7 @@ export function App(props: AppProps): ReactElement {
       here={bare}
       title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
       person={session === null ? undefined : <SignedInAs session={session} onSignOut={onSignOut} />}
+      tabs={at === null || refused || session === null ? undefined : <RouteTabs at={at} />}
       navOpen={navOpen}
       onNav={setNavOpen}
       onBack={stepBack}
@@ -293,7 +294,6 @@ export function App(props: AppProps): ReactElement {
       }}
       seated={false}
     >
-      {at === null || refused || session === null ? null : <RouteTabs at={at} />}
       {content}
     </Shell>
   );
