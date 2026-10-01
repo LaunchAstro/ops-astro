@@ -40,7 +40,7 @@ import { declarationOf } from '../../../core-wire/src/index.ts';
 import { crashPointAfterCommit } from '../../../core-runtime/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
-import { storable, writeAuditEvent } from './audit.ts';
+import { storable, writeAuditEvent, type AuditEvent } from './audit.ts';
 import { firstClientGate } from './first-client-gate.ts';
 import {
   asCallerVisible,
@@ -607,15 +607,22 @@ export async function settle(
   if (standing === 'register' && identified !== undefined) {
     await register(tx, caller, identified, digest, visible, null);
   }
-  await writeAuditEvent(tx, {
+  await writeRefusedAuditEvent(tx, {
     actorId: caller.actorId,
     command: request.command,
     operationId: identified === undefined ? null : identified.operationId,
-    outcome: 'refused',
     refusalCode: refusal.code,
     subjectRecordId: null,
     payloadDigest: digest,
     attempted: attempted ?? null,
   });
   return visible;
+}
+
+/** The one writer of a refused audit row; a refusal's audit is settled here. */
+export async function writeRefusedAuditEvent(
+  tx: TenantQuery,
+  event: Omit<AuditEvent, 'outcome'>,
+): Promise<void> {
+  await writeAuditEvent(tx, { ...event, outcome: 'refused' });
 }

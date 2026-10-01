@@ -59,7 +59,10 @@ function api(read: ReadAnswer): typeof globalThis.fetch {
           ok: true,
           personId: 'p',
           businessKey: 'alpha',
-          grants: [{ collection: 'settings', action: 'manage' }],
+          grants: [
+            { collection: 'settings', action: 'manage' },
+            { collection: 'spend', action: 'decide' },
+          ],
         }),
       );
     }
