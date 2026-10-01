@@ -2,8 +2,8 @@
 //
 // The positive bodies for the writes an agent makes on its own task inside
 // its delegation, for `d06-agent.test.ts`: an author's edit and delete of its
-// own comment (MP-4-5), the three marks (MP-4-9), the Ad hoc mark (MP-4-10)
-// and the brief through `task.update` (MP-4-7).
+// own comment (MP-4-5), the three marks (MP-4-9), the Ad hoc mark (MP-4-10),
+// the brief through `task.update` (MP-4-7) and a proposal (`task.propose`).
 //
 // A harness, not a suite: nothing here runs on its own.
 
@@ -113,4 +113,34 @@ async function ownAssign(
   const expectedRevision = Number(rows[0]?.revision ?? '0');
   const fields = { assignee: world.ada.personId as string };
   return { body: { recordId: held.taskId, expectedRevision, fields }, credential };
+}
+
+/**
+ * The body for the agent's `task.propose` on its own task, without its
+ * operation id.
+ */
+export async function proposalBody(harness: Harness, held: Held): Promise<Record<string, unknown>> {
+  // The picked-up task's envelope holds its approved work to the minor
+  // unit; room is widened here as `roomToApprove` widens the cap, so the
+  // positive control is a proposal and the cell tests the field.
+  await harness.world.db.admin.execute(
+    `update public.task_envelopes set maximum_minor = maximum_minor + 1000000
+          where business_id = $1 and state = 'open'`,
+    [harness.world.alpha],
+  );
+  const read = await harness.asAgent(
+    'task.read',
+    { operationId: randomUUID(), recordId: held.taskId },
+    held.credential,
+  );
+  const task = (read.body['detail'] as { task: { revision: number } }).task;
+  return {
+    recordId: held.taskId,
+    expectedRevision: task.revision,
+    purpose: 'synthetic_comment',
+    maximumMinor: 100,
+    currency: 'AUD',
+    payload: { change: 'a synthetic change' },
+    step: { kind: 'synthetic_comment', payload: {} },
+  };
 }

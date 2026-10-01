@@ -6,7 +6,7 @@
 // **Did it happen? The register answers.** A step the sweep held
 // `liability_unknown` (dispatched, never confirmed, its lease no longer live)
 // is asked about under its step lock, the lock the effect's own write takes
-// (`tasks-comment.ts`). An effect committing meanwhile is waited for and then
+// (`tasks-comment-effect.ts`). An effect committing meanwhile is waited for and then
 // seen, and one arriving after is refused, because the attempt is no longer
 // `dispatched`: that refusal is the old identity's fence.
 //

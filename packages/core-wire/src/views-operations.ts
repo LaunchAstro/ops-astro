@@ -2,9 +2,21 @@
 //
 // The operations view's read results (C55: privacy incidents, service health,
 // security alerts, last tested restore, breach notices), as they cross the
-// wire. Types only, re-exported by `views.ts`, which holds every other read result.
+// wire, with INB-1's unattended item it lists. Types only, re-exported by
+// `views.ts`, which holds every other read result.
 
-import type { UnattendedView } from './views.ts';
+import type { InboxFactKind, InboxReason } from '../../core-records/src/index.ts';
+
+/** An item no path reaches (INB-1e): its recipient, reason and task, never the task's words. */
+export interface UnattendedView {
+  readonly id: string;
+  readonly recipientPersonId: string;
+  readonly subjectRecordId: string;
+  readonly reason: InboxReason;
+  readonly factKind: InboxFactKind;
+  readonly factId: string;
+  readonly raisedAt: string;
+}
 
 /** One privacy incident record on the operations view (C55, SP-24). */
 export interface PrivacyIncidentView {

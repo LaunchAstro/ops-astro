@@ -40,6 +40,7 @@ export type {
   BreachNoticesResult,
   SecurityAlertView,
   LastTestedRestoreView,
+  UnattendedView,
 } from './views-operations.ts';
 
 /** The task state a task points at. The machine category is what a board groups on. */
@@ -928,17 +929,6 @@ export interface InboxEntry {
    * page and the queue read show (INB-1, the alert's third and last place).
    */
   readonly alert?: InboxAlert;
-}
-
-/** An item no path reaches (INB-1e): its recipient, reason and task, never the task's words. */
-export interface UnattendedView {
-  readonly id: string;
-  readonly recipientPersonId: string;
-  readonly subjectRecordId: string;
-  readonly reason: InboxReason;
-  readonly factKind: InboxFactKind;
-  readonly factId: string;
-  readonly raisedAt: string;
 }
 
 /** `inbox.read`'s answer: the caller's open items and newest page of closed ones, oldest raised first. */

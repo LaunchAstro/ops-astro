@@ -33,7 +33,7 @@
 // (`effectOperationId`), so a retry replays it and the register answers
 // whether it happened. That identity is accepted only once the attempt's step
 // is marked dispatched to this caller's own lease: no effect before its
-// dispatch, whichever entry sends it.
+// dispatch, whichever entry sends it (`tasks-comment-effect.ts`).
 // **A reply (R42).** `parentId` names a top-level message on the same task,
 // read under its lock through the task: a reply to a reply, a message on
 // another task or in another business, or one already deleted is refused
@@ -50,7 +50,6 @@ import {
   type Mentioned,
   writeComment,
 } from '../../../core-records/src/index.ts';
-import { acquire } from '../../../core-runtime/src/index.ts';
 import type {
   TenantQuery,
   CommentAudience,
@@ -58,12 +57,13 @@ import type {
   EntryPoint,
 } from '../../../core-records/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
-import { effectAttemptOf, type CommandDeclaration } from '../../../core-wire/src/index.ts';
+import type { CommandDeclaration } from '../../../core-wire/src/index.ts';
 import { isIdentifier } from './operands.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnstorable, storableText } from './values.ts';
 import { replyParent } from './tasks-comment-reply.ts';
+import { effectRefusal } from './tasks-comment-effect.ts';
 
 const AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['internal', 'client']);
 const EXTERNAL_AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['client']);
@@ -148,45 +148,6 @@ export interface CommentTarget {
   readonly delegationId: string | null;
 }
 
-const EFFECT_FIXES: readonly string[] = [
-  'Dispatch the step under your own lease first; its answer names the attempt.',
-  'Nothing was written.',
-];
-
-/**
- * The refusal an effect identity earns, or `undefined`: the one effect is a
- * team-only comment, on an attempt marked dispatched to the author's own lease
- * on this task. Any other identity is an ordinary comment and passes.
- *
- * T2d: the attempt must still be `dispatched`. Once observe has settled it, or
- * held it as an unknown liability, its outcome is recorded and a late effect
- * would contradict it. A retried effect is
- * unaffected: the register replays it before this runs.
- *
- * The step is found only through an attempt whose lease binds it to this task
- * and this author, so another client's attempt is refused before anything of
- * its is locked or waited on. That step is
- * then locked through the one lock helper and held to commit, and the check
- * runs again under it: observe takes the same lock, so it cannot settle the
- * attempt between this check and the comment's write.
- */
-async function effectRefusal(
-  tx: TenantQuery,
-  on: CommentTarget,
-  audience: string,
-): Promise<CommandRefusal | undefined> {
-  const attemptId = effectAttemptOf(on.operationId);
-  if (attemptId === undefined) return undefined;
-  if (audience !== 'internal') {
-    return audienceNotPermitted('The effect is a team-only comment. Send audience as internal.');
-  }
-  const found = await dispatchedToAuthor(tx, on, attemptId);
-  if (found === undefined) return refuseCommand('EFFECT_NOT_DISPATCHED', [], EFFECT_FIXES);
-  await acquire(tx, [{ lockClass: 'step', id: found.step_id }]);
-  const held = await dispatchedToAuthor(tx, on, attemptId);
-  return held === undefined ? refuseCommand('EFFECT_NOT_DISPATCHED', [], EFFECT_FIXES) : undefined;
-}
-
 /**
  * The refusal of mentions that cannot read the comment. It names each person
  * only to an author who could already see them (`seenBy`), and otherwise gives
@@ -210,23 +171,6 @@ async function unreadableMentions(
     ['mentions'],
     unreadable.map((person) => `${shown(person)} cannot read this comment: remove the mention.`),
   );
-}
-
-/** The attempt's step, when the attempt is dispatched to the author's own lease on this task. */
-async function dispatchedToAuthor(
-  tx: TenantQuery,
-  on: CommentTarget,
-  attemptId: string,
-): Promise<{ readonly step_id: string } | undefined> {
-  const rows = await tx.query<{ readonly step_id: string }>(
-    `select att.step_id from public.attempts att
-       join public.leases l on l.business_id = att.business_id and l.id = att.lease_id
-      where att.business_id = $1 and att.id = $2 and att.dispatch_marker
-        and att.state = 'dispatched' and l.task_id = $3
-        and l.holder_actor_id = $4 and l.delegation_id is not distinct from $5::uuid`,
-    [tx.businessId, attemptId, on.target.id, on.authorActorId, on.delegationId],
-  );
-  return rows[0];
 }
 
 /**
