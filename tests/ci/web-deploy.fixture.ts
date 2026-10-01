@@ -104,8 +104,16 @@ export function fakeVercel(answers: Answers = {}): FakeVercel {
   const bin = folder('bin');
   const log = join(bin, 'calls.log');
   const deploy = answers.deploy ?? { out: URL_MADE, status: 0 };
+  // `vercel inspect --format json` as Vercel CLI 54.17.3 prints it: no region field.
   const inspect = answers.inspect ?? {
-    out: JSON.stringify({ url: URL_MADE.slice('https://'.length), regions: ['syd1'] }),
+    out: JSON.stringify({
+      id: 'dpl_madeUp0123456789abcdef',
+      name: 'ops-astro-staging',
+      url: URL_MADE.slice('https://'.length),
+      target: 'production',
+      readyState: 'READY',
+      createdAt: 1_759_276_800_000,
+    }),
     status: 0,
   };
   writeFileSync(join(bin, 'deploy.out'), `${deploy.out}\n`);
