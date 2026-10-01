@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Reviewer proofs for SL13 F1 (C41-A inbox raise, 7b71aca..94b5963).
-// Run from tests/onboarding/ (copy it there; imports are relative to that).
-// Each case is red on 94b5963.
+// Reviewer proofs for SL13 F1 (C41-A inbox raise, 7b71aca..94b5963), each red there,
+// and the follow-up cases, each red with its fix undone.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -10,7 +9,6 @@ import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { authorised, post, tokenFor, type Answer } from '../api/fixture.ts';
 import { createControls, type Controls } from '../api/controls-fixture.ts';
-import type { Hono } from 'hono';
 import { ISSUER } from '../api/fixture.ts';
 import { testSignIn } from '../support/sign-in.ts';
 import { composeApi } from '../../apps/api/server.ts';
@@ -109,48 +107,41 @@ describe.skipIf(serverUrl === undefined)('Sol proofs, C41-A inbox raise', () => 
     await controls.drop();
   });
 
-  // eslint-disable-next-line max-lines-per-function -- two servers, a held lock, one race
-  it('Sol proof, criterion races: a step opening while its task is being assigned leaves the move with the assignee alone, not a stale item to the starter too', async () => {
-    const steps = await onboard('Made-up Client Race');
-    const kickoff = String(steps.get('kickoff-call'));
-    const revision = await revisionOf(kickoff);
+  /**
+   * Two commands raced on two server instances, each on its own connection, as
+   * two requests on two serverless instances are. A third connection holds the
+   * business's audit-chain lock, so each command stops at its audit write, its
+   * other writes made, uncommitted: `first` runs, then `second` while `first`
+   * waits; both are answered once the lock goes.
+   */
+  const race = async (
+    first: { readonly name: string; readonly body: Readonly<Record<string, unknown>> },
+    second: { readonly name: string; readonly body: Readonly<Record<string, unknown>> },
+  ): Promise<readonly [Answer, Answer]> => {
     const { db, business, environment } = controls.fixture;
-    // Two server instances, each on its own connection, as two requests on two
-    // serverless instances are; and a third connection that holds the gap.
     const pools = [0, 1, 2].map(() => connect(db.appUrl, { source: 'runtime' }));
-    const [first, second, holder] = pools as [Database, Database, Database];
-    const server = (database: Database): Hono =>
-      composeApi({
-        keys: runtimeKeys({ ...environment }),
-        database,
-        admin: db.admin,
-        signIn: testSignIn(ISSUER),
-        executeRead,
-      }).app;
-    const on = async (
-      api: Hono,
-      name: string,
-      body: Readonly<Record<string, unknown>>,
-    ): Promise<Answer> =>
+    const [one, two, holder] = pools as [Database, Database, Database];
+    const on = async (database: Database, command: typeof first): Promise<Answer> =>
       await post(
-        api,
-        path('alpha', name),
-        { operationId: randomUUID(), ...body },
+        composeApi({
+          keys: runtimeKeys({ ...environment }),
+          database,
+          admin: db.admin,
+          signIn: testSignIn(ISSUER),
+          executeRead,
+        }).app,
+        path('alpha', command.name),
+        { operationId: randomUUID(), ...command.body },
         authorised(await tokenFor(admin.presented.subject)),
-      );
-    const waiting = async (): Promise<number> =>
-      Number(
-        (
-          await db.admin.execute<{ readonly n: string }>(
-            `select count(*)::text as n from pg_stat_activity
-              where datname = current_database() and wait_event_type = 'Lock'`,
-          )
-        )[0]?.n,
       );
     const until = async (n: number): Promise<void> => {
       for (let tries = 0; tries < 200; tries += 1) {
         // oxlint-disable-next-line no-await-in-loop -- polling
-        if ((await waiting()) >= n) return;
+        const [row] = await db.admin.execute<{ readonly n: string }>(
+          `select count(*)::text as n from pg_stat_activity
+            where datname = current_database() and wait_event_type = 'Lock'`,
+        );
+        if (Number(row?.n) >= n) return;
         // oxlint-disable-next-line no-await-in-loop -- polling
         await new Promise((resolve) => {
           setTimeout(resolve, 50);
@@ -158,40 +149,69 @@ describe.skipIf(serverUrl === undefined)('Sol proofs, C41-A inbox raise', () => 
       }
       throw new Error(`never saw ${n} waiters`);
     };
-    let assigned: Promise<Answer> | undefined;
-    let opened: Promise<Answer> | undefined;
+    const answers: Promise<Answer>[] = [];
     try {
-      // The holder takes the business's audit-chain lock, so each command
-      // below stops at its audit write, its other writes made, uncommitted.
       await holder.withBusiness(business, async (tx) => {
         await tx.query('select pg_advisory_xact_lock(hashtextextended($1::text, 0))', [business]);
-        // T2: task.assign on the kickoff task. It locks the task row, writes
-        // the assignee and raises the assignee's item, then waits.
-        assigned = on(server(second), 'task.assign', {
-          recordId: kickoff,
-          expectedRevision: revision,
-          fields: { assignee: assignee.personId },
-        });
+        answers.push(on(one, first));
         await until(1);
-        // T1: the result that opens the kickoff step, while T2 is uncommitted.
-        opened = on(server(first), 'onboarding.step_result', {
-          recordId: steps.get('welcome-email'),
-          outcome: 'done',
-          result: 'sent',
-        });
+        answers.push(on(two, second));
         await until(2);
       });
-      const [two, one] = await Promise.all([
-        assigned as Promise<Answer>,
-        opened as Promise<Answer>,
-      ]);
-      expect(two.status, JSON.stringify(two.body)).toBe(200);
-      expect(one.status, JSON.stringify(one.body)).toBe(200);
+      const [a, b] = await Promise.all(answers);
+      return [a as Answer, b as Answer];
     } finally {
       await Promise.all(pools.map(async (pool) => await pool.close()));
     }
+  };
+
+  it('Sol proof, criterion races: a step opening while its task is being assigned leaves the move with the assignee alone, not a stale item to the starter too', async () => {
+    const steps = await onboard('Made-up Client Race');
+    const kickoff = String(steps.get('kickoff-call'));
+    // The result that opens the kickoff step comes while its assignment is uncommitted.
+    const answers = await race(
+      {
+        name: 'task.assign',
+        body: {
+          recordId: kickoff,
+          expectedRevision: await revisionOf(kickoff),
+          fields: { assignee: assignee.personId },
+        },
+      },
+      {
+        name: 'onboarding.step_result',
+        body: { recordId: steps.get('welcome-email'), outcome: 'done', result: 'sent' },
+      },
+    );
+    for (const answer of answers) expect(answer.status, JSON.stringify(answer.body)).toBe(200);
     // Both committed and the kickoff task is assigned: its move is the assignee's alone.
     expect(await openOn(kickoff)).toStrictEqual([assignee.personId]);
+  });
+
+  it('C41-A races: a step result racing the unassignment of its task leaves no item open on the closed step', async () => {
+    const steps = await onboard('Made-up Client Closing Race');
+    const kickoff = String(steps.get('kickoff-call'));
+    await done(steps, 'welcome-email');
+    const to = await assign(admin, kickoff, assignee.personId);
+    expect(to.status, JSON.stringify(to.body)).toBe(200);
+    // The unassignment parks the ready step on the starter; the result closes it meanwhile.
+    const answers = await race(
+      {
+        name: 'task.assign',
+        body: {
+          recordId: kickoff,
+          expectedRevision: await revisionOf(kickoff),
+          fields: { assignee: null },
+        },
+      },
+      {
+        name: 'onboarding.step_result',
+        body: { recordId: kickoff, outcome: 'done', result: 'held' },
+      },
+    );
+    for (const answer of answers) expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+    // The step is closed: nobody owes it a move.
+    expect(await openOn(kickoff)).toStrictEqual([]);
   });
 
   it('Sol proof, criterion CS-15.4: unassigning a ready person step leaves it parked with an item to the starter', async () => {
@@ -206,6 +226,28 @@ describe.skipIf(serverUrl === undefined)('Sol proofs, C41-A inbox raise', () => 
     expect(back.status, JSON.stringify(back.body)).toBe(200);
     // No assignee: the move falls back to the person who started the onboarding.
     expect(await openOn(kickoff)).toStrictEqual([admin.personId]);
+  });
+
+  it('C41-A CS-15.4: unassigning a ready step of a stopped onboarding parks it on nobody', async () => {
+    const steps = await onboard('Made-up Client Stopped');
+    await done(steps, 'welcome-email');
+    await done(steps, 'kickoff-call');
+    for (const attempt of ['first', 'second']) {
+      // oxlint-disable-next-line no-await-in-loop -- the second failure stops it
+      const failed = await as(admin, 'onboarding.step_result', {
+        recordId: steps.get('site-setup'),
+        outcome: 'failed',
+        result: `${attempt} try failed`,
+      });
+      expect(failed.status, JSON.stringify(failed.body)).toBe(200);
+    }
+    const grant = String(steps.get('access-grant'));
+    const to = await assign(admin, grant, assignee.personId);
+    expect(to.status, JSON.stringify(to.body)).toBe(200);
+    const back = await assign(admin, grant, null);
+    expect(back.status, JSON.stringify(back.body)).toBe(200);
+    // A person restarts a stopped onboarding; until then no step is anyone's move.
+    expect(await openOn(grant)).toStrictEqual([]);
   });
 
   it('Sol proof, criterion CS-15.4: a person who takes a ready person step themselves holds its item', async () => {
