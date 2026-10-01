@@ -639,7 +639,9 @@ credential is theirs and live.
 anyone else needs `access:manage` as well, and without it another person's
 credential is `NOT_FOUND`, as a foreign or made-up one is. It locks the row,
 decides under the lock, sets the revocation once (`CREDENTIAL_ALREADY_REVOKED`
-after) and deactivates the agent actor. Neither command is ever an agent's: an
+after) and deactivates the agent actor. Ending the issuer's access
+(`access.end`) revokes every credential they issued there the same way, by
+the person who ended it. Neither command is ever an agent's: an
 agent under a live delegation is refused `DELEGATION_EXCLUDES_OPERATION`.
 
 Using the credential on the agent route (bearer only, revocation on the next
@@ -667,8 +669,9 @@ agent's. After the access lock it locks every live grant the person holds, in
 id order, before any runtime lock (the order one revocation and `task.pickup`
 take), then revokes them and every delegation the person gave in one
 authority-loss classification (`endPersonAuthority`,
-`commands/authority-controls.ts`), and ends the membership and the person's
-acting identity. The delegations lose their ceiling with the grants and are
+`commands/authority-controls.ts`), revokes every agent credential the person
+issued in that business with its agent actor, and ends the membership and the
+person's acting identity. The delegations lose their ceiling with the grants and are
 revoked with the cause `authority_lost`. Nobody ends the last business-wide
 `access:manage` of a person who can sign in.
 

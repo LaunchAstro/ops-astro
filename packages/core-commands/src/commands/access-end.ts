@@ -6,7 +6,8 @@
 //
 // The act is local first. One transaction, under the business's access lock:
 // the person's membership and acting identity end, every live grant they hold
-// and every delegation they gave are revoked (`endPersonAuthority`), and one
+// and every delegation they gave are revoked (`endPersonAuthority`), every
+// agent credential they issued here is revoked with its agent actor, and one
 // access ending is written per login mapped to them, owing the provider two
 // steps. From that commit login resolution refuses the person
 // (`AUTH_NO_MEMBERSHIP`), whatever the provider has or has not done
@@ -19,7 +20,14 @@
 // asked again. An answer the adapter does not accept, a throw or a timeout is
 // a fault by its kind alone, and the step stays owed.
 
-import { isUuid, lastManager, lockAccess, otherManagers } from '../../../core-records/src/index.ts';
+import {
+  isUuid,
+  lastManager,
+  lockAccess,
+  lockAgentCredential,
+  otherManagers,
+  revokeAgentCredential,
+} from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, TenantQuery } from '../../../core-records/src/index.ts';
 import type { ProviderAnswer, ProviderFault } from './account-factor-provider.ts';
 import { endPersonAuthority } from './authority-controls.ts';
@@ -84,14 +92,38 @@ export async function endAccessOnSettings(
   if ((await otherManagers(tx, [], personId)) === 0) return refused(lastManager());
 
   const authority = await endPersonAuthority(tx, personId);
+  const credentialsRevoked = await revokeIssued(tx, personId, context.session.actorId);
   const endings = await endStanding(tx, personId, context.session.actorId);
   return applied(personId, null, {
     personId,
     grantsRevoked: authority.grantsRevoked,
     delegationsRevoked: authority.delegationsRevoked,
+    credentialsRevoked,
     classifiedHolds: authority.classifiedHolds,
     endingIds: endings.map((row) => row.id),
   });
+}
+
+/**
+ * Every agent credential the person issued in this business and has not been
+ * revoked, revoked by the one ending their access, each agent actor with it
+ * (`revokeAgentCredential`), so nothing they issued outlives the ending.
+ */
+async function revokeIssued(tx: TenantQuery, personId: string, endedBy: string): Promise<number> {
+  const issued = await tx.query<{ readonly id: string }>(
+    `select id from public.agent_credentials
+      where business_id = $1 and issued_by_person_id = $2::uuid and revoked_at is null
+      order by id
+      for update`,
+    [tx.businessId, personId],
+  );
+  for (const { id } of issued) {
+    // eslint-disable-next-line no-await-in-loop -- one credential at a time, each already locked
+    const held = await lockAgentCredential(tx, id);
+    // eslint-disable-next-line no-await-in-loop -- its revocation, under that lock
+    if (held !== undefined) await revokeAgentCredential(tx, held, endedBy);
+  }
+  return issued.length;
 }
 
 /**

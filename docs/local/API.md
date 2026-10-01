@@ -1780,9 +1780,11 @@ business's or a made-up one is `NOT_FOUND` 404 naming `client`.
 agent's: the tracked action `access ended (person: login, sessions, grants)`,
 audited. In one transaction, under the access lock, the person's membership
 and acting identity end, every live grant they hold and every delegation they
-gave are revoked with one authority-loss classification, and one access ending
-is written per login mapped to them. It answers `{ personId, grantsRevoked,
-delegationsRevoked, classifiedHolds, endingIds }`. A person with no active
+gave are revoked with one authority-loss classification, every agent
+credential they issued in this business and not yet revoked is revoked by the
+caller with its agent actor, and one access ending is written per login
+mapped to them. It answers `{ personId, grantsRevoked, delegationsRevoked,
+credentialsRevoked, classifiedHolds, endingIds }`. A person with no active
 membership in this business, another business's included, is `NOT_FOUND` 404
 naming `holderId`; a malformed id is `FIELD_VALUE_INVALID` 422. Ending the last
 business-wide `access:manage` of a person who can sign in is

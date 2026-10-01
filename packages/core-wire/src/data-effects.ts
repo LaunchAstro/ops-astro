@@ -180,7 +180,14 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'access.revoke': GRANTS,
   // C58: the team member signed out and deactivated at the identity provider.
   'access.end': writing(
-    business('access_endings', 'actors', 'memberships', 'grants', 'delegations'),
+    business(
+      'access_endings',
+      'actors',
+      'agent_credentials',
+      'memberships',
+      'grants',
+      'delegations',
+    ),
     [{ provider: 'identity', forClient: false }],
   ),
   'grant.revoke': GRANTS,
