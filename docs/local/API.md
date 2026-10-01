@@ -941,7 +941,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 
 | Operation                          | Person prefix: owning function                                                            | Agent prefix                                                                                    |
 | ---------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `task.create`                      | `createTask` (`commands/tasks-write.ts`)                                                  | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.create`                      | `createTask` (`commands/tasks-write.ts`)                                                  | an agent credential's (API-2); under a pickup refused `DELEGATION_OUT_OF_PURPOSE`               |
 | `task.update`                      | `updateTask` (`commands/tasks-write.ts`)                                                  | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `task.complete`                    | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `task.reopen`                      | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
@@ -1128,6 +1128,16 @@ returned. It is a header and not a body field for the same reason the bearer
 token is. A credential in a body is a credential that gets logged with the
 payload, stored in the register row and compared by a digest.
 
+An agent credential (API-2) is the other bearer this prefix takes: the secret
+a person issued on Settings ▸ Access, as `Authorization: Bearer`, with no agent
+login behind it and no `X-Agent-Delegation`. It is told from a sign-in token by
+its form and never reaches the provider's verifier, and this prefix never reads
+a session cookie. Its security signals (S0-2) name it by the digest of its
+digest (`credentialSubject`), the value its refused attempts are stored under,
+never the stored hash or a slice of it. Its calls, reach and refusals are in
+AUTHORITY.md, "Agent credentials (API-2)"; past a limit it answers
+`AGENT_QUOTA_EXCEEDED` 429.
+
 An agent login confers nothing on its own. With no `X-Agent-Delegation` header
 it may read `task.queue` and call `task.pickup` (`BEFORE_PICKUP`,
 `commands/agent-envelope.ts`, read off the surface rows whose `agent` is
@@ -1146,16 +1156,16 @@ answers `DELEGATION_NARROWED` (R-B). A name outside `AGENT_SURFACE` is refused
 delegation on the spot: the collection, the action, and a `scope` that must be
 exactly the one task it was minted for.
 
-| Answer                          | Status | When                                                                                                                                                                                                                                                     |
-| ------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                         |
-| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed, or its session is past the 12-hour limit or was ended (C58)                                                                                                                                    |
-| `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                |
-| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry                                                                                                                                                                                     |
-| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                         |
-| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always: at the envelope with no credential, and from L4's `decideAsAgent` asking L2 under a delegation                                                                                                                                    |
-| `DELEGATION_EXCLUDES_OPERATION` | 403    | any name not in `AGENT_SURFACE`, whose eight members are the queue, a pickup, a handback, a heartbeat, `task.read`, `task.comment`, `task.decide` and `session.capabilities`; or, with no credential, any name but the queue, a pickup and `task.decide` |
-| `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                              |
+| Answer                          | Status | When                                                                                                                                                                                                                                                                                                             |
+| ------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                                                                                 |
+| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed, or its session is past the 12-hour limit or was ended (C58)                                                                                                                                                                                            |
+| `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                                                                        |
+| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry, or a call over the whole business (`task.create`)                                                                                                                                                                                          |
+| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                                                                                 |
+| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always: at the envelope with no credential, and from L4's `decideAsAgent` asking L2 under a delegation                                                                                                                                                                                            |
+| `DELEGATION_EXCLUDES_OPERATION` | 403    | any name not in `AGENT_SURFACE`, whose twelve members are the queue, a pickup, a handback, a heartbeat, a dispatch, an observe, `task.read`, `task.comment`, `task.propose`, `task.create`, `task.decide` and `session.capabilities`; or, with no credential, any name but the queue, a pickup and `task.decide` |
+| `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                                                                                      |
 
 A handback or heartbeat names a lease, not a task, so the task it is checked
 against is read from the lease (`namedTaskId`). A handback naming a lease on

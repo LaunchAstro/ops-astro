@@ -108,7 +108,12 @@ async function routedByApi() {
   const routed = new Map();
   for (const path of [...under(ROOT), ...under(AGENT)]) {
     ran = undefined;
-    const init = { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' };
+    // A bearer, as every caller sends: the agent prefix reads nothing else (API-2).
+    const headers = {
+      'content-type': 'application/json',
+      authorization: 'Bearer parity.probe.token',
+    };
+    const init = { method: 'POST', headers, body: '{}' };
     // eslint-disable-next-line no-await-in-loop -- one route at a time, one recorded name
     await api.fetch(new Request(`http://parity${path}`, init));
     const name = ran;
