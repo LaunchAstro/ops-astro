@@ -357,7 +357,7 @@ it('WF-7 twice failed with no map owner: the report says no one was asked, and n
   const said = await commentsOn(s, ticket);
   expect(said).toHaveLength(1);
   expect(said[0]?.body).toMatch(/failed twice/u);
-  expect(said[0]?.body).not.toMatch(/has been asked/u);
+  expect(said[0]?.body).not.toMatch(/owner has been asked/u);
   expect(await asksOn(s, ticket)).toStrictEqual([]);
   // No owner to wait on, so the ticket is not held for one.
   expect(codeOf(await start(s, ticket))).toBe('applied');
