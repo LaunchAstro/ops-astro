@@ -9,7 +9,7 @@
 // DS-COMP-7 list card of DS-COMP-13 page rows with a DS-PRIM-11 soft chip, and
 // its DS-PRIM-1 small secondary button.
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './probe.ts';
 
 const PORTFOLIO = { path: '/agency/portfolio/' } as const;
 const CARD = '.card.card--flush:has(#alerts)';
