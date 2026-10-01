@@ -77,6 +77,15 @@ const refused: [string, (r: Repo) => string, RegExp][] = [
     /is not an ancestor/u,
   ],
   [
+    // review1 M1: main reached only through a pull request's own side, not the queue's chain.
+    'the group does not sit on the base tip',
+    (r) => {
+      r.git('update-ref', 'refs/heads/main', r.pr11);
+      return group(r.dir, r.g12, `12-${r.pr11}`);
+    },
+    /does not sit on the tip/u,
+  ],
+  [
     'a group that holds no pull request',
     (r) => group(r.dir, r.main, `11-${r.main}`),
     /holds no pull request/u,
@@ -209,6 +218,17 @@ describe('merge group: each pull request read as it stands', () => {
     expect(readFileSync(join(r.dir, 'seen.txt'), 'utf8')).toBe(
       '11|body of #11|needs-sol\nx\n12|body of #12|needs-sol\nx\n',
     );
+  });
+
+  // review1 M2: on a pull request too, the record read now must be at the head the event judges.
+  it('fails closed on a pull request whose record has moved past the event head', () => {
+    const r = repo();
+    mkdirSync(join(r.dir, 'pr-11'));
+    writeFileSync(join(r.dir, 'pr-11', 'pull.json'), JSON.stringify(pull({}, 11, r.pr12)));
+    const event = payload(r.dir, 'pull-request-event.json', { HEAD: r.pr11, BASE: r.main });
+    const out = run(r.dir, 'pull_request', event, ['each', '--pulls', '.', 'sh', '-c', 'true']);
+    expect(out.status).toBe(1);
+    expect(out.stderr).toMatch(new RegExp(`is at ${r.pr12}`, 'u'));
   });
 
   for (const [name, over, why] of stale) {

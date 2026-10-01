@@ -115,6 +115,29 @@ describe('merge group: every required check runs on a group, and none passes it 
   });
 });
 
+describe('merge group: no step skips a group', () => {
+  // review1 B1: a step-level condition could pass a group green without judging it. Every step of
+  // every job in both workflows (the shards behind `database conformance` included) runs on a
+  // group, apart from the one step that reads main from its root on a push.
+  it('no step in either workflow is skipped on a group', () => {
+    const ONLY_ON_PUSH = 'Public content and metadata from the root';
+    for (const path of [CI, REVIEW])
+      for (const s of top(read(path), 'jobs')
+        .split(/^(?= {6}- )/mu)
+        .slice(1)) {
+        const name = /^ {6}- (?:name|uses|run): (.+)$/mu.exec(s)?.[1] ?? s.slice(0, 80);
+        const cond = /^ {8}if: (.+)$/mu.exec(s)?.[1];
+        const allowed =
+          name === ONLY_ON_PUSH
+            ? cond === "github.event_name == 'push'"
+            : cond === undefined || cond === "github.event_name != 'push'";
+        expect(allowed, `${path}: ${name}: if: ${cond}`).toBe(true);
+      }
+    const evidence = top(read(REVIEW), 'jobs');
+    expect(evidence.match(/^ {8}if:/mu)).toBeNull();
+  });
+});
+
 // ORCH55-CQL: CodeQL's default setup never runs on a group, so advanced setup takes its place.
 describe('merge group: CodeQL reports on a group', () => {
   it('runs on a pull request, a push to main, a group and a weekly schedule, for the languages default setup scanned', () => {
