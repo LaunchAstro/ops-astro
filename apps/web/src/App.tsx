@@ -2,12 +2,11 @@
 //
 // The application: which address is open, who is signed in, and nothing else.
 //
-// **There is no demonstration state and no way to ask for one.** A `?state=`
-// parameter selecting a seeded corpus is how a mockup demonstrates itself,
-// not how a product reports.
-// Every screen below reads through the real client, and a read that fails draws
-// the failure. The corpus survives in `packages/ui` as the drawn *vocabulary*
-// — the words and tones a state may print — and not as a source of rows.
+// **There is no demonstration state and no way to ask for one.** A `?state=` parameter selecting a
+// seeded corpus is how a mockup demonstrates itself, not how a product reports. Every screen below
+// reads through the real client, and a read that fails draws the failure. The corpus survives in
+// `packages/ui` as the drawn *vocabulary* — the words and tones a state may print — and not as a
+// source of rows.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Shell } from '@launchastro/ui';
@@ -71,7 +70,8 @@ export function App(props: AppProps): ReactElement {
     readonly held: Interruption;
     readonly offer: HeldOffer | null;
   } | null>(null);
-  // The Agent drawer (MP-7-11): open over the page, never an address.
+  // The Agent drawer (MP-7-11): open over the page, never an address. Keyed on grantKey, so a
+  // change of business, person or session drops every tab and a late reply has nowhere to land.
   const [agentOpen, setAgentOpen] = useState(false);
   // The person signed out here, so sign-in says their unsaved edit went with it (C58).
   const [signedOut, setSignedOut] = useState(false);
@@ -244,10 +244,9 @@ export function App(props: AppProps): ReactElement {
     }
   })();
 
-  // Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a
-  // bundler that did not stamp, and the rail then says the build is unstamped.
-  // Read by name, never by index: an indexed read inlines every VITE_ setting
-  // of the build's environment into the bundle (G3).
+  // Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a bundler that did
+  // not stamp, and the rail then says the build is unstamped. Read by name, never by index: an
+  // indexed read inlines every VITE_ setting of the build's environment into the bundle (G3).
   const build = import.meta.env.VITE_OPS_ASTRO_BUILD ?? '';
 
   return (
@@ -284,9 +283,6 @@ export function App(props: AppProps): ReactElement {
       panel={
         agentOpen && session !== null && match !== null ? (
           <AssistantView
-            // Keyed as the read projections are: a change of business, person
-            // or session drops every tab, and a reply still out lands in the
-            // drawer that asked, which is gone.
             key={grantKey}
             client={client}
             route={match.id}
