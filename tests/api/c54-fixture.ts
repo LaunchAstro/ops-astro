@@ -13,6 +13,7 @@ import type { BusinessId } from '../../packages/core-records/src/tenancy/databas
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { insertActor, insertLogin, insertMapping, insertPerson } from '../identity/fixture.ts';
+import { asBrowser } from '../support/sign-in.ts';
 import {
   approvedReservationId,
   approvedTaskId,
@@ -28,7 +29,6 @@ import {
   type Answer,
   type World,
 } from '../acceptance/world.ts';
-import { asBrowser } from '../support/sign-in.ts';
 
 /** Someone who can sign in to one business, with the token they present. */
 export interface Signed extends Member {
@@ -106,7 +106,11 @@ export async function billingHolder(
     const scope = taskId === undefined ? undefined : { kind: 'record' as const, id: taskId };
     await grantTo(tx, member, 'decide', scope, false, 'billing');
   });
-  return { ...member, token: await tokenFor(member.presented.subject), businessKey };
+  return {
+    ...member,
+    token: await tokenFor(member.presented.subject, { secondFactor: true }),
+    businessKey,
+  };
 }
 
 /** An external client of alpha on the one task `sharer` shares, also granted `billing:decide` on it. */

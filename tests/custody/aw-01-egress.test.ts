@@ -28,6 +28,8 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'packages/core-custody/src/custody.ts': "starts custody's own process",
   'packages/core-connectors/src/replay.ts':
     'the replay stand-in listens on loopback; it calls nothing',
+  'packages/core-connectors/src/email-fake.ts':
+    'the fake email provider listens on loopback; it calls nothing (AW-07b)',
   'apps/api/server.ts': "the API serves its own routes on loopback; `app.fetch` is Hono's handler",
   'apps/web/src/main.tsx': "the browser's own fetch, bound once at the composition root",
   'apps/web/src/App.tsx': "threads that fetch to the product's own API, same origin",
@@ -48,6 +50,15 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/api/function.ts': "the hosted function hands each request to the API's own handler",
   'apps/web/build-stamp.ts': 'runs the local git once at build time to stamp the build; no network',
   'apps/web/src/held-address.tsx': "threads the page's fetch to the product's own API",
+  // Main's, taken at the a352c11 join (reviewed in batch 2):
+  'apps/api/auth/factors.ts':
+    "the sign-in provider's second-factor calls at its one fixed address (C59)",
+  'apps/api/auth/logins.ts': "the sign-in provider's admin calls for an ended login (C58)",
+  'apps/api/auth/provider-logins.ts':
+    "names the `https` issuer C58's admin key is for; it calls nothing (a comment's word)",
+  'apps/api/health/tracing.ts': "reads the tracing service's public health route (C34)",
+  'apps/web/src/screen-registry.tsx':
+    "threads the page's fetch to the public legal page's reader, same origin (C81)",
 };
 
 const MODULES =

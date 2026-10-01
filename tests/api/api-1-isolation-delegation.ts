@@ -90,6 +90,8 @@ const bodies = (
   }),
   // No crossing target: the helper's handback answers to its own child credential.
   'run.child_handback': () => ({ outcome: 'completed' }),
+  // A credential's create (API-2): a pickup's one-task delegation never reaches it.
+  'task.create': () => ({ fields: { title: 'made-up' } }),
 });
 
 /** The lease and run operations the delegation reaches only on its own task. */
@@ -139,6 +141,7 @@ export function delegationCrossing(): void {
       'task.observe': 'DELEGATION_OUT_OF_PURPOSE',
       ...Object.fromEntries(RUN_AND_LEASE.map((command) => [command, 'DELEGATION_OUT_OF_PURPOSE'])),
       'task.pickup': 'DELEGATION_ALREADY_LIVE',
+      'task.create': 'DELEGATION_OUT_OF_PURPOSE',
     };
     for (const row of agentRows) {
       for (const [businessKey, other] of [

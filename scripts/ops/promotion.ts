@@ -2,10 +2,10 @@
 //
 // The promotion step (ticket S0-1, lines C3 and C10).
 //
-// Production gets the exact artefact staging ran, never a fresh build. The
-// artefact is found in the store by the name the staging definition gives it
-// (`x-ops-astro.artefact` in deploy/staging/compose.json), and its own stamp,
-// the `build.json` every build writes into itself (S0-1c), must name the same
+// Production gets the exact artefact staging ran, never a fresh build. The step
+// finds the artefact in the store by the name the staging definition gives it
+// (`x-ops-astro.artefact` in deploy/staging/compose.json). Its own stamp, the
+// `build.json` every build writes into itself (S0-1c), must name the same
 // version, and its bytes must be the ones the digest in that file records (the
 // release step's build output). A build from a dirty tree names no commit, so it
 // is not promoted.
@@ -24,8 +24,8 @@
 // here are tested with the effects watched and the command stays thin.
 
 import { readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
-import { outputDigest } from './build-output.ts';
+import { resolve } from 'node:path';
+import { outputDigest, recordedStamp } from './build-output.ts';
 
 /** A service as the service manager names it. */
 export interface ServiceRef {
@@ -76,8 +76,6 @@ export type PromotionOutcome =
 
 /** A promotable build identifier: S0-1c's stamp, without `-dirty`. */
 const CLEAN_BUILD = /^[0-9a-f]{12}$/u;
-/** The file S0-1c's build writes into its artefact. */
-const STAMP_FILE = 'build.json';
 const LONGEST_LINE = 200;
 const SERVICE = /^(?<manager>docker|launchd):(?<name>[A-Za-z0-9][A-Za-z0-9_.-]*)$/u;
 
@@ -100,18 +98,15 @@ export function parseService(text: string): ServiceRef {
 
 const label = (service: ServiceRef): string => `${service.manager}:${service.name}`;
 
-/** The stamp and digest an artefact records, each undefined when it has none. */
-function stampOf(directory: string): { build?: unknown; digest?: unknown } {
-  try {
-    // `null` is valid JSON and names nothing.
-    return (JSON.parse(readFileSync(join(directory, STAMP_FILE), 'utf8')) as object | null) ?? {};
-  } catch {
-    return {};
-  }
+/** A stored release output, checked: where it is, its name and the digest it holds. */
+export interface StoredArtefact {
+  path: string;
+  name: string;
+  digest: string;
 }
 
 /** The artefact staging ran, or why it cannot be promoted. */
-function select(request: PromotionRequest): { path: string; name: string } | string {
+function select(request: PromotionRequest): StoredArtefact | string {
   if (!CLEAN_BUILD.test(request.version)) {
     return `${request.version} is not a clean build identifier (twelve hex digits, never -dirty)`;
   }
@@ -127,15 +122,13 @@ function select(request: PromotionRequest): { path: string; name: string } | str
  * identifier, a directory by the definition's name, and a stamp naming that
  * same version. The staging deploy (S0-6) and the promotion read it alike.
  */
-export function storedArtefact(
-  version: string,
-  store: string,
-): { path: string; name: string } | string {
+export function storedArtefact(version: string, store: string): StoredArtefact | string {
   if (!CLEAN_BUILD.test(version)) {
     return `${version} is not a clean build identifier (twelve hex digits, never -dirty)`;
   }
   const name = artefactName(version);
-  const path = join(store, name);
+  // Absolute, so production's link resolves the same from its own folder.
+  const path = resolve(store, name);
   let isDirectory = false;
   try {
     isDirectory = statSync(path).isDirectory();
@@ -143,14 +136,14 @@ export function storedArtefact(
     // Not there is refused below, the same as not a directory.
   }
   if (!isDirectory) return `no artefact ${name} in ${store}; the step never builds one`;
-  const { build, digest } = stampOf(path);
+  const { build, digest } = recordedStamp(path);
   if (build !== version) {
     const carried = typeof build === 'string' ? build : 'no stamp';
     return `${name} carries ${carried}, not ${version}; production gets the build staging ran, never another`;
   }
   if (typeof digest !== 'string') return `${name} records no digest; it is not a release output`;
   if (digest !== outputDigest(path)) return `${name} does not hold the bytes its digest records`;
-  return { path, name };
+  return { path, name, digest };
 }
 
 export function promote(request: PromotionRequest, effects: PromotionEffects): PromotionOutcome {

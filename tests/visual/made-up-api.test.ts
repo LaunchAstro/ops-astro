@@ -2,23 +2,26 @@
 import { describe, expect, it } from 'vitest';
 import { READ_NAMES } from '../../apps/web/src/operations/read-names.ts';
 import { pathOf, PREFIX } from '../../packages/core-wire/src/index.ts';
-import { MADE_UP_READS, madeUpAnswer, TASKS } from './made-up-api.ts';
+import { MADE_UP_READS, madeUpAnswer } from './made-up-api.ts';
+import { TASKS } from './made-up-data.ts';
 
-// Reads no batch/1 screen draws at the harness's addresses: a receipt needs a
-// finished run, the preset plan is the command line's, and the unattended list
-// is the operations view's; no screen asks the pending gates or an instruction
-// file's attribution yet (the command line and pre-review do). Each is drawn
-// "could not be read" if asked.
+// Reads no screen draws at the harness's addresses: the preset plan is the
+// command line's, the unattended list is the operations view's. No screen asks
+// the client list (Access reads its clients inside access.read) or the breach
+// notice drafts (the command line's drill), nor an instruction file's
+// attribution yet (the command line and pre-review do). Each is drawn "could
+// not be read" if asked. The task page's run has a receipt, so `task.receipt`
+// is drawn here.
 const NOT_DRAWN = new Set([
-  'task.receipt',
   'preset.plan',
   'inbox.unattended',
-  'gate.pending',
   'definition.attribution',
   // AW-13 readers: no screen draws a trace yet.
   'trace.read',
   // AW-12: no screen draws the harness result in this piece.
   'harness.read',
+  'client.list',
+  'privacy.draft_breach_notices',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
@@ -40,5 +43,41 @@ describe('the made-up reads the width-and-theme harness draws from', () => {
   it('answers every read a screen draws, so a new read is a decision here', () => {
     const drawn = READ_NAMES.filter((name) => !NOT_DRAWN.has(name));
     expect([...MADE_UP_READS].toSorted()).toEqual([...drawn].toSorted());
+  });
+});
+
+// The read states (UI-STATES): a variant answers the named reads in another
+// state, so the harness can photograph a board with no rows, a task that could
+// not be read, a refusal and a read still in flight. Every other read keeps its
+// default answer.
+describe('the made-up reads in another state', () => {
+  const board = `${PREFIX.person}alpha${pathOf('task.board')}`;
+  const task = `${PREFIX.person}alpha${pathOf('task.read')}`;
+
+  it('answers a read named empty with no rows, and the rest as before', () => {
+    expect(madeUpAnswer(board, { empty: ['task.board'] })).toEqual({
+      status: 200,
+      json: { ok: true, tasks: [] },
+    });
+    expect(madeUpAnswer(task, { empty: ['task.board'] })).toEqual(madeUpAnswer(task));
+  });
+
+  it('answers a read named unavailable as a server failure with no refusal body', () => {
+    expect(madeUpAnswer(task, { unavailable: ['task.read'] })).toEqual({ status: 503 });
+  });
+
+  it("answers a read named refused with the server's one refusal shape", () => {
+    expect(madeUpAnswer(board, { refused: ['task.board'] })).toEqual({
+      status: 403,
+      json: { refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: [] },
+    });
+  });
+
+  it('holds a read named pending, so the screen stays on its loading state', () => {
+    expect(madeUpAnswer(board, { pending: ['task.board'] })).toEqual({ pending: true });
+  });
+
+  it('answers exactly as the default with an empty variant', () => {
+    expect(madeUpAnswer(board, {})).toEqual(madeUpAnswer(board));
   });
 });

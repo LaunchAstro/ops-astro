@@ -28,6 +28,10 @@
 // commands that take them are ordinary record writes that never reach
 // `acquire`; the runtime's commands declare `targetLock: 'runtime'` or no
 // target, so the envelope locks nothing for them and this order starts clean.
+// C59's login-wide keys, `second-factor-codes:<digest>` and
+// `second-factor-subject:<digest>`, are command-layer locks too, and the only
+// installation-wide ones: each names a sign-in login, not a business, and is
+// taken first in its transaction, before any row or chain lock.
 // The grant rows an operation's authority rests on are the other class outside
 // the list, also taken first: decide, pickup and cancellation hold theirs `for
 // share` (`holdCoveringGrants`) and `grant.revoke` its own `for update`, before

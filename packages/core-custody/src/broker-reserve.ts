@@ -198,9 +198,8 @@ function routeFor(
     words: LOCAL_MODEL_REQUIRED_WORDS,
   } as const;
   if (!choice.ok) return local;
-  const route = broker.routes.find((candidate) =>
-    choice.routes.some((eligible) => eligible.key === candidate.key),
-  );
+  // The route the data classes found eligible, itself: never another that shares its key.
+  const route = broker.routes.find((candidate) => choice.routes.includes(candidate));
   if (route === undefined) return local;
   const carry = mayCarry(route.credentialKind, {
     unattended: caller.attendedByPersonId === null,

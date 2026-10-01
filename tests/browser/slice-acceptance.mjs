@@ -34,6 +34,7 @@ import { caseN7, casesN6 } from './cases-n6-n7.mjs';
 import { casesCreateRetry } from './cases-create-retry.mjs';
 import { casesTaskDrafts } from './cases-task-drafts.mjs';
 import { casesSessionExpiry } from './cases-session-expiry.mjs';
+import { casesNoDraft } from './cases-c58-no-draft.mjs';
 import { casesComments } from './cases-comments.mjs';
 import { casesSettings } from './cases-settings.mjs';
 import { casesCapabilitiesDenied } from './capabilities-denied.mjs';
@@ -79,6 +80,9 @@ try {
   await casesN6(run);
   await casesTaskDrafts(run);
   await casesSessionExpiry(run);
+  // ND after SX, in contexts of its own like SX. ND1 issues grants to a person
+  // of its own and ends that person's access, so like S it stays behind N6.
+  await casesNoDraft(run);
   // C and S come after SX and before B6/B7. After SX because each opens a
   // context of its own and neither wants the previous group's session; before
   // B6/B7 because those stop the API and the database container, and a group

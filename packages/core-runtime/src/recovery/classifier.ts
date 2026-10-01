@@ -13,6 +13,7 @@ import type {
   Subject,
 } from '../../../core-records/src/index.ts';
 import type { LockRequest, LockSet } from '../locks.ts';
+import { modelCallsOn } from '../model-calls-on.ts';
 
 /** The durable causes that make an exact attempt nonclaimable. Nothing else is one. */
 export type NonclaimableCause =
@@ -26,7 +27,6 @@ export type NonclaimableCause =
 export interface Classification {
   readonly reservationId: string;
   readonly released: boolean;
-  /** `actual` when the hold settled at the spend its calls recorded. */
   readonly state: 'abandoned' | 'actual' | 'held' | 'quarantined' | 'liability_unknown';
   /** Why it was left alone, when it was. A classification with no reason is a guess. */
   readonly reason: string;
@@ -188,34 +188,31 @@ export async function classifyUnderLocks(
     };
   }
 
+  // AW-01. The hold's model calls: one sent and not settled may have cost up
+  // to its maximum, so the whole hold stays for a person (0191: never released
+  // by a machine), and what the settled ones cost is the hold's actual.
+  const calls = await modelCallsOn(tx, request.reservationId);
+  if (calls.open) {
+    await tx.query(
+      `update public.attempts set state = 'liability_unknown'
+        where business_id = $1 and id = $2 and state <> 'liability_unknown'`,
+      [tx.businessId, row.attempt_id],
+    );
+    return {
+      reservationId: request.reservationId,
+      released: false,
+      state: 'liability_unknown',
+      reason: `a model call on this hold was sent and never settled; its full hold is kept as an unknown liability under ${request.cause} until a person records its outcome`,
+    };
+  }
+
   // R1. The guarded update reports the row it actually changed, and everything
   // after it is conditional on that row. A classifier whose conditional update
   // affected nothing has lost the race, and it must not then move the attempt
   // or subtract a hold the winner has already subtracted.
-  //
-  // The hold's calls through the broker record their spend on the calls alone
-  // (`spentOn`): settled at their actual, still open at their maximum. Above
-  // zero the hold settles at that spend, so the envelope and the cap count it
-  // once; abandoning it "at no cost" would hand the spend back to the cap. At
-  // zero it is abandoned, with no number: there is no observation to justify
-  // one, not even zero.
-  const spent = await spendToSettle(tx, request.reservationId);
-  const changed = await tx.query<{ readonly held_minor: string }>(
-    spent > 0
-      ? `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
-          where business_id = $1 and id = $2 and state = 'held'
-          returning held_minor::text as held_minor`
-      : `update public.reservations
-            set state = 'abandoned', classified_cause = $3, classified_cause_id = $4,
-                terminal_at = now()
-          where business_id = $1 and id = $2 and state = 'held'
-          returning held_minor::text as held_minor`,
-    spent > 0
-      ? [tx.businessId, request.reservationId, spent]
-      : [tx.businessId, request.reservationId, request.cause, request.causeId],
-  );
-  const released = changed[0];
-  if (released === undefined) {
+  const hold = { reservationId: request.reservationId, envelopeId: row.envelope_id };
+  const closed = await closeHold(tx, hold, request, calls.spentMinor);
+  if (!closed) {
     return {
       reservationId: request.reservationId,
       released: false,
@@ -227,25 +224,15 @@ export async function classifyUnderLocks(
   await tx.query(
     `update public.attempts set state = 'abandoned', outcome = coalesce(outcome, 'abandoned')
       where business_id = $1 and id = $2 and not ($3 and state = 'handed_back')`,
-    [tx.businessId, row.attempt_id, spent > 0],
+    [tx.businessId, row.attempt_id, calls.spentMinor > 0n],
   );
-  // Subtracted once, from the held total, by the amount the changed row
-  // carried; the spend, when there is one, added to `actual` beside it, and a
-  // top-up's over-count given back (`spendToSettle`).
-  await tx.query(
-    `update public.task_envelopes
-        set held_minor = held_minor - $3, actual_minor = actual_minor + $4
-      where business_id = $1 and id = $2`,
-    [tx.businessId, row.envelope_id, Number(released.held_minor), spent],
-  );
-
   return {
     reservationId: request.reservationId,
     released: true,
-    state: spent > 0 ? 'actual' : 'abandoned',
+    state: calls.spentMinor > 0n ? 'actual' : 'abandoned',
     reason:
-      spent > 0
-        ? `stopped under ${request.cause} (${request.causeId}); the hold settled once at the ${spent} its calls spent`
+      calls.spentMinor > 0n
+        ? `settled under ${request.cause} (${request.causeId}) at the ${calls.spentMinor.toString()} its model calls cost; the rest of the hold was released once`
         : `abandoned under ${request.cause} (${request.causeId}); the hold was released once and no cost was recorded`,
   };
 }
@@ -269,25 +256,37 @@ export async function spentOn(tx: TenantQuery, reservationId: string): Promise<n
 }
 
 /**
- * The spend a stopped hold has not yet handed the envelope: its calls'
- * (`spentOn`), less what a budget top-up already moved to the envelope's
- * actual (AW-05, `raiseHold`), which a replacement's pickup then classifies.
- * The top-up moved the spend to date and lowered the hold by it, so the amount
- * is the ask's ceiling and the top-up less the hold now. Below zero, a call
- * counted at its maximum at the top-up came to less, and the envelope gets
- * the difference back. Read under the run lock every answer takes.
+ * Close a held reservation, guarded on `held` (false if another closed it): `actual` at
+ * its model calls' cost, else abandoned under the cause (0013: an actual is never zero).
+ * The envelope gives the hold back once and takes only that spend, never an invented zero.
  */
-async function spendToSettle(tx: TenantQuery, reservationId: string): Promise<number> {
-  const spent = await spentOn(tx, reservationId);
-  const [moved] = await tx.query<{ readonly moved: string }>(
-    `select coalesce(sum(k.ceiling_minor + a.amount_minor - r.held_minor), 0)::text as moved
-       from public.budget_answers a
-       join public.budget_asks k on k.business_id = a.business_id and k.id = a.ask_id
-       join public.reservations r on r.business_id = k.business_id and r.id = k.reservation_id
-      where a.business_id = $1 and k.reservation_id = $2 and a.kind = 'top_up'`,
-    [tx.businessId, reservationId],
+export async function closeHold(
+  tx: TenantQuery,
+  hold: { readonly reservationId: string; readonly envelopeId: string },
+  cause: { readonly cause: string; readonly causeId: string },
+  spentMinor: bigint,
+): Promise<boolean> {
+  const spent = spentMinor > 0n;
+  const [changed] = await tx.query<{ readonly held_minor: string }>(
+    spent
+      ? `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
+          where business_id = $1 and id = $2 and state = 'held'
+          returning held_minor::text as held_minor`
+      : `update public.reservations
+            set state = 'abandoned', classified_cause = $3, classified_cause_id = $4, terminal_at = now()
+          where business_id = $1 and id = $2 and state = 'held'
+          returning held_minor::text as held_minor`,
+    spent
+      ? [tx.businessId, hold.reservationId, spentMinor.toString()]
+      : [tx.businessId, hold.reservationId, cause.cause, cause.causeId],
   );
-  return spent - Number(moved?.moved ?? 0);
+  if (changed === undefined) return false;
+  await tx.query(
+    `update public.task_envelopes set held_minor = held_minor - $3, actual_minor = actual_minor + $4
+      where business_id = $1 and id = $2`,
+    [tx.businessId, hold.envelopeId, changed.held_minor, spentMinor.toString()],
+  );
+  return true;
 }
 
 interface CauseRow {
@@ -531,12 +530,22 @@ export async function holdCoveringGrants(
   // approver): it never waits on a grant row there, and contention rolls back.
   wait: 'wait' | 'nowait' = 'wait',
 ): Promise<void> {
+  // A subject held within ticked keys (an agent credential) covers only those
+  // keys' grants in this collection: one row per ticked action; null is any.
+  const asked = subjects.flatMap((subject): { subject: Subject; action: string | null }[] =>
+    subject.within === undefined
+      ? [{ subject, action: null }]
+      : subject.within
+          .filter((key) => key.startsWith(`${collection}:`))
+          .map((key) => ({ subject, action: key.slice(collection.length + 1) })),
+  );
   await tx.query(
     `with recursive chain as (
        select g.id, g.parent_grant_id from public.grants g
         where g.business_id = $1 and g.collection = $2
-          and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
-                       where s.kind = g.subject_kind and s.id = g.subject_id)
+          and exists (select 1 from unnest($3::text[], $4::uuid[], $5::text[]) as s (kind, id, action)
+                       where s.kind = g.subject_kind and s.id = g.subject_id
+                         and (s.action is null or s.action = g.action))
        union
        select p.id, p.parent_grant_id from public.grants p
          join chain c on p.id = c.parent_grant_id
@@ -549,8 +558,9 @@ export async function holdCoveringGrants(
     [
       tx.businessId,
       collection,
-      subjects.map((subject) => subject.kind),
-      subjects.map((subject) => subject.id),
+      asked.map(({ subject }) => subject.kind),
+      asked.map(({ subject }) => subject.id),
+      asked.map(({ action }) => action),
     ],
   );
 }

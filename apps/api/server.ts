@@ -44,18 +44,23 @@ import {
   connect,
   connectAsAdmin,
   connectListener,
+  loginLiveElsewhere,
   isBusinessId,
   KEY_FILE_VARIABLE,
   readEnvFile,
 } from '../../packages/core-records/src/index.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
-import { createApi, type LiveOptions, type ReadExecutor } from './app.ts';
+import { createApi, type LiveOptions, type ReadAdmitter, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
   executeAgentCommand,
+  executeCredentialCommand,
   executeCommand,
   executeRead as readExecutor,
+  type ConversationExchange,
   type ModelCallExecutor,
+  admitReads,
+  type LoginProvider,
 } from '../../packages/core-commands/src/index.ts';
 import {
   CRASH_POINT_VARIABLE,
@@ -64,12 +69,18 @@ import {
   withRuntimeKeys,
 } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
+import type { AgentLimits } from './auth/agent-quota.ts';
+import { createGoTrueFactors } from './auth/factors.ts';
+import { errorSinkLink, type ErrorSinkLink } from './health/error-sink-link.ts';
+import { createLangfuseHealth } from './health/tracing.ts';
+import { goTrueLogins, providerAdminKey } from './auth/provider-logins.ts';
 import {
   createSupabaseVerifier,
   keySetUrlFor,
   type SupabaseVerifierOptions,
 } from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
+import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
@@ -171,8 +182,20 @@ export interface ApiConfig {
   readonly admin: AdminConnection;
   /** The issuer and published key set bearers are checked against: public keys only. */
   readonly signIn: Omit<SupabaseVerifierOptions, 'onRefusal'>;
+  /** The provider's publishable key the page sends with a sign-in: public; '' or absent, none. */
+  readonly providerKey?: string;
   /** The signing key and delegation keyring `main` read, never put in `process.env`. */
   readonly keys: RuntimeKeys;
+  /**
+   * The provider admin API's key (`providerAdminKey`), for C58's calls on an
+   * ended login only; sign-in never reads it. Absent, those calls are not sent
+   * and stay owed.
+   */
+  readonly providerAdminKey?: () => Promise<string>;
+  /** Langfuse's URL, `LANGFUSE_HOST` (C34); absent is tracing switched off. */
+  readonly tracingUrl?: string;
+  /** The error sink's web address, `OPS_ERROR_SINK_URL` (C55); absent is no link. */
+  readonly errorSink?: ErrorSinkLink;
   /**
    * The read half of the surface. Absent means `reads/execute.ts`, imported
    * statically, so a module that fails to load stops the server rather than
@@ -182,17 +205,26 @@ export interface ApiConfig {
   readonly executeRead?: ReadExecutor;
   /** Read once at process start (`identity.ts`); absent, the identity route is not mounted. */
   readonly identity?: ServedIdentity;
-  /** The live task channel, started by `main`; absent, the event route is not mounted. */
-  readonly live?: LiveOptions;
+  /**
+   * The live task channel, started by `main`; absent, the event route is not
+   * mounted. Its check is `admitReads` unless a test hands in its own to count.
+   */
+  readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
+  /** AW-03's exchange through the same broker; absent where none is configured. */
+  readonly answerConversation?: ConversationExchange;
   /** The error sink and the security detections (ticket S0-2); absent without a sink. */
   readonly alerts?: Alerts;
+  /** The agent credential's limits in this process (API-2); absent, the defaults. */
+  readonly agentLimits?: AgentLimits;
 }
 
 export interface ComposedApi {
   /** The served app: `/api/health`, the boundary, and the fault mapping. */
   readonly app: Hono;
+  /** The sign-in provider's calls for an ended login (C58), for the retry. */
+  readonly logins: LoginProvider;
   /**
    * The app's own business resolver. Restart recovery resolves its keys
    * through it before the port is bound, so the recovery and the requests that
@@ -208,6 +240,7 @@ export interface ComposedApi {
 export function composeApi(config: ApiConfig): ComposedApi {
   const { database, admin } = config;
   const executeRead = config.executeRead ?? readExecutor;
+  const logins = goTrueLogins(config.providerAdminKey, config.signIn.issuer);
   const resolveBusiness = createBusinessResolver(admin);
   const server = new Hono();
   // S0-6 no edge caching: the API is served behind Vercel's edge network, so
@@ -254,7 +287,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
 
   // G3: the page reads its sign-in address here, so one web build serves every
   // environment. The issuer is public, and nothing is read to answer it.
-  server.get('/api/sign-in', (context) => context.json({ issuer: config.signIn.issuer }));
+  // The hosted provider also wants its publishable key, public too (S0-6).
+  const key = config.providerKey ?? '';
+  const signInAnswer = { issuer: config.signIn.issuer, ...(key === '' ? {} : { key }) };
+  server.get('/api/sign-in', (context) => context.json(signInAnswer));
 
   const { identity } = config;
   if (identity !== undefined) {
@@ -275,6 +311,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
     '/',
     createApi({
       database,
+      ...(config.agentLimits === undefined
+        ? {}
+        : { agentCredentials: { limits: config.agentLimits } }),
       verify: createSupabaseVerifier({
         ...config.signIn,
         // The reason alone: an answer the provider sent is never repeated.
@@ -286,10 +325,34 @@ export function composeApi(config: ApiConfig): ComposedApi {
       executeRead,
       executeCommand,
       executeAgentCommand,
-      ...(config.live === undefined ? {} : { live: config.live }),
+      executeCredentialCommand,
+      ...(config.live === undefined
+        ? {}
+        : { live: { ...config.live, admit: config.live.admit ?? admitReads } }),
       ...(config.executeModelCall === undefined
         ? {}
         : { executeModelCall: config.executeModelCall }),
+      ...(config.answerConversation === undefined
+        ? {}
+        : { answerConversation: config.answerConversation }),
+      // The provider GoTrue is: the one destination its factor calls reach.
+      factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
+      logins,
+      // Only where a provider key is held (the local server): the Vercel
+      // function has none, so it asks the owner nothing and leaves every
+      // provider step to the endings loop (ORCH47).
+      ...(config.providerAdminKey === undefined
+        ? {}
+        : {
+            sharedLogin: async (subject: string, businessId: string) =>
+              await loginLiveElsewhere(admin, subject, businessId),
+          }),
+      // C34: tracing where switched on; the watcher and error sink are C29's.
+      health:
+        config.tracingUrl === undefined
+          ? {}
+          : { tracing: createLangfuseHealth({ baseUrl: config.tracingUrl }) },
+      ...(config.errorSink === undefined ? {} : { errorSink: config.errorSink }),
       ...(config.alerts === undefined ? {} : { observe: config.alerts.observe }),
     }),
   );
@@ -309,7 +372,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
     return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
   });
 
-  return { app: server, resolveBusiness };
+  return { app: server, logins, resolveBusiness };
 }
 
 async function main(): Promise<void> {
@@ -329,6 +392,8 @@ async function main(): Promise<void> {
   const databaseUrl = environment['DATABASE_URL'];
   const adminUrl = environment['DATABASE_ADMIN_URL'];
   const issuer = environment['GOTRUE_URL'];
+  const tracingUrl = environment['LANGFUSE_HOST'];
+  const adminKey = providerAdminKey(environment, join(ROOT, '.local'));
 
   // A test's stand-in set, for a loopback issuer only: a hosted issuer's
   // tokens are checked against that provider's own published set, always.
@@ -383,6 +448,13 @@ async function main(): Promise<void> {
     brokerConfig.kind === 'configured' ? await startModelBroker(brokerConfig) : undefined;
   console.log(`api: credential broker ${broker === undefined ? 'not configured' : 'started'}`);
   const alerts = alertsFrom(environment);
+  let errorSink: ErrorSinkLink;
+  try {
+    errorSink = errorSinkLink(environment);
+  } catch (error) {
+    console.error(`api: ${(error as Error).message}`);
+    process.exit(1);
+  }
 
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
@@ -393,8 +465,13 @@ async function main(): Promise<void> {
     admin,
     signIn: { issuer: issuer as string, keySetUrl },
     keys,
-    live: { topics },
-    ...(broker === undefined ? {} : { executeModelCall: broker.executor }),
+    live: { topics, presence: createLivePresence() },
+    ...(broker === undefined
+      ? {}
+      : { executeModelCall: broker.executor, answerConversation: broker.answerConversation }),
+    ...(adminKey === undefined ? {} : { providerAdminKey: adminKey }),
+    ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
+    errorSink,
     ...(alerts === undefined ? {} : { alerts }),
   });
 
@@ -449,6 +526,8 @@ async function main(): Promise<void> {
         );
       }),
   );
+
+  // C58: what the act could not settle, the endings loop retries (`apps/endings`).
 
   const stop = (): void => {
     sweeper.stop();

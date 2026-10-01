@@ -91,7 +91,11 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
     'superseded', ver.superseded_at is not null,
     'planStepKey', (select st.plan_step_key from public.planned_steps st
       where st.business_id = $1 and st.run_id = run.id and st.ordinal = 1),
-    'currency', ver.currency, 'gateState', gate.state,
+    'currency', ver.currency,
+    -- A pending gate past its deadline reads expired, derived as task.read
+    -- derives it (reads/proposals.ts): the stored row stays pending.
+    'gateState', case when gate.state = 'pending' and gate.expires_at <= now()
+                      then 'expired' else gate.state end,
     'lease', (select json_build_object(
         'state', l.state,
         'expiresAt', to_char(l.expires_at at time zone 'UTC', ${ISO}),
@@ -106,7 +110,8 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
     'effectObserved', coalesce((select bool_or(a.observed or a.state = 'settled')
       from public.attempts a where a.business_id = $1 and a.run_id = run.id), false),
     'heldMinor', (select sum(res.held_minor)::float8 from public.reservations res
-      where res.business_id = $1 and res.run_id = run.id and res.state = 'held'),
+      where res.business_id = $1 and res.run_id = run.id
+        and res.state in ('held', 'quarantined')),
     -- A classifier's settle counts its calls as they stand now (spentNowOf).
     'spentMinor', (select nullif(sum(case when att.state = 'settled' then res.actual_minor
                                           else ${spentNowOf('res')} end), 0)::float8

@@ -81,7 +81,10 @@ function server(
   } = {},
 ): Stub {
   const sent: { at: string; body: Record<string, unknown> }[] = [];
-  const grants = options.grants ?? [{ collection: 'settings', action: 'manage' }];
+  const grants = options.grants ?? [
+    { collection: 'settings', action: 'manage' },
+    { collection: 'spend', action: 'decide' },
+  ];
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
     sent.push({ at, body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown> });
@@ -229,6 +232,17 @@ describe('the settings screen reads the server', () => {
     expect(page.find('[data-settings="read"]')?.textContent).toContain('404');
     expect(page.find('[data-settings="four-eyes-value"]')).toBeNull();
     expect(page.find('[data-settings="not-readable"]')).not.toBeNull();
+    await page.unmount();
+  });
+
+  it('draws a read that could not be read as the bad banner, not the empty state', async () => {
+    const api = server({ settings: () => json({ error: 'not found' }, 404) });
+    const page = await mount(screen(api.fetch));
+    await tick();
+
+    const read = page.find('[data-settings="read"]');
+    expect(read?.querySelector(':scope > .banner.banner--bad')).not.toBeNull();
+    expect(read?.querySelector('.empty')).toBeNull();
     await page.unmount();
   });
 

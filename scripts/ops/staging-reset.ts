@@ -67,7 +67,7 @@ export class Refusal extends Error {}
 
 const REF = /^[a-z]{20}$/u;
 /** Supabase's shared pooler in Sydney, staging's region (NATHAN-SUPABASE-FREE). */
-const POOLER = /^aws-[0-9]+-ap-southeast-2\.pooler\.supabase\.com$/u;
+export const POOLER: RegExp = /^aws-[0-9]+-ap-southeast-2\.pooler\.supabase\.com$/u;
 type Environment = Readonly<Record<string, string | undefined>>;
 
 function setting(environment: Environment, name: string): string {
@@ -77,7 +77,7 @@ function setting(environment: Environment, name: string): string {
 }
 
 /** The project a database address reaches, read from its login or its direct host. */
-function databaseProject(name: string, value: string): string {
+export function databaseProject(name: string, value: string): string {
   const url = URL.parse(value);
   if (url === null || !['postgres:', 'postgresql:'].includes(url.protocol))
     throw new Refusal(`${name} is not a database address`);

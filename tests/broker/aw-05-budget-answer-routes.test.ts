@@ -34,8 +34,8 @@ useAnswerRoutes('aw05routes');
 
 it('AW-05 run.top_up through the person route', async () => {
   await setThreshold(null);
-  const { work, runId } = await stopped('topped up over the route');
-  const body = topUpBody(work.taskId, runId);
+  const { work, runId, askId } = await stopped('topped up over the route');
+  const body = topUpBody(work.taskId, runId, askId);
   const answer = await asPerson(people.approver, '/run/top_up', body);
   expect(answer.status).toBe(200);
   expect(answer.body).toMatchObject({
@@ -52,12 +52,12 @@ it('AW-05 run.top_up through the person route', async () => {
 });
 
 it('AW-05 run.end_at_budget_stop through the person route', async () => {
-  const { work, runId } = await stopped('ended over the route');
+  const { work, runId, askId } = await stopped('ended over the route');
   const revision = await revisionOf(work.taskId);
   const answer = await asPerson(
     people.approver,
     '/run/end_at_budget_stop',
-    endBody(work.taskId, runId),
+    endBody(work.taskId, runId, askId),
   );
   expect(answer.status).toBe(200);
   expect(answer.body).toMatchObject({
@@ -71,7 +71,7 @@ it('AW-05 run.end_at_budget_stop through the person route', async () => {
 
 it('AW-05 the command line answers a budget stop', async () => {
   await setThreshold(null);
-  const credential = await tokenFor(people.approver.presented.subject);
+  const credential = await tokenFor(people.approver.presented.subject, { secondFactor: true });
   const cli = createCli({
     businessKey: alphaKey,
     credential,
@@ -85,11 +85,14 @@ it('AW-05 the command line answers a budget stop', async () => {
       ),
   });
   const topped = await stopped('topped up from the command line');
-  const up = await cli.run('run.top_up', topUpBody(topped.work.taskId, topped.runId));
+  const up = await cli.run('run.top_up', topUpBody(topped.work.taskId, topped.runId, topped.askId));
   expect(up.status).toBe(200);
   expect(await moneyOf(topped.runId)).toMatchObject({ run: 'planned', answers: 1 });
   const ended = await stopped('ended from the command line');
-  const end = await cli.run('run.end_at_budget_stop', endBody(ended.work.taskId, ended.runId));
+  const end = await cli.run(
+    'run.end_at_budget_stop',
+    endBody(ended.work.taskId, ended.runId, ended.askId),
+  );
   expect(end.status).toBe(200);
   expect(await moneyOf(ended.runId)).toMatchObject({ run: 'cancelled', answers: 1 });
 });
@@ -98,8 +101,12 @@ it('AW-05 above the threshold the route records one approval and a second person
   // Five dollars: a ten-dollar top-up needs two people.
   await setThreshold(5);
   try {
-    const { work, runId } = await stopped('four eyes over the route');
-    const first = await asPerson(people.approver, '/run/top_up', topUpBody(work.taskId, runId));
+    const { work, runId, askId } = await stopped('four eyes over the route');
+    const first = await asPerson(
+      people.approver,
+      '/run/top_up',
+      topUpBody(work.taskId, runId, askId),
+    );
     expect(first.status).toBe(200);
     expect(first.body['detail']).toMatchObject({
       runId,
@@ -108,10 +115,18 @@ it('AW-05 above the threshold the route records one approval and a second person
     });
     expect(await moneyOf(runId)).toMatchObject({ run: 'waiting_budget', answers: 0, approvals: 1 });
     // The same person again, under a fresh operation id, is refused and names the threshold.
-    const twice = await asPerson(people.approver, '/run/top_up', topUpBody(work.taskId, runId));
+    const twice = await asPerson(
+      people.approver,
+      '/run/top_up',
+      topUpBody(work.taskId, runId, askId),
+    );
     expect(twice.body['code']).toBe('FOUR_EYES_REQUIRED');
     expect(JSON.stringify(twice.body)).toContain('5');
-    const second = await asPerson(people.second, '/run/top_up', topUpBody(work.taskId, runId));
+    const second = await asPerson(
+      people.second,
+      '/run/top_up',
+      topUpBody(work.taskId, runId, askId),
+    );
     expect(second.status).toBe(200);
     expect(second.body['detail']).toMatchObject({ runId, state: 'applied' });
     expect(await moneyOf(runId)).toMatchObject({ run: 'planned', answers: 1, approvals: 2 });
@@ -121,15 +136,15 @@ it('AW-05 above the threshold the route records one approval and a second person
 });
 
 it('AW-05 the agent prefix refuses both answers, with or without a delegation, a live one included', async () => {
-  const { work, runId } = await stopped('an agent tries to answer');
+  const { work, runId, askId } = await stopped('an agent tries to answer');
   const agentToken = await tokenFor(s.agent.subject);
   // The stopped run's delegation is retired at the stop; the agent's live one
   // is for other work, in the same business.
   const live = await liveWork(s, 'the agent works something else', 2_000);
   const before = await moneyOf(runId);
   for (const [path, body] of [
-    ['/run/top_up', topUpBody(work.taskId, runId)],
-    ['/run/end_at_budget_stop', endBody(work.taskId, runId)],
+    ['/run/top_up', topUpBody(work.taskId, runId, askId)],
+    ['/run/end_at_budget_stop', endBody(work.taskId, runId, askId)],
   ] as const) {
     for (const headers of [
       { authorization: `Bearer ${agentToken}` },

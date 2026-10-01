@@ -24,7 +24,6 @@ import {
   type PurgeOutcome,
   type WrapUpOutcome,
 } from '../../packages/core-commands/src/index.ts';
-import { writeBusinessSetting } from '../../packages/core-records/src/index.ts';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
@@ -33,6 +32,7 @@ import {
   detail,
   started,
   type ConversationWorld,
+  setConversationWindow,
 } from './aw-03-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -101,7 +101,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 the conversation outlives its bo
   beforeAll(async () => {
     w = await conversationWorld('aw_03_address');
     await inBusiness(async (tx) => {
-      await writeBusinessSetting(tx, { key: 'conversation_window_days', value: 7 });
+      await setConversationWindow(tx, 7);
     });
   }, 120_000);
 
@@ -249,13 +249,13 @@ describe.skipIf(serverUrl === undefined)('AW-03 the conversation outlives its bo
     for (const days of [3, 45]) {
       // eslint-disable-next-line no-await-in-loop -- one setting at a time
       await inBusiness(async (tx) => {
-        await writeBusinessSetting(tx, { key: 'conversation_window_days', value: days });
+        await setConversationWindow(tx, days);
       });
       // eslint-disable-next-line no-await-in-loop
       expect(await purge(conversationId)).toEqual({ ok: false, code: 'WINDOW_UNREADABLE' });
     }
     await inBusiness(async (tx) => {
-      await writeBusinessSetting(tx, { key: 'conversation_window_days', value: 7 });
+      await setConversationWindow(tx, 7);
     });
     expect((await read(conversationId)).messages).toHaveLength(1);
   });

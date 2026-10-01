@@ -212,7 +212,7 @@ describe.skipIf(serverUrl === undefined)('C54 run money', { timeout: 60_000 }, (
     });
     const dans = await plannedTask(world, {
       ...dan,
-      token: await tokenFor(dan.presented.subject),
+      token: await tokenFor(dan.presented.subject, { secondFactor: true }),
       businessKey: 'alpha',
     });
     const body = (taskId: string, amountMinor: number) => ({

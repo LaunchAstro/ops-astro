@@ -168,9 +168,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
         chips={props.subject.chips}
         draft={props.draft}
         sendable={sendable}
-        onSend={(text) => {
-          if (chat !== undefined) props.onSend(chat.key, text);
-        }}
+        onSend={(text) => (chat === undefined ? undefined : props.onSend(chat.key, text))}
       />
     </section>
   );

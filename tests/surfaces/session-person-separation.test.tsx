@@ -90,7 +90,11 @@ describe('S0-6 isolation', () => {
     const page = await mount(<Page sessions={sessions} fetch={fetch} />);
     await settle();
     await settle();
-    expect(page.text()).toContain('first@example.test');
+    // The tab still says the first person is signed in: the person menu (C23)
+    // names them by email while their name is refused.
+    expect(page.find('.appbar .who__trigger')?.getAttribute('aria-label')).toBe(
+      'first@example.test, signed in',
+    );
     expect(page.text()).not.toContain('second-person private client task');
     await page.unmount();
   });

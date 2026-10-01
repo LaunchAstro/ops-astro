@@ -21,9 +21,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { launchChromium } from '../support/chromium.ts';
 import { load, MOCKUP_ORIGIN, openSide, type Side } from './capture.ts';
-import { madeUpSession, PAGE_PARAMS, serveApp } from './app-pages.ts';
+import { MADE_UP_PARAMS, madeUpSession, serveApp } from './app-pages.ts';
+import { measure, type Measured } from './look-measure.ts';
 import { answerMadeUp } from './made-up-api.ts';
-import { LOOK_SCREENS, type LookProbe, type LookScreen } from './look/index.ts';
+import { LOOK_SCREENS, RULED_PAINT, type LookProbe, type LookScreen } from './look/index.ts';
 import {
   checkAssets,
   checkMockupTree,
@@ -33,9 +34,8 @@ import {
   readPacket,
   type Theme,
 } from './packet.ts';
-import { addressOf } from './report.ts';
+import { addressOf, needsSession } from './report.ts';
 
-type Measured = Readonly<Record<string, string>>;
 interface Pinned {
   readonly about: string;
   readonly mockup: string;
@@ -54,43 +54,6 @@ if (screens.length === 0) throw new Error(`look: no screen ${String(only)}`);
 const pinnedFile = (screen: LookScreen): URL =>
   new URL(`look/${screen.id}.mockup.json`, import.meta.url);
 const widthsOf = (probe: LookProbe): readonly number[] => probe.widths ?? [1480];
-
-/** In the page: each asked property of the element, colours as the pixel they paint. */
-function measure(input: { selector: string; props: readonly string[] }): Measured | null {
-  const element = document.querySelector(input.selector);
-  if (element === null) return null;
-  const style = getComputedStyle(element);
-  const box = element.getBoundingClientRect();
-  const canvas = document.createElement('canvas');
-  canvas.width = 1;
-  canvas.height = 1;
-  const pen = canvas.getContext('2d', { willReadFrequently: true });
-  const paint = (value: string): string => {
-    if (pen === null || value === '' || value === 'none') return value;
-    pen.clearRect(0, 0, 1, 1);
-    pen.fillStyle = '#000';
-    pen.fillStyle = value;
-    pen.fillRect(0, 0, 1, 1);
-    const [r, g, b, a] = pen.getImageData(0, 0, 1, 1).data;
-    return `rgba(${String(r)},${String(g)},${String(b)},${String(a)})`;
-  };
-  const out: Record<string, string> = {};
-  for (const prop of input.props) {
-    if (prop.startsWith('box.')) {
-      const key = prop.slice(4) as 'width' | 'height' | 'x' | 'y';
-      out[prop] = String(Math.round(box[key]));
-    } else if (prop === 'font-family') {
-      // The face that paints: load() has proved every bundled face resolves,
-      // so the fallbacks after the first never draw.
-      out[prop] = (style.fontFamily.split(',')[0] ?? '').trim().replaceAll('"', '');
-    } else if (prop.includes('color')) {
-      out[prop] = paint(style.getPropertyValue(prop));
-    } else {
-      out[prop] = style.getPropertyValue(prop);
-    }
-  }
-  return out;
-}
 
 const key = (width: number, theme: Theme): string => `${String(width)}-${theme}`;
 
@@ -114,7 +77,18 @@ const placesOf = (probe: LookProbe): { width: number; theme: Theme }[] =>
 async function measureOn(side: Side, url: string, probe: LookProbe, on: 'mockup' | 'app') {
   try {
     const page = await load(side, packet, url, { open: probe[on].open });
-    return await page.evaluate(measure, { selector: probe[on].selector, props: probe.props });
+    const read = () => page.evaluate(measure, { selector: probe[on].selector, props: probe.props });
+    // The dev server injects each style sheet as its module loads, so an early read can
+    // catch a block before its look applies (13px for 14px, 16px for 48px padding). Read
+    // until two reads 100ms apart agree, for at most two seconds.
+    let last = await read();
+    for (let tries = 0; tries < 20; tries += 1) {
+      await page.waitForTimeout(100);
+      const next = await read();
+      if (JSON.stringify(next) === JSON.stringify(last)) return next;
+      last = next;
+    }
+    return last;
   } finally {
     await side.context.close();
   }
@@ -156,9 +130,13 @@ async function checkProbe(
     say(`red ${name}: no mockup value pinned (run --measure)`, true);
     return;
   }
-  const side = await openSide(browser, packet, width, { app, session, colorScheme: theme });
-  await answerMadeUp(side.context);
-  const address = addressOf(probe.app.page, PAGE_PARAMS) ?? '/';
+  // A public page (sign-in) is measured signed out, as the harness draws it;
+  // an address the probe names is drawn signed in.
+  const target = probe.app;
+  const signedIn = target.path !== undefined || needsSession(target.page) ? { session } : {};
+  const side = await openSide(browser, packet, width, { app, ...signedIn, colorScheme: theme });
+  await answerMadeUp(side.context, target.reads);
+  const address = target.path ?? addressOf(target.page, MADE_UP_PARAMS) ?? '/';
   const got = await measureOn(side, new URL(address, app).href, probe, 'app');
   if (got === null) {
     say(`red ${name}: the app draws no ${probe.app.selector}`, true);
@@ -166,7 +144,9 @@ async function checkProbe(
   }
   // A ruling that moved the build off the mockup names the value it holds instead.
   const wanted = (prop: string): string | undefined =>
-    probe.ruled?.find((r) => r.at === `${prop}@${theme}`)?.want ?? want[prop];
+    probe.ruled?.find((r) => r.at === `${prop}@${theme}`)?.want ??
+    RULED_PAINT.find((r) => r.theme === theme && r.mockup === want[prop])?.want ??
+    want[prop];
   const off = probe.props.filter((prop) => got[prop] !== wanted(prop));
   const why = off.map((p) => `${p} mockup ${String(wanted(p))} app ${String(got[p])}`);
   say(off.length === 0 ? `ok ${name}` : `red ${name}: ${why.join('; ')}`, off.length > 0);

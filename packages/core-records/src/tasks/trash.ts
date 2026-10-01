@@ -547,6 +547,14 @@ export async function purgeTrashedRecords(
       returning id`,
     [tx.businessId, gone],
   );
+  // A conversation opened on a purged task keeps its body, its wrap-ups and
+  // its address and loses only the scope: 0198's key to `records` does not
+  // cascade, and deleting the task under it would fault the whole purge.
+  await tx.query(
+    `update public.conversations set scope_kind = null, scope_record_id = null
+      where business_id = $1 and scope_record_id = any ($2::uuid[])`,
+    [tx.businessId, gone],
+  );
   if (commentIds.length > 0) {
     await tx.query(`delete from records where business_id = $1 and id = any ($2::uuid[])`, [
       tx.businessId,
@@ -561,6 +569,13 @@ export async function purgeTrashedRecords(
         and deleted_at is not null and deleted_at < $3
       returning id`,
     [tx.businessId, ids, options.trashedBefore],
+  );
+  // The live change record (0065) names a task with no key to it; a purged
+  // task's row goes with it, so nothing there says the task ever existed.
+  await tx.query(
+    `delete from public.live_changes
+      where business_id = $1 and subject_kind = 'task' and subject_id = any ($2::uuid[])`,
+    [tx.businessId, purged.map((each) => each.id)],
   );
   return {
     recordIds: purged.map((each) => each.id).toSorted(),

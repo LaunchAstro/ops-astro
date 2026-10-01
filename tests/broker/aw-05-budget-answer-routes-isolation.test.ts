@@ -35,14 +35,20 @@ useAnswerRoutes('aw05routesiso');
 interface Stopped {
   readonly work: Work;
   readonly runId: string;
+  readonly askId: string;
 }
 
 /** Bravo's decider, on bravo's own prefix, naming alpha's task and run. */
 async function fromAnotherBusiness(target: Stopped): Promise<readonly Answer[]> {
-  const { work, runId } = target;
+  const { work, runId, askId } = target;
   const answers = [
-    await asPerson(bravo.decider, '/run/top_up', topUpBody(work.taskId, runId), bravoKey),
-    await asPerson(bravo.decider, '/run/end_at_budget_stop', endBody(work.taskId, runId), bravoKey),
+    await asPerson(bravo.decider, '/run/top_up', topUpBody(work.taskId, runId, askId), bravoKey),
+    await asPerson(
+      bravo.decider,
+      '/run/end_at_budget_stop',
+      endBody(work.taskId, runId, askId),
+      bravoKey,
+    ),
   ];
   for (const answer of answers) {
     expect(answer.body['code']).toBe('NOT_FOUND');
@@ -60,9 +66,13 @@ async function fromAnotherTask(target: Stopped, other: Stopped): Promise<readonl
     ['/run/end_at_budget_stop', endBody],
   ] as const) {
     // eslint-disable-next-line no-await-in-loop -- one crossing at a time reads as a list
-    const crossed = await asPerson(people.approver, path, body(taskId, other.runId));
+    const crossed = await asPerson(people.approver, path, body(taskId, other.runId, other.askId));
     // eslint-disable-next-line no-await-in-loop
-    const fabricated = await asPerson(people.approver, path, body(taskId, randomUUID()));
+    const fabricated = await asPerson(
+      people.approver,
+      path,
+      body(taskId, randomUUID(), randomUUID()),
+    );
     expect(crossed.body['code'], path).toBe('NOT_FOUND');
     expect(bytesOf(crossed), path).toBe(bytesOf(fabricated));
     answers.push(crossed);
@@ -78,10 +88,10 @@ async function fromOutsideTheGrant(target: Stopped, other: Stopped): Promise<rea
     await grantTo(tx, narrow, 'decide', scope, false, 'billing');
     await grantTo(tx, narrow, 'decide', scope, false, 'gate');
   });
-  const { work, runId } = target;
+  const { work, runId, askId } = target;
   const answers = [
-    await asPerson(narrow, '/run/top_up', topUpBody(work.taskId, runId)),
-    await asPerson(narrow, '/run/end_at_budget_stop', endBody(work.taskId, runId)),
+    await asPerson(narrow, '/run/top_up', topUpBody(work.taskId, runId, askId)),
+    await asPerson(narrow, '/run/end_at_budget_stop', endBody(work.taskId, runId, askId)),
   ];
   for (const answer of answers) expect(answer.body['code']).toBe('SCOPE_NOT_GRANTED');
   return answers;

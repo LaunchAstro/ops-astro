@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `/projects/`. The caller's inbox, the board of the business's unboarded
-// tasks, and the form that makes one.
+// `/projects/`. Two tabs: the caller's inbox above the board of the
+// business's unboarded tasks with the form that makes one, and the Work log
+// (MP-8-4), reached by `#worklog` as the mockup's `/projects/#worklog` is. The
+// Work log reads nothing until it is first opened, and stays drawn once it has
+// been, as every tab pane does.
 //
 // The read is `task.board` with `board: null`, which the contract defines as
 // the business's unboarded tasks — the acceptance case creates a task
@@ -13,7 +16,7 @@
 // stores is recorded rather than papered over by dropping the columns.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { Board, Empty, type BoardRow } from '@launchastro/ui';
+import { Board, Empty, Icon, TabPanel, TabStrip, type BoardRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { titleOf } from '../views/task-title.ts';
 import type { TaskBoardResult, TaskSummary } from '../../../../packages/core-wire/src/index.ts';
@@ -23,6 +26,7 @@ import { RecordState } from '../views/record-state.tsx';
 import { drawTaskState } from '../views/task-state.ts';
 import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
+import { WorkLog } from './projects/WorkLog.tsx';
 import { Inbox } from '../views/inbox.tsx';
 
 /** A create whose outcome is not known, held so the retry is the same attempt. */
@@ -34,9 +38,55 @@ interface PendingCreate {
 export interface ProjectsProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
+  /** Goes to an address inside the application. */
+  readonly navigate: (path: string) => void;
+}
+
+type ProjectsTab = 'board' | 'worklog';
+
+const TABS = [
+  { id: 'board', label: 'Board' },
+  { id: 'worklog', label: 'Work log' },
+] as const;
+
+const WORK_LOG = '#worklog';
+
+const tabInAddress = (): ProjectsTab =>
+  globalThis.location?.hash === WORK_LOG ? 'worklog' : 'board';
+
+/** Keeps the address on the open tab, so a reload lands on it. */
+function writeTab(tab: ProjectsTab): void {
+  const here = globalThis.location;
+  if (here === undefined) return;
+  const address = `${here.pathname}${here.search}${tab === 'worklog' ? WORK_LOG : ''}`;
+  globalThis.history.replaceState(globalThis.history.state, '', address);
 }
 
 export function Projects(props: ProjectsProps): ReactElement {
+  const [tab, setTab] = useState<ProjectsTab>(tabInAddress);
+  const [workLogOpened, setWorkLogOpened] = useState(tab === 'worklog');
+  const select = (id: string): void => {
+    const next: ProjectsTab = id === 'worklog' ? 'worklog' : 'board';
+    setTab(next);
+    if (next === 'worklog') setWorkLogOpened(true);
+    writeTab(next);
+  };
+  return (
+    <div className="stack">
+      <TabStrip label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
+      <TabPanel name="projects" tab="board" selected={tab}>
+        <ProjectBoard client={props.client} grantKey={props.grantKey} />
+      </TabPanel>
+      <TabPanel name="projects" tab="worklog" selected={tab}>
+        {workLogOpened ? (
+          <WorkLog client={props.client} grantKey={props.grantKey} navigate={props.navigate} />
+        ) : null}
+      </TabPanel>
+    </div>
+  );
+}
+
+function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
   const client = props.client;
   // While this is true the create is in flight and the form is not editable:
   // the input, the submit and `Start a different task` are all disabled. A
@@ -120,26 +170,28 @@ export function Projects(props: ProjectsProps): ReactElement {
     <div className="stack">
       {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
       <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
-      <form className="taskform projects__create" onSubmit={onCreate}>
-        <div className="field">
-          <label className="tf__k" htmlFor="create-title">
-            New task
-          </label>
+      {/* The mockup's quick-add field ("Add another…", P-02) and its New task button (P-06):
+          one form, sending task.create. */}
+      <form className="projects__create" onSubmit={onCreate}>
+        <label className="visually-hidden" htmlFor="create-title">
+          New task
+        </label>
+        <span className="cbd__field">
+          <Icon name="plus" size="xs" />
           <input
             id="create-title"
-            className="input"
             type="text"
             required
-            placeholder="What needs doing"
+            placeholder="Add a task…"
             disabled={locked}
             value={title}
             onChange={(event) => {
               setTitle(event.target.value);
             }}
           />
-        </div>
+        </span>
         <button
-          className="btn btn--primary"
+          className="btn btn--secondary btn--sm"
           type="submit"
           data-attempt={retrying ? 'retry' : 'new'}
           disabled={locked || title.trim() === ''}
@@ -148,7 +200,7 @@ export function Projects(props: ProjectsProps): ReactElement {
         </button>
         {pending === null ? null : (
           <button
-            className="btn"
+            className="btn btn--sm"
             type="button"
             data-attempt="discard"
             disabled={creating}
@@ -220,7 +272,11 @@ const groupsOf = (tasks: readonly TaskSummary[]): readonly string[] => [
 /** The heading a task sits under. A stateless one gets its own, not somebody else's. */
 const groupOf = (task: TaskSummary): string => task.state?.label ?? 'No state';
 
-const dayOf = (iso: string): string => iso.slice(0, 10);
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** The stored day as the board draws it: `30 Sep`, the mockup's day and short month. */
+export const dayOf = (iso: string): string =>
+  `${String(Number(iso.slice(8, 10)))} ${MONTHS[Number(iso.slice(5, 7)) - 1] ?? ''}`;
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 

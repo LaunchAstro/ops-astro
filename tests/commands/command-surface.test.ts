@@ -39,28 +39,9 @@ if (serverUrl === undefined) {
   console.warn('command surface: DATABASE_URL is unset, so nothing below ran, nothing is proved.');
 }
 
-/** The surface's reads, sorted: every other declaration is a write. */
-const DECLARED_READS = [
-  'conversation.allowance',
-  'conversation.list',
-  'conversation.read',
-  'definition.attribution',
-  'gate.pending',
-  'harness.read',
-  'inbox.count',
-  'inbox.read',
-  'inbox.unattended',
-  'person.list',
-  'preset.plan',
-  'session.capabilities',
-  'settings.read',
-  'task.board',
-  'task.execution',
-  'task.queue',
-  'task.read',
-  'task.receipt',
-  'trace.read',
-];
+/** Every path is a collection and an operation; the collections are named in the case below. */
+const PATH_SHAPE =
+  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|gate|conversation|model|run|definition|inbox|notifications|trace|harness|preference|access|operations|privacy|legal|credential|client)\/[a-z_]+$/u;
 
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
@@ -102,20 +83,48 @@ describe('the surface as a table', () => {
     // asked with `decide` on tasks. `conversation` is a person's conversation
     // with the agent (AW-03), its writes and its read at its address. `model`
     // is AW-01's call through the broker, asked of the lease's task. `run` is
-    // AW-05's budget stop; `definition` AW-04's; `trace` AW-13's; `harness` AW-12's result.
-    expect(
-      paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate|conversation|model|run|definition|inbox|notifications|trace|harness)\/[a-z_]+$/u.test(
-          path,
-        ),
-      ),
-    ).toBe(true);
+    // AW-05's budget stop answers; `definition`, AW-04's attribution; `trace`, AW-13's readers;
+    // `harness`, AW-12's result. `operations`
+    // and `privacy` are C55's view and its incident record, and `legal` is C81's
+    // documents, asked of `privacy`. `credential` is API-2's agent credential.
+    expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
 
-// eslint-disable-next-line max-lines-per-function -- one table, read top to bottom
+/** The reads the surface declares, sorted. */
+const DECLARED_READS = [
+  'access.read',
+  'client.list',
+  'conversation.allowance',
+  'conversation.list',
+  'conversation.read',
+  'definition.attribution',
+  'gate.pending',
+  'harness.read',
+  'inbox.count',
+  'inbox.read',
+  'inbox.unattended',
+  'operations.read',
+  'person.list',
+  'preference.read',
+  'preset.plan',
+  'privacy.draft_breach_notices',
+  'session.capabilities',
+  'session.person',
+  'settings.read',
+  'task.board',
+  'task.execution',
+  'task.ledger',
+  'task.queue',
+  'task.read',
+  'task.receipt',
+  'task.search',
+  'team.list',
+  'trace.read',
+];
+
 describe('the surface as a table', () => {
-  it('declares the seventeen reads as reads, and everything else as a write', () => {
+  it('declares the twenty-eight reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
@@ -128,7 +137,9 @@ describe('the surface as a table', () => {
       }
     }
   });
+});
 
+describe('the surface as a table', () => {
   it('gives every declaration the collection its authority is checked against', () => {
     // The collection used to be written into `prepareCommand` as `'task'`,
     // which was true while every operation was a task operation. A caller
@@ -140,14 +151,16 @@ describe('the surface as a table', () => {
     expect(collections.get('task.create')).toBe('task');
     expect(collections.get('person.list')).toBe('person');
     expect(collections.get('preset.plan')).toBe('preset');
-    expect(collections.get('settings.set_four_eyes_threshold')).toBe('settings');
+    // MP-2-11: the four-eyes threshold is a money action (owner line 71).
+    expect(collections.get('settings.set_four_eyes_threshold')).toBe('spend');
     expect(collections.get('settings.set_client_sign_off')).toBe('settings');
     // `settings.read` is on the same collection as the two writes and takes a
     // different action, which is the whole of the asymmetry: every member may
     // see a setting, and changing one is `manage`.
     expect(collections.get('settings.read')).toBe('settings');
     expect(declarationOf('settings.read').action).toBe('read');
-    expect(declarationOf('settings.set_four_eyes_threshold').action).toBe('manage');
+    expect(declarationOf('settings.set_client_sign_off').action).toBe('manage');
+    expect(declarationOf('settings.set_four_eyes_threshold').action).toBe('decide');
     expect(collections.get('session.capabilities')).toBe('session');
     for (const command of COMMAND_SURFACE) {
       expect(command.collection, command.name).toMatch(/^[a-z][a-z_]*$/u);
@@ -199,33 +212,35 @@ describe('the surface as a table', () => {
   });
 });
 
+let db: FreshDatabase;
+let business: string;
+let named: readonly string[];
+
+beforeAll(async () => {
+  if (serverUrl === undefined) return;
+  db = await createFreshDatabase({ part: 'f' });
+  business = await insertBusiness(db.app, 'surface');
+  const spine = await installSpine(db.app, business);
+  const fields = await db.app.withBusiness(
+    business,
+    async (tx) => await readFieldDefinitions(tx, spine.taskTypeId),
+  );
+  // Both columns: the operation that owns a field always, and the one that
+  // owns it when the write crosses a containment boundary.
+  const operations = new Set<string>();
+  for (const field of fields) {
+    for (const name of field.owningOperation?.split(' ') ?? []) operations.add(name);
+    if (field.escalatingOperation !== null) operations.add(field.escalatingOperation);
+  }
+  named = [...operations].toSorted();
+}, 60_000);
+
+afterAll(async () => {
+  if (serverUrl === undefined) return;
+  await db?.drop();
+});
+
 describe.skipIf(serverUrl === undefined)('the surface against the installed model', () => {
-  let db: FreshDatabase;
-  let business: string;
-  let named: readonly string[];
-
-  beforeAll(async () => {
-    db = await createFreshDatabase({ part: 'f' });
-    business = await insertBusiness(db.app, 'surface');
-    const spine = await installSpine(db.app, business);
-    const fields = await db.app.withBusiness(
-      business,
-      async (tx) => await readFieldDefinitions(tx, spine.taskTypeId),
-    );
-    // Both columns: the operation that owns a field always, and the one that
-    // owns it when the write crosses a containment boundary.
-    const operations = new Set<string>();
-    for (const field of fields) {
-      for (const name of field.owningOperation?.split(' ') ?? []) operations.add(name);
-      if (field.escalatingOperation !== null) operations.add(field.escalatingOperation);
-    }
-    named = [...operations].toSorted();
-  }, 60_000);
-
-  afterAll(async () => {
-    await db?.drop();
-  });
-
   it('finds every operation the model names in the surface', () => {
     const declared = new Set<string>(COMMAND_SURFACE.map((command) => command.name));
     const missing = named.filter((name) => !declared.has(name));
