@@ -39,6 +39,8 @@ const COMMENT_FIELDS = [
   'author',
   'body',
   'comment_type',
+  // A team conversation's message is anchored here in place of a task (C71-D).
+  'conversation',
   'edited_at',
   // A reply's message (MP-4-5, R42).
   'parent',
