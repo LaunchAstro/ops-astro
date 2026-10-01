@@ -62,10 +62,12 @@ function transport(
       ? (answers.person ?? (() => Promise.resolve(json({ person: { name: 'Mia Hart' } }))))
       : url === '/api/session/end'
         ? (answers.clear ?? (() => Promise.resolve(json({ ok: true }))))
-        : url.endsWith('/session/end')
-          ? (answers.end ??
-            (() => Promise.resolve(json({ recordId: null, detail: { ended: 'sign-out' } }))))
-          : null;
+        : url.endsWith('/account/sessions/sign-out')
+          ? () => Promise.resolve(json({ ok: true }))
+          : url.endsWith('/session/end')
+            ? (answers.end ??
+              (() => Promise.resolve(json({ recordId: null, detail: { ended: 'sign-out' } }))))
+            : null;
     if (answer === null) return await never();
     asked.push({
       url,
@@ -148,6 +150,12 @@ describe('C23 CS-2.9: show who is signed in, sign out, and reach the person’s 
     // holds no token, so it asks the identity provider for nothing (S0-6c).
     const cleared = asked.find((each) => each.url === '/api/session/end');
     expect(cleared).toMatchObject({ method: 'POST', session: 'sid-alpha' });
+    // C58: before the cookie goes, the sign-in ends in every business, sent
+    // on the person prefix where that cookie is.
+    const urls = asked.map((each) => each.url);
+    const ended = urls.findIndex((url) => url.endsWith('/account/sessions/sign-out'));
+    expect(asked[ended]).toMatchObject({ method: 'POST', session: 'sid-alpha' });
+    expect(ended).toBeLessThan(urls.indexOf('/api/session/end'));
     expect(asked.map((each) => each.url).filter((url) => url.includes('/logout'))).toEqual([]);
     expect(trigger(view)).toBeNull();
     await view.unmount();
