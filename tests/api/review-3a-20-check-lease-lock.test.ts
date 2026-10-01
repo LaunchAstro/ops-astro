@@ -46,7 +46,12 @@ describe.skipIf(serverUrl === undefined)('REVIEW-3A-20 check serialised on the l
       ]);
       checking = c.asAgent(
         'task.check',
-        { leaseId: work.leaseId, fence: work.fence, name: 'behind the handback', outcome: 'passed' },
+        {
+          leaseId: work.leaseId,
+          fence: work.fence,
+          name: 'behind the handback',
+          outcome: 'passed',
+        },
         work.credential,
       );
       const settle = (): void => {
