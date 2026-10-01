@@ -15,6 +15,7 @@ import { existsSync } from 'node:fs';
 import { chromium, type Browser } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { capturePicture, type PictureBrowser } from '../../packages/core-connectors/src/index.ts';
+import { launchChromium } from '../support/chromium.ts';
 import { ABOUT, POOL, SHEET, publicResolver, site } from './c80-picture-world.ts';
 
 const installed = existsSync(chromium.executablePath());
@@ -23,7 +24,7 @@ if (!installed)
 
 let browser: Browser;
 beforeAll(async () => {
-  if (installed) browser = await chromium.launch();
+  if (installed) browser = await launchChromium();
 }, 60_000);
 afterAll(async () => {
   if (installed) await browser.close();
