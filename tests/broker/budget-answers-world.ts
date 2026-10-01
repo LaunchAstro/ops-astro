@@ -84,7 +84,9 @@ export const one = async <Row>(sql: string, params: readonly unknown[]): Promise
 };
 
 /** A run stopped at its ceiling: one ask raised, the lease over, the hold kept. */
-export async function stopped(title: string): Promise<{ work: Work; runId: string }> {
+export async function stopped(
+  title: string,
+): Promise<{ work: Work; runId: string; askId: string }> {
   const work = await liveWork(s, title, UNDER_ONE_CALL);
   world.provider.mode('answer');
   const result = await call(work);
@@ -93,7 +95,11 @@ export async function stopped(title: string): Promise<{ work: Work; runId: strin
     `select run_id from public.leases where id = $1`,
     [work.picked['leaseId']],
   );
-  return { work, runId };
+  const { id: askId } = await one<{ id: string }>(
+    `select id from public.budget_asks where run_id = $1`,
+    [runId],
+  );
+  return { work, runId, askId };
 }
 
 /** Everything an answer may move, as one comparable row. */

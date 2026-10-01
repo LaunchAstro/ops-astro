@@ -527,8 +527,14 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'conversation.rename': { conversationId: 'any', title: 'any' },
   'conversation.set_scope': { conversationId: 'any', page: 'any' },
   'model.call': { leaseId: 'any', fence: 'any', operation: 'any', fields: 'any' },
-  'run.top_up': { recordId: 'any', runId: 'any', amountMinor: 'any', currency: 'any' },
-  'run.end_at_budget_stop': { recordId: 'any', runId: 'any' },
+  'run.top_up': {
+    recordId: 'any',
+    runId: 'any',
+    askId: 'any',
+    amountMinor: 'any',
+    currency: 'any',
+  },
+  'run.end_at_budget_stop': { recordId: 'any', runId: 'any', askId: 'any' },
   // The version the caller read (0 before the first); the two lists are
   // checked item by item by the handler.
   'run.revise_state': {
