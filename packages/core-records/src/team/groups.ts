@@ -65,15 +65,14 @@ export interface GroupMembership {
 }
 
 /**
- * A group the person is a current member of, with its lock held until the
- * transaction ends; undefined for anything else, which is every other
- * person's conversation, every direct one and every other business's.
+ * A live group of this business, with its lock held until the transaction
+ * ends; undefined for anything else, which is every direct conversation and
+ * every other business's. Who may act on it is the caller's to ask.
  */
-export async function lockOwnGroup(
+export async function lockGroup(
   tx: TenantQuery,
   types: ConversationTypes,
   conversationId: string,
-  personId: string,
 ): Promise<GroupMembership | undefined> {
   if (!isUuid(conversationId)) return undefined;
   await lockConversation(tx, conversationId);
@@ -83,12 +82,9 @@ export async function lockOwnGroup(
                    where o.business_id = r.business_id and o.conversation_id = r.id
                      and o.left_at is null) as members
        from public.records r
-       join public.team_conversation_members m
-         on m.business_id = r.business_id and m.conversation_id = r.id
-        and m.person_id = $4 and m.left_at is null
       where r.business_id = $1 and r.id = $2 and r.record_type_id = $3
         and r.deleted_at is null and r.txt_1 = 'group'`,
-    [tx.businessId, conversationId, types.conversationTypeId, personId],
+    [tx.businessId, conversationId, types.conversationTypeId],
   );
   return rows[0];
 }

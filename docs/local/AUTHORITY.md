@@ -515,10 +515,12 @@ name and its creator, and a member row for each person in it; its messages are
 - `chat.rename_group` and `chat.change_members` are `chat:manage`: a group's
   creator, and the owner and administrators, who hold the key by install
   default. The envelope cannot know who started a conversation, so the row is
-  `self` and the handler asks: a current member first (anyone else, the owner
-  and administrators included, gets `NOT_FOUND`: a conversation is private to
-  its members), then the creator, then a live `chat:manage` grant through
-  `checkAuthority`, refused `SCOPE_NOT_GRANTED`. Never an agent's.
+  `self` and the handler asks: the creator while a current member, then a live
+  `chat:manage` grant through `checkAuthority`, in the group or not. A member
+  who has neither is refused `SCOPE_NOT_GRANTED`; anyone else outside it gets
+  `NOT_FOUND`. Managing never lets the caller read it: an administrator not in
+  a group renames it or changes who else is in it, never adds herself, and
+  still reads, lists and counts nothing of it. Never an agent's.
 - `chat.leave` is the caller's own member row only, self-scoped.
 
 Every send, marker move, member change and leave takes the conversation's lock

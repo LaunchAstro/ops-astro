@@ -271,7 +271,7 @@ export {
   changeGroupMembers,
   GROUP_NAME_LIMIT,
   groupNameOf,
-  lockOwnGroup,
+  lockGroup,
   renameGroup,
   startGroup,
   type GroupMembership,

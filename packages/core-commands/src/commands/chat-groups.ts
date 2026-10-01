@@ -11,14 +11,15 @@
 //   (audience: group)`.
 // - `chat.send_group`: a member's message, through `writeMessage`, the one
 //   path a direct message takes too. `comment created (audience: group)`.
-// - `chat.rename_group`, `chat.change_members`: a current member, then its
-//   creator or a holder of `chat:manage` (the owner and administrators). A
-//   member is asked first, so to anyone else the group is NOT_FOUND.
-//   `conversation renamed`, `conversation members changed`.
+// - `chat.rename_group`, `chat.change_members`: its creator while a member,
+//   or a holder of `chat:manage` (the owner and administrators), in it or
+//   not; a member who is neither gets the grant refusal, anyone else outside
+//   it NOT_FOUND. They change the name and who else is in it, never let the
+//   caller read it. `conversation renamed`, `conversation members changed`.
 // - `chat.leave`: the person's own membership, no grant asked.
 //
 // Every one of them takes the conversation's lock before it reads who is in
-// it (`lockOwnGroup`), so sends, member changes and leaves serialise there.
+// it (`lockGroup`), so sends, member changes and leaves serialise there.
 
 import {
   allStaff,
@@ -26,7 +27,7 @@ import {
   checkAuthority,
   GROUP_NAME_LIMIT,
   groupNameOf,
-  lockOwnGroup,
+  lockGroup,
   renameGroup,
   startGroup,
   subjectsOf,
@@ -51,7 +52,7 @@ const MEMBERS_FIXES: readonly string[] = [
   'Send members as a list of two or more teammates’ person ids, each once, yourself not among them.',
 ];
 const CHANGE_FIXES: readonly string[] = [
-  'Send add, remove or both as lists of person ids: add people not in it, remove people in it.',
+  'Send add, remove or both as lists of person ids: add people not in it, remove people in it, yourself in neither.',
   'To leave a conversation yourself, send chat.leave.',
 ];
 
@@ -67,35 +68,56 @@ function peopleOf(value: unknown): readonly string[] | undefined {
   return new Set(people).size === people.length ? people : undefined;
 }
 
-/** The types and the caller's own group, locked; or the refusal owed. */
+type Locked =
+  | { readonly types: ConversationTypes; readonly group: GroupMembership }
+  | { readonly refusal: HandlerOutcome };
+
+/** The types and a live group of this business, locked; or NOT_FOUND. */
+async function lockedGroup(
+  tx: TenantQuery,
+  context: CommandContext,
+  conversationId: string,
+): Promise<Locked> {
+  const types = await conversationTypesFor(tx, context);
+  if (!('conversationTypeId' in types)) return { refusal: types };
+  const group = await lockGroup(tx, types, conversationId);
+  return group === undefined ? { refusal: refused(refuseNotFound()) } : { types, group };
+}
+
+/** The caller's own group, locked: a current member's; to anyone else NOT_FOUND. */
 async function ownGroup(
   tx: TenantQuery,
   context: CommandContext,
   conversationId: string,
-): Promise<
-  | { readonly types: ConversationTypes; readonly group: GroupMembership }
-  | { readonly refusal: HandlerOutcome }
-> {
-  const types = await conversationTypesFor(tx, context);
-  if (!('conversationTypeId' in types)) return { refusal: types };
-  const group = await lockOwnGroup(tx, types, conversationId, context.session.personId);
-  return group === undefined ? { refusal: refused(refuseNotFound()) } : { types, group };
+): Promise<Locked> {
+  const found = await lockedGroup(tx, context, conversationId);
+  if ('refusal' in found || found.group.members.includes(context.session.personId)) return found;
+  return { refusal: refused(refuseNotFound()) };
 }
 
-/** Its creator, or a holder of `chat:manage` over the business; else the grant refusal. */
-async function refuseUnlessManager(
+/**
+ * A group the caller may rename or change the members of, locked: its creator
+ * while a member, or a holder of `chat:manage` over the business, in it or
+ * not. A member who is neither gets the grant refusal; anyone else outside it
+ * NOT_FOUND, as for a group never issued.
+ */
+async function managedGroup(
   tx: TenantQuery,
   context: CommandContext,
-  group: GroupMembership,
-): Promise<HandlerOutcome | undefined> {
+  conversationId: string,
+): Promise<Locked> {
+  const found = await lockedGroup(tx, context, conversationId);
+  if ('refusal' in found) return found;
   const { session } = context;
-  if (group.creator === session.personId) return undefined;
+  const member = found.group.members.includes(session.personId);
+  if (member && found.group.creator === session.personId) return found;
   const asked = await checkAuthority(tx, subjectsOf(session), {
     collection: 'chat',
     action: 'manage',
     scope: { kind: 'business', id: null },
   });
-  return asked.ok ? undefined : refused(asked.refusal);
+  if (asked.ok) return found;
+  return { refusal: refused(member ? asked.refusal : refuseNotFound()) };
 }
 
 export async function startGroupConversation(
@@ -142,10 +164,8 @@ export async function renameGroupConversation(
   if (!isInternalReader(context.session.roleKey)) return refused(refuseNotFound());
   const named = groupNameOf(name);
   if (named === undefined) return invalid('name', NAME_FIXES);
-  const own = await ownGroup(tx, context, conversationId);
-  if ('refusal' in own) return own.refusal;
-  const refusal = await refuseUnlessManager(tx, context, own.group);
-  if (refusal !== undefined) return refusal;
+  const managed = await managedGroup(tx, context, conversationId);
+  if ('refusal' in managed) return managed.refusal;
   await renameGroup(tx, conversationId, named);
   return applied(conversationId, null, { conversationId });
 }
@@ -167,12 +187,12 @@ export async function changeGroupConversationMembers(
   if (add.length + remove.length === 0 || add.some((one) => remove.includes(one))) {
     return invalid('add', CHANGE_FIXES);
   }
-  const own = await ownGroup(tx, context, conversationId);
-  if ('refusal' in own) return own.refusal;
-  const refusal = await refuseUnlessManager(tx, context, own.group);
-  if (refusal !== undefined) return refusal;
-  const { members } = own.group;
-  if (add.some((one) => members.includes(one))) return invalid('add', CHANGE_FIXES);
+  const managed = await managedGroup(tx, context, conversationId);
+  if ('refusal' in managed) return managed.refusal;
+  const { members } = managed.group;
+  if (add.some((one) => one === session.personId || members.includes(one))) {
+    return invalid('add', CHANGE_FIXES);
+  }
   if (!remove.every((one) => members.includes(one))) {
     return refused(refuseNotFound());
   }

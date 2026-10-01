@@ -147,7 +147,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-G group convers
   });
 
   it('only its creator, or the owner and administrators, changes its members or name: the conversation renamed and the members changed are audited', async () => {
-    const { chat, zed, groupName, conversationId, as, start, viewOf, bodiesOf, auditOf } = g;
+    const { chat, groupName, conversationId, as, viewOf, auditOf } = g;
     const { world } = chat.harness;
     // Mia, a member holding `chat:comment` alone, did not start it.
     for (const [name, body] of [
@@ -174,8 +174,15 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-G group convers
       await outcomes(chat.tess),
       await outcomes(world.ada),
     ]).toEqual([['refused'], ['applied'], ['applied']]);
-    // An administrator not in another group renames it and changes who else is
-    // in it, and still reads, lists and joins nothing of it.
+    // No name, no change of members, nobody's audit row holds the words.
+    for (const event of await auditOf('chat.rename_group')) {
+      expect(event.t).not.toContain('Renamed by Tess');
+    }
+  });
+
+  it('an administrator not in a group renames it and changes who else is in it, and still reads, lists and joins nothing of it', async () => {
+    const { chat, zed, as, start, viewOf, bodiesOf } = g;
+    const { world } = chat.harness;
     const other = await start(chat.tess, [world.mia.personId, zed.personId], 'Without Ada');
     const otherId = String(detailOf(other)['conversationId']);
     const renamedByAdmin = await as(world.ada, 'chat.rename_group', {
@@ -197,10 +204,6 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-G group convers
     expect(selfAdded.code, selfAdded.text).toBe('FIELD_VALUE_INVALID');
     expect(await viewOf(world.ada, otherId)).toBeUndefined();
     expect(await bodiesOf(world.ada, otherId)).toEqual([]);
-    // No name, no change of members, nobody's audit row holds the words.
-    for (const event of await auditOf('chat.rename_group')) {
-      expect(event.t).not.toContain('Renamed by Tess');
-    }
   });
 
   it('a group message is never a task’s and never shown outside: task.comment refuses the audience and the client projection drops it', async () => {
