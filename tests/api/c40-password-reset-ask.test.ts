@@ -7,7 +7,8 @@
 // them; the real custody's route list is pinned in
 // `c39-t-server-enrolment.test.ts`. The database is a stand-in too, under
 // every limit, recording the source each ask is counted under; the limits
-// themselves are counted in a real database in `c40-reset-mail.test.ts`. And
+// themselves are counted in a real database in `c40-reset-ask-limits.test.ts`.
+// A blocking database holds a flood of asks to the in-flight cap. And
 // `main()`'s switch for the hook and the reset routes: off without the
 // secret, refused without what it needs.
 
@@ -16,7 +17,11 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { authHookReady } from '../../apps/api/auth-email-hook.ts';
 import { enrolmentBroker } from '../../apps/api/enrolment-broker.ts';
-import { mountPasswordReset, PASSWORD_RESET_PATH } from '../../apps/api/password-set.ts';
+import {
+  mountPasswordReset,
+  PASSWORD_RESET_PATH,
+  RESET_IN_FLIGHT,
+} from '../../apps/api/password-set.ts';
 import type { Custody, CustodyOutcome } from '../../packages/core-custody/src/index.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
 
@@ -156,6 +161,91 @@ describe('C40 password reset, the ask: its source', () => {
     expect(written).toContain(sha256('203.0.113.7'));
     expect(written).not.toContain('203.0.113.7');
     expect(written).not.toContain('known@example.test');
+  });
+});
+
+describe('C40 password reset, the ask: its source key', () => {
+  /** The source digest each ask from `peers` was counted under, one ask at a time. */
+  async function keysOf(peers: readonly string[]): Promise<readonly unknown[]> {
+    const { app, statements } = standIn(async () => await Promise.resolve(answered(200, '{}')));
+    const keys: unknown[] = [];
+    for (const peer of peers) {
+      const first = statements.length;
+      // oxlint-disable-next-line no-await-in-loop -- one ask at a time
+      await ask(app, BODIES[0] ?? '', fromPeer(peer));
+      // oxlint-disable-next-line no-await-in-loop
+      await settle();
+      keys.push(statements[first]?.[0]);
+    }
+    return keys;
+  }
+
+  it('C40 reset per-source key: an IPv6 client is counted by its /64, a mapped IPv4 as the IPv4', async () => {
+    const [one, two, other, mapped] = await keysOf([
+      '2001:db8:1:2:aaaa::1',
+      '2001:0db8:0001:0002:ffff:ffff:ffff:fffe',
+      '2001:db8:1:3::1',
+      '::ffff:203.0.113.9',
+    ]);
+    expect(one).toBe(two);
+    expect(other).not.toBe(one);
+    expect(mapped).toBe(sha256('203.0.113.9'));
+  });
+
+  it('C40 reset per-source key: the peer is read before the body, so a reset mid-body keeps it', async () => {
+    const { app, statements } = standIn(async () => await Promise.resolve(answered(200, '{}')));
+    const env = { incoming: { socket: { remoteAddress: '203.0.113.10' as string | undefined } } };
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        // The socket goes away while the body is read, as a reset one does.
+        env.incoming.socket.remoteAddress = undefined;
+        controller.enqueue(new TextEncoder().encode(BODIES[0] ?? ''));
+        controller.close();
+      },
+    });
+    const request = new Request(`http://api.test${PASSWORD_RESET_PATH}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+      duplex: 'half',
+    } as RequestInit);
+    expect((await app.fetch(request, env)).status).toBe(200);
+    await settle();
+    expect(statements[0]?.[0]).toBe(sha256('203.0.113.10'));
+  });
+});
+
+describe('C40 password reset, the ask: in flight', () => {
+  it('C40 reset asks in flight: a flood holds at most RESET_IN_FLIGHT asks on the database, and the server still answers', async () => {
+    let open = 0;
+    let most = 0;
+    // A database whose every transaction blocks, as one held connection does.
+    const blocking = {
+      withBusiness: async () => {
+        open += 1;
+        most = Math.max(most, open);
+        return await new Promise<never>(() => {});
+      },
+    } as unknown as Database;
+    const custody = { dispatch: async () => await Promise.resolve(answered(200, '{}')) };
+    const app = new Hono();
+    app.get('/api/other', (context) => context.json({ served: true }, 200));
+    mountPasswordReset(app, blocking, enrolmentBroker(custody as unknown as Custody));
+    const answers = await Promise.all(
+      Array.from({ length: 10_000 }, async (_, n) => {
+        const reply = await ask(
+          app,
+          JSON.stringify({ address: `flood-${String(n)}@example.test` }),
+        );
+        return `${String(reply.status)} ${reply.text}`;
+      }),
+    );
+    await settle();
+    expect(new Set(answers)).toEqual(new Set(['200 {}']));
+    expect(most).toBeGreaterThan(0);
+    expect(most).toBeLessThanOrEqual(RESET_IN_FLIGHT);
+    const other = await app.fetch(new Request('http://api.test/api/other'));
+    expect(other.status).toBe(200);
   });
 });
 
