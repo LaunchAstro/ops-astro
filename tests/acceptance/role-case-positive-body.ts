@@ -169,8 +169,10 @@ export function createPositiveBody(
         return { body: { digest: 'a'.repeat(64) } };
       case 'settings.set_four_eyes_threshold':
         return { body: { value: 1200 } };
+      // Off, the default: since AW-08 the setting holds every launch and
+      // dispatch in the business, and this world's other cells decide.
       case 'settings.set_client_sign_off':
-        return { body: { value: true } };
+        return { body: { value: false } };
       case 'budget.top_up':
       case 'budget.record_outcome':
       case 'budget.write_off':
