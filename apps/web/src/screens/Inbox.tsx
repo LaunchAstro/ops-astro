@@ -13,7 +13,8 @@
 // the reader's own work. A client head opens that client in the Clients panel
 // by the gesture law (CS-7.29): plain solos, Shift beside, and where no
 // Clients panel has a tab the head is a link the application follows. The
-// reader's own work is a name.
+// reader's own work is a name. A task row goes to the task's page; Shift
+// opens it in the dock's Task panel beside the rest, where there is a dock.
 
 import type { ReactElement } from 'react';
 import { InboxPage, type InboxGroupRef, type OpenHow } from '@launchastro/ui';
@@ -28,6 +29,7 @@ import { BOARD } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { clientsAt, pathTo } from '../routes.ts';
 import type { PanelId } from '../panels.ts';
+import type { TaskPanelHost } from '../screen-registry.tsx';
 
 /** The group of an entry that names no client: the reader's own work. */
 const OWN_WORK: InboxGroupRef = { key: 'own', name: 'Your work' };
@@ -75,8 +77,10 @@ export function InboxScreen(props: {
   readonly navigate: (path: string) => void;
   /** The dock's own door, by the gesture law; absent where there is no dock. */
   readonly openPanel?: (id: PanelId, beside: boolean, place: string) => boolean;
+  /** The dock's Task panel; absent where there is none. */
+  readonly taskPanel?: TaskPanelHost;
 }): ReactElement {
-  const { client, navigate, openPanel } = props;
+  const { client, navigate, openPanel, taskPanel } = props;
   const { state, reload } = useRead<Inbox>({
     grantKey: props.grantKey,
     run: async () => await readInbox(client),
@@ -84,8 +88,13 @@ export function InboxScreen(props: {
     // A new notification and the owed count arrive on the board topic (C4).
     live: { hub: hubOf(client), topic: () => BOARD },
   });
-  // Beside needs the dock's drawers (MP-3-1); until then both open in place.
-  const onOpenTask = (key: string, _how: OpenHow): void => navigate(taskHref(key));
+  // Plain goes to the task's page; Shift opens it in the Task panel beside the
+  // dock's open panels (CS-7.29), and without a dock goes to the page too.
+  const onOpenTask = (key: string, how: OpenHow): void => {
+    if (how.beside && openPanel !== undefined && taskPanel !== undefined) {
+      taskPanel.open(key, 'open', undefined, true);
+    } else navigate(taskHref(key));
+  };
   const onOpenClient = (clientId: string, how: OpenHow): void => {
     const place = clientsAt(clientId);
     if (openPanel?.('clients', how.beside, place) !== true) navigate(place);
