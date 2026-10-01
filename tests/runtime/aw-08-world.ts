@@ -6,6 +6,9 @@
 // that successor is the launch. Only the launched lease may dispatch.
 
 import { randomUUID } from 'node:crypto';
+import { expect } from 'vitest';
+import { markReviewedOutput } from '../../packages/core-runtime/src/index.ts';
+import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
   appliedDetail,
   approve,
@@ -129,4 +132,34 @@ export async function marksOf(s: Schedules, taskId: string): Promise<readonly st
     [s.business, taskId],
   );
   return found.map((row) => row.version_id);
+}
+
+/** A client of the business, holding grants on `taskId` alone. */
+export async function clientOn(s: Schedules, taskId: string): Promise<Member> {
+  const client = await enrol(s.db.app, s.business, `aw08-client-${randomUUID()}`);
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    for (const action of ['read', 'write', 'decide', 'assign', 'comment'] as const) {
+      // eslint-disable-next-line no-await-in-loop
+      await grantTo(tx, client, action, { kind: 'record', id: taskId });
+    }
+  });
+  return client;
+}
+
+/** A mark naming a version and a lineage that are not one: the trigger refuses it. */
+export async function markRefused(
+  s: Schedules,
+  versionId: unknown,
+  lineageId: unknown,
+  leaseId: string,
+): Promise<void> {
+  await expect(
+    s.db.app.withBusiness(s.business, async (tx) => {
+      await markReviewedOutput(tx, {
+        versionId: String(versionId),
+        lineageId: String(lineageId),
+        leaseId,
+      });
+    }),
+  ).rejects.toThrow(/named lineage/u);
 }

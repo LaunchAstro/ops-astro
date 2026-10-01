@@ -16,10 +16,12 @@ import { isReviewedOutput, markReviewedOutput } from '../../packages/core-runtim
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { noDatabase, useAw04World, w } from './aw-04-world.ts';
 import {
+  clientOn,
   dispatchBody,
   handBack,
   launched,
   marked,
+  markRefused,
   marksOf,
   proposeEffect,
   type Approver,
@@ -137,13 +139,7 @@ it("AW-08 isolation: another client in the same business never launches, nor mar
   const otherHanded = await handBack(s, otherWork);
 
   const ownTask = await createTask(s, `aw08 iso own client ${randomUUID()}`);
-  const client = await enrol(s.db.app, s.business, `aw08-client-${randomUUID()}`);
-  await s.db.app.withBusiness(s.business, async (tx) => {
-    for (const action of ['read', 'write', 'decide', 'assign', 'comment'] as const) {
-      // eslint-disable-next-line no-await-in-loop
-      await grantTo(tx, client, action, { kind: 'record', id: ownTask });
-    }
-  });
+  const client = await clientOn(s, ownTask);
 
   const launch = await as(
     s,
@@ -172,21 +168,9 @@ it("AW-08 isolation: another client in the same business never launches, nor mar
 
   // A mark names its own subject: the other client's lease marks no version of this
   // client's lineage, and no version of its own lineage under this lineage's name.
-  for (const mark of [
-    { versionId: ownPlan['versionId'], lineageId: other.plan['lineageId'] },
-    { versionId: other.plan['versionId'], lineageId: ownPlan['lineageId'] },
-  ]) {
-    // eslint-disable-next-line no-await-in-loop
-    await expect(
-      s.db.app.withBusiness(s.business, async (tx) => {
-        await markReviewedOutput(tx, {
-          versionId: String(mark.versionId),
-          lineageId: String(mark.lineageId),
-          leaseId: String(otherWork['leaseId']),
-        });
-      }),
-    ).rejects.toThrow(/named lineage/u);
-  }
+  const leaseId = String(otherWork['leaseId']);
+  await markRefused(s, ownPlan['versionId'], other.plan['lineageId'], leaseId);
+  await markRefused(s, other.plan['versionId'], ownPlan['lineageId'], leaseId);
   await s.db.app.withBusiness(s.business, async (tx) => {
     expect(await isReviewedOutput(tx, String(ownPlan['versionId']))).toBe(false);
   });
