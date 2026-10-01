@@ -230,7 +230,8 @@ export async function classifyUnderLocks(
     [tx.businessId, row.attempt_id, spent > 0],
   );
   // Subtracted once, from the held total, by the amount the changed row
-  // carried; the spend, when there is one, added to `actual` beside it.
+  // carried; the spend, when there is one, added to `actual` beside it, and a
+  // top-up's over-count given back (`spendToSettle`).
   await tx.query(
     `update public.task_envelopes
         set held_minor = held_minor - $3, actual_minor = actual_minor + $4
@@ -269,20 +270,24 @@ export async function spentOn(tx: TenantQuery, reservationId: string): Promise<n
 
 /**
  * The spend a stopped hold has not yet handed the envelope: its calls'
- * (`spentOn`), unless a budget top-up already moved that spend to the
- * envelope's actual and lowered the hold by it (AW-05, `raiseHold`), which a
- * replacement's pickup then classifies. Read under the run lock every answer takes.
+ * (`spentOn`), less what a budget top-up already moved to the envelope's
+ * actual (AW-05, `raiseHold`), which a replacement's pickup then classifies.
+ * The top-up moved the spend to date and lowered the hold by it, so the amount
+ * is the ask's ceiling and the top-up less the hold now. Below zero, a call
+ * counted at its maximum at the top-up came to less, and the envelope gets
+ * the difference back. Read under the run lock every answer takes.
  */
 async function spendToSettle(tx: TenantQuery, reservationId: string): Promise<number> {
   const spent = await spentOn(tx, reservationId);
-  if (spent === 0) return 0;
-  const toppedUp = await tx.query(
-    `select 1 from public.budget_answers a
+  const [moved] = await tx.query<{ readonly moved: string }>(
+    `select coalesce(sum(k.ceiling_minor + a.amount_minor - r.held_minor), 0)::text as moved
+       from public.budget_answers a
        join public.budget_asks k on k.business_id = a.business_id and k.id = a.ask_id
+       join public.reservations r on r.business_id = k.business_id and r.id = k.reservation_id
       where a.business_id = $1 and k.reservation_id = $2 and a.kind = 'top_up'`,
     [tx.businessId, reservationId],
   );
-  return toppedUp.length > 0 ? 0 : spent;
+  return spent - Number(moved?.moved ?? 0);
 }
 
 interface CauseRow {

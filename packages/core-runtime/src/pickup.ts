@@ -41,6 +41,7 @@ import { reserve } from './decide.ts';
 import { checkAuthorityAt, classifyUnderLocks, endLease, holdCoveringGrants } from './recovery.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import { remainingOf, stopAtSpentHold } from './budget-stop.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
 
 export interface QueueEntry {
@@ -408,7 +409,9 @@ async function recheckClaim(
  * expired-lease lifecycle. It fences the old lease and classifies the old hold
  * under the locks it already holds. The abandoned reservation is never
  * revived; a replacement is a new row with a new attempt, on the
- * still-approved version.
+ * still-approved version. It holds the old hold less the spend that hold
+ * settled at; a spend that used the whole hold stops the run at its budget
+ * and asks a person (AW-05), a refusal that keeps the ask.
  */
 async function claimHold(
   tx: TenantQuery,
@@ -437,14 +440,30 @@ async function claimHold(
   if (plan.kind === 'fresh') {
     return { ok: true, value: { reservationId, attemptId: state.attempt_id } };
   }
+  // FIXMONEY: the old hold less the spend it settled at (`budget-stop.ts`).
+  const remaining = await remainingOf(tx, reservationId);
+  if (remaining.leftMinor <= 0) {
+    const words = await stopAtSpentHold(tx, {
+      runId: found.run_id,
+      reservationId,
+      versionId: found.version_id,
+      delegationId: null,
+      remaining,
+    });
+    const refusal = refuseCommand('BUDGET_UNAVAILABLE', [], [SPENT_WHOLE_HOLD, words]);
+    return { ok: false, refusal, retains: true };
+  }
   return await reserve(tx, {
     envelopeId: found.envelope_id,
     versionId: found.version_id,
     runId: found.run_id,
     stepId: found.step_id,
-    heldMinor: Number(state.held_minor),
+    heldMinor: remaining.leftMinor,
   });
 }
+
+const SPENT_WHOLE_HOLD =
+  "this step's calls spent its whole hold, so nothing is left to hold for it";
 
 /**
  * Never steal a live lease. An expired one is fenced out by the new fence
