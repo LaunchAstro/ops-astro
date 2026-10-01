@@ -28,6 +28,7 @@ import type {
   TaskSummary,
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
+import { REGISTRY, SECRETS } from './made-up-settings.ts';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
 
 const STATE = {
@@ -136,6 +137,9 @@ const READS = {
       { collection: 'tasks', action: 'read' },
       { collection: 'tasks', action: 'write' },
       { collection: 'settings', action: 'manage' },
+      // Settings Keys (C31) draws for custody:manage, Workflow triggers (C33) for settings:read.
+      { collection: 'custody', action: 'manage' },
+      { collection: 'settings', action: 'read' },
     ],
   } satisfies CapabilitiesResult,
   'task.queue': { ok: true, queue: [], alerts: [], outages: [] } satisfies QueueResult,
@@ -181,6 +185,8 @@ const READS = {
     ],
   } satisfies InboxReadResult,
   'inbox.count': { ok: true, owed: 2 } satisfies InboxCountResult,
+  'secret.list': SECRETS,
+  'automation.registry': REGISTRY,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */
