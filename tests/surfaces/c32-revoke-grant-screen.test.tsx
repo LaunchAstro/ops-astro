@@ -80,7 +80,9 @@ describe('C32 revoke one grant on Settings ▸ Access', () => {
     expect(rowOf(view, MIA.personId)).toContain('a client not listed here');
     expect(view.find('[data-screen="access"]')?.textContent).not.toContain(HIDDEN);
   });
+});
 
+describe('C32 revoke one grant on Settings ▸ Access, refused', () => {
   it("C32 revoke grant: a refusal is shown as an alert in the server's words and the list is not reread", async () => {
     const api = server([json(access([ADA, MIA_HOLDING]))], () => refusal('SCOPE_NOT_GRANTED', 403));
     const view = await open(api.fetch);

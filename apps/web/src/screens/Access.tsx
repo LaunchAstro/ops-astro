@@ -52,6 +52,18 @@ const giveWith =
     act(() => client.mutate('access.grant', body), `Gave ${holder.name} ${key}.`);
   };
 
+/** A refusal is drawn as Settings draws one; a success stays a quiet line. */
+const Outcome = (props: { readonly text: string; readonly refused: boolean }): ReactElement =>
+  props.refused ? (
+    <p className="field__error" role="alert" data-access-outcome="refused">
+      {props.text}
+    </p>
+  ) : (
+    <p className="card__sub" role="status" data-access-outcome="done">
+      {props.text}
+    </p>
+  );
+
 /**
  * The two acts that wait on a confirmation before anything is sent: ending a
  * person's access (`access.end`) and revoking one grant (`access.revoke`).
@@ -160,18 +172,7 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
               result={result}
               busy={busy}
               act={act}
-              outcome={
-                outcome === null ? null : outcome.refused ? (
-                  // A refusal is drawn as Settings draws one; a success stays a quiet line.
-                  <p className="field__error" role="alert" data-access-outcome="refused">
-                    {outcome.text}
-                  </p>
-                ) : (
-                  <p className="card__sub" role="status" data-access-outcome="done">
-                    {outcome.text}
-                  </p>
-                )
-              }
+              outcome={outcome === null ? null : <Outcome {...outcome} />}
             />
           </div>
         )}
