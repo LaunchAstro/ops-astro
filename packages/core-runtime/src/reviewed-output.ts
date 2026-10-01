@@ -17,7 +17,8 @@
 // the version and the lease's work are on the lineage the mark names. The two
 // callers mark only the lease's own work: the handback the successor it has
 // just written, `propose` a revision its lease holder proposed. A person's
-// newer version on the agent's lineage is never the agent's output.
+// newer version on the agent's lineage is never the agent's output; the
+// agent's revision after it is, under the lineage's newest mark.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
@@ -41,9 +42,10 @@ export async function markReviewedOutput(tx: TenantQuery, mark: ReviewedOutputMa
 }
 
 /**
- * AW-09: the revision `versionId` supersedes `supersededId`. When that was a
- * reviewed output and the revision is its lease holder's own, the revision is
- * the reviewed output now, under the same lease; a person's revision is not.
+ * AW-09: the revision `versionId` supersedes `supersededId`. When the
+ * lineage's newest reviewed output is its lease holder's, and the revision is
+ * that holder's own, the revision is the reviewed output now, under the same
+ * lease; a person's revision is not, and does not end the agent's line.
  */
 export async function markRevision(
   tx: TenantQuery,
@@ -51,10 +53,17 @@ export async function markRevision(
   supersededId: string,
 ): Promise<void> {
   const [found] = await tx.query<{ readonly lineage_id: string; readonly lease_id: string }>(
-    `select ro.lineage_id, ro.lease_id from public.reviewed_outputs ro
+    `select ro.lineage_id, ro.lease_id
+       from (select ro.* from public.proposal_versions old
+               join public.reviewed_outputs ro on ro.business_id = old.business_id
+                                              and ro.lineage_id = old.lineage_id
+               join public.proposal_versions marked on marked.business_id = ro.business_id
+                                                    and marked.id = ro.version_id
+              where old.business_id = $1 and old.id = $2
+              order by marked.version desc limit 1) ro
        join public.leases l on l.business_id = ro.business_id and l.id = ro.lease_id
        join public.proposal_versions v on v.business_id = ro.business_id and v.id = $3
-      where ro.business_id = $1 and ro.version_id = $2 and v.proposed_by_actor_id = l.holder_actor_id`,
+      where v.proposed_by_actor_id = l.holder_actor_id`,
     [tx.businessId, supersededId, versionId],
   );
   if (found === undefined) return;

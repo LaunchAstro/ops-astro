@@ -20,7 +20,9 @@
 //    maximum is held out of the reservation's room: a row in `model_calls`,
 //    state `reserved`, with the outbound prompt's copy registered beside it.
 //    A refusal after the facts hold is recorded as a step (state `refused`);
-//    a refusal of the facts themselves writes nothing.
+//    a refusal of the facts themselves writes nothing. An attempt with a call
+//    dropped and held unknown takes no other call (`LIABILITY_UNKNOWN`), so a
+//    framework's own retry is refused and only a new attempt calls again.
 // 2. Start. The six facts, the client link and the task's source are read again
 //    under their locks, and a call whose authority went, whose task gained a
 //    client, or whose route its task's source no longer allows, since the hold is

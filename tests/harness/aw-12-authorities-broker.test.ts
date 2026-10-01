@@ -23,19 +23,35 @@ import {
   useBrokerWorld,
   world,
 } from '../broker/broker-world.ts';
+import { WORKER_SETTINGS, type WorkerSetting } from '../../apps/worker/main.ts';
 import { standIn, type StandIn } from './framework-stand-in.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('aw12auth');
 
-/** What a worker is handed (`apps/worker/main.ts`), for this work. */
-const workerSettings = (work: Work): Record<string, string> => ({
-  OPS_ASTRO_API_URL: 'http://127.0.0.1:8790',
-  OPS_ASTRO_BUSINESS: s.business,
-  OPS_ASTRO_TOKEN: `agent-bearer-${s.agentActorId}`,
-  OPS_ASTRO_DELEGATION: String(work.picked['credential']),
-});
+/** What a worker is handed for this work, under every name it reads (`apps/worker/main.ts`). */
+const workerSettings = (work: Work): Record<string, string> => {
+  const given: Record<WorkerSetting, string> = {
+    OPS_ASTRO_BUSINESS: s.business,
+    OPS_ASTRO_TOKEN: `agent-bearer-${s.agentActorId}`,
+    OPS_ASTRO_DELEGATION: String(work.picked['credential']),
+    OPS_ASTRO_API_URL: 'http://127.0.0.1:8790',
+    OPS_ASTRO_WORKER_INTERVAL_MS: '5000',
+    OPS_WORKER_HEARTBEAT_URL: 'https://beat.example.com/ping',
+    OPS_EGRESS_HEARTBEAT_HOST: 'beat.example.com',
+  };
+  return Object.fromEntries(WORKER_SETTINGS.map((name) => [name, given[name]]));
+};
+
+/** Everything the stand-in can reach, as text: the A4 scan's haystack. */
+const reachableFrom = (held: StandIn, rest: Record<string, unknown>): string =>
+  JSON.stringify({
+    settings: held.config.settings,
+    tools: [...held.config.tools.keys()],
+    store: [...held.store],
+    ...rest,
+  });
 
 /** The stand-in on `work`: its one model client is the broker, on the lease it holds. */
 function framework(
@@ -76,7 +92,11 @@ async function budgetAuthority(): Promise<void> {
   const late = framework(ended);
   await asAgent(s, handbackBody(ended.picked), String(ended.picked['credential']));
   const calls = await callCount();
-  expect(await late.compact(ended.taskId)).toMatchObject({ ok: false, callId: null });
+  expect(await late.compact(ended.taskId)).toEqual({
+    ok: false,
+    code: 'LEASE_EXPIRED',
+    callId: null,
+  });
   // And on a lease the framework made up: no reservation of its own to name.
   const invented = framework(ended, [], async () => await call(ended, { leaseId: randomUUID() }));
   expect(await invented.compact(ended.taskId)).toEqual({
@@ -103,10 +123,7 @@ async function credentialAuthority(): Promise<void> {
       union all select t::text from public.audit_events t where business_id = $1`,
     [s.business],
   );
-  const reachable = JSON.stringify({
-    settings: held.config.settings,
-    tools: [...held.config.tools.keys()],
-    store: [...held.store],
+  const reachable = reachableFrom(held, {
     answers,
     routes: broker.routes,
     operations: [...broker.operations.values()],
@@ -114,9 +131,19 @@ async function credentialAuthority(): Promise<void> {
     ledger,
   });
   expect(ledger.length).toBeGreaterThan(0);
+  expect(Object.keys(held.config.settings)).toEqual([...WORKER_SETTINGS]);
   // Booleans, so a failure never prints the key or where it is kept.
   expect(reachable.includes(world.canary)).toBe(false);
   expect(reachable.includes(world.folder)).toBe(false);
+  // Control: the key planted under any name the worker reads would be found.
+  const planted = WORKER_SETTINGS.map((name) => {
+    const leaky = framework(work);
+    const settings = { ...leaky.config.settings, [name]: world.canary };
+    return reachableFrom({ ...leaky, config: { ...leaky.config, settings } }, {}).includes(
+      world.canary,
+    );
+  });
+  expect(planted).toEqual(WORKER_SETTINGS.map(() => true));
 }
 
 async function effectAuthority(): Promise<void> {

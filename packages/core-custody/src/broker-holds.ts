@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Who may spend on a lease: its holder, or a helper under a child of its
-// delegation (AW-11). Read by the reserve's and the settle's lease locks.
+// delegation (AW-11). Read by the reserve's and the settle's lease locks. And
+// whether the lease's attempt may call again at all (AW-12 A7).
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import type { ModelCaller } from './broker-types.ts';
@@ -29,4 +30,22 @@ export async function holdsWork(
     [tx.businessId, caller.delegationId, caller.actorId, lease.delegation_id],
   );
   return children.length === 1;
+}
+
+/**
+ * Whether a call of the reservation's attempt failed and is held as unknown
+ * liability, a drop (AW-10). It may have acted, so the attempt takes no other
+ * call: a framework's own retry is refused at the reserve, and the retry is the
+ * product's, a new attempt once the work is handed back and the pass proves
+ * nothing happened. An answer above its hold is no drop: the run calls on.
+ */
+export async function heldUnknown(tx: TenantQuery, reservationId: string): Promise<boolean> {
+  const found = await tx.query(
+    `select 1 from public.model_calls
+      where business_id = $1 and reservation_id = $2 and state = 'liability_unknown'
+        and drop_state is not null
+      limit 1`,
+    [tx.businessId, reservationId],
+  );
+  return found.length > 0;
 }
