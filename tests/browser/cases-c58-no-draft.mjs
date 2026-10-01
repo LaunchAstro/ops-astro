@@ -128,7 +128,7 @@ async function twelveHours(page, task) {
 async function signedOut(page, task) {
   await signIn(page, 'mia@alpha.local', 'alpha');
   const token = await openAndType(page, task);
-  await page.click('.topbar__who button');
+  await page.click('.appbar__signout');
   const after = await afterTheEnd(page, 'signed-out', token);
   const back = await signBackIn(page, task, 'mia@alpha.local', after);
   record({

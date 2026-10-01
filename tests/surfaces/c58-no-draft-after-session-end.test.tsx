@@ -234,9 +234,12 @@ describe('C58 no draft after session end', () => {
 
   it('signing out mid-edit says the edit was not saved and holds no draft', async () => {
     const { view, store, sessions } = await openMidEdit();
-    await view.click('.topbar__who button');
+    await view.click('.appbar__signout');
     await expectSignedOutWithNoDraft(view, store, sessions);
-    expect(view.find('[data-reason="signed-out"]')).not.toBeNull();
+    // The same card draws both endings in the kit's banner (DS-PRIM-30), as status.
+    expect(
+      view.find('.banner[role="status"][data-reason="signed-out"] .banner__body'),
+    ).not.toBeNull();
     await signInAgainFindsNoDraft(view, true);
   });
 
