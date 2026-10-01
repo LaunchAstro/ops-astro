@@ -164,8 +164,11 @@ it('MP-1-6 CS-1.4 on a real client no pink ever shows', () => {
     .map((s) => s.path)
     .toSorted();
   expect(users).toEqual([
+    'apps/web/src/screens/Clients.tsx',
     'packages/ui/src/kit/gallery-feedback.tsx',
     'packages/ui/src/kit/treatments.tsx',
+    'packages/ui/src/surfaces/BoardChips.tsx',
+    'packages/ui/src/surfaces/BoardCommandBar.tsx',
   ]);
 });
 

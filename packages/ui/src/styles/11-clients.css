@@ -10,6 +10,8 @@
   margin: 0 0 var(--s-3);
   color: var(--text-muted);
   font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .clbook__find {
   margin-bottom: var(--s-2);
@@ -54,9 +56,9 @@
   border: 1px solid var(--border-strong);
   background: var(--paper);
   color: var(--text-2);
-  font-family: var(--font-mono);
-  font-size: 0.5625rem;
-  font-weight: 600;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
 }
 .clbook__who {
   display: flex;
@@ -67,14 +69,17 @@
 .clbook__name {
   overflow: hidden;
   color: var(--text);
-  font-size: 0.84375rem;
-  font-weight: 500;
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .clbook__industry {
   color: var(--text-muted);
-  font-size: 0.71875rem;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 /* The door keeps its track while hidden, so rows never shift under the pointer. */
 .clbook__go {
@@ -95,7 +100,9 @@
   place-items: center;
   padding: 0.35rem 0.3rem;
   color: var(--text-muted);
-  line-height: 1;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
 }
 .clbook__door:hover,
 .clbook__door:focus-visible {
@@ -109,10 +116,14 @@
   margin-right: 0.1rem;
   padding: 0.35rem 0.5rem 0.35rem 0.35rem;
   color: var(--text-muted);
-  line-height: 1;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
 }
 .clbook__empty {
   margin: var(--s-3) 0 0;
   color: var(--text-muted);
   font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
