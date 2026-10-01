@@ -41,7 +41,6 @@ export const requestBody = (
 /** The grants a correction touches, on one scope. */
 async function correctionGrants(world: AgentWorld, member: Member, scope: Scope): Promise<void> {
   await world.db.app.withBusiness(world.business, async (tx) => {
-    await grantTo(tx, member, 'read', scope, false, 'run');
     await grantTo(tx, member, 'write', scope, false, 'run');
     await grantTo(tx, member, 'decide', scope, false, 'gate');
   });
@@ -113,7 +112,6 @@ async function seedBeta(world: AgentWorld): Promise<{ beta: string; eve: Member 
   const eve = await enrol(world.db.app, beta, 'eve');
   await world.db.app.withBusiness(beta, async (tx) => {
     await installBusinessSettings(tx);
-    await grantTo(tx, eve, 'read', WHOLE, false, 'run');
     await grantTo(tx, eve, 'write', WHOLE, false, 'run');
     await grantTo(tx, eve, 'decide', WHOLE, false, 'gate');
   });
