@@ -69,7 +69,9 @@ const OFF =
 
 const WORDS: Readonly<Record<string, string>> = {
   LOCAL_MODEL_REQUIRED: OFF,
-  CLIENT_MODEL_USE_OFF: OFF,
+  // C60 and WF-6: a conversation on a client's map or task asks no model, local or not.
+  CLIENT_MODEL_USE_OFF:
+    "Models are off for this client's work, so nothing was sent. Your message is kept.",
   RATE_LIMITED: 'The model is busy, so nothing was sent. Your message is kept; ask again shortly.',
 };
 

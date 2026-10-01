@@ -8,7 +8,13 @@
 // against the planning budget (`broker-planning.ts`, AW-04's U10).
 
 import { randomUUID } from 'node:crypto';
-import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
+import {
+  slotOf,
+  TASK_SPINE,
+  type BusinessId,
+  type Database,
+  type TenantQuery,
+} from '../../core-records/src/index.ts';
 import { eligibleRoutes, type ModelOperation } from '../../core-connectors/src/index.ts';
 import { mayCarry } from './credentials.ts';
 import {
@@ -102,6 +108,27 @@ export function localRoute(
   return carry.ok ? { ok: true, route } : { ok: false, code: carry.code };
 }
 
+/**
+ * The client link of the task the conversation is scoped to (C60), held
+ * `for share` until the row is written, as the ticket path holds its run's
+ * task, so a `task.set_party` or `map.scope` in flight is waited on. A map
+ * is a task, and `map.scope` writes its client on the map and every ticket
+ * under it (WF-6). No row, or no scope: no client.
+ */
+const SCOPED_CLIENT = `select t.${slotOf(TASK_SPINE, 'client')}::text as client
+       from public.conversations c
+       join public.records t on t.business_id = c.business_id and t.id = c.scope_record_id
+      where c.business_id = $1 and c.id = $2
+      for share of t`;
+
+async function scopedClient(tx: TenantQuery, conversationId: string): Promise<string | null> {
+  const [row] = await tx.query<{ readonly client: string | null }>(SCOPED_CLIENT, [
+    tx.businessId,
+    conversationId,
+  ]);
+  return row?.client ?? null;
+}
+
 /** The row, started: nothing held, the conversation and no task fact. */
 async function insertStarted(
   tx: TenantQuery,
@@ -165,8 +192,9 @@ async function sendAndSettle(
 
 /**
  * A person's model call from their own conversation. Every check runs before
- * anything is written: the owner, the catalogue, a local route (a cloud one is
- * refused, AW-03 egress off), then AW-01's ceilings. The answer settles at
+ * anything is written: the owner, the catalogue, the scoped task's client (a
+ * client's material goes to no model, C60 and WF-6, before any route), a local
+ * route (a cloud one is refused, AW-03 egress off), then AW-01's ceilings. The answer settles at
  * nothing; a priced answer is above a hold of nothing, so it is held as
  * unknown liability for a person, as any call above its hold is (O9).
  */
@@ -183,20 +211,21 @@ export async function callModelInConversation(
   if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
   const fields = outsideFields(request.fields);
   const chosen = localRoute(operation, fields, caller, broker);
-  if (!chosen.ok) return refused(chosen.code);
-  const { route } = chosen;
-  const callId = await database.withBusiness(businessId, async (tx) =>
-    (await atCeiling(tx, operation, route))
-      ? null
-      : await insertStarted(tx, request.conversation.id, operation, route),
-  );
-  if (callId === null) {
+  const started = await database.withBusiness(businessId, async (tx) => {
+    if ((await scopedClient(tx, request.conversation.id)) !== null) return 'CLIENT_MODEL_USE_OFF';
+    if (!chosen.ok) return chosen.code;
+    if (await atCeiling(tx, operation, chosen.route)) return 'RATE_LIMITED';
+    const { route } = chosen;
+    return { callId: await insertStarted(tx, request.conversation.id, operation, route), route };
+  });
+  if (started === 'RATE_LIMITED') {
     return { ok: false, code: 'RATE_LIMITED', callId: null, retryAfterSeconds: WAIT_SECONDS };
   }
+  if (typeof started === 'string') return refused(started);
   return await sendAndSettle(
     database,
     businessId,
-    { callId, operation, route, reservedMinor: 0 },
+    { ...started, operation, reservedMinor: 0 },
     fields,
     broker,
   );
