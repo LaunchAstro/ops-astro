@@ -17,6 +17,7 @@ import { applied, refused, type HandlerOutcome, type Refused } from './outcome.t
 import { handbackShapeFor } from './pickup-handback-shape.ts';
 import { readLeaseSeconds } from './tasks-lease.ts';
 import { agentClaimant, personClaimant, type Claimant } from './tasks-claimant.ts';
+import { stopRefusal } from './research-run.ts';
 
 /** How long a lease runs when the caller names nothing. Bounded, and the server's. */
 const DEFAULT_LEASE_SECONDS = 15 * 60;
@@ -153,6 +154,10 @@ async function claim(
           mintedByActorId: approver.actorId,
         });
   if (!result.ok) return refused(result.refusal);
+  // WF-7: an approval given before a research ticket stopped begins no run
+  // after it but on its map's owner's word, asked under the claim's task lock.
+  const stopped = await stopRefusal(tx, result.value.taskId, approver.personId);
+  if (stopped !== undefined) return refused(stopped);
   return applied(result.value.taskId, null, pickupDetail(result.value));
 }
 

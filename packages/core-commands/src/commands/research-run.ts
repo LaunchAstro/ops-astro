@@ -2,6 +2,8 @@
 //
 // WF-7: what starting a research run asks, and the claim it writes. Called by
 // `task.propose` (`tasks-propose.ts`) under the task lock, in its transaction.
+// The stop is asked again wherever a run begins another way: `task.restart`,
+// `task.decide` and `task.pickup`.
 
 import {
   checkAuthority,
@@ -15,8 +17,8 @@ import { clearAsk, openAsk } from './research-failed.ts';
 
 /**
  * The research checks, in order: `run:write` (`researchRunRefusal`), then a
- * stop (WF-7, twice failed: while the map's owner is asked, only they start
- * it, and their start is their decision, past another's claim), then a claim
+ * stop (`stopRefusal`: the map's owner's start is their decision, past
+ * another's claim), then a claim
  * held by someone else, then `task:assign` where the start would write the
  * claim (ORCH36-WF7-ASSIGN). Asked before the revision, so a starter who lost
  * the race is told it is claimed.
@@ -31,9 +33,8 @@ export async function researchStartRefusal(
   const refusal = await researchRunRefusal(tx, ticket.id, subjects, delegation);
   if (refusal !== undefined) return refusal;
   const asked = await openAsk(tx, ticket.id);
-  if (asked !== undefined && starter !== (await decidesStop(tx, ticket.id, asked))) {
-    return refuseCommand('TRANSITION_NOT_PERMITTED', ['stopped'], [STOPPED_FIX]);
-  }
+  const stopped = await stopRefusal(tx, ticket.id, starter);
+  if (stopped !== undefined) return stopped;
   if (asked === undefined && claimedByAnother(ticket, starter)) {
     return refuseCommand('TRANSITION_NOT_PERMITTED', ['claimed'], [CLAIMED_FIX]);
   }
@@ -44,23 +45,53 @@ export async function researchStartRefusal(
   return undefined;
 }
 
-/**
- * The ticket's revision after the start: claimed for the starter if no one
- * held it. A start past a stop is the map's owner's (`researchStartRefusal`),
- * so it is their decision and their open item clears with it.
- */
+/** The ticket's revision after the start: claimed for the starter if no one held it. */
 export async function claimUnclaimed(
   tx: TenantQuery,
   ticket: TaskRow,
   starter: string,
 ): Promise<number> {
-  await clearAsk(tx, ticket.id, starter);
   return isSet(ticket.data['assignee']) ? ticket.revision : await claimFor(tx, ticket.id, starter);
 }
 
-/** Who starts a stopped ticket: its map's owner, or the person asked if the map has none now. */
-const decidesStop = async (tx: TenantQuery, taskId: string, asked: string) =>
-  (await wayfinderFacts(tx, taskId))?.mapOwner ?? asked;
+/**
+ * WF-7 twice failed, it stops: while the map's owner is asked about a research
+ * ticket, a run on it begins only on their word, however it begins. `starter`
+ * is whose word begins it: the proposer, the restarter, the approver. The
+ * owner's (or the person asked, if the map has none now) is their decision and
+ * clears the ask; anyone else's is refused. Asked under the task lock, which
+ * the failed handback raising the ask also takes; a refusal rolls back.
+ */
+export async function stopRefusal(
+  tx: TenantQuery,
+  taskId: string,
+  starter: string,
+): Promise<CommandRefusal | undefined> {
+  const asked = await openAsk(tx, taskId);
+  if (asked === undefined) return undefined;
+  const facts = await wayfinderFacts(tx, taskId);
+  if (facts?.type !== 'research') return undefined;
+  if (starter !== (facts.mapOwner ?? asked)) {
+    return refuseCommand('TRANSITION_NOT_PERMITTED', ['stopped'], [STOPPED_FIX]);
+  }
+  await clearAsk(tx, taskId, starter);
+  return undefined;
+}
+
+/** `stopRefusal` for the ticket a gate's run is on: an approval begins that run. */
+export async function stopRefusalAtGate(
+  tx: TenantQuery,
+  gateId: string,
+  starter: string,
+): Promise<CommandRefusal | undefined> {
+  const rows = await tx.query<{ readonly task: string }>(
+    `select r.task_id as task from public.gates g
+       join public.planned_runs r on r.business_id = g.business_id and r.id = g.run_id
+      where g.business_id = $1 and g.id = $2`,
+    [tx.businessId, gateId],
+  );
+  return rows[0] === undefined ? undefined : await stopRefusal(tx, rows[0].task, starter);
+}
 
 /**
  * WF-7: Run on a research ticket starts a research run, which is `run:write`

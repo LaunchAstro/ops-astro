@@ -15,6 +15,7 @@ import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { gateSigningKey, type SigningKey } from '../../../core-runtime/src/index.ts';
 import { decisionCapId } from '../reads/task-cap.ts';
+import { stopRefusalAtGate } from './research-run.ts';
 
 export interface DecideFields {
   readonly gateId: string;
@@ -148,6 +149,12 @@ export async function decideOnGate(
   }
 
   const decided = result.value;
+  // WF-7: an approval begins a run, so a stopped research ticket waits on its
+  // map's owner here too, under the decision's task lock.
+  if (decided.decision === 'approve') {
+    const stopped = await stopRefusalAtGate(tx, decided.gateId, context.session.personId);
+    if (stopped !== undefined) return refused(stopped);
+  }
   if (decided.decision === 'escalate') {
     // INB-1: the gate is now the business-scope deciders' to decide, so the
     // inbox moves with it in this transaction: nothing is cleared, since
