@@ -284,6 +284,10 @@ export function App(props: AppProps): ReactElement {
       panel={
         agentOpen && session !== null && match !== null ? (
           <AssistantView
+            // Keyed as the read projections are: a change of business, person
+            // or session drops every tab, and a reply still out lands in the
+            // drawer that asked, which is gone.
+            key={grantKey}
             client={client}
             route={match.id}
             here={here}
