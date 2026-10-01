@@ -44,7 +44,7 @@ import {
   type SessionsEnded,
 } from './account-factor-provider.ts';
 import { endOthersOnChange, signOutOthers } from './account-factor-sessions.ts';
-import { codeOf, codeSent, freshSignIn, wrongCodeLock } from './account-factor-checks.ts';
+import { codeOf, freshSignIn, recordCode, wrongCodeLock } from './account-factor-checks.ts';
 import { writeAuditEvent } from './audit.ts';
 import { asCallerVisible, refuseCommand, type CommandRefusal } from './refusal.ts';
 
@@ -136,7 +136,7 @@ export async function verifySecondFactor(
     act,
     async (tx, session) => {
       if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
-      const locked = await wrongCodeLock(tx, session);
+      const locked = await wrongCodeLock(tx, caller.presented.subject);
       if (locked !== undefined) return locked;
       factor = await liveFactor(tx, session.personId);
       return factor === undefined
@@ -193,7 +193,7 @@ export async function removeSecondFactor(
     act,
     async (tx, session) => {
       if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
-      const locked = await wrongCodeLock(tx, session);
+      const locked = await wrongCodeLock(tx, caller.presented.subject);
       if (locked !== undefined) return locked;
       const live = await liveFactor(tx, session.personId);
       if (live?.status !== 'verified')
@@ -262,9 +262,9 @@ const ownFactor = (caller: FactorCaller, session: Session, factorId: string) => 
  * the act's audit event in the same transaction.
  *
  * The check before the provider call records only a refusal, or, passed for a
- * code (`attempt`), the code as sent, under the person's lock (`codeSent`); the
- * act's own event, applied or refused, is written after the call beside the
- * record it changes, and names the same `attempt`.
+ * code (`attempt`), the code as sent, under the login's lock (`recordCode`);
+ * the act's own event, applied or refused, is written after the call beside
+ * the record it changes, and names the same `attempt`.
  */
 async function judged(
   caller: FactorCaller & { readonly attempt?: string },
@@ -278,10 +278,8 @@ async function judged(
     caller.presented,
     async (tx, session) => {
       const refusal = await check(tx, session);
-      if (stage === 'before' && refusal === undefined) {
-        await codeSent(tx, session, caller.attempt);
-        return;
-      }
+      await recordCode(tx, session, caller, stage, refusal);
+      if (stage === 'before' && refusal === undefined) return;
       await writeAuditEvent(tx, {
         actorId: session.actorId,
         command: act,
