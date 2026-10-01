@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // @vitest-environment jsdom
 //
-// MP-2-3: the rail folds to a 56px strip of icons, each with its section's
-// name, and back; its edge drags it from 170 to 400, live, kept on release,
+// MP-2-3: the rail folds to a 56px strip, each section drawn as its own
+// MP-2-2 glyph (an initial only where a section has none) and named by its
+// label, and back; its edge drags it from 170 to 400, live, kept on release,
 // by pointer or keys; what the person left is drawn on the first render, so
 // nothing jumps; and the dock's geometry measures the rail as drawn.
 //
@@ -16,6 +17,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
 import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
 import type { RailPreference } from '../../apps/web/src/shell/use-rail.ts';
+import { SECTIONS } from '../../apps/web/src/manifest.ts';
+import { RAIL_GLYPHS } from '../../apps/web/src/rail-glyphs.ts';
 import { app, at, drawn, grip, key, pointer, railWidth, shell, unmountAll } from './rail-app.tsx';
 
 const SHEET = readFileSync('packages/ui/src/styles/3-shell.css', 'utf8');
@@ -50,8 +53,39 @@ describe('MP-2-3 collapse and back', () => {
   });
 });
 
-describe('MP-2-3 56px strip: an icon and a title on every section', () => {
-  it('draws a glyph and the name on hover for every item, the way back included', async () => {
+/** What a reader hears for an item: its words, less anything hidden from the reader. */
+function accessibleText(item: Element): string {
+  const copy = item.cloneNode(true) as Element;
+  for (const hidden of copy.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+  return copy.textContent?.trim() ?? '';
+}
+
+describe("MP-2-3 56px strip: each agency section's own MP-2-2 glyph", () => {
+  it('draws the MP-2-2 glyph for every section of the agency strip, none falling back to an initial', async () => {
+    const page = await at({ rail: { collapsed: true, width: 224 } });
+    const glyphOf = new Map(
+      SECTIONS.filter((each) => each.namespace === 'agency' && each.navigable).map((each) => [
+        each.label,
+        RAIL_GLYPHS[`agency:${each.id}`],
+      ]),
+    );
+    const items = page.all('.rail__group .rail__item');
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      const label = item.querySelector('.rail__label')?.textContent ?? '';
+      expect(item.querySelector('.rail__glyph'), label).toBeNull();
+      const icon = item.querySelector<HTMLElement>('.rail__icon');
+      expect(icon?.dataset['glyph'], label).toBe(glyphOf.get(label));
+      expect(icon?.getAttribute('aria-hidden'), label).toBe('true');
+      // The label stays the accessible name; the glyph adds nothing to it.
+      expect(accessibleText(item), label).toBe(label);
+      expect(item.getAttribute('title'), label).toBe(label);
+    }
+  });
+});
+
+describe('MP-2-3 56px strip: an initial only where a section has no glyph', () => {
+  it('draws an initial and the name on hover only where a section has no glyph, the way back included', async () => {
     const page = await drawn(
       <Shell
         face="client"
@@ -77,9 +111,11 @@ describe('MP-2-3 56px strip: an icon and a title on every section', () => {
       expect(label).not.toBe('');
       // The name on hover, and still the item's accessible name.
       expect(item.getAttribute('title')).toBe(label);
+      // None of these sections names a glyph, so each keeps its initial.
       const glyph = item.querySelector('.rail__glyph');
       expect(glyph?.getAttribute('aria-hidden')).toBe('true');
       expect(glyph?.textContent).toBe(label.slice(0, 1));
+      expect(accessibleText(item)).toBe(label);
     }
     // The label is hidden visually in the strip, not removed.
     expect(SHEET).toMatch(

@@ -194,12 +194,11 @@
     display: inline-flex;
   }
 }
-.rail__brand {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-}
+/* In the drawer's top corner, so the brand keeps its stack (DS-SIDE-12). */
 .navclose {
+  position: absolute;
+  top: var(--s-5);
+  right: var(--s-3);
   align-items: center;
   justify-content: center;
   width: 32px;
@@ -262,9 +261,11 @@
       strip's rules do not reach it. The shell writes --rail-w; the grid's
       transition runs once the shell is ready and never during a drag
       (the mockup's drag trailed the cursor, DS-SIDE-D4). */
+/* On the label's line, 2px under the wordmark's foot: the mockup's touched
+   it and overlapped the end of the word (DR-61). */
 .railfold {
   position: absolute;
-  top: calc(var(--s-5) + 1.15rem);
+  top: calc(var(--s-5) + 20px);
   right: var(--s-3);
   display: grid;
   place-items: center;
@@ -319,6 +320,17 @@
   .shell[data-rail='collapsed'] .railfold {
     top: var(--s-5);
     right: 16px;
+  }
+  /* The strip keeps the brand as the planet mark, centred (DS-SIDE-12). */
+  .shell[data-rail='collapsed'] .rail__brand {
+    align-items: center;
+    padding: 0;
+  }
+  .shell[data-rail='collapsed'] .rail__brand .brand--wordmark {
+    width: 24px;
+    aspect-ratio: 566.93 / 463.61;
+    mask-image: url('../brand/planet.svg');
+    mask-position: center;
   }
   .shell[data-rail='collapsed'] .rail__item {
     justify-content: center;
