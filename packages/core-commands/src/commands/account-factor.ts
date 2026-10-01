@@ -86,7 +86,8 @@ export async function enrolSecondFactor(
   provider: FactorProvider,
 ): Promise<IssuedFactor | CommandRefusal> {
   const act = 'account.factor_enrol';
-  const sending = { ...caller, attempt: randomUUID() };
+  // An operation id, not a code `attempt`: no code is sent, so none counts.
+  const sending = { ...caller, operation: randomUUID() };
   const precondition = await judged(
     sending,
     act,
@@ -120,7 +121,7 @@ export async function enrolSecondFactor(
   if (!issued.ok) return recorded ?? providerRefusal('malformed', 'answer');
   // Issued there, refused here: the factor stays at the provider, reported (#300).
   const stray = { providerFactorId: issued.value.factorId };
-  if (recorded !== undefined) await reportOrphan(caller, stray, sending.attempt, recorded.code);
+  if (recorded !== undefined) await reportOrphan(caller, stray, sending.operation, recorded.code);
   return recorded ?? issued.value;
 }
 
@@ -265,7 +266,11 @@ const enrolledElsewhere = async (
  * as answered only when the provider proved it good (`proven`).
  */
 async function judged(
-  caller: FactorCaller & { readonly attempt?: string; readonly proven?: boolean },
+  caller: FactorCaller & {
+    readonly attempt?: string;
+    readonly operation?: string;
+    readonly proven?: boolean;
+  },
   act: Act,
   check: (tx: TenantQuery, session: Session) => Promise<CommandRefusal | undefined>,
   stage: 'before' | 'after' = 'after',
@@ -281,7 +286,7 @@ async function judged(
       await writeAuditEvent(tx, {
         actorId: session.actorId,
         command: act,
-        operationId: caller.attempt ?? null,
+        operationId: caller.attempt ?? caller.operation ?? null,
         outcome: refusal === undefined ? 'applied' : 'refused',
         refusalCode: refusal?.code ?? null,
         payloadDigest: payloadDigest({ command: act, person: session.personId }),

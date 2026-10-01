@@ -303,13 +303,14 @@ describe.skipIf(serverUrl === undefined)(
       expect(await events(bravo, 'account.factor_orphaned')).toHaveLength(before);
     });
 
-    it('C59: a losing enrolment refused for a session the winner ended removes nothing at the provider', async () => {
+    it('C59: a losing enrolment refused for a session the winner ended removes nothing at the provider, and is reported orphaned', async () => {
       const before = (await events(bravo, 'account.factor_orphaned')).length;
 
       const answer = await race({ ok: true, value: undefined }, true);
 
       expect(answer).toEqual({ code: 'AUTH_SESSION_EXPIRED', asked: ['verify'] });
-      expect(await events(bravo, 'account.factor_orphaned')).toHaveLength(before);
+      // Security review 2b2 r11-2(a): verified at the provider, unrecorded here.
+      expect(await events(bravo, 'account.factor_orphaned')).toHaveLength(before + 1);
     });
 
     it('C59: a step-up with a good code refused because the session ended keeps the verified factor at the provider', async () => {
