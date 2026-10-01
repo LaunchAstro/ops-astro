@@ -156,7 +156,8 @@
     "SL11-25 names aw-04-set-planning-cap (AW-04 set planning cap, U10: budget.set_planning_cap under billing:decide on the whole business writes only the planning cap row, against the limit last seen, under the row's lock; the planning broker spends under what it wrote; two setters at once, one applies; its isolation case crosses another business, another client, another person and an agent under a live delegation) as an invariant.",
     "SL11-26 names aw-04-planning-cap-setting (AW-04 planning cap setting, owner NATHAN-STAGE1-TODAY 4: settings.read carries the business's planning cap, the default AUD 50 until a person moves it through budget.set_planning_cap, then the limit they set; and its isolation: another business, another client, another person and an agent under a live delegation read none of it) as an invariant.",
     "SL12-17-F names c39-t-invitations (C39-T records, invite a team member, send only on the inviter's act, rate limit: invitation.create, resend and revoke under access:share and expiry by the business's worker each write the invitation and its audit event; each act is one send through the broker's email.send, its enrolment token kept as a SHA-256 only; acts limited per address and per account, counted from the records) and c39-t-invitation-refusals (C39-T refusal access:share and C39-T isolation: no key, a client-scoped key or an agent is refused writing nothing; another business is NOT_FOUND as an unissued id; another client's key reaches nothing; each invitation makes a new person).",
-    "SL12-18-F names c39-t-invitation-send (C39-T sender and C39-T token kept as a hash only: an invitation leaves only from the verified sending subdomain, refused before the provider and before a token is minted otherwise; a provider answer echoing the link's token fails the attempt and nothing stored holds the token) as an invariant."
+    "SL12-18-F names c39-t-invitation-send (C39-T sender and C39-T token kept as a hash only: an invitation leaves only from the verified sending subdomain, refused before the provider and before a token is minted otherwise; a provider answer echoing the link's token fails the attempt and nothing stored holds the token) as an invariant.",
+    "SL12-18-COL names mp-6-2-plan-record-stored (0223, ORCH49: the plan record task.propose checked the step key against is stored with the step; an accept begun before a proposal and bound after it relabels no row, with a prior plan or none) and mp-6-2-plan-record-isolation (a record of another business or another client's task is never stored on a step, a step's record never moves, a forged one reads nothing of the other task) as conformance, the second listed in isolation-suites.json too."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -582,6 +583,8 @@
     "tests/api/mp-6-2-no-memory.test.ts",
     "tests/runtime/mp-6-2-placement.test.ts",
     "tests/review/sl12-18-placement-lineage-proof.test.ts",
+    "tests/runtime/mp-6-2-plan-record-stored.test.ts",
+    "tests/runtime/mp-6-2-plan-record-isolation.test.ts",
     "tests/review/sl01-rel-g2-health-proof.test.ts",
     "tests/ci/staging-special-objects.test.ts",
     "tests/ci/s0-1-staging-reset.test.ts",
