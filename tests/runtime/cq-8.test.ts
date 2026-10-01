@@ -70,6 +70,8 @@ describe('CQ-8 runtime structure', () => {
       'recovery/classifier.ts',
       // T3e1: a drop, and the work coming back from it.
       'recovery/drop.ts',
+      // The effect register's lookup type, a leaf so broker-effect and reconcile import no cycle.
+      'recovery/effect-lookup.ts',
       'recovery/lease-retirement.ts',
       // T3d1: a person's recorded outcome, and the pass's reconciliation phase.
       // T3e2: one report per outage.
