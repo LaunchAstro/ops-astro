@@ -2,7 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { READ_NAMES } from '../../apps/web/src/operations/read-names.ts';
 import { pathOf, PREFIX } from '../../packages/core-wire/src/index.ts';
-import { MADE_UP_READS, madeUpAnswer, TASKS } from './made-up-api.ts';
+import { MADE_UP_READS, madeUpAnswer } from './made-up-api.ts';
+import { TASKS } from './made-up-data.ts';
 
 // Reads no batch/1 screen draws at the harness's addresses: the preset plan is
 // the command line's, and the unattended list is the operations view's. Each is

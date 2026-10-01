@@ -59,6 +59,15 @@ export const PagePlaceholder = (props: { readonly page: Page }): ReactElement =>
   </div>
 );
 
+// Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a
+// bundler that did not stamp, and the rail then says the build is unstamped.
+// Read by name, never by index: an indexed read inlines every VITE_ setting
+// of the build's environment into the bundle (G3).
+export function buildStamp(): string | null {
+  const stamp = import.meta.env.VITE_OPS_ASTRO_BUILD ?? '';
+  return stamp === '' ? null : stamp;
+}
+
 /** A held address's page head says the page is not built yet (the one empty state's chip). */
 export const HeldChip = (): ReactElement => <Chip kind="outline">Not built yet</Chip>;
 
