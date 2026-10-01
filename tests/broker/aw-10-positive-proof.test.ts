@@ -10,6 +10,7 @@
 // lookup is not declared. The hold stays whole until a person decides.
 
 import { expect, it as vitestIt } from 'vitest';
+import { callerAudit } from '../../packages/core-commands/src/index.ts';
 import {
   REPLAY_LOOKUP_PATH,
   type ReplayLookupMode,
@@ -26,6 +27,7 @@ import {
   world,
   type Dropped,
 } from './aw-10-world.ts';
+import { rows } from '../runtime/schedules-harness.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -122,4 +124,22 @@ it('AW-10 hostile provider: a provider silent to one lookup is not asked again i
     expect(seen).toMatchObject({ resumed: false, call: 'liability_unknown' });
     expect(String(seen.note)).toMatch(/^could establish nothing: /u);
   }
+});
+
+/** The business's `model.call_released` events, oldest first, with who wrote each. */
+const releasedEvents = async () =>
+  await rows<{ readonly actor_id: string }>(
+    s,
+    `select actor_id from public.audit_events
+      where business_id = $1 and command = 'model.call_released' order by seq`,
+    [s.business],
+  );
+
+it("AW-10 audit: the provider's proof that releases a held call writes one model.call_released event, as the agent whose call it was", async () => {
+  world.provider.lookupMode('honest');
+  const run = await dropped('unavailable');
+  const before = (await releasedEvents()).length;
+  await pass(s, { ...faultBroker(), audit: callerAudit });
+  expect(await after(run)).toMatchObject({ resumed: true, call: 'released' });
+  expect((await releasedEvents()).slice(before)).toStrictEqual([{ actor_id: s.agentActorId }]);
 });

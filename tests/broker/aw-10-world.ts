@@ -206,15 +206,16 @@ async function expectStarted(on: Schedules, work: Work): Promise<void> {
   throw new Error('the silent call never started');
 }
 
-/** The reconciliation pass over `on`'s business, as the API runs it, provider phase included. */
+/** The reconciliation pass over `on`'s businesses, as the API runs it, provider phase included. */
 export async function pass(
-  on: Schedules = s,
+  on: Schedules | readonly Schedules[] = s,
   with_: Broker = faultBroker(),
 ): ReturnType<typeof passDeployment> {
+  const all: readonly Schedules[] = 'db' in on ? [on] : on;
   return await passDeployment(
-    on.db.app,
-    async (key) => await Promise.resolve(key === 'here' ? on.business : undefined),
-    ['here'],
+    s.db.app,
+    async (key) => await Promise.resolve(all[Number(key)]?.business),
+    all.map((_, at) => String(at)),
     registerEffectLookup,
     async (database, businessId) =>
       await reconcileProviderCalls(database, businessId as BusinessId, with_),
