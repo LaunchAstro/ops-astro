@@ -78,9 +78,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'person_availability'],
   // 0066: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
   ['siu', 'person_preferences'],
-  // 0077: a time entry is deleted by a mark, never a row delete.
+  // 0078: a time entry is deleted by a mark, never a row delete.
   ['siu', 'time_entries'],
-  // 0080: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
+  // 0081: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
   ['si', 'tags'],
   ['sid', 'task_tags'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
