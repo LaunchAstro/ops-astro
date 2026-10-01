@@ -108,6 +108,8 @@ describe('CQ-8 runtime structure', () => {
       // The outbox forwarder's one lock, alone in its own transaction: no command order.
       'apps/forwarder/forward.ts',
       'packages/core-commands/src/commands/conversation-lifecycle.ts',
+      // C39-T: an accept's login id, before the invitation's row (`lockLoginId`).
+      'packages/core-commands/src/commands/invitation-accept.ts',
       'packages/core-commands/src/commands/occurrence-run.ts',
       'packages/core-commands/src/commands/prepare.ts',
       'packages/core-custody/src/broker-reserve.ts',

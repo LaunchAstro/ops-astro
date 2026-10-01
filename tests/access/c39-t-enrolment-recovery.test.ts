@@ -6,16 +6,30 @@
 // link died, is found again and adopted by the next accept with the password
 // set then. A login that is not ours, another business's or one made
 // elsewhere, is never set: its holder is told to sign in. A login this
-// business has bound already is never set again, and nothing is asked. A
+// business has bound already is never set again, and nothing is asked. Of
+// two accepts for one address, racing on one link or on a revoked link and
+// a fresh one, neither sets the password of the login the other bound. A
 // hostile answer spends and binds nothing, and the same link then enrols.
 
+import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
+import { mountEnrolment } from '../../apps/api/enrolment.ts';
+import {
+  AUTH_CREATE_USER,
+  AUTH_UPDATE_USER,
+  catalogue,
+} from '../../packages/core-connectors/src/index.ts';
+import { TEST_EMAIL_SEND } from '../broker/email-world.ts';
 import type { FakeUsersMode } from './c39-t-users-fake.ts';
 import {
+  boundTo,
   e,
+  type Answer,
   enrolVia,
   invited,
   passwordFor,
+  patientApp,
+  personOf,
   rowsIn,
   spentOf,
   useEnrolWorld,
@@ -33,26 +47,6 @@ const putsSince = (from: number): readonly string[] =>
     .slice(from)
     .filter((one) => one.method === 'PUT')
     .map((one) => one.path);
-
-/** The person a provider subject is bound to in one business, if any. */
-async function boundTo(business: string, subject: string): Promise<string | undefined> {
-  const [row] = await w.db.admin.execute<{ person_id: string }>(
-    `select pl.person_id from public.person_logins pl
-       join public.logins l on l.id = pl.login_id
-      where l.business_id = $1 and l.subject = $2`,
-    [business, subject],
-  );
-  return row?.person_id;
-}
-
-/** The invitation's person, as the database holds it. */
-async function personOf(invitationId: string): Promise<string> {
-  const [row] = await w.db.admin.execute<{ person_id: string }>(
-    'select person_id from public.invitations where id = $1',
-    [invitationId],
-  );
-  return String(row?.person_id);
-}
 
 /** The identity rows alpha holds, to show a refusal wrote none. */
 async function identityRows(): Promise<readonly number[]> {
@@ -193,6 +187,57 @@ describe.skipIf(noDatabase)('C39-T enrolment recovery', () => {
     expect(await enrolVia(other.token)).toStrictEqual(ENROLLED);
     expect(await boundTo(w.alpha, String(oneLogin))).toBeUndefined();
     expect(e.users.passwords.get(String(oneLogin))).toBe(onePassword);
+  }, 30_000);
+
+  it('C39-T enrolment: a second accept on the same link, racing the first, never sets the password of the login the first bound', async () => {
+    const address = addressFor('raced');
+    const { id, token } = await invited(c.admin, address);
+    // The second accept waits on the provider as long as a deployment does.
+    const patient = new Hono();
+    mountEnrolment(patient, w.db.app, {
+      businesses: async () => await Promise.resolve([w.alpha, w.bravo]),
+      broker: {
+        ...w.broker,
+        operations: catalogue([TEST_EMAIL_SEND, AUTH_CREATE_USER, AUTH_UPDATE_USER]),
+      },
+    });
+    const winner = passwordFor();
+    let first: Answer | undefined;
+    // The second accept has found its link live; while its ask is at the provider, the first enrols whole.
+    e.users.beforeNext(async () => {
+      first = await enrolVia(token, winner);
+    });
+    const second = await enrolVia(token, passwordFor(), patient);
+    expect(first).toStrictEqual(ENROLLED);
+    const made = String(e.users.users.get(address));
+    expect(await boundTo(w.alpha, made)).toBe(await personOf(id));
+    expect(second.body).not.toStrictEqual({ state: 'enrolled' });
+    expect(e.users.passwords.get(made)).toBe(winner);
+  }, 30_000);
+
+  it('C39-T enrolment: a revoked link’s accept in flight never sets the password of the login a fresh invitation for the address bound', async () => {
+    const address = addressFor('revoked-raced');
+    const old = await invited(c.admin, address);
+    const winner = passwordFor();
+    let freshId = '';
+    let first: Answer | undefined;
+    // The old link's accept has found it live; while its ask is at the provider, the old
+    // invitation is revoked, a fresh one sent, and the fresh link enrols whole.
+    e.users.beforeNext(async () => {
+      expect(codeOf(await as(c.admin, 'invitation.revoke', { invitationId: old.id }))).toBe(
+        'applied',
+      );
+      const fresh = await invited(c.admin, address);
+      freshId = fresh.id;
+      first = await enrolVia(fresh.token, winner);
+    });
+    const late = await enrolVia(old.token, passwordFor(), patientApp());
+    expect(first).toStrictEqual(ENROLLED);
+    const made = String(e.users.users.get(address));
+    expect(await boundTo(w.alpha, made)).toBe(await personOf(freshId));
+    expect(late.body).not.toStrictEqual({ state: 'enrolled' });
+    expect(e.users.passwords.get(made)).toBe(winner);
+    expect(await spentOf(old.id)).toStrictEqual({ state: 'revoked', spent: 0, tokens: 1 });
   }, 30_000);
 
   // eslint-disable-next-line max-lines-per-function -- every hostile answer, then the control
