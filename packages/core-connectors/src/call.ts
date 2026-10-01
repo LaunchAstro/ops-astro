@@ -65,10 +65,17 @@ function buildPath(
   return { path };
 }
 
+/** A dotted field; a list is read only by a numeric index (`deployments.0.uid`). */
 function readField(body: unknown, dotted: string): unknown {
   let value: unknown = body;
   for (const part of dotted.split('.')) {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+    if (Array.isArray(value)) {
+      value = /^(?:0|[1-9][0-9]{0,5})$/u.test(part)
+        ? (value as unknown[])[Number(part)]
+        : undefined;
+      continue;
+    }
+    if (typeof value !== 'object' || value === null) return undefined;
     value = Object.hasOwn(value, part) ? (value as Record<string, unknown>)[part] : undefined;
   }
   return value;

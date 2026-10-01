@@ -1,38 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The six catalogued operations of the live correction (release decision
-// section 3.1), and nothing else on its path. The values are the release
-// decision's proposal; declarations are an adapter author's claims, and the
-// walk-through evidences them against the real repository and project before
-// the first real change. `site.publish` is bound here to merging the approved
-// request; the walk-through may choose promotion instead, which is a new
-// connector release, not an edit to this one.
+// The catalogued operations of the live correction (release decision section
+// 3.1, and the batch review's binding for SL15), and nothing else on its
+// path. The values are the release decision's proposal; declarations are an
+// adapter author's claims, and the walk-through evidences them against the
+// real repository and project before the first real change. `site.publish`
+// stays the merge of the approved request: its deployment is found by the
+// merged commit (`site.deployment.lookup`, `operations-binding.ts`), never
+// promoted, and an answer of `not_mergeable` is read back by the request's
+// merge state (`site.request.read`).
 
 import {
-  CREDENTIAL_HOSTS,
-  connectorRelease,
   registerOperation,
   type ConnectorDefinition,
   type OperationDeclaration,
   type OperationRegistration,
   type Registered,
 } from '../catalogue.ts';
-
-type Declared = Omit<OperationDeclaration, 'connector_release'>;
-
-function operation(declared: Declared, connector: ConnectorDefinition): OperationRegistration {
-  return {
-    declaration: { ...declared, connector_release: connectorRelease(connector) },
-    connector,
-  };
-}
-
-const NO_SEAM = { read_operation: 'none', reference: 'none' } as const;
-const SOURCE_QUOTA = { bucket: 'source_control_rest', scope: 'installation', cost: 1 } as const;
-const HOSTING_QUOTA = { bucket: 'hosting_rest', scope: 'installation', cost: 1 } as const;
-
-const SOURCE_HOST = CREDENTIAL_HOSTS.source_control;
-const HOSTING_HOST = CREDENTIAL_HOSTS.hosting;
+import {
+  HOSTING_HOST,
+  HOSTING_QUOTA,
+  NO_SEAM,
+  SOURCE_HOST,
+  SOURCE_QUOTA,
+  operation,
+} from './declare.ts';
+import { BINDING_OPERATIONS } from './operations-binding.ts';
 
 /** Hosts a connector call may reach. The capture's own pages are the fence's, not these. */
 export const CONNECTOR_HOSTS: readonly string[] = [SOURCE_HOST, HOSTING_HOST];
@@ -97,7 +90,7 @@ export const SITE_OPERATIONS: readonly OperationRegistration[] = [
       acknowledgement_semantics: 'accepted',
       reconcile_mode: 'reconcilable',
       reconcile_seam: {
-        read_operation: 'site.deployment.read',
+        read_operation: 'site.request.read',
         reference: 'request number, held before dispatch',
       },
       nothing_happened_proof: ['not_mergeable', 'merge_conflict'],
@@ -197,6 +190,7 @@ export const SITE_OPERATIONS: readonly OperationRegistration[] = [
       credential: 'none',
     },
   ),
+  ...BINDING_OPERATIONS,
 ];
 
 /** Names that belong on this path. Anything else offered beside them is a design error (D21-1). */

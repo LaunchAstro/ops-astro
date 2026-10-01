@@ -488,6 +488,17 @@ and a version digest, never the file's text. The approval reads the configured
 approver under a share lock on its setting, and refuses the requester first:
 an agent's request records its delegating person as the requester.
 
+The worker reaches the providers through ten catalogued operations
+(`core-connectors/src/site/operations.ts`, `operations-binding.ts`), each a
+guarded call (`callConnector`) bound into the runner's ports by
+`siteRunnerPorts` (`commands/live-correction-ports.ts`). `site.source.propose`
+is composed as three writes on the correction's seam: the branch, the file,
+the request (`site/propose.ts`); a step failing after the branch exists is
+`unknown`, never `failed`. `site.publish` is the merge at the proposed head;
+its deployment is found by the merged commit (`site.deployment.lookup`), never
+promoted. A merge answering `not_mergeable` reads the request's merge state
+(`site.request.read`): merged already, as after a lapsed lease, is `unknown`.
+
 A settings `value` of any other type, including a string, an object or an
 array, is `FIELD_VALUE_INVALID` naming `value` before any write
 (`setBusinessSetting`, `commands/settings-write.ts`), so nothing a jsonb column
