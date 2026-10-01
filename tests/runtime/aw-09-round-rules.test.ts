@@ -7,6 +7,8 @@
 //
 // - a superseded version's decision is `PROPOSAL_SUPERSEDED`, and the version
 //   that superseded it starts with no approval;
+// - an approval given before the agent superseded its version refuses at
+//   dispatch (`DECISION_STALE`) and marks nothing, beside a positive control;
 // - a revision past the envelope is `PROPOSAL_SCOPE_EXCEEDED`, refused rather
 //   than trimmed, and the round count and the work stand;
 // - after a reject the lineage takes nothing more (`LINEAGE_TERMINAL`); work
@@ -22,10 +24,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
   appliedDetail,
+  asAgent,
   asPerson,
   codeOf,
   cutProxy,
   openSchedules,
+  pickup,
   racer,
   rows,
   type Detail,
@@ -72,6 +76,57 @@ describe.skipIf(serverUrl === undefined)('AW-09 the round over agent output', ()
     );
     expect(await gate(output.gateId)).toMatchObject({ state: 'superseded', decisions: 0 });
     expect(await gate(next['gateId'])).toMatchObject({ state: 'pending', decisions: 0 });
+  });
+
+  const leased = async (output: AgentOutput): Promise<Detail> => {
+    const approved = appliedDetail(await asPerson(s, decideBody(at(output), 'approve')), 'approve');
+    const reservationId = approved['reservationId'];
+    return { ...(await pickup(s, reservationId)), reservationId };
+  };
+  const dispatched = async (lease: Detail) =>
+    await asAgent(
+      s,
+      {
+        command: 'task.dispatch',
+        operationId: randomUUID(),
+        leaseId: lease['leaseId'],
+        fence: lease['fence'],
+      },
+      String(lease['credential']),
+    );
+  const marked = async (lease: Detail) =>
+    await rows<{ readonly marker: boolean }>(
+      s,
+      `select dispatch_marker as marker from public.attempts where business_id = $1 and id = $2`,
+      [s.business, lease['attemptId']],
+    );
+  const dispatchable = { kind: 'synthetic_comment', payload: {} };
+
+  it('an approval of an agent version the agent then superseded refuses at dispatch, and marks nothing', async () => {
+    // The positive control: an approved agent version nobody superseded dispatches.
+    const control = await leased((await agentOutput(s, undefined, dispatchable)).output);
+    expect(codeOf(await dispatched(control))).toBe('applied');
+
+    // The agent's own revision supersedes the approved version: the lease and
+    // its delegation end with it, so the dispatch is refused before any lock.
+    const { output } = await agentOutput(s, undefined, dispatchable);
+    const lease = await leased(output);
+    const next = await revised(output);
+    expect(codeOf(await dispatched(lease))).toBe('DELEGATION_NOT_LIVE');
+    expect(await marked(lease)).toEqual([{ marker: false }]);
+    expect(await gate(next['gateId'])).toMatchObject({ state: 'pending', decisions: 0 });
+
+    // Under the locks the approval is rechecked too: only the version moved,
+    // with the lease still live, is DECISION_STALE.
+    const held = await leased((await agentOutput(s, undefined, dispatchable)).output);
+    await s.db.admin.execute(
+      `update public.proposal_versions set superseded_at = now()
+        where business_id = $1 and id = (select version_id from public.reservations
+                                          where business_id = $1 and id = $2)`,
+      [s.business, held['reservationId']],
+    );
+    expect(codeOf(await dispatched(held))).toBe('DECISION_STALE');
+    expect(await marked(held)).toEqual([{ marker: false }]);
   });
 
   it('an over-scope agent revision is PROPOSAL_SCOPE_EXCEEDED, not trimmed, and keeps the round count and the work', async () => {

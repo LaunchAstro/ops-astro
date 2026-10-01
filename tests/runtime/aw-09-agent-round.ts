@@ -15,6 +15,7 @@ import {
   liveWork,
   proposeBody,
   revisionOf,
+  type Body,
   type Detail,
   type Schedules,
   type Work,
@@ -53,10 +54,11 @@ export interface MadeOutput {
   readonly title: string;
 }
 
-/** The agent's handed-back output on a new task: the successor's pending gate. */
+/** The agent's handed-back output on a new task: the successor's pending gate, running `step`. */
 export async function agentOutput(
   s: Schedules,
   title = `aw-09 ${randomUUID()}`,
+  step?: Body,
 ): Promise<MadeOutput> {
   const work = await liveWork(s, title, 2_000);
   const successor = {
@@ -64,7 +66,7 @@ export async function agentOutput(
     maximumMinor: 1_500,
     currency: 'AUD',
     payload: { instruction: 'the draft, for review' },
-    step: { kind: 'compose', payload: { tone: 'plain' } },
+    step: step ?? { kind: 'compose', payload: { tone: 'plain' } },
   };
   const handedBack = await asAgent(
     s,
