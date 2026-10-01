@@ -297,4 +297,24 @@ describe.skipIf(noDatabase)('C39-T enrolment', () => {
     e.users.mode('accept');
     expect((await enrolVia(token)).body).toStrictEqual({ state: 'enrolled' });
   }, 30_000);
+
+  it('C39-T enrolment: a login the provider made while its answer came too late does not stop the same link enrolling the invited person', async () => {
+    const { id, token } = await invited(c.admin, addressFor('made-late'));
+    e.users.mode('made_late');
+    expect(await enrolVia(token)).toStrictEqual({
+      status: 503,
+      body: { code: 'ENROLMENT_UNAVAILABLE' },
+      cookie: null,
+    });
+    expect(await spentOf(id)).toStrictEqual({ state: 'pending', spent: 0, tokens: 1 });
+
+    // The link was spent on nothing, so its holder tries again and is enrolled.
+    e.users.mode('accept');
+    expect(await enrolVia(token)).toStrictEqual({
+      status: 200,
+      body: { state: 'enrolled' },
+      cookie: null,
+    });
+    expect(await spentOf(id)).toStrictEqual({ state: 'accepted', spent: 1, tokens: 1 });
+  }, 30_000);
 });
