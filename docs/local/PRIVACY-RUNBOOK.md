@@ -36,9 +36,20 @@ For each request, list every copy of the person that exists at that moment,
 by kind. A copy not on the list is a copy the reply missed.
 
 - **Records:** the database rows that name the person (people, identifiers,
-  memberships, records and their fields, incidents). Found with
+  memberships, their actors, logins and grants, the agent actor of each
+  credential they issued and that agent's rows, records and their fields,
+  incidents). Found with
   `node scripts/privacy/find-copies.mjs --business <key> --text <name>`, which
   searches the request's business only and refuses to run without one.
+- **Sign-in security rows:** three installation-wide `ops` tables keyed by
+  the SHA-256 of the login's subject, with no name or email:
+  `ops.second_factor_codes` (one row per code sent, and one per code answered
+  other than wrong; its `attempt` is the operation id of the act's audit
+  event in its business), `ops.second_factor_subjects` (factors verified or
+  removed) and `ops.ended_subject_sessions` (sessions ended). The application
+  never changes or removes a row (DATA.md). The finder scans `public` only, so
+  name them in the reply as held, by the login's digest, and kept as a
+  security control (below).
 - **Search indexes:** the records' search column (`records.search_tsv`),
   rebuilt from the record's text, so it follows the record. The finder reads it
   with the rest of the row.
@@ -104,11 +115,15 @@ copies of that class and delete them, or record the lawful reason each is kept.
 ## Lawful reasons a copy is kept
 
 - **Audit evidence:** the audit chain and the operation register are
-  append-only by design and never name a person's details in their words; a hit
-  there is a defect, not a kept copy.
+  append-only by design and never name a person's details in their words. A
+  row there that names the person only by their actor id (who acted) is kept
+  as audit evidence; a hit on their words there is a defect, not a kept copy.
 - **Breach record:** a privacy incident naming the person is kept while the
   incident is open or under assessment, by the owner's decision.
 - **Legal hold:** a copy under a hold that still stands.
+- **Security control:** the sign-in security rows above hold only the
+  login's digest and keep the lockout, second-factor and session-end checks
+  working; the application cannot change or remove them, so they are kept.
 - **Backup not yet rolled off:** kept until it expires; a restore re-applies
   the erasure before the restored data is used.
 

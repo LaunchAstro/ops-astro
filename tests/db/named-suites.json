@@ -206,7 +206,13 @@
     "FIX-B1 (REVIEW-MAIN-B1 p02-1) adds forwarder-export-ageout-false-signals-dropped-review (an export signal under its threshold ages out of the forwarder's table without a false signals-dropped alert: the sweep window outlasts every rule's).",
     "The batch 3a join of main a352c11 brings MP-2-11a's preference store, so mp-6-1-preferences (MP-6-1's job list preference, agent.jobList: own row only, refused to an agent, unaudited) joins the conformance list, as MP-6-1's line above says.",
     "REVIEW-BATCH-2 #312 batch 3a adds review-3a-2-purge-conversation-scope (task.purge applies and purges another aged task while a trashed task is a conversation's scope) as conformance.",
-    "REVIEW-BATCH-2 #312 batch 3a adds review-3a-3-sweep-starvation (the idle sweep: a hundred older held conversations do not starve a younger due one, and a conversation on a trashed task is not held WORK_OPEN for ever) as conformance."
+    "REVIEW-BATCH-2 #312 batch 3a adds review-3a-3-sweep-starvation (the idle sweep: a hundred older held conversations do not starve a younger due one, and a conversation on a trashed task is not held WORK_OPEN for ever) as conformance.",
+    "FIX-2B1 (REVIEW-MAIN-2B1 ids 4, 5, P2-F2; REVIEW-MAIN-2A P2-1) names review-main-2b1-4-double-refusal (an aal1 refusal with a factor held is one attempt row), review-main-2b1-5-rollup-race (a grant moved during compute is not cached under the old fingerprint), fix-main-2b1-availability-attempt (availability.set records one attempt per call) and c59-second-factor-attempts, which now reaches a database through REVIEW-MAIN-2A's proof case.",
+    "FIX-2B1 (review RS, B2) names fix-2b1-rs-rollup-issued-and-revoked (a grant issued and revoked while a rollup is worked out leaves no wider answer held).",
+    "FIX-2B1 RS2 names fix-2b1-rs2-left-at-door-real-routes (a tab that leaves while each real live route awaits its door ends its stream: T2f, C4 topics and the board, through composeApi).",
+    "STAGING-FIX-2 adds staging-hosted-roles (a hosted Supabase reset: the migration runner applies with only the platform's own service logins connected, authenticator, pgbouncer, supabase_admin, supabase_auth_admin and supabase_storage_admin, and still refuses a look-alike, differently cased or unnamed Supabase login, naming only it; made-up-only accepts a definer function owned by supabase_admin and still refuses one owned by a look-alike superuser or supabase_etl_admin).",
+    "FIX-2A (review RP-1) adds c81-privacy-find-copies-links (the runbook's finder lists every row naming the person through an id of their own: found by name, their sign-in's logins row and a grant held by their acting identity; found by the email they wrote from, their membership), named as an isolation suite too.",
+    "FIX-2A (review RP-2) names c81-breach-drill-subject beside c81-breach-drill and c81-breach-drill-clock (the template's subject line filled per recipient through privacy.draft_breach_notices, a placeholder the drill cannot fill in it BREACH_TEMPLATE_UNFILLED 409 with nothing drafted), named as an isolation suite too."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -598,7 +604,9 @@
     "tests/broker/planfix-3a-settle-sec-b1.test.ts",
     "tests/broker/planfix-3a-settle-sec-b2.test.ts",
     "tests/broker/planfix-3a-settle-sec-b3.test.ts",
-    "tests/broker/planfix-3a-settle-sec-m1.test.ts"
+    "tests/broker/planfix-3a-settle-sec-m1.test.ts",
+    "tests/operations/c81-privacy-find-copies-links.test.ts",
+    "tests/operations/c81-breach-drill-subject.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
@@ -728,6 +736,13 @@
     "tests/api/review-3a-15-pending-undecidable.test.ts",
     "tests/runtime/review-3a-16-expired-gate-node.test.ts",
     "tests/api/review-3a-18-pending-current-version.test.ts",
-    "tests/runtime/review-3a-17-quarantined-hold.test.ts"
+    "tests/runtime/review-3a-17-quarantined-hold.test.ts",
+    "tests/ci/staging-hosted-roles.test.ts",
+    "tests/identity/review-main-2b1-4-double-refusal.test.ts",
+    "tests/api/review-main-2b1-5-rollup-race.test.ts",
+    "tests/commands/fix-main-2b1-availability-attempt.test.ts",
+    "tests/identity/c59-second-factor-attempts.test.ts",
+    "tests/api/fix-2b1-rs-rollup-issued-and-revoked.test.ts",
+    "tests/api/fix-2b1-rs2-left-at-door-real-routes.test.ts"
   ]
 }

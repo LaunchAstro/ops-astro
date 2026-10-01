@@ -6,8 +6,7 @@
 // stands in for the API and has no IndexedDB and no Cache Storage. This group
 // is its browser leg: the real API and identity provider end the session, and
 // then every store a Chromium tab has is read, those two included, with every
-// cookie the browser context holds (HttpOnly ones too, which `document.cookie`
-// cannot see).
+// cookie the context holds (HttpOnly too, which `document.cookie` cannot see).
 //
 // Each row opens a task in a context of its own, types a title and a comment
 // that are never saved, and ends the session its way:
@@ -20,7 +19,7 @@
 //     calls carry its own token re-signed with its first sign-in 12 hours and
 //     one second ago, so the API's absolute-limit check answers 401
 //     `AUTH_SESSION_EXPIRED` (the server's answer; nothing waits 12 hours).
-//   - ND3 signing out, from the top bar.
+//   - ND3 signing out, from the person menu.
 //
 // Each ends on the sign-in page, which says the edit was not saved, with the
 // title and comment canaries and the token in no store. ND2 and ND3 then sign
@@ -128,12 +127,13 @@ async function twelveHours(page, task) {
 async function signedOut(page, task) {
   await signIn(page, 'mia@alpha.local', 'alpha');
   const token = await openAndType(page, task);
-  await page.click('.topbar__who button');
+  await page.click('.appbar .who__trigger');
+  await page.click('.who__menu button[role="menuitem"]');
   const after = await afterTheEnd(page, 'signed-out', token);
   const back = await signBackIn(page, task, 'mia@alpha.local', after);
   record({
     case: 'ND3 signing out mid-edit, no draft',
-    action: 'mia signed out from the top bar with the edit unsaved',
+    action: 'mia signed out from the person menu with the edit unsaved',
     observed: `${after.observed}; signed in again: ${back.observed}`,
     ok: after.ok && back.ok,
     shot: await shot(page, 'ND3-signed-out'),

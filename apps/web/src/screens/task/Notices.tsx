@@ -12,27 +12,31 @@ import { describeRefusal } from '../../records/submit.ts';
 import { pathTo } from '../../routes.ts';
 import { drawTaskState } from '../../views/task-state.ts';
 import { titleOf } from '../../views/task-title.ts';
+import { TaskFacts } from './Facts.tsx';
 
 /** The crumb, the title (or the placeholder for a task with none) and the revision. */
 export function TaskHeader(props: { readonly task: InternalTaskDetail }): ReactElement {
   const { task } = props;
   return (
-    <header className="tpr">
-      <div className="tpr__crumb">
-        <a className="sb__addr" href={pathTo('agency:projects-board')}>
-          Projects
-        </a>
-        <span aria-hidden="true">›</span>
-        <span>No board</span>
-        <span className="sbact__meta">· {task.key}</span>
-        <Spill state={drawTaskState(task.state)} />
-      </div>
-      <h2 className="tpr__title">{titleOf(task.title)}</h2>
-      <div className="card__sub">
-        Revision {task.revision} ·{' '}
-        {task.completedAt === null ? 'not completed' : `completed ${task.completedAt}`}
-      </div>
-    </header>
+    <>
+      <header className="tpr">
+        <div className="tpr__crumb">
+          <a className="sb__addr" href={pathTo('agency:projects-board')}>
+            Projects
+          </a>
+          <span aria-hidden="true">›</span>
+          <span>No board</span>
+          <span className="sbact__meta">· {task.key}</span>
+          <Spill state={drawTaskState(task.state)} />
+        </div>
+        <h2 className="tpr__title">{titleOf(task.title)}</h2>
+        <div className="card__sub">
+          Revision {task.revision} ·{' '}
+          {task.completedAt === null ? 'not completed' : `completed ${task.completedAt}`}
+        </div>
+      </header>
+      <TaskFacts task={task} />
+    </>
   );
 }
 
