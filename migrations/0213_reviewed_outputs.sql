@@ -15,7 +15,8 @@
 -- rewritten: the application inserts and reads it, and may never update or
 -- delete one. The trigger checks the row's own subject, not just its pointers:
 -- the version and the lease's run are on the lineage the row names, so a
--- handback cannot mark a version of another lineage.
+-- handback cannot mark a version of another lineage. It runs after the row,
+-- so row security answers a write for another business first.
 
 create table public.reviewed_outputs (
   business_id uuid        not null,
@@ -50,14 +51,14 @@ begin
     raise exception 'reviewed_outputs: the version and the lease''s work are on the named lineage'
       using errcode = 'check_violation';
   end if;
-  return new;
+  return null;
 end;
 $$;
 
 revoke execute on function public.reviewed_outputs_on_their_lineage() from public;
 
 create trigger reviewed_outputs_on_their_lineage
-  before insert on public.reviewed_outputs
+  after insert on public.reviewed_outputs
   for each row execute function public.reviewed_outputs_on_their_lineage();
 
 alter table public.reviewed_outputs enable row level security;
