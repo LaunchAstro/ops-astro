@@ -62,6 +62,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.second_factor_subjects'],
   // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
   ['si', 'ops.second_factor_codes'],
+  // 0225 (C40): a password reset mail asked or answered, by subject digest, for every business.
+  ['si', 'ops.password_reset_attempts'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // A run's checks, append only as handback_reports is (MP-6-1).
