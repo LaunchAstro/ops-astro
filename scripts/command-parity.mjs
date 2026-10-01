@@ -29,7 +29,7 @@ const TRANSPORTS = new Map([
   // the commands' own client: a read, then a write
   [
     'operations/client.ts',
-    ['this.#options.fetch(url, { headers, signal })', 'this.#options.fetch(url, {'],
+    ['this.#options.fetch(url, { ...init, headers })', 'this.#options.fetch(url, {'],
   ],
   // signs a person in and out: a session, not a record
   [
@@ -169,6 +169,14 @@ const OPERANDS = {
   'task.board': { board: null },
   'task.receipt': { attemptId: 'a' },
   'preset.plan': { recordTypeKey: 'preset', presetKey: 'p', fields: [] },
+  'task.ledger': { before: null, timeZone: 'Australia/Brisbane', query: null },
+  'privacy.draft_breach_notices': {
+    incidentId: '00000000-0000-4000-8000-000000000000',
+    oaic: { name: 'o', address: 'a' },
+    people: [{ name: 'p', address: 'a' }],
+    containment: 'c',
+    steps: 's',
+  },
 };
 
 // The grants a read really asks: the real read path on a transaction that holds none.
