@@ -34,9 +34,10 @@
 -- trustworthy as those rows. The holder of a lease already taken is never
 -- rewritten. Putting the delegation mint behind this path is the next step.
 --
--- PUBLIC may not execute it; the application group may. Its search path is
--- pinned and every name in it is qualified. Protected: authority, approval
--- gate. No table or policy changes.
+-- PUBLIC may not execute it; the application group may. It runs as its own
+-- role, ops_astro_lease_path, never the owner's. Its search path is pinned and
+-- every name in it is qualified. Protected: authority, approval gate. No table
+-- or policy changes.
 
 revoke insert, update on public.leases from ops_astro_app;
 grant update (expires_at, state, released_at) on public.leases to ops_astro_app;
@@ -176,6 +177,39 @@ begin
   return next_fence;
 end;
 $$;
+
+-- The path runs as its own role, not the owner's: row security and the
+-- made-up guard judge its one write as they judge the application's, and the
+-- application group may call the path but never become its role. It reads
+-- what the checks above read and inserts leases, nothing else.
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname = 'ops_astro_lease_path') then
+    create role ops_astro_lease_path nologin nosuperuser nocreatedb nocreaterole noreplication
+      nobypassrls;
+  end if;
+  if exists (select 1 from pg_roles where rolname = 'ops_astro_lease_path' and (rolcanlogin
+      or rolsuper or rolcreatedb or rolcreaterole or rolreplication or rolbypassrls)) then
+    alter role ops_astro_lease_path nologin nosuperuser nocreatedb nocreaterole noreplication
+      nobypassrls;
+  end if;
+  -- Changing a function's owner needs the migrator able to act as that role.
+  execute format('grant ops_astro_lease_path to %I', current_user);
+end $$;
+
+revoke all on all tables in schema public from ops_astro_lease_path;
+revoke all on all functions in schema public from ops_astro_lease_path;
+grant usage on schema public to ops_astro_lease_path;
+grant execute on function public.app_business_id() to ops_astro_lease_path;
+grant select on public.reservations, public.planned_runs, public.proposal_versions,
+  public.proposal_lineages, public.gates, public.records, public.attempts,
+  public.gate_decisions, public.actors, public.delegations, public.grants, public.leases
+  to ops_astro_lease_path;
+grant insert on public.leases to ops_astro_lease_path;
+alter function public.take_lease(uuid, uuid, uuid, uuid, uuid, timestamptz, text)
+  owner to ops_astro_lease_path;
+comment on role ops_astro_lease_path is
+  'The pickup path''s role: it owns public.take_lease, reads what its checks read and '
+  'inserts leases under row security. The application group calls the path, never sets the role.';
 
 revoke all on function public.take_lease(uuid, uuid, uuid, uuid, uuid, timestamptz, text) from public;
 grant execute on function public.take_lease(uuid, uuid, uuid, uuid, uuid, timestamptz, text)
