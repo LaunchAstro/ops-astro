@@ -32,6 +32,7 @@ import { REGISTRY, SECRETS } from './made-up-settings.ts';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
 import { FLEET_READ, SIGNAL_READ } from './made-up-connections.ts';
 import { GRADUATION, SKILL_COSTS } from './made-up-connections-region.ts';
+import { AGENT_COSTS_READ } from './made-up-costs.ts';
 
 const STATE = {
   active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
@@ -193,6 +194,7 @@ const READS = {
   'connection.graduation': GRADUATION,
   'secret.list': SECRETS,
   'automation.registry': REGISTRY,
+  'finance.agent_costs': AGENT_COSTS_READ,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

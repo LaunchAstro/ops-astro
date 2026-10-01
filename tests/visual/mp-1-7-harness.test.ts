@@ -160,6 +160,8 @@ function everyPageBuiltSoFar(): void {
       'agency:sign-in',
       'agency:projects-board',
       'agency:task-detail',
+      'agency:executive',
+      'agency:onboarding',
       'agency:settings',
       'agency:gallery',
     ]);

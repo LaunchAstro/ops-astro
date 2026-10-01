@@ -9,6 +9,7 @@
 import { BOARD } from './board.ts';
 import { CONNECTIONS } from './connections.ts';
 import { CONNECTIONS_COSTING } from './connections-costing.ts';
+import { EXECUTIVE } from './executive.ts';
 import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
@@ -25,4 +26,5 @@ export const LOOK_SCREENS: readonly LookScreen[] = [
   SIGN_IN,
   CONNECTIONS,
   CONNECTIONS_COSTING,
+  EXECUTIVE,
 ];

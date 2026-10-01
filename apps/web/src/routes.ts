@@ -86,6 +86,22 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
+  // MP-14-3's Executive page; section 005 (MP-14-6) is built, 001 to 004 stand in.
+  'agency:executive': {
+    namespace: 'agency',
+    path: '/dashboard/executive/',
+    title: 'Executive',
+    surface: 'none',
+    authenticated: true,
+  },
+  // A new client's onboarding in phases (C41-A); no manifest page, so no rail entry.
+  'agency:onboarding': {
+    namespace: 'agency',
+    path: '/onboarding/',
+    title: 'Onboarding',
+    surface: 'none',
+    authenticated: true,
+  },
   // The business's own two operation-classified settings. It draws no pinned
   // surface — the mockup has no settings screen — so `surface` is `none`
   // rather than a letter it would be borrowing. The manifest places it in the
