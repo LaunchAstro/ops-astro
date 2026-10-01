@@ -37,7 +37,7 @@ import {
 } from './aw-09-round-world.ts';
 
 // eslint-disable-next-line max-lines-per-function -- one round per leg, compared whole
-describe.skipIf(serverUrl === undefined)('AW-09 the agent output review round', () => {
+describe.skipIf(serverUrl === undefined)("AW-09 the agent output's own round of review", () => {
   let world: World;
   let api: ServedApi | undefined;
   let scratch: string;

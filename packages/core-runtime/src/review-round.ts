@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// AW-09: the agent's output takes its own review round, and a person completes
+// AW-09: the agent's output takes its own round of review, and a person completes
 // it, never the agent that produced it.
 //
 // The surfaces already keep the agent out: its delegation never reaches
