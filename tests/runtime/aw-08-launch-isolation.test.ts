@@ -12,7 +12,8 @@
 import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it as vitestIt } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
-import { isReviewedOutput, markReviewedOutput } from '../../packages/core-runtime/src/index.ts';
+import { isReviewedOutput } from '../../packages/core-runtime/src/index.ts';
+import { markReviewedOutput } from '../../packages/core-runtime/src/reviewed-output.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { noDatabase, useAw04World, w } from './aw-04-world.ts';
 import {
@@ -112,6 +113,7 @@ it("AW-08 isolation: another business's lease and mark are neither dispatched, r
   await w.bravo.db.app.withBusiness(w.bravo.business, async (tx) => {
     expect(await isReviewedOutput(tx, version)).toBe(false);
   });
+  // The version key carries the business: their version is no version here.
   await expect(
     w.bravo.db.app.withBusiness(w.bravo.business, async (tx) => {
       await markReviewedOutput(tx, {
@@ -120,7 +122,7 @@ it("AW-08 isolation: another business's lease and mark are neither dispatched, r
         leaseId: String(ours.picked['leaseId']),
       });
     }),
-  ).rejects.toThrow();
+  ).rejects.toThrow(/violates foreign key constraint "reviewed_outputs_version_fkey"/u);
   expect(await marksOf(w.alpha, theirs.taskId)).toEqual([version]);
 
   // Control: each business dispatches its own launch.

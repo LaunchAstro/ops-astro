@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
-import { markReviewedOutput } from '../../packages/core-runtime/src/index.ts';
+import { markReviewedOutput } from '../../packages/core-runtime/src/reviewed-output.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
   appliedDetail,

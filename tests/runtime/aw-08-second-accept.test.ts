@@ -11,7 +11,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
-import { markReviewedOutput } from '../../packages/core-runtime/src/index.ts';
+import { markReviewedOutput } from '../../packages/core-runtime/src/reviewed-output.ts';
 import { marksOf } from './aw-08-world.ts';
 import {
   appliedDetail,
