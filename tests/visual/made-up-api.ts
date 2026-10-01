@@ -27,6 +27,7 @@ import type {
   QueueResult,
   SessionPersonResult,
   SettingsReadResult,
+  StepView,
   TagListResult,
   TagView,
   TaskBoardResult,
@@ -118,6 +119,42 @@ export const TASKS: readonly BoardTask[] = [
   task(33, 'Paid social rebuild', STATE.hold, null),
 ];
 
+const step = (n: number, title: string, gate = false): StepView => ({
+  id: `00000000-0000-4000-8001-${String(n).padStart(12, '0')}`,
+  key: `T-${String(100 + n)}`,
+  title,
+  state: STATE.active,
+  done: false,
+  archived: null,
+  awaitingApproval: gate,
+  assignee: gate ? null : NATHAN,
+  revision: 1,
+});
+
+// T-1's page and dock panel draw an estimate the logged time burns against
+// (DT-09) and a step waiting at its gate (DT-04), as the mockup's panel does.
+const STEPS: readonly StepView[] = [
+  step(1, 'Collect the signed scope and both variations'),
+  step(2, 'Draft the renewal terms summary'),
+  step(3, 'Approve the pack before it goes to the client', true),
+];
+
+const TIME: InternalTaskDetail['time'] = {
+  entries: [
+    {
+      id: 'te-1',
+      startedAt: '2026-09-25T01:00:00.000Z',
+      endedAt: '2026-09-25T01:45:00.000Z',
+      minutes: 45,
+      note: 'Pulled the scope and variations',
+      adHoc: false,
+      source: 'log',
+    },
+  ],
+  running: null,
+  totalMinutes: 45,
+};
+
 const DETAIL: InternalTaskDetail = {
   ...(TASKS[0] as BoardTask),
   agentBrief: null,
@@ -161,8 +198,9 @@ const DETAIL: InternalTaskDetail = {
   adHoc: false,
   clientAccess: false,
   board: null,
-  steps: [],
-  time: null,
+  estimateMinutes: 90,
+  steps: STEPS,
+  time: TIME,
   tags: [],
 };
 
