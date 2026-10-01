@@ -35,6 +35,7 @@ import './styles/2-primitives.css';
 import './styles/2-empty.css';
 import './styles/2-forms.css';
 import './styles/3-shell.css';
+import './styles/3-search.css';
 import './styles/4-board.css';
 import './styles/5-task.css';
 import './styles/7-page-kit.css';
